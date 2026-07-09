@@ -1,0 +1,11 @@
+meta:
+  environment: dockerfile
+
+build:
+  dockerfile: Dockerfile
+  context: .
+
+run:
+  containerPort: "3001"
+  servicePort: "80"
+  persistenceMount: /app/uploads

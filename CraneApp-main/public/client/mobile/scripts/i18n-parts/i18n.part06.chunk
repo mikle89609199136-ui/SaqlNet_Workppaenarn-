@@ -1,0 +1,80 @@
+        const start = () => observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+        if (document.documentElement) start();
+        else document.addEventListener('DOMContentLoaded', start, { once: true });
+    }
+
+    rebuildReversePhraseKeys();
+
+    window.i18n = {
+        currentLang: getSavedLanguage(),
+        translations,
+        languageNames,
+        supportedLanguages,
+
+        t(key, vars) {
+            return format(getTranslation(this.currentLang, key), vars);
+        },
+
+        tc(key, count, vars = {}) {
+            const suffix = pluralCategory(this.currentLang, Number(count));
+            return this.t(`${key}_${suffix}`, { ...vars, count });
+        },
+
+        keyForPhrase(value) {
+            return reversePhraseKeys[(value || '').trim()] || null;
+        },
+
+        localizeText(value, vars) {
+            const key = this.keyForPhrase(value);
+            return key ? this.t(key, vars) : value;
+        },
+
+        translatePage(root = document) {
+            if (!root || !document.documentElement) return;
+            window.__craneI18nTranslating = true;
+            try {
+                const scope = root.querySelectorAll ? root : document;
+                const direct = root.nodeType === 1 ? [root] : [];
+
+                [...direct, ...scope.querySelectorAll('[data-i18n]')].forEach(el => {
+                    if (el.hasAttribute?.('data-i18n')) applyElementKey(el, 'text', el.getAttribute('data-i18n'));
+                });
+                scope.querySelectorAll('[data-i18n-placeholder]').forEach(el => applyElementKey(el, 'placeholder', el.getAttribute('data-i18n-placeholder')));
+                scope.querySelectorAll('[data-i18n-title]').forEach(el => applyElementKey(el, 'title', el.getAttribute('data-i18n-title')));
+                scope.querySelectorAll('[data-i18n-aria-label]').forEach(el => applyElementKey(el, 'aria-label', el.getAttribute('data-i18n-aria-label')));
+                scope.querySelectorAll('[data-i18n-data-placeholder]').forEach(el => applyElementKey(el, 'data-placeholder', el.getAttribute('data-i18n-data-placeholder')));
+                scope.querySelectorAll('[data-i18n-data-tip]').forEach(el => applyElementKey(el, 'data-tip', el.getAttribute('data-i18n-data-tip')));
+                scope.querySelectorAll('[data-i18n-html]').forEach(el => applyElementKey(el, 'text', el.getAttribute('data-i18n-html')));
+
+                translateAttributes(scope);
+                scope.querySelectorAll('button,label,option,h1,h2,h3,h4,h5,h6,p,span,div,a').forEach(translatePlainElement);
+                if (root.nodeType === 1) translatePlainElement(root);
+                document.title = translateTitleValue(document.title);
+
+                document.documentElement.lang = this.currentLang;
+                document.documentElement.dir = this.currentLang === 'ar' ? 'rtl' : 'ltr';
+            } finally {
+                window.__craneI18nTranslating = false;
+            }
+        },
+
+        setLanguage(lang) {
+            if (!translations[lang]) return false;
+            this.currentLang = lang;
+            localStorage.setItem('craneapp_language', lang);
+            const settings = safeParseJson(localStorage.getItem('craneapp_settings'), {});
+            settings.language = lang;
+            localStorage.setItem('craneapp_settings', JSON.stringify(settings));
+            this.translatePage();
+            window.dispatchEvent(new CustomEvent('craneapp:languagechange', { detail: { language: lang } }));
+            return true;
+        }
+    };
+
+    installFetchLanguageHeader();
+    installMutationObserver();
+
+    const init = () => window.i18n.translatePage();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+    else init();
+})();

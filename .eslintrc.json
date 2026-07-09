@@ -1,0 +1,35 @@
+{
+  "env": {
+    "node": true,
+    "es2021": true,
+    "browser": true
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": "warn",
+    "eqeqeq": "error",
+    "curly": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-undef": "error",
+    "semi": ["error", "always"],
+    "quotes": ["error", "single"],
+    "indent": ["error", 2],
+    "no-trailing-spaces": "error",
+    "no-multiple-empty-lines": ["error", { "max": 1 }]
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "uploads/",
+    "logs/",
+    "dist/",
+    "build/"
+  ]
+}

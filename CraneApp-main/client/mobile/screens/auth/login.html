@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>CraneApp - Вход</title>
+    <script src="/client/mobile/scripts/i18n.js"></script>
+    
+    <link rel="stylesheet" href="./login.css">
+</head>
+<body>
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <div class="container">
+        <div class="logo-container">
+            <img src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png" alt="CraneApp Logo">
+        </div>
+        
+        <h1>CraneApp</h1>
+        <p class="subtitle" data-i18n="loginSubtitle">Войдите в аккаунт</p>
+        
+        <form id="loginForm">
+            <div class="input-group">
+                <label for="username" data-i18n="username">Юзернейм</label>
+                <input type="text" id="username" placeholder="@username" required autocomplete="username" autocapitalize="none" autocorrect="off">
+            </div>
+            <div class="input-group">
+                <label for="password" data-i18n="password">Пароль</label>
+                <div style="position:relative;display:block">
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" style="padding-right:44px">
+                    <button type="button" class="eye-btn" onclick="toggleLoginEye(event)">
+                    <svg id="loginEye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+            </div>
+            <button type="submit" id="loginBtn" data-i18n="login">Войти</button>
+        </form>
+        
+        <div class="footer">
+            <span data-i18n="noAccount">Нет аккаунта?</span> <a href="./register.html" data-i18n="registerAction">Зарегистрироваться</a>
+        </div>
+    </div>
+
+    <script src="./login.js"></script>
+</body>
+</html>

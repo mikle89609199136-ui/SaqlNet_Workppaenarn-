@@ -1,0 +1,13 @@
+# Не деплоим на Railway
+.git
+.vscode
+.idea
+*.log
+logs/
+uploads/
+coverage/
+.nyc_output/
+*.md
+*.bat
+BUGFIXES.md
+README.md

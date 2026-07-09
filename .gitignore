@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+.env.production
+*.key
+*.pem
+*.crt
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime uploads and local data
+uploads/
+*.tmp
+*.temp
+*.db
+*.sqlite
+
+# Build outputs
+dist/
+build/
+client/mobile/react-dist/
+
+# Test and coverage outputs
+coverage/
+.nyc_output/
+
+# Go
+backend-v2/bin/
+backend-v2/coverage.out
+
+# Rust
+target/
+server/crypto-rust/target/
+
+# Docker and local infrastructure data
+.docker/
+.cache/
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+backend-v2/edge

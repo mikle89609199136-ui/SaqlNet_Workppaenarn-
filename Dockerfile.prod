@@ -1,0 +1,67 @@
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --include=dev
+COPY vite.config.js index.html mobile.html ./
+RUN echo "css-bust-v8"
+COPY client ./client
+COPY public ./public
+RUN npm run build:react
+
+# Stage 2: Build Go services
+FROM golang:1.26-alpine AS gobuilder
+WORKDIR /src
+COPY backend-v2/go.mod backend-v2/go.sum ./
+RUN go mod download
+COPY backend-v2/internal ./internal
+COPY backend-v2/cmd ./cmd
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/auth    ./cmd/auth && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/user    ./cmd/user && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/chat    ./cmd/chat && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/media   ./cmd/media && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/edge    ./cmd/edge && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /binaries/migrate ./cmd/migrate
+
+# Stage 3: Build crypto-rust
+FROM rust:1.94-slim AS cryptobuilder
+WORKDIR /src
+COPY server/crypto-rust/Cargo.toml server/crypto-rust/Cargo.lock ./
+COPY server/crypto-rust/src ./src
+RUN cargo build --release --locked
+
+# Stage 4: Download NATS server and MinIO
+FROM debian:bookworm-slim AS natsdownload
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl -fsSL https://github.com/nats-io/nats-server/releases/download/v2.10.22/nats-server-v2.10.22-linux-amd64.tar.gz \
+    | tar -xz --strip-components=1 -C /usr/local/bin nats-server-v2.10.22-linux-amd64/nats-server && \
+    curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio && \
+    chmod +x /usr/local/bin/minio
+
+# Stage 5: Final image
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=natsdownload /usr/local/bin/nats-server /usr/local/bin/nats-server
+COPY --from=natsdownload /usr/local/bin/minio /usr/local/bin/minio
+
+RUN echo "gobins-v1"
+COPY --from=gobuilder   /binaries/auth     /usr/local/bin/auth
+COPY --from=gobuilder   /binaries/user     /usr/local/bin/user
+COPY --from=gobuilder   /binaries/chat     /usr/local/bin/chat
+COPY --from=gobuilder   /binaries/media    /usr/local/bin/media
+COPY --from=gobuilder   /binaries/edge     /usr/local/bin/edge
+COPY --from=gobuilder   /binaries/migrate  /usr/local/bin/migrate
+COPY --from=cryptobuilder /src/target/release/crypto-rust /usr/local/bin/crypto-rust
+COPY --from=frontend    /app/dist     /dist
+COPY supervisord.conf      /etc/supervisor/conf.d/craneapp.conf
+COPY backend-v2/migrations /app/migrations
+COPY docker-entrypoint.sh  /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]

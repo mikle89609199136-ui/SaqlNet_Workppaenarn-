@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#FF007F">
+    <title>CraneApp - Messenger</title>
+    <link rel="icon" type="image/png" href="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png">
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background-color: #0a0a0a;
+            color: #FFFFFF;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(255,0,127,0.1) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(157,0,255,0.1) 0%, transparent 40%);
+        }
+        
+        .loading-container {
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .logo-container {
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 24px;
+            border-radius: 30px;
+            overflow: hidden;
+            background: linear-gradient(135deg, rgba(255,0,127,0.2), rgba(157,0,255,0.2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: logoGlow 2s ease-in-out infinite;
+            box-shadow: 0 20px 60px rgba(255,0,127,0.3);
+        }
+        
+        .logo-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+        
+        @keyframes logoGlow {
+            0%, 100% { 
+                box-shadow: 0 20px 60px rgba(255,0,127,0.3), 0 0 80px rgba(157,0,255,0.2);
+            }
+            50% { 
+                box-shadow: 0 20px 80px rgba(255,0,127,0.5), 0 0 120px rgba(157,0,255,0.4);
+            }
+        }
+        
+        @keyframes logoPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #FF007F 0%, #9D00FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: titleGlow 3s ease-in-out infinite;
+        }
+        
+        @keyframes titleGlow {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.2); }
+        }
+        
+        p {
+            color: #B0B0B0;
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .progress-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #FF007F, #9D00FF);
+            border-radius: 2px;
+            animation: progress 2.5s ease-out forwards;
+        }
+        
+        @keyframes progress {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+        
+        .status-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #FF007F;
+            animation: dotBounce 1.4s ease-in-out infinite;
+        }
+        
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes dotBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-container">
+        <div class="logo-container">
+            <img src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png" alt="CraneApp Logo">
+        </div>
+        <h1>CraneApp</h1>
+        <p id="loading-text">Загрузка...</p>
+        
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        
+        <div class="status-dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+
+    <script>
+        const loadingText = document.getElementById('loading-text');
+        loadingText.textContent = 'Подготовка...';
+        
+        // Быстрый редирект
+        setTimeout(() => {
+            window.location.href = '/client/mobile/screens/auth/login.html';
+        }, 100);
+    </script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>Photo Editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="../../scripts/lucide.min.js"></script>
+    <script src="../../scripts/i18n.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <link rel="stylesheet" href="photo-editor.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+</head>
+<body>
+    <div class="main-layout">
+        <!-- Top Bar for History -->
+        <div class="top-bar">
+            <button class="top-tool-item" id="undoBtn" onclick="undoHistory()" disabled data-i18n-title="editorUndo">
+                <i data-lucide="undo"></i>
+            </button>
+            <button class="top-tool-item" id="redoBtn" onclick="redoHistory()" disabled data-i18n-title="editorRedo">
+                <i data-lucide="redo"></i>
+            </button>
+        </div>
+
+        <div class="content-area">
+            <div id="editorWrapper" class="editor-wrapper">
+                <img id="previewImage" src="" style="display:none;">
+                <canvas id="drawingCanvas"></canvas>
+            </div>
+            <div id="loader" data-i18n="loading">Загрузка...</div>
+            
+            <!-- Шкала поворота (Telegram style) -->
+            <div id="rotationControl" class="rotation-control">
+                <div class="rotation-value">0°</div>
+                <input type="range" id="rotationSlider" min="-45" max="45" value="0" step="0.1">
+                <div class="rotation-scale">
+                    <span>-45°</span>
+                    <span>0°</span>
+                    <span>45°</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-container" id="controlsDrawer">
+            <div class="drag-handle"></div>
+            
+            <!-- Sub Panels (Options) -->
+            <div class="sub-panels-container">
+                <div id="drawOptions" class="sub-panel">
+                    <div style="width: 100%;">
+                        <span class="tool-label" data-i18n="editorDrawColor">Цвет</span>
+                        <div class="option-group" id="colorPicker">
+                            <div class="color-dot selected" style="background: #ff3b30;" data-color="#ff3b30"></div>
+                            <div class="color-dot" style="background: #ffcc00;" data-color="#ffcc00"></div>
+                            <div class="color-dot" style="background: #4cd964;" data-color="#4cd964"></div>
+                            <div class="color-dot" style="background: #007aff;" data-color="#007aff"></div>
+                            <div class="color-dot" style="background: #ffffff;" data-color="#ffffff"></div>
+                            <div class="color-dot custom-color-trigger" style="background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);">
+                                <input type="color" id="customColorInput" style="opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; margin-top: 15px;">
+                        <span class="tool-label" data-i18n="editorDrawBrush">Тип кисти</span>
+                        <div class="option-group brush-types" id="brushTypePicker">
+                            <button class="tool-item active" data-brush="pen" data-i18n-title="editorBrushPen"><i data-lucide="pen-tool"></i></button>
+                            <button class="tool-item" data-brush="marker" data-i18n-title="editorBrushMarker"><i data-lucide="highlighter"></i></button>
+                            <button class="tool-item" data-brush="neon" data-i18n-title="editorBrushNeon"><i data-lucide="zap"></i></button>
+                            <button class="tool-item" data-brush="arrow" data-i18n-title="editorBrushArrow"><i data-lucide="arrow-up-right"></i></button>
+                            <button class="tool-item" data-brush="blur" data-i18n-title="editorBrushBlur"><i data-lucide="droplets"></i></button>
+                            <button class="tool-item" data-brush="eraser" data-i18n-title="editorBrushEraser"><i data-lucide="eraser"></i></button>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; margin-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="tool-label" style="margin-bottom: 0;" data-i18n="editorDrawSize">Размер кисти</span>
+                            <span id="brushSizeValue" class="value-badge">8</span>
+                        </div>
+                        <div class="range-container">
+                            <input type="range" id="brushSizeSlider" min="1" max="100" value="8" class="modern-range">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-panel" id="cropOptions">
+                    <span class="tool-label" data-i18n="editorTransform">Transform</span>
+                    <div class="option-group" style="margin-bottom: 15px;">
+                        <button class="tool-item" onclick="rotateImage()" title="Rotate 90°" data-i18n-title="editorRotate"><i data-lucide="rotate-cw"></i></button>
+                        <button class="tool-item" onclick="flipImage('h')" title="Flip Horizontal" data-i18n-title="editorFlip"><i data-lucide="flip-horizontal"></i></button>
+                        <button class="tool-item" onclick="flipImage('v')" title="Flip Vertical" data-i18n-title="editorFlip"><i data-lucide="flip-vertical"></i></button>
+                    </div>
+                    <span class="tool-label" data-i18n="editorAspectRatio">Aspect Ratio</span>
+                    <div class="option-group ratio-grid">
+                        <button class="ratio-btn active" onclick="setRatio(NaN)"><span class="ratio-icon ratio-free"></span><span data-i18n="editorFree">Free</span></button>
+                        <button class="ratio-btn" onclick="setRatio(0)"><span class="ratio-icon ratio-orig"></span><span data-i18n="editorOriginal">Original</span></button>
+                        <button class="ratio-btn" onclick="setRatio(1)"><span class="ratio-icon ratio-1-1"></span><span data-i18n="editorSquare">Square</span></button>
+                        <button class="ratio-btn" onclick="setRatio(3/2)"><span class="ratio-icon ratio-3-2"></span>3:2</button>
+                        <button class="ratio-btn" onclick="setRatio(2/3)"><span class="ratio-icon ratio-2-3"></span>2:3</button>
+                        <button class="ratio-btn" onclick="setRatio(4/3)"><span class="ratio-icon ratio-4-3"></span>4:3</button>
+                        <button class="ratio-btn" onclick="setRatio(3/4)"><span class="ratio-icon ratio-3-4"></span>3:4</button>
+                        <button class="ratio-btn" onclick="setRatio(5/4)"><span class="ratio-icon ratio-5-4"></span>5:4</button>
+                        <button class="ratio-btn" onclick="setRatio(4/5)"><span class="ratio-icon ratio-4-5"></span>4:5</button>
+                        <button class="ratio-btn" onclick="setRatio(16/9)"><span class="ratio-icon ratio-16-9"></span>16:9</button>
+                        <button class="ratio-btn" onclick="setRatio(9/16)"><span class="ratio-icon ratio-9-16"></span>9:16</button>
+                    </div>
+                </div>
+
+                <div id="textOptions" class="sub-panel">
+                    <div style="width: 100%; display: flex; gap: 10px; margin-bottom: 5px;">
+                        <button class="ratio-btn" style="flex: 1; background: var(--rd-accent-grad); color: white; border: none; font-weight: 600;" onclick="addText()"><i data-lucide="plus" style="width:16px;height:16px;margin-right:6px;"></i><span data-i18n="editorAddText">Добавить текст</span></button>
+                        <button class="ratio-btn" style="flex: 0 0 auto; color: #ff3b30;" onclick="deleteSelectedText()" id="deleteTextBtn" disabled data-i18n-title="editorDeleteText"><i data-lucide="trash-2"></i></button>
+                    </div>
+
+                    <div style="width: 100%;">
+                        <span class="tool-label" data-i18n="editorTextColor">Цвет</span>
+                        <div class="option-group" id="textColorPicker">
+                            <div class="color-dot selected" style="background: #ffffff;" data-color="#ffffff"></div>
+                            <div class="color-dot" style="background: #ff3b30;" data-color="#ff3b30"></div>
+                            <div class="color-dot" style="background: #ffcc00;" data-color="#ffcc00"></div>
+                            <div class="color-dot" style="background: #4cd964;" data-color="#4cd964"></div>
+                            <div class="color-dot" style="background: #007aff;" data-color="#007aff"></div>
+                            <div class="color-dot" style="background: #000000;" data-color="#000000"></div>
+                            <div class="color-dot custom-color-trigger" style="background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);">
+                                <input type="color" id="customTextColorInput" style="opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; margin-top: 15px;">
+                        <span class="tool-label" data-i18n="editorTextFont">Шрифт</span>
+                        <div class="option-group ratio-grid" id="fontPicker">
+                            <button class="ratio-btn active" data-font="Geologica">Modern</button>
+                            <button class="ratio-btn" data-font="sans-serif">Classic</button>
+                            <button class="ratio-btn" data-font="serif">Serif</button>
+                            <button class="ratio-btn" data-font="monospace">Mono</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="filtersOptions" class="sub-panel">
+                    <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <span class="tool-label" data-i18n="editorFilters" style="margin-bottom: 0;">Фильтры</span>
+                        <button class="ratio-btn" onclick="resetFilters()" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; width: auto; min-height: auto;" data-i18n="editorFilterReset">Сбросить</button>
+                    </div>
+
+                    <div class="filter-slider-item">
+                        <div class="slider-header">
+                            <span data-i18n="editorFilterBright">Яркость</span>
+                            <span class="slider-value" id="val-brightness">100%</span>
+                        </div>
+                        <input type="range" min="0" max="200" value="100" class="filter-slider" id="sld-brightness" oninput="updateFilterSetting('brightness', this.value)">
+                    </div>
+
+                    <div class="filter-slider-item">
+                        <div class="slider-header">
+                            <span data-i18n="editorFilterContrast">Контраст</span>
+                            <span class="slider-value" id="val-contrast">100%</span>
+                        </div>
+                        <input type="range" min="0" max="200" value="100" class="filter-slider" id="sld-contrast" oninput="updateFilterSetting('contrast', this.value)">
+                    </div>
+
+                    <div class="filter-slider-item">
+                        <div class="slider-header">
+                            <span data-i18n="editorFilterSaturate">Насыщенность</span>
+                            <span class="slider-value" id="val-saturate">100%</span>
+                        </div>
+                        <input type="range" min="0" max="200" value="100" class="filter-slider" id="sld-saturate" oninput="updateFilterSetting('saturate', this.value)">
+                    </div>
+
+                    <div class="filter-slider-item">
+                        <div class="slider-header">
+                            <span data-i18n="editorFilterSepia">Сепия</span>
+                            <span class="slider-value" id="val-sepia">0%</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="0" class="filter-slider" id="sld-sepia" oninput="updateFilterSetting('sepia', this.value)">
+                    </div>
+
+                    <div class="filter-slider-item">
+                        <div class="slider-header">
+                            <span data-i18n="editorFilterBlur">Размытие</span>
+                            <span class="slider-value" id="val-blur">0px</span>
+                        </div>
+                        <input type="range" min="0" max="20" value="0" class="filter-slider" id="sld-blur" oninput="updateFilterSetting('blur', this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Tools Bar -->
+            <div class="tools-panel">
+                <div class="tool-item btn-cancel" onclick="window.parent.closePhotoEditor()">
+                    <i data-lucide="x"></i>
+                </div>
+                
+                <div class="tool-spacer"></div>
+
+                <div class="tool-item" onclick="toggleSubPanel('draw', this)">
+                    <i data-lucide="pencil"></i>
+                </div>
+                <div class="tool-item" onclick="toggleSubPanel('text', this)">
+                    <i data-lucide="type"></i>
+                </div>
+                <div class="tool-item" onclick="toggleSubPanel('crop', this)" data-i18n-title="editorCrop">
+                    <i data-lucide="crop"></i>
+                </div>
+                <div class="tool-item" onclick="toggleSubPanel('filters', this)">
+                    <i data-lucide="sparkles"></i>
+                </div>
+
+                <div class="tool-spacer"></div>
+
+                <div class="tool-item btn-save" onclick="saveResult()">
+                    <i data-lucide="check"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="photo-editor.js"></script>
+</body>
+</html>

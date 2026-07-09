@@ -1,0 +1,21 @@
+FROM node:20-alpine AS frontend
+WORKDIR /app
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
+COPY vite.config.js index.html ./
+COPY client ./client
+COPY public ./public
+RUN npm run build:react
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY backend-v2/go.mod backend-v2/go.sum ./
+RUN go mod download
+COPY backend-v2/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/service ./cmd/edge
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/service /service
+COPY --from=frontend /app/dist /dist
+USER nonroot:nonroot
+ENTRYPOINT ["/service"]

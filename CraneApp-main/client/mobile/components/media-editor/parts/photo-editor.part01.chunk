@@ -1,0 +1,650 @@
+/**
+ * Photo Editor Logic
+ * Поддерживает обрезку, точный поворот по градусам, зеркальное отражение, 
+ * профессиональное рисование (Fabric.js) с Undo/Redo и гибкий Swipe-интерфейс.
+ */
+
+let cropper = null;
+let fCanvas = null;
+let scaleX = 1;
+let scaleY = 1;
+let drawerExpanded = false;
+let activeTool = null;
+let originalAspectRatio = 1;
+
+// Brush settings
+let currentBrushType = 'pen';
+let currentBrushColor = '#ff3b30';
+let currentBrushSize = 8;
+
+// Text settings
+let currentTextFont = 'Geologica';
+let currentTextColor = '#ffffff';
+
+// Filter settings
+let currentFilter = 'none';
+let filterSettings = {
+    brightness: 100,
+    contrast: 100,
+    saturate: 100,
+    sepia: 0,
+    blur: 0
+};
+
+// Undo/Redo stacks
+let undoStack = [];
+let redoStack = [];
+let isStateChanging = false;
+
+/**
+ * Синхронизация темы
+ */
+function syncTheme() {
+    const theme = document.documentElement.getAttribute('data-theme') || parent.document.documentElement.getAttribute('data-theme');
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+}
+
+/**
+ * Инициализация Fabric.js
+ */
+function initFabric() {
+    if (fCanvas) return;
+    
+    fCanvas = new fabric.Canvas('drawingCanvas', {
+        isDrawingMode: false,
+        width: 0,
+        height: 0,
+        selection: false,
+        enableRetinaScaling: true
+    });
+
+    fCanvas.on('path:created', (e) => {
+        if (currentBrushType === 'eraser') {
+            e.path.globalCompositeOperation = 'destination-out';
+            e.path.stroke = 'black';
+        }
+    });
+
+    let historyTimeout;
+    const debouncedSaveHistory = () => {
+        clearTimeout(historyTimeout);
+        historyTimeout = setTimeout(() => {
+            saveHistory();
+        }, 50);
+    };
+
+    fCanvas.on('object:modified', () => {
+        if (!isStateChanging) debouncedSaveHistory();
+    });
+    fCanvas.on('object:added', (e) => {
+        if (!isStateChanging && e.target && e.target.type !== 'image') debouncedSaveHistory();
+    });
+    
+    fCanvas.on('selection:created', handleSelection);
+    fCanvas.on('selection:updated', handleSelection);
+    fCanvas.on('selection:cleared', handleSelection);
+}
+
+/**
+ * Text Tool Logic
+ */
+function addText() {
+    if (!fCanvas) return;
+    
+    const text = new fabric.IText('Текст', {
+        left: fCanvas.width / 2,
+        top: fCanvas.height / 2,
+        fontFamily: currentTextFont,
+        fill: currentTextColor,
+        fontSize: Math.max(30, fCanvas.width / 10),
+        originX: 'center',
+        originY: 'center',
+        shadow: new fabric.Shadow({
+            color: 'rgba(0,0,0,0.5)',
+            blur: 4,
+            offsetX: 0,
+            offsetY: 2
+        }),
+        transparentCorners: false,
+        cornerColor: '#ff2d8b',
+        cornerStrokeColor: '#ffffff',
+        borderColor: '#ffffff',
+        cornerSize: 12,
+        padding: 10,
+        cornerStyle: 'circle'
+    });
+    
+    fCanvas.add(text);
+    fCanvas.setActiveObject(text);
+    fCanvas.renderAll();
+    saveHistory();
+}
+
+function deleteSelectedText() {
+    if (!fCanvas) return;
+    const activeObjects = fCanvas.getActiveObjects();
+    if (activeObjects.length) {
+        fCanvas.discardActiveObject();
+        activeObjects.forEach(obj => {
+            fCanvas.remove(obj);
+        });
+        saveHistory();
+    }
+}
+
+function handleSelection() {
+    const deleteBtn = document.getElementById('deleteTextBtn');
+    if (!deleteBtn) return;
+    
+    const activeObj = fCanvas ? fCanvas.getActiveObject() : null;
+    if (activeObj) {
+        deleteBtn.disabled = false;
+        
+        // Sync color/font UI
+        if (activeObj.type === 'i-text' && activeTool === 'text') {
+            const color = activeObj.fill;
+            const font = activeObj.fontFamily;
+            
+            // Sync color
+            let matched = false;
+            document.querySelectorAll('#textColorPicker .color-dot').forEach(d => {
+                const dotColor = d.getAttribute('data-color');
+                if (dotColor && dotColor.toLowerCase() === color.toLowerCase()) {
+                    d.classList.add('selected');
+                    matched = true;
+                } else {
+                    d.classList.remove('selected');
+                }
+            });
+            if (!matched) {
+                const customDot = document.querySelector('#textColorPicker .custom-color-trigger');
+                if (customDot) customDot.classList.add('selected');
+            }
+            currentTextColor = color;
+            
+            // Sync font
+            document.querySelectorAll('#fontPicker .ratio-btn').forEach(btn => {
+                if (btn.getAttribute('data-font') === font) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            currentTextFont = font;
+        }
+    } else {
+        deleteBtn.disabled = true;
+    }
+}
+
+/**
+ * Настройка кистей (Telegram Style)
+ */
+function updateBrush() {
+    if (!fCanvas) return;
+
+    // Сброс режимов и слушателей (важно при переключении с Arrow)
+    fCanvas.isDrawingMode = false;
+    fCanvas.off('mouse:down');
+    fCanvas.off('mouse:move');
+    fCanvas.off('mouse:up');
+
+    // Если мы НЕ в режиме рисования, или кисть не выбрана - разрешаем выделение объектов
+    if (activeTool !== 'draw' || !currentBrushType) {
+        fCanvas.selection = true;
+        fCanvas.getObjects().forEach(obj => {
+            obj.set({ selectable: true, evented: true });
+        });
+        fCanvas.renderAll();
+        return;
+    }
+
+    // Отключаем выделение во время рисования
+    fCanvas.selection = false;
+    fCanvas.discardActiveObject();
+    fCanvas.getObjects().forEach(obj => {
+        obj.set({ selectable: false, evented: false });
+    });
+
+    fCanvas.isDrawingMode = true;
+
+    switch (currentBrushType) {
+        case 'pen':
+            fCanvas.freeDrawingBrush = new fabric.PencilBrush(fCanvas);
+            fCanvas.freeDrawingBrush.color = currentBrushColor;
+            fCanvas.freeDrawingBrush.width = currentBrushSize;
+            break;
+        case 'marker':
+            fCanvas.freeDrawingBrush = new fabric.PencilBrush(fCanvas);
+            const markerColor = new fabric.Color(currentBrushColor);
+            markerColor.setAlpha(0.4);
+            fCanvas.freeDrawingBrush.color = markerColor.toRgba();
+            fCanvas.freeDrawingBrush.width = currentBrushSize * 2.5;
+            break;
+        case 'neon':
+            fCanvas.freeDrawingBrush = new fabric.PencilBrush(fCanvas);
+            fCanvas.freeDrawingBrush.color = '#ffffff'; // Белая сердцевина
+            fCanvas.freeDrawingBrush.width = currentBrushSize;
+            fCanvas.freeDrawingBrush.shadow = new fabric.Shadow({
+                blur: currentBrushSize * 1.5,
+                offsetX: 0,
+                offsetY: 0,
+                affectStroke: true,
+                color: currentBrushColor
+            });
+            break;
+        case 'eraser':
+            fCanvas.freeDrawingBrush = new fabric.PencilBrush(fCanvas);
+            fCanvas.freeDrawingBrush.width = currentBrushSize * 2;
+            fCanvas.freeDrawingBrush.color = 'rgba(0,0,0,1)'; 
+            break;
+        case 'blur':
+            fCanvas.freeDrawingBrush = new fabric.PencilBrush(fCanvas);
+            fCanvas.freeDrawingBrush.color = 'rgba(255,255,255,0.1)';
+            fCanvas.freeDrawingBrush.width = currentBrushSize * 3;
+            fCanvas.freeDrawingBrush.shadow = new fabric.Shadow({
+                blur: currentBrushSize * 2,
+                color: 'rgba(0,0,0,0.5)',
+                affectStroke: true
+            });
+            break;
+        case 'arrow':
+            fCanvas.isDrawingMode = false;
+            setupArrowLogic();
+            break;
+    }
+}
+
+/**
+ * Логика рисования стрелок
+ */
+let arrowLine, arrowHead;
+function setupArrowLogic() {
+    fCanvas.on('mouse:down', function(o) {
+        let pointer = fCanvas.getPointer(o.e);
+        let points = [ pointer.x, pointer.y, pointer.x, pointer.y ];
+        arrowLine = new fabric.Line(points, {
+            strokeWidth: currentBrushSize,
+            fill: currentBrushColor,
+            stroke: currentBrushColor,
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round'
+        });
+        fCanvas.add(arrowLine);
+    });
+
+    fCanvas.on('mouse:move', function(o) {
+        if (!arrowLine) return;
+        let pointer = fCanvas.getPointer(o.e);
+        arrowLine.set({ x2: pointer.x, y2: pointer.y });
+        fCanvas.renderAll();
+    });
+
+    fCanvas.on('mouse:up', function(o) {
+        if (!arrowLine) return;
+        let pointer = fCanvas.getPointer(o.e);
+        
+        let x1 = arrowLine.x1;
+        let y1 = arrowLine.y1;
+        let x2 = pointer.x;
+        let y2 = pointer.y;
+
+        // Если линия слишком короткая, отменяем
+        let dx = x2 - x1, dy = y2 - y1;
+        if (Math.sqrt(dx*dx + dy*dy) < 5) {
+            fCanvas.remove(arrowLine);
+            arrowLine = null;
+            return;
+        }
+
+        let angle = Math.atan2(y2 - y1, x2 - x1);
+        let headLength = currentBrushSize * 3;
+
+        let head = new fabric.Triangle({
+            left: x2,
+            top: y2,
+            pointType: 'arrow',
+            angle: (angle * 180 / Math.PI) + 90,
+            width: headLength,
+            height: headLength,
+            fill: currentBrushColor,
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+        });
+        
+        fCanvas.add(head);
+        
+        const group = new fabric.Group([arrowLine, head], {
+            selectable: false,
+            evented: false
+        });
+        fCanvas.remove(arrowLine, head);
+        fCanvas.add(group);
+        
+        arrowLine = null;
+    });
+}
+
+/**
+ * Filter Tool Logic
+ */
+function updateFilterSetting(name, value) {
+    filterSettings[name] = value;
+    const badge = document.getElementById('val-' + name);
+    if (badge) {
+        if (name === 'blur') badge.textContent = value + 'px';
+        else badge.textContent = value + '%';
+    }
+    applyFilter();
+}
+
+function resetFilters() {
+    filterSettings = {
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        sepia: 0,
+        blur: 0
+    };
+    
+    for (let key in filterSettings) {
+        const slider = document.getElementById('sld-' + key);
+        const badge = document.getElementById('val-' + key);
+        if (slider) slider.value = filterSettings[key];
+        if (badge) {
+            if (key === 'blur') badge.textContent = filterSettings[key] + 'px';
+            else badge.textContent = filterSettings[key] + '%';
+        }
+    }
+    applyFilter();
+}
+
+function applyFilter() {
+    currentFilter = `brightness(${filterSettings.brightness}%) contrast(${filterSettings.contrast}%) saturate(${filterSettings.saturate}%) sepia(${filterSettings.sepia}%) blur(${filterSettings.blur}px)`;
+    const img = document.getElementById('previewImage');
+    if (img) {
+        img.style.filter = currentFilter;
+    }
+}
+
+/**
+ * Сохранение истории (Undo/Redo)
+ */
+function saveHistory() {
+    if (isStateChanging) return;
+    const json = JSON.stringify(fCanvas);
+    undoStack.push(json);
+    redoStack = [];
+    updateHistoryButtons();
+}
+
+function undoHistory() {
+    if (undoStack.length <= 1) return;
+    isStateChanging = true;
+    redoStack.push(undoStack.pop());
+    const prevState = undoStack[undoStack.length - 1];
+    fCanvas.loadFromJSON(prevState, () => {
+        fCanvas.renderAll();
+        isStateChanging = false;
+        updateHistoryButtons();
+    });
+}
+
+function redoHistory() {
+    if (redoStack.length === 0) return;
+    isStateChanging = true;
+    const nextState = redoStack.pop();
+    undoStack.push(nextState);
+    fCanvas.loadFromJSON(nextState, () => {
+        fCanvas.renderAll();
+        isStateChanging = false;
+        updateHistoryButtons();
+    });
+}
+
+function updateHistoryButtons() {
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    if (undoBtn) undoBtn.disabled = undoStack.length <= 1;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
+/**
+ * Переключение панелей инструментов
+ */
+async function toggleSubPanel(type, el) {
+    const isActive = activeTool === type;
+    const rotationCtrl = document.getElementById('rotationControl');
+    const topBar = document.querySelector('.top-bar');
+    
+    if (isActive && window.innerWidth <= 768) {
+        setDrawerExpanded(!drawerExpanded);
+        return;
+    }
+
+    document.querySelectorAll('.tools-panel .tool-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.sub-panel').forEach(panel => panel.classList.remove('active'));
+
+    if (!isActive) {
+        activeTool = type;
+        el.classList.add('active');
+        const panel = document.getElementById(type + 'Options');
+        if (panel) panel.classList.add('active');
+
+        if (window.innerWidth <= 768) setDrawerExpanded(true);
+
+        if (type === 'crop') {
+            await switchToCropMode();
+            rotationCtrl.classList.add('active');
+            if (topBar) topBar.classList.remove('active');
+        } else if (type === 'draw') {
+            await switchToDrawMode();
+            rotationCtrl.classList.remove('active');
+            if (topBar) topBar.classList.add('active');
+            updateBrush();
+        } else if (type === 'text') {
+            await switchToDrawMode();
+            rotationCtrl.classList.remove('active');
+            if (topBar) topBar.classList.add('active');
+            updateBrush(); // Сбросит кисти и включит выделение
+        } else if (type === 'filters') {
+            await switchToDrawMode();
+            rotationCtrl.classList.remove('active');
+            if (topBar) topBar.classList.add('active');
+            updateBrush(); // Сбросит кисти и включит выделение
+        } else {
+            if (topBar) topBar.classList.remove('active');
+            rotationCtrl.classList.remove('active');
+        }
+    } else {
+        activeTool = null;
+        destroyCropper();
+        rotationCtrl.classList.remove('active');
+        if (topBar) topBar.classList.remove('active');
+        if (window.innerWidth <= 768) setDrawerExpanded(false);
+    }
+}
+
+/**
+ * Переход в режим рисования
+ */
+async function switchToDrawMode() {
+    const img = document.getElementById('previewImage');
+    
+    if (cropper) {
+        const croppedDataUrl = cropper.getCroppedCanvas({ maxWidth: 4096, maxHeight: 4096 }).toDataURL('image/png');
+        destroyCropper();
+        img.src = croppedDataUrl;
+        img.style.display = 'block'; 
+        await new Promise(r => img.onload = r);
+    } else {
+        img.style.display = 'block';
+    }
+    
+    setupFabricCanvas(img);
+}
+
+/**
+ * Переход в режим обрезки
+ */
+async function switchToCropMode() {
+    if (fCanvas) {
+        const img = document.getElementById('previewImage');
+        const container = document.querySelector('.canvas-container');
+        
+        if (fCanvas.getObjects().length > 0) {
+            // Сохраняем нарисованное (объединяем с оригиналом)
+            const combinedDataUrl = await mergeCanvasWithImage(img.src, fCanvas);
+            img.src = combinedDataUrl;
+        }
+        
+        if (container) container.style.display = 'none';
+        img.style.display = 'block';
+        img.style.visibility = 'visible';
+        
+        await new Promise(r => img.onload = r);
+        
+        fCanvas.clear();
+        undoStack = [];
+        redoStack = [];
+        
+        initCropper();
+    } else {
+        const img = document.getElementById('previewImage');
+        img.style.display = 'block';
+        initCropper();
+    }
+}
+
+function setupFabricCanvas(imgEl) {
+    initFabric();
+    
+    imgEl.style.display = 'block';
+    imgEl.style.visibility = 'visible';
+    imgEl.style.opacity = '1';
+
+    const rect = imgEl.getBoundingClientRect();
+    const wrapperRect = document.getElementById('editorWrapper').getBoundingClientRect();
+    
+    if (fCanvas.width > 0 && fCanvas.height > 0) {
+        const sx = rect.width / fCanvas.width;
+        const sy = rect.height / fCanvas.height;
+        
+        if (sx !== 1 || sy !== 1) {
+            fCanvas.getObjects().forEach(obj => {
+                obj.set({
+                    left: obj.left * sx,
+                    top: obj.top * sy,
+                    scaleX: obj.scaleX * sx,
+                    scaleY: obj.scaleY * sy
+                });
+                obj.setCoords();
+            });
+        }
+    }
+    
+    fCanvas.setDimensions({ width: rect.width, height: rect.height });
+    
+    const container = document.querySelector('.canvas-container');
+    container.style.display = 'block';
+    container.style.top = (rect.top - wrapperRect.top) + 'px';
+    container.style.left = (rect.left - wrapperRect.left) + 'px';
+    
+    fCanvas.calcOffset();
+    fCanvas.renderAll();
+
+    // Не добавляем картинку в Canvas! Рисуем поверх нее (она видима под канвасом)
+    if (undoStack.length === 0) saveHistory();
+}
+
+/**
+ * Хелпер для объединения рисунка Fabric с фотографией (для экспорта)
+ */
+function mergeCanvasWithImage(imageSrc, fabricCanvas) {
+    return new Promise((resolve) => {
+        // Получаем рисунки с высоким качеством (без фона)
+        const strokesDataUrl = fabricCanvas.toDataURL({ 
+            format: 'png', 
+            quality: 1, 
+            multiplier: Math.max(1, 2048 / fabricCanvas.width) 
+        });
+        
+        const img = new Image();
+        img.onload = () => {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Рисуем оригинальное фото с фильтром
+            ctx.filter = currentFilter;
+            ctx.drawImage(img, 0, 0);
+            ctx.filter = 'none';
+            
+            // Рисуем штрихи
+            const strokesImage = new Image();
+            strokesImage.onload = () => {
+                ctx.drawImage(strokesImage, 0, 0, tempCanvas.width, tempCanvas.height);
+                resolve(tempCanvas.toDataURL('image/jpeg', 0.95));
+            };
+            strokesImage.src = strokesDataUrl;
+        };
+        img.crossOrigin = 'anonymous';
+        img.src = imageSrc;
+    });
+}
+
+/**
+ * Управление Drawer
+ */
+function setDrawerExpanded(expand) {
+    const drawer = document.getElementById('controlsDrawer');
+    drawerExpanded = expand;
+    if (expand) {
+        drawer.classList.add('expanded');
+    } else {
+        drawer.classList.remove('expanded');
+    }
+    
+    setTimeout(() => { 
+        if (cropper) cropper.resize(); 
+        if (fCanvas && (activeTool === 'draw' || activeTool === 'text')) {
+            const img = document.getElementById('previewImage');
+            setupFabricCanvas(img);
+        }
+    }, 400);
+}
+
+/**
+ * Swipe Logic
+ */
+function initSwipeLogic() {
+    const drawer = document.getElementById('controlsDrawer');
+    const handle = drawer.querySelector('.drag-handle');
+    let startY = 0;
+
+    handle.addEventListener('touchstart', e => startY = e.touches[0].clientY);
+    handle.addEventListener('touchend', e => {
+        const diff = startY - e.changedTouches[0].clientY;
+        if (Math.abs(diff) > 40) {
+            setDrawerExpanded(diff > 0);
+        }
+    });
+}
+
+/**
+ * Точный поворот (Slider)
+ */
+function initRotationSlider() {
+    const slider = document.getElementById('rotationSlider');
+    const valueDisplay = document.querySelector('.rotation-value');
+
+    if (!slider) return;
+
+    slider.addEventListener('input', (e) => {

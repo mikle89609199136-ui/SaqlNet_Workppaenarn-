@@ -1,0 +1,10 @@
+meta:
+  environment: dockerfile
+
+build:
+  dockerfile: backend-v2/Dockerfile.migrate
+  context: backend-v2
+
+run:
+  containerPort: "0"
+  servicePort: "80"

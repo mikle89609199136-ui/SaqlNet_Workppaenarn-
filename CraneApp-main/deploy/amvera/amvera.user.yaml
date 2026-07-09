@@ -1,0 +1,10 @@
+meta:
+  environment: dockerfile
+
+build:
+  dockerfile: backend-v2/Dockerfile.user
+  context: backend-v2
+
+run:
+  containerPort: "8082"
+  servicePort: "80"

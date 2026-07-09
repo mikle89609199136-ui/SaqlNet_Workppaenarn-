@@ -1,0 +1,10 @@
+meta:
+  environment: dockerfile
+
+build:
+  dockerfile: backend-v2/Dockerfile.edge
+  context: .
+
+run:
+  containerPort: "3000"
+  servicePort: "80"

@@ -1,0 +1,99 @@
+.blocked-name { font-size: 15px !important; }
+.unblock-btn {
+    font-size: 13px !important;
+    padding: 8px 14px !important;
+    min-height: 36px !important;
+}
+
+/* ── Хедер — крупнее заголовок ─────────────────────────────── */
+.header-title { font-size: 18px !important; }
+
+/* ── Sync indicator — убираем если мешает ─────────────────── */
+@media (max-width: 400px) {
+    .sync-indicator { display: none !important; }
+}
+
+/* ── Scroll to bottom — крупнее ───────────────────────────── */
+.scroll-bottom-btn {
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 20px !important;
+}
+
+/* ── Кнопка добавить (+) в хедере ─────────────────────────── */
+.add-btn { font-size: 26px !important; }
+
+/* ── Поле ввода в модале ───────────────────────────────────── */
+.input-field, .modal-field input {
+    font-size: 16px !important;
+    min-height: 48px !important;
+    padding: 13px 14px !important;
+}
+
+/* ── Иконки в item-icon — чуть крупнее ────────────────────── */
+.item-icon svg, .settings-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+/* ── Заблокированные пользователи — фикс ──────────────────── */
+.blocked-user {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 16px !important;
+    min-height: auto !important;
+}
+.blocked-info { flex: 1; min-width: 0; }
+.blocked-name {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.blocked-username {
+    font-size: 13px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.unblock-btn {
+    flex-shrink: 0 !important;
+    font-size: 13px !important;
+    padding: 7px 12px !important;
+    min-height: auto !important;
+    height: auto !important;
+    white-space: nowrap !important;
+    border-radius: 8px !important;
+}
+
+/* Twemoji не трогает пустые состояния */
+.empty-state img.emoji,
+.empty-icon img.emoji,
+.no-chat img.emoji {
+    width: 56px !important;
+    height: 56px !important;
+    vertical-align: middle !important;
+}
+
+/* Apple Emoji */
+img.apple-emoji {
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.2em;
+    display: inline-block;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Apple Emoji в пикерах — фиксированный размер */
+.reaction-full-picker-emoji img.apple-emoji,
+.emoji-item img.apple-emoji,
+.reaction-picker-emoji img.apple-emoji,
+.context-reaction-btn img.apple-emoji {
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+}

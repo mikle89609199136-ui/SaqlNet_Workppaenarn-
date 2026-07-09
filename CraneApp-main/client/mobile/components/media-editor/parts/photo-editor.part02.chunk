@@ -1,0 +1,256 @@
+        const val = parseFloat(e.target.value);
+        valueDisplay.textContent = val > 0 ? `+${val}°` : `${val}°`;
+        if (cropper) cropper.rotateTo(val);
+    });
+}
+
+/**
+ * Инициализация Cropper.js
+ */
+function initCropper() {
+    if (cropper) return;
+    const image = document.getElementById('previewImage');
+    cropper = new Cropper(image, {
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 1,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: false,
+        checkCrossOrigin: false,
+        responsive: true,
+        ready() {
+            if (window.lucide) lucide.createIcons();
+        }
+    });
+}
+
+function destroyCropper() {
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+}
+
+function rotateImage() {
+    if (!cropper) initCropper();
+    cropper.rotate(90);
+    document.getElementById('rotationSlider').value = 0;
+    document.querySelector('.rotation-value').textContent = '0°';
+}
+
+function flipImage(dir) {
+    if (!cropper) initCropper();
+    if (dir === 'h') {
+        scaleX = scaleX === 1 ? -1 : 1;
+        cropper.scaleX(scaleX);
+    } else {
+        scaleY = scaleY === 1 ? -1 : 1;
+        cropper.scaleY(scaleY);
+    }
+}
+
+function setRatio(ratio) {
+    if (!cropper) initCropper();
+    document.querySelectorAll('.ratio-btn').forEach(btn => btn.classList.remove('active'));
+    if (event && event.target) event.target.classList.add('active');
+
+    if (ratio === 0) cropper.setAspectRatio(originalAspectRatio);
+    else cropper.setAspectRatio(ratio);
+}
+
+/**
+ * Инициализация всех пикеров (цвет, размер, тип кисти)
+ */
+function initBrushPickers() {
+    // Цвета
+    document.querySelectorAll('#colorPicker .color-dot:not(.custom-color-trigger)').forEach(dot => {
+        dot.onclick = (e) => {
+            document.querySelectorAll('#colorPicker .color-dot').forEach(d => d.classList.remove('selected'));
+            e.target.classList.add('selected');
+            currentBrushColor = e.target.getAttribute('data-color');
+            updateBrush();
+        };
+    });
+
+    // Custom Color
+    const customColorInput = document.getElementById('customColorInput');
+    if (customColorInput) {
+        customColorInput.oninput = (e) => {
+            currentBrushColor = e.target.value;
+            document.querySelectorAll('#colorPicker .color-dot').forEach(d => d.classList.remove('selected'));
+            e.target.parentElement.classList.add('selected');
+            updateBrush();
+        };
+    }
+
+    // Ползунок размера
+    const sizeSlider = document.getElementById('brushSizeSlider');
+    const sizeValue = document.getElementById('brushSizeValue');
+    if (sizeSlider && sizeValue) {
+        sizeSlider.oninput = (e) => {
+            currentBrushSize = parseInt(e.target.value);
+            sizeValue.textContent = currentBrushSize;
+            updateBrush();
+        };
+    }
+
+    // Тип кисти
+    document.querySelectorAll('#brushTypePicker .tool-item').forEach(btn => {
+        btn.onclick = (e) => {
+            const target = e.currentTarget;
+            const isAlreadyActive = target.classList.contains('active');
+            
+            document.querySelectorAll('#brushTypePicker .tool-item').forEach(b => b.classList.remove('active'));
+            
+            if (isAlreadyActive) {
+                // Отключаем рисование для перемещения объектов
+                currentBrushType = null;
+                updateBrush();
+            } else {
+                target.classList.add('active');
+                currentBrushType = target.getAttribute('data-brush');
+                updateBrush();
+            }
+        };
+    });
+
+    // Text Color
+    document.querySelectorAll('#textColorPicker .color-dot:not(.custom-color-trigger)').forEach(dot => {
+        dot.onclick = (e) => {
+            document.querySelectorAll('#textColorPicker .color-dot').forEach(d => d.classList.remove('selected'));
+            e.target.classList.add('selected');
+            currentTextColor = e.target.getAttribute('data-color');
+            
+            if (fCanvas && activeTool === 'text') {
+                const activeObj = fCanvas.getActiveObject();
+                if (activeObj && activeObj.type === 'i-text') {
+                    activeObj.set({ fill: currentTextColor });
+                    fCanvas.renderAll();
+                    saveHistory();
+                }
+            }
+        };
+    });
+
+    // Custom Text Color
+    const customTextColorInput = document.getElementById('customTextColorInput');
+    if (customTextColorInput) {
+        customTextColorInput.oninput = (e) => {
+            currentTextColor = e.target.value;
+            document.querySelectorAll('#textColorPicker .color-dot').forEach(d => d.classList.remove('selected'));
+            e.target.parentElement.classList.add('selected');
+            
+            if (fCanvas && activeTool === 'text') {
+                const activeObj = fCanvas.getActiveObject();
+                if (activeObj && activeObj.type === 'i-text') {
+                    activeObj.set({ fill: currentTextColor });
+                    fCanvas.renderAll();
+                    saveHistory();
+                }
+            }
+        };
+    }
+
+    // Font Picker
+    document.querySelectorAll('#fontPicker .ratio-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            document.querySelectorAll('#fontPicker .ratio-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentTextFont = e.target.getAttribute('data-font');
+            
+            if (fCanvas && activeTool === 'text') {
+                const activeObj = fCanvas.getActiveObject();
+                if (activeObj && activeObj.type === 'i-text') {
+                    activeObj.set({ fontFamily: currentTextFont });
+                    fCanvas.renderAll();
+                    saveHistory();
+                }
+            }
+        };
+    });
+
+    // Filters (old presets removed, handled via oninput in HTML)
+}
+
+async function saveResult() {
+    let finalDataUrl;
+    const img = document.getElementById('previewImage');
+    
+    // Если открыт рисунок или текст, объединить с фото
+    if (fCanvas && (activeTool === 'draw' || activeTool === 'text' || activeTool === 'filters')) {
+        finalDataUrl = await mergeCanvasWithImage(img.src, fCanvas);
+    } else if (cropper) {
+        const cCanvas = cropper.getCroppedCanvas({
+            maxWidth: 4096,
+            maxHeight: 4096,
+            fillColor: '#000',
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high',
+        });
+        
+        if (currentFilter !== 'none') {
+            const filteredCanvas = document.createElement('canvas');
+            filteredCanvas.width = cCanvas.width;
+            filteredCanvas.height = cCanvas.height;
+            const ctx = filteredCanvas.getContext('2d');
+            ctx.filter = currentFilter;
+            ctx.drawImage(cCanvas, 0, 0);
+            finalDataUrl = filteredCanvas.toDataURL('image/jpeg', 0.95);
+        } else {
+            finalDataUrl = cCanvas.toDataURL('image/jpeg', 0.95);
+        }
+    } else {
+        if (currentFilter !== 'none') {
+            const filteredCanvas = document.createElement('canvas');
+            filteredCanvas.width = img.naturalWidth;
+            filteredCanvas.height = img.naturalHeight;
+            const ctx = filteredCanvas.getContext('2d');
+            ctx.filter = currentFilter;
+            ctx.drawImage(img, 0, 0);
+            finalDataUrl = filteredCanvas.toDataURL('image/jpeg', 0.95);
+        } else {
+            finalDataUrl = img.src;
+        }
+    }
+
+    if (window.parent && window.parent.onPhotoEditorComplete) {
+        window.parent.onPhotoEditorComplete(finalDataUrl);
+    }
+    window.parent.closePhotoEditor();
+}
+
+window.onload = function() {
+    if (window.lucide) lucide.createIcons();
+    syncTheme();
+    initRotationSlider();
+    initSwipeLogic();
+    initBrushPickers();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    window.addEventListener('resize', () => {
+        if (cropper) cropper.resize();
+        if (fCanvas && (activeTool === 'draw' || activeTool === 'text')) {
+            const img = document.getElementById('previewImage');
+            setupFabricCanvas(img);
+        }
+    });
+
+    const imageData = localStorage.getItem('craneapp_editor_image');
+    if (imageData) {
+        const img = document.getElementById('previewImage');
+        img.src = imageData;
+        img.onload = () => {
+            img.style.display = 'block';
+            originalAspectRatio = img.naturalWidth / img.naturalHeight;
+            const loader = document.getElementById('loader');
+            if (loader) loader.style.display = 'none';
+        };
+    }
+};

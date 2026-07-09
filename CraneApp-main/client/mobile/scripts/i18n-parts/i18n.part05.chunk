@@ -1,0 +1,650 @@
+        firstNameRequired: 'First name cannot be empty',
+        saving: 'Saving...',
+        profileSaved: 'Profile saved',
+        fillAllFields: 'Fill in all fields',
+        passwordMinError: 'Password must be at least 6 characters',
+        passwordsMismatch: 'Passwords do not match',
+        passwordChanged: 'Password changed',
+        devicesTitleFull: 'Devices - CraneApp',
+        loginOnNewDevice: 'Log in on a new device',
+        loginByQr: 'Log in by QR code',
+        scanCodeOnNewDevice: 'Scan the code on the new device',
+        openAppAndScanQr: 'Open CraneApp on another device and scan the code',
+        qrValidForFiveMinutes: 'Code valid for 5 minutes',
+        mobileDevice: 'Mobile device',
+        device: 'Device',
+        minutesAgo: '{count} min. ago',
+        hoursAgo: '{count} h. ago',
+        daysAgo: '{count} d. ago',
+        sessionTerminated: 'Session terminated',
+        terminateError: 'Termination error',
+        allSessionsTerminated: 'All sessions terminated',
+        generating: 'Generating...',
+        qrExpiredRefresh: 'Code expired - tap to refresh',
+        expired: 'Expired',
+        newDeviceConnected: 'New device connected!',
+        qrGenerationErrorRetry: 'Generation error. Tap to retry.',
+        soundDefault: 'Default',
+        soundNote: 'Note',
+        soundPing: 'Ping',
+        soundPop: 'Pop',
+        soundChord: 'Chord',
+        soundGentle: 'Gentle',
+        soundBubble: 'Bubble',
+        soundClick: 'Click',
+        soundTap: 'Tap',
+        soundMelody1: 'Melody 1',
+        soundMelody2: 'Melody 2',
+        soundClassic: 'Classic',
+        chooseSound: 'Choose sound',
+        soundChanged: 'Sound changed',
+        featuresTitleFull: 'Features - CraneApp',
+        featureMessengerTitle: '💬 Messenger',
+        featureMessengerDesc: 'Private chats, groups, and channels with media support',
+        featureCallsTitle: '📞 Calls',
+        featureCallsDesc: 'Voice and video calls over WebRTC',
+        featureSecurityTitle: '🔒 Security',
+        featureSecurityDesc: 'E2E encryption, passcode, and two-factor authentication',
+        featurePersonalizationTitle: '🎨 Personalization',
+        featurePersonalizationDesc: 'Themes, chat folders, and stickers',
+        featureMultiplatformTitle: '📱 Multiplatform',
+        featureMultiplatformDesc: 'Sync between devices',
+        featurePremiumDesc: 'Advanced features for subscribers',
+        foldersTitleFull: 'Folders - CraneApp',
+        folderHintLong: 'Folders are displayed as tabs in the chat list. Tap a folder to open it in chats.',
+        folderNameExample: 'Example: Work',
+        noAvailableChats: 'No available chats',
+        chat: 'Chat',
+        folderDeletedNoChats: 'Folder deleted because it has no chats',
+        addAtLeastOneChat: 'Add at least one chat',
+        folderDeleted: 'Folder deleted',
+        premiumHeroSub: 'Unlock every messenger feature',
+        premiumActiveBadge: '✓ Your subscription is active',
+        premiumActive: 'Premium active',
+        subscriptionActive: 'Subscription active',
+        premiumIncreasedLimits: 'Increased limits',
+        premiumIncreasedLimitsDesc: 'Files up to 4 GB, up to 1000 group members, and up to 20 channels',
+        premiumBadgeTitle: 'Premium badge',
+        premiumBadgeFullDesc: 'A gold star next to your name in chats and profile',
+        premiumExclusiveStickers: 'Exclusive stickers',
+        premiumExclusiveStickersDesc: 'Access to premium sticker packs and animated stickers',
+        premiumBotDesc: 'Expanded support, priority notifications, and quick replies',
+        premiumVoiceTranscription: 'Voice transcription',
+        premiumVoiceTranscriptionDesc: 'Automatic conversion of voice messages to text',
+        premiumUnlimitedFolders: 'Unlimited folders',
+        premiumUnlimitedFoldersDesc: 'Create unlimited chat folders',
+        premiumPrioritySupport: 'Priority support',
+        premiumPrioritySupportDesc: 'Response within 2 hours from the CraneApp team',
+        premiumUniqueThemes: 'Unique themes',
+        premiumUniqueThemesDesc: 'Exclusive color schemes and chat appearance',
+        premiumNoAdsDesc: 'A clean interface with no ad blocks',
+        premiumFastDownloads: 'Fast downloads',
+        premiumFastDownloadsDesc: 'Priority servers for downloading media files',
+        bestValue: 'BEST VALUE',
+        yearPlan: 'Year',
+        perYear: 'per year',
+        yearPlanSave: 'Save 810 ₽ (45%)',
+        lifetimePlan: 'Lifetime',
+        oneTime: 'one-time',
+        bestOffer: 'Best offer',
+        cardPayment: 'Card payment',
+        cardNumber: 'Number',
+        cardholderName: 'Name',
+        cardExpiry: 'Expiry',
+        payMonthly: 'Pay 150 ₽',
+        premiumTerms: 'Subscription renews automatically. You can cancel anytime in settings.<br>By tapping "Pay", you agree to the terms of use.',
+        manageSubscription: 'Manage subscription',
+        payAmount: 'Pay {amount} ₽',
+        enterCardNumber: 'Enter card number',
+        enterCardholderName: 'Enter cardholder name',
+        enterCardExpiry: 'Enter expiry date',
+        enterCvv: 'Enter CVV',
+        processing: 'Processing...',
+        premiumActivated: '🎉 Premium activated!',
+        paymentErrorTryLater: 'Payment error. Try again later.',
+        connectionError: 'Connection error',
+        subscriptionCancelled: 'Subscription cancelled',
+        helpTitleFull: 'Help - CraneApp',
+        askBotInChat: 'Ask a question in chat with the bot',
+        faqDeleteAccountQ: 'How do I delete my account?',
+        faqDeleteAccountA: 'Go to Settings → Account → Delete account. This action cannot be undone and deletes all your data.',
+        faqEnable2FAQ: 'How do I enable two-factor authentication?',
+        faqEnable2FAA: 'Go to Settings → Privacy → Two-factor authentication and follow the instructions.',
+        faqBlockUserQ: 'How do I block a user?',
+        faqBlockUserA: 'Open the user profile, tap the three dots, and choose "Block".',
+        faqCreateGroupQ: 'How do I create a group?',
+        faqCreateGroupA: 'Tap the create button on the main screen and choose "Create group".',
+        title: 'Title',
+        docsModalTitle: '📖 CraneApp documentation',
+        docsWelcomeTitle: 'Welcome to CraneApp!',
+        docsWelcomeText: 'CraneApp is a modern messenger focused on speed, security, and ease of use.',
+        docsMainFeatures: 'Main features:',
+        docsFeatureChats: 'Chats and groups for conversations and communities',
+        docsFeatureChannels: 'Channels for following interesting updates',
+        docsFeatureCalls: 'Free voice and video calls over the internet',
+        docsFeatureFiles: 'Photo, video, document, and file sharing',
+        docsFeatureBot: 'CraneApp Bot for official notifications',
+        appVersionLine: 'Version 1.0.0 | 2026 CraneApp',
+        privacyModalTitle: '🔒 Privacy policy',
+        privacyModalHeading: 'CraneApp privacy policy',
+        privacyUpdated: 'Last updated: April 23, 2026',
+        privacyDataTitle: '1. Data we collect',
+        privacyDataText: 'We collect only the minimum data needed to run the app.',
+        privacyUseTitle: '2. How we use data',
+        privacyUseText: 'Your data is used for messenger operation, account security, and technical support.',
+        privacyProtectionTitle: '3. Data protection',
+        privacyProtectionText: 'We use encryption to protect your messages and store data on protected servers.',
+        privacyDeleteTitle: '4. Data deletion',
+        privacyDeleteText: 'You can delete your account at any time through settings.',
+        termsModalTitle: '📜 Terms of use',
+        termsModalHeading: 'CraneApp terms of use',
+        termsEffective: 'Effective from: April 23, 2026',
+        termsAcceptanceTitle: '1. Acceptance',
+        termsAcceptanceText: 'By using CraneApp, you agree to these terms.',
+        termsRulesTitle: '2. Rules of conduct',
+        termsRulesText: 'Spam, malware distribution, harassment, illegal activity, and bypassing blocks are prohibited.',
+        termsAccountsTitle: '3. Accounts',
+        termsAccountsText: 'You are responsible for your account security. Do not share your password with third parties.',
+        termsTerminationTitle: '4. Termination',
+        termsTerminationText: 'We may block accounts that violate the rules.',
+        termsLiabilityTitle: '5. Limitation of liability',
+        termsLiabilityText: 'CraneApp is provided as is. We are not responsible for data loss.',
+        appVersionBuild: 'Version 1.0.0 (Build 1)',
+        appTagline: 'Fast and secure messenger for friends, family, and colleagues.',
+        enterPasscode: 'Enter passcode',
+        fourDigitCode: '4-digit code',
+        oneMinute: '1 minute'
+    });
+    Object.assign(translations.de, {
+        changePhoto: 'Foto ändern',
+        avatarUpdated: 'Profilfoto aktualisiert',
+        avatarUpdateError: 'Profilfoto konnte nicht aktualisiert werden',
+        avatarImageOnly: 'Wähle eine Bilddatei aus',
+        fileTooLarge5: 'Datei ist zu groß (max. 5 MB)'
+    });
+    Object.assign(translations.fr, {
+        changePhoto: 'Modifier la photo',
+        avatarUpdated: 'Photo de profil mise à jour',
+        avatarUpdateError: 'Impossible de mettre à jour la photo de profil',
+        avatarImageOnly: 'Choisissez un fichier image',
+        fileTooLarge5: 'Fichier trop volumineux (max. 5 Mo)'
+    });
+    Object.assign(translations.es, {
+        changePhoto: 'Cambiar foto',
+        avatarUpdated: 'Foto de perfil actualizada',
+        avatarUpdateError: 'No se pudo actualizar la foto de perfil',
+        avatarImageOnly: 'Elige un archivo de imagen',
+        fileTooLarge5: 'El archivo es demasiado grande (máx. 5 MB)'
+    });
+    Object.assign(translations.it, {
+        changePhoto: 'Cambia foto',
+        avatarUpdated: 'Foto profilo aggiornata',
+        avatarUpdateError: 'Impossibile aggiornare la foto profilo',
+        avatarImageOnly: 'Scegli un file immagine',
+        fileTooLarge5: 'File troppo grande (max 5 MB)'
+    });
+    Object.assign(translations.pt, {
+        changePhoto: 'Alterar foto',
+        avatarUpdated: 'Foto de perfil atualizada',
+        avatarUpdateError: 'Não foi possível atualizar a foto de perfil',
+        avatarImageOnly: 'Escolha um arquivo de imagem',
+        fileTooLarge5: 'Arquivo muito grande (máx. 5 MB)'
+    });
+    Object.assign(translations.pl, {
+        changePhoto: 'Zmień zdjęcie',
+        avatarUpdated: 'Zdjęcie profilowe zaktualizowane',
+        avatarUpdateError: 'Nie udało się zaktualizować zdjęcia profilowego',
+        avatarImageOnly: 'Wybierz plik obrazu',
+        fileTooLarge5: 'Plik jest za duży (maks. 5 MB)'
+    });
+    Object.assign(translations.uk, {
+        changePhoto: 'Змінити фото',
+        avatarUpdated: 'Фото профілю оновлено',
+        avatarUpdateError: 'Не вдалося оновити фото профілю',
+        avatarImageOnly: 'Виберіть файл зображення',
+        fileTooLarge5: 'Файл завеликий (макс. 5 МБ)'
+    });
+    Object.assign(translations.tr, {
+        changePhoto: 'Fotoğrafı değiştir',
+        avatarUpdated: 'Profil fotoğrafı güncellendi',
+        avatarUpdateError: 'Profil fotoğrafı güncellenemedi',
+        avatarImageOnly: 'Bir görsel dosyası seçin',
+        fileTooLarge5: 'Dosya çok büyük (en fazla 5 MB)'
+    });
+    const localizedRuntimeKeys = {
+        de: {
+            synchronize: 'Synchronisieren', notificationsAndSounds: 'Benachrichtigungen und Töne',
+            chatFolders: 'Chat-Ordner', dataStorage: 'Daten und Speicher',
+            energySaving: 'Energiesparen', craneAppPremium: 'CraneApp Premium', features: 'Funktionen',
+            backToChats: '← Zurück zu Chats', recentCallsEmpty: 'Anrufverlauf ist leer',
+            recentCallsEmptyHint: 'Anrufsimulation wird später hinzugefügt',
+            mediaFilesLimit: 'Medien ({media}), Dateien ({files})', detecting: 'Erkennung...',
+            powerSavingMode: 'Energiesparmodus', powerSavingDesc: 'Reduziert den Akkuverbrauch',
+            autoLowBattery: 'Automatisch bei niedrigem Akku', autoLowBatteryDesc: 'Unter 20% Akkustand aktivieren',
+            animationsSection: 'Animationen', interfaceAnimations: 'Oberflächenanimationen',
+            interfaceAnimationsDesc: 'Übergänge und Effekte', autoplayGifPowerDesc: 'GIFs automatisch abspielen',
+            animatedStickers: 'Animierte Sticker', animatedStickersDesc: 'Animierte Sticker abspielen',
+            networkSection: 'Netzwerk', backgroundSync: 'Hintergrund-Synchronisierung',
+            backgroundSyncDesc: 'Daten im Hintergrund aktualisieren',
+            autoDownloadMediaDesc: 'Fotos und Videos automatisch herunterladen',
+            powerSavingHint: 'Der Energiesparmodus deaktiviert Animationen, Hintergrund-Synchronisierung und automatische Medien-Downloads. Das kann die Akkulaufzeit erhöhen.',
+            passcodePasswordDesc: 'Schütze die App mit einem Passwort',
+            twoFALoginPassword: 'Zusätzliches Passwort beim Anmelden', e2eEncryption: 'E2E-Verschlüsselung',
+            e2eEncryptionDesc: 'Ende-zu-Ende-Verschlüsselung von Nachrichten',
+            twoFAEnabledDesc: 'Zusätzliches Passwort ist eingerichtet',
+            disable2FADesc: '2FA ist aktiviert. Gib das aktuelle Zusatzpasswort ein, um es zu deaktivieren.',
+            enable2FADesc: 'Lege ein zusätzliches Passwort fest. Es wird nach dem Hauptpasswort beim Anmelden abgefragt.',
+            current2FAPassword: 'Aktuelles Zusatzpasswort', new2FAPassword: 'Neues Zusatzpasswort (min. 6 Zeichen)',
+            enable2FA: '2FA aktivieren', disable2FA: '2FA deaktivieren',
+            twoFAEnabledToast: '2FA aktiviert', twoFADisabledToast: '2FA deaktiviert',
+            enterPassword: 'Passwort eingeben', invalidPassword: 'Ungültiges Passwort',
+            missedCall: 'Verpasster Anruf', unansweredCall: 'Anruf ohne Antwort',
+            voiceMessage: 'Sprachnachricht', photoMessage: 'Foto', videoMessage: 'Video',
+            stickerMessage: 'Sticker', videoNoteMessage: 'Videonotiz',
+            channelsSectionDesc: 'Dieser Bereich ist in Entwicklung. Bald kannst du Kanäle erstellen und abonnieren.',
+            communitiesSectionDesc: 'Dieser Bereich ist in Entwicklung. Bald kannst du Chats und Kanäle zu Communitys bündeln.',
+            meetingsDesc: 'Erstelle ein Videotreffen und lade Teilnehmer per Link ein. Bis zu 5 Personen.',
+            startMeeting: '+ Treffen starten', joinByLink: 'Per Link beitreten...',
+            callAccepted: 'Teilnehmer hat den Anruf angenommen', callDeclined: 'Teilnehmer hat den Anruf abgelehnt',
+            lastSeenHidden: 'zuletzt gesehen verborgen'
+        },
+        fr: {
+            synchronize: 'Synchroniser', notificationsAndSounds: 'Notifications et sons',
+            chatFolders: 'Dossiers de chat', dataStorage: 'Données et stockage',
+            energySaving: 'Économie d’énergie', craneAppPremium: 'CraneApp Premium', features: 'Fonctionnalités',
+            backToChats: '← Retour aux chats', recentCallsEmpty: 'L’historique des appels est vide',
+            recentCallsEmptyHint: 'La simulation d’appels sera ajoutée plus tard',
+            mediaFilesLimit: 'Médias ({media}), fichiers ({files})', detecting: 'Détection...',
+            powerSavingMode: 'Mode économie d’énergie', powerSavingDesc: 'Réduit la consommation de batterie',
+            autoLowBattery: 'Auto en batterie faible', autoLowBatteryDesc: 'Activer sous 20% de batterie',
+            animationsSection: 'Animations', interfaceAnimations: 'Animations de l’interface',
+            interfaceAnimationsDesc: 'Transitions et effets', autoplayGifPowerDesc: 'Lire les GIF automatiquement',
+            animatedStickers: 'Stickers animés', animatedStickersDesc: 'Lire les stickers animés',
+            networkSection: 'Réseau', backgroundSync: 'Synchronisation en arrière-plan',
+            backgroundSyncDesc: 'Mettre à jour les données en arrière-plan',
+            autoDownloadMediaDesc: 'Télécharger automatiquement les photos et vidéos',
+            powerSavingHint: 'Le mode économie d’énergie désactive les animations, la synchronisation en arrière-plan et le téléchargement automatique des médias. Cela peut augmenter l’autonomie.',
+            passcodePasswordDesc: 'Protégez l’application avec un mot de passe',
+            twoFALoginPassword: 'Mot de passe supplémentaire à la connexion', e2eEncryption: 'Chiffrement E2E',
+            e2eEncryptionDesc: 'Chiffrement de bout en bout des messages',
+            twoFAEnabledDesc: 'Mot de passe supplémentaire défini',
+            disable2FADesc: 'La 2FA est activée. Entrez le mot de passe supplémentaire actuel pour la désactiver.',
+            enable2FADesc: 'Définissez un mot de passe supplémentaire. Il sera demandé après le mot de passe principal lors de la connexion.',
+            current2FAPassword: 'Mot de passe supplémentaire actuel', new2FAPassword: 'Nouveau mot de passe supplémentaire (min. 6 caractères)',
+            enable2FA: 'Activer la 2FA', disable2FA: 'Désactiver la 2FA',
+            twoFAEnabledToast: '2FA activée', twoFADisabledToast: '2FA désactivée',
+            enterPassword: 'Entrez le mot de passe', invalidPassword: 'Mot de passe incorrect',
+            missedCall: 'Appel manqué', unansweredCall: 'Appel sans réponse',
+            voiceMessage: 'Message vocal', photoMessage: 'Photo', videoMessage: 'Vidéo',
+            stickerMessage: 'Sticker', videoNoteMessage: 'Message vidéo',
+            channelsSectionDesc: 'Cette section est en développement. Vous pourrez bientôt créer et suivre des chaînes.',
+            communitiesSectionDesc: 'Cette section est en développement. Vous pourrez bientôt regrouper chats et chaînes en communautés.',
+            meetingsDesc: 'Créez une réunion vidéo et invitez les participants par lien. Jusqu’à 5 personnes.',
+            startMeeting: '+ Démarrer une réunion', joinByLink: 'Rejoindre par lien...',
+            callAccepted: 'L’interlocuteur a accepté l’appel', callDeclined: 'L’interlocuteur a refusé l’appel',
+            lastSeenHidden: 'dernière présence masquée'
+        },
+        es: {
+            synchronize: 'Sincronizar', notificationsAndSounds: 'Notificaciones y sonidos',
+            chatFolders: 'Carpetas de chat', dataStorage: 'Datos y almacenamiento',
+            energySaving: 'Ahorro de energía', craneAppPremium: 'CraneApp Premium', features: 'Funciones',
+            backToChats: '← Volver a chats', recentCallsEmpty: 'El historial de llamadas está vacío',
+            recentCallsEmptyHint: 'La simulación de llamadas se añadirá más tarde',
+            mediaFilesLimit: 'Medios ({media}), archivos ({files})', detecting: 'Detectando...',
+            powerSavingMode: 'Modo ahorro de energía', powerSavingDesc: 'Reduce el consumo de batería',
+            autoLowBattery: 'Auto con batería baja', autoLowBatteryDesc: 'Activar por debajo del 20%',
+            animationsSection: 'Animaciones', interfaceAnimations: 'Animaciones de interfaz',
+            interfaceAnimationsDesc: 'Transiciones y efectos', autoplayGifPowerDesc: 'Reproducir GIF automáticamente',
+            animatedStickers: 'Stickers animados', animatedStickersDesc: 'Reproducir stickers animados',
+            networkSection: 'Red', backgroundSync: 'Sincronización en segundo plano',
+            backgroundSyncDesc: 'Actualizar datos en segundo plano',
+            autoDownloadMediaDesc: 'Descargar fotos y videos automáticamente',
+            powerSavingHint: 'El modo de ahorro desactiva animaciones, sincronización en segundo plano y descarga automática de medios. Puede aumentar la duración de la batería.',
+            passcodePasswordDesc: 'Protege la aplicación con una contraseña',
+            twoFALoginPassword: 'Contraseña adicional al iniciar sesión', e2eEncryption: 'Cifrado E2E',
+            e2eEncryptionDesc: 'Cifrado de extremo a extremo de mensajes',
+            twoFAEnabledDesc: 'Contraseña adicional configurada',
+            disable2FADesc: '2FA está activado. Introduce la contraseña adicional actual para desactivarlo.',
+            enable2FADesc: 'Configura una contraseña adicional. Se pedirá después de la contraseña principal al iniciar sesión.',
+            current2FAPassword: 'Contraseña adicional actual', new2FAPassword: 'Nueva contraseña adicional (mín. 6 caracteres)',
+            enable2FA: 'Activar 2FA', disable2FA: 'Desactivar 2FA',
+            twoFAEnabledToast: '2FA activado', twoFADisabledToast: '2FA desactivado',
+            enterPassword: 'Introduce la contraseña', invalidPassword: 'Contraseña incorrecta',
+            missedCall: 'Llamada perdida', unansweredCall: 'Llamada sin respuesta',
+            voiceMessage: 'Mensaje de voz', photoMessage: 'Foto', videoMessage: 'Video',
+            stickerMessage: 'Sticker', videoNoteMessage: 'Nota de video',
+            channelsSectionDesc: 'Esta sección está en desarrollo. Pronto podrás crear canales y suscribirte a ellos.',
+            communitiesSectionDesc: 'Esta sección está en desarrollo. Pronto podrás combinar chats y canales en comunidades.',
+            meetingsDesc: 'Crea una reunión de video e invita participantes por enlace. Hasta 5 personas.',
+            startMeeting: '+ Iniciar reunión', joinByLink: 'Unirse por enlace...',
+            callAccepted: 'El interlocutor aceptó la llamada', callDeclined: 'El interlocutor rechazó la llamada',
+            lastSeenHidden: 'última vez oculta'
+        },
+        it: {
+            synchronize: 'Sincronizza', notificationsAndSounds: 'Notifiche e suoni',
+            chatFolders: 'Cartelle chat', dataStorage: 'Dati e memoria',
+            energySaving: 'Risparmio energetico', craneAppPremium: 'CraneApp Premium', features: 'Funzionalità',
+            backToChats: '← Torna alle chat', recentCallsEmpty: 'La cronologia chiamate è vuota',
+            recentCallsEmptyHint: 'La simulazione delle chiamate sarà aggiunta più tardi',
+            mediaFilesLimit: 'Media ({media}), file ({files})', detecting: 'Rilevamento...',
+            powerSavingMode: 'Modalità risparmio energetico', powerSavingDesc: 'Riduce il consumo della batteria',
+            autoLowBattery: 'Auto con batteria scarica', autoLowBatteryDesc: 'Attiva sotto il 20%',
+            animationsSection: 'Animazioni', interfaceAnimations: 'Animazioni interfaccia',
+            interfaceAnimationsDesc: 'Transizioni ed effetti', autoplayGifPowerDesc: 'Riproduci GIF automaticamente',
+            animatedStickers: 'Sticker animati', animatedStickersDesc: 'Riproduci sticker animati',
+            networkSection: 'Rete', backgroundSync: 'Sincronizzazione in background',
+            backgroundSyncDesc: 'Aggiorna dati in background',
+            autoDownloadMediaDesc: 'Scarica foto e video automaticamente',
+            powerSavingHint: 'La modalità risparmio energetico disattiva animazioni, sincronizzazione in background e download automatico dei media. Può aumentare la durata della batteria.',
+            passcodePasswordDesc: 'Proteggi l’app con una password',
+            twoFALoginPassword: 'Password aggiuntiva all’accesso', e2eEncryption: 'Crittografia E2E',
+            e2eEncryptionDesc: 'Crittografia end-to-end dei messaggi',
+            twoFAEnabledDesc: 'Password aggiuntiva impostata',
+            disable2FADesc: '2FA è attiva. Inserisci la password aggiuntiva attuale per disattivarla.',
+            enable2FADesc: 'Imposta una password aggiuntiva. Verrà richiesta dopo la password principale all’accesso.',
+            current2FAPassword: 'Password aggiuntiva attuale', new2FAPassword: 'Nuova password aggiuntiva (min. 6 caratteri)',
+            enable2FA: 'Attiva 2FA', disable2FA: 'Disattiva 2FA',
+            twoFAEnabledToast: '2FA attivata', twoFADisabledToast: '2FA disattivata',
+            enterPassword: 'Inserisci password', invalidPassword: 'Password non valida',
+            missedCall: 'Chiamata persa', unansweredCall: 'Chiamata senza risposta',
+            voiceMessage: 'Messaggio vocale', photoMessage: 'Foto', videoMessage: 'Video',
+            stickerMessage: 'Sticker', videoNoteMessage: 'Nota video',
+            channelsSectionDesc: 'Questa sezione è in sviluppo. Presto potrai creare canali e iscriverti.',
+            communitiesSectionDesc: 'Questa sezione è in sviluppo. Presto potrai unire chat e canali in community.',
+            meetingsDesc: 'Crea una riunione video e invita partecipanti tramite link. Fino a 5 persone.',
+            startMeeting: '+ Avvia riunione', joinByLink: 'Partecipa con link...',
+            callAccepted: 'L’interlocutore ha accettato la chiamata', callDeclined: 'L’interlocutore ha rifiutato la chiamata',
+            lastSeenHidden: 'ultimo accesso nascosto'
+        },
+        pt: {
+            synchronize: 'Sincronizar', notificationsAndSounds: 'Notificações e sons',
+            chatFolders: 'Pastas de chat', dataStorage: 'Dados e armazenamento',
+            energySaving: 'Economia de energia', craneAppPremium: 'CraneApp Premium', features: 'Recursos',
+            backToChats: '← Voltar aos chats', recentCallsEmpty: 'O histórico de chamadas está vazio',
+            recentCallsEmptyHint: 'A simulação de chamadas será adicionada depois',
+            mediaFilesLimit: 'Mídia ({media}), arquivos ({files})', detecting: 'Detectando...',
+            powerSavingMode: 'Modo economia de energia', powerSavingDesc: 'Reduz o consumo de bateria',
+            autoLowBattery: 'Auto com bateria baixa', autoLowBatteryDesc: 'Ativar abaixo de 20%',
+            animationsSection: 'Animações', interfaceAnimations: 'Animações da interface',
+            interfaceAnimationsDesc: 'Transições e efeitos', autoplayGifPowerDesc: 'Reproduzir GIFs automaticamente',
+            animatedStickers: 'Figurinhas animadas', animatedStickersDesc: 'Reproduzir figurinhas animadas',
+            networkSection: 'Rede', backgroundSync: 'Sincronização em segundo plano',
+            backgroundSyncDesc: 'Atualizar dados em segundo plano',
+            autoDownloadMediaDesc: 'Baixar fotos e vídeos automaticamente',
+            powerSavingHint: 'O modo economia desativa animações, sincronização em segundo plano e download automático de mídia. Isso pode aumentar a duração da bateria.',
+            passcodePasswordDesc: 'Proteja o app com uma senha',
+            twoFALoginPassword: 'Senha adicional no login', e2eEncryption: 'Criptografia E2E',
+            e2eEncryptionDesc: 'Criptografia de ponta a ponta das mensagens',
+            twoFAEnabledDesc: 'Senha adicional configurada',
+            disable2FADesc: '2FA está ativada. Digite a senha adicional atual para desativar.',
+            enable2FADesc: 'Defina uma senha adicional. Ela será solicitada após a senha principal no login.',
+            current2FAPassword: 'Senha adicional atual', new2FAPassword: 'Nova senha adicional (mín. 6 caracteres)',
+            enable2FA: 'Ativar 2FA', disable2FA: 'Desativar 2FA',
+            twoFAEnabledToast: '2FA ativada', twoFADisabledToast: '2FA desativada',
+            enterPassword: 'Digite a senha', invalidPassword: 'Senha inválida',
+            missedCall: 'Chamada perdida', unansweredCall: 'Chamada sem resposta',
+            voiceMessage: 'Mensagem de voz', photoMessage: 'Foto', videoMessage: 'Vídeo',
+            stickerMessage: 'Figurinha', videoNoteMessage: 'Nota de vídeo',
+            channelsSectionDesc: 'Esta seção está em desenvolvimento. Em breve você poderá criar canais e assiná-los.',
+            communitiesSectionDesc: 'Esta seção está em desenvolvimento. Em breve você poderá combinar chats e canais em comunidades.',
+            meetingsDesc: 'Crie uma reunião de vídeo e convide participantes por link. Até 5 pessoas.',
+            startMeeting: '+ Iniciar reunião', joinByLink: 'Entrar por link...',
+            callAccepted: 'O interlocutor aceitou a chamada', callDeclined: 'O interlocutor recusou a chamada',
+            lastSeenHidden: 'visto por último oculto'
+        },
+        pl: {
+            synchronize: 'Synchronizuj', notificationsAndSounds: 'Powiadomienia i dźwięki',
+            chatFolders: 'Foldery czatów', dataStorage: 'Dane i pamięć',
+            energySaving: 'Oszczędzanie energii', craneAppPremium: 'CraneApp Premium', features: 'Funkcje',
+            backToChats: '← Wróć do czatów', recentCallsEmpty: 'Historia połączeń jest pusta',
+            recentCallsEmptyHint: 'Symulacja połączeń zostanie dodana później',
+            mediaFilesLimit: 'Media ({media}), pliki ({files})', detecting: 'Wykrywanie...',
+            powerSavingMode: 'Tryb oszczędzania energii', powerSavingDesc: 'Zmniejsza zużycie baterii',
+            autoLowBattery: 'Auto przy niskiej baterii', autoLowBatteryDesc: 'Włącz poniżej 20%',
+            animationsSection: 'Animacje', interfaceAnimations: 'Animacje interfejsu',
+            interfaceAnimationsDesc: 'Przejścia i efekty', autoplayGifPowerDesc: 'Automatycznie odtwarzaj GIF-y',
+            animatedStickers: 'Animowane naklejki', animatedStickersDesc: 'Odtwarzaj animowane naklejki',
+            networkSection: 'Sieć', backgroundSync: 'Synchronizacja w tle',
+            backgroundSyncDesc: 'Aktualizuj dane w tle',
+            autoDownloadMediaDesc: 'Automatycznie pobieraj zdjęcia i filmy',
+            powerSavingHint: 'Tryb oszczędzania energii wyłącza animacje, synchronizację w tle i automatyczne pobieranie mediów. Może to wydłużyć czas pracy baterii.',
+            passcodePasswordDesc: 'Chroń aplikację hasłem',
+            twoFALoginPassword: 'Dodatkowe hasło przy logowaniu', e2eEncryption: 'Szyfrowanie E2E',
+            e2eEncryptionDesc: 'Szyfrowanie wiadomości end-to-end',
+            twoFAEnabledDesc: 'Dodatkowe hasło jest ustawione',
+            disable2FADesc: '2FA jest włączone. Wprowadź bieżące dodatkowe hasło, aby wyłączyć.',
+            enable2FADesc: 'Ustaw dodatkowe hasło. Będzie wymagane po głównym haśle podczas logowania.',
+            current2FAPassword: 'Bieżące dodatkowe hasło', new2FAPassword: 'Nowe dodatkowe hasło (min. 6 znaków)',
+            enable2FA: 'Włącz 2FA', disable2FA: 'Wyłącz 2FA',
+            twoFAEnabledToast: '2FA włączone', twoFADisabledToast: '2FA wyłączone',
+            enterPassword: 'Wprowadź hasło', invalidPassword: 'Nieprawidłowe hasło',
+            missedCall: 'Nieodebrane połączenie', unansweredCall: 'Połączenie bez odpowiedzi',
+            voiceMessage: 'Wiadomość głosowa', photoMessage: 'Zdjęcie', videoMessage: 'Wideo',
+            stickerMessage: 'Naklejka', videoNoteMessage: 'Notatka wideo',
+            channelsSectionDesc: 'Ta sekcja jest w przygotowaniu. Wkrótce będzie można tworzyć i subskrybować kanały.',
+            communitiesSectionDesc: 'Ta sekcja jest w przygotowaniu. Wkrótce będzie można łączyć czaty i kanały w społeczności.',
+            meetingsDesc: 'Utwórz spotkanie wideo i zaproś uczestników linkiem. Do 5 osób.',
+            startMeeting: '+ Rozpocznij spotkanie', joinByLink: 'Dołącz przez link...',
+            callAccepted: 'Rozmówca odebrał połączenie', callDeclined: 'Rozmówca odrzucił połączenie',
+            lastSeenHidden: 'ostatnia aktywność ukryta'
+        },
+        uk: {
+            synchronize: 'Синхронізувати', notificationsAndSounds: 'Сповіщення та звуки',
+            chatFolders: 'Папки з чатами', dataStorage: 'Дані та пам’ять',
+            energySaving: 'Енергозбереження', craneAppPremium: 'CraneApp Преміум', features: 'Можливості',
+            backToChats: '← Назад до чатів', recentCallsEmpty: 'Історія дзвінків порожня',
+            recentCallsEmptyHint: 'Емуляцію дзвінків буде додано пізніше',
+            mediaFilesLimit: 'Медіа ({media}), файли ({files})', detecting: 'Визначення...',
+            powerSavingMode: 'Режим енергозбереження', powerSavingDesc: 'Зменшує споживання батареї',
+            autoLowBattery: 'Авто при низькому заряді', autoLowBatteryDesc: 'Вмикати при заряді нижче 20%',
+            animationsSection: 'Анімації', interfaceAnimations: 'Анімації інтерфейсу',
+            interfaceAnimationsDesc: 'Переходи та ефекти', autoplayGifPowerDesc: 'Автоматично відтворювати GIF',
+            animatedStickers: 'Анімовані стікери', animatedStickersDesc: 'Відтворювати анімовані стікери',
+            networkSection: 'Мережа', backgroundSync: 'Фонова синхронізація',
+            backgroundSyncDesc: 'Оновлювати дані у фоні',
+            autoDownloadMediaDesc: 'Автоматично завантажувати фото й відео',
+            powerSavingHint: 'Режим енергозбереження вимикає анімації, фонову синхронізацію та автозавантаження медіа. Це може збільшити час роботи від батареї.',
+            passcodePasswordDesc: 'Захистіть застосунок паролем',
+            twoFALoginPassword: 'Додатковий пароль при вході', e2eEncryption: 'E2E шифрування',
+            e2eEncryptionDesc: 'Наскрізне шифрування повідомлень',
+            twoFAEnabledDesc: 'Додатковий пароль установлено',
+            disable2FADesc: '2FA увімкнено. Введіть поточний додатковий пароль, щоб вимкнути.',
+            enable2FADesc: 'Установіть додатковий пароль. Він знадобиться після основного пароля під час входу.',
+            current2FAPassword: 'Поточний додатковий пароль', new2FAPassword: 'Новий додатковий пароль (мін. 6 символів)',
+            enable2FA: 'Увімкнути 2FA', disable2FA: 'Вимкнути 2FA',
+            twoFAEnabledToast: '2FA увімкнено', twoFADisabledToast: '2FA вимкнено',
+            enterPassword: 'Введіть пароль', invalidPassword: 'Невірний пароль',
+            missedCall: 'Пропущений дзвінок', unansweredCall: 'Дзвінок без відповіді',
+            voiceMessage: 'Голосове повідомлення', photoMessage: 'Фото', videoMessage: 'Відео',
+            stickerMessage: 'Стікер', videoNoteMessage: 'Відеонотатка',
+            channelsSectionDesc: 'Розділ у розробці. Незабаром ви зможете створювати канали та підписуватися на них.',
+            communitiesSectionDesc: 'Розділ у розробці. Незабаром ви зможете об’єднувати чати й канали у спільноти.',
+            meetingsDesc: 'Створіть відеозустріч і запросіть учасників за посиланням. До 5 людей.',
+            startMeeting: '+ Почати зустріч', joinByLink: 'Увійти за посиланням...',
+            callAccepted: 'Співрозмовник прийняв дзвінок', callDeclined: 'Співрозмовник відхилив дзвінок',
+            lastSeenHidden: 'останній візит приховано'
+        },
+        tr: {
+            synchronize: 'Senkronize et', notificationsAndSounds: 'Bildirimler ve sesler',
+            chatFolders: 'Sohbet klasörleri', dataStorage: 'Veri ve depolama',
+            energySaving: 'Güç tasarrufu', craneAppPremium: 'CraneApp Premium', features: 'Özellikler',
+            backToChats: '← Sohbetlere dön', recentCallsEmpty: 'Arama geçmişi boş',
+            recentCallsEmptyHint: 'Arama simülasyonu daha sonra eklenecek',
+            mediaFilesLimit: 'Medya ({media}), dosyalar ({files})', detecting: 'Algılanıyor...',
+            powerSavingMode: 'Güç tasarrufu modu', powerSavingDesc: 'Pil tüketimini azaltır',
+            autoLowBattery: 'Düşük pilde otomatik', autoLowBatteryDesc: '%20 altında etkinleştir',
+            animationsSection: 'Animasyonlar', interfaceAnimations: 'Arayüz animasyonları',
+            interfaceAnimationsDesc: 'Geçişler ve efektler', autoplayGifPowerDesc: 'GIF’leri otomatik oynat',
+            animatedStickers: 'Animasyonlu çıkartmalar', animatedStickersDesc: 'Animasyonlu çıkartmaları oynat',
+            networkSection: 'Ağ', backgroundSync: 'Arka plan senkronizasyonu',
+            backgroundSyncDesc: 'Verileri arka planda güncelle',
+            autoDownloadMediaDesc: 'Fotoğraf ve videoları otomatik indir',
+            powerSavingHint: 'Güç tasarrufu modu animasyonları, arka plan senkronizasyonunu ve medya otomatik indirmeyi kapatır. Pil ömrünü artırabilir.',
+            passcodePasswordDesc: 'Uygulamayı parola ile koru',
+            twoFALoginPassword: 'Girişte ek parola', e2eEncryption: 'E2E şifreleme',
+            e2eEncryptionDesc: 'Mesajlarda uçtan uca şifreleme',
+            twoFAEnabledDesc: 'Ek parola ayarlandı',
+            disable2FADesc: '2FA etkin. Kapatmak için mevcut ek parolayı girin.',
+            enable2FADesc: 'Ek bir parola belirleyin. Girişte ana paroladan sonra istenir.',
+            current2FAPassword: 'Mevcut ek parola', new2FAPassword: 'Yeni ek parola (min. 6 karakter)',
+            enable2FA: '2FA’yı etkinleştir', disable2FA: '2FA’yı devre dışı bırak',
+            twoFAEnabledToast: '2FA etkinleştirildi', twoFADisabledToast: '2FA devre dışı',
+            enterPassword: 'Parola girin', invalidPassword: 'Geçersiz parola',
+            missedCall: 'Cevapsız arama', unansweredCall: 'Yanıtsız arama',
+            voiceMessage: 'Sesli mesaj', photoMessage: 'Fotoğraf', videoMessage: 'Video',
+            stickerMessage: 'Çıkartma', videoNoteMessage: 'Video notu',
+            channelsSectionDesc: 'Bu bölüm geliştiriliyor. Yakında kanal oluşturup kanallara abone olabileceksiniz.',
+            communitiesSectionDesc: 'Bu bölüm geliştiriliyor. Yakında sohbetleri ve kanalları topluluklarda birleştirebileceksiniz.',
+            meetingsDesc: 'Bir video toplantısı oluşturun ve katılımcıları bağlantıyla davet edin. En fazla 5 kişi.',
+            startMeeting: '+ Toplantı başlat', joinByLink: 'Bağlantıyla katıl...',
+            callAccepted: 'Karşı taraf aramayı kabul etti', callDeclined: 'Karşı taraf aramayı reddetti',
+            lastSeenHidden: 'son görülme gizli'
+        }
+    };
+    Object.entries(localizedRuntimeKeys).forEach(([lang, values]) => {
+        Object.assign(translations[lang], values);
+    });
+    Object.keys(translations).forEach(lang => {
+        if (lang !== 'ru' && lang !== 'en') copyMissingFromEnglish(lang);
+    });
+
+    const supportedLanguages = Object.keys(translations);
+    const reversePhraseKeys = {};
+
+    function rebuildReversePhraseKeys() {
+        Object.assign(reversePhraseKeys, phraseKeys);
+        for (const lang of supportedLanguages) {
+            for (const [key, value] of Object.entries(translations[lang])) {
+                if (typeof value === 'string' && value && !reversePhraseKeys[value]) {
+                    reversePhraseKeys[value] = key;
+                }
+            }
+        }
+    }
+
+    function format(template, vars) {
+        if (!vars || typeof template !== 'string') return template;
+        return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? '');
+    }
+
+    function pluralCategory(lang, count) {
+        if (lang === 'ru' || lang === 'uk') {
+            const mod10 = count % 10;
+            const mod100 = count % 100;
+            if (mod10 === 1 && mod100 !== 11) return 'one';
+            if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'few';
+            return 'many';
+        }
+        return count === 1 ? 'one' : 'other';
+    }
+
+    function getSavedLanguage() {
+        try {
+            const fromSettings = JSON.parse(localStorage.getItem('craneapp_settings') || '{}').language;
+            const saved = localStorage.getItem('craneapp_language') || fromSettings || 'ru';
+            return translations[saved] ? saved : 'ru';
+        } catch (_) {
+            return localStorage.getItem('craneapp_language') || 'ru';
+        }
+    }
+
+    function getTranslation(lang, key) {
+        return translations[lang]?.[key]
+            ?? translations.en?.[key]
+            ?? translations.ru?.[key]
+            ?? key;
+    }
+
+    function safeParseJson(value, fallback) {
+        try { return value ? JSON.parse(value) : fallback; }
+        catch (_) { return fallback; }
+    }
+
+    function shouldSkipElement(el) {
+        if (!el || !el.tagName) return true;
+        const tag = el.tagName;
+        if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE'].includes(tag)) return true;
+        if (el.isContentEditable) return true;
+        if (el.closest('[data-i18n-skip], .message-content, .message-text, .chat-message, .media-content')) return true;
+        return false;
+    }
+
+    function applyElementKey(el, attr, key) {
+        if (!key) return;
+        const val = window.i18n.t(key);
+        if (attr === 'text') {
+            if (htmlKeys.has(key) || el.hasAttribute('data-i18n-html')) el.innerHTML = val;
+            else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
+            else el.textContent = val;
+        } else if (attr === 'data-placeholder') {
+            el.setAttribute('data-placeholder', val);
+        } else {
+            el.setAttribute(attr, val);
+        }
+    }
+
+    function translateKnownPhrase(value) {
+        if (!value || typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        const key = reversePhraseKeys[trimmed];
+        return key ? window.i18n.t(key) : value;
+    }
+
+    function translateTitleValue(value) {
+        if (!value) return value;
+        const exact = translateKnownPhrase(value);
+        if (exact !== value) return exact;
+        const appFirst = value.match(/^(CraneApp\s*[-—]\s*)(.+)$/);
+        if (appFirst) return appFirst[1] + translateKnownPhrase(appFirst[2].trim());
+        const appLast = value.match(/^(.+?)(\s*[-—]\s*CraneApp)$/);
+        if (appLast) return translateKnownPhrase(appLast[1].trim()) + appLast[2];
+        return value;
+    }
+
+    function translatePlainElement(el) {
+        if (shouldSkipElement(el)) return;
+        if (el.children.length > 0) return;
+        const text = el.textContent || '';
+        const translated = translateKnownPhrase(text);
+        if (translated !== text) el.textContent = translated;
+    }
+
+    function translateAttributes(root) {
+        const scope = root?.querySelectorAll ? root : document;
+        scope.querySelectorAll('*').forEach(el => {
+            if (shouldSkipElement(el)) return;
+            phraseAttributes.forEach(attr => {
+                if (!el.hasAttribute(attr)) return;
+                const value = el.getAttribute(attr);
+                const translated = translateKnownPhrase(value);
+                if (translated !== value) el.setAttribute(attr, translated);
+            });
+        });
+    }
+
+    function installFetchLanguageHeader() {
+        if (window.__craneI18nFetchInstalled || typeof window.fetch !== 'function') return;
+        window.__craneI18nFetchInstalled = true;
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = function(input, init = {}) {
+            const lang = window.i18n?.currentLang || getSavedLanguage();
+            const headers = new Headers(init.headers || (input && input.headers) || {});
+            if (!headers.has('X-Crane-Language')) headers.set('X-Crane-Language', lang);
+            return originalFetch(input, { ...init, headers });
+        };
+    }
+
+    function installMutationObserver() {
+        if (window.__craneI18nObserverInstalled || !window.MutationObserver) return;
+        window.__craneI18nObserverInstalled = true;
+        const observer = new MutationObserver(mutations => {
+            if (window.__craneI18nTranslating) return;
+            for (const mutation of mutations) {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) window.i18n.translatePage(node);
+                });
+                if (mutation.type === 'characterData' && mutation.target.parentElement) {
+                    translatePlainElement(mutation.target.parentElement);
+                }
+            }
+        });

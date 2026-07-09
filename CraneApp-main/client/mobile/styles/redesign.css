@@ -1,0 +1,562 @@
+/* ============================================
+   CraneApp — Redesigned Main UI (Apple-style)
+   Подключается ПОСЛЕ chats.css и переопределяет
+   композицию главной странички, бокового меню
+   и хабов настроек. Логика и id-шники старого
+   HTML сохранены — меняется только визуал.
+   ============================================ */
+
+/* ---------- Шрифт Geologica ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+    --font-geologica: 'Geologica', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+    /* Apple-like glass палитра (тёмная) */
+    --rd-bg: #07070a;
+    --rd-bg-elev: rgba(28, 28, 32, 0.72);
+    --rd-bg-elev-2: rgba(38, 38, 44, 0.78);
+    --rd-stroke: rgba(255, 255, 255, 0.08);
+    --rd-stroke-strong: rgba(255, 255, 255, 0.14);
+    --rd-text: #ffffff;
+    --rd-text-2: rgba(235, 235, 245, 0.72);
+    --rd-text-3: rgba(235, 235, 245, 0.46);
+    --rd-accent: #ff2d8b;
+    --rd-accent-2: #9b5cff;
+    --rd-accent-grad: linear-gradient(135deg, #ff2d8b 0%, #9b5cff 100%);
+    --rd-rail-active: #b8a4ff;            /* светлый сине-фиолетовый (тёмная тема) */
+    --rd-rail-active-bg: rgba(155, 130, 255, 0.10);
+    --rd-rail-active-stroke: rgba(155, 130, 255, 0.28);
+    --rd-danger: #ff5567;
+    --rd-success: #34d399;
+    --rd-rail-w: 72px;
+    --rd-radius-lg: 18px;
+    --rd-radius-md: 14px;
+    --rd-radius-sm: 10px;
+    --rd-blur: saturate(180%) blur(28px);
+}
+
+[data-theme="light"] {
+    --rd-bg: #f4f5f9;
+    --rd-bg-elev: rgba(255, 255, 255, 0.74);
+    --rd-bg-elev-2: rgba(255, 255, 255, 0.94);
+    --rd-stroke: rgba(0, 0, 0, 0.08);
+    --rd-stroke-strong: rgba(0, 0, 0, 0.14);
+    --rd-text: #0c0c0f;
+    --rd-text-2: rgba(50, 50, 60, 0.78);
+    --rd-text-3: rgba(50, 50, 60, 0.5);
+    --rd-rail-active: #4b3aa8;            /* тёмный сине-фиолетовый (светлая тема) */
+    --rd-rail-active-bg: rgba(75, 58, 168, 0.10);
+    --rd-rail-active-stroke: rgba(75, 58, 168, 0.26);
+}
+
+html, body {
+    font-family: var(--font-geologica) !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+}
+
+body {
+    background: var(--rd-bg) !important;
+}
+
+/* Декоративный фон-сияние */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 45, 139, 0.12) 0%, transparent 38%),
+        radial-gradient(circle at 88% 82%, rgba(155, 92, 255, 0.10) 0%, transparent 40%);
+}
+[data-theme="light"] body::before {
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 45, 139, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 88% 82%, rgba(155, 92, 255, 0.06) 0%, transparent 42%);
+}
+
+.container { position: relative; z-index: 1; }
+
+/* ---------- Навигационный рейл (десктоп) / нижний таб-бар (мобилка) ---------- */
+.nav-rail {
+    width: var(--rd-rail-w);
+    min-width: var(--rd-rail-w);
+    background: #0d0d12;                                  /* плотный фон, без просвета body-сияния */
+    border-right: 1px solid var(--rd-stroke);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0 18px;
+    gap: 6px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;                                          /* выше .sidebar чтобы тултипы не обрезались */
+    overflow: visible;
+}
+[data-theme="light"] .nav-rail { background: #ffffff; }
+
+.rail-burger {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--rd-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-bottom: 14px;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.rail-burger:hover { background: rgba(255,255,255,0.06); border-color: var(--rd-stroke); }
+.rail-burger:active { transform: scale(0.94); }
+
+.rail-tab {
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--rd-text-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    font-family: var(--font-geologica);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.15s;
+    position: relative;
+}
+.rail-tab > span { display: none; }                /* подписи скрыты на десктопе */
+.rail-tab svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.rail-tab:hover {
+    color: var(--rd-text);
+    background: rgba(255, 255, 255, 0.05);
+}
+[data-theme="light"] .rail-tab:hover { background: rgba(0, 0, 0, 0.04); }
+.rail-tab:active { transform: scale(0.94); }
+
+.rail-tab.active {
+    color: var(--rd-rail-active);
+    background: var(--rd-rail-active-bg);
+    border-color: var(--rd-rail-active-stroke);
+}
+.rail-tab.active svg { color: var(--rd-rail-active); }
+
+/* Кастомные тултипы для рейла (только на десктопе) */
+.rail-tab,
+.rail-burger,
+.rail-help { isolation: isolate; }                        /* собственный stacking context */
+
+.rail-tab:hover,
+.rail-burger:hover,
+.rail-help:hover { z-index: 10000; }
+
+.rail-tab::after,
+.rail-burger::after,
+.rail-help::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-4px);
+    background: #1c1c20;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 7px 11px;
+    border-radius: 10px;
+    font-family: var(--font-geologica);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 99999;
+}
+[data-theme="light"] .rail-tab::after,
+[data-theme="light"] .rail-burger::after,
+[data-theme="light"] .rail-help::after {
+    background: #ffffff;
+    color: #0c0c0f;
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+.rail-tab:hover::after,
+.rail-burger:hover::after,
+.rail-help:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+}
+
+.rail-spacer { flex: 1; }
+
+/* Кнопка "Помощь" внизу рейла */
+.rail-help {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--rd-text-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.15s;
+    position: relative;
+}
+.rail-help svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.rail-help:hover {
+    color: var(--rd-text);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--rd-stroke);
+}
+[data-theme="light"] .rail-help:hover { background: rgba(0, 0, 0, 0.04); }
+.rail-help:active { transform: scale(0.94); }
+
+/* ---------- Шапка sidebar (без бургера, потому что он в рейле) ---------- */
+.top-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--rd-stroke) !important;
+    padding: 14px 16px !important;
+    backdrop-filter: var(--rd-blur);
+    -webkit-backdrop-filter: var(--rd-blur);
+}
+.top-title {
+    font-family: var(--font-geologica) !important;
+    font-weight: 700 !important;
+    font-size: 22px !important;
+    letter-spacing: -0.02em;
+}
+.header-btn {
+    border-radius: 12px !important;
+    width: 38px !important;
+    height: 38px !important;
+}
+.header-btn:hover { background: rgba(255,255,255,0.07); }
+
+.sidebar {
+    background: var(--rd-bg) !important;
+    border-right: 1px solid var(--rd-stroke) !important;
+}
+
+/* На десктопе бургер шапки скрываем (есть в рейле) */
+@media (min-width: 768px) {
+    .sidebar .top-header > .hamburger { display: none; }
+}
+
+/* ---------- Поиск ---------- */
+.search-bar {
+    background: transparent !important;
+    border-bottom: 1px solid var(--rd-stroke) !important;
+    padding: 10px 14px !important;
+}
+.search-input {
+    height: 40px !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--rd-stroke) !important;
+    background: var(--rd-bg-elev) !important;
+    backdrop-filter: var(--rd-blur);
+    -webkit-backdrop-filter: var(--rd-blur);
+    font-family: var(--font-geologica) !important;
+    font-size: 14px !important;
+}
+.search-input:focus { border-color: var(--rd-accent) !important; box-shadow: 0 0 0 3px rgba(255,45,139,0.12); }
+
+/* ---------- Список чатов / адаптивность ---------- */
+.chat-list { background: transparent; }
+
+/* Активный чат — сине-фиолетовая подсветка вместо красной */
+.chat-list .chat-item.active,
+.chat-list .chat-item.pinned.active {
+    background: var(--rd-rail-active-bg) !important;
+    border-left: 3px solid var(--rd-rail-active) !important;
+}
+.chat-list .chat-item.active .chat-name,
+.chat-list .chat-item.pinned.active .chat-name {
+    color: var(--rd-rail-active) !important;
+}
+
+/* ---------- Мобильная навигация (bottom tab-bar) ---------- */
+@media (max-width: 767px) {
+    .nav-rail {
+        flex-direction: row;
+        width: 100% !important;
+        min-width: 0;
+        height: 64px;
+        padding: 6px 6px calc(6px + var(--safe-area-bottom));
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-right: none;
+        border-top: 1px solid var(--rd-stroke);
+        gap: 2px;
+        z-index: 50;
+        justify-content: space-around;
+    }
+    .rail-burger { display: none; }
+    .rail-help { display: none; }
+    .rail-spacer { display: none; }
+    .rail-tab {
+        flex: 1;
+        width: auto;
+        min-height: 0;
+        height: 52px;
+        font-size: 10px;
+        border-radius: 12px;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .rail-tab > span { display: block; }                  /* подписи возвращаем на мобилке */
+    .rail-tab svg { width: 22px; height: 22px; }
+    .rail-tab::after,
+    .rail-burger::after,
+    .rail-help::after { display: none; }                  /* тултипы убираем на мобилке */
+
+    /* Освобождаем место под нижний бар в основном списке */
+    .sidebar { padding-bottom: 64px; }
+
+    /* Бургер в шапке списка показываем, как было (для меню) */
+    .sidebar .top-header > .hamburger { display: flex; }
+}
+
+/* ---------- Боковое меню (slide-in) ---------- */
+.side-menu-overlay {
+    background: rgba(0, 0, 0, 0.55) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+.side-menu {
+    width: 320px !important;
+    max-width: 86% !important;
+    background: var(--rd-bg-elev-2) !important;
+    backdrop-filter: var(--rd-blur);
+    -webkit-backdrop-filter: var(--rd-blur);
+    border-right: 1px solid var(--rd-stroke);
+    box-shadow: 24px 0 60px rgba(0,0,0,0.4);
+}
+
+/* Перебиваем старую "градиентную" шапку меню */
+.side-menu-header {
+    background: transparent !important;
+    color: var(--rd-text) !important;
+    padding: 28px 22px 18px !important;
+    text-align: center;
+    border-bottom: 1px solid var(--rd-stroke);
+}
+.side-menu-avatar-wrap {
+    width: 84px !important;
+    height: 84px !important;
+    margin: 0 auto 14px !important;
+}
+.side-menu-avatar {
+    width: 84px !important;
+    height: 84px !important;
+    margin: 0 !important;
+    background: var(--rd-accent-grad) !important;
+    border: 2px solid var(--rd-stroke-strong);
+    box-shadow: 0 12px 32px rgba(255, 45, 139, 0.28);
+    font-size: 30px !important;
+}
+.side-menu-avatar-badge {
+    width: 28px !important;
+    height: 28px !important;
+    right: 2px !important;
+    bottom: 2px !important;
+    border-color: var(--rd-panel) !important;
+    background: var(--rd-accent-grad) !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+    font-size: 13px !important;
+}
+.side-menu-name {
+    font-family: var(--font-geologica) !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+}
+.side-menu-username {
+    font-family: var(--font-geologica) !important;
+    font-size: 13px !important;
+    color: var(--rd-text-3) !important;
+    opacity: 1 !important;
+    margin-top: 2px;
+}
+
+.side-menu-items {
+    padding: 14px !important;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Группа-«рамочка» в стиле iOS Settings */
+.sm-group {
+    background: var(--rd-bg-elev);
+    border: 1px solid var(--rd-stroke);
+    border-radius: var(--rd-radius-lg);
+    overflow: hidden;
+    backdrop-filter: var(--rd-blur);
+    -webkit-backdrop-filter: var(--rd-blur);
+}
+
+.sm-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--rd-text);
+    font-family: var(--font-geologica);
+    font-size: 14.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    transition: background 0.18s;
+    position: relative;
+}
+.sm-row:hover { background: rgba(255,255,255,0.04); }
+.sm-row + .sm-row { border-top: 1px solid var(--rd-stroke); }
+.sm-row .sm-ico {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: #fff;
+}
+.sm-row .sm-ico svg { width: 17px; height: 17px; stroke-width: 2; }
+.sm-row .sm-label { flex: 1; }
+.sm-row .sm-chev {
+    color: var(--rd-text-3);
+    flex-shrink: 0;
+}
+.sm-row .sm-chev svg { width: 14px; height: 14px; stroke-width: 2.2; }
+
+.sm-row.danger { color: var(--rd-danger); }
+.sm-row.danger .sm-ico { background: rgba(255, 85, 103, 0.18); color: var(--rd-danger); }
+.sm-row.premium .sm-label {
+    background: linear-gradient(135deg, #ffd66e, #ff8a3d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+}
+
+/* Цветные иконки */
+.ico-folder    { background: linear-gradient(135deg,#7a5cff,#5a8bff); }
+.ico-star      { background: linear-gradient(135deg,#ffba2e,#ff8a3d); }
+.ico-user      { background: linear-gradient(135deg,#2eb1ff,#3a78ff); }
+.ico-gear      { background: linear-gradient(135deg,#a0a0a0,#5e5e5e); }
+.ico-info      { background: linear-gradient(135deg,#34d399,#10b981); }
+.ico-premium   { background: linear-gradient(135deg,#ffd66e,#ff8a3d); }
+
+/* ---------- Хаб-окна (Настройки / О приложении) ---------- */
+.hub-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10500;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+}
+.hub-overlay.active { display: flex; opacity: 1; }
+
+.hub-window {
+    width: 100%;
+    max-width: 460px;
+    max-height: 86vh;
+    background: var(--rd-bg-elev-2);
+    backdrop-filter: var(--rd-blur);
+    -webkit-backdrop-filter: var(--rd-blur);
+    border: 1px solid var(--rd-stroke-strong);
+    border-radius: 22px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.24s ease;
+}
+.hub-overlay.active .hub-window { transform: translateY(0) scale(1); }
+
+.hub-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--rd-stroke);
+}
+.hub-back {
+    background: transparent;
+    border: none;
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--rd-text);
+    cursor: pointer;
+}
+.hub-back:hover { background: rgba(255,255,255,0.06); }
+.hub-title {
+    font-family: var(--font-geologica);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    flex: 1;
+}
+.hub-close {
+    background: transparent;
+    border: none;
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    color: var(--rd-text-2);
+    cursor: pointer;
+    font-size: 22px;
+}
+.hub-close:hover { background: rgba(255,255,255,0.06); color: var(--rd-text); }
+
+.hub-body {
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* На мобилке хаб занимает весь экран; .hub-back показываем, .hub-close скрываем */
+@media (max-width: 767px) {
+    .hub-overlay { padding: 0; }
+    .hub-window {
+        max-width: 100%;
+        max-height: 100%;
+        height: 100%;
+        border-radius: 0;
+        border: none;
+    }
+    .hub-close { display: none; }
+}
+@media (min-width: 768px) {
+    .hub-back { display: none; }
+}

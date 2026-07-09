@@ -1,0 +1,650 @@
+/* ============================================================
+   CraneApp — Premium Design System
+   ============================================================ */
+
+:root {
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 22px;
+    --radius-xl: 28px;
+    --shadow-xs: 0 1px 4px rgba(0,0,0,0.2);
+    --shadow-sm: 0 2px 12px rgba(0,0,0,0.25);
+    --shadow-md: 0 6px 24px rgba(0,0,0,0.35);
+    --shadow-lg: 0 12px 48px rgba(0,0,0,0.5);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.015em;
+    animation: pageIn 0.22s var(--ease) both;
+}
+@keyframes pageIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Хедер ─────────────────────────────────────────────────── */
+.header, .top-header, .chat-header {
+    background: rgba(8,8,8,0.82) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+}
+[data-theme="light"] .header,
+[data-theme="light"] .top-header,
+[data-theme="light"] .chat-header {
+    background: rgba(252,252,252,0.88) !important;
+    border-bottom: 1px solid rgba(0,0,0,0.07) !important;
+}
+.header-title, .top-title, .chat-header-name {
+    font-weight: 700 !important;
+    font-size: 17px !important;
+    letter-spacing: -0.03em !important;
+}
+
+/* ── Кнопка назад ──────────────────────────────────────────── */
+.back-btn {
+    background: rgba(255,255,255,0.07) !important;
+    border-radius: 50% !important;
+    transition: background 0.15s, transform 0.12s var(--spring) !important;
+}
+.back-btn:active { background: rgba(255,255,255,0.14) !important; transform: scale(0.88) !important; }
+[data-theme="light"] .back-btn { background: rgba(0,0,0,0.05) !important; }
+
+/* ── Settings groups ───────────────────────────────────────── */
+.settings-group {
+    background: rgba(255,255,255,0.04) !important;
+    border-radius: var(--radius-md) !important;
+    margin: 0 12px 10px !important;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    box-shadow: var(--shadow-xs) !important;
+}
+[data-theme="light"] .settings-group {
+    background: #fff !important;
+    border: 1px solid rgba(0,0,0,0.06) !important;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06) !important;
+}
+
+.settings-item {
+    padding: 13px 16px !important;
+    transition: background 0.12s !important;
+    position: relative;
+}
+.settings-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 56px; right: 0;
+    height: 1px;
+    background: rgba(255,255,255,0.05);
+}
+[data-theme="light"] .settings-item:not(:last-child)::after {
+    background: rgba(0,0,0,0.06);
+}
+.settings-item:active { background: rgba(255,255,255,0.06) !important; }
+[data-theme="light"] .settings-item:active { background: rgba(0,0,0,0.04) !important; }
+
+/* ── Settings icon ─────────────────────────────────────────── */
+.settings-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    transition: transform 0.18s var(--spring) !important;
+}
+.settings-item:active .settings-icon { transform: scale(1.12) !important; }
+
+/* ── Settings label / value / arrow ───────────────────────── */
+.settings-label { font-size: 15px !important; font-weight: 500 !important; letter-spacing: -0.01em !important; }
+.settings-value { font-size: 14px !important; color: var(--text-secondary) !important; }
+.settings-arrow { color: rgba(255,255,255,0.2) !important; font-size: 20px !important; font-weight: 300 !important; }
+[data-theme="light"] .settings-arrow { color: rgba(0,0,0,0.2) !important; }
+
+/* ── Section headers ───────────────────────────────────────── */
+.section-header {
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    padding: 20px 20px 6px !important;
+    color: var(--text-muted) !important;
+}
+
+/* ── Generic sections ──────────────────────────────────────── */
+.section {
+    background: rgba(255,255,255,0.04) !important;
+    border-radius: var(--radius-md) !important;
+    margin: 0 12px 10px !important;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+}
+[data-theme="light"] .section {
+    background: #fff !important;
+    border: 1px solid rgba(0,0,0,0.06) !important;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06) !important;
+}
+.item { padding: 14px 16px !important; transition: background 0.12s !important; }
+.item:active { background: rgba(255,255,255,0.06) !important; }
+[data-theme="light"] .item:active { background: rgba(0,0,0,0.04) !important; }
+.item-title { font-size: 15px !important; font-weight: 500 !important; }
+.item-subtitle { font-size: 12.5px !important; }
+.item-icon { border-radius: 8px !important; }
+.item-arrow { color: rgba(255,255,255,0.2) !important; font-size: 20px !important; }
+[data-theme="light"] .item-arrow { color: rgba(0,0,0,0.2) !important; }
+
+/* ── Toggle switch ─────────────────────────────────────────── */
+.toggle-switch {
+    width: 51px !important; height: 31px !important;
+    border-radius: 16px !important;
+    background: rgba(255,255,255,0.12) !important;
+    transition: background 0.22s var(--ease) !important;
+}
+[data-theme="light"] .toggle-switch { background: rgba(0,0,0,0.12) !important; }
+.toggle-switch.active { background: var(--accent-color, #FF007F) !important; }
+.toggle-switch::after {
+    width: 27px !important; height: 27px !important;
+    top: 2px !important; left: 2px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+    transition: transform 0.28s var(--spring) !important;
+}
+.toggle-switch.active::after { transform: translateX(20px) !important; }
+
+/* ── Profile section ───────────────────────────────────────── */
+.profile-section {
+    padding: 28px 20px 20px !important;
+    background: linear-gradient(160deg, rgba(255,0,127,0.1) 0%, rgba(157,0,255,0.05) 50%, transparent 100%) !important;
+}
+.profile-name { font-size: 22px !important; font-weight: 700 !important; letter-spacing: -0.03em !important; }
+.profile-username { font-size: 14px !important; opacity: 0.6 !important; }
+.profile-avatar {
+    width: 64px !important; height: 64px !important;
+    border-radius: 50% !important;
+    box-shadow: 0 4px 20px rgba(255,0,127,0.3) !important;
+    border: 2px solid rgba(255,255,255,0.1) !important;
+    transition: transform 0.2s var(--spring) !important;
+}
+.profile-avatar:active { transform: scale(0.93) !important; }
+.profile-status {
+    font-size: 12px !important;
+    color: #00E676 !important;
+    font-weight: 500 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+.profile-status::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #00E676;
+    display: inline-block;
+    animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.75)} }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.save-btn, .btn-primary {
+    border-radius: var(--radius-md) !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em !important;
+    box-shadow: 0 4px 20px rgba(255,0,127,0.35) !important;
+    transition: transform 0.15s var(--spring), box-shadow 0.15s !important;
+}
+.save-btn:active, .btn-primary:active {
+    transform: scale(0.96) !important;
+    box-shadow: 0 2px 10px rgba(255,0,127,0.2) !important;
+}
+.danger-btn, .delete-btn, .terminate-btn {
+    border-radius: var(--radius-md) !important;
+    font-weight: 600 !important;
+    transition: transform 0.12s, opacity 0.12s !important;
+}
+.danger-btn:active, .delete-btn:active { transform: scale(0.97) !important; opacity: 0.85 !important; }
+.logout-btn {
+    border-radius: var(--radius-md) !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.01em !important;
+    box-shadow: 0 4px 20px rgba(255,75,75,0.3) !important;
+}
+.back-to-chats-btn {
+    border-radius: var(--radius-md) !important;
+    margin: 8px 12px !important;
+    font-weight: 600 !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(255,255,255,0.04) !important;
+}
+
+/* ── Input fields ──────────────────────────────────────────── */
+.input-field, .modal-field input, .create-pack-input, .create-pack-textarea {
+    border-radius: var(--radius-sm) !important;
+    background: rgba(255,255,255,0.06) !important;
+    border: 1.5px solid rgba(255,255,255,0.08) !important;
+    color: #fff !important;
+    transition: border-color 0.18s, box-shadow 0.18s !important;
+}
+.input-field:focus, .modal-field input:focus {
+    border-color: var(--accent-color, #FF007F) !important;
+    box-shadow: 0 0 0 3px rgba(255,0,127,0.15) !important;
+    outline: none !important;
+}
+[data-theme="light"] .input-field,
+[data-theme="light"] .modal-field input {
+    background: rgba(0,0,0,0.04) !important;
+    border-color: rgba(0,0,0,0.1) !important;
+    color: #000 !important;
+}
+.field-input { border: none !important; outline: none !important; background: transparent !important; }
+
+/* ── Message input ─────────────────────────────────────────── */
+#msgInput, .msg-input {
+    border-radius: 24px !important;
+    background: rgba(255,255,255,0.07) !important;
+    border: 1.5px solid rgba(255,255,255,0.08) !important;
+    padding: 11px 18px !important;
+    font-size: 15px !important;
+    transition: border-color 0.18s, background 0.18s !important;
+}
+#msgInput:focus, .msg-input:focus {
+    border-color: var(--accent-color, #FF007F) !important;
+    background: rgba(255,255,255,0.1) !important;
+    outline: none !important;
+}
+[data-theme="light"] #msgInput,
+[data-theme="light"] .msg-input {
+    background: rgba(0,0,0,0.05) !important;
+    border-color: rgba(0,0,0,0.1) !important;
+}
+
+/* ── Send button ───────────────────────────────────────────── */
+.send-btn {
+    border-radius: 50% !important;
+    width: 44px !important; height: 44px !important;
+    box-shadow: 0 3px 14px rgba(255,0,127,0.4) !important;
+    transition: transform 0.15s var(--spring), box-shadow 0.15s !important;
+}
+.send-btn:active { transform: scale(0.88) !important; }
+
+/* ── Chat items ────────────────────────────────────────────── */
+.chat-item {
+    border-radius: var(--radius-sm) !important;
+    margin: 1px 8px !important;
+    padding: 10px 12px !important;
+    transition: background 0.12s !important;
+}
+.chat-item:active { background: rgba(255,255,255,0.06) !important; transform: scale(0.99) !important; }
+
+/* ── Messages ──────────────────────────────────────────────── */
+.message {
+    border-radius: 18px !important;
+    box-shadow: var(--shadow-xs) !important;
+    animation: msgIn 0.22s var(--spring) both;
+}
+.message.outgoing { border-bottom-right-radius: 5px !important; }
+.message.incoming { border-bottom-left-radius: 5px !important; }
+@keyframes msgIn { from{opacity:0;transform:scale(0.92) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+/* ── Modals ────────────────────────────────────────────────── */
+.modal, #folderModal, .picker-modal {
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+    box-shadow: var(--shadow-lg) !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+.modal-header, .picker-header {
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+.modal-title, .picker-title { font-weight: 700 !important; letter-spacing: -0.02em !important; }
+
+/* ── Toast ─────────────────────────────────────────────────── */
+.toast {
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-md) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-left-width: 3px !important;
+    animation: toastIn 0.3s var(--spring) both !important;
+}
+@keyframes toastIn { from{opacity:0;transform:translateY(20px) scale(0.92)} to{opacity:1;transform:translateY(0) scale(1)} }
+
+/* ── Tab bar ───────────────────────────────────────────────── */
+.tab-bar {
+    background: rgba(8,8,8,0.88) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+}
+[data-theme="light"] .tab-bar {
+    background: rgba(252,252,252,0.92) !important;
+    border-top: 1px solid rgba(0,0,0,0.07) !important;
+}
+.tab-item { transition: transform 0.15s var(--spring) !important; }
+.tab-item:active { transform: scale(0.88) !important; }
+.tab-item.active .tab-icon { filter: drop-shadow(0 0 6px var(--accent-color, #FF007F)); }
+
+/* ── Side menu ─────────────────────────────────────────────── */
+.side-menu {
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0 !important;
+    box-shadow: var(--shadow-lg) !important;
+    background: rgba(12,12,12,0.97) !important;
+    backdrop-filter: blur(20px) !important;
+}
+[data-theme="light"] .side-menu { background: rgba(250,250,250,0.97) !important; }
+
+/* ── Context menus ─────────────────────────────────────────── */
+.message-context-menu, .chat-context-menu, .dropdown-menu {
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-lg) !important;
+    backdrop-filter: blur(16px) !important;
+    background: rgba(22,22,22,0.95) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    overflow: hidden;
+    animation: contextIn 0.18s var(--spring) both;
+}
+@keyframes contextIn { from{opacity:0;transform:scale(0.88) translateY(-6px)} to{opacity:1;transform:scale(1) translateY(0)} }
+[data-theme="light"] .message-context-menu,
+[data-theme="light"] .chat-context-menu,
+[data-theme="light"] .dropdown-menu {
+    background: rgba(250,250,250,0.97) !important;
+    border-color: rgba(0,0,0,0.08) !important;
+}
+
+/* ── Search ────────────────────────────────────────────────── */
+.search-input, .modal-search-input {
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.07) !important;
+    border: none !important;
+    padding: 10px 16px !important;
+    transition: background 0.15s !important;
+}
+.search-input:focus, .modal-search-input:focus {
+    background: rgba(255,255,255,0.11) !important;
+    outline: none !important;
+}
+
+/* ── Find users btn ────────────────────────────────────────── */
+.find-users-btn {
+    border-radius: var(--radius-md) !important;
+    background: rgba(255,0,127,0.08) !important;
+    border: 1px solid rgba(255,0,127,0.18) !important;
+    color: var(--accent-color, #FF007F) !important;
+    font-weight: 600 !important;
+    margin: 6px 12px !important;
+    padding: 12px 16px !important;
+    transition: background 0.15s, transform 0.12s var(--spring) !important;
+}
+.find-users-btn:active { background: rgba(255,0,127,0.14) !important; transform: scale(0.98) !important; }
+
+/* ── Pinned / Reply bars ───────────────────────────────────── */
+.pinned-message-bar {
+    border-left: 3px solid var(--accent-color, #FF007F) !important;
+    background: rgba(255,0,127,0.05) !important;
+}
+.reply-bar { border-left: 3px solid var(--accent-color, #FF007F) !important; background: rgba(255,0,127,0.05) !important; }
+
+/* ── Scroll to bottom ──────────────────────────────────────── */
+.scroll-bottom-btn {
+    border-radius: 50% !important;
+    box-shadow: var(--shadow-md) !important;
+    background: rgba(20,20,20,0.92) !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    transition: transform 0.15s var(--spring) !important;
+}
+.scroll-bottom-btn:active { transform: scale(0.88) !important; }
+
+/* ── Media preview ─────────────────────────────────────────── */
+.media-preview-overlay {
+    background: rgba(0,0,0,0.94) !important;
+    backdrop-filter: blur(24px) !important;
+}
+.media-preview-btn {
+    border-radius: var(--radius-sm) !important;
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+/* ── Cards ─────────────────────────────────────────────────── */
+.device-card, .storage-card, .info-card {
+    border-radius: var(--radius-md) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    box-shadow: var(--shadow-xs) !important;
+}
+[data-theme="light"] .device-card,
+[data-theme="light"] .storage-card,
+[data-theme="light"] .info-card {
+    border-color: rgba(0,0,0,0.06) !important;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06) !important;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); }
+
+/* ── Color options ─────────────────────────────────────────── */
+.color-option { box-shadow: var(--shadow-xs) !important; transition: transform 0.15s var(--spring) !important; }
+.color-option:hover { transform: scale(1.12) !important; }
+.color-option.selected { box-shadow: 0 0 0 3px var(--bg-secondary,#121212), 0 0 0 5px var(--text-primary,#fff) !important; transform: scale(1.08) !important; }
+
+/* ── Confirm modal ─────────────────────────────────────────── */
+.confirm-modal { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-lg) !important; padding: 24px !important; }
+
+/* ── Emoji picker ──────────────────────────────────────────── */
+.emoji-picker { border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important; box-shadow: var(--shadow-lg) !important; border: 1px solid rgba(255,255,255,0.06) !important; }
+
+/* ── Storage bar ───────────────────────────────────────────── */
+.storage-bar { border-radius: 6px !important; height: 10px !important; }
+.storage-fill { border-radius: 6px !important; background: var(--accent-color, #FF007F) !important; }
+
+/* ── Range slider ──────────────────────────────────────────── */
+input[type="range"] { height: 5px !important; border-radius: 3px !important; cursor: pointer; }
+input[type="range"]::-webkit-slider-thumb { width: 22px !important; height: 22px !important; box-shadow: var(--shadow-sm) !important; transition: transform 0.15s var(--spring) !important; }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.25) !important; }
+
+/* ── Sync indicator ────────────────────────────────────────── */
+.sync-indicator { font-size: 11px !important; padding: 3px 8px !important; border-radius: 20px !important; background: rgba(255,255,255,0.05) !important; }
+
+/* ── Create folder btn ─────────────────────────────────────── */
+.create-folder-btn { border-radius: var(--radius-md) !important; border: 1.5px dashed rgba(255,255,255,0.1) !important; margin: 8px 12px !important; }
+
+/* ── Unread badge ──────────────────────────────────────────── */
+.unread-badge { border-radius: 10px !important; font-size: 11px !important; font-weight: 700 !important; min-width: 20px !important; height: 20px !important; }
+
+/* ── Forward preview ───────────────────────────────────────── */
+.forward-preview { border-radius: var(--radius-sm) !important; border-left: 3px solid var(--accent-color,#FF007F) !important; background: rgba(255,0,127,0.05) !important; padding: 10px 14px !important; margin: 8px 16px !important; }
+
+/* ── Twemoji — iOS-style эмодзи ────────────────────────────── */
+img.emoji {
+    height: 1.2em !important;
+    width: 1.2em !important;
+    vertical-align: -0.2em !important;
+    display: inline-block !important;
+    pointer-events: none !important;
+}
+/* В сообщениях чуть крупнее */
+.message img.emoji, .message-text img.emoji { height: 1.4em !important; width: 1.4em !important; }
+/* В инпуте не трогаем */
+#msgInput img.emoji, .msg-input img.emoji { display: none !important; }
+
+/* ── Время в сообщениях ────────────────────────────────────── */
+.msg-time, .message-time, .message-meta {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif !important;
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    opacity: 0.55 !important;
+}
+
+/* ============================================================
+   UX Improvements — понятный и интуитивный интерфейс
+   ============================================================ */
+
+/* ── Крупнее базовый текст ─────────────────────────────────── */
+.settings-label, .item-title { font-size: 16px !important; }
+.settings-value, .item-subtitle { font-size: 13px !important; }
+.section-header { font-size: 12px !important; }
+
+/* ── Больше зоны нажатия ───────────────────────────────────── */
+.settings-item { min-height: 54px !important; padding: 14px 16px !important; }
+.item { min-height: 52px !important; }
+.back-btn, .add-btn, .header-btn, .modal-close {
+    min-width: 44px !important; min-height: 44px !important;
+}
+
+/* ── Стрелка → вместо › ────────────────────────────────────── */
+.settings-arrow::before { content: '›'; font-size: 22px !important; font-weight: 300 !important; }
+.settings-arrow { font-size: 0 !important; }
+.item-arrow::before { content: '›'; font-size: 22px !important; font-weight: 300 !important; }
+.item-arrow { font-size: 0 !important; }
+
+/* ── Кнопки — крупнее и заметнее ──────────────────────────── */
+.save-btn, .btn-primary {
+    font-size: 16px !important;
+    padding: 16px !important;
+    min-height: 52px !important;
+}
+.danger-btn, .delete-btn {
+    font-size: 15px !important;
+    padding: 15px !important;
+    min-height: 50px !important;
+}
+.logout-btn {
+    font-size: 16px !important;
+    padding: 16px !important;
+    min-height: 52px !important;
+}
+.back-to-chats-btn {
+    font-size: 15px !important;
+    padding: 15px !important;
+    min-height: 50px !important;
+    text-align: center !important;
+    justify-content: center !important;
+}
+
+/* ── Поле ввода сообщения — крупнее ───────────────────────── */
+#msgInput, .msg-input {
+    font-size: 16px !important;
+    min-height: 46px !important;
+}
+
+/* ── Кнопка отправки — заметнее ───────────────────────────── */
+.send-btn {
+    width: 46px !important;
+    height: 46px !important;
+    font-size: 20px !important;
+}
+
+/* ── Аватарки в чате — крупнее ─────────────────────────────── */
+.chat-header-avatar { width: 40px !important; height: 40px !important; }
+
+/* ── Имя в хедере чата ─────────────────────────────────────── */
+.chat-header-name { font-size: 17px !important; font-weight: 700 !important; }
+.chat-header-status { font-size: 12px !important; }
+
+/* ── Чат айтемы — крупнее ──────────────────────────────────── */
+.chat-item { min-height: 68px !important; padding: 12px 14px !important; }
+.chat-item-name { font-size: 16px !important; font-weight: 600 !important; }
+.chat-item-preview { font-size: 14px !important; }
+.chat-item-time { font-size: 12px !important; }
+
+/* ── Unread badge — заметнее ───────────────────────────────── */
+.unread-badge {
+    min-width: 22px !important;
+    height: 22px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 0 6px !important;
+}
+
+/* ── Таб бар — крупнее иконки и подписи ───────────────────── */
+.tab-icon { font-size: 24px !important; }
+.tab-label { font-size: 11px !important; font-weight: 500 !important; }
+.tab-item { padding: 6px 12px !important; gap: 3px !important; }
+
+/* ── Поиск — крупнее ───────────────────────────────────────── */
+.search-input, .modal-search-input {
+    font-size: 16px !important;
+    min-height: 44px !important;
+}
+
+/* ── Кнопка поиска пользователей — очень заметная ─────────── */
+.find-users-btn {
+    font-size: 15px !important;
+    min-height: 48px !important;
+    gap: 10px !important;
+}
+
+/* ── Профиль — крупнее имя ─────────────────────────────────── */
+.profile-name { font-size: 24px !important; }
+.profile-username { font-size: 15px !important; }
+
+/* ── Модальные окна — крупнее заголовок ───────────────────── */
+.modal-title, .picker-title { font-size: 18px !important; }
+
+/* ── Пикер опции — крупнее ─────────────────────────────────── */
+.picker-option { font-size: 16px !important; min-height: 52px !important; }
+.picker-option-check { font-size: 20px !important; }
+
+/* ── Язык — крупнее ────────────────────────────────────────── */
+.lang-name { font-size: 16px !important; }
+.lang-flag { font-size: 24px !important; }
+
+/* ── Устройства — крупнее ──────────────────────────────────── */
+.device-name { font-size: 16px !important; }
+.device-status { font-size: 13px !important; }
+
+/* ── Папки — крупнее ───────────────────────────────────────── */
+.folder-name { font-size: 16px !important; }
+.folder-count { font-size: 13px !important; }
+
+/* ── Кнопка создания папки — заметнее ─────────────────────── */
+.create-folder-btn {
+    font-size: 15px !important;
+    min-height: 52px !important;
+    gap: 10px !important;
+}
+
+/* ── Контекстное меню — крупнее ────────────────────────────── */
+.context-menu-item, .chat-context-item {
+    font-size: 15px !important;
+    min-height: 48px !important;
+    padding: 12px 16px !important;
+    gap: 12px !important;
+}
+
+/* ── Dropdown ──────────────────────────────────────────────── */
+.dropdown-item {
+    font-size: 15px !important;
+    min-height: 48px !important;
+    padding: 12px 16px !important;
+}
+
+/* ── Кнопка завершения сессии ──────────────────────────────── */
+.terminate-btn, .terminate-all-btn {
+    font-size: 15px !important;
+    min-height: 48px !important;
+}
+
+/* ── Активные элементы — чёткий feedback ──────────────────── */
+.settings-item:active, .item:active, .chat-item:active,
+.lang-item:active, .folder-item:active, .picker-option:active {
+    opacity: 0.75 !important;
+}
+
+/* ── Пустые состояния — понятнее ───────────────────────────── */
+.empty-state, .no-chat {
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+}
+.empty-icon, .no-chat-icon { font-size: 56px !important; margin-bottom: 16px !important; }
+.no-chat-text { font-size: 16px !important; font-weight: 500 !important; }
+
+/* ── Заблокированные — крупнее ─────────────────────────────── */

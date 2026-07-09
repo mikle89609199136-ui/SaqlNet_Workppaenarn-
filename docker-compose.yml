@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  edge:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: edge
+    ports:
+      - "3000:3000"
+    environment:
+      - EDGE_ADDR=:3000
+      - AUTH_URL=http://auth:8081
+      - USER_URL=http://user:8082
+      - CHAT_URL=http://chat:8083
+      - MEDIA_URL=http://media:8084
+      - LEGACY_URL=http://legacy:3001
+      - FRONTEND_DIR=/dist
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - auth
+      - user
+      - chat
+      - media
+      - legacy
+      - nats
+    restart: unless-stopped
+    volumes:
+      - ./dist:/dist:ro
+
+  legacy:
+    build:
+      context: .
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: migrate
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=prefer
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+  auth:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: auth
+    environment:
+      - AUTH_ADDR=:8081
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=prefer
+      - REDIS_URL=redis://redis:6379
+      - CRYPTO_URL=http://crypto:5005
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      crypto:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  user:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: user
+    environment:
+      - USER_ADDR=:8082
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=prefer
+      - REDIS_URL=redis://redis:6379
+      - CRYPTO_URL=http://crypto:5005
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      crypto:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  chat:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: chat
+    environment:
+      - CHAT_ADDR=:8083
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=prefer
+      - REDIS_URL=redis://redis:6379
+      - CRYPTO_URL=http://crypto:5005
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      crypto:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  crypto:
+    build:
+      context: ./server/crypto-rust
+    ports:
+      - "5005:5005"
+    environment:
+      - CRYPTO_SIGNING_SECRET=${CRYPTO_SIGNING_SECRET}
+      - CRYPTO_ENCRYPTION_SECRET=${CRYPTO_ENCRYPTION_SECRET}
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=craneapp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d craneapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  nats:
+    image: nats:alpine
+    ports:
+      - "4222:4222"
+    restart: unless-stopped
+
+  media:
+    build:
+      context: ./backend-v2
+      args:
+        SERVICE: media
+    environment:
+      - MEDIA_ADDR=:8084
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/craneapp?sslmode=prefer
+      - CRYPTO_URL=http://crypto:5005
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=craneapp-media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
