@@ -6,5 +6,5 @@ build:
   context: .
 
 run:
-  containerPort: "3000"
+  containerPort: "8080"
   servicePort: "80"

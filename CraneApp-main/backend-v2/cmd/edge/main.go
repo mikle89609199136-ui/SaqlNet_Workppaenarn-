@@ -272,7 +272,12 @@ func frontendFallback(frontendDir, requestPath string) string {
 }
 
 func allowedOrigin(origin string) bool {
-	for _, allowed := range strings.Split(config.Value("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"), ",") {
+	allowedOrigins := config.Value("ALLOWED_ORIGINS", "")
+	if allowedOrigins == "" {
+		// ALLOWED_ORIGINS not configured — allow any origin
+		return true
+	}
+	for _, allowed := range strings.Split(allowedOrigins, ",") {
 		if strings.TrimSpace(allowed) == origin || allowed == "*" {
 			return true
 		}
