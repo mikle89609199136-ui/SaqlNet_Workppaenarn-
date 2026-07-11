@@ -33,6 +33,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
+	if chats == nil {
+		chats = []Chat{}
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
 }
 

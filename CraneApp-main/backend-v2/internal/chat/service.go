@@ -102,14 +102,16 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
 		       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
 		       COALESCE(peer.peer_id, ''),
-		       COALESCE(crs.unread_count, 0)::int,
+		       COUNT(DISTINCT m.id) FILTER (
+		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+		       )::int,
 		       lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
-		LEFT JOIN chat_read_states crs ON crs.chat_id = c.id AND crs.user_id = $1
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 		         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -134,7 +136,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		WHERE COALESCE(cs.is_archived, FALSE) = $2
 		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         crs.unread_count, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+		         lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
 	if err != nil {
@@ -161,14 +163,16 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
 		       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
 		       COALESCE(peer.peer_id, ''),
-		       COALESCE(crs.unread_count, 0)::int,
+		       COUNT(DISTINCT m.id) FILTER (
+		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+		       )::int,
 		       lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
-		LEFT JOIN chat_read_states crs ON crs.chat_id = c.id AND crs.user_id = $1
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 		         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -193,7 +197,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		WHERE c.id = $2
 		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         crs.unread_count, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+		         lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
 		return Chat{}, err
