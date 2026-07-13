@@ -707,6 +707,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		return nil, ErrForbidden
 	}
 	rows, err := s.db.QueryContext(ctx, `
+				SELECT *
+		FROM (
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.type, m.reply_to::text, m.metadata,
@@ -719,6 +721,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		WHERE m.chat_id = $1 AND m.deleted_at IS NULL
 		ORDER BY m.created_at DESC
 		LIMIT $2 OFFSET $3
+		) recent_messages
+		ORDER BY created_at ASC
 	`, chatID, limit, offset)
 	if err != nil {
 		return nil, err

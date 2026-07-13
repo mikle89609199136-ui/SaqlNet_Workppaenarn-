@@ -29,6 +29,30 @@ describe('MessageService', () => {
     expect(messages[0].content).toBe('Hello');
   });
 
+  it('returns loaded messages in chronological order', async () => {
+    const apiClient = createApiClient();
+    apiClient.get.mockImplementation(async (url) => {
+      if (url.includes('/messages/')) {
+        return {
+          data: {
+            messages: [
+              { id: 'new', chatId: 'chat-1', senderId: 'u1', type: 'text', content: 'new', createdAt: '2026-06-03T12:02:00Z' },
+              { id: 'old', chatId: 'chat-1', senderId: 'u1', type: 'text', content: 'old', createdAt: '2026-06-03T12:01:00Z' },
+            ],
+          },
+        };
+      }
+      if (url.includes('/chats/')) return { data: { chat: { type: 'private' } } };
+      return {};
+    });
+
+    const service = new MessageService(apiClient, { decryptDM: vi.fn((content) => Promise.resolve(content)) });
+
+    const messages = await service.getMessages('chat-1');
+
+    expect(messages.map((message) => message.id)).toEqual(['old', 'new']);
+  });
+
   it('unwraps the send response message payload', async () => {
     const apiClient = createApiClient();
     apiClient.post.mockResolvedValue({ data: { message: { id: 'm1', chatId: 'chat-1', senderId: 'u1', content: 'encrypted_content' } } });
