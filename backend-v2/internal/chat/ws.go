@@ -191,6 +191,8 @@ func (ws *WSServer) readPump(client *Client) {
 			chatID, _ := msg["chatId"].(string)
 			if chatID != "" {
 				content, _ := msg["content"].(string)
+				content = sanitizeMessageContent(content)
+				msg["content"] = content
 				mType, _ := msg["messageType"].(string)
 				if mType == "" {
 					mType = "text"
@@ -359,14 +361,14 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 		return
 	}
 	invite, _ := json.Marshal(map[string]interface{}{
-		"type":        "call_incoming",
-		"roomId":      roomID,
-		"kind":        strOrDefault(msg["kind"], "video"),
-		"callType":    strOrDefault(msg["callType"], "p2p"),
-		"from":        client.UserID,
-		"fromName":    msg["fromName"],
-		"fromAvatar":  msg["fromAvatar"],
-		"title":       msg["title"],
+		"type":       "call_incoming",
+		"roomId":     roomID,
+		"kind":       strOrDefault(msg["kind"], "video"),
+		"callType":   strOrDefault(msg["callType"], "p2p"),
+		"from":       client.UserID,
+		"fromName":   msg["fromName"],
+		"fromAvatar": msg["fromAvatar"],
+		"title":      msg["title"],
 	})
 	ws.sendToUser(to, invite)
 	// Store for offline delivery

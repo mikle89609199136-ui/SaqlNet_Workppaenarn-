@@ -17,20 +17,20 @@ var (
 )
 
 type Chat struct {
-	ID            string `json:"id"`
-	Type          string `json:"type"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	AvatarURL     string `json:"avatarUrl"`
-	PeerPublicKey string `json:"peerPublicKey,omitempty"`
-	PeerID        string `json:"peerId,omitempty"`
-	OwnerID       string `json:"ownerId"`
-	Role          string `json:"role"`
-	IsPinned      bool   `json:"isPinned"`
-	IsArchived    bool   `json:"isArchived"`
-	LastReadAt    string `json:"lastReadAt,omitempty"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID            string              `json:"id"`
+	Type          string              `json:"type"`
+	Title         string              `json:"title"`
+	Description   string              `json:"description"`
+	AvatarURL     string              `json:"avatarUrl"`
+	PeerPublicKey string              `json:"peerPublicKey,omitempty"`
+	PeerID        string              `json:"peerId,omitempty"`
+	OwnerID       string              `json:"ownerId"`
+	Role          string              `json:"role"`
+	IsPinned      bool                `json:"isPinned"`
+	IsArchived    bool                `json:"isArchived"`
+	LastReadAt    string              `json:"lastReadAt,omitempty"`
+	CreatedAt     string              `json:"createdAt"`
+	UpdatedAt     string              `json:"updatedAt"`
 	MemberCount   int                 `json:"memberCount"`
 	LastMessageAt string              `json:"lastMessageAt,omitempty"`
 	UnreadCount   int                 `json:"unreadCount"`
@@ -762,6 +762,8 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 }
 
 func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string) (Message, error) {
+	content = sanitizeMessageContent(content)
+
 	var role string
 	var isMuted sql.NullBool
 	err := s.db.QueryRowContext(ctx, `
@@ -838,6 +840,8 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 }
 
 func (s *Service) EditMessage(ctx context.Context, userID, messageID, content string) (Message, error) {
+	content = sanitizeMessageContent(content)
+
 	var msg Message
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
