@@ -100,7 +100,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         setEditingMessage(null);
       } else {
         const message = await services.messageService.sendMessage(chatId, content, 'text', replyToMessage?.id || null);
-        setMessages((items) => [...items, message]);
+        setMessages((items) => appendUniqueMessage(items, message));
         setReplyToMessage(null);
       }
       setDraft('');

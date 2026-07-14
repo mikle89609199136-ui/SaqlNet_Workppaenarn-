@@ -79,6 +79,41 @@ describe('ChatThreadPage', () => {
     expect(await screen.findByText('New message')).toBeInTheDocument();
   });
 
+  it('does not duplicate a sent message echoed by realtime', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([]);
+    services.messageService.sendMessage.mockResolvedValue({
+      id: 'm3',
+      chatId: 'chat-1',
+      senderId: 'u1',
+      content: 'New message',
+      timestamp: new Date('2026-06-03T12:02:00Z'),
+    });
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Team' });
+    await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'New message');
+    await user.click(screen.getByRole('button', { name: '➤' }));
+    await screen.findByText('New message');
+
+    eventBus.emit('new_message', {
+      chatId: 'chat-1',
+      message: {
+        id: 'm3',
+        chatId: 'chat-1',
+        senderId: 'u1',
+        content: 'New message',
+        createdAt: '2026-06-03T12:02:00Z',
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('New message')).toHaveLength(1);
+    });
+  });
+
   it('sends a reply with the selected message id', async () => {
     const user = userEvent.setup();
     services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
