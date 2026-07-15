@@ -36,7 +36,11 @@ vi.stubGlobal('indexedDB', {
 vi.stubGlobal('crypto', {
   subtle: {
     generateKey: vi.fn().mockResolvedValue({ privateKey: 'priv', publicKey: 'pub' }),
-    exportKey: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    exportKey: vi.fn().mockImplementation(async (format, key) => (
+      format === 'jwk'
+        ? { kty: 'EC', key }
+        : new Uint8Array([1, 2, 3])
+    )),
     importKey: vi.fn().mockResolvedValue('imported_key'),
     deriveKey: vi.fn().mockResolvedValue('shared_key'),
     encrypt: vi.fn().mockResolvedValue(new Uint8Array([4, 5, 6])),
@@ -65,6 +69,10 @@ describe('CryptoService', () => {
     await service.init();
     expect(service.privateKey).toBe('priv');
     expect(mockStore.has('signal_keypair:u1')).toBe(true);
+    expect(mockStore.get('signal_keypair:u1')).toEqual({
+      privateJwk: { kty: 'EC', key: 'priv' },
+      publicJwk: { kty: 'EC', key: 'pub' },
+    });
     expect(mockApiClient.post).toHaveBeenCalled();
   });
 
@@ -73,6 +81,30 @@ describe('CryptoService', () => {
     await service.init();
     expect(service.privateKey).toBe('existing_priv');
     expect(mockApiClient.post).toHaveBeenCalledWith('/auth/public-key', { publicKey: 'AQID' });
+  });
+
+  it('loads JWK keypairs from IndexedDB', async () => {
+    mockStore.set('signal_keypair:u1', {
+      privateJwk: { kty: 'EC', key: 'stored-private' },
+      publicJwk: { kty: 'EC', key: 'stored-public' },
+    });
+
+    await service.init();
+
+    expect(crypto.subtle.importKey).toHaveBeenCalledWith(
+      'jwk',
+      { kty: 'EC', key: 'stored-private' },
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,
+      ['deriveKey', 'deriveBits']
+    );
+    expect(crypto.subtle.importKey).toHaveBeenCalledWith(
+      'jwk',
+      { kty: 'EC', key: 'stored-public' },
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,
+      []
+    );
   });
 
   it('keeps separate Signal keys per account across logout and login', async () => {
@@ -100,10 +132,50 @@ describe('CryptoService', () => {
   it('should encrypt and decrypt DM correctly', async () => {
     await service.init();
     const encrypted = await service.encryptDM('hello', 'bW9jaw==');
-    expect(JSON.parse(encrypted).e2e).toBe(true);
+    expect(JSON.parse(encrypted)).toEqual(expect.objectContaining({
+      e2e: true,
+      senderPublicKey: 'AQID',
+    }));
     
     const decrypted = await service.decryptDM(encrypted, 'bW9jaw==');
     expect(decrypted).toBe('decrypted message');
+  });
+
+  it('uses sender public key embedded in DM payload for decryption', async () => {
+    await service.init();
+    const payload = JSON.stringify({
+      e2e: true,
+      iv: 'AQID',
+      data: 'BAUG',
+      senderPublicKey: 'c2VuZGVyLWtleQ==',
+    });
+
+    await service.decryptDM(payload, 'b2xkLXNlcnZlci1rZXk=');
+
+    expect(crypto.subtle.importKey).toHaveBeenLastCalledWith(
+      'spki',
+      expect.any(ArrayBuffer),
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,
+      []
+    );
+    const importedKeyBytes = new Uint8Array(crypto.subtle.importKey.mock.calls.at(-1)[1]);
+    expect(new TextDecoder().decode(importedKeyBytes)).toBe('sender-key');
+  });
+
+  it('can decrypt own DM payloads with the peer public key instead of embedded sender key', async () => {
+    await service.init();
+    const payload = JSON.stringify({
+      e2e: true,
+      iv: 'AQID',
+      data: 'BAUG',
+      senderPublicKey: 'bXktcHVibGljLWtleQ==',
+    });
+
+    await service.decryptDM(payload, 'cGVlci1rZXk=', { preferEmbeddedSenderKey: false });
+
+    const importedKeyBytes = new Uint8Array(crypto.subtle.importKey.mock.calls.at(-1)[1]);
+    expect(new TextDecoder().decode(importedKeyBytes)).toBe('peer-key');
   });
 
   it('should catch up MLS state if decryption fails or state is missing', async () => {

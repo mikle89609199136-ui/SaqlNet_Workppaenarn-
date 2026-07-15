@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
+import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import { Identicon } from '../common/Identicon.jsx';
 
 export function ChatsPage({ t = fallbackTranslate }) {
@@ -8,12 +9,14 @@ export function ChatsPage({ t = fallbackTranslate }) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const currentUser = useMemo(() => getCurrentUser(), []);
+  const { eventBus } = useRealtimeSocket(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     let isMounted = true;
 
     services.chatService.getChats()
+      .then((items) => Promise.all(items.map((chat) => decryptChatPreview(chat))))
       .then((items) => {
         if (!isMounted) return;
         setChats(items);
@@ -31,6 +34,49 @@ export function ChatsPage({ t = fallbackTranslate }) {
       isMounted = false;
     };
   }, [t]);
+
+  useEffect(() => {
+    const updatePreview = async (payload) => {
+      const incomingMessage = payload?.message ?? payload;
+      const chatId = payload?.chatId ?? incomingMessage?.chatId;
+      if (!chatId || !incomingMessage) return;
+
+      const previewChat = await decryptChatPreview({
+        id: chatId,
+        lastMessage: {
+          ...incomingMessage,
+          chatId,
+        },
+      });
+
+      setChats((items) => {
+        const index = items.findIndex((chat) => chat.id === chatId);
+        if (index === -1) return items;
+
+        const nextChat = {
+          ...items[index],
+          lastMessage: previewChat.lastMessage,
+          lastMessageAt: incomingMessage.createdAt || incomingMessage.timestamp || new Date().toISOString(),
+        };
+        const nextItems = [nextChat, ...items.slice(0, index), ...items.slice(index + 1)];
+        return nextItems;
+      });
+    };
+
+    const unsubscribeNew = eventBus.on('new_message', updatePreview);
+    const unsubscribeSent = eventBus.on('message:sent', updatePreview);
+    const unsubscribeRead = eventBus.on('messages:read', ({ chatId }) => {
+      setChats((items) => items.map((chat) => (
+        chat.id === chatId ? { ...chat, unreadCount: 0 } : chat
+      )));
+    });
+
+    return () => {
+      unsubscribeNew();
+      unsubscribeSent();
+      unsubscribeRead();
+    };
+  }, [eventBus]);
 
   return (
     <main className="chats-page">
@@ -120,6 +166,29 @@ function ErrorState({ message, onRetry, t }) {
       <button className="chats-retry" onClick={onRetry} type="button">{t('retry', 'Повторить')}</button>
     </div>
   );
+}
+
+async function decryptChatPreview(chat) {
+  if (!chat?.id || !chat.lastMessage || typeof chat.lastMessage === 'string') {
+    return chat;
+  }
+
+  try {
+    const message = await services.messageService.processMessageForDisplay(chat.id, {
+      ...chat.lastMessage,
+      chatId: chat.lastMessage.chatId ?? chat.id,
+    });
+    return {
+      ...chat,
+      lastMessage: {
+        ...chat.lastMessage,
+        content: message.content,
+      },
+    };
+  } catch (error) {
+    console.warn('Failed to decrypt chat preview', error);
+    return chat;
+  }
 }
 
 function getCurrentUser() {

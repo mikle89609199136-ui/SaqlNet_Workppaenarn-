@@ -32,6 +32,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         if (!isMounted) return;
         setChat(nextChat);
         setMessages(nextMessages);
+        markMessagesAsRead(chatId, nextMessages);
         setError('');
       })
       .catch((err) => {
@@ -61,6 +62,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         : Message.fromAPI(event.message);
       services.messageService.addMessageToCache(chatId, nextMessage);
       setMessages((items) => appendUniqueMessage(items, nextMessage));
+      markMessagesAsRead(chatId, [nextMessage]);
     });
 
     const unsubscribeEdited = eventBus.on('message_edited', (event) => {
@@ -82,6 +84,16 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
       unsubscribeDeleted();
     };
   }, [chatId, eventBus]);
+
+  function markMessagesAsRead(targetChatId, nextMessages) {
+    const messageIds = nextMessages
+      .filter((message) => message?.id && message.senderId !== currentUser?.id)
+      .map((message) => message.id);
+    if (messageIds.length === 0 || typeof services.messageService.markAsRead !== 'function') return;
+    services.messageService.markAsRead(targetChatId, messageIds).catch((err) => {
+      console.warn('Failed to mark messages as read', err);
+    });
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();

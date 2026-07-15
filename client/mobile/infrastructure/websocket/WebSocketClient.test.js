@@ -18,6 +18,32 @@ describe('WebSocketClient', () => {
     expect(client.buildUrl()).toBe('ws://localhost:8080/ws?token=token');
   });
 
+  it('does not create another socket while the first one is connecting', () => {
+    const OriginalWebSocket = globalThis.WebSocket;
+    const sockets = [];
+    class MockWebSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+
+      constructor(url) {
+        this.url = url;
+        this.readyState = MockWebSocket.CONNECTING;
+        this.addEventListener = vi.fn();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    const client = new WebSocketClient('ws://localhost:8080/ws');
+    const first = client.connect();
+    const second = client.connect();
+
+    expect(first).toBe(second);
+    expect(sockets).toHaveLength(1);
+
+    vi.stubGlobal('WebSocket', OriginalWebSocket);
+  });
+
   it('emits gateway messages without payload as event payload', () => {
     const client = new WebSocketClient('ws://localhost:8080/ws');
     const handler = vi.fn();

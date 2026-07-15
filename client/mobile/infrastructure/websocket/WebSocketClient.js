@@ -11,7 +11,10 @@ class WebSocketClient {
   }
 
   connect() {
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    if (
+      this.socket?.readyState === WebSocket.OPEN ||
+      this.socket?.readyState === WebSocket.CONNECTING
+    ) {
       return this.socket;
     }
 

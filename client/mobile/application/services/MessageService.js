@@ -127,7 +127,7 @@ class MessageService {
     let content = item.content;
 
     if (content) {
-      content = await this.decryptContent(chatId, content, context);
+      content = await this.decryptContent(chatId, content, context, item.senderId ?? item.sender_id);
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, { ...item, type }, context);
@@ -157,12 +157,15 @@ class MessageService {
     return this.cryptoService.encryptDM(content, chatContext.peerPublicKey);
   }
 
-  async decryptContent(chatId, content, chatContext) {
+  async decryptContent(chatId, content, chatContext, senderId = null) {
     if (!content) return content;
     if (chatContext.type === 'group') {
       return this.cryptoService.decryptGroup(chatId, content);
     }
-    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey);
+    const isOwnMessage = senderId && senderId === this.getMeId();
+    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey, {
+      preferEmbeddedSenderKey: !isOwnMessage,
+    });
   }
 
   async resolveMediaForDisplay(chatId, item, chatContext) {

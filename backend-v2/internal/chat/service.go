@@ -40,6 +40,7 @@ type Chat struct {
 type LastMessagePreview struct {
 	Content    string `json:"content"`
 	Type       string `json:"type"`
+	SenderID   string `json:"senderId,omitempty"`
 	SenderName string `json:"senderName"`
 }
 
@@ -106,7 +107,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -136,7 +137,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		WHERE COALESCE(cs.is_archived, FALSE) = $2
 		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+		         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
 	if err != nil {
@@ -167,7 +168,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -197,7 +198,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		WHERE c.id = $2
 		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+		         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -676,13 +677,13 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 	for rows.Next() {
 		var chat Chat
 		var unreadCount int
-		var lmContent, lmType, lmSender sql.NullString
+		var lmSenderID, lmContent, lmType, lmSender sql.NullString
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID,
-			&unreadCount, &lmContent, &lmType, &lmSender,
+			&unreadCount, &lmSenderID, &lmContent, &lmType, &lmSender,
 		); err != nil {
 			return nil, err
 		}
@@ -691,6 +692,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			chat.LastMessage = &LastMessagePreview{
 				Content:    lmContent.String,
 				Type:       lmType.String,
+				SenderID:   lmSenderID.String,
 				SenderName: lmSender.String,
 			}
 		}

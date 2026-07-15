@@ -12,9 +12,17 @@ import UserService from './UserService.js';
 
 const cryptoService = new CryptoService(apiClient);
 if (typeof window !== 'undefined') {
-  window.addEventListener('craneapp:auth-session-saved', () => {
+  const initCryptoForCurrentSession = () => {
+    if (!window.localStorage.getItem('craneapp_auth_token')) return;
+    if (!window.localStorage.getItem('craneapp_user_data')) return;
     cryptoService.init();
+  };
+
+  window.addEventListener('craneapp:auth-session-saved', () => {
+    initCryptoForCurrentSession();
   });
+
+  window.setTimeout(initCryptoForCurrentSession, 0);
 }
 
 export const services = {

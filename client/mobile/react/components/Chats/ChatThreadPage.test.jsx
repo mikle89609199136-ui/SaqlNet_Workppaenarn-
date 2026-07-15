@@ -15,6 +15,7 @@ vi.mock('../../../application/services/serviceContainer.js', () => ({
       deleteMessage: vi.fn(),
       editMessage: vi.fn(),
       getMessages: vi.fn(),
+      markAsRead: vi.fn(),
       reactToMessage: vi.fn(),
       sendMessage: vi.fn(),
     },
@@ -39,7 +40,11 @@ vi.mock('react-router-dom', () => ({
 
 describe('ChatThreadPage', () => {
   beforeEach(() => {
+    eventBus.clear();
     localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan' }));
+    Object.values(services.chatService).forEach((mock) => mock.mockReset?.());
+    Object.values(services.messageService).forEach((mock) => mock.mockReset?.());
+    services.messageService.markAsRead.mockResolvedValue({ success: true });
   });
 
   it('renders chat messages', async () => {
@@ -54,6 +59,21 @@ describe('ChatThreadPage', () => {
     expect(await screen.findByRole('heading', { name: 'Team' })).toBeInTheDocument();
     expect(screen.getByText('Hello')).toBeInTheDocument();
     expect(screen.getByText('Hi')).toBeInTheDocument();
+  });
+
+  it('marks loaded incoming messages as read', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u2', content: 'Unread', timestamp: new Date('2026-06-03T12:00:00Z') },
+      { id: 'm2', senderId: 'u1', content: 'Own', timestamp: new Date('2026-06-03T12:01:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Unread');
+    await waitFor(() => {
+      expect(services.messageService.markAsRead).toHaveBeenCalledWith('chat-1', ['m1']);
+    });
   });
 
   it('sends a text message through the message service', async () => {
@@ -222,6 +242,7 @@ describe('ChatThreadPage', () => {
 
     expect(await screen.findByText('Realtime hello')).toBeInTheDocument();
     expect(services.messageService.addMessageToCache).toHaveBeenCalled();
+    expect(services.messageService.markAsRead).toHaveBeenCalledWith('chat-1', ['m4']);
   });
 
   it('ignores incoming realtime messages for another chat', async () => {

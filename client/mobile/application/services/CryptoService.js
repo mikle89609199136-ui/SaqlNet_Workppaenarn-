@@ -1,3 +1,5 @@
+const E2E_UNAVAILABLE_MESSAGE = '🔒 [E2E недоступно: нужен HTTPS или localhost]';
+
 class CryptoService {
   constructor(apiClient) {
     this.apiClient = apiClient;
@@ -13,6 +15,10 @@ class CryptoService {
   async init() {
     const accountId = this.getAccountId();
     if (!accountId) return;
+    if (!this.hasWebCrypto()) {
+      console.warn('🔐 Crypto: WebCrypto is unavailable. Open the app via HTTPS or localhost for E2E.');
+      return;
+    }
     if (this.ready && this.accountId === accountId) {
       await this.uploadPublicKey();
       return;
@@ -22,8 +28,7 @@ class CryptoService {
       this.accountId = accountId;
       const storedKeys = await this.dbGet(this.keypairKey());
       if (storedKeys) {
-        this.privateKey = storedKeys.privateKey;
-        this.publicKey = storedKeys.publicKey;
+        await this.loadStoredKeypair(storedKeys);
         await this.uploadPublicKey();
         console.log('🔐 Crypto: Loaded existing keypair');
       } else {
@@ -51,6 +56,10 @@ class CryptoService {
 
   groupStateKey(chatId) {
     return `mls_state:${this.accountId}:${chatId}`;
+  }
+
+  hasWebCrypto() {
+    return Boolean(globalThis.crypto?.subtle);
   }
 
   // --- IndexedDB ---
@@ -104,6 +113,29 @@ class CryptoService {
   }
 
   // --- E2E Keys ---
+  async loadStoredKeypair(storedKeys) {
+    if (storedKeys.privateJwk && storedKeys.publicJwk) {
+      this.privateKey = await crypto.subtle.importKey(
+        'jwk',
+        storedKeys.privateJwk,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveKey', 'deriveBits']
+      );
+      this.publicKey = await crypto.subtle.importKey(
+        'jwk',
+        storedKeys.publicJwk,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        []
+      );
+      return;
+    }
+
+    this.privateKey = storedKeys.privateKey;
+    this.publicKey = storedKeys.publicKey;
+  }
+
   async generateAndStoreKeys() {
     const pair = await crypto.subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
@@ -112,16 +144,23 @@ class CryptoService {
     );
     this.privateKey = pair.privateKey;
     this.publicKey = pair.publicKey;
-    await this.dbSet(this.keypairKey(), pair);
+    await this.dbSet(this.keypairKey(), {
+      privateJwk: await crypto.subtle.exportKey('jwk', pair.privateKey),
+      publicJwk: await crypto.subtle.exportKey('jwk', pair.publicKey),
+    });
     await this.uploadPublicKey();
   }
 
   async uploadPublicKey() {
-    if (!this.publicKey) return;
+    if (!this.publicKey || !this.hasWebCrypto()) return;
     const pubRaw = await crypto.subtle.exportKey('spki', this.publicKey);
     const pubB64 = this.bufToB64(pubRaw);
     try {
       await this.apiClient.post('/auth/public-key', { publicKey: pubB64 });
+      console.debug('🔐 Crypto: public key uploaded', {
+        accountId: this.accountId,
+        keyFp: await this.publicKeyFingerprint(pubB64),
+      });
     } catch (e) {
       console.error('Failed to upload public key', e);
     }
@@ -129,9 +168,11 @@ class CryptoService {
 
   // --- Encryption/Decryption ---
   async encryptDM(content, recipientPubKeyB64) {
-    if (!this.ready) await this.init();
     if (!content) return content;
     if (!recipientPubKeyB64) return content; // Fallback if no key
+    if (!this.hasWebCrypto()) return content;
+    if (!this.ready) await this.init();
+    if (!this.privateKey) return content;
     
     // Simplistic mock of Signal/ECDH for demo purposes based on legacy
     try {
@@ -151,11 +192,17 @@ class CryptoService {
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const enc = new TextEncoder().encode(content);
       const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sharedKey, enc);
+      const senderPublicKey = await this.exportPublicKey();
+      const senderKeyFp = await this.publicKeyFingerprint(senderPublicKey);
+      const recipientKeyFp = await this.publicKeyFingerprint(recipientPubKeyB64);
       
       return JSON.stringify({
         e2e: true,
         iv: this.bufToB64(iv),
-        data: this.bufToB64(ciphertext)
+        data: this.bufToB64(ciphertext),
+        senderPublicKey,
+        senderKeyFp,
+        recipientKeyFp,
       });
     } catch (e) {
       console.warn('E2E Encrypt failed:', e);
@@ -164,6 +211,9 @@ class CryptoService {
   }
 
   async deriveDMKey(peerPubKeyB64, usages) {
+    if (!this.hasWebCrypto()) {
+      throw new Error('WebCrypto is unavailable. Open the app via HTTPS or localhost for E2E.');
+    }
     if (!this.ready) await this.init();
     if (!peerPubKeyB64) {
       throw new Error('Missing peer public key for E2E media encryption');
@@ -184,16 +234,22 @@ class CryptoService {
     );
   }
 
-  async decryptDM(payloadStr, senderPubKeyB64) {
-    if (!this.ready) await this.init();
+  async decryptDM(payloadStr, senderPubKeyB64, options = {}) {
     try {
       if (!payloadStr.startsWith('{')) return payloadStr; // not json
       const payload = JSON.parse(payloadStr);
       if (!payload.e2e || !payload.iv || !payload.data) return payloadStr;
-      if (!senderPubKeyB64) return '🔒 [Отсутствует публичный ключ отправителя]';
+      if (!this.hasWebCrypto()) return E2E_UNAVAILABLE_MESSAGE;
+      if (!this.ready) await this.init();
+      if (!this.privateKey) return E2E_UNAVAILABLE_MESSAGE;
+      const preferEmbeddedSenderKey = options.preferEmbeddedSenderKey !== false;
+      const senderKey = preferEmbeddedSenderKey
+        ? (payload.senderPublicKey || senderPubKeyB64)
+        : senderPubKeyB64;
+      if (!senderKey) return '🔒 [Отсутствует публичный ключ отправителя]';
 
       const peerKey = await crypto.subtle.importKey(
-        'spki', this.b64ToBuf(senderPubKeyB64),
+        'spki', this.b64ToBuf(senderKey),
         { name: 'ECDH', namedCurve: 'P-256' },
         true, []
       );
@@ -213,9 +269,41 @@ class CryptoService {
 
       return new TextDecoder().decode(decrypted);
     } catch (e) {
-      console.warn('E2E Decrypt failed:', e);
+      console.warn('E2E Decrypt failed:', e, await this.decryptDebugInfo(payloadStr, senderPubKeyB64, options));
       return '🔒 [Ошибка расшифровки E2E]';
     }
+  }
+
+  async exportPublicKey() {
+    if (!this.publicKey || !this.hasWebCrypto()) return null;
+    const pubRaw = await crypto.subtle.exportKey('spki', this.publicKey);
+    return this.bufToB64(pubRaw);
+  }
+
+  async publicKeyFingerprint(publicKeyB64) {
+    if (!publicKeyB64 || !globalThis.crypto?.subtle?.digest) return null;
+    const hash = await crypto.subtle.digest('SHA-256', this.b64ToBuf(publicKeyB64));
+    return this.bufToB64(hash).slice(0, 12);
+  }
+
+  async localPublicKeyFingerprint() {
+    return this.publicKeyFingerprint(await this.exportPublicKey());
+  }
+
+  async decryptDebugInfo(payloadStr, senderPubKeyB64, options = {}) {
+    let payload = {};
+    try {
+      payload = JSON.parse(payloadStr);
+    } catch (_error) {}
+
+    return {
+      accountId: this.accountId || null,
+      preferEmbeddedSenderKey: options.preferEmbeddedSenderKey !== false,
+      localPublicKeyFp: await this.localPublicKeyFingerprint(),
+      payloadRecipientKeyFp: payload.recipientKeyFp || null,
+      payloadSenderKeyFp: payload.senderKeyFp || null,
+      fallbackPeerKeyFp: await this.publicKeyFingerprint(senderPubKeyB64),
+    };
   }
 
   // --- MLS Groups ---
