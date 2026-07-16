@@ -17,12 +17,32 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [typingUserId, setTypingUserId] = useState(null);
+  const [actionMenu, setActionMenu] = useState(null);
   const currentUser = useMemo(() => getCurrentUser(), []);
   const bottomRef = useRef(null);
   const lastTypingSentAtRef = useRef(0);
   const typingTimeoutRef = useRef(null);
   const { eventBus, socket } = useRealtimeSocket(Boolean(chatId));
   const { initiateCall } = useCall();
+
+  useEffect(() => {
+    if (!actionMenu) return undefined;
+
+    const closeActionMenu = () => setActionMenu(null);
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') closeActionMenu();
+    };
+
+    window.addEventListener('click', closeActionMenu);
+    window.addEventListener('scroll', closeActionMenu, true);
+    window.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      window.removeEventListener('click', closeActionMenu);
+      window.removeEventListener('scroll', closeActionMenu, true);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [actionMenu]);
 
   useEffect(() => {
     let isMounted = true;
@@ -209,6 +229,31 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
     }
   }
 
+  function openMessageActions(message, rect) {
+    const menuWidth = 232;
+    const menuHeight = 150;
+    const gap = 12;
+    const viewportWidth = window.innerWidth || menuWidth;
+    const viewportHeight = window.innerHeight || menuHeight;
+    const isMine = message.senderId === currentUser?.id;
+    const sideX = isMine ? rect.left - menuWidth - gap : rect.right + gap;
+    const fallbackX = isMine ? rect.left : rect.right - menuWidth;
+    const preferredX = sideX >= 8 && sideX + menuWidth <= viewportWidth - 8 ? sideX : fallbackX;
+    const preferredY = rect.top + rect.height / 2 - menuHeight / 2;
+    const x = Math.min(Math.max(preferredX, 8), Math.max(viewportWidth - menuWidth - 8, 8));
+    const y = Math.min(Math.max(preferredY, 8), Math.max(viewportHeight - menuHeight - 8, 8));
+    setActionMenu({ messageId: message.id, x, y });
+  }
+
+  function closeMessageActions() {
+    setActionMenu(null);
+  }
+
+  function runMessageAction(action) {
+    action();
+    closeMessageActions();
+  }
+
   function startEdit(message) {
     setEditingMessage(message);
     setReplyToMessage(null);
@@ -229,6 +274,9 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   const title = chat?.name || chat?.title || t('chat', 'Чат');
   const subtitle = getChatSubtitle(chat, typingUserId, t);
   const isPeerOnline = Boolean(chat?.type === 'private' && chat?.peerIsOnline);
+  const selectedActionMessage = actionMenu
+    ? messages.find((message) => message.id === actionMenu.messageId)
+    : null;
 
   return (
     <main className="thread-page">
@@ -309,17 +357,32 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         {messages.map((message) => (
           <MessageBubble
             currentUserId={currentUser?.id}
+            isActionTarget={actionMenu?.messageId === message.id}
             key={message.id}
             message={message}
-            onDelete={handleDelete}
-            onEdit={startEdit}
-            onReact={handleReact}
-            onReply={startReply}
+            onOpenActions={openMessageActions}
             t={t}
           />
         ))}
         <div ref={bottomRef} />
       </section>
+
+      {actionMenu && selectedActionMessage ? (
+        <>
+          <div aria-hidden="true" className="message-actions-backdrop" />
+          <MessageActionsPopover
+            actionMenu={actionMenu}
+            currentUserId={currentUser?.id}
+            message={selectedActionMessage}
+            onDelete={handleDelete}
+            onEdit={startEdit}
+            onReact={handleReact}
+            onReply={startReply}
+            runAction={runMessageAction}
+            t={t}
+          />
+        </>
+      ) : null}
 
       {error && messages.length > 0 ? <div className="thread-inline-error">{error}</div> : null}
 
@@ -407,11 +470,67 @@ function renderMessageContent(content) {
   return parts.length > 0 ? parts : content;
 }
 
-function MessageBubble({ currentUserId, message, onDelete, onEdit, onReact, onReply, t }) {
+function MessageBubble({
+  currentUserId,
+  isActionTarget,
+  message,
+  onOpenActions,
+  t,
+}) {
   const mine = message.senderId === currentUserId;
+  const longPressTimerRef = useRef(null);
+  const longPressPointRef = useRef(null);
+  const suppressNextClickRef = useRef(false);
+
+  useEffect(() => () => window.clearTimeout(longPressTimerRef.current), []);
+
+  function clearLongPress() {
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }
+
+  function handleClickCapture(event) {
+    if (!suppressNextClickRef.current) return;
+    suppressNextClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleContextMenu(event) {
+    event.preventDefault();
+    onOpenActions(message, event.currentTarget.getBoundingClientRect());
+  }
+
+  function handlePointerDown(event) {
+    if (event.button !== 0 || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return;
+    const point = { x: event.clientX, y: event.clientY };
+    const rect = event.currentTarget.getBoundingClientRect();
+    longPressPointRef.current = point;
+    clearLongPress();
+    longPressTimerRef.current = window.setTimeout(() => {
+      suppressNextClickRef.current = true;
+      onOpenActions(message, rect);
+    }, 550);
+  }
+
+  function handlePointerMove(event) {
+    if (!longPressTimerRef.current || !longPressPointRef.current) return;
+    const deltaX = Math.abs(event.clientX - longPressPointRef.current.x);
+    const deltaY = Math.abs(event.clientY - longPressPointRef.current.y);
+    if (deltaX > 8 || deltaY > 8) clearLongPress();
+  }
 
   return (
-    <article className={`message-bubble ${mine ? 'is-mine' : ''}`}>
+    <article
+      className={`message-bubble ${mine ? 'is-mine' : ''} ${isActionTarget ? 'is-action-target' : ''}`}
+      onClickCapture={handleClickCapture}
+      onContextMenu={handleContextMenu}
+      onPointerCancel={clearLongPress}
+      onPointerDown={handlePointerDown}
+      onPointerLeave={clearLongPress}
+      onPointerMove={handlePointerMove}
+      onPointerUp={clearLongPress}
+    >
       {!mine ? (
         <div className="message-sender">
           {/* {message.senderFirstName || message.senderUsername || 'User'} */}
@@ -438,14 +557,39 @@ function MessageBubble({ currentUserId, message, onDelete, onEdit, onReact, onRe
         {message.isEdited ? <span>{t('edited', 'изменено')}</span> : null}
         <time>{formatMessageTime(message.timestamp || message.createdAt)}</time>
       </div>
-      <div className="message-actions">
-        <button onClick={() => onReply(message)} type="button">{t('reply', 'Ответ')}</button>
-        <button onClick={() => onReact(message, '👍')} type="button">👍</button>
-        <button onClick={() => onReact(message, '❤️')} type="button">❤️</button>
-        {mine ? <button onClick={() => onEdit(message)} type="button">{t('edit', 'Изм.')}</button> : null}
-        {mine ? <button onClick={() => onDelete(message)} type="button">{t('delete', 'Удалить')}</button> : null}
-      </div>
     </article>
+  );
+}
+
+function MessageActionsPopover({
+  actionMenu,
+  currentUserId,
+  message,
+  onDelete,
+  onEdit,
+  onReact,
+  onReply,
+  runAction,
+  t,
+}) {
+  const mine = message.senderId === currentUserId;
+
+  return (
+    <div
+      className="message-actions-popover"
+      onClick={(event) => event.stopPropagation()}
+      style={{ left: actionMenu.x, top: actionMenu.y }}
+    >
+      <div className="message-reaction-actions">
+        <button onClick={() => runAction(() => onReact(message, '👍'))} type="button">👍</button>
+        <button onClick={() => runAction(() => onReact(message, '❤️'))} type="button">❤️</button>
+      </div>
+      <div className="message-text-actions">
+        <button onClick={() => runAction(() => onReply(message))} type="button">{t('reply', 'Ответить')}</button>
+        {mine ? <button onClick={() => runAction(() => onEdit(message))} type="button">{t('edit', 'Редактировать')}</button> : null}
+        {mine ? <button onClick={() => runAction(() => onDelete(message))} type="button">{t('delete', 'Удалить')}</button> : null}
+      </div>
+    </div>
   );
 }
 

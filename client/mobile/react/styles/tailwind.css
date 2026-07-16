@@ -705,12 +705,19 @@
   .thread-messages { @apply min-h-0 overflow-y-auto flex flex-col gap-[10px]; padding: 18px 12px; }
 
   .message-bubble {
-    @apply w-fit text-white;
+    @apply relative w-fit text-white;
     max-width: min(76%,560px); padding: 9px 11px 7px;
     border-radius: 16px 16px 16px 5px; background: #202020;
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
-    &.is-mine { @apply self-end bg-[#2b77e7]; border-radius: 16px 16px 5px 16px; }
+    transition: box-shadow 0.16s ease, transform 0.16s ease, filter 0.16s ease;
+    &.is-mine { @apply self-end bg-[#2b77e7]; margin-right: 10px; border-radius: 16px 16px 5px 16px; }
+    &.is-action-target {
+      z-index: 20;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.34), 0 14px 34px rgba(0,0,0,0.32);
+      filter: brightness(1.05);
+    }
   }
+  .message-actions-backdrop { display: none; }
   .message-sender { @apply mb-[3px] text-[#f5c84b] text-xs font-extrabold; }
   .message-content { @apply whitespace-pre-wrap leading-[1.38]; overflow-wrap: anywhere; }
   .message-media { @apply block mb-[7px] rounded-[10px] object-contain; width: min(100%,360px); max-height: 360px; background: rgba(0,0,0,0.18); }
@@ -727,9 +734,46 @@
     & span { min-height: 22px; padding: 2px 7px; border-radius: 11px; background: rgba(255,255,255,0.12); font-size: 12px; &.is-mine { background: rgba(245,200,75,0.28); } }
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-[11px]; color: rgba(255,255,255,0.58); }
-  .message-actions {
-    @apply flex flex-wrap gap-[5px] mt-2;
-    & button { min-height: 26px; padding: 0 8px; border: 0; border-radius: 8px; background: rgba(255,255,255,0.12); color: #fff; font-size: 12px; cursor: pointer; }
+  .message-actions-popover {
+    @apply fixed z-[1202] flex flex-col items-stretch gap-[7px];
+    width: min(232px, calc(100vw - 16px));
+    filter: drop-shadow(0 14px 30px rgba(0,0,0,0.36));
+    & button {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.11);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    & button:hover { background: rgba(255,255,255,0.18); }
+    & button:active { transform: translateY(1px); }
+  }
+  .message-reaction-actions {
+    @apply flex items-center justify-center gap-[6px];
+    width: max-content;
+    max-width: 100%;
+    padding: 6px;
+    margin: 0 auto;
+    border-radius: 18px;
+    background: rgba(28,28,30,0.96);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    & button { width: 42px; min-height: 36px; padding: 0; font-size: 19px; }
+  }
+  .message-text-actions {
+    @apply flex flex-col items-stretch gap-[6px] rounded-[16px];
+    padding: 8px;
+    background: rgba(28,28,30,0.96);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    & button { width: 100%; min-height: 36px; }
   }
   .thread-state { @apply mx-auto max-w-[360px] text-center; padding: 28px 18px; & h2 { font-size: 20px; margin: 0 0 8px; } & p { color: rgba(255,255,255,0.58); } }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: rgba(255,75,75,0.12); color: rgba(255,255,255,0.58); }
@@ -747,6 +791,22 @@
     min-height: 34px; padding: 6px 8px 6px 11px; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.72);
     & span { @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap; }
     & button { width: 28px; min-height: 28px; border-radius: 9px; background: rgba(255,255,255,0.12); color: #fff; font-size: 18px; border: 0; }
+  }
+
+  @media (max-width: 768px) {
+    .message-actions-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 1100;
+      background: rgba(0,0,0,0.36);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .message-bubble.is-action-target {
+      z-index: 1201;
+    }
   }
   .thread-skeleton { @apply flex flex-col gap-[10px]; }
   .skeleton-message { width: 220px; }

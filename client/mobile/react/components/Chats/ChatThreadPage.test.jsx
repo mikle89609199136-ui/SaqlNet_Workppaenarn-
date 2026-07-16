@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatThreadPage } from './ChatThreadPage.jsx';
@@ -44,6 +44,10 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
   useParams: () => ({}),
 }));
+
+function openMessageActions(messageText) {
+  fireEvent.contextMenu(screen.getByText(messageText), { clientX: 120, clientY: 160 });
+}
 
 describe('ChatThreadPage', () => {
   beforeEach(() => {
@@ -233,6 +237,7 @@ describe('ChatThreadPage', () => {
     render(<ChatThreadPage chatId="chat-1" />);
 
     await screen.findByText('Original');
+    openMessageActions('Original');
     await user.click(screen.getByRole('button', { name: /ответ/i }));
     await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'Reply');
     await user.click(screen.getByRole('button', { name: '➤' }));
@@ -257,7 +262,8 @@ describe('ChatThreadPage', () => {
     render(<ChatThreadPage chatId="chat-1" />);
 
     await screen.findByText('Old text');
-    await user.click(screen.getByRole('button', { name: /изм/i }));
+    openMessageActions('Old text');
+    await user.click(screen.getByRole('button', { name: /редактировать/i }));
     await user.clear(screen.getByRole('textbox', { name: /сообщение/i }));
     await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'Updated text');
     await user.click(screen.getByRole('button', { name: '➤' }));
@@ -336,6 +342,7 @@ describe('ChatThreadPage', () => {
     render(<ChatThreadPage chatId="chat-1" />);
 
     await screen.findByText('Delete me');
+    openMessageActions('Delete me');
     await user.click(screen.getByRole('button', { name: /удалить/i }));
 
     await waitFor(() => {
@@ -357,10 +364,49 @@ describe('ChatThreadPage', () => {
     render(<ChatThreadPage chatId="chat-1" />);
 
     await screen.findByText('React here');
+    openMessageActions('React here');
     await user.click(screen.getByRole('button', { name: '👍' }));
 
     expect(await screen.findByText('👍 1')).toBeInTheDocument();
     expect(services.messageService.reactToMessage).toHaveBeenCalledWith('m1', '👍');
+  });
+
+  it('shows message actions only after a context menu interaction', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Hidden actions', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Hidden actions');
+    expect(screen.queryByRole('button', { name: /ответ/i })).not.toBeInTheDocument();
+
+    openMessageActions('Hidden actions');
+
+    expect(screen.getByRole('button', { name: /ответ/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '👍' })).toBeInTheDocument();
+  });
+
+  it('shows message actions after a long touch press', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Touch actions', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Touch actions');
+    fireEvent.pointerDown(screen.getByText('Touch actions'), {
+      button: 0,
+      clientX: 120,
+      clientY: 160,
+      pointerType: 'touch',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ответ/i })).toBeInTheDocument();
+    }, { timeout: 800 });
   });
 
   it('appends incoming realtime messages for the current chat', async () => {
