@@ -153,6 +153,11 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   }
 
   function handleComposerKeyDown(event) {
+    if (event.key === 'Escape' && (editingMessage || replyToMessage)) {
+      event.preventDefault();
+      cancelComposerMode();
+      return;
+    }
     if (event.key !== 'ArrowUp' || draft.trim() || editingMessage || replyToMessage) return;
     const lastOwnMessage = [...messages].reverse().find((message) => (
       message.senderId === currentUser?.id && !message.deletedAt

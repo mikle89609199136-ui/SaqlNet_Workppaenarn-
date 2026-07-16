@@ -304,6 +304,27 @@ describe('ChatThreadPage', () => {
     expect(input).toHaveValue('draft');
   });
 
+  it('closes composer edit mode with Escape', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.click(input);
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByText('Редактирование')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByText('Редактирование')).not.toBeInTheDocument();
+    expect(input).toHaveValue('');
+  });
+
   it('deletes own messages', async () => {
     const user = userEvent.setup();
     services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
