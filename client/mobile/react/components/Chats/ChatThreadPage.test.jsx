@@ -266,6 +266,44 @@ describe('ChatThreadPage', () => {
     expect(services.messageService.editMessage).toHaveBeenCalledWith('m1', 'Updated text');
   });
 
+  it('starts editing the last own message with ArrowUp on an empty composer', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'First own', timestamp: new Date('2026-06-03T12:00:00Z') },
+      { id: 'm2', senderId: 'u2', senderFirstName: 'Anna', content: 'Incoming', timestamp: new Date('2026-06-03T12:01:00Z') },
+      { id: 'm3', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:02:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.click(input);
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.getByText('Редактирование')).toBeInTheDocument();
+    expect(input).toHaveValue('Last own');
+  });
+
+  it('does not start editing with ArrowUp when the composer has text', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.type(input, 'draft');
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.queryByText('Редактирование')).not.toBeInTheDocument();
+    expect(input).toHaveValue('draft');
+  });
+
   it('deletes own messages', async () => {
     const user = userEvent.setup();
     services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });

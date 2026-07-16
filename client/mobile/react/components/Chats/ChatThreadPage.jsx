@@ -152,6 +152,17 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
     sendTyping();
   }
 
+  function handleComposerKeyDown(event) {
+    if (event.key !== 'ArrowUp' || draft.trim() || editingMessage || replyToMessage) return;
+    const lastOwnMessage = [...messages].reverse().find((message) => (
+      message.senderId === currentUser?.id && !message.deletedAt
+    ));
+    if (!lastOwnMessage) return;
+
+    event.preventDefault();
+    startEdit(lastOwnMessage);
+  }
+
   function sendTyping() {
     if (!chatId || !socket?.isConnected) return;
 
@@ -321,6 +332,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         <input
           aria-label={t('message', 'Сообщение')}
           onChange={handleDraftChange}
+          onKeyDown={handleComposerKeyDown}
           placeholder={t('messagePlaceholder', 'Сообщение...')}
           value={draft}
         />
