@@ -28,7 +28,9 @@ export function useRealtimeSocket(enabled = true) {
   return { eventBus, socket };
 }
 
-export function resetRealtimeSocketForTests() {
+export function disconnectRealtimeSocket() {
   sharedSocket?.disconnect();
   sharedSocket = null;
 }
+
+export const resetRealtimeSocketForTests = disconnectRealtimeSocket;

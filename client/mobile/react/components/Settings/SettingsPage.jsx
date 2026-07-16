@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
 import { ToastStack } from '../common/ToastStack.jsx';
 import { useToasts } from '../../hooks/useToasts.js';
+import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 
 export function SettingsPage({ t = (k, f) => f }) {
   const navigate = useNavigate();
@@ -62,9 +63,12 @@ export function SettingsPage({ t = (k, f) => f }) {
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem('craneapp_auth_token');
-    localStorage.removeItem('craneapp_user_data');
+  async function handleLogout() {
+    await services.authService.logout().catch(() => {
+      localStorage.removeItem('craneapp_auth_token');
+      localStorage.removeItem('craneapp_user_data');
+    });
+    disconnectRealtimeSocket();
     localStorage.removeItem('craneapp_settings');
     navigate('/login');
   }

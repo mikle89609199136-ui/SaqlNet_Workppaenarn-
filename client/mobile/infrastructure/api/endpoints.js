@@ -3,6 +3,7 @@ export const API_ENDPOINTS = {
   AUTH_VERIFY_CODE: '/auth/verify-code',
   AUTH_REGISTER: '/auth/register',
   AUTH_LOGIN: '/auth/login',
+  AUTH_LOGOUT: '/auth/logout',
   AUTH_RESEND_CODE: '/auth/resend-code',
   AUTH_VALIDATE: '/auth/validate',
   AUTH_PUBLIC_KEY: '/auth/public-key',

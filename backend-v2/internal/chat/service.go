@@ -24,6 +24,8 @@ type Chat struct {
 	AvatarURL     string              `json:"avatarUrl"`
 	PeerPublicKey string              `json:"peerPublicKey,omitempty"`
 	PeerID        string              `json:"peerId,omitempty"`
+	PeerIsOnline  bool                `json:"peerIsOnline,omitempty"`
+	PeerLastSeen  string              `json:"peerLastSeen,omitempty"`
 	OwnerID       string              `json:"ownerId"`
 	Role          string              `json:"role"`
 	IsPinned      bool                `json:"isPinned"`
@@ -100,12 +102,13 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		       CASE WHEN c.type = 'private' THEN COALESCE(peer.avatar_url, '') ELSE COALESCE(c.avatar_url, '') END,
 		       c.owner_id::text, cm.role,
 		       COALESCE(cs.is_pinned, FALSE), COALESCE(cs.is_archived, FALSE),
-		       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
-		       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
-		       COALESCE(peer.peer_id, ''),
-		       COUNT(DISTINCT m.id) FILTER (
-		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
-		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+			       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
+			       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
+			       COALESCE(peer.peer_id, ''),
+			       COALESCE(peer.is_online, FALSE), COALESCE(peer.last_seen, ''),
+			       COUNT(DISTINCT m.id) FILTER (
+			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
@@ -115,13 +118,15 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
-		         COALESCE(up.first_name, au.first_name, '') AS first_name,
-		         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
-		         COALESCE(up.avatar_url, '') AS avatar_url,
-		         au.username || '.' || au.username_discriminator::text AS display_username
-		  FROM chats.members pm
-		  JOIN auth.users au ON au.id = pm.user_id
-		  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -134,17 +139,23 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
-		WHERE COALESCE(cs.is_archived, FALSE) = $2
-		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
-		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			WHERE COALESCE(cs.is_archived, FALSE) = $2
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
+			         peer.is_online, peer.last_seen,
+			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanChats(rows)
+	chats, err := scanChats(rows)
+	if err != nil {
+		return nil, err
+	}
+	s.hydrateRealtimePresence(chats)
+	return chats, nil
 }
 
 func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) {
@@ -161,12 +172,13 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		       CASE WHEN c.type = 'private' THEN COALESCE(peer.avatar_url, '') ELSE COALESCE(c.avatar_url, '') END,
 		       c.owner_id::text, cm.role,
 		       COALESCE(cs.is_pinned, FALSE), COALESCE(cs.is_archived, FALSE),
-		       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
-		       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
-		       COALESCE(peer.peer_id, ''),
-		       COUNT(DISTINCT m.id) FILTER (
-		         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
-		           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+			       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
+			       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
+			       COALESCE(peer.peer_id, ''),
+			       COALESCE(peer.is_online, FALSE), COALESCE(peer.last_seen, ''),
+			       COUNT(DISTINCT m.id) FILTER (
+			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
@@ -176,13 +188,15 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
-		         COALESCE(up.first_name, au.first_name, '') AS first_name,
-		         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
-		         COALESCE(up.avatar_url, '') AS avatar_url,
-		         au.username || '.' || au.username_discriminator::text AS display_username
-		  FROM chats.members pm
-		  JOIN auth.users au ON au.id = pm.user_id
-		  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -195,10 +209,11 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
-		WHERE c.id = $2
-		GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
-		         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-		         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			WHERE c.id = $2
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
+			         peer.is_online, peer.last_seen,
+			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -218,7 +233,21 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			return Chat{}, err
 		}
 	}
+	if chat.Type == "private" && s.ws != nil && s.ws.IsUserConnected(chat.PeerID) {
+		chat.PeerIsOnline = true
+	}
 	return chat, nil
+}
+
+func (s *Service) hydrateRealtimePresence(chats []Chat) {
+	if s.ws == nil {
+		return
+	}
+	for i := range chats {
+		if chats[i].Type == "private" && s.ws.IsUserConnected(chats[i].PeerID) {
+			chats[i].PeerIsOnline = true
+		}
+	}
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
@@ -682,7 +711,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
-			&chat.PeerID,
+			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmSenderID, &lmContent, &lmType, &lmSender,
 		); err != nil {
 			return nil, err

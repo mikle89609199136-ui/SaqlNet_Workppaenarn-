@@ -115,7 +115,10 @@ func (h *Handler) PublicKey(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if err := h.service.SavePublicKey(r.Context(), current.ID, input.PublicKey); err != nil {
+	if err := h.service.SavePublicKey(r.Context(), current.ID, input.PublicKey); errors.Is(err, ErrUserNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_session", "authenticated user no longer exists")
+		return
+	} else if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_public_key", err.Error())
 		return
 	}

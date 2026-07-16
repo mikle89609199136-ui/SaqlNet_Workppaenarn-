@@ -16,9 +16,12 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   const [messages, setMessages] = useState([]);
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
+  const [typingUserId, setTypingUserId] = useState(null);
   const currentUser = useMemo(() => getCurrentUser(), []);
   const bottomRef = useRef(null);
-  const { eventBus } = useRealtimeSocket(Boolean(chatId));
+  const lastTypingSentAtRef = useRef(0);
+  const typingTimeoutRef = useRef(null);
+  const { eventBus, socket } = useRealtimeSocket(Boolean(chatId));
   const { initiateCall } = useCall();
 
   useEffect(() => {
@@ -78,12 +81,32 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
       setMessages((items) => items.filter((message) => message.id !== event.messageId));
     });
 
+    const handleTyping = (event) => {
+      if (event.chatId !== chatId) return;
+      const userId = event.userId || event.senderId || event.from;
+      if (!userId || userId === currentUser?.id) return;
+
+      setTypingUserId(userId);
+      setChat((currentChat) => currentChat?.type === 'private'
+        ? { ...currentChat, peerIsOnline: true }
+        : currentChat);
+      window.clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = window.setTimeout(() => {
+        setTypingUserId(null);
+      }, 3000);
+    };
+    const unsubscribeTyping = eventBus.on('typing', handleTyping);
+    const unsubscribeUserTyping = eventBus.on('user_typing', handleTyping);
+
     return () => {
       unsubscribeNew();
       unsubscribeEdited();
       unsubscribeDeleted();
+      unsubscribeTyping();
+      unsubscribeUserTyping();
+      window.clearTimeout(typingTimeoutRef.current);
     };
-  }, [chatId, eventBus]);
+  }, [chatId, currentUser?.id, eventBus]);
 
   function markMessagesAsRead(targetChatId, nextMessages) {
     const messageIds = nextMessages
@@ -121,6 +144,25 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
       setError(err.message || t('messageSendError', 'Не удалось отправить сообщение'));
     } finally {
       setIsSending(false);
+    }
+  }
+
+  function handleDraftChange(event) {
+    setDraft(event.target.value);
+    sendTyping();
+  }
+
+  function sendTyping() {
+    if (!chatId || !socket?.isConnected) return;
+
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < 1500) return;
+    lastTypingSentAtRef.current = now;
+
+    try {
+      socket.send({ type: 'typing', chatId, userId: currentUser?.id });
+    } catch (err) {
+      console.warn('Failed to send typing event', err);
     }
   }
 
@@ -169,15 +211,19 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   }
 
   const title = chat?.name || chat?.title || t('chat', 'Чат');
+  const subtitle = getChatSubtitle(chat, typingUserId, t);
+  const isPeerOnline = Boolean(chat?.type === 'private' && chat?.peerIsOnline);
 
   return (
     <main className="thread-page">
       <header className="thread-header">
         <Link className="thread-back" to="/chats" aria-label={t('back', 'Назад')}>‹</Link>
-        <div className="thread-avatar">{title.slice(0, 1).toUpperCase()}</div>
+        <div className={`thread-avatar ${isPeerOnline ? 'is-online' : ''}`}>
+          {title.slice(0, 1).toUpperCase()}
+        </div>
         <div className="thread-title-wrap" onClick={() => chat?.type === 'group' && setIsGroupInfoOpen(true)} style={{ cursor: chat?.type === 'group' ? 'pointer' : 'default' }}>
           <h1>{title}</h1>
-          <p>{chat?.type === 'group' ? t('groupChat', 'Группа') : t('privateChat', 'ЛС')}</p>
+          <p>{subtitle}</p>
         </div>
         <div className="thread-call-actions">
           <button
@@ -274,7 +320,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
         ) : null}
         <input
           aria-label={t('message', 'Сообщение')}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={handleDraftChange}
           placeholder={t('messagePlaceholder', 'Сообщение...')}
           value={draft}
         />
@@ -351,7 +397,7 @@ function MessageBubble({ currentUserId, message, onDelete, onEdit, onReact, onRe
     <article className={`message-bubble ${mine ? 'is-mine' : ''}`}>
       {!mine ? (
         <div className="message-sender">
-          {message.senderFirstName || message.senderUsername || 'User'}
+          {/* {message.senderFirstName || message.senderUsername || 'User'} */}
           {message.senderStatusEmoji ? (
             <span className="sender-status-emoji" style={{ marginLeft: 6 }}>
               {message.senderStatusEmoji}
@@ -459,6 +505,29 @@ function formatMessageTime(value) {
 function getMessagePreview(message) {
   if (!message) return '';
   return String(message.content || '').slice(0, 64);
+}
+
+function getChatSubtitle(chat, typingUserId, t) {
+  if (typingUserId) return t('typing', 'печатает...');
+  if (chat?.type === 'group') return t('groupChat', 'Группа');
+  if (chat?.peerIsOnline) return t('online', 'онлайн');
+  if (chat?.peerLastSeen) return formatLastSeen(chat.peerLastSeen, t);
+  return t('lastSeenRecently', 'был(а) недавно');
+}
+
+function formatLastSeen(value, t) {
+  if (value === 'recently') return t('lastSeenRecently', 'был(а) недавно');
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return t('lastSeenRecently', 'был(а) недавно');
+
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  const formatted = new Intl.DateTimeFormat(undefined, sameDay
+    ? { hour: '2-digit', minute: '2-digit' }
+    : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+  ).format(date);
+
+  return t('lastSeenAt', 'был(а) {time}', { time: formatted }).replace('{time}', formatted);
 }
 
 function fallbackTranslate(_key, fallback) {

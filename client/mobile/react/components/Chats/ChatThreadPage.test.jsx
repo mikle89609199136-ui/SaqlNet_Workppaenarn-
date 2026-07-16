@@ -5,6 +5,13 @@ import { ChatThreadPage } from './ChatThreadPage.jsx';
 import { services } from '../../../application/services/serviceContainer.js';
 import { eventBus } from '../../../core/EventBus.js';
 
+const realtimeMocks = vi.hoisted(() => ({
+  socket: {
+    isConnected: true,
+    send: vi.fn(),
+  },
+}));
+
 vi.mock('../../../application/services/serviceContainer.js', () => ({
   services: {
     chatService: {
@@ -23,7 +30,7 @@ vi.mock('../../../application/services/serviceContainer.js', () => ({
 }));
 
 vi.mock('../../hooks/useRealtimeSocket.js', () => ({
-  useRealtimeSocket: () => ({ eventBus, socket: null }),
+  useRealtimeSocket: () => ({ eventBus, socket: realtimeMocks.socket }),
 }));
 
 vi.mock('../Calls/CallProvider.jsx', () => ({
@@ -45,6 +52,8 @@ describe('ChatThreadPage', () => {
     Object.values(services.chatService).forEach((mock) => mock.mockReset?.());
     Object.values(services.messageService).forEach((mock) => mock.mockReset?.());
     services.messageService.markAsRead.mockResolvedValue({ success: true });
+    realtimeMocks.socket.isConnected = true;
+    realtimeMocks.socket.send.mockReset();
   });
 
   it('renders chat messages', async () => {
@@ -97,6 +106,80 @@ describe('ChatThreadPage', () => {
       expect(services.messageService.sendMessage).toHaveBeenCalledWith('chat-1', 'New message', 'text', null);
     });
     expect(await screen.findByText('New message')).toBeInTheDocument();
+  });
+
+  it('sends typing events while composing a message', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Team' });
+    await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'H');
+
+    expect(realtimeMocks.socket.send).toHaveBeenCalledWith({ type: 'typing', chatId: 'chat-1', userId: 'u1' });
+  });
+
+  it('shows typing status for another user in the current chat', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Anna', type: 'private', peerIsOnline: true });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Anna' });
+    eventBus.emit('typing', { chatId: 'chat-1', userId: 'u2' });
+
+    expect(await screen.findByText('печатает...')).toBeInTheDocument();
+  });
+
+  it('shows peer online status in private chats', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Anna', type: 'private', peerIsOnline: true });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Anna' });
+    expect(screen.getByText('онлайн')).toBeInTheDocument();
+  });
+
+  it('shows peer last seen status in private chats', async () => {
+    services.chatService.getChat.mockResolvedValue({
+      id: 'chat-1',
+      name: 'Anna',
+      type: 'private',
+      peerIsOnline: false,
+      peerLastSeen: '2026-06-03T12:00:00Z',
+    });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Anna' });
+    expect(screen.getByText(/был\(а\)/)).toBeInTheDocument();
+  });
+
+  it('shows recently seen fallback instead of private chat label', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Anna', type: 'private' });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Anna' });
+    expect(screen.getByText('был(а) недавно')).toBeInTheDocument();
+    expect(screen.queryByText('Личный чат')).not.toBeInTheDocument();
+  });
+
+  it('ignores own typing status', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Team' });
+    eventBus.emit('typing', { chatId: 'chat-1', userId: 'u1' });
+
+    expect(screen.queryByText('печатает...')).not.toBeInTheDocument();
   });
 
   it('does not duplicate a sent message echoed by realtime', async () => {

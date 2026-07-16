@@ -74,6 +74,15 @@ func (ws *WSServer) CallRooms() *CallRoomManager {
 	return ws.callRooms
 }
 
+func (ws *WSServer) IsUserConnected(userID string) bool {
+	if ws == nil || userID == "" {
+		return false
+	}
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	return len(ws.clients[userID]) > 0
+}
+
 func (ws *WSServer) run() {
 	for {
 		select {
@@ -225,7 +234,10 @@ func (ws *WSServer) readPump(client *Client) {
 				var isMember bool
 				ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember)
 				if isMember {
-					ws.BroadcastToChat(chatID, message, client.UserID)
+					msg["userId"] = client.UserID
+					msg["senderId"] = client.UserID
+					typingMessage, _ := json.Marshal(msg)
+					ws.BroadcastToChat(chatID, typingMessage, client.UserID)
 				}
 			}
 

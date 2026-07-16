@@ -4,6 +4,8 @@ class Chat {
     name,
     type = 'private',
     peerId = null,
+    peerIsOnline = false,
+    peerLastSeen = '',
     participants = [],
     lastMessage = null,
     unreadCount = 0,
@@ -13,6 +15,8 @@ class Chat {
     this.name = name;
     this.type = type;
     this.peerId = peerId;
+    this.peerIsOnline = peerIsOnline;
+    this.peerLastSeen = peerLastSeen;
     this.participants = participants;
     this.lastMessage = lastMessage;
     this.unreadCount = unreadCount;
@@ -25,6 +29,8 @@ class Chat {
       name: data.name ?? data.title,
       type: data.type ?? 'private',
       peerId: data.peerId ?? data.peer_id ?? null,
+      peerIsOnline: data.peerIsOnline ?? data.peer_is_online ?? false,
+      peerLastSeen: data.peerLastSeen ?? data.peer_last_seen ?? '',
       participants: data.participants ?? [],
       lastMessage: data.lastMessage ?? data.last_message ?? null,
       unreadCount: data.unreadCount ?? data.unread_count ?? 0,
@@ -37,6 +43,9 @@ class Chat {
       id: this.id,
       name: this.name,
       type: this.type,
+      peerId: this.peerId,
+      peerIsOnline: this.peerIsOnline,
+      peerLastSeen: this.peerLastSeen,
       participants: this.participants,
       lastMessage: this.lastMessage,
       unreadCount: this.unreadCount,

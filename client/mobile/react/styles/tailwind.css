@@ -212,7 +212,19 @@
     &:hover { background: rgba(255,255,255,0.04); }
     &:active { background: rgba(255,255,255,0.08); }
   }
-  .chat-avatar { @apply w-12 h-12 rounded-full flex items-center justify-center text-white font-bold; background: #2b77e7; }
+  .chat-avatar { @apply relative w-12 h-12 rounded-full flex items-center justify-center text-white font-bold; background: #2b77e7; }
+  .chat-avatar.is-online::after {
+    content: "";
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #2AABEE;
+    border: 2px solid #050505;
+    box-shadow: 0 0 0 1px rgba(42,171,238,0.28);
+  }
   .chat-avatar-group, .chat-avatar-channel { background: #17a66a; }
   .chat-main { @apply min-w-0 flex flex-col justify-center gap-1.5; }
   .chat-topline, .chat-subline { @apply min-w-0 flex items-center justify-between gap-3; }
@@ -661,7 +673,19 @@
     @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[34px] leading-none no-underline;
     background: rgba(255,255,255,0.06);
   }
-  .thread-avatar { @apply w-11 h-11 rounded-[14px] flex items-center justify-center bg-[#2b77e7] text-white font-extrabold; }
+  .thread-avatar { @apply relative w-11 h-11 rounded-[14px] flex items-center justify-center bg-[#2b77e7] text-white font-extrabold; }
+  .thread-avatar.is-online::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #2AABEE;
+    border: 2px solid #0e0e0e;
+    box-shadow: 0 0 0 1px rgba(42,171,238,0.28);
+  }
   .thread-title-wrap {
     @apply min-w-0;
     & h1 { @apply overflow-hidden m-0 text-white text-[17px] leading-[1.2] text-ellipsis whitespace-nowrap; }

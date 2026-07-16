@@ -61,6 +61,14 @@ class AuthService {
     return response.data;
   }
 
+  async logout() {
+    try {
+      await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT);
+    } finally {
+      this.authStorage.logout();
+    }
+  }
+
   savePublicKey(publicKey) {
     return this.apiClient
       .post(API_ENDPOINTS.AUTH_PUBLIC_KEY, { publicKey })

@@ -25,6 +25,7 @@ var (
 	ErrTwoFANotEnabled    = errors.New("2fa not enabled")
 	ErrTwoFARequired      = errors.New("2fa required")
 	ErrInvalidTwoFA       = errors.New("invalid 2fa")
+	ErrUserNotFound       = errors.New("user not found")
 )
 
 type Session struct {
@@ -220,11 +221,21 @@ func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) e
 	if publicKey == "" {
 		return errors.New("public key is required")
 	}
+	var userExists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&userExists); err != nil {
+		return err
+	}
+	if !userExists {
+		return ErrUserNotFound
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth.public_keys (user_id, public_key, updated_at)
 		VALUES ($1, $2, NOW())
 		ON CONFLICT (user_id) DO UPDATE SET public_key = EXCLUDED.public_key, updated_at = NOW()
 	`, userID, publicKey)
+	if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23503" {
+		return ErrUserNotFound
+	}
 	return err
 }
 
@@ -257,11 +268,18 @@ func (s *Service) IsTokenRevoked(ctx context.Context, token string) bool {
 
 // Logout revokes the given token.
 func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth.revoked_tokens (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, tokenHash(token), userID, expiresAt)
+	`, tokenHash(token), userID, expiresAt); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE public.user_sessions
+		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
+		WHERE user_id = $1
+	`, userID)
 	return err
 }
 
@@ -269,9 +287,16 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 // Tokens issued before revoked_all_at are considered invalid.
 func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 	// Mark all existing sessions as revoked.
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		UPDATE auth.sessions SET revoked_at = NOW()
 		WHERE user_id = $1 AND revoked_at IS NULL
+	`, userID); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE public.user_sessions
+		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
+		WHERE user_id = $1
 	`, userID)
 	return err
 }

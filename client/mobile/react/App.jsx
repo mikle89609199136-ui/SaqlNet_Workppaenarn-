@@ -10,7 +10,7 @@ import { ContactsPage } from './components/Contacts/ContactsPage.jsx';
 import { CreateGroupPage } from './components/Chats/CreateGroupPage.jsx';
 import { CallProvider } from './components/Calls/CallProvider.jsx';
 import { CallOverlay } from './components/Calls/CallOverlay.jsx';
-import { useRealtimeSocket } from './hooks/useRealtimeSocket.js';
+import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { services } from '../application/services/serviceContainer.js';
 
 export function App({ basename = '', forceMobile = false }) {
@@ -330,6 +330,7 @@ function AuthGuard() {
 }
 
 function clearAuthSession() {
+  disconnectRealtimeSocket();
   localStorage.removeItem('craneapp_auth_token');
   localStorage.removeItem('craneapp_user_data');
   localStorage.removeItem('craneapp_settings');

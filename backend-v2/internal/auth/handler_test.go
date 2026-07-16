@@ -10,7 +10,7 @@ import (
 
 func TestRegisterRejectsInvalidInputBeforeCallingService(t *testing.T) {
 	handler := NewHandler(nil)
-	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/register", strings.NewReader(`{"username":"ivan_1","password":"Password1","firstName":"Ivan"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/register", strings.NewReader(`{"username":"iv","password":"Password1","firstName":"Ivan"}`))
 	response := httptest.NewRecorder()
 
 	handler.Register(response, request)

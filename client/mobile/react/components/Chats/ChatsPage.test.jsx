@@ -23,7 +23,7 @@ vi.mock('../../hooks/useRealtimeSocket.js', () => ({
 describe('ChatsPage', () => {
   beforeEach(() => {
     eventBus.clear();
-    localStorage.setItem('craneapp_user_data', JSON.stringify({ firstName: 'Ivan', username: 'ivan_1' }));
+    localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan', username: 'ivan_1' }));
     services.chatService.getChats.mockReset();
     services.messageService.processMessageForDisplay.mockReset();
   });
@@ -50,6 +50,30 @@ describe('ChatsPage', () => {
     expect(screen.getByText('Hello')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /team/i })).toHaveAttribute('href', '/chats/chat-1');
+  });
+
+  it('marks online private chats on the avatar', async () => {
+    services.chatService.getChats.mockResolvedValue([
+      {
+        id: 'chat-1',
+        name: 'Diana',
+        type: 'private',
+        peerId: 'u2',
+        peerIsOnline: true,
+        lastMessage: 'hi',
+        unreadCount: 0,
+        createdAt: new Date('2026-06-03T12:00:00Z'),
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <ChatsPage />
+      </MemoryRouter>
+    );
+
+    const link = await screen.findByRole('link', { name: /diana/i });
+    expect(link.querySelector('.chat-avatar')).toHaveClass('is-online');
   });
 
   it('renders an empty state', async () => {
@@ -138,6 +162,97 @@ describe('ChatsPage', () => {
     });
 
     expect(await screen.findByText('Новое сообщение')).toBeInTheDocument();
+  });
+
+  it('shows typing status in the chat list', async () => {
+    services.chatService.getChats.mockResolvedValue([
+      {
+        id: 'chat-1',
+        name: 'Paul',
+        type: 'private',
+        peerId: 'u2',
+        lastMessage: 'hi',
+        unreadCount: 0,
+        createdAt: new Date('2026-06-03T12:00:00Z'),
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <ChatsPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('hi')).toBeInTheDocument();
+    eventBus.emit('typing', { chatId: 'chat-1', userId: 'u2' });
+
+    expect(await screen.findByText('печатает...')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /paul/i }).querySelector('.chat-avatar')).toHaveClass('is-online');
+  });
+
+  it('ignores own typing status in the chat list', async () => {
+    services.chatService.getChats.mockResolvedValue([
+      {
+        id: 'chat-1',
+        name: 'Paul',
+        type: 'private',
+        peerId: 'u2',
+        lastMessage: 'hi',
+        unreadCount: 0,
+        createdAt: new Date('2026-06-03T12:00:00Z'),
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <ChatsPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('hi')).toBeInTheDocument();
+    eventBus.emit('typing', { chatId: 'chat-1', userId: 'u1' });
+
+    expect(screen.queryByText('печатает...')).not.toBeInTheDocument();
+  });
+
+  it('clears typing status when a new message arrives', async () => {
+    services.chatService.getChats.mockResolvedValue([
+      {
+        id: 'chat-1',
+        name: 'Paul',
+        type: 'private',
+        peerId: 'u2',
+        lastMessage: 'hi',
+        unreadCount: 0,
+        createdAt: new Date('2026-06-03T12:00:00Z'),
+      },
+    ]);
+    services.messageService.processMessageForDisplay.mockResolvedValue({ content: 'Новое сообщение' });
+
+    render(
+      <MemoryRouter>
+        <ChatsPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('hi')).toBeInTheDocument();
+    eventBus.emit('typing', { chatId: 'chat-1', userId: 'u2' });
+    expect(await screen.findByText('печатает...')).toBeInTheDocument();
+
+    eventBus.emit('new_message', {
+      chatId: 'chat-1',
+      message: {
+        id: 'm2',
+        chatId: 'chat-1',
+        senderId: 'u2',
+        content: 'new',
+        type: 'text',
+        createdAt: '2026-06-03T12:01:00Z',
+      },
+    });
+
+    expect(await screen.findByText('Новое сообщение')).toBeInTheDocument();
+    expect(screen.queryByText('печатает...')).not.toBeInTheDocument();
   });
 
   it('clears unread badge when messages are marked as read', async () => {
