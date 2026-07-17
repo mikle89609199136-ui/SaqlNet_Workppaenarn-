@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
 import Message from '../../../domain/entities/Message.js';
 import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
+import { Identicon } from '../common/Identicon.jsx';
 import { useCall } from '../Calls/CallProvider.jsx';
 import { GroupInfoModal } from './GroupInfoModal.jsx';
 
-export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
+export function ChatThreadPage({ chatId, onProfileStateChange, profileCloseToken = 0, profileMode = 'modal', t = fallbackTranslate }) {
   const [chat, setChat] = useState(null);
   const [draft, setDraft] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
@@ -18,12 +19,28 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [typingUserId, setTypingUserId] = useState(null);
   const [actionMenu, setActionMenu] = useState(null);
+  const [profileModal, setProfileModal] = useState({ isOpen: false, isLoading: false, error: '', user: null });
   const currentUser = useMemo(() => getCurrentUser(), []);
   const bottomRef = useRef(null);
   const lastTypingSentAtRef = useRef(0);
   const typingTimeoutRef = useRef(null);
   const { eventBus, socket } = useRealtimeSocket(Boolean(chatId));
   const { initiateCall } = useCall();
+
+  useEffect(() => {
+    if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return undefined;
+    onProfileStateChange({ ...profileModal, chat });
+    return undefined;
+  }, [chat, onProfileStateChange, profileMode, profileModal]);
+
+  useEffect(() => {
+    setProfileModal({ isOpen: false, isLoading: false, error: '', user: null });
+  }, [chatId]);
+
+  useEffect(() => {
+    if (profileCloseToken === 0) return;
+    setProfileModal({ isOpen: false, isLoading: false, error: '', user: null });
+  }, [profileCloseToken]);
 
   useEffect(() => {
     if (!actionMenu) return undefined;
@@ -271,9 +288,31 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
     setDraft('');
   }
 
+  async function openChatProfile() {
+    if (chat?.type === 'group') {
+      setIsGroupInfoOpen(true);
+      return;
+    }
+    if (chat?.type !== 'private' || !chat.peerId) return;
+
+    setProfileModal({ isOpen: true, isLoading: true, error: '', user: null });
+    try {
+      const profile = await services.userService.getProfile(chat.peerId);
+      setProfileModal({ isOpen: true, isLoading: false, error: '', user: profile });
+    } catch (err) {
+      setProfileModal({
+        isOpen: true,
+        isLoading: false,
+        error: err.message || t('profileLoadError', 'Не удалось загрузить профиль'),
+        user: null,
+      });
+    }
+  }
+
   const title = chat?.name || chat?.title || t('chat', 'Чат');
   const subtitle = getChatSubtitle(chat, typingUserId, t);
   const isPeerOnline = Boolean(chat?.type === 'private' && chat?.peerIsOnline);
+  const peerAvatarUrl = chat?.avatarUrl || '';
   const selectedActionMessage = actionMenu
     ? messages.find((message) => message.id === actionMenu.messageId)
     : null;
@@ -282,10 +321,21 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
     <main className="thread-page">
       <header className="thread-header">
         <Link className="thread-back" to="/chats" aria-label={t('back', 'Назад')}>‹</Link>
-        <div className={`thread-avatar ${isPeerOnline ? 'is-online' : ''}`}>
-          {title.slice(0, 1).toUpperCase()}
-        </div>
-        <div className="thread-title-wrap" onClick={() => chat?.type === 'group' && setIsGroupInfoOpen(true)} style={{ cursor: chat?.type === 'group' ? 'pointer' : 'default' }}>
+        <button
+          aria-label={title}
+          className={`thread-avatar ${isPeerOnline ? 'is-online' : ''}`}
+          onClick={openChatProfile}
+          type="button"
+        >
+          {peerAvatarUrl ? (
+            <img alt="" src={peerAvatarUrl} />
+          ) : chat?.type === 'private' && chat?.peerId ? (
+            <Identicon userId={chat.peerId} size={44} />
+          ) : (
+            title.slice(0, 1).toUpperCase()
+          )}
+        </button>
+        <div className="thread-title-wrap" onClick={openChatProfile} style={{ cursor: chat?.type === 'group' || chat?.type === 'private' ? 'pointer' : 'default' }}>
           <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
@@ -318,7 +368,7 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
           <button
             className="thread-call-button"
             onClick={() => initiateCall(chatId, chat?.type, title, 'video')}
-            title={t('videoCall', 'Видеозвонок')}
+            title={t('videoCall', 'Видео')}
             type="button"
           >
             <svg
@@ -417,6 +467,18 @@ export function ChatThreadPage({ chatId, t = fallbackTranslate }) {
           t={t}
         />
       )}
+
+      {profileMode === 'modal' ? (
+        <UserProfileModal
+          chat={chat}
+          error={profileModal.error}
+          isLoading={profileModal.isLoading}
+          isOpen={profileModal.isOpen}
+          onClose={() => setProfileModal({ isOpen: false, isLoading: false, error: '', user: null })}
+          t={t}
+          user={profileModal.user}
+        />
+      ) : null}
     </main>
   );
 }
@@ -623,6 +685,224 @@ function MessageMedia({ message, t }) {
   }
 
   return null;
+}
+
+function UserProfileModal({ chat, error, isLoading, isOpen, onClose, t, user }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="user-profile-modal" onClick={onClose} role="presentation">
+      <UserProfilePanel
+        chat={chat}
+        error={error}
+        isLoading={isLoading}
+        onClose={onClose}
+        stopPropagation
+        t={t}
+        user={user}
+      />
+    </div>
+  );
+}
+
+export function UserProfilePanel({ chat, error, isLoading, onClose, stopPropagation = false, t, user }) {
+  const [editableUser, setEditableUser] = useState(user);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState({ firstName: '', bio: '' });
+  const [editError, setEditError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const { initiateCall } = useCall();
+  const currentUser = getCurrentUser();
+  const profileUser = editableUser || user;
+  const isOwnProfile = Boolean(profileUser?.id && currentUser?.id && profileUser.id === currentUser.id);
+  const displayName = [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ')
+    || profileUser?.username
+    || chat?.name
+    || chat?.title
+    || t('user', 'Пользователь');
+  const username = profileUser?.username ? `@${profileUser.username}` : '';
+  const status = profileUser?.isBot
+    ? t('bot', 'бот')
+    : getChatSubtitle(chat, null, t);
+  const avatarUrl = profileUser?.avatarUrl || chat?.avatarUrl || '';
+  const canCall = Boolean(chat?.id);
+
+  useEffect(() => {
+    setEditableUser(user);
+    setIsEditing(false);
+    setEditError('');
+  }, [user]);
+
+  function startAudioCall() {
+    if (!canCall) return;
+    initiateCall(chat.id, chat?.type, displayName, 'audio');
+  }
+
+  function startVideoCall() {
+    if (!canCall) return;
+    initiateCall(chat.id, chat?.type, displayName, 'video');
+  }
+
+  function copyText(value) {
+    if (!value || !navigator?.clipboard) return;
+    navigator.clipboard.writeText(value).catch(() => {});
+  }
+
+  function startEdit() {
+    setEditDraft({
+      firstName: profileUser?.firstName || displayName,
+      bio: profileUser?.bio || '',
+    });
+    setEditError('');
+    setIsEditing(true);
+  }
+
+  async function saveProfileEdit(event) {
+    event.preventDefault();
+    setIsSaving(true);
+    setEditError('');
+    try {
+      const updated = await services.userService.updateMe({
+        firstName: editDraft.firstName.trim(),
+        bio: editDraft.bio,
+      });
+      setEditableUser(updated);
+      setIsEditing(false);
+    } catch (err) {
+      setEditError(err.message || t('profileSaveError', 'Не удалось сохранить профиль'));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <section
+      aria-label={t('profile', 'Профиль')}
+      className="user-profile-card"
+      onClick={stopPropagation ? (event) => event.stopPropagation() : undefined}
+    >
+      <header className="user-profile-header">
+        <button className="user-profile-back" onClick={onClose} type="button">
+          <span aria-hidden="true">‹</span>
+          {t('back', 'Назад')}
+        </button>
+        <strong>{t('information', 'Информация')}</strong>
+        {isOwnProfile ? (
+          <button className="user-profile-edit" onClick={isEditing ? () => setIsEditing(false) : startEdit} type="button">
+            {isEditing ? t('cancel', 'Отмена') : t('editShort', 'Изм.')}
+          </button>
+        ) : <span />}
+      </header>
+
+      {isLoading ? (
+        <div className="user-profile-state">{t('loading', 'Загрузка...')}</div>
+      ) : error ? (
+        <div className="user-profile-state is-error">{error}</div>
+      ) : (
+        <div className="user-profile-scroll">
+          <div className="user-profile-hero">
+            <div className="user-profile-avatar">
+              {avatarUrl ? <img alt="" src={avatarUrl} /> : <Identicon userId={profileUser?.id || chat?.peerId || displayName} size={112} />}
+            </div>
+            <h2>{displayName}</h2>
+            <p className={`user-profile-status ${chat?.peerIsOnline ? 'is-online' : ''}`}>{status}</p>
+          </div>
+
+          <div className="user-profile-actions">
+            <button onClick={onClose} type="button">
+              <MessageCircleIcon />
+              {t('chat', 'Чат')}
+            </button>
+            <button disabled={!canCall} onClick={startAudioCall} type="button">
+              <PhoneIcon />
+              {t('call', 'Звонок')}
+            </button>
+            <button disabled={!canCall} onClick={startVideoCall} title={t('videoCall', 'Видеозвонок')} type="button">
+              <VideoIcon />
+              {t('video', 'Видео')}
+            </button>
+          </div>
+
+          {isEditing ? (
+            <form className="user-profile-edit-form" onSubmit={saveProfileEdit}>
+              <label>
+                <span>{t('name', 'Имя')}</span>
+                <input
+                  onChange={(event) => setEditDraft((draft) => ({ ...draft, firstName: event.target.value }))}
+                  value={editDraft.firstName}
+                />
+              </label>
+              <label>
+                <span>{t('bio', 'О себе')}</span>
+                <textarea
+                  onChange={(event) => setEditDraft((draft) => ({ ...draft, bio: event.target.value }))}
+                  rows={4}
+                  value={editDraft.bio}
+                />
+              </label>
+              {editError ? <p>{editError}</p> : null}
+              <button disabled={isSaving || !editDraft.firstName.trim()} type="submit">
+                {isSaving ? t('saving', 'Сохранение...') : t('save', 'Сохранить')}
+              </button>
+            </form>
+          ) : (
+            <div className="user-profile-info-card">
+              {username ? (
+                <button className="user-profile-copy-row" onClick={() => copyText(username)} type="button">
+                  <span>{t('username', 'Имя пользователя')}</span>
+                  <strong>{username}</strong>
+                  <CopyIcon />
+                </button>
+              ) : null}
+              <div className="user-profile-info-row">
+                <span>{t('bio', 'О себе')}</span>
+                <strong>{profileUser?.bio || t('profileBioEmpty', 'Информация не указана')}</strong>
+              </div>
+            </div>
+          )}
+
+          <div className="user-profile-tabs">
+            <button className="active" type="button">{t('media', 'Медиа')}</button>
+          </div>
+          <div className="user-profile-empty-media">
+            {t('profileMediaEmpty', 'Медиа пока не загружены')}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MessageCircleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M21 11.8a8.4 8.4 0 0 1-8.7 8.2 9.2 9.2 0 0 1-3.6-.74L4 20.5l1.22-4.1A8 8 0 0 1 4 12.08 8.4 8.4 0 0 1 12.7 4 8.4 8.4 0 0 1 21 11.8Z" />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M6.62 5.12c.5-.5 1.31-.5 1.81 0l2.12 2.12c.43.43.5 1.1.16 1.62l-.95 1.45a10.65 10.65 0 0 0 4.01 4.01l1.45-.95c.52-.34 1.19-.27 1.62.16l2.12 2.12c.5.5.5 1.31 0 1.81l-.94.94c-.96.96-2.37 1.31-3.65.87A16.4 16.4 0 0 1 4.81 9.72c-.44-1.28-.09-2.69.87-3.65l.94-.95Z" />
+    </svg>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M5.8 7h7.7A3.5 3.5 0 0 1 17 10.5v.55l2.4-1.78A1 1 0 0 1 21 10.08v3.84a1 1 0 0 1-1.6.8L17 12.95v.55a3.5 3.5 0 0 1-3.5 3.5H5.8A3.8 3.8 0 0 1 2 13.2v-2.4A3.8 3.8 0 0 1 5.8 7Z" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M8 7.5A2.5 2.5 0 0 1 10.5 5H18a2.5 2.5 0 0 1 2.5 2.5V15A2.5 2.5 0 0 1 18 17.5h-7.5A2.5 2.5 0 0 1 8 15V7.5Zm-4.5 2A2.5 2.5 0 0 1 6 7h.5v2H6a.5.5 0 0 0-.5.5V18a.5.5 0 0 0 .5.5h8.5a.5.5 0 0 0 .5-.5v-.5h2v.5a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V9.5Z" />
+    </svg>
+  );
 }
 
 function ThreadSkeleton() {

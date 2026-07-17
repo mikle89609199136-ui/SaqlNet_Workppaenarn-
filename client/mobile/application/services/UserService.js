@@ -23,6 +23,12 @@ class UserService {
       .then((response) => response.data?.user ?? response.data);
   }
 
+  getProfile(userId) {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_PROFILE(userId))
+      .then((response) => response.data?.user ?? response.data);
+  }
+
   getSettings() {
     return this.apiClient
       .get(API_ENDPOINTS.USER_SETTINGS)

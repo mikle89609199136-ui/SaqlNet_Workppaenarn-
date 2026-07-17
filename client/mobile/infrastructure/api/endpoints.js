@@ -22,6 +22,7 @@ export const API_ENDPOINTS = {
   CHAT_ARCHIVE: (chatId) => `/chats/${chatId}/archive`,
 
   USER_SEARCH: '/users/search',
+  USER_PROFILE: (userId) => `/users/${userId}/profile`,
   USER_SETTINGS: '/users/settings',
   USER_PRIVACY: '/users/privacy',
   USER_NOTIFICATIONS: '/users/notifications',

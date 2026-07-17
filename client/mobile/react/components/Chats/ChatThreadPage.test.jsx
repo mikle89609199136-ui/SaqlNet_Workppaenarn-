@@ -26,6 +26,10 @@ vi.mock('../../../application/services/serviceContainer.js', () => ({
       reactToMessage: vi.fn(),
       sendMessage: vi.fn(),
     },
+    userService: {
+      getProfile: vi.fn(),
+      updateMe: vi.fn(),
+    },
   },
 }));
 
@@ -55,6 +59,7 @@ describe('ChatThreadPage', () => {
     localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan' }));
     Object.values(services.chatService).forEach((mock) => mock.mockReset?.());
     Object.values(services.messageService).forEach((mock) => mock.mockReset?.());
+    Object.values(services.userService).forEach((mock) => mock.mockReset?.());
     services.messageService.markAsRead.mockResolvedValue({ success: true });
     realtimeMocks.socket.isConnected = true;
     realtimeMocks.socket.send.mockReset();
@@ -161,6 +166,55 @@ describe('ChatThreadPage', () => {
 
     await screen.findByRole('heading', { name: 'Anna' });
     expect(screen.getByText(/был\(а\)/)).toBeInTheDocument();
+  });
+
+  it('opens a peer profile from the private chat header', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({
+      id: 'chat-1',
+      name: 'Anna',
+      type: 'private',
+      peerId: 'u2',
+      peerIsOnline: true,
+    });
+    services.messageService.getMessages.mockResolvedValue([]);
+    services.userService.getProfile.mockResolvedValue({
+      id: 'u2',
+      username: 'anna.123',
+      firstName: 'Anna',
+      lastName: 'Smith',
+      bio: 'Designer',
+      avatarUrl: '',
+      badges: ['premium'],
+    });
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Anna' });
+    await user.click(screen.getByRole('heading', { name: 'Anna' }));
+
+    expect(services.userService.getProfile).toHaveBeenCalledWith('u2');
+    expect(await screen.findByRole('heading', { name: 'Anna Smith' })).toBeInTheDocument();
+    expect(screen.getByText('@anna.123')).toBeInTheDocument();
+    expect(screen.getByText('Designer')).toBeInTheDocument();
+  });
+
+  it('uses the peer identicon in the private chat header', async () => {
+    services.chatService.getChat.mockResolvedValue({
+      id: 'chat-1',
+      name: 'Paul',
+      type: 'private',
+      peerId: 'u2',
+    });
+    services.messageService.getMessages.mockResolvedValue([]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByRole('heading', { name: 'Paul' });
+    const avatarButton = screen.getByRole('button', { name: 'Paul' });
+
+    expect(avatarButton.querySelector('svg')).toBeInTheDocument();
+    expect(avatarButton).not.toHaveTextContent('P');
   });
 
   it('shows recently seen fallback instead of private chat label', async () => {

@@ -3,6 +3,7 @@ class Chat {
     id,
     name,
     type = 'private',
+    avatarUrl = '',
     peerId = null,
     peerIsOnline = false,
     peerLastSeen = '',
@@ -14,6 +15,7 @@ class Chat {
     this.id = id;
     this.name = name;
     this.type = type;
+    this.avatarUrl = avatarUrl;
     this.peerId = peerId;
     this.peerIsOnline = peerIsOnline;
     this.peerLastSeen = peerLastSeen;
@@ -28,6 +30,7 @@ class Chat {
       id: data.id,
       name: data.name ?? data.title,
       type: data.type ?? 'private',
+      avatarUrl: data.avatarUrl ?? data.avatar_url ?? '',
       peerId: data.peerId ?? data.peer_id ?? null,
       peerIsOnline: data.peerIsOnline ?? data.peer_is_online ?? false,
       peerLastSeen: data.peerLastSeen ?? data.peer_last_seen ?? '',
@@ -43,6 +46,7 @@ class Chat {
       id: this.id,
       name: this.name,
       type: this.type,
+      avatarUrl: this.avatarUrl,
       peerId: this.peerId,
       peerIsOnline: this.peerIsOnline,
       peerLastSeen: this.peerLastSeen,

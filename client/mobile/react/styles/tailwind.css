@@ -295,7 +295,62 @@
     }
   }
   .app-chat-pane {
-    @media (min-width: 768px) { @apply flex-1 flex flex-col overflow-hidden h-full; background: rgba(7,7,10,0.7); }
+    @media (min-width: 768px) {
+      @apply flex-1 flex flex-col overflow-hidden h-full;
+      min-width: 420px;
+      background: rgba(7,7,10,0.7);
+    }
+  }
+  .chat-workspace {
+    @media (min-width: 768px) { @apply flex w-full h-full overflow-hidden; }
+  }
+  .app-pane-resizer {
+    @media (min-width: 768px) {
+      @apply relative shrink-0 w-[1px] cursor-col-resize;
+      background: rgba(255,255,255,0.12);
+    }
+  }
+  .app-pane-resizer::after {
+    @media (min-width: 768px) {
+      content: "";
+      position: absolute;
+      inset: 0 -5px;
+    }
+  }
+  .app-pane-resizer:hover {
+    @media (min-width: 768px) { background: rgba(42,171,238,0.65); }
+  }
+  .app-profile-pane {
+    @media (min-width: 768px) {
+      @apply shrink-0 h-full overflow-hidden;
+      flex-basis: 33.333%;
+      min-width: 300px;
+      max-width: 560px;
+      background: #0b0b0f;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 1180px) {
+    .chat-workspace.has-profile .app-sidebar-pane,
+    .chat-workspace.has-profile .app-pane-resizer-sidebar {
+      display: none;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 920px) {
+    .chat-workspace:not(.has-profile) .app-sidebar-pane,
+    .chat-workspace:not(.has-profile) .app-pane-resizer-sidebar {
+      display: none;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 980px) {
+    .chat-workspace.has-profile .app-chat-pane,
+    .chat-workspace.has-profile .app-pane-resizer-profile {
+      display: none;
+    }
+    .chat-workspace.has-profile .app-profile-pane {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: none;
+    }
   }
   .app-sidebar-pane .chats-page {
     @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 flex flex-col overflow-hidden; }
@@ -326,7 +381,7 @@
 
   .nav-rail {
     @media (min-width: 768px) {
-      @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100];
+      @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100] shrink-0;
       background: var(--color-rail);
       border-right: 1px solid rgba(255,255,255,0.08);
     }
@@ -670,10 +725,17 @@
 	    }
 	  }
   .thread-back {
-    @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[34px] leading-none no-underline;
+    @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[30px] leading-none no-underline;
     background: rgba(255,255,255,0.06);
+    padding-bottom: 3px;
   }
-  .thread-avatar { @apply relative w-11 h-11 rounded-[14px] flex items-center justify-center bg-[#2b77e7] text-white font-extrabold; }
+  .thread-avatar {
+    @apply relative w-11 h-11 rounded-full flex items-center justify-center bg-[#2b77e7] text-white font-extrabold overflow-hidden;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    & img, & svg { width: 100%; height: 100%; display: block; }
+  }
   .thread-avatar.is-online::after {
     content: "";
     position: absolute;
@@ -793,7 +855,208 @@
     & button { width: 28px; min-height: 28px; border-radius: 9px; background: rgba(255,255,255,0.12); color: #fff; font-size: 18px; border: 0; }
   }
 
+  .user-profile-modal {
+    @apply fixed inset-0 z-[1300] flex items-end justify-center;
+    padding: 16px;
+    background: rgba(0,0,0,0.52);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .user-profile-card {
+    @apply relative w-full max-w-[420px] text-center text-white overflow-hidden;
+    border-radius: 22px;
+    background: rgba(14,14,18,0.98);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 22px 60px rgba(0,0,0,0.45);
+  }
+  .app-profile-pane .user-profile-card {
+    @media (min-width: 768px) {
+      @apply max-w-none h-full rounded-none border-0 shadow-none;
+    }
+  }
+  .user-profile-header {
+    @apply grid grid-cols-[1fr_auto_1fr] items-center gap-3;
+    min-height: 70px;
+    padding: 0 18px;
+    background: rgba(14,14,14,0.92);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    & strong { font-size: 16px; }
+    & span { justify-self: end; color: #2AABEE; font-weight: 700; }
+  }
+  .user-profile-back,
+  .user-profile-edit {
+    @apply border-0 bg-transparent p-0 text-left cursor-pointer;
+    color: #2AABEE;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .user-profile-back {
+    @apply inline-flex items-center gap-[6px];
+  }
+  .user-profile-back span {
+    display: inline-block;
+    font-size: 24px;
+    line-height: 1;
+    transform: translateY(-1px);
+  }
+  .user-profile-edit { justify-self: end; }
+  .user-profile-scroll {
+    @apply overflow-y-auto;
+    height: calc(100vh - 70px);
+    height: calc(100dvh - 70px);
+    padding: 26px 18px 22px;
+  }
+  .user-profile-hero {
+    @apply flex flex-col items-center;
+  }
+  .user-profile-avatar {
+    @apply mx-auto mb-4 overflow-hidden flex items-center justify-center;
+    width: 112px;
+    height: 112px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    & img, & svg { width: 100%; height: 100%; object-fit: cover; }
+  }
+  .user-profile-card h2 { @apply m-0 text-[24px] leading-tight font-extrabold; }
+  .user-profile-username { @apply mt-1 mb-0 text-[14px]; color: rgba(255,255,255,0.58); }
+  .user-profile-status { @apply mt-2 mb-0 text-[13px] font-bold; color: rgba(255,255,255,0.54); }
+  .user-profile-status.is-online { color: #2AABEE; }
+  .user-profile-actions {
+    @apply grid grid-cols-3 gap-3;
+    margin-top: 24px;
+  }
+  .user-profile-actions button {
+    @apply border-0 rounded-[20px] cursor-pointer font-bold flex flex-col items-center justify-center gap-2;
+    min-width: 0;
+    min-height: 72px;
+    padding: 10px 8px;
+    background: rgba(255,255,255,0.07);
+    color: #2AABEE;
+    border: 1px solid rgba(255,255,255,0.06);
+    font-size: 14px;
+    line-height: 1.1;
+    text-align: center;
+    overflow-wrap: anywhere;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+    & svg { width: 26px; height: 26px; fill: currentColor; }
+    &:hover { background: rgba(42,171,238,0.12); border-color: rgba(42,171,238,0.28); }
+    &:active { transform: translateY(1px); }
+    &:disabled { opacity: 0.45; cursor: not-allowed; }
+  }
+  .user-profile-more-actions {
+    @apply grid gap-2 rounded-[18px];
+    margin-top: 12px;
+    padding: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
+    & button {
+      @apply w-full border-0 rounded-[12px] text-left cursor-pointer font-bold;
+      min-height: 38px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.86);
+    }
+    & button:hover { background: rgba(42,171,238,0.12); color: #fff; }
+  }
+  .user-profile-info-card {
+    @apply mt-6 rounded-[20px] text-left overflow-hidden;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .user-profile-info-row {
+    @apply grid gap-1;
+    padding: 13px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    &:last-child { border-bottom: 0; }
+    & span { color: #2AABEE; font-size: 13px; }
+    & strong { color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-wrap; }
+  }
+  .user-profile-copy-row {
+    @apply relative w-full grid gap-1 border-0 text-left cursor-pointer;
+    padding: 13px 48px 13px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: transparent;
+    color: #fff;
+    & span { color: #2AABEE; font-size: 13px; }
+    & strong { color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+    & svg {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      width: 21px;
+      height: 21px;
+      transform: translateY(-50%);
+      fill: #2AABEE;
+      opacity: 0.9;
+    }
+    &:hover { background: rgba(42,171,238,0.08); }
+  }
+  .user-profile-edit-form {
+    @apply mt-6 grid gap-3 rounded-[20px] text-left;
+    padding: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.06);
+    & label { @apply grid gap-2; }
+    & label span { color: #2AABEE; font-size: 13px; }
+    & input,
+    & textarea {
+      @apply w-full outline-none text-white;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.06);
+      padding: 10px 12px;
+      font: inherit;
+      resize: vertical;
+    }
+    & input:focus,
+    & textarea:focus { border-color: #2AABEE; }
+    & p { @apply m-0 text-[13px]; color: #ff7777; }
+    & button {
+      @apply border-0 rounded-[12px] font-bold cursor-pointer;
+      min-height: 40px;
+      background: #2b77e7;
+      color: #fff;
+    }
+    & button:disabled { opacity: 0.5; cursor: not-allowed; }
+  }
+  .user-profile-badges {
+    @apply flex flex-wrap gap-2;
+    & span { padding: 5px 8px; border-radius: 999px; background: rgba(42,171,238,0.16); color: #8bd8ff; font-size: 12px; font-weight: 800; }
+  }
+  .user-profile-tabs {
+    @apply mt-6 flex items-center gap-4 overflow-x-auto;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    & button { @apply shrink-0 border-0 bg-transparent cursor-pointer; padding: 0 0 10px; color: rgba(255,255,255,0.62); font-weight: 700; }
+    & button.active { color: #2AABEE; box-shadow: inset 0 -3px 0 #2AABEE; }
+  }
+  .user-profile-empty-media {
+    @apply rounded-[18px] text-center text-[13px];
+    margin-top: 14px;
+    padding: 22px 12px;
+    color: rgba(255,255,255,0.48);
+    background: rgba(255,255,255,0.05);
+  }
+  .user-profile-state { @apply py-10 text-[15px]; color: rgba(255,255,255,0.64); }
+  .user-profile-state.is-error { color: #ff7777; }
+
+  @media (min-width: 769px) {
+    .user-profile-modal { @apply items-center; }
+  }
+
   @media (max-width: 768px) {
+    .user-profile-modal {
+      padding: 0;
+      align-items: stretch;
+    }
+    .user-profile-modal .user-profile-card {
+      max-width: none;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      border-radius: 0;
+      border: 0;
+    }
+
     .message-actions-backdrop {
       display: block;
       position: fixed;
