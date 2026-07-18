@@ -635,6 +635,7 @@ function MessageActionsPopover({
   t,
 }) {
   const mine = message.senderId === currentUserId;
+  const reactions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
   return (
     <div
@@ -643,15 +644,55 @@ function MessageActionsPopover({
       style={{ left: actionMenu.x, top: actionMenu.y }}
     >
       <div className="message-reaction-actions">
-        <button onClick={() => runAction(() => onReact(message, '👍'))} type="button">👍</button>
-        <button onClick={() => runAction(() => onReact(message, '❤️'))} type="button">❤️</button>
+        {reactions.map((emoji) => (
+          <button aria-label={emoji} key={emoji} onClick={() => runAction(() => onReact(message, emoji))} type="button">
+            {emoji}
+          </button>
+        ))}
       </div>
       <div className="message-text-actions">
-        <button onClick={() => runAction(() => onReply(message))} type="button">{t('reply', 'Ответить')}</button>
-        {mine ? <button onClick={() => runAction(() => onEdit(message))} type="button">{t('edit', 'Редактировать')}</button> : null}
-        {mine ? <button onClick={() => runAction(() => onDelete(message))} type="button">{t('delete', 'Удалить')}</button> : null}
+        <button onClick={() => runAction(() => onReply(message))} type="button">
+          <ReplyIcon />
+          <span>{t('reply', 'Ответить')}</span>
+        </button>
+        {mine ? (
+          <button onClick={() => runAction(() => onEdit(message))} type="button">
+            <EditIcon />
+            <span>{t('edit', 'Редактировать')}</span>
+          </button>
+        ) : null}
+        {mine ? (
+          <button className="is-danger" onClick={() => runAction(() => onDelete(message))} type="button">
+            <TrashIcon />
+            <span>{t('delete', 'Удалить')}</span>
+          </button>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function ReplyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M10 8.5V4L3 10.5 10 17v-4.6h4.4c2.3 0 4.1 1.1 5.6 3.4-.4-4.6-2.9-7.3-7.5-7.3H10Z" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4.5 16.9v2.6h2.6L17.8 8.8l-2.6-2.6L4.5 16.9Zm14.9-9.7a1.4 1.4 0 0 0 0-2l-.6-.6a1.4 1.4 0 0 0-2 0l-.7.7 2.6 2.6.7-.7Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M8.5 4.5 9.4 3h5.2l.9 1.5H20v2H4v-2h4.5Zm-2.2 4h11.4l-.8 11A2.5 2.5 0 0 1 14.4 22H9.6a2.5 2.5 0 0 1-2.5-2.5l-.8-11Z" />
+    </svg>
   );
 }
 
@@ -876,7 +917,14 @@ export function UserProfilePanel({ chat, error, isLoading, onClose, stopPropagat
 function MessageCircleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M21 11.8a8.4 8.4 0 0 1-8.7 8.2 9.2 9.2 0 0 1-3.6-.74L4 20.5l1.22-4.1A8 8 0 0 1 4 12.08 8.4 8.4 0 0 1 12.7 4 8.4 8.4 0 0 1 21 11.8Z" />
+      <path
+        d="M20.5 11.8a8 8 0 0 1-8.3 7.7 8.6 8.6 0 0 1-3.3-.66L4.3 20l1.16-4A7.6 7.6 0 0 1 4.5 12 8 8 0 0 1 12.8 4.5a8 8 0 0 1 7.7 7.3Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -884,7 +932,13 @@ function MessageCircleIcon() {
 function PhoneIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M6.62 5.12c.5-.5 1.31-.5 1.81 0l2.12 2.12c.43.43.5 1.1.16 1.62l-.95 1.45a10.65 10.65 0 0 0 4.01 4.01l1.45-.95c.52-.34 1.19-.27 1.62.16l2.12 2.12c.5.5.5 1.31 0 1.81l-.94.94c-.96.96-2.37 1.31-3.65.87A16.4 16.4 0 0 1 4.81 9.72c-.44-1.28-.09-2.69.87-3.65l.94-.95Z" />
+      <g fill="none">
+        <path d="M0 0h24v24H0z" />
+        <path
+          fill="currentColor"
+          d="M4.477 4.116c-2.924 3.217-1.362 8.196 2.932 12.51 4.204 4.222 9.407 5.8 12.486 2.936 1.685-1.567 1.436-4.343-.645-6.198l-.19-.161c-1.931-1.563-4.734-1.568-6.445-.027l-.088.082-.05-.042c-.187-.16-.43-.381-.724-.673l-.298-.303-.306-.326q-.138-.152-.246-.277l-.124-.147-.07.075c1.69-1.697 1.706-4.72.006-6.75-1.887-2.255-4.75-2.335-6.238-.699M9.335 5.97c1.18 1.41 1.049 3.371.099 4.325l-.148.14c-.63.567-1.246.901 1.032 3.218 2.458 2.499 2.765 1.622 3.405.952 1.006-1.01 2.975-1.104 4.329.103 1.497 1.334 1.335 2.868.617 3.536-2.222 2.067-6.476.636-9.984-2.888S3.621 7.734 5.81 5.326c.508-.558 2.101-1.057 3.526.644"
+        />
+      </g>
     </svg>
   );
 }
@@ -892,7 +946,15 @@ function PhoneIcon() {
 function VideoIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M5.8 7h7.7A3.5 3.5 0 0 1 17 10.5v.55l2.4-1.78A1 1 0 0 1 21 10.08v3.84a1 1 0 0 1-1.6.8L17 12.95v.55a3.5 3.5 0 0 1-3.5 3.5H5.8A3.8 3.8 0 0 1 2 13.2v-2.4A3.8 3.8 0 0 1 5.8 7Z" />
+      <g fill="none">
+        <path d="M0 0h24v24H0z" />
+        <path
+          fill="currentColor"
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M6.5 5.75A3.5 3.5 0 0 0 3 9.25v5.5a3.5 3.5 0 0 0 3.5 3.5h7a3.5 3.5 0 0 0 3.5-3.5v-.52l2.65 2.07A1.45 1.45 0 0 0 22 15.15v-6.3a1.45 1.45 0 0 0-2.35-1.15L17 9.77v-.52a3.5 3.5 0 0 0-3.5-3.5h-7Zm-1.7 3.5A1.7 1.7 0 0 1 6.5 7.55h7a1.7 1.7 0 0 1 1.7 1.7v5.5a1.7 1.7 0 0 1-1.7 1.7h-7a1.7 1.7 0 0 1-1.7-1.7v-5.5Zm12.2 2.8 3.2 2.5v-5.1L17 11.95v.1Z"
+        />
+      </g>
     </svg>
   );
 }

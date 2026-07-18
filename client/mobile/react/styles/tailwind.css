@@ -323,7 +323,7 @@
   .app-profile-pane {
     @media (min-width: 768px) {
       @apply shrink-0 h-full overflow-hidden;
-      flex-basis: 33.333%;
+      flex-basis: 30%;
       min-width: 300px;
       max-width: 560px;
       background: #0b0b0f;
@@ -797,45 +797,96 @@
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-[11px]; color: rgba(255,255,255,0.58); }
   .message-actions-popover {
-    @apply fixed z-[1202] flex flex-col items-stretch gap-[7px];
-    width: min(232px, calc(100vw - 16px));
-    filter: drop-shadow(0 14px 30px rgba(0,0,0,0.36));
+    @apply fixed z-[1202] flex flex-col items-stretch gap-[8px];
+    width: min(292px, calc(100vw - 16px));
+    filter: drop-shadow(0 18px 38px rgba(0,0,0,0.48));
+    animation: message-menu-in 0.14s ease-out;
+    transform-origin: top center;
+  }
+  .message-actions-popover::before {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateX(-50%) rotate(45deg);
+    border-top: 1px solid rgba(255,255,255,0.12);
+    border-left: 1px solid rgba(255,255,255,0.12);
+    background: rgba(20,20,24,0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-radius: 3px 0 0 0;
+  }
+  @keyframes message-menu-in {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .message-actions-popover button {
+    font-family: inherit;
+  }
+  .message-actions-popover > * {
+    position: relative;
+    z-index: 1;
+  }
+  .message-actions-popover {
     & button {
-      min-height: 30px;
-      padding: 0 10px;
       border: 0;
-      border-radius: 9px;
-      background: rgba(255,255,255,0.11);
       color: #fff;
-      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
-      white-space: nowrap;
     }
-    & button:hover { background: rgba(255,255,255,0.18); }
     & button:active { transform: translateY(1px); }
   }
   .message-reaction-actions {
-    @apply flex items-center justify-center gap-[6px];
-    width: max-content;
-    max-width: 100%;
-    padding: 6px;
-    margin: 0 auto;
-    border-radius: 18px;
-    background: rgba(28,28,30,0.96);
+    @apply flex items-center justify-between gap-[4px];
+    padding: 7px;
+    border-radius: 20px;
+    background: rgba(20,20,24,0.96);
     border: 1px solid rgba(255,255,255,0.12);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    & button { width: 42px; min-height: 36px; padding: 0; font-size: 19px; }
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    & button {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 14px;
+      background: transparent;
+      font-size: 22px;
+      line-height: 1;
+      transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+    }
+    & button:hover {
+      background: rgba(255,255,255,0.1);
+      transform: translateY(-2px) scale(1.08);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.24);
+    }
   }
   .message-text-actions {
-    @apply flex flex-col items-stretch gap-[6px] rounded-[16px];
-    padding: 8px;
-    background: rgba(28,28,30,0.96);
+    @apply flex flex-col items-stretch rounded-[18px] overflow-hidden;
+    padding: 5px;
+    background: rgba(20,20,24,0.96);
     border: 1px solid rgba(255,255,255,0.12);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    & button { width: 100%; min-height: 36px; }
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    & button {
+      @apply w-full flex items-center gap-[10px] text-left;
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: 12px;
+      background: transparent;
+      color: rgba(255,255,255,0.9);
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background 0.14s ease, color 0.14s ease;
+    }
+    & button + button { margin-top: 2px; }
+    & button:hover { background: rgba(255,255,255,0.09); color: #fff; }
+    & button svg { width: 18px; height: 18px; fill: currentColor; opacity: 0.88; }
+    & button.is-danger { color: #ff7777; }
+    & button.is-danger:hover { background: rgba(255,75,75,0.12); color: #ff8d8d; }
   }
   .thread-state { @apply mx-auto max-w-[360px] text-center; padding: 28px 18px; & h2 { font-size: 20px; margin: 0 0 8px; } & p { color: rgba(255,255,255,0.58); } }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: rgba(255,75,75,0.12); color: rgba(255,255,255,0.58); }

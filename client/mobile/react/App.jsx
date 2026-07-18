@@ -283,7 +283,7 @@ function ChatLayout({ forceMobile = false }) {
     event.preventDefault();
     const startX = event.clientX;
     const startSidebarWidth = sidebarWidth;
-    const startProfileWidth = profileWidth || Math.round(window.innerWidth * 0.28);
+    const startProfileWidth = profileWidth || Math.round(window.innerWidth * 0.25);
 
     function handleMove(moveEvent) {
       if (kind === 'sidebar') {
