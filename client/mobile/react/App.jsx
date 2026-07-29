@@ -12,6 +12,7 @@ import { CallProvider } from './components/Calls/CallProvider.jsx';
 import { CallOverlay } from './components/Calls/CallOverlay.jsx';
 import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { services } from '../application/services/serviceContainer.js';
+import { ThemeProvider } from './components/Context/ThemeContext.jsx';
 
 export function App({ basename = '', forceMobile = false }) {
   const homePath = withBasePath(basename, '/chats');
@@ -19,87 +20,89 @@ export function App({ basename = '', forceMobile = false }) {
   const registerPath = withBasePath(basename, '/register');
 
   return (
-    <BrowserRouter basename={basename || undefined}>
-      <CallProvider>
-        <AuthGuard />
-        <CallOverlay />
-        <Routes>
-          <Route path="/" element={<HomeRoute loginPath="/login" chatsPath="/chats" />} />
-          <Route
-            path="/login"
-            element={
-              <LoginPage
-                redirectPath={homePath}
-                registerHref={registerPath}
-                t={translate}
-              />
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <RegisterPage
-                redirectPath={homePath}
-                loginHref={loginPath}
-                t={translate}
-              />
-            }
-          />
-          <Route
-            path="/chats"
-            element={
-              <ProtectedRoute>
-                <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/chats/:chatId"
-            element={
-              <ProtectedRoute>
-                <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/rate-limit"
-            element={
-              <RateLimitPage
-                retryAfter={60}
-                onBack={() => window.history.back()}
-                t={translate}
-              />
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <AppLayout forceMobile={forceMobile}><SettingsPage t={translate} /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/contacts"
-            element={
-              <ProtectedRoute>
-                <AppLayout forceMobile={forceMobile}><ContactsPage t={translate} /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/create-group"
-            element={
-              <ProtectedRoute>
-                <AppLayout forceMobile={forceMobile}><CreateGroupPage t={translate} /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </CallProvider>
-      <NotificationManager />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter basename={basename || undefined}>
+        <CallProvider>
+          <AuthGuard />
+          <CallOverlay />
+          <Routes>
+            <Route path="/" element={<HomeRoute loginPath="/login" chatsPath="/chats" />} />
+            <Route
+              path="/login"
+              element={
+                <LoginPage
+                  redirectPath={homePath}
+                  registerHref={registerPath}
+                  t={translate}
+                />
+              }
+            />
+            <Route
+              path="/register"
+              element={
+                <RegisterPage
+                  redirectPath={homePath}
+                  loginHref={loginPath}
+                  t={translate}
+                />
+              }
+            />
+            <Route
+              path="/chats"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chats/:chatId"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/rate-limit"
+              element={
+                <RateLimitPage
+                  retryAfter={60}
+                  onBack={() => window.history.back()}
+                  t={translate}
+                />
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}><SettingsPage t={translate} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/contacts"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}><ContactsPage t={translate} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/create-group"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}><CreateGroupPage t={translate} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </CallProvider>
+        <NotificationManager />
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

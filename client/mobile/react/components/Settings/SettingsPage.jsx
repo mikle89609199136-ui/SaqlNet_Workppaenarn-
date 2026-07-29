@@ -1,16 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
 import { ToastStack } from '../common/ToastStack.jsx';
 import { useToasts } from '../../hooks/useToasts.js';
 import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import '../../styles/SettingsPage.css';
-
+import { useTheme } from '../Context/ThemeContext.jsx';
+import { useLanguage } from '../locales/LanguageContext.jsx';
 export function SettingsPage({ t = (k, f) => f }) {
   const navigate = useNavigate();
   const { toasts, showToast } = useToasts();
+  const { theme, setTheme } = useTheme(); // 1. Берем тему и функцию установки темы из Контекста
+  const { g, lang, changeLanguage } = useLanguage();
+
+  const handleToggleLanguage = () => {
+    const nextLang = lang === 'ru' ? 'en' : 'ru';
+    changeLanguage(nextLang);
+  };
   const [user, setUser] = useState({});
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false); // 2. Состояние для открытия выпадающего меню
+  const themeMenuRef = useRef(null);
+
   const [settings, setSettings] = useState({
     theme: 'dark',
     language: 'ru',
@@ -19,6 +30,17 @@ export function SettingsPage({ t = (k, f) => f }) {
   });
 
   const token = localStorage.getItem('craneapp_auth_token');
+
+  // Закрытие выпадающего меню при клике снаружи
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target)) {
+        setIsThemeMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -64,6 +86,12 @@ export function SettingsPage({ t = (k, f) => f }) {
     }
   }
 
+  const handleSelectTheme = (selectedTheme) => {
+    setTheme(selectedTheme);
+    updateSetting('theme', selectedTheme);
+    setIsThemeMenuOpen(false);
+  };
+
   async function handleLogout() {
     await services.authService.logout().catch(() => {
       localStorage.removeItem('craneapp_auth_token');
@@ -107,19 +135,17 @@ export function SettingsPage({ t = (k, f) => f }) {
       <section className="settings-block-group">
         <div className="settings-row-item" onClick={() => setIsEditModalOpen(true)}>
           <div className="settings-row-left">
-            <span className="settings-row-icon">👤</span>
+            <span className="settings-row-icon icon-user"></span>
             <span>{t('editProfile', 'Редактировать профиль')}</span>
           </div>
-          <div className="settings-row-right">
-            <span>›</span>
-          </div>
+          <div className="settings-row-right"></div>
         </div>
       </section>
 
       <section className="settings-block-group">
         <div className="settings-row-item">
           <div className="settings-row-left">
-            <span className="settings-row-icon">🔔</span>
+            <span className="settings-row-icon icon-bell"></span>
             <span>{t('notifications', 'Уведомления')}</span>
           </div>
           <div
@@ -132,7 +158,7 @@ export function SettingsPage({ t = (k, f) => f }) {
 
         <div className="settings-row-item">
           <div className="settings-row-left">
-            <span className="settings-row-icon">🎵</span>
+            <span className="settings-row-icon icon-sound"></span>
             <span>{t('sounds', 'Звуки')}</span>
           </div>
           <div
@@ -145,28 +171,56 @@ export function SettingsPage({ t = (k, f) => f }) {
       </section>
 
       <section className="settings-block-group">
-        <div className="settings-row-item" onClick={() => showToast('info', 'Эта функция будет доступна в следующем обновлении', 'ℹ️')}>
-          <div className="settings-row-left">
-            <span className="settings-row-icon">🎨</span>
-            <span>{t('appearance', 'Оформление')}</span>
-          </div>
-          <div className="settings-row-right">
-            <span>{settings.theme === 'dark' ? 'Тёмная' : 'Светлая'}</span>
-            <span>›</span>
-          </div>
-        </div>
+				<div 
+					className="settings-row-item" 
+					onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+					style={{ cursor: 'pointer' }}
+				>
+					<div className="settings-row-left">
+						<span className="settings-row-icon icon-palette"></span>
+						<span>{t('appearance', 'Оформление')}</span>
+					</div>
+					<div className="settings-row-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+						<span style={{ opacity: 0.7, fontSize: '14px' }}>
+							{theme === 'dark' ? 'Тёмная' : 'Светлая'}
+						</span>
+						<span className={`chevron-icon ${isThemeMenuOpen ? 'open' : ''}`}>▼</span>
+					</div>
+				</div>
 
-        <div className="settings-row-item" onClick={() => showToast('info', 'Эта функция будет доступна в следующем обновлении', 'ℹ️')}>
+				{/* Выпадающий аккордеон внутри секции */}
+				{isThemeMenuOpen && (
+					<div className="theme-inline-menu">
+						<button 
+							type="button"
+							className={`theme-option-btn ${theme === 'dark' ? 'active' : ''}`}
+							onClick={() => handleSelectTheme('dark')}
+						>
+							<span>🌙 Тёмная</span>
+							{theme === 'dark' && <span className="check-mark">✓</span>}
+						</button>
+
+						<button 
+							type="button"
+							className={`theme-option-btn ${theme === 'light' ? 'active' : ''}`}
+							onClick={() => handleSelectTheme('light')}
+						>
+							<span>☀️ Светлая</span>
+							{theme === 'light' && <span className="check-mark">✓</span>}
+						</button>
+					</div>
+				)}
+
+        <div className="settings-row-item" onClick={handleToggleLanguage}>
           <div className="settings-row-left">
-            <span className="settings-row-icon">🌐</span>
-            <span>{t('language', 'Язык')}</span>
+            <span className="settings-row-icon icon-globe"></span>
+            <span>{g('language', 'Язык')}</span>
           </div>
           <div className="settings-row-right">
-            <span>Русский</span>
-            <span>›</span>
+            <span>{lang === 'en' ? 'English' : 'Русский'}</span>
           </div>
         </div>
-      </section>
+			</section>
 
       <div className="logout-btn-container">
         <button className="logout-btn-block" onClick={handleLogout}>

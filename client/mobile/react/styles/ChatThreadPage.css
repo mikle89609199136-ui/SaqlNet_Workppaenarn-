@@ -283,12 +283,10 @@
   margin-top: 16px;
 }
 
-/* На ПК и ноутбуках скрываем кнопку */
 .thread-back {
 	display: none;
 }
 
-/* На мобильных устройствах (до 768px) */
 @media (max-width: 768px) {
 	.thread-back {
 		display: inline-flex;
@@ -299,7 +297,6 @@
 		color: #ffffff;
 		text-decoration: none;
 		
-		/* Glassmorphism фон */
 		background: linear-gradient(
 			180deg, 
 			rgba(14, 14, 14, 0.86) 0%, 
@@ -308,7 +305,6 @@
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 		
-		/* Форма и рамка */
 		border-radius: 50%;
 		border: 1px solid rgba(255, 255, 255, 0.18);
 		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25), 
@@ -319,7 +315,6 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	/* Центрируем SVG внутри и плавно подсвечиваем при наведении/тапе */
 	.thread-back svg {
 		display: block;
 		transition: transform 0.2s ease;
@@ -330,11 +325,11 @@
 	}
 
 	.thread-back:hover svg {
-		transform: translateX(-2px); /* Легкий микро-сдвиг стрелочки влево при наведении */
+		transform: translateX(-2px);
 	}
 
 	.thread-back:active {
-		transform: scale(0.92); /* Отклик нажатия */
+		transform: scale(0.92);
 	}
 }
 
@@ -342,7 +337,6 @@
 	position: relative;
 }
 
-/* На ПК показываем нормальные 2 кнопки */
 .thread-call-desktop {
 	display: flex;
 }
@@ -351,7 +345,6 @@
 	display: none;
 }
 
-/* На мобилах скрываем 2 кнопки и показываем 1 с выпадающим меню */
 @media (max-width: 768px) {
 	.thread-call-desktop {
 		display: none;
@@ -362,7 +355,6 @@
 		padding: 4px;
 	}
 
-	/* Стеклянное меню выбора звонка */
 	.thread-call-menu {
 		position: absolute;
 		top: calc(100% + 8px);
@@ -413,7 +405,6 @@
   	}
 }
 
-/* Нижняя панель навигации (Dark Glassmorphism капсула) */
 .mobile-nav-rail {
   position: fixed;
   bottom: 32px;
@@ -426,11 +417,9 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  /* Убираем боковые зазоры контейнера */
   padding: 0px;
   box-sizing: border-box;
 
-  /* Совпадающий с остальными карточками темный glassmorphism */
   background: linear-gradient(
     180deg, 
     rgba(14, 14, 14, 0.86) 0%, 
@@ -439,7 +428,6 @@
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   
-  /* Капсульная форма (полностью круглые углы) */
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 
@@ -448,7 +436,6 @@
   z-index: 1000;
 }
 
-/* Кнопки внутри мобильной панели */
 .mobile-nav-rail .rail-tab {
   background: transparent;
   border: none;
@@ -462,7 +449,6 @@
   padding: 0;
   margin: 0;
   
-  /* Радиус повторяет форму общей капсулы */
   border-radius: 9999px;
   color: rgba(255, 255, 255, 0.6);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -476,7 +462,6 @@
   line-height: 1;
 }
 
-/* Активная кнопка — аккуратная капсульная подложка без дыр по бокам */
 .mobile-nav-rail .rail-tab.active {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.16);
@@ -488,19 +473,16 @@
   transform: scale(0.95);
 }
 
-/* Мобильный контейнер шапки */
 @media (max-width: 768px) {
   .thread-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    /* Симметричные отступы от краев экрана */
     padding: 14 12px; 
     box-sizing: border-box;
     width: 100%;
   }
 
-  /* Стрелка назад — убираем лишние внешние отступы */
   .thread-back {
     margin: 0;
     display: flex;
@@ -509,21 +491,18 @@
     flex-shrink: 0;
   }
 
-  /* Карточка с именем по центру — занимает всё свободное место */
   .thread-header-info {
     flex: 1;
-    margin: 0 8px; /* Одинаковые зазоры слева и справа от карточки */
-    min-width: 0; /* Предотвращает переполнение текстом */
+    margin: 0 8px;
+    min-width: 0;
   }
 
-  /* Обертка мобильных вызовов справа */
   .thread-call-actions-wrap {
     display: flex;
     align-items: center;
     flex-shrink: 0;
   }
 
-  /* Мобильная плашка звонка справа — делаем аккуратной */
   .thread-call-mobile {
     margin: 14px 12px 14px 0px;
     padding: 6px; 
