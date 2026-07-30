@@ -59,3 +59,7 @@ func MustUser(r *http.Request) User {
 	}
 	return user
 }
+
+func WithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, contextKey{}, user)
+}

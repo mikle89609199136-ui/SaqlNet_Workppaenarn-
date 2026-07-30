@@ -31,8 +31,9 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	// JSON payload
 	if strings.HasPrefix(contentType, "application/json") {
 		var req struct {
-			Purpose string `json:"purpose"`
-			File    any    `json:"file"`
+			Purpose  string `json:"purpose"`
+			File     any    `json:"file"`
+			FileName string `json:"fileName"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "failed to parse json")
@@ -45,46 +46,71 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "file must be an object for message purpose")
 				return
 			}
-			
+
 			// Extract encrypted metadata
 			enc := map[string]any{
 				"encrypted": true,
 			}
-			if v, ok := fileMap["version"]; ok { enc["version"] = v }
-			if v, ok := fileMap["algorithm"]; ok { enc["algorithm"] = v }
-			if v, ok := fileMap["iv"]; ok { enc["iv"] = v }
-			
+			if v, ok := fileMap["version"]; ok {
+				enc["version"] = v
+			}
+			if v, ok := fileMap["algorithm"]; ok {
+				enc["algorithm"] = v
+			}
+			if v, ok := fileMap["iv"]; ok {
+				enc["iv"] = v
+			}
+
 			mimeType, _ := fileMap["mimeType"].(string)
-			if mimeType == "" { mimeType = "application/octet-stream" }
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
 			enc["mimeType"] = mimeType
 
+			var originalSize int64
 			if sizeBytes, ok := fileMap["sizeBytes"].(float64); ok {
-				enc["sizeBytes"] = int64(sizeBytes)
+				originalSize = int64(sizeBytes)
+				if sizeBytes < 0 || sizeBytes > maxUploadBytes || float64(originalSize) != sizeBytes {
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_size", "sizeBytes must be a non-negative integer within the upload limit")
+					return
+				}
+				enc["sizeBytes"] = originalSize
 			}
-			if fileName, ok := fileMap["fileName"].(string); ok {
-				enc["fileName"] = fileName
+			fileName, _ := fileMap["fileName"].(string)
+			if fileName == "" {
+				fileName = req.FileName
 			}
+			fileName = sanitizeFilename(fileName)
+			enc["fileName"] = fileName
 
 			ciphertext, ok := fileMap["ciphertext"].(string)
 			if !ok {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_ciphertext", "ciphertext must be a string")
 				return
 			}
-			
+
 			encJson, _ := json.Marshal(enc)
-			
-			up, err := h.service.UploadEncrypted(r.Context(), current.ID, ciphertext, string(encJson), mimeType)
+
+			up, err := h.service.UploadEncrypted(r.Context(), current.ID, fileName, ciphertext, string(encJson), mimeType)
 			if err != nil {
-				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", err.Error())
+				status := http.StatusInternalServerError
+				code := "upload_failed"
+				if errors.Is(err, ErrTooBig) {
+					status, code = http.StatusRequestEntityTooLarge, "file_too_large"
+				}
+				httpx.ErrorJSON(w, r, status, code, err.Error())
 				return
 			}
-			
+
 			// Node.js returns extra data for encrypted
 			resp := map[string]any{
-				"success": true,
-				"url": "/api/v2/media/" + up.ID,
-				"encrypted": true,
-				"encryption": string(encJson),
+				"success":     true,
+				"url":         "/api/v2/media/" + up.ID,
+				"encrypted":   true,
+				"encryption":  string(encJson),
+				"fileName":    fileName,
+				"sizeBytes":   originalSize,
+				"contentType": up.ContentType,
 			}
 			httpx.JSON(w, http.StatusCreated, resp)
 			return
@@ -96,32 +122,37 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "plain uploads must be data URLs")
 			return
 		}
-		
+
 		parts := strings.SplitN(fileStr, ",", 2)
 		if len(parts) != 2 {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "invalid data url")
 			return
 		}
-		
+
 		mimeType := "application/octet-stream"
 		header := parts[0]
 		if strings.Contains(header, ";base64") {
 			mimeType = strings.TrimPrefix(header, "data:")
 			mimeType = strings.TrimSuffix(mimeType, ";base64")
 		}
-		
+
 		data, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_base64", "failed to decode base64")
 			return
 		}
-		
-		up, err := h.service.UploadRaw(r.Context(), current.ID, "", mimeType, data, false, "")
+
+		up, err := h.service.UploadRaw(r.Context(), current.ID, req.FileName, mimeType, data, false, "")
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", err.Error())
+			status := http.StatusInternalServerError
+			code := "upload_failed"
+			if errors.Is(err, ErrTooBig) {
+				status, code = http.StatusRequestEntityTooLarge, "file_too_large"
+			}
+			httpx.ErrorJSON(w, r, status, code, err.Error())
 			return
 		}
-		httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "url": "/api/v2/media/" + up.ID})
+		httpx.JSON(w, http.StatusCreated, uploadResponse(up))
 		return
 	}
 
@@ -144,7 +175,17 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", "upload failed")
 	default:
-		httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "url": "/api/v2/media/" + up.ID})
+		httpx.JSON(w, http.StatusCreated, uploadResponse(up))
+	}
+}
+
+func uploadResponse(up Upload) map[string]any {
+	return map[string]any{
+		"success":     true,
+		"url":         "/api/v2/media/" + up.ID,
+		"fileName":    up.Filename,
+		"sizeBytes":   up.SizeBytes,
+		"contentType": up.ContentType,
 	}
 }
 
@@ -158,7 +199,7 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload id required")
 		return
 	}
-	
+
 	// Delegate fully to Service to handle JSON encrypted response vs Redirect
 	err := h.service.ServeProxy(r.Context(), uploadID, w)
 	switch {

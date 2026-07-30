@@ -1,10 +1,19 @@
-import { eventBus } from '../../core/EventBus.js';
-import Message from '../../domain/entities/Message.js';
-import MessageValidator from '../../domain/validators/MessageValidator.js';
-import API_ENDPOINTS from '../../infrastructure/api/endpoints.js';
+import { eventBus } from "../../core/EventBus.js";
+import Message from "../../domain/entities/Message.js";
+import MessageValidator from "../../domain/validators/MessageValidator.js";
+import API_ENDPOINTS from "../../infrastructure/api/endpoints.js";
+import { sortMessagesChronologically } from "../../utils/sortMessagesChronologically.js";
 
-const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
-const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
+const MEDIA_MESSAGE_TYPES = new Set([
+  "image",
+  "video",
+  "audio",
+  "voice",
+  "file",
+  "gif",
+  "sticker",
+]);
+const LEGACY_MEDIA_UNAVAILABLE = "Медиа недоступно: файл не зашифрован";
 
 class MessageService {
   constructor(apiClient, cryptoService) {
@@ -23,12 +32,15 @@ class MessageService {
       limit,
       offset,
     });
-    
-    const chatContext = await this.getChatContext(chatId, 'decryption');
 
-    const messages = sortMessagesChronologically(await Promise.all(this.normalizeList(response.data).map(async (item) => {
-      return this.processMessageForDisplay(chatId, item, chatContext);
-    })));
+    const chatContext = await this.getChatContext(chatId, "decryption");
+    const messages = sortMessagesChronologically(
+      await Promise.all(
+        this.normalizeList(response.data).map(async (item) => {
+          return this.processMessageForDisplay(chatId, item, chatContext);
+        }),
+      ),
+    );
 
     if (offset === 0) {
       this.messages.set(chatId, messages);
@@ -36,81 +48,113 @@ class MessageService {
 
     return messages;
   }
-  
+
   getMeId() {
     try {
-      const u = JSON.parse(localStorage.getItem('craneapp_user_data'));
+      const u = JSON.parse(localStorage.getItem("craneapp_user_data"));
       return u?.id;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
-  async sendMessage(chatId, content, type = 'text', replyTo = null) {
+  async sendMessage(chatId, content, type = "text", replyTo = null) {
     const validation = MessageValidator.validateContent(content);
     if (!validation.isValid) {
       throw new Error(validation.error);
     }
 
-    const chatContext = await this.getChatContext(chatId, 'encryption');
+    const chatContext = await this.getChatContext(chatId, "encryption");
 
     let encryptedContent = content.trim();
-    if (type === 'text') {
-      encryptedContent = await this.encryptContent(chatId, encryptedContent, chatContext);
+    if (type === "text") {
+      encryptedContent = await this.encryptContent(
+        chatId,
+        encryptedContent,
+        chatContext,
+      );
     }
 
-    const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_SEND(chatId), {
-      content: encryptedContent,
-      type,
-      replyTo,
-    });
-    
+    const response = await this.apiClient.post(
+      API_ENDPOINTS.MESSAGE_SEND(chatId),
+      {
+        content: encryptedContent,
+        type,
+        replyTo,
+      },
+    );
+
     // We want the local message to show the original content, not the encrypted payload
     const messageObj = response.data?.message ?? response.data;
     const message = Message.fromAPI({ ...messageObj, content: content.trim() });
 
     this.addMessageToCache(chatId, message);
-    eventBus.emit('message:sent', message);
+    eventBus.emit("message:sent", message);
 
     return message;
   }
 
-  async sendMediaMessage(chatId, media, mediaType, caption = '', replyTo = null) {
+  async sendMediaMessage(
+    chatId,
+    media,
+    mediaType,
+    caption = "",
+    replyTo = null,
+  ) {
     if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {
       throw new Error(`Unsupported media message type: ${mediaType}`);
     }
 
-    const chatContext = await this.getChatContext(chatId, 'media encryption');
-    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media, chatContext);
-    const uploadResponse = await this.apiClient.post(API_ENDPOINTS.MEDIA_UPLOAD, {
-      file: encryptedMedia,
-      type: mediaType,
-      purpose: 'message',
-    });
+    const chatContext = await this.getChatContext(chatId, "media encryption");
+    const encryptedMedia = await this.cryptoService.encryptMedia(
+      chatId,
+      media,
+      chatContext,
+    );
+    const uploadResponse = await this.apiClient.post(
+      API_ENDPOINTS.MEDIA_UPLOAD,
+      {
+        file: encryptedMedia,
+        type: mediaType,
+        purpose: "message",
+      },
+    );
 
-    const trimmedCaption = (caption || '').trim();
+    const trimmedCaption = (caption || "").trim();
     const encryptedCaption = trimmedCaption
       ? await this.encryptContent(chatId, trimmedCaption, chatContext)
-      : '';
+      : "";
     // Never copy the upload response wholesale into message metadata. Some
     // deployments return the ciphertext inside `encryption`, which makes the
     // subsequent /messages request as large as the file and trips the chat
     // service JSON limit. The media service already stores the ciphertext.
     const mediaEncryption = this.mediaMetadataFromPayload(encryptedMedia);
 
-    const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_SEND(chatId), {
-      content: encryptedCaption,
-      type: mediaType,
-      replyTo,
-      mediaUrl: uploadResponse.data?.url,
-      mediaType,
-      mediaEncrypted: true,
-      mediaEncryption,
-      isEncrypted: Boolean(trimmedCaption),
-    });
+    const response = await this.apiClient.post(
+      API_ENDPOINTS.MESSAGE_SEND(chatId),
+      {
+        content: encryptedCaption,
+        type: mediaType,
+        replyTo,
+        mediaUrl: uploadResponse.data?.url,
+        mediaType,
+        mediaEncrypted: true,
+        mediaEncryption,
+        isEncrypted: Boolean(trimmedCaption),
+      },
+    );
 
     const messageObj = response.data?.message ?? response.data;
-    const localUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-      ? URL.createObjectURL(await this.cryptoService.decryptMedia(chatId, encryptedMedia, chatContext))
-      : uploadResponse.data?.url;
+    const localUrl =
+      typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+        ? URL.createObjectURL(
+            await this.cryptoService.decryptMedia(
+              chatId,
+              encryptedMedia,
+              chatContext,
+            ),
+          )
+        : uploadResponse.data?.url;
     const message = Message.fromAPI({
       ...messageObj,
       content: trimmedCaption,
@@ -120,22 +164,36 @@ class MessageService {
     });
 
     this.addMessageToCache(chatId, message);
-    eventBus.emit('message:sent', message);
+    eventBus.emit("message:sent", message);
 
     return message;
   }
 
   async processMessageForDisplay(chatId, item, chatContext = null) {
-    const context = chatContext || await this.getChatContext(chatId, 'display');
+    const context =
+      chatContext || (await this.getChatContext(chatId, "display"));
     const normalizedItem = { ...item.metadata, ...item };
-    const type = normalizedItem.type || normalizedItem.mediaType || normalizedItem.media_type || 'text';
+    const type =
+      normalizedItem.type ||
+      normalizedItem.mediaType ||
+      normalizedItem.media_type ||
+      "text";
     let content = item.content;
 
     if (content) {
-      content = await this.decryptContent(chatId, content, context, item.senderId ?? item.sender_id);
+      content = await this.decryptContent(
+        chatId,
+        content,
+        context,
+        item.senderId ?? item.sender_id,
+      );
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, { ...normalizedItem, type }, context);
+    const mediaPatch = await this.resolveMediaForDisplay(
+      chatId,
+      { ...normalizedItem, type },
+      context,
+    );
     return Message.fromAPI({ ...normalizedItem, type, content, ...mediaPatch });
   }
 
@@ -145,18 +203,18 @@ class MessageService {
       const chat = chatRes.data?.chat ?? chatRes.data;
       return {
         ...(chat || {}),
-        type: chat?.type || 'private',
+        type: chat?.type || "private",
         peerPublicKey: chat?.peerPublicKey || null,
       };
     } catch (e) {
       console.warn(`Failed to fetch chat info for ${purpose} context`, e);
-      return { type: 'private', peerPublicKey: null };
+      return { type: "private", peerPublicKey: null };
     }
   }
 
   async encryptContent(chatId, content, chatContext) {
     if (!content) return content;
-    if (chatContext.type === 'group') {
+    if (chatContext.type === "group") {
       return this.cryptoService.encryptGroup(chatId, content);
     }
     return this.cryptoService.encryptDM(content, chatContext.peerPublicKey);
@@ -164,7 +222,7 @@ class MessageService {
 
   async decryptContent(chatId, content, chatContext, senderId = null) {
     if (!content) return content;
-    if (chatContext.type === 'group') {
+    if (chatContext.type === "group") {
       return this.cryptoService.decryptGroup(chatId, content);
     }
     const isOwnMessage = senderId && senderId === this.getMeId();
@@ -191,10 +249,15 @@ class MessageService {
     try {
       const response = await this.apiClient.get(mediaUrl);
       const encryptedPayload = response.data;
-      const blob = await this.cryptoService.decryptMedia(chatId, encryptedPayload, chatContext);
-      const objectUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-        ? URL.createObjectURL(blob)
-        : mediaUrl;
+      const blob = await this.cryptoService.decryptMedia(
+        chatId,
+        encryptedPayload,
+        chatContext,
+      );
+      const objectUrl =
+        typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+          ? URL.createObjectURL(blob)
+          : mediaUrl;
 
       return {
         mediaUrl: objectUrl,
@@ -204,14 +267,14 @@ class MessageService {
         mediaUnavailable: false,
       };
     } catch (error) {
-      console.warn('Encrypted media decrypt failed:', error);
+      console.warn("Encrypted media decrypt failed:", error);
       return {
         mediaUrl: null,
         mediaOriginalUrl: mediaUrl,
         mediaEncrypted: true,
         mediaEncryption: item.mediaEncryption ?? item.media_encryption ?? null,
         mediaUnavailable: true,
-        mediaUnavailableReason: 'Медиа недоступно: ошибка расшифровки',
+        mediaUnavailableReason: "Медиа недоступно: ошибка расшифровки",
       };
     }
   }
@@ -227,9 +290,12 @@ class MessageService {
       throw new Error(validation.error);
     }
 
-    const response = await this.apiClient.put(API_ENDPOINTS.MESSAGE_BY_ID(messageId), {
-      content: content.trim(),
-    });
+    const response = await this.apiClient.put(
+      API_ENDPOINTS.MESSAGE_BY_ID(messageId),
+      {
+        content: content.trim(),
+      },
+    );
     const message = {
       messageId,
       content: response.data?.content ?? content.trim(),
@@ -241,15 +307,17 @@ class MessageService {
       editedAt: message.editedAt,
       isEdited: true,
     });
-    eventBus.emit('message:edited', message);
+    eventBus.emit("message:edited", message);
 
     return message;
   }
 
   async deleteMessage(messageId) {
-    const response = await this.apiClient.delete(API_ENDPOINTS.MESSAGE_BY_ID(messageId));
+    const response = await this.apiClient.delete(
+      API_ENDPOINTS.MESSAGE_BY_ID(messageId),
+    );
     this.removeMessageFromCache(messageId);
-    eventBus.emit('message:deleted', { messageId });
+    eventBus.emit("message:deleted", { messageId });
     return response.data;
   }
 
@@ -265,14 +333,28 @@ class MessageService {
       }
     });
 
-    eventBus.emit('messages:read', { chatId, messageIds });
+    eventBus.emit("messages:read", { chatId, messageIds });
     return response.data;
   }
 
-  forwardMessage(messageId, targetChatId) {
-    return this.apiClient
-      .post(API_ENDPOINTS.MESSAGE_FORWARD(messageId), { targetChatId })
-      .then((response) => response.data);
+  async forwardMessage(messageId, targetChatId) {
+    const response = await this.apiClient.post(
+      API_ENDPOINTS.MESSAGE_FORWARD(messageId),
+      { targetChatId },
+    );
+
+    const message = sortMessagesChronologically(
+      await Promise.all(
+        this.normalizeList([response.data.message]).map(async (item) => {
+          return this.processMessageForDisplay(targetChatId, item);
+        }),
+      ),
+    )[0];
+
+    this.addMessageToCache(targetChatId, message);
+    eventBus.emit("message:sent", { message, chatId: targetChatId });
+
+    return message;
   }
 
   listReactions(messageId) {
@@ -281,22 +363,47 @@ class MessageService {
       .then((response) => response.data?.reactions ?? []);
   }
 
-  listPins(chatId) {
-    return this.apiClient
+  async listPins(chatId) {
+    const response = await this.apiClient
       .get(API_ENDPOINTS.CHAT_PINS(chatId))
       .then((response) => response.data?.pins ?? []);
+
+    const chatContext = await this.getChatContext(chatId, "decryption");
+
+    const messages = sortMessagesChronologically(
+      await Promise.all(
+        this.normalizeList(response).map(async (item) => {
+          return {
+            ...item,
+            message: await this.processMessageForDisplay(
+              chatId,
+              item.message,
+              chatContext,
+            ),
+          };
+        }),
+      ),
+    );
+
+    return messages;
   }
 
-  pinMessage(chatId, messageId) {
-    return this.apiClient
-      .post(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId))
-      .then((response) => response.data);
+  async pinMessage(chatId, messageId) {
+    const response = await this.apiClient.post(
+      API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId),
+    );
+
+    eventBus.emit("message:pin", { chatId, messageId });
+    return response.data;
   }
 
-  unpinMessage(chatId, messageId) {
-    return this.apiClient
-      .delete(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId))
-      .then((response) => response.data);
+  async unpinMessage(chatId, messageId) {
+    const response = await this.apiClient.delete(
+      API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId),
+    );
+
+    eventBus.emit("message:unpin", { chatId, messageId });
+    return response.data;
   }
 
   reactToMessage(messageId, emoji) {
@@ -307,9 +414,12 @@ class MessageService {
 
   updateMessageInCache(messageId, patch) {
     this.messages.forEach((messages, chatId) => {
-      this.messages.set(chatId, messages.map((message) => (
-        message.id === messageId ? { ...message, ...patch } : message
-      )));
+      this.messages.set(
+        chatId,
+        messages.map((message) =>
+          message.id === messageId ? { ...message, ...patch } : message,
+        ),
+      );
     });
   }
 
@@ -317,12 +427,18 @@ class MessageService {
     if (!this.messages.has(chatId)) {
       this.messages.set(chatId, []);
     }
-    this.messages.set(chatId, sortMessagesChronologically([...this.messages.get(chatId), message]));
+    this.messages.set(
+      chatId,
+      sortMessagesChronologically([...this.messages.get(chatId), message]),
+    );
   }
 
   removeMessageFromCache(messageId) {
     this.messages.forEach((messages, chatId) => {
-      this.messages.set(chatId, messages.filter((message) => message.id !== messageId));
+      this.messages.set(
+        chatId,
+        messages.filter((message) => message.id !== messageId),
+      );
     });
   }
 
@@ -330,16 +446,6 @@ class MessageService {
     if (Array.isArray(data)) return data;
     return data?.messages ?? data?.items ?? [];
   }
-}
-
-function sortMessagesChronologically(messages) {
-  return [...messages].sort((left, right) => messageTime(left) - messageTime(right));
-}
-
-function messageTime(message) {
-  const value = message?.timestamp ?? message?.createdAt ?? message?.created_at;
-  const time = value instanceof Date ? value.getTime() : new Date(value || 0).getTime();
-  return Number.isNaN(time) ? 0 : time;
 }
 
 export default MessageService;

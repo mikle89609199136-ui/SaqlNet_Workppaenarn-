@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
 import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import { Identicon } from '../common/Identicon.jsx';
+import { useChatsStore } from '../../store/chats.js';
 
 export function ChatsPage({ t = fallbackTranslate }) {
-  const [chats, setChats] = useState([]);
+  const chats = useChatsStore(state => state.chats);
+  const setChats = useChatsStore(state => state.setChats);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const currentUser = useMemo(() => getCurrentUser(), []);

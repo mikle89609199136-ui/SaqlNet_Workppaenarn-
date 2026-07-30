@@ -11,21 +11,25 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lib/pq"
 )
 
 var (
-	ErrTooBig       = errors.New("file too large")
-	ErrBadType      = errors.New("unsupported content type")
-	ErrNotFound     = errors.New("upload not found")
-	ErrForbidden    = errors.New("access denied")
+	ErrTooBig    = errors.New("file too large")
+	ErrBadType   = errors.New("unsupported content type")
+	ErrNotFound  = errors.New("upload not found")
+	ErrForbidden = errors.New("access denied")
 )
 
 const maxUploadBytes = 100 << 20 // 100 MB
+
+const maxFilenameBytes = 255
 
 var allowedTypes = map[string]bool{
 	"image/jpeg":      true,
@@ -68,18 +72,38 @@ func NewService(db *sql.DB, store Store, bucket string) *Service {
 	return &Service{db: db, store: store, bucket: bucket}
 }
 
+func sanitizeFilename(filename string) string {
+	// path.Base handles client-provided Windows paths after normalising separators.
+	filename = path.Base(strings.ReplaceAll(strings.TrimSpace(filename), `\`, "/"))
+	if filename == "." || filename == "/" {
+		return ""
+	}
+	for len(filename) > maxFilenameBytes {
+		_, size := utf8.DecodeLastRuneInString(filename)
+		filename = filename[:len(filename)-size]
+	}
+	return filename
+}
+
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
 	if int64(len(data)) > maxUploadBytes {
 		return Upload{}, ErrTooBig
 	}
 
+	filename = sanitizeFilename(filename)
 	base := strings.SplitN(contentType, ";", 2)[0]
 
 	ext := filepath.Ext(filename)
 	if ext == "" {
-		if base == "image/jpeg" { ext = ".jpg" }
-		if base == "image/png" { ext = ".png" }
-		if base == "video/mp4" { ext = ".mp4" }
+		if base == "image/jpeg" {
+			ext = ".jpg"
+		}
+		if base == "image/png" {
+			ext = ".png"
+		}
+		if base == "video/mp4" {
+			ext = ".mp4"
+		}
 	}
 	objectKey := fmt.Sprintf("%s/%d%s", userID, time.Now().UnixNano(), ext)
 
@@ -103,12 +127,12 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 	return up, nil
 }
 
-func (s *Service) UploadEncrypted(ctx context.Context, userID, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
+func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
 	data, err := base64.StdEncoding.DecodeString(base64Ciphertext)
 	if err != nil {
 		return Upload{}, fmt.Errorf("invalid ciphertext base64: %w", err)
 	}
-	return s.UploadRaw(ctx, userID, "", contentType, data, true, encryptionJSON)
+	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
@@ -166,7 +190,7 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		SELECT bucket, object_key, content_type, is_encrypted, encryption_key_id 
 		FROM media.uploads WHERE id = $1
 	`, uploadID).Scan(&bucket, &objectKey, &contentType, &isEncrypted, &encryptionJSON)
-	
+
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -183,19 +207,19 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		if err != nil {
 			return err
 		}
-		
+
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return err
 		}
 		defer resp.Body.Close()
-		
+
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}
-		
+
 		var encMeta map[string]any
 		if encryptionJSON.Valid && encryptionJSON.String != "" {
 			_ = json.Unmarshal([]byte(encryptionJSON.String), &encMeta)
@@ -204,7 +228,7 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		}
 		encMeta["encrypted"] = true
 		encMeta["ciphertext"] = base64.StdEncoding.EncodeToString(data)
-		
+
 		if encMeta["mimeType"] == nil {
 			encMeta["mimeType"] = contentType
 		}

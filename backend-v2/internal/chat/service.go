@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"path"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -78,6 +80,66 @@ type Message struct {
 type Service struct {
 	db *sql.DB
 	ws *WSServer
+}
+
+const (
+	maxMediaFilenameBytes = 255
+	maxMediaSizeBytes     = 100 << 20
+)
+
+func sanitizeMediaFilename(filename string) string {
+	filename = path.Base(strings.ReplaceAll(strings.TrimSpace(filename), `\`, "/"))
+	if filename == "." || filename == "/" {
+		return ""
+	}
+	for len(filename) > maxMediaFilenameBytes {
+		_, size := utf8.DecodeLastRuneInString(filename)
+		filename = filename[:len(filename)-size]
+	}
+	return filename
+}
+
+// ValidateMediaMetadata canonicalises client metadata and verifies local,
+// unencrypted uploads against the media record before it is put in a message.
+func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName string, sizeBytes int64, encrypted bool) (string, int64, error) {
+	if sizeBytes < 0 || sizeBytes > maxMediaSizeBytes {
+		return "", 0, ErrInvalidInput
+	}
+	fileName = sanitizeMediaFilename(fileName)
+	uploadID := strings.TrimPrefix(mediaURL, "/api/v2/media/")
+	if uploadID == mediaURL || uploadID == "" || strings.Contains(uploadID, "/") {
+		return fileName, sizeBytes, nil
+	}
+
+	var storedName string
+	var storedSize int64
+	var storedEncrypted bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT filename, size_bytes, is_encrypted
+		FROM media.uploads WHERE id = $1
+	`, uploadID).Scan(&storedName, &storedSize, &storedEncrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, ErrInvalidInput
+	}
+	if err != nil {
+		return "", 0, err
+	}
+	storedName = sanitizeMediaFilename(storedName)
+	if storedName != "" {
+		if fileName != "" && fileName != storedName {
+			return "", 0, ErrInvalidInput
+		}
+		fileName = storedName
+	}
+	if !storedEncrypted && !encrypted {
+		// A zero value keeps older clients working; the canonical stored size is
+		// still used. Any explicitly supplied non-zero value must match exactly.
+		if sizeBytes != 0 && sizeBytes != storedSize {
+			return "", 0, ErrInvalidInput
+		}
+		sizeBytes = storedSize
+	}
+	return fileName, sizeBytes, nil
 }
 
 func NewService(db *sql.DB, ws *WSServer) *Service {
@@ -992,6 +1054,11 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	if err != nil {
 		return Message{}, err
 	}
+	if len(metadataBytes) > 0 {
+		if err := json.Unmarshal(metadataBytes, &src.Metadata); err != nil {
+			return Message{}, err
+		}
+	}
 
 	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
 		if err != nil {
@@ -1000,15 +1067,11 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 		return Message{}, ErrForbidden
 	}
 
-	forwardedFrom := src.ID
-	msg, err := s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
-	if err != nil {
-		return Message{}, err
+	if src.Metadata == nil {
+		src.Metadata = make(map[string]any)
 	}
-	_, _ = s.db.ExecContext(ctx, `
-		UPDATE messages.messages SET metadata = jsonb_set(COALESCE(metadata,'{}'), '{forwardedFrom}', to_jsonb($1::text)) WHERE id = $2
-	`, forwardedFrom, msg.ID)
-	return msg, nil
+	src.Metadata["forwardedFrom"] = src.ID
+	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
 // Reaction types.
@@ -1102,37 +1165,117 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 // Message pin types.
 
 type Pin struct {
-	ID        string `json:"id"`
-	MessageID string `json:"messageId"`
-	ChatID    string `json:"chatId"`
-	PinnedBy  string `json:"pinnedBy"`
-	PinnedAt  string `json:"pinnedAt"`
+	ID        string  `json:"id"`
+	MessageID string  `json:"messageId"`
+	ChatID    string  `json:"chatId"`
+	PinnedBy  string  `json:"pinnedBy"`
+	PinnedAt  string  `json:"pinnedAt"`
+	Message   Message `json:"message"`
 }
 
-func (s *Service) ListPins(ctx context.Context, userID, chatID string) ([]Pin, error) {
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
-		if err != nil {
-			return nil, err
-		}
+func (s *Service) ListPins(
+	ctx context.Context,
+	userID string, chatID string,
+) ([]Pin, error) {
+	// Получать закреплённые сообщения может только участник чата.
+	ok, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, ErrForbidden
 	}
+
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id::text, message_id::text, chat_id::text, pinned_by::text, pinned_at::text
-		FROM messages.pins WHERE chat_id = $1 ORDER BY pinned_at DESC
+		SELECT
+			p.id::text,
+			p.message_id::text,
+			p.chat_id::text,
+			p.pinned_by::text,
+			p.pinned_at::text,
+
+			m.id::text,
+			m.chat_id::text,
+			m.sender_id::text,
+			COALESCE(up.first_name, au.first_name, au.username, ''),
+			COALESCE(up.avatar_url, ''),
+			m.content,
+			m.type,
+			m.reply_to::text,
+			m.metadata,
+			m.updated_at > m.created_at,
+			m.created_at::text,
+			m.updated_at::text
+		FROM messages.pins AS p
+		JOIN messages.messages AS m
+			ON m.id = p.message_id
+			AND m.chat_id = p.chat_id
+		LEFT JOIN auth.users AS au
+			ON au.id = m.sender_id
+		LEFT JOIN users.profiles AS up
+			ON up.user_id = m.sender_id
+		WHERE p.chat_id = $1
+			AND m.deleted_at IS NULL
+		ORDER BY p.pinned_at DESC
 	`, chatID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var pins []Pin
+
+	pins := make([]Pin, 0)
+
 	for rows.Next() {
-		var p Pin
-		if err := rows.Scan(&p.ID, &p.MessageID, &p.ChatID, &p.PinnedBy, &p.PinnedAt); err != nil {
+		var pin Pin
+		var replyTo sql.NullString
+		var metadataBytes []byte
+
+		if err := rows.Scan(
+			&pin.ID,
+			&pin.MessageID,
+			&pin.ChatID,
+			&pin.PinnedBy,
+			&pin.PinnedAt,
+
+			&pin.Message.ID,
+			&pin.Message.ChatID,
+			&pin.Message.SenderID,
+			&pin.Message.SenderName,
+			&pin.Message.SenderAvatar,
+			&pin.Message.Content,
+			&pin.Message.Type,
+			&replyTo,
+			&metadataBytes,
+			&pin.Message.IsEdited,
+			&pin.Message.CreatedAt,
+			&pin.Message.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
-		pins = append(pins, p)
+
+		if replyTo.Valid {
+			replyToValue := replyTo.String
+			pin.Message.ReplyTo = &replyToValue
+		}
+
+		if len(metadataBytes) > 0 {
+			if err := json.Unmarshal(metadataBytes, &pin.Message.Metadata); err != nil {
+				return nil, err
+			}
+		}
+
+		// Сообщение получено из таблицы закреплений.
+		pin.Message.IsPinned = true
+
+		// WHERE m.deleted_at IS NULL гарантирует, что DeletedAt остаётся nil.
+		pins = append(pins, pin)
 	}
-	return pins, rows.Err()
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return pins, nil
 }
 
 func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID string) error {

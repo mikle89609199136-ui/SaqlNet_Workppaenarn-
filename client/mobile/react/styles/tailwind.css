@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@theme {
+@theme{
   /* Brand colors */
   --color-accent:   #ff007f;
   --color-accent-2: #9d00ff;
@@ -482,7 +482,6 @@
 	    position: fixed;
 	    inset: 0;
 	    width: 100%;
-	    height: 100vh;
 	    height: 100dvh;
 	    min-height: 0;
 	  }
@@ -711,10 +710,11 @@
 @layer components {
 
   .thread-page {
-    @apply relative max-w-[920px] mx-auto grid;
-    min-height: 100vh; min-height: 100dvh;
-    grid-template-rows: auto minmax(0,1fr) auto;
+    @apply relative max-w-[920px] mx-auto flex flex-col;
+    min-height: 100dvh;
     background: rgba(10,10,10,0.72);
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-panel) transparent;
   }
 	  .thread-header {
 	    @apply min-h-[70px] grid gap-[10px] items-center;
@@ -731,9 +731,11 @@
 	    }
 	  }
   .thread-back {
-    @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[30px] leading-none no-underline;
+    @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[30px] leading-none no-underline transition-colors;
     background: rgba(255,255,255,0.06);
-    padding-bottom: 3px;
+  }
+  .thread-back:hover {
+    background: rgba(255,255,255,0.1);
   }
   .thread-avatar {
     @apply relative w-11 h-11 rounded-full flex items-center justify-center bg-[#2b77e7] text-white font-extrabold;
@@ -770,10 +772,61 @@
   .thread-call-button:focus-visible { outline: 2px solid rgba(42,171,238,0.72); outline-offset: 2px; }
   .thread-call-icon { @apply block w-6 h-6; }
   .thread-call-icon-video { width: 31px; height: 31px; opacity: 0.9; }
-  .thread-messages { @apply min-h-0 overflow-y-auto flex flex-col gap-[10px]; padding: 18px 12px; }
+  .thread-messages { @apply min-h-0 h-full overflow-y-auto flex flex-col gap-[10px]; padding: 18px 12px; }
+
+  .pinned-messages {
+    @apply w-full flex gap-2 py-1.5 md:py-3 px-2 cursor-pointer transition-colors border-b border-border bg-panel outline-0 hover:bg-[rgba(255,255,255,0.05)];
+  }
+
+  .pinned-messages__progress {
+    @apply w-0.5 shrink-0 overflow-hidden;
+    --pm-segment-h: 0.5rem;
+    --pm-gap: 0.125rem;
+  }
+
+  .pinned-messages__progress--windowed {
+    height: calc(
+      var(--pm-visible, 4) * var(--pm-segment-h) +
+      (var(--pm-visible, 4) - 1) * var(--pm-gap)
+    );
+  }
+
+  .pinned-messages__track {
+    @apply flex flex-col gap-0.5 h-full;
+    transform: translateY(
+      calc(-1 * var(--pm-window-start, 0) * (var(--pm-segment-h) + var(--pm-gap)))
+    );
+    transition: transform 0.25s ease;
+  }
+
+  .pinned-messages__segment {
+    @apply shrink-0 flex rounded-full bg-gray-600;
+    height: var(--pm-segment-h);
+  }
+
+  .pinned-messages__track--fill .pinned-messages__segment {
+    @apply flex-1 min-h-2;
+    height: auto;
+  }
+
+  .pinned-messages__segment--active {
+    @apply bg-[#2b77e7];
+  }
+
+  .pinned-messages__content {
+    @apply flex flex-col border-0 bg-transparent text-left max-w-9/10;
+  }
+
+  .pinned-messages__title {
+    @apply text-sm font-medium text-[#2b77e7] text-sm md:text-[1rem];
+  }
+
+  .pinned-messages__text {
+    @apply min-w-0 w-full truncate text-sm md:text-[1rem];
+  }
 
   .message-bubble {
-    @apply relative w-fit text-white;
+    @apply relative w-fit text-white scroll-mt-20;
     max-width: min(76%,560px); padding: 9px 11px 7px;
     border-radius: 16px 16px 16px 5px; background: #202020;
     box-shadow: 0 8px 22px rgba(0,0,0,0.18);
@@ -830,7 +883,10 @@
     @apply block max-w-full mb-[7px] rounded-lg text-white;
     padding: 9px 10px; background: rgba(0,0,0,0.2); overflow-wrap: anywhere;
   }
-  .message-media-file { @apply no-underline font-bold; }
+  .message-media-file { @apply no-underline flex items-center gap-x-2; }
+  .message-media-file__content { @apply flex flex-col; }
+  .message-media-file__title { @apply text-sm; }
+  .message-media-file__size { @apply text-xs text-[rgba(255,255,255,0.58)]; }
   .message-media-unavailable { font-size: 13px; color: rgba(255,255,255,0.7); }
   .image-viewer {
     @apply fixed inset-0 z-[1500] flex items-center justify-center;
@@ -861,7 +917,10 @@
     font-size: 30px;
     line-height: 1;
   }
-  .message-reply-preview { @apply mb-[6px] rounded-lg text-xs; padding: 6px 8px; border-left: 3px solid rgba(245,200,75,0.9); background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.72); }
+  .message-reply-preview { @apply block mb-[6px] rounded-lg text-xs; padding: 6px 8px; border-left: 3px solid rgba(245,200,75,0.9); background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.72); }
+  .message-reply-preview-image {
+    @apply max-w-20;
+  }
   .message-reactions {
     @apply mt-[7px] flex flex-wrap gap-[5px];
     & span { min-height: 22px; padding: 2px 7px; border-radius: 11px; background: rgba(255,255,255,0.12); font-size: 12px; &.is-mine { background: rgba(245,200,75,0.28); } }
@@ -869,7 +928,6 @@
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-[11px]; color: rgba(255,255,255,0.58); }
   .message-actions-popover {
     @apply fixed z-[1202] flex flex-col items-stretch gap-[8px];
-    width: min(292px, calc(100vw - 16px));
     filter: drop-shadow(0 18px 38px rgba(0,0,0,0.48));
     animation: message-menu-in 0.14s ease-out;
     transform-origin: top center;
@@ -910,7 +968,7 @@
     & button:active { transform: translateY(1px); }
   }
   .message-reaction-actions {
-    @apply flex items-center justify-between gap-[4px];
+    @apply flex items-center justify-between gap-0.5;
     padding: 7px;
     border-radius: 20px;
     background: rgba(20,20,24,0.96);
@@ -919,8 +977,8 @@
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     & button {
-      width: 40px;
-      height: 40px;
+      width: 36px;
+      height: 36px;
       padding: 0;
       border-radius: 14px;
       background: transparent;
@@ -935,7 +993,7 @@
     }
   }
   .message-text-actions {
-    @apply flex flex-col items-stretch rounded-[18px] overflow-hidden;
+    @apply flex flex-col items-stretch self-center rounded-[18px] overflow-hidden max-w-50 w-full;
     padding: 5px;
     background: rgba(20,20,24,0.96);
     border: 1px solid rgba(255,255,255,0.12);
@@ -1372,5 +1430,82 @@
     transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s;
     &:disabled { @apply opacity-40 cursor-not-allowed; transform: none !important; }
     &:not(:disabled):active { transform: scale(0.96); }
+  }
+
+  /* =========================================================
+   Components — FowardChatMessagesModal
+   ========================================================= */
+  .modal-backdrop {
+    @apply fixed inset-0 overflow-hidden flex items-center justify-center z-1000 py-10;
+    background: rgba(0,0,0,0.7);
+  }
+
+  .forward-modal {
+    @apply flex flex-col bg-[#0a0a0d] rounded-2xl pt-4.5 w-full max-w-4/5 md:max-w-1/5 gap-y-4 h-full;
+  }
+
+  .forward-modal__header {
+    @apply flex justify-between px-6;
+  }
+  .forward-modal__header-title {
+    @apply text-xl w-full text-left;
+  }
+
+  .forward-modal__body {
+    @apply flex flex-col mb-auto;
+  }
+
+  .forward-modal__wrapper {
+    @apply px-6 border-b border-border;
+  }
+
+  .forward-modal__search {
+    @apply flex gap-x-2 items-center relative;
+  }
+  .forward-modal__search-icon {
+    @apply size-5 shrink-0 absolute top-1/2 -translate-y-1/2;
+  }
+  .forward-modal__search-field {
+    @apply py-3 text-lg pr-1 pl-7 w-full outline-none rounded-xl;
+  }
+  .forward-modal__list {
+    @apply flex flex-col overflow-y-auto overflow-x-hidden h-full;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .forward-modal__chat {
+    @apply w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-panel px-6 py-3;
+  }
+
+  .forward-chat__title {
+    @apply text-left;
+  }
+
+  .forward-chat__preview {
+    @apply line-clamp-1 truncate min-w-0 overflow-hidden;
+  }
+
+  .forward-modal__content {
+    @apply flex flex-col gap-y-1 w-full;
+  }
+
+  .forward-modal__empty {
+    @apply mx-auto py-2;
+  }
+  .forward-modal__footer {
+    @apply px-6 flex justify-end border-t border-border w-full py-2;
+  }
+
+  .forward-modal__footer .button {
+    @apply hover:bg-panel px-4 py-2 rounded-lg;
+  }
+
+  .forward-modal__close {
+    @apply shrink-0
+  }
+
+  .forward-modal .button {
+    @apply cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)];
   }
 }

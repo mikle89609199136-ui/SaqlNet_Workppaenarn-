@@ -505,6 +505,26 @@ paths:
                   reactions:
                     type: array
                     items: { $ref: '#/components/schemas/Reaction' }
+  /messages/{chatId}:
+    post:
+      operationId: sendMessage
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMessageRequest' }
+      responses:
+        '200':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message: { $ref: '#/components/schemas/Message' }
   /messages/{messageId}/forward:
     post:
       operationId: forwardMessage
@@ -535,15 +555,36 @@ paths:
               required: [file]
               properties:
                 file: { type: string, format: binary }
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [file]
+                  properties:
+                    file: { type: string, description: Data URL }
+                    fileName: { type: string, maxLength: 255, description: Original base filename }
+                - type: object
+                  required: [purpose, file]
+                  properties:
+                    purpose: { type: string, const: message }
+                    file:
+                      type: object
+                      required: [ciphertext]
+                      properties:
+                        ciphertext: { type: string, format: byte }
+                        mimeType: { type: string }
+                        fileName: { type: string, maxLength: 255 }
+                        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
+                        version: {}
+                        algorithm: {}
+                        iv: {}
       responses:
         '201':
           description: Upload created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  upload: { $ref: '#/components/schemas/Upload' }
+                $ref: '#/components/schemas/UploadResponse'
   /media/{uploadId}:
     get:
       operationId: getMedia
@@ -775,6 +816,55 @@ components:
         chatId: { type: string, format: uuid }
         pinnedBy: { type: string, format: uuid }
         pinnedAt: { type: string }
+        message: { $ref: '#/components/schemas/Message' }
+    SendMessageRequest:
+      type: object
+      properties:
+        content: { type: string }
+        type: { type: string }
+        replyTo: { type: [string, 'null'], format: uuid }
+        mediaUrl: { type: string }
+        mediaType: { type: string }
+        fileName: { type: string, maxLength: 255 }
+        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
+        mediaEncrypted: { type: boolean }
+        mediaEncryption: { type: object, additionalProperties: true }
+        isEncrypted: { type: boolean }
+    Message:
+      type: object
+      required: [id, chatId, senderId, content, type, isPinned, isEdited, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        chatId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        senderName: { type: string }
+        senderAvatar: { type: string }
+        content: { type: string }
+        type: { type: string }
+        replyTo: { type: string, format: uuid }
+        metadata:
+          type: object
+          additionalProperties: true
+          properties:
+            mediaUrl: { type: string }
+            mediaType: { type: string }
+            fileName: { type: string, maxLength: 255 }
+            sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
+        isPinned: { type: boolean }
+        isEdited: { type: boolean }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    UploadResponse:
+      type: object
+      required: [success, url, fileName, sizeBytes, contentType]
+      properties:
+        success: { type: boolean, const: true }
+        url: { type: string }
+        fileName: { type: string, maxLength: 255 }
+        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
+        contentType: { type: string }
+        encrypted: { type: boolean }
+        encryption: { type: string, description: JSON-encoded encryption metadata }
     Upload:
       type: object
       required: [id, uploaderId, filename, contentType, sizeBytes, createdAt]
