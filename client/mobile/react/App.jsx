@@ -13,7 +13,7 @@ import { CallOverlay } from './components/Calls/CallOverlay.jsx';
 import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { services } from '../application/services/serviceContainer.js';
 import { ThemeProvider } from './components/Context/ThemeContext.jsx';
-
+import { SideMenu } from './components/Navigation/SideMenu.jsx';
 export function App({ basename = '', forceMobile = false }) {
   const homePath = withBasePath(basename, '/chats');
   const loginPath = withBasePath(basename, '/login');
@@ -160,7 +160,8 @@ function AppLayout({ children, forceMobile = false }) {
   const { chatId } = useParams();
   const isMobileScreen = useIsMobile();
   const isMobile = forceMobile || isMobileScreen;
-  
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
   let activeTab = 'chats';
   if (location.pathname.startsWith('/contacts')) activeTab = 'contacts';
   else if (location.pathname.startsWith('/settings')) activeTab = 'settings';
@@ -235,8 +236,17 @@ function AppLayout({ children, forceMobile = false }) {
 
   return (
     <div className="app-layout">
+      <SideMenu 
+        isOpen={isSideMenuOpen} 
+        onClose={() => setIsSideMenuOpen(false)} 
+        onOpenSettings={() => navigate('/settings')} 
+      />
       <div className="nav-rail">
-        <button className="rail-burger" onClick={() => navigate('/settings')} data-tip="Настройки">
+        <button 
+          className="rail-burger" 
+          onClick={() => setIsSideMenuOpen(true)} 
+          data-tip="Меню"
+        >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>

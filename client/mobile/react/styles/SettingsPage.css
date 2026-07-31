@@ -454,3 +454,337 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
   min-height: 100vh; /* Убедись, что контейнер растягивается на весь экран */
 }
+
+@import url('https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700&display=swap');
+
+/* Подключение шрифта Geologica ко всем элементам */
+.settings-page,
+.sidebar-drawer,
+.settings-page * {
+  font-family: 'Geologica', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  max-width: 680px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  color: #ffffff;
+}
+
+/* Единый базовый класс для Liquid Glass блоков */
+.liquid-glass-block {
+  background: rgba(24, 24, 26, 0.75) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 28px !important; /* Увеличенное скругление */
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+.liquid-glass-menu-block {
+  background: #0a0a0c !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 28px !important; /* Увеличенное скругление */
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  min-height: 52px;
+  box-sizing: border-box;
+  background: rgba(24, 24, 26, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.settings-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #ffffff;
+}
+
+.back-arrow-btn {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 300;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
+}
+
+.back-arrow-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.settings-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.settings-avatar-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #2a2a2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.settings-profile-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-profile-info h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+}
+
+.settings-profile-info p {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.settings-block-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px 0;
+}
+
+.settings-block-title {
+  padding: 12px 20px 4px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s;
+}
+
+.settings-block-group .settings-row-item:last-child {
+  border-bottom: none;
+}
+
+.settings-row-item:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.settings-row-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.settings-row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.chevron-icon {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.logout-row:hover {
+  background-color: rgba(255, 77, 77, 0.08);
+}
+
+.logout-text {
+  color: #ff5252 !important;
+  font-weight: 500;
+}
+
+/* ==========================================
+   ИКОНКИ SVG ДЛЯ БОКОВОЙ ПАНЕЛИ
+   ========================================== */
+.sidebar-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  flex-shrink: 0;
+}
+
+/* 1. Аккаунт */
+.sidebar-icon-account {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+}
+
+/* 2. Уведомление */
+.sidebar-icon-notifications {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.73 21a2 2 0 0 1-3.46 0'/%3E%3C/svg%3E");
+}
+
+/* 3. Внешний вид */
+.sidebar-icon-appearance {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13.5' cy='6.5' r='.5'/%3E%3Ccircle cx='17.5' cy='10.5' r='.5'/%3E%3Ccircle cx='8.5' cy='7.5' r='.5'/%3E%3Ccircle cx='6.5' cy='12.5' r='.5'/%3E%3Cpath d='M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.78 1.7-1.7 0-.42-.16-.8-.44-1.1-.28-.31-.43-.72-.43-1.2 0-.93.77-1.7 1.7-1.7H17c2.76 0 5-2.24 5-5 0-5.52-4.48-9.9-10-9.9z'/%3E%3C/svg%3E");
+}
+
+/* 4. Конфиденциальность */
+.sidebar-icon-privacy {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
+}
+
+/* 5. Языки */
+.sidebar-icon-languages {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='2' y1='12' x2='22' y2='12'/%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/%3E%3C/svg%3E");
+}
+
+/* 6. О приложении */
+.sidebar-icon-about {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+}
+
+/* Контейнер карточки профиля в меню */
+.sidebar-profile-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); /* Мягкий разделитель снизу */
+}
+
+/* Левая часть (аватар + имя/юзернейм) */
+.sidebar-profile-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0; /* Поддержка сжатия текста */
+}
+
+/* Переопределяем/уточняем шрифты под компактный размер для SideMenu */
+.sidebar-profile-card .settings-profile-info h2 {
+  font-size: 13px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-profile-card .settings-profile-info p {
+  font-size: 13px;
+  margin: 2px 0 0 0;
+  opacity: 0.7;
+}
+
+/* Аккуратная кнопка "Изменить" справа */
+.sidebar-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 30px;
+  color: #bb91e3;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.sidebar-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.sidebar-edit-btn:active {
+  transform: scale(0.97);
+}
+.sidebar-profile-card .settings-profile-info h2 span {
+  font-size: 13px;
+}
+
+.settings-row-arrow {
+  font-size: 30px; /* Увеличиваем размер (было ~14px) */
+  font-weight: 300; /* Делаем линию чуть изящнее */
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  line-height: 1;
+  margin-left: auto; /* Отодвигаем стрелку в самый правый край */
+}
+
+/* Стили для заголовков секций h1 */
+.sidebar-section-title {
+  font-size: 19px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-color, #ffffff); /* Можно сделать акцентным цветом или матово-белым */
+  opacity: 0.8;
+  margin: 16px 0 6px 12px; /* Отступы: сверху больше, чтобы отделить от предыдущего блока */
+  padding: 0;
+}
+
+/* Уменьшаем внешний отступ снизу (расстояние до первой секции) */
+.sidebar-profile-card,
+.settings-profile-card {
+  margin-bottom: 8px !important; /* По умолчанию там может быть 16px–24px */
+  padding-bottom: 12px !important; /* Если нужно уплотнить внутреннее пространство снизу */
+}

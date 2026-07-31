@@ -10,37 +10,10 @@ import { useLanguage } from '../locales/LanguageContext.jsx';
 export function SettingsPage({ t = (k, f) => f }) {
   const navigate = useNavigate();
   const { toasts, showToast } = useToasts();
-  const { theme, setTheme } = useTheme(); // 1. Берем тему и функцию установки темы из Контекста
-  const { g, lang, changeLanguage } = useLanguage();
-
-  const handleToggleLanguage = () => {
-    const nextLang = lang === 'ru' ? 'en' : 'ru';
-    changeLanguage(nextLang);
-  };
   const [user, setUser] = useState({});
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false); // 2. Состояние для открытия выпадающего меню
-  const themeMenuRef = useRef(null);
-
-  const [settings, setSettings] = useState({
-    theme: 'dark',
-    language: 'ru',
-    notifications: true,
-    sounds: true,
-  });
+  const [activeSessionsCount, setActiveSessionsCount] = useState(0);
 
   const token = localStorage.getItem('craneapp_auth_token');
-
-  // Закрытие выпадающего меню при клике снаружи
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target)) {
-        setIsThemeMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -48,49 +21,23 @@ export function SettingsPage({ t = (k, f) => f }) {
       return;
     }
 
-    // Sync profile and settings
     async function syncData() {
       try {
-        const [nextUser, settingsPayload] = await Promise.all([
+        const [nextUser] = await Promise.all([
           services.userService.getMe(),
-          services.userService.getSettings(),
         ]);
 
         if (nextUser) {
           setUser(nextUser);
           localStorage.setItem('craneapp_user_data', JSON.stringify(nextUser));
         }
-
-        if (settingsPayload.settings) {
-          setSettings(settingsPayload.settings);
-          localStorage.setItem('craneapp_settings', JSON.stringify(settingsPayload.settings));
-        }
       } catch (e) {
-        showToast('error', 'Ошибка синхронизации настроек с сервером', '⚠️');
+        showToast('error', 'Ошибка синхронизации данных с сервером', '⚠️');
       }
     }
 
     syncData();
   }, [token, navigate]);
-
-  async function updateSetting(name, value) {
-    const updated = { ...settings, [name]: value };
-    setSettings(updated);
-    localStorage.setItem('craneapp_settings', JSON.stringify(updated));
-
-    try {
-      await services.userService.updateSettings(updated);
-      showToast('success', t('settingsSaved', 'Настройки сохранены'), '✓');
-    } catch (_) {
-      showToast('error', 'Не удалось сохранить настройки на сервере', '⚠️');
-    }
-  }
-
-  const handleSelectTheme = (selectedTheme) => {
-    setTheme(selectedTheme);
-    updateSetting('theme', selectedTheme);
-    setIsThemeMenuOpen(false);
-  };
 
   async function handleLogout() {
     await services.authService.logout().catch(() => {
@@ -107,14 +54,10 @@ export function SettingsPage({ t = (k, f) => f }) {
   return (
     <main className="settings-page">
       <ToastStack toasts={toasts} />
-      <header className="settings-header">
-        <button className="back-arrow-btn" onClick={() => navigate('/chats')}>
-          ‹
-        </button>
-        <h1>{t('settings', 'Настройки')}</h1>
-      </header>
 
-      <section className="settings-profile-card">
+      {/* Карточка профиля */}
+      <h1 className="sidebar-section-title">Аккаунт</h1>
+      <section className="settings-profile-card liquid-glass-block">
         <div className="settings-avatar-wrap">
           {user.avatarUrl ? (
             <img src={user.avatarUrl} alt="" className="profile-avatar-img" />
@@ -128,124 +71,82 @@ export function SettingsPage({ t = (k, f) => f }) {
             {user.statusEmoji ? <span style={{ marginLeft: 8 }}>{user.statusEmoji}</span> : null}
           </h2>
           <p>{user.username ? `@${user.username}` : ''}</p>
-          {user.bio && <p style={{ marginTop: 6, opacity: 0.8 }}>{user.bio}</p>}
+          {user.bio && <p className="user-bio">{user.bio}</p>}
         </div>
+        <button 
+        className="sidebar-edit-btn"
+        onClick={() => {
+          onOpenSettings();
+          onClose();
+        }}
+        title="Изменить профиль"
+      >
+      <span>Изменить профиль</span>
+      </button>
       </section>
 
-      <section className="settings-block-group">
-        <div className="settings-row-item" onClick={() => setIsEditModalOpen(true)}>
+      {/* Блок: Настройки аккаунта */}
+      <h1 className="sidebar-section-title">Настройки аккаунта</h1>
+      <section className="settings-block-group liquid-glass-block">
+        
+        {/* Электронная почта */}
+        <div className="settings-row-item placeholder-row">
           <div className="settings-row-left">
-            <span className="settings-row-icon icon-user"></span>
-            <span>{t('editProfile', 'Редактировать профиль')}</span>
-          </div>
-          <div className="settings-row-right"></div>
-        </div>
-      </section>
-
-      <section className="settings-block-group">
-        <div className="settings-row-item">
-          <div className="settings-row-left">
-            <span className="settings-row-icon icon-bell"></span>
-            <span>{t('notifications', 'Уведомления')}</span>
-          </div>
-          <div
-            className={`settings-toggle-switch ${settings.notifications ? 'is-active' : ''}`}
-            onClick={() => updateSetting('notifications', !settings.notifications)}
-          >
-            <div className="settings-toggle-knob" />
-          </div>
-        </div>
-
-        <div className="settings-row-item">
-          <div className="settings-row-left">
-            <span className="settings-row-icon icon-sound"></span>
-            <span>{t('sounds', 'Звуки')}</span>
-          </div>
-          <div
-            className={`settings-toggle-switch ${settings.sounds ? 'is-active' : ''}`}
-            onClick={() => updateSetting('sounds', !settings.sounds)}
-          >
-            <div className="settings-toggle-knob" />
-          </div>
-        </div>
-      </section>
-
-      <section className="settings-block-group">
-				<div 
-					className="settings-row-item" 
-					onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-					style={{ cursor: 'pointer' }}
-				>
-					<div className="settings-row-left">
-						<span className="settings-row-icon icon-palette"></span>
-						<span>{t('appearance', 'Оформление')}</span>
-					</div>
-					<div className="settings-row-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-						<span style={{ opacity: 0.7, fontSize: '14px' }}>
-							{theme === 'dark' ? 'Тёмная' : 'Светлая'}
-						</span>
-						<span className={`chevron-icon ${isThemeMenuOpen ? 'open' : ''}`}>▼</span>
-					</div>
-				</div>
-
-				{/* Выпадающий аккордеон внутри секции */}
-				{isThemeMenuOpen && (
-					<div className="theme-inline-menu">
-						<button 
-							type="button"
-							className={`theme-option-btn ${theme === 'dark' ? 'active' : ''}`}
-							onClick={() => handleSelectTheme('dark')}
-						>
-							<span>🌙 Тёмная</span>
-							{theme === 'dark' && <span className="check-mark">✓</span>}
-						</button>
-
-						<button 
-							type="button"
-							className={`theme-option-btn ${theme === 'light' ? 'active' : ''}`}
-							onClick={() => handleSelectTheme('light')}
-						>
-							<span>☀️ Светлая</span>
-							{theme === 'light' && <span className="check-mark">✓</span>}
-						</button>
-					</div>
-				)}
-
-        <div className="settings-row-item" onClick={handleToggleLanguage}>
-          <div className="settings-row-left">
-            <span className="settings-row-icon icon-globe"></span>
-            <span>{g('language', 'Язык')}</span>
+            <span>Электронная почта</span>
           </div>
           <div className="settings-row-right">
-            <span>{lang === 'en' ? 'English' : 'Русский'}</span>
+            <span>{user.email || 'не привязан'}</span>
+            <span className="settings-row-arrow">›</span>
           </div>
         </div>
-			</section>
 
-      <div className="logout-btn-container">
-        <button className="logout-btn-block" onClick={handleLogout}>
-          {t('logout', 'Выйти из аккаунта')}
-        </button>
-      </div>
+        {/* Пароль */}
+        <div className="settings-row-item placeholder-row">
+          <div className="settings-row-left">
+            <span>Пароль</span>
+          </div>
+          <div className="settings-row-right">
+            <span>••••••••</span>
+            <span className="settings-row-arrow">›</span>
+          </div>
+        </div>
 
-      {isEditModalOpen && (
-        <EditProfileModal
-          user={user}
-          onClose={() => setIsEditModalOpen(false)}
-          onSave={async (updatedFields) => {
-            try {
-              const updatedUser = await services.userService.updateMe(updatedFields);
-              setUser(updatedUser);
-              localStorage.setItem('craneapp_user_data', JSON.stringify(updatedUser));
-              showToast('success', 'Профиль обновлен', '✓');
-              setIsEditModalOpen(false);
-            } catch (e) {
-              showToast('error', 'Не удалось обновить профиль', '⚠️');
-            }
-          }}
-          t={t}
-        />
-      )}
+        {/* Двуфакторная аутентификация */}
+        <div className="settings-row-item placeholder-row">
+          <div className="settings-row-left">
+            <span>Двуфакторная аутентификация</span>
+          </div>
+          <div className="settings-row-right">
+            <span>отключена</span>
+            <span className="settings-row-arrow">›</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Блок: Сеансы и Выход */}
+      <h1 className="sidebar-section-title">Действия</h1>
+      <section className="settings-block-group liquid-glass-block">
+        {/* Активные сеансы */}
+        <div className="settings-row-item placeholder-row">
+          <div className="settings-row-left">
+            <span>Активные сеансы</span>
+          </div>
+          <div className="settings-row-right">
+            <span>{activeSessionsCount}</span>
+            <span className="settings-row-arrow">›</span>
+          </div>
+        </div>
+
+        {/* Выйти из аккаунта */}
+        <div className="settings-row-item logout-row" onClick={handleLogout}>
+          <div className="settings-row-left">
+            <span>Выйти из аккаунта</span>
+          </div>
+          <div className="settings-row-right">
+            <span className="logout-text">выйти</span>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
