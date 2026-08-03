@@ -5,7 +5,6 @@ import { LoginPage } from './components/Auth/LoginPage.jsx';
 import { ChatThreadPage, UserProfilePanel } from './components/Chats/ChatThreadPage.jsx';
 import { ChatsPage } from './components/Chats/ChatsPage.jsx';
 import { RateLimitPage } from './components/RateLimit/RateLimitPage.jsx';
-import { SettingsPage } from './components/Settings/SettingsPage.jsx';
 import { ContactsPage } from './components/Contacts/ContactsPage.jsx';
 import { CreateGroupPage } from './components/Chats/CreateGroupPage.jsx';
 import { CallProvider } from './components/Calls/CallProvider.jsx';
@@ -13,7 +12,7 @@ import { CallOverlay } from './components/Calls/CallOverlay.jsx';
 import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { services } from '../application/services/serviceContainer.js';
 import { ThemeProvider } from './components/Context/ThemeContext.jsx';
-import { SideMenu } from './components/Navigation/SideMenu.jsx';
+import { ChatWorkspace } from './components/Chats/ChatWorkspace.jsx';
 export function App({ basename = '', forceMobile = false }) {
   const homePath = withBasePath(basename, '/chats');
   const loginPath = withBasePath(basename, '/login');
@@ -51,7 +50,9 @@ export function App({ basename = '', forceMobile = false }) {
               path="/chats"
               element={
                 <ProtectedRoute>
-                  <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
+                  <AppLayout forceMobile={forceMobile}>
+                    <ChatWorkspace forceMobile={forceMobile} translate={translate} />
+                  </AppLayout>
                 </ProtectedRoute>
               }
             />
@@ -59,7 +60,19 @@ export function App({ basename = '', forceMobile = false }) {
               path="/chats/:chatId"
               element={
                 <ProtectedRoute>
-                  <AppLayout forceMobile={forceMobile}><ChatLayout forceMobile={forceMobile} /></AppLayout>
+                  <AppLayout forceMobile={forceMobile}>
+                    <ChatWorkspace forceMobile={forceMobile} translate={translate} />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}>
+                    <ChatWorkspace forceMobile={forceMobile} translate={translate} />
+                  </AppLayout>
                 </ProtectedRoute>
               }
             />
@@ -71,14 +84,6 @@ export function App({ basename = '', forceMobile = false }) {
                   onBack={() => window.history.back()}
                   t={translate}
                 />
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute>
-                  <AppLayout forceMobile={forceMobile}><SettingsPage t={translate} /></AppLayout>
-                </ProtectedRoute>
               }
             />
             <Route
@@ -236,11 +241,6 @@ function AppLayout({ children, forceMobile = false }) {
 
   return (
     <div className="app-layout">
-      <SideMenu 
-        isOpen={isSideMenuOpen} 
-        onClose={() => setIsSideMenuOpen(false)} 
-        onOpenSettings={() => navigate('/settings')} 
-      />
       <div className="nav-rail">
         <button 
           className="rail-burger" 
