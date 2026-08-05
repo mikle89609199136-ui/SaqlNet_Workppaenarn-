@@ -1142,7 +1142,14 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) e
 		RETURNING m.chat_id::text
 	`, messageID, userID).Scan(&chatID)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
+		exists, existsErr := s.messageExistsForMember(ctx, userID, messageID)
+		if existsErr != nil {
+			return existsErr
+		}
+		if exists {
+			return ErrForbidden
+		}
 		return ErrNotFound
 	}
 	if err != nil {
@@ -1159,6 +1166,19 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) e
 	}
 
 	return nil
+}
+
+func (s *Service) messageExistsForMember(ctx context.Context, userID, messageID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM messages.messages m
+			JOIN chats.members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+			WHERE m.id = $1 AND m.deleted_at IS NULL
+		)
+	`, messageID, userID).Scan(&exists)
+	return exists, err
 }
 
 func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bool, error) {
