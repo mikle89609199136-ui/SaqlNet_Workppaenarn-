@@ -98,7 +98,17 @@ export function App({ basename = '', forceMobile = false }) {
               path="/create-group"
               element={
                 <ProtectedRoute>
-                  <AppLayout forceMobile={forceMobile}><CreateGroupPage t={translate} /></AppLayout>
+                  <AppLayout forceMobile={forceMobile}><ChatWorkspace forceMobile={forceMobile} translate={translate} /></AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chats/:chatId/create-group"
+              element={
+                <ProtectedRoute>
+                  <AppLayout forceMobile={forceMobile}>
+                    <ChatWorkspace forceMobile={forceMobile} translate={translate} />
+                  </AppLayout>
                 </ProtectedRoute>
               }
             />
@@ -169,16 +179,27 @@ function AppLayout({ children, forceMobile = false }) {
 
   let activeTab = 'chats';
   if (location.pathname.startsWith('/contacts')) activeTab = 'contacts';
+  else if (location.pathname.startsWith('/create-group')) activeTab = 'create-group';
   else if (location.pathname.startsWith('/settings')) activeTab = 'settings';
   else if (location.pathname.startsWith('/channels')) activeTab = 'channels';
   else if (location.pathname.startsWith('/communities')) activeTab = 'communities';
   else if (location.pathname.startsWith('/meetings')) activeTab = 'meetings';
   
   const handleTabSelect = (tab) => {
+    if (tab === 'create-group') {
+      const match = location.pathname.match(/\/chats\/([^\/]+)/);
+      const currentChatId = match ? match[1] : null;
+
+      if (currentChatId) {
+        navigate(`/chats/${currentChatId}/create-group`);
+      } else {
+        navigate('/create-group');
+      }
+      return;
+    }
     if (tab === 'chats') navigate('/chats');
     else if (tab === 'contacts') navigate('/contacts');
     else if (tab === 'settings') navigate('/settings');
-    else if (tab === 'create-group') navigate('/create-group');
     else if (tab === 'channels') navigate('/channels');
     else if (tab === 'communities') navigate('/communities');
     else if (tab === 'meetings') navigate('/meetings');

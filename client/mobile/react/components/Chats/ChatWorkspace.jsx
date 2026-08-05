@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ChatsPage } from './ChatsPage.jsx';
 import { SettingsSidebar } from '../Settings/SettingsSidebar.jsx';
 import SettingsDetailPage from '../Settings/SettingsDetailPage.jsx';
 import { ChatThreadPage, UserProfilePanel } from './ChatThreadPage.jsx';
+import { CreateGroupPage } from '../Chats/CreateGroupPage.jsx';
 
 export function ChatWorkspace({ forceMobile = false, translate }) {
   const { chatId } = useParams();
   const location = useLocation();
   const isSettingsOpen = location.pathname.startsWith('/settings');
-
+  const navigate = useNavigate();
   // Состояние активной вкладки настроек
   const [activeSettingsTab, setActiveSettingsTab] = useState('appearance');
 
@@ -17,6 +18,16 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
   const [profileWidth, setProfileWidth] = useState(null);
   const [profileState, setProfileState] = useState({ isOpen: false, isLoading: false, error: '', user: null, chat: null });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
+  const isCreatingGroup = location.pathname.includes('/create-group');
+
+  // Умный клин для закрытия
+  const handleCloseCreateGroup = () => {
+    if (chatId) {
+      navigate(`/chats/${chatId}`); // Возвращаемся в текущий чат
+    } else {
+      navigate('/'); // Возвращаемся на главную
+    }
+  };
 
   // Ресайзер для боковой панели
   function startResize(kind, event) {
@@ -75,7 +86,7 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
       />
 
       {/* ЦЕНТРАЛЬНАЯ/ПРАВАЯ ОБЛАСТЬ (Детали настроек ИЛИ Чат) */}
-      <div className="app-chat-pane">
+      <div className="app-chat-pane" style={{ position: 'relative', overflow: 'hidden', height: '100%' }}>
         {isSettingsOpen ? (
           /* Если открыты настройки — показываем выбранную вкладку справа */
           <SettingsDetailPage
@@ -91,6 +102,8 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
             profileMode="panel"
             t={translate}
           />
+          
+          
         ) : (
           /* Пустой экран */
           <div className="empty-chat-placeholder">
@@ -98,6 +111,12 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
             <h3>Выберите чат</h3>
             <p>Выберите контакт или чат из списка слева, чтобы начать общение.</p>
           </div>
+        )}
+        {isCreatingGroup && (
+          <CreateGroupPage 
+            onClose={handleCloseCreateGroup} 
+            t={translate} 
+          />
         )}
       </div>
 

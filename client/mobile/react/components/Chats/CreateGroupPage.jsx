@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
 import { ToastStack } from '../common/ToastStack.jsx';
 import { useToasts } from '../../hooks/useToasts.js';
+import '../../styles/CreateGroupPage.css';
 
-export function CreateGroupPage({ t = (k, f) => f }) {
+export function CreateGroupPage({ t = (k, f) => f, onClose }) {
   const navigate = useNavigate();
   const { toasts, showToast } = useToasts();
 
@@ -14,6 +15,14 @@ export function CreateGroupPage({ t = (k, f) => f }) {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      navigate(-1);
+    }
+  };
 
   async function handleSearch(val) {
     setSearchQuery(val);
@@ -26,14 +35,12 @@ export function CreateGroupPage({ t = (k, f) => f }) {
     try {
       const users = await services.chatService.searchUsers(cleanVal);
       setSearchResults(users);
-    } catch (_) {
-      // Игнорируем ошибки поиска в фоне
-    }
+    } catch (_) {}
   }
 
   function toggleMember(user) {
-    if (selectedMembers.some(m => m.id === user.id)) {
-      setSelectedMembers(selectedMembers.filter(m => m.id !== user.id));
+    if (selectedMembers.some((m) => m.id === user.id)) {
+      setSelectedMembers(selectedMembers.filter((m) => m.id !== user.id));
     } else {
       setSelectedMembers([...selectedMembers, user]);
     }
@@ -51,13 +58,14 @@ export function CreateGroupPage({ t = (k, f) => f }) {
 
     setIsCreating(true);
     try {
-      const members = selectedMembers.map(m => m.id);
+      const members = selectedMembers.map((m) => m.id);
       const data = await services.chatService.createGroup({ title, description, members });
       if (data.chatId) {
         showToast('success', 'Группа успешно создана!', '🎉');
         setTimeout(() => {
           navigate(`/chats/${encodeURIComponent(data.chatId)}`);
-        }, 800);
+          if (onClose) onClose();
+        }, 400);
       } else {
         throw new Error(data.error || 'Не удалось создать группу');
       }
@@ -68,102 +76,111 @@ export function CreateGroupPage({ t = (k, f) => f }) {
   }
 
   return (
-    <main className="create-group-page">
+    <div className="create-group-detail-pane" onClick={handleClose}>
       <ToastStack toasts={toasts} />
-      <header className="create-group-header">
-        <button className="back-arrow-btn" onClick={() => navigate('/chats')}>
-          ‹
-        </button>
-        <h1>{t('newGroup', 'Новая группа')}</h1>
-      </header>
 
-      <section>
-        <input
-          type="text"
-          className="group-name-input"
-          placeholder={t('groupTitlePlaceholder', 'Название группы')}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={50}
-        />
-
-        <input
-          type="text"
-          className="group-desc-input"
-          placeholder={t('groupDescPlaceholder', 'Описание (необязательно)')}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={255}
-        />
-      </section>
-
-      <section style={{ marginBottom: 20 }}>
-        <h3>{t('addMembers', 'Добавить участников')}</h3>
-        <input
-          type="search"
-          className="contacts-search-input"
-          placeholder={t('searchUsers', 'Поиск по юзернейму...')}
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-
-        <div className="contacts-select-list">
-          {searchResults.map((user) => {
-            const isChecked = selectedMembers.some(m => m.id === user.id);
-            const initials = (user.firstName || user.username || '?').charAt(0).toUpperCase();
-
-            return (
-              <div key={user.id} className="contact-item-row" onClick={() => toggleMember(user)}>
-                <div className="contact-left">
-                  <div className="contact-avatar-circle">
-                    {user.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="" />
-                    ) : (
-                      <span>{initials}</span>
-                    )}
-                  </div>
-                  <div className="contact-details">
-                    <span className="contact-name-title">{user.firstName || 'Пользователь'}</span>
-                    <span className="contact-username-sub">@{user.username}</span>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  className="contact-select-checkbox"
-                  checked={isChecked}
-                  onChange={() => {}} // Обрабатывается кликом по строке
-                />
-              </div>
-            );
-          })}
+      <div className="create-group-container" onClick={(e) => e.stopPropagation()}>
+        <div className="create-group-header">
+          <h3>{t('newGroup', 'Создание группы')}</h3>
+          <button className="close-btn" onClick={handleClose}>✕</button>
         </div>
-      </section>
 
-      {selectedMembers.length > 0 && (
-        <section className="selected-members-section">
-          <h4>Выбрано ({selectedMembers.length}):</h4>
-          <div className="selected-members-list">
-            {selectedMembers.map(m => (
-              <div
-                key={m.id}
-                onClick={() => toggleMember(m)}
-                className="selected-member-pill"
-              >
-                <span>{m.firstName || m.username}</span>
-                <span className="remove-pill">✕</span>
-              </div>
-            ))}
+        <div className="create-group-body">
+          {/* Инпуты названия и описания */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <input
+              type="text"
+              className="glass-input-field"
+              placeholder={t('groupTitlePlaceholder', 'Название группы')}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={50}
+            />
+
+            <input
+              type="text"
+              className="glass-input-field"
+              placeholder={t('groupDescPlaceholder', 'Описание (необязательно)')}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={255}
+            />
           </div>
-        </section>
-      )}
 
-      <button
-        className="create-group-btn"
-        disabled={isCreating || !title.trim() || selectedMembers.length === 0}
-        onClick={handleCreateGroup}
-      >
-        {isCreating ? t('creating', 'Создание...') : t('createGroupAction', 'Создать группу')}
-      </button>
-    </main>
+          {/* Поиск участников */}
+          <div style={{ marginTop: '16px' }}>
+            <div className="settings-subsection-title" style={{ marginBottom: '8px', color: 'rgba(255, 255, 255, 0.7)', fontSize: '13px' }}>
+              {t('addMembers', 'Добавить участников')}
+            </div>
+            <input
+              type="search"
+              className="glass-input-field"
+              placeholder={t('searchUsers', 'Поиск по юзернейму...')}
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              style={{ marginBottom: '12px' }}
+            />
+
+            <div className="contacts-select-list" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+              {searchResults.map((user) => {
+                const isChecked = selectedMembers.some((m) => m.id === user.id);
+                const initials = (user.firstName || user.username || '?').charAt(0).toUpperCase();
+
+                return (
+                  <div
+                    key={user.id}
+                    className={`glass-contact-row ${isChecked ? 'selected' : ''}`}
+                    onClick={() => toggleMember(user)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div className="account-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="account-avatar" /> : initials}
+                      </div>
+                      <div>
+                        <div className="user-name" style={{ fontSize: '14px', color: '#fff' }}>{user.firstName || 'Пользователь'}</div>
+                        <div className="user-handle" style={{ fontSize: '12px', opacity: 0.6 }}>@{user.username}</div>
+                      </div>
+                    </div>
+                    <input type="checkbox" checked={isChecked} readOnly />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Выбранные участники */}
+          {selectedMembers.length > 0 && (
+            <div style={{ marginTop: '14px' }}>
+              <div className="settings-subsection-title" style={{ marginBottom: '8px', color: 'rgba(255, 255, 255, 0.7)', fontSize: '13px' }}>
+                Выбрано ({selectedMembers.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {selectedMembers.map((m) => (
+                  <div
+                    key={m.id}
+                    onClick={() => toggleMember(m)}
+                    className="selected-tag"
+                  >
+                    <span>{m.firstName || m.username}</span>
+                    <span style={{ opacity: 0.6 }}>✕</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Кнопка действия */}
+        <div className="create-group-footer">
+          <button
+            className="glass-primary-btn"
+            disabled={isCreating || !title.trim() || selectedMembers.length === 0}
+            onClick={handleCreateGroup}
+          >
+            {isCreating ? t('creating', 'Создание...') : t('createGroupAction', 'Создать группу')}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

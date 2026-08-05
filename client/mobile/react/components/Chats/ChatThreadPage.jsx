@@ -14,6 +14,7 @@ import { PinnedMessages } from '../common/PinnedMessages.jsx';
 import { ForwardChatMessagesModal } from './ForwardChatMessagesModal.jsx';
 import { GroupInfoModal } from './GroupInfoModal.jsx';
 import '../../styles/ChatThreadPage.css';
+import '../../styles/CreateGroupPage.css';
 
 export function ChatThreadPage({
   chatId,
