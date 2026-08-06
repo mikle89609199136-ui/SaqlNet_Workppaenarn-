@@ -12,7 +12,11 @@ import './styles/tailwind.css';
 createRoot(document.getElementById('appRoot')).render(
   <React.StrictMode>
     <LanguageProvider>
+<<<<<<< Updated upstream
     <App />
+=======
+      <App />
+>>>>>>> Stashed changes
     </LanguageProvider>
   </React.StrictMode>
 );
