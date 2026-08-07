@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { services } from '../../../application/services/serviceContainer.js';
+import { services } from '../../services/serviceContainer.js';
 import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
-import { Identicon } from '../common/Identicon.jsx';
+import { Identicon } from '../ui/Identicon.jsx';
 import { useChatsStore } from '../../store/chats.js';
 
 export function ChatsPage({ t = fallbackTranslate }) {

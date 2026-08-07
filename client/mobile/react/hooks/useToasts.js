@@ -1,15 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useToastStore } from "../store/toast";
 
-export function useToasts() {
-  const [toasts, setToasts] = useState([]);
+export const useToasts = () => {
+  const toasts = useToastStore((state) => state.toasts);
+  const showToast = useToastStore((state) => state.showToast);
 
-  const showToast = useCallback((type, message, icon) => {
-    const id = crypto.randomUUID?.() || String(Date.now() + Math.random());
-    setToasts((items) => [...items, { icon, id, message, type }]);
-    window.setTimeout(() => {
-      setToasts((items) => items.filter((toast) => toast.id !== id));
-    }, 3000);
-  }, []);
-
-  return { showToast, toasts };
-}
+  return { toasts, showToast };
+};

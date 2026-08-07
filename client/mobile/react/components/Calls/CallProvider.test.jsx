@@ -1,9 +1,9 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CallProvider, useCall } from './CallProvider.jsx';
-import { eventBus } from '../../../core/EventBus.js';
-import * as useRealtimeSocketModule from '../../hooks/useRealtimeSocket.js';
+import { CallProvider } from './CallProvider.jsx';
+import { useCall } from '../../hooks/useCall.js';
+import { eventBus } from '../../core/EventBus.js';
 
 // Mock the realtime socket hook
 const mockSocket = {
@@ -12,11 +12,11 @@ const mockSocket = {
 };
 
 vi.mock('../../hooks/useRealtimeSocket.js', () => ({
-  useRealtimeSocket: () => ({ socket: mockSocket }),
+  useRealtimeSocket: () => ({ socket: mockSocket, eventBus }),
 }));
 
-vi.mock('../../../application/services/serviceContainer.js', () => ({
-  services: {
+vi.mock('../../services/serviceContainer.js', () => ({
+  default: {
     callService: {
       createRoom: vi.fn().mockResolvedValue({ id: 'room-123' }),
     },

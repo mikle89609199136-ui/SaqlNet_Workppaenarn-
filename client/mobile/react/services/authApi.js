@@ -1,4 +1,5 @@
-import { services } from '../../application/services/serviceContainer.js';
+import { STORAGE_KEYS } from '../consts/storageKeys.js';
+import services from './serviceContainer.js';
 
 export async function registerUser({ firstName, language, password, username }) {
   return services.authService.register({ firstName, language, lastName: '', password, username });
@@ -25,8 +26,8 @@ export function uploadAvatar({ avatar, token }) {
 }
 
 export function saveAuthSession({ language = 'ru', settings, token, user }) {
-  localStorage.setItem('craneapp_auth_token', token);
-  localStorage.setItem('craneapp_user_data', JSON.stringify({
+  localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+  localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({
     avatarUrl: user.avatarUrl || '',
     bio: user.bio || '',
     firstName: user.firstName,
@@ -34,7 +35,7 @@ export function saveAuthSession({ language = 'ru', settings, token, user }) {
     lastName: user.lastName || '',
     username: user.username,
   }));
-  localStorage.setItem('craneapp_settings', JSON.stringify(settings || defaultSettings(language)));
+  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings || defaultSettings(language)));
   window.dispatchEvent(new CustomEvent('craneapp:auth-session-saved'));
 }
 

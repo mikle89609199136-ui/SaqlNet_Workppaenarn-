@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { ChatsPage } from './ChatsPage.jsx';
 import { SettingsSidebar } from '../Settings/SettingsSidebar.jsx';
 import SettingsDetailPage from '../Settings/SettingsDetailPage.jsx';
-import { ChatThreadPage, UserProfilePanel } from './ChatThreadPage.jsx';
+import { ChatsPage, ChatThreadPage, UserProfilePanel } from '../../pages/ChatPage/ChatThreadPage.jsx';
 import { CreateGroupPage } from '../Chats/CreateGroupPage.jsx';
 
 export function ChatWorkspace({ forceMobile = false, translate }) {
@@ -57,10 +56,10 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
 
   return (
     <div className={`chat-workspace ${isSettingsOpen ? 'is-settings-active' : ''} ${profileState.isOpen ? 'has-profile' : ''}`}>
-      
+
       {/* ЛЕВАЯ КОЛОНКА (Список чатов ИЛИ Список вкладок настроек) */}
       <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
-        
+
         {/* Панель со списком чатов */}
         <div className={`sidebar-slide-layer chats-layer ${isSettingsOpen ? 'slide-out' : 'slide-in'}`}>
           <ChatsPage t={translate} />
@@ -102,8 +101,8 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
             profileMode="panel"
             t={translate}
           />
-          
-          
+
+
         ) : (
           /* Пустой экран */
           <div className="empty-chat-placeholder">
@@ -113,9 +112,9 @@ export function ChatWorkspace({ forceMobile = false, translate }) {
           </div>
         )}
         {isCreatingGroup && (
-          <CreateGroupPage 
-            onClose={handleCloseCreateGroup} 
-            t={translate} 
+          <CreateGroupPage
+            onClose={handleCloseCreateGroup}
+            t={translate}
           />
         )}
       </div>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { RegisterPage } from './components/Auth/RegisterPage.jsx';
-import { LoginPage } from './components/Auth/LoginPage.jsx';
-import { ChatThreadPage, UserProfilePanel } from './components/Chats/ChatThreadPage.jsx';
+import { RegisterPage } from './pages/RegisterPage/RegisterPage.jsx';
+import { LoginPage } from './pages/LoginPage/LoginPage.jsx';
+import { ChatThreadPage, UserProfilePanel } from './pages/ChatPage/ChatThreadPage.jsx';
 import { ChatsPage } from './components/Chats/ChatsPage.jsx';
 import { RateLimitPage } from './components/RateLimit/RateLimitPage.jsx';
 import { ContactsPage } from './components/Contacts/ContactsPage.jsx';
@@ -10,7 +10,7 @@ import { CreateGroupPage } from './components/Chats/CreateGroupPage.jsx';
 import { CallProvider } from './components/Calls/CallProvider.jsx';
 import { CallOverlay } from './components/Calls/CallOverlay.jsx';
 import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
-import { services } from '../application/services/serviceContainer.js';
+import { services } from './services/serviceContainer.js';
 import { ThemeProvider } from './components/Context/ThemeContext.jsx';
 import { ChatWorkspace } from './components/Chats/ChatWorkspace.jsx';
 export function App({ basename = '', forceMobile = false }) {

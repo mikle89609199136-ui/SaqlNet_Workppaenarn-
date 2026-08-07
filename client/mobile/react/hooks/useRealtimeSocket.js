@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react';
-import { config } from '../../app/config.js';
-import { eventBus } from '../../core/EventBus.js';
 import WebSocketClient from '../../infrastructure/websocket/WebSocketClient.js';
-import { STORAGE_KEYS } from '../../shared/constants/config.js';
+import { config } from '../configs/app.js';
+import { STORAGE_KEYS } from '../consts/storageKeys.js';
+import { eventBus } from '../core/EventBus.js';
 
 let sharedSocket = null;
 

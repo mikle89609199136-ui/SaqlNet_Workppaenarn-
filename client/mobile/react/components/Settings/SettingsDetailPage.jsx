@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { services } from '../../../application/services/serviceContainer.js';
-import { ToastStack } from '../common/ToastStack.jsx';
+import { services } from '../../services/serviceContainer.js';
+import { ToastStack } from '../ui/ToastStack.jsx';
 import { useToasts } from '../../hooks/useToasts.js';
 import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import { useTheme } from '../Context/ThemeContext.jsx';
