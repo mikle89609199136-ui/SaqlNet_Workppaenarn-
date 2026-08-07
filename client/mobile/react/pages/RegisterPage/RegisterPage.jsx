@@ -115,7 +115,7 @@ export function RegisterPage() {
 
   return (
     <div className="relative w-full min-h-screen flex items-center justify-center bg-[var(--color-bg)]">
-      <div className="relative w-full min-h-screen md:overflow-hidden md:rounded-3xl md:w-100 md:h-150 md:min-h-150 md:bg-[var(--color-panel)] md:backdrop-blur-lg md:border md:border-white/[0.08] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+      <div className="relative w-full min-h-screen md:overflow-hidden md:rounded-3xl md:w-100 md:h-150 md:min-h-150 md:bg-panel md:backdrop-blur-lg md:border md:border-white/[0.08] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         <WelcomeStep active={step === 1} onNext={() => goTo(2)} />
         <NameStep
           active={step === 2}
@@ -396,7 +396,7 @@ function Feature({ icon, text }) {
   return (
     <div className="flex items-center gap-3 text-sm text-white/60">
       <div
-        className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[18px] shrink-0 [&_img.apple-emoji]:w-[22px] [&_img.apple-emoji]:h-[22px]"
+        className="size-9 rounded-[10px] flex items-center justify-center text-[18px] shrink-0 [&_img.apple-emoji]:w-[22px] [&_img.apple-emoji]:h-[22px]"
         style={{ background: "rgba(255,0,127,0.15)" }}
       >
         {icon}

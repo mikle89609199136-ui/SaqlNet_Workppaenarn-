@@ -8,6 +8,14 @@ import services from "../../services/serviceContainer.js";
 import { useChatStore } from "../../store/chat.js";
 import { useChatsStore } from "../../store/chats.js";
 import { Identicon } from "../ui/Identicon.jsx";
+import {cn} from "../../utils/cn";
+
+
+const roleStyles = {
+    owner: "text-[#ffa500] bg-[#ffa500]/20 border-[#ffa500]/30",
+    admin: "text-[#00bfff] bg-[#00bfff]/20 border-[#00bfff]/30",
+    member: "text-[#aaa] bg-white/10 border-transparent",
+};
 
 export function GroupInfoModal({ isOpen, onClose }) {
   const { showToast } = useToasts();
@@ -112,11 +120,6 @@ export function GroupInfoModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-    const roleStyles = {
-        owner: "text-[#ffa500] bg-[#ffa500]/20 border-[#ffa500]/30",
-        admin: "text-[#00bfff] bg-[#00bfff]/20 border-[#00bfff]/30",
-        member: "text-[#aaa] bg-white/10 border-transparent",
-    };
 
   return (
     <div className="fixed inset-0 z-[1000] flex justify-center items-center bg-black/40 backdrop-blur-md animate-[fadeIn_0.2s_ease-out]" onClick={onClose}>
@@ -221,12 +224,20 @@ export function GroupInfoModal({ isOpen, onClose }) {
                         <Identicon userId={memberId} size={44} />
                       )}
                     </div>
-                    <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                      <span className=" font-medium text-base text-white whitespace-nowrap overflow-hidden text-ellipsis">{member.username}</span>
-                        <span className={`text-[0.75rem] font-semibold uppercase tracking-[0.5px] w-fit py-0.5 px-2 rounded-xl border border-solid ${roleStyles[member.role] || roleStyles.member}`}>
-                          {member.role}
-                        </span>
-                    </div>
+                      <div className="flex-1 flex flex-col gap-1 overflow-hidden">
+                          <span className="font-medium text-base text-white truncate">
+                            {member.username}
+                          </span>
+
+                          <span
+                              className={cn(
+                                  "text-[0.75rem] font-semibold uppercase tracking-[0.5px] w-fit py-0.5 px-2 rounded-xl border border-solid",
+                                  roleStyles[member.role] || roleStyles.member
+                              )}
+                          >
+                            {member.role}
+                          </span>
+                      </div>
 
                     {/* Moderation Controls */}
                   {(currentUser?.role === "owner" || currentUser?.role === "admin") &&

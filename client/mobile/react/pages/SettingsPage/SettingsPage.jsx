@@ -83,7 +83,7 @@ export function SettingsPage() {
     .toUpperCase();
 
   return (
-    <main className="w-full box-border pt-[calc(16px+env(safe-area-inset-top,0px))] pb-[calc(90px+env(safe-area-inset-bottom,0px))] px-4 md:h-full md:overflow-y-auto md:py-12 md:px-16 md:min-h-0">
+    <main className="w-full pt-[calc(16px+env(safe-area-inset-top,0px))] pb-[calc(90px+env(safe-area-inset-bottom,0px))] px-4 md:h-full md:overflow-y-auto md:py-12 md:px-16 md:min-h-0">
       <header className="flex items-center gap-[14px] mb-6 md:mb-9">
         <button className="bg-transparent border-0 text-[28px] cursor-pointer p-0 leading-none shrink-0 text-[var(--color-accent)] md:hidden" onClick={() => navigate("/chats")}>
           ‹
@@ -91,7 +91,7 @@ export function SettingsPage() {
         <h1 className="m-0 text-[22px] font-bold md:text-[30px] md:font-extrabold">{t("settings", "Настройки")}</h1>
       </header>
 
-      <section className="flex items-center gap-4 rounded-[20px] mb-6 w-full box-border p-5 bg-[var(--color-panel)] border border-solid border-white/6 md:gap-6 md:rounded-[24px] md:mb-8 md:py-[28px] md:px-8">
+      <section className="flex items-center gap-4 rounded-[20px] mb-6 w-full p-5 bg-[var(--color-panel)] border border-solid border-white/6 md:gap-6 md:rounded-[24px] md:mb-8 md:py-[28px] md:px-8">
         <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center text-[28px] text-white overflow-hidden shrink-0 bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] md:w-[88px] md:h-[88px] md:text-[36px]">
           {user.avatarUrl ? (
             <img src={user.avatarUrl} alt="" className="w-full h-full object-cover"  />
@@ -111,7 +111,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="w-full box-border rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
+      <section className="w-full rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
         <div
             className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6"
           onClick={() => setIsEditModalOpen(true)}
@@ -126,7 +126,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-        <section className="w-full box-border rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
+        <section className="w-full rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
             {/* Пункт: Уведомления */}
             <div className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
