@@ -1,4 +1,4 @@
-import { eventBus } from '../../core/EventBus.js';
+import { eventBus } from '../../react/core/EventBus.js';
 
 class WebSocketClient {
   constructor(url, options = {}) {
@@ -11,6 +11,10 @@ class WebSocketClient {
   }
 
   connect() {
+    const token = this.getToken();
+    if (!token) {
+      return null;
+    }
     if (
       this.socket?.readyState === WebSocket.OPEN ||
       this.socket?.readyState === WebSocket.CONNECTING
@@ -18,7 +22,7 @@ class WebSocketClient {
       return this.socket;
     }
 
-    this.socket = new WebSocket(this.buildUrl());
+    this.socket = new WebSocket(this.buildUrl(token));
     this.socket.addEventListener('open', () => this.handleOpen());
     this.socket.addEventListener('message', (event) => this.handleMessage(event));
     this.socket.addEventListener('close', () => this.handleClose());
@@ -49,8 +53,7 @@ class WebSocketClient {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
-  buildUrl() {
-    const token = this.getToken();
+  buildUrl(token = this.getToken()) {
     if (!token) return this.url;
 
     const url = new URL(this.url, window.location.href);
@@ -75,8 +78,12 @@ class WebSocketClient {
   }
 
   handleClose() {
+    this.socket = null;
     eventBus.emit('socket:disconnected');
 
+    if (!this.getToken()) {
+      return;
+    }
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       return;
     }

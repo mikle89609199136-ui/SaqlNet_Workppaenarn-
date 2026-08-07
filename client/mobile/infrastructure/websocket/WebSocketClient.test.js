@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { eventBus } from '../../core/EventBus.js';
+import { eventBus } from '../../react/core/EventBus.js';
 import WebSocketClient from './WebSocketClient.js';
 
 describe('WebSocketClient', () => {
@@ -34,7 +34,9 @@ describe('WebSocketClient', () => {
     }
     vi.stubGlobal('WebSocket', MockWebSocket);
 
-    const client = new WebSocketClient('ws://localhost:8080/ws');
+    const client = new WebSocketClient('ws://localhost:8080/ws', {
+      getToken: () => 'token',
+    });
     const first = client.connect();
     const second = client.connect();
 

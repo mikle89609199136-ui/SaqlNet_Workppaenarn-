@@ -1,5 +1,5 @@
 import { apiClient } from '../infrastructure/api/apiFactory.js';
-import { STORAGE_KEYS } from '../shared/constants/config.js';
+import { STORAGE_KEYS } from '../react/consts/storageKeys.js';
 
 const { TOKEN: TOKEN_KEY, USER: USER_KEY } = STORAGE_KEYS;
 
