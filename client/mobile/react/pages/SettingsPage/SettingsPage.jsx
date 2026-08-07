@@ -83,82 +83,98 @@ export function SettingsPage() {
     .toUpperCase();
 
   return (
-    <main className="settings-page">
-      <header className="settings-header">
-        <button className="back-arrow-btn" onClick={() => navigate("/chats")}>
+    <main className="w-full box-border pt-[calc(16px+env(safe-area-inset-top,0px))] pb-[calc(90px+env(safe-area-inset-bottom,0px))] px-4 md:h-full md:overflow-y-auto md:py-12 md:px-16 md:min-h-0">
+      <header className="flex items-center gap-[14px] mb-6 md:mb-9">
+        <button className="bg-transparent border-0 text-[28px] cursor-pointer p-0 leading-none shrink-0 text-[var(--color-accent)] md:hidden" onClick={() => navigate("/chats")}>
           ‹
         </button>
-        <h1>{t("settings", "Настройки")}</h1>
+        <h1 className="m-0 text-[22px] font-bold md:text-[30px] md:font-extrabold">{t("settings", "Настройки")}</h1>
       </header>
 
-      <section className="settings-profile-card">
-        <div className="settings-avatar-wrap">
+      <section className="flex items-center gap-4 rounded-[20px] mb-6 w-full box-border p-5 bg-[var(--color-panel)] border border-solid border-white/6 md:gap-6 md:rounded-[24px] md:mb-8 md:py-[28px] md:px-8">
+        <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center text-[28px] text-white overflow-hidden shrink-0 bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] md:w-[88px] md:h-[88px] md:text-[36px]">
           {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="profile-avatar-img" />
+            <img src={user.avatarUrl} alt="" className="w-full h-full object-cover"  />
           ) : (
             <span>{userInitials}</span>
           )}
         </div>
-        <div className="settings-profile-info">
-          <h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="m-0 mb-1 text-[18px] font-bold truncate md:text-[22px]">
             {user.firstName || "Пользователь"}
             {user.statusEmoji ? (
               <span style={{ marginLeft: 8 }}>{user.statusEmoji}</span>
             ) : null}
           </h2>
-          <p>{user.username ? `@${user.username}` : ""}</p>
-          {user.bio && <p style={{ marginTop: 6, opacity: 0.8 }}>{user.bio}</p>}
+          <p className="m-0 text-[13px] text-[var(--color-muted)] md:text-sm">{user.username ? `@${user.username}` : ""}</p>
+          {user.bio && <p className="m-0 text-[13px] text-[var(--color-muted)] md:text-sm" style={{ marginTop: 6, opacity: 0.8 }}>{user.bio}</p>}
         </div>
       </section>
 
-      <section className="settings-block-group">
+      <section className="w-full box-border rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
         <div
-          className="settings-row-item"
+            className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6"
           onClick={() => setIsEditModalOpen(true)}
         >
-          <div className="settings-row-left">
-            <span className="settings-row-icon">👤</span>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="text-[18px] shrink-0 md:text-[20px]">👤</span>
             <span>{t("editProfile", "Редактировать профиль")}</span>
           </div>
-          <div className="settings-row-right">
+          <div className="flex items-center gap-2 text-sm shrink-0 whitespace-nowrap text-[var(--color-muted)] md:text-[15px]">
             <span>›</span>
           </div>
         </div>
       </section>
 
-      <section className="settings-block-group">
-        <div className="settings-row-item">
-          <div className="settings-row-left">
-            <span className="settings-row-icon">🔔</span>
-            <span>{t("notifications", "Уведомления")}</span>
-          </div>
-          <div
-            className={`settings-toggle-switch ${settings.notifications ? "is-active" : ""}`}
-            onClick={() =>
-              updateSetting("notifications", !settings.notifications)
-            }
-          >
-            <div className="settings-toggle-knob" />
-          </div>
-        </div>
+        <section className="w-full box-border rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
+            {/* Пункт: Уведомления */}
+            <div className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="text-[18px] shrink-0 md:text-[20px]">🔔</span>
+                    <span>{t("notifications", "Уведомления")}</span>
+                </div>
 
-        <div className="settings-row-item">
-          <div className="settings-row-left">
-            <span className="settings-row-icon">🎵</span>
-            <span>{t("sounds", "Звуки")}</span>
-          </div>
-          <div
-            className={`settings-toggle-switch ${settings.sounds ? "is-active" : ""}`}
-            onClick={() => updateSetting("sounds", !settings.sounds)}
-          >
-            <div className="settings-toggle-knob" />
-          </div>
-        </div>
-      </section>
+                {/* Тумблер Уведомлений */}
+                <div
+                    className={`w-11 h-6 rounded-xl relative transition-colors duration-200 cursor-pointer shrink-0 ${
+                        settings.notifications ? "bg-[var(--color-accent)]" : "bg-[#333]"
+                    }`}
+                    onClick={() => updateSetting("notifications", !settings.notifications)}
+                >
+                    <div
+                        className={`w-[18px] h-[18px] bg-white rounded-full absolute top-[3px] transition-all duration-200 ${
+                            settings.notifications ? "left-[23px]" : "left-[3px]"
+                        }`}
+                    />
+                </div>
+            </div>
 
-      <section className="settings-block-group">
+            {/* Пункт: Звуки */}
+            <div className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="text-[18px] shrink-0 md:text-[20px]">🎵</span>
+                    <span>{t("sounds", "Звуки")}</span>
+                </div>
+
+                {/* Тумблер Звуков */}
+                <div
+                    className={`w-11 h-6 rounded-xl relative transition-colors duration-200 cursor-pointer shrink-0 ${
+                        settings.sounds ? "bg-[var(--color-accent)]" : "bg-[#333]"
+                    }`}
+                    onClick={() => updateSetting("sounds", !settings.sounds)}
+                >
+                    <div
+                        className={`w-[18px] h-[18px] bg-white rounded-full absolute top-[3px] transition-all duration-200 ${
+                            settings.sounds ? "left-[23px]" : "left-[3px]"
+                        }`}
+                    />
+                </div>
+            </div>
+        </section>
+
+      <section className="w-full box-border rounded-[20px] mb-5 overflow-hidden bg-[var(--color-panel)] border border-solid border-white/6 md:rounded-[24px] md:mb-6">
         <div
-          className="settings-row-item"
+            className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6"
           onClick={() =>
             showToast(
               "info",
@@ -167,18 +183,18 @@ export function SettingsPage() {
             )
           }
         >
-          <div className="settings-row-left">
-            <span className="settings-row-icon">🎨</span>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="text-[18px] shrink-0 md:text-[20px]">🎨</span>
             <span>{t("appearance", "Оформление")}</span>
           </div>
-          <div className="settings-row-right">
+          <div className="flex items-center gap-2 text-sm shrink-0 whitespace-nowrap text-[var(--color-muted)] md:text-[15px]">
             <span>{settings.theme === "dark" ? "Тёмная" : "Светлая"}</span>
             <span>›</span>
           </div>
         </div>
 
         <div
-          className="settings-row-item"
+            className="flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3 py-[14px] px-[18px] border-b border-solid border-white/4 last:border-b-0 hover:bg-white/3 md:text-base md:py-[18px] md:px-6"
           onClick={() =>
             showToast(
               "info",
@@ -187,19 +203,19 @@ export function SettingsPage() {
             )
           }
         >
-          <div className="settings-row-left">
-            <span className="settings-row-icon">🌐</span>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="text-[18px] shrink-0 md:text-[20px]">🌐</span>
             <span>{t("language", "Язык")}</span>
           </div>
-          <div className="settings-row-right">
+          <div className="flex items-center gap-2 text-sm shrink-0 whitespace-nowrap text-[var(--color-muted)] md:text-[15px]">
             <span>Русский</span>
             <span>›</span>
           </div>
         </div>
       </section>
 
-      <div className="logout-btn-container">
-        <button className="logout-btn-block" onClick={handleLogout}>
+      <div className="mt-[30px] w-full">
+        <button className="w-full rounded-[12px] text-[#ff3366] text-[15px] font-bold cursor-pointer transition-colors duration-200 box-border p-3.5 border border-solid border-[#ff3366]/25 bg-[#ff3366]/8 hover:bg-[#ff3366]/15 md:text-base md:rounded-2xl md:p-4" onClick={handleLogout}>
           {t("logout", "Выйти из аккаунта")}
         </button>
       </div>
@@ -266,18 +282,18 @@ function EditProfileModal({ user, onClose, onSave }) {
 
   return (
     <div
-      className="group-info-modal-overlay"
+        className="fixed inset-0 z-[1000] flex justify-center items-center bg-black/40 backdrop-blur-md animate-[fadeIn_0.2s_ease-out]"
       onClick={onClose}
       style={{ zIndex: 20000 }}
     >
       <div
-        className="group-info-modal-content glass-panel"
+          className="w-full flex flex-col overflow-hidden h-full max-h-screen max-w-[500px] bg-[#141416]/85 border border-solid border-white/10 border-b-0 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] animate-[slideUp_0.3s_cubic-bezier(0.2,0.8,0.2,1)] md:max-h-[85vh] md:rounded-3xl glass-panel"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 400 }}
       >
-        <header className="group-info-header">
-          <h2>Редактировать профиль</h2>
-          <button className="close-btn" onClick={onClose}>
+        <header className="flex flex-col gap-y-5 py-5 px-6 border-b border-solid border-white/5">
+          <h2 className="text-[1.2rem] font-semibold m-0 bg-gradient-to-br from-white to-[#aaa] bg-clip-text text-transparent" >Редактировать профиль</h2>
+          <button className="w-8 h-8 rounded-full text-white text-base cursor-pointer flex items-center justify-center transition-colors duration-200 border-none bg-white/10 hover:bg-white/20" onClick={onClose}>
             ✕
           </button>
         </header>

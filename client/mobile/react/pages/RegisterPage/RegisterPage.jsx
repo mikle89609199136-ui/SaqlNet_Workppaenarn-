@@ -11,6 +11,7 @@ import {
 } from "../../services/authApi.js";
 import { cn } from "../../utils/cn.js";
 
+
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 export function RegisterPage() {
@@ -113,8 +114,8 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="register-page">
-      <div className="register-container">
+    <div className="relative w-full min-h-screen flex items-center justify-center bg-[var(--color-bg)]">
+      <div className="relative w-full min-h-screen md:overflow-hidden md:rounded-3xl md:w-100 md:h-150 md:min-h-150 md:bg-[var(--color-panel)] md:backdrop-blur-lg md:border md:border-white/[0.08] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         <WelcomeStep active={step === 1} onNext={() => goTo(2)} />
         <NameStep
           active={step === 2}
@@ -155,20 +156,21 @@ function WelcomeStep({ active, onNext }) {
   const { t } = useTranslation();
   return (
     <section className={cn("screen", { active })} aria-hidden={!active}>
-      <div className="welcome-logo">
+      <div className="w-24 h-24 rounded-[28px] overflow-hidden mb-7 shadow-[0_20px_60px_rgba(255,0,127,0.4)] animate-[glow_3s_ease-in-out_infinite]">
         <img
+            className="w-full h-full object-cover"
           src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png"
           alt="CraneApp"
         />
       </div>
-      <div className="welcome-title">
+      <div className="text-[28px] font-extrabold text-center mb-3 tracking-[-0.03em] bg-gradient-to-br from-white to-white/80 bg-clip-text text-transparent">
         {t("welcomeRegisterTitle", "Добро пожаловать<br>в CraneApp")
           .split("<br>")
           .map((line, index) => (
             <FragmentLine index={index} key={line} line={line} />
           ))}
       </div>
-      <div className="welcome-features">
+      <div className="flex flex-col gap-2.5 w-full max-w-80 mt-6 mb-9">
         <Feature
           icon="🔒"
           text={t("welcomeFeatureE2E", "End-to-end шифрование всех сообщений")}
@@ -195,10 +197,10 @@ function WelcomeStep({ active, onNext }) {
           )}
         />
       </div>
-      <button className="btn-primary" type="button" onClick={onNext}>
+      <button className="w-full max-w-85 rounded-2xl border-none text-white text-base font-bold cursor-pointer p-[17px] tracking-[-0.01em] bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-[0_8px_32px_rgba(255,0,127,0.35)] transition-[transform,box-shadow] duration-150 appearance-none active:scale-[0.97] active:shadow-[0_4px_16px_rgba(255,0,127,0.2)] disabled:opacity-50 disabled:cursor-not-allowed" type="button" onClick={onNext}>
         {t("createAccount", "Создать аккаунт")}
       </button>
-      <div className="footer-link">
+      <div className="mt-5 text-sm text-center text-white/40 [&_a]:text-accent [&_a]:no-underline [&_a]:font-semibold">
         {t("alreadyHaveAccount", "Уже есть аккаунт?")}{" "}
         <Link to={ROUTES.LOGIN}>{t("login", "Войти")}</Link>
       </div>
@@ -221,27 +223,27 @@ function NameStep({
     <section className={cn("screen", { active })} aria-hidden={!active}>
       <BackButton onClick={onBack} />
       <ProgressDots activeIndex={0} />
-      <div className="step-title">{t("whatIsYourName", "Как вас зовут?")}</div>
-      <div className="step-sub">
+      <div className="text-2xl font-bold text-center mb-1.5 tracking-[-0.03em]">{t("whatIsYourName", "Как вас зовут?")}</div>
+      <div className="text-sm text-center mb-7 text-white/45">
         {t("addPhotoName", "Добавьте фото и введите своё имя")}
       </div>
 
       <button
-        className="avatar-upload"
+        className="group w-25 h-25 rounded-full flex flex-col items-center justify-center cursor-pointer mb-6 overflow-hidden relative bg-gradient-to-br from-[rgba(255,0,127,0.2)] to-[rgba(157,0,255,0.2)] border-2 border-dashed border-white/20 transition-[border-color,transform] duration-200 active:scale-95"
         type="button"
         onClick={() => avatarInputRef.current?.click()}
         style={avatar ? { border: "2px solid rgba(255,0,127,0.4)" } : undefined}
       >
         {avatar ? (
-          <img src={avatar} alt="" />
+          <img src={avatar} alt="" className="w-full h-full object-cover rounded-full" />
         ) : (
           <span style={{ fontSize: 36 }}>🔒</span>
         )}
-        <div className="avatar-edit-overlay">
+        <div className="rounded-full hidden group-hover:flex absolute inset-0 items-center justify-center bg-black/50">
           <CameraIcon />
         </div>
       </button>
-      <div className="avatar-upload-hint">
+      <div className="text-[11px] text-center mt-1 text-white/40">
         {t("tapAddPhoto", "Нажмите чтобы добавить фото")}
       </div>
       <input
@@ -252,8 +254,8 @@ function NameStep({
         onChange={onAvatarChange}
       />
 
-      <div className="field" style={{ marginTop: 20 }}>
-        <label htmlFor="firstName">{t("firstName", "Имя")}</label>
+      <div className="w-full max-w-85 mb-4 relative" style={{ marginTop: 20 }}>
+        <label className="block text-xs font-semibold uppercase tracking-[0.04em] mb-2 text-white/40" htmlFor="firstName">{t("firstName", "Имя")}</label>
         <input
           id="firstName"
           type="text"
@@ -262,11 +264,12 @@ function NameStep({
           placeholder={t("firstNamePlaceholder", "Ваше имя")}
           autoComplete="given-name"
           maxLength={64}
+          className="w-full rounded-[14px] text-white text-base outline-none px-[18px] py-4 border-[1.5px] border-solid border-white/5 bg-white/5 transition-[border-color,background-color] duration-[180ms] appearance-none focus:border-[var(--color-accent)] focus:bg-white/8 placeholder:text-white/25"
         />
       </div>
 
       <button
-        className="btn-primary"
+        className="w-full max-w-85 rounded-2xl border-none text-white text-base font-bold cursor-pointer p-[17px] tracking-[-0.01em] bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-[0_8px_32px_rgba(255,0,127,0.35)] transition-[transform,box-shadow] duration-150 appearance-none active:scale-[0.97] active:shadow-[0_4px_16px_rgba(255,0,127,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
         type="button"
         onClick={onNext}
         style={{ marginTop: 8 }}
@@ -290,15 +293,15 @@ function CredentialsStep(props) {
       <div style={{ fontSize: 48, marginBottom: 8, textAlign: "center" }}>
         🔐
       </div>
-      <div className="step-title">
+      <div className="text-2xl font-bold text-center mb-1.5 tracking-[-0.03em]">
         {t("chooseLoginTitle", "Придумайте логин")}
       </div>
-      <div className="step-sub">
+      <div className="text-sm text-center mb-7 text-white/45">
         {t("chooseLoginSub", "Юзернейм и пароль для входа")}
       </div>
 
-      <div className="field">
-        <label htmlFor="username">{t("username", "Юзернейм")}</label>
+      <div className="w-full max-w-85 mb-4 relative">
+        <label className="block text-xs font-semibold uppercase tracking-[0.04em] mb-2 text-white/40" htmlFor="username">{t("username", "Юзернейм")}</label>
         <input
           id="username"
           type="text"
@@ -312,6 +315,7 @@ function CredentialsStep(props) {
           autoComplete="username"
           minLength={3}
           maxLength={32}
+          className="w-full rounded-[14px] text-white text-base outline-none px-[18px] py-4 border-[1.5px] border-solid border-white/5 bg-white/5 transition-[border-color,background-color] duration-[180ms] appearance-none focus:border-[var(--color-accent)] focus:bg-white/8 placeholder:text-white/25"
         />
       </div>
       <PasswordField
@@ -323,8 +327,11 @@ function CredentialsStep(props) {
         show={props.showPassword}
         value={props.password}
       />
-      <div className="pw-strength">
-        <div className="pw-strength-bar" style={strength} />
+      <div className="h-[3px] rounded-sm mt-1.5 bg-white/8 transition-all duration-300">
+          <div
+              className="h-full rounded-sm transition-[width,background-color] duration-300"
+              style={strength}
+          />
       </div>
       <PasswordField
         id="password2"
@@ -337,7 +344,7 @@ function CredentialsStep(props) {
       />
 
       <button
-        className="btn-primary"
+        className="w-full max-w-85 rounded-2xl border-none text-white text-base font-bold cursor-pointer p-[17px] tracking-[-0.01em] bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-[0_8px_32px_rgba(255,0,127,0.35)] transition-[transform,box-shadow] duration-150 appearance-none active:scale-[0.97] active:shadow-[0_4px_16px_rgba(255,0,127,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
         type="button"
         onClick={props.onSubmit}
         disabled={props.isSubmitting}
@@ -346,7 +353,7 @@ function CredentialsStep(props) {
           ? t("creatingAccount", "Создание аккаунта...")
           : t("createAccount", "Создать аккаунт")}
       </button>
-      <div className="footer-link">
+      <div className="mt-5 text-sm text-center text-white/40 [&_a]:text-accent [&_a]:no-underline [&_a]:font-semibold">
         {t("alreadyHaveAccount", "Уже есть аккаунт?")}{" "}
         <a href={props.loginHref}>{t("login", "Войти")}</a>
       </div>
@@ -364,8 +371,8 @@ function PasswordField({
   value,
 }) {
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
+    <div className="w-full max-w-85 mb-4 relative">
+      <label className="block text-xs font-semibold uppercase tracking-[0.04em] mb-2 text-white/40" htmlFor={id}>{label}</label>
       <div style={{ position: "relative" }}>
         <input
           id={id}
@@ -375,8 +382,9 @@ function PasswordField({
           placeholder={placeholder}
           autoComplete="new-password"
           style={{ paddingRight: 44 }}
+          className="w-full rounded-[14px] text-white text-base outline-none px-[18px] py-4 border-[1.5px] border-solid border-white/5 bg-white/5 transition-[border-color,background-color] duration-[180ms] appearance-none focus:border-[var(--color-accent)] focus:bg-white/8 placeholder:text-white/25"
         />
-        <button className="eye-btn" type="button" onClick={onToggle}>
+        <button className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer p-1 text-white/40 w-auto m-0 text-[0px] active:text-white/80" type="button" onClick={onToggle}>
           <EyeIcon visible={show} />
         </button>
       </div>
@@ -386,9 +394,9 @@ function PasswordField({
 
 function Feature({ icon, text }) {
   return (
-    <div className="feature">
+    <div className="flex items-center gap-3 text-sm text-white/60">
       <div
-        className="feature-icon"
+        className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[18px] shrink-0 [&_img.apple-emoji]:w-[22px] [&_img.apple-emoji]:h-[22px]"
         style={{ background: "rgba(255,0,127,0.15)" }}
       >
         {icon}
@@ -399,21 +407,25 @@ function Feature({ icon, text }) {
 }
 
 function ProgressDots({ activeIndex }) {
-  return (
-    <div className="dots">
-      {[0, 1].map((index) => (
-        <div
-          className={`dot ${index === activeIndex ? "active" : ""}`}
-          key={index}
-        />
-      ))}
-    </div>
-  );
+    return (
+        <div className="flex gap-1.5 mb-8">
+            {[0, 1].map((index) => (
+                <div
+                    key={index}
+                    className={`h-1.5 transition-all duration-300 ${
+                        index === activeIndex
+                            ? "w-5 rounded-[3px] bg-accent"
+                            : "w-1.5 rounded-full bg-white/15"
+                    }`}
+                />
+            ))}
+        </div>
+    );
 }
 
 function BackButton({ onClick }) {
   return (
-    <button className="btn-back" type="button" onClick={onClick}>
+    <button className="absolute left-4 w-10 h-10 rounded-full border-none text-white cursor-pointer flex items-center justify-center top-[calc(env(safe-area-inset-top,0px)+16px)] bg-white/7 transition-colors duration-150 active:bg-white/14 md:top-6 md:left-6" type="button" onClick={onClick}>
       <svg
         width="18"
         height="18"

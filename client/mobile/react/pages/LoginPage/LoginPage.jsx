@@ -74,87 +74,93 @@ export function LoginPage() {
   }
 
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-logo">
-          <img
-            src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png"
-            alt="CraneApp"
-          />
-        </div>
-        <h1>CraneApp</h1>
-        <p className="login-subtitle">
-          {t("loginSubtitle", "Войдите в аккаунт")}
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <div className="login-field">
-            <label htmlFor="loginUsername">{t("username", "Юзернейм")}</label>
-            <input
-              id="loginUsername"
-              autoCapitalize="none"
-              autoComplete="username"
-              autoCorrect="off"
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="@username.123"
-              type="text"
-              value={username}
-            />
-          </div>
-
-          <div className="login-field">
-            <label htmlFor="loginPassword">{t("password", "Пароль")}</label>
-            <div className="login-password-wrap">
-              <input
-                id="loginPassword"
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                type={showPassword ? "text" : "password"}
-                value={password}
-              />
-              <button
-                aria-label={
-                  showPassword
-                    ? t("hidePassword", "Скрыть пароль")
-                    : t("showPassword", "Показать пароль")
-                }
-                className="login-eye"
-                onClick={() => setShowPassword((value) => !value)}
-                type="button"
-              >
-                <EyeIcon visible={showPassword} />
-              </button>
+    <main className="relative flex items-center justify-center px-5 min-h-dvh pt-[calc(20px+env(safe-area-inset-top,0px))] pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
+        <section
+            className="w-[min(100%,400px)] text-center py-6 px-5 border border-white/6 rounded-[20px] backdrop-blur-[14px] bg-[var(--color-panel)] md:p-10 md:rounded-[24px]">
+            <div
+                className="w-[90px] h-[90px] mx-auto mb-5 rounded-[24px] overflow-hidden bg-gradient-to-br from-[rgba(255,0,127,0.2)] to-[rgba(157,0,255,0.2)] shadow-[0_16px_48px_rgba(255,0,127,0.3)] md:w-[120px] md:h-[120px] md:rounded-[30px]">
+                <img
+                    src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png"
+                    className="w-full h-full object-cover"
+                    alt="CraneApp"
+                />
             </div>
-          </div>
+            <h1>CraneApp</h1>
+            <p className="mt-0 mb-6 text-muted text-sm">
+                {t("loginSubtitle", "Войдите в аккаунт")}
+            </p>
 
-          <button
-            className="login-submit"
-            disabled={isSubmitting}
-            type="submit"
-          >
-            {isSubmitting ? t("loginLoading", "Вход...") : t("login", "Войти")}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit}>
+                <div className="mb-3.5 text-left">
+                    <label className="block mb-1.5 text-muted text-[13px]"
+                           htmlFor="loginUsername">{t("username", "Юзернейм")}</label>
+                    <input
+                        id="loginUsername"
+                        autoCapitalize="none"
+                        autoComplete="username"
+                        autoCorrect="off"
+                        onChange={(event) => setUsername(event.target.value)}
+                        placeholder="@username.123"
+                        type="text"
+                        value={username}
+                        className="w-full p-3.5 border-2 border-solid border-white/10 rounded-xl outline-none text-white text-[15px] bg-white/3 transition-[border-color,background-color,box-shadow] duration-300 ease-in-out focus:border-accent focus:bg-white/6 focus:shadow-[0_0_0_4px_rgba(255,0,127,0.15)]"
+                    />
+                </div>
 
-        <div className="login-footer">
-          {t("noAccount", "Нет аккаунта?")}{" "}
-          <Link to={ROUTES.REGISTER}>
-            {t("registerAction", "Зарегистрироваться")}
-          </Link>
-        </div>
-      </section>
+                <div className="mb-3.5 text-left">
+                    <label className="block mb-1.5 text-muted text-[13px]" htmlFor="loginPassword">{t("password", "Пароль")}</label>
+                    <div className="relative">
+                        <input
+                            id="loginPassword"
+                            autoComplete="current-password"
+                            onChange={(event) => setPassword(event.target.value)}
+                            placeholder="••••••••"
+                            type={showPassword ? "text" : "password"}
+                            value={password}
+                            className="w-full p-3.5 border-2 border-solid border-white/10 rounded-xl outline-none text-white text-[15px] bg-white/3 transition-[border-color,background-color,box-shadow] duration-300 ease-in-out focus:border-accent focus:bg-white/6 focus:shadow-[0_0_0_4px_rgba(255,0,127,0.15)]"
+                        />
+                        <button
+                            aria-label={
+                                showPassword
+                                    ? t("hidePassword", "Скрыть пароль")
+                                    : t("showPassword", "Показать пароль")
+                            }
+                            className="absolute top-1/2 right-2.5 w-9 h-9 -translate-y-1/2 inline-flex items-center justify-center border-0 bg-transparent cursor-pointer text-white/45"
+                            onClick={() => setShowPassword((value) => !value)}
+                            type="button"
+                        >
+                            <EyeIcon visible={showPassword}/>
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    className="w-full min-h-12 border-0 rounded-xl text-white text-[15px] font-bold cursor-pointer bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(255,0,127,0.4)]"
+                    disabled={isSubmitting}
+                    type="submit"
+                >
+                    {isSubmitting ? t("loginLoading", "Вход...") : t("login", "Войти")}
+                </button>
+            </form>
+
+            <div className="mt-5 text-[#666] text-sm">
+                {t("noAccount", "Нет аккаунта?")}{" "}
+                <Link to={ROUTES.REGISTER} className="text-accent no-underline hover:underline font-semibold">
+                    {t("registerAction", "Зарегистрироваться")}
+                </Link>
+            </div>
+        </section>
     </main>
   );
 }
 
 async function getClientIP() {
-  try {
-    const response = await fetch("https://api.ipify.org?format=json");
-    if (!response.ok) return "";
-    const data = await response.json();
-    return data.ip || "";
-  } catch (_error) {
+    try {
+        const response = await fetch("https://api.ipify.org?format=json");
+        if (!response.ok) return "";
+        const data = await response.json();
+        return data.ip || "";
+    } catch (_error) {
     return "";
   }
 }
