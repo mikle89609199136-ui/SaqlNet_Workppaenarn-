@@ -2,19 +2,14 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
-	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"github.com/lib/pq"
 )
 
@@ -47,12 +42,18 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
-type Service struct {
-	db     *sql.DB
-	crypto *cryptoclient.Client
+type CryptoClient interface {
+	HashPassword(ctx context.Context, password string) (string, error)
+	VerifyPassword(ctx context.Context, password, hash string) (bool, error)
+	IssueToken(ctx context.Context, userID, username string) (string, error)
 }
 
-func NewService(db *sql.DB, crypto *cryptoclient.Client) *Service {
+type Service struct {
+	db     *sql.DB
+	crypto CryptoClient
+}
+
+func NewService(db *sql.DB, crypto CryptoClient) *Service {
 	return &Service{db: db, crypto: crypto}
 }
 
@@ -67,40 +68,23 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	if err != nil {
 		return User{}, "", err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var user User
-	var disc int
-	inserted := false
-	// Try up to 20 random discriminators (0–999) before giving up.
-	for attempt := 0; attempt < 20; attempt++ {
-		var buf [2]byte
-		if _, err := rand.Read(buf[:]); err != nil {
-			return User{}, "", err
-		}
-		disc = int(binary.BigEndian.Uint16(buf[:])) % 1000
-
-		err = tx.QueryRowContext(ctx, `
-			INSERT INTO auth.users (username, username_discriminator, password_hash, first_name, last_name)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id::text, username, first_name, last_name
-		`, username, disc, hash, strings.TrimSpace(firstName), strings.TrimSpace(lastName)).Scan(
-			&user.ID, &user.Username, &user.FirstName, &user.LastName,
-		)
-		if err == nil {
-			inserted = true
-			break
-		}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO auth.users (username, password_hash, first_name, last_name)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text, username, first_name, last_name
+	`, username, hash, strings.TrimSpace(firstName), strings.TrimSpace(lastName)).Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName)
+	if err != nil {
 		var pgErr *pq.Error
-		if errors.As(err, &pgErr) && pgErr.Constraint == "auth_users_username_discriminator_key" {
-			continue
+		if errors.As(err, &pgErr) && pgErr.Constraint == "auth_users_username_lower_key" {
+			return User{}, "", ErrUsernameTaken
 		}
 		return User{}, "", err
 	}
-	if !inserted {
-		return User{}, "", ErrUsernameTaken
-	}
-	user.Username = fmt.Sprintf("%s.%d", user.Username, disc)
 
 	user.Bio = ""
 	user.AvatarUrl = ""
@@ -122,7 +106,12 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO users.settings (user_id, settings, privacy_settings, notification_settings, sound_settings, storage_settings, advanced_settings, folders)
-		VALUES ($1, $2, '{"lastSeen":"all","phoneVisibility":"contacts","photoVisibility":"all","messagesFromStrangers":true,"groupsAdd":"all","twoFactorAuth":false,"autoDeleteAccount":true}', '{"privateChats":true,"groups":true,"channels":true,"calls":true,"videoCalls":true,"inAppNotifications":true,"messagePreview":true,"readReceipts":false,"reactions":true,"newContacts":true}', '{"notificationsVolume":80,"mediaVolume":100,"notificationsSound":true,"messagesSound":true,"sendSound":true,"callsSound":true,"vibrateOnCall":true,"notificationSound":"default","messageSound":"default","ringtone":"default"}', '{"autoDownloadMobile":true,"autoDownloadWifi":true,"autoDownloadRoaming":false,"deleteMediaAfter":"never"}', '{"autoReconnect":true,"fastConnection":true,"connectionType":"auto","dataCompression":true,"saveDrafts":true,"analytics":false,"developerMode":false,"debugLog":false,"hardwareAcceleration":true,"autoplayGifs":true}', '[]')
+		VALUES ($1, $2,
+			'{"lastSeen":"all","phoneVisibility":"contacts","photoVisibility":"all","messagesFromStrangers":true,"groupsAdd":"all","twoFactorAuth":false,"autoDeleteAccount":true}',
+			'{"privateChats":true,"groups":true,"channels":true,"calls":true,"videoCalls":true,"inAppNotifications":true,"messagePreview":true,"readReceipts":false,"reactions":true,"newContacts":true}',
+			'{"notificationsVolume":80,"mediaVolume":100,"notificationsSound":true,"messagesSound":true,"sendSound":true,"callsSound":true,"vibrateOnCall":true,"notificationSound":"default","messageSound":"default","ringtone":"default"}',
+			'{"autoDownloadMobile":true,"autoDownloadWifi":true,"autoDownloadRoaming":false,"deleteMediaAfter":"never"}',
+			'{"autoReconnect":true,"fastConnection":true,"connectionType":"auto","dataCompression":true,"saveDrafts":true,"analytics":false,"developerMode":false,"debugLog":false,"hardwareAcceleration":true,"autoplayGifs":true}', '[]')
 	`, user.ID, defaultSettings)
 	if err != nil {
 		return User{}, "", err
@@ -139,44 +128,14 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 func (s *Service) Login(ctx context.Context, username, password, twoFAPassword string) (User, string, error) {
 	username = strings.ToLower(strings.TrimSpace(username))
 
-	// Parse "base.discriminator" format (e.g. "alex.247").
-	baseUsername := username
-	disc := -1
-	if idx := strings.LastIndex(username, "."); idx > 0 {
-		if d, err := strconv.Atoi(username[idx+1:]); err == nil && d >= 0 && d <= 999 {
-			baseUsername = username[:idx]
-			disc = d
-		}
-	}
-
 	var user User
-	var scanDisc int
-	var err error
-	if disc >= 0 {
-		err = s.db.QueryRowContext(ctx, `
-			SELECT u.id::text, u.username, u.username_discriminator, u.first_name, u.last_name, u.password_hash,
-			       COALESCE(p.bio, ''), COALESCE(p.avatar_url, '')
-			FROM auth.users u
-			LEFT JOIN users.profiles p ON p.user_id = u.id
-			WHERE u.username = $1 AND u.username_discriminator = $2 AND u.disabled_at IS NULL
-		`, baseUsername, disc).Scan(
-			&user.ID, &user.Username, &scanDisc, &user.FirstName, &user.LastName, &user.PasswordHash,
-			&user.Bio, &user.AvatarUrl,
-		)
-	} else {
-		// Fallback: match by base username alone (takes first match).
-		err = s.db.QueryRowContext(ctx, `
-			SELECT u.id::text, u.username, u.username_discriminator, u.first_name, u.last_name, u.password_hash,
-			       COALESCE(p.bio, ''), COALESCE(p.avatar_url, '')
-			FROM auth.users u
-			LEFT JOIN users.profiles p ON p.user_id = u.id
-			WHERE u.username = $1 AND u.disabled_at IS NULL
-			LIMIT 1
-		`, baseUsername).Scan(
-			&user.ID, &user.Username, &scanDisc, &user.FirstName, &user.LastName, &user.PasswordHash,
-			&user.Bio, &user.AvatarUrl,
-		)
-	}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT u.id::text, u.username, u.first_name, u.last_name, u.password_hash,
+			COALESCE(p.bio, ''), COALESCE(p.avatar_url, '')
+		FROM auth.users u
+		LEFT JOIN users.profiles p ON p.user_id = u.id
+		WHERE lower(u.username) = lower($1) AND u.disabled_at IS NULL
+	`, username).Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.PasswordHash, &user.Bio, &user.AvatarUrl)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", ErrInvalidCredentials
 	}
@@ -211,7 +170,6 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 		}
 	}
 
-	user.Username = fmt.Sprintf("%s.%d", user.Username, scanDisc)
 	token, err := s.crypto.IssueToken(ctx, user.ID, user.Username)
 	return user, token, err
 }
@@ -242,13 +200,11 @@ func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) e
 // IssueQRToken issues a new token for the given user ID, used for QR login confirmation.
 func (s *Service) IssueQRToken(ctx context.Context, userID string) (string, error) {
 	var username string
-	var disc int
-	err := s.db.QueryRowContext(ctx, `SELECT username, username_discriminator FROM auth.users WHERE id = $1`, userID).Scan(&username, &disc)
+	err := s.db.QueryRowContext(ctx, `SELECT username FROM auth.users WHERE id = $1`, userID).Scan(&username)
 	if err != nil {
 		return "", err
 	}
-	fullUsername := fmt.Sprintf("%s.%d", username, disc)
-	return s.crypto.IssueToken(ctx, userID, fullUsername)
+	return s.crypto.IssueToken(ctx, userID, username)
 }
 
 func tokenHash(token string) string {
@@ -398,7 +354,9 @@ func (s *Service) Sessions(ctx context.Context, userID string) ([]Session, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 	var sessions []Session
 	for rows.Next() {
 		var s Session

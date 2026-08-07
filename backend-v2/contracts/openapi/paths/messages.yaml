@@ -1,0 +1,29 @@
+x-secure: &secure [{ bearerAuth: [] }]
+/messages/read:
+  post:
+    tags: [Messages]
+    summary: Mark messages read
+    operationId: markMessagesRead
+    security: *secure
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [chatId], properties: { chatId: { type: string, format: uuid }, messageIds: { type: array, items: { type: string, format: uuid } } } } } } }
+    responses: { '200': { description: Marked read } }
+/messages/search:
+  get: { tags: [Messages], summary: Search messages, operationId: searchMessages, security: *secure, parameters: [{ name: q, in: query, required: true, schema: { type: string } }, { name: limit, in: query, schema: { type: integer, default: 50 } }], responses: { '200': { description: Messages } } }
+/messages/favorites:
+  get: { tags: [Messages], summary: List favorite messages, operationId: listFavoriteMessages, security: *secure, parameters: [{ name: limit, in: query, schema: { type: integer, default: 50 } }, { name: offset, in: query, schema: { type: integer, default: 0 } }], responses: { '200': { description: Messages } } }
+/messages/{id}:
+  parameters: [{ name: id, in: path, required: true, description: Chat ID for GET/POST; message ID for PUT/DELETE, schema: { type: string, format: uuid } }]
+  get: { tags: [Messages], summary: List messages in a chat, operationId: listMessages, security: *secure, parameters: [{ name: limit, in: query, schema: { type: integer, default: 50 } }, { name: offset, in: query, schema: { type: integer, default: 0 } }], responses: { '200': { description: Messages } } }
+  post: { tags: [Messages], summary: Send a message to a chat, operationId: sendMessage, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/SendMessageRequest' } } } }, responses: { '200': { description: Sent message } } }
+  put: { tags: [Messages], summary: Edit a message, operationId: editMessage, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [content], properties: { content: { type: string } } } } } }, responses: { '200': { description: Edited message } } }
+  delete: { tags: [Messages], summary: Delete a message, operationId: deleteMessage, security: *secure, responses: { '200': { description: Deleted } } }
+/messages/{messageId}/forward:
+  post: { tags: [Messages], summary: Forward a message, operationId: forwardMessage, security: *secure, parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [targetChatId], properties: { targetChatId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Forwarded message } } }
+/messages/{messageId}/reactions:
+  parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+  get: { tags: [Messages], summary: List reactions, operationId: listMessageReactions, security: *secure, responses: { '200': { description: Reactions } } }
+  post: { tags: [Messages], summary: Toggle a reaction, operationId: toggleMessageReaction, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [emoji], properties: { emoji: { type: string } } } } } }, responses: { '200': { description: Reaction state } } }
+/messages/{messageId}/favorite:
+  parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+  post: { tags: [Messages], summary: Add message to favorites, operationId: favoriteMessage, security: *secure, responses: { '200': { description: Favorite state } } }
+  delete: { tags: [Messages], summary: Remove message from favorites, operationId: unfavoriteMessage, security: *secure, responses: { '200': { description: Favorite state } } }

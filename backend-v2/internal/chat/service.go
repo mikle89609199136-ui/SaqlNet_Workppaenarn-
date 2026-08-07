@@ -5,17 +5,21 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"path"
 	"strings"
 	"unicode/utf8"
 )
 
 var (
-	ErrNotFound      = errors.New("chat not found")
-	ErrForbidden     = errors.New("access denied")
-	ErrInvalidInput  = errors.New("invalid input")
-	ErrUserNotFound  = errors.New("user not found")
-	ErrBlockedByUser = errors.New("blocked by user")
+	ErrNotFound        = errors.New("chat not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrInvalidChatType = errors.New("invalid chat type")
+	ErrAlreadyMember   = errors.New("user already in group")
+	ErrUserBanned      = errors.New("user is banned")
 )
 
 type Chat struct {
@@ -61,20 +65,26 @@ type Member struct {
 }
 
 type Message struct {
-	ID           string         `json:"id"`
-	ChatID       string         `json:"chatId"`
-	SenderID     string         `json:"senderId"`
-	SenderName   string         `json:"senderName,omitempty"`
-	SenderAvatar string         `json:"senderAvatar,omitempty"`
-	Content      string         `json:"content"`
-	Type         string         `json:"type"`
-	ReplyTo      *string        `json:"replyTo,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-	IsPinned     bool           `json:"isPinned"`
-	IsEdited     bool           `json:"isEdited"`
-	CreatedAt    string         `json:"createdAt"`
-	UpdatedAt    string         `json:"updatedAt"`
-	DeletedAt    *string        `json:"deletedAt,omitempty"`
+	ID                  string         `json:"id"`
+	ChatID              string         `json:"chatId"`
+	SenderID            string         `json:"senderId"`
+	SenderName          string         `json:"senderName,omitempty"`
+	SenderFirstName     string         `json:"senderFirstName"`
+	SenderAvatar        string         `json:"senderAvatar,omitempty"`
+	Content             string         `json:"content"`
+	Type                string         `json:"type"`
+	ReplyTo             *string        `json:"replyTo,omitempty"`
+	ReplyToMessageID    *string        `json:"replyToMessageId,omitempty"`
+	ReplySenderName     string         `json:"replySenderName,omitempty"`
+	ReplyToSenderName   string         `json:"replyToSenderName,omitempty"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
+	IsForwarded         bool           `json:"isForwarded"`
+	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
+	IsPinned            bool           `json:"isPinned"`
+	IsEdited            bool           `json:"isEdited"`
+	CreatedAt           string         `json:"createdAt"`
+	UpdatedAt           string         `json:"updatedAt"`
+	DeletedAt           *string        `json:"deletedAt,omitempty"`
 }
 
 type Service struct {
@@ -146,6 +156,53 @@ func NewService(db *sql.DB, ws *WSServer) *Service {
 	return &Service{db: db, ws: ws}
 }
 
+func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {
+	msg.SenderFirstName = msg.SenderName
+	if msg.ReplyTo != nil {
+		msg.ReplyToMessageID = msg.ReplyTo
+		var name string
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+			FROM messages.messages m
+			LEFT JOIN auth.users au ON au.id = m.sender_id
+			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+			WHERE m.id = $1
+		`, *msg.ReplyTo).Scan(&name)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		msg.ReplySenderName = name
+		msg.ReplyToSenderName = name
+	}
+	if msg.Metadata != nil {
+		if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
+			msg.IsForwarded = true
+			if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
+				msg.ForwardedSenderName = name
+			}
+			if msg.ForwardedSenderName == "" {
+				_ = s.db.QueryRowContext(ctx, `
+					SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+					FROM messages.messages m
+					LEFT JOIN auth.users au ON au.id = m.sender_id
+					LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+					WHERE m.id::text = $1
+				`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) hydrateMessagesFields(ctx context.Context, messages []Message) error {
+	for i := range messages {
+		if err := s.hydrateMessageFields(ctx, &messages[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) CallRooms() *CallRoomManager {
 	return s.ws.CallRooms()
 }
@@ -183,7 +240,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         COALESCE(up.avatar_url, '') AS avatar_url,
-			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         au.username AS display_username,
 			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
 			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
 			  FROM chats.members pm
@@ -253,7 +310,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         COALESCE(up.avatar_url, '') AS avatar_url,
-			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         au.username AS display_username,
 			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
 			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
 			  FROM chats.members pm
@@ -299,6 +356,14 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		chat.PeerIsOnline = true
 	}
 	return chat, nil
+}
+
+func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (string, string, error) {
+	var chatType, role string
+	err := s.db.QueryRowContext(ctx, `SELECT c.type, cm.role
+	FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`, userID, chatID).Scan(&chatType, &role)
+
+	return chatType, role, err
 }
 
 func (s *Service) hydrateRealtimePresence(chats []Chat) {
@@ -407,30 +472,72 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 	return chatID, tx.Commit()
 }
 
-func (s *Service) UpdateChat(ctx context.Context, actorID, chatID, title, description, avatarURL string) (Chat, error) {
-	role, err := s.memberRole(ctx, actorID, chatID)
+func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title, description, avatarURL *string) (Chat, error) {
+	var chatType string
+	var role string
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		JOIN chats.members m ON m.chat_id = c.id
+		WHERE c.id = $1
+		AND m.user_id = $2
+	`, chatID, actorID).Scan(&chatType, &role)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return Chat{}, ErrNotFound
+	}
 	if err != nil {
 		return Chat{}, err
 	}
+
+	if title == nil && description == nil && avatarURL == nil {
+		return Chat{}, ErrInvalidInput
+	}
+	if title != nil {
+		trimmedTitle := strings.TrimSpace(*title)
+		if trimmedTitle == "" {
+			return Chat{}, ErrInvalidInput
+		}
+		title = &trimmedTitle
+	}
+
+	if chatType != "group" {
+		return Chat{}, ErrInvalidChatType
+	}
+
 	if role != "owner" && role != "admin" {
 		return Chat{}, ErrForbidden
 	}
 
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return Chat{}, ErrInvalidInput
-	}
-
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE chats.chats
-		SET title = $1, description = $2, avatar_url = $3, updated_at = NOW()
+		SET title = COALESCE($1::text, title),
+			description = COALESCE($2::text, description),
+			avatar_url = COALESCE($3::text, avatar_url),
+			updated_at = NOW()
 		WHERE id = $4
+		AND type = 'group'
 	`, title, description, avatarURL, chatID)
 	if err != nil {
 		return Chat{}, err
 	}
 
-	return s.Get(ctx, actorID, chatID)
+	updatedChat, err := s.Get(ctx, actorID, chatID)
+	if err != nil {
+		return Chat{}, err
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(map[string]any{
+			"type":   "chat_updated",
+			"chatId": chatID,
+			"chat":   updatedChat,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+
+	return updatedChat, nil
 }
 
 func (s *Service) DeleteChat(ctx context.Context, actorID, chatID string) error {
@@ -573,27 +680,132 @@ type Ban struct {
 	CreatedAt   string  `json:"createdAt"`
 }
 
-func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) error {
+type MemberAddedEvent struct {
+	Type   string  `json:"type"`
+	ChatID string  `json:"chatId"`
+	Member *Member `json:"member"`
+}
+
+type addMemberInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) (*Member, error) {
+	// 1. Валидация входных данных
+	input := addMemberInput{ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	// 2. Проверка прав актора
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if actorRole != "owner" && actorRole != "admin" {
-		return ErrForbidden
+		return nil, ErrForbidden
 	}
-	// Check if banned.
-	var dummy int
+
+	// 3. Проверка типа чата
+	var chatType string
+	err = s.db.QueryRowContext(ctx, `SELECT type FROM chats.chats WHERE id = $1`, chatID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if chatType != "group" {
+		return nil, ErrInvalidChatType
+	}
+
+	// 4. Проверка существования и активности пользователя
+	var exists bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1 AND disabled_at IS NULL)`, userID).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrUserNotFound
+	}
+
+	// 5. Проверка, что пользователь ещё не в группе
+	var isMember bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&isMember)
+	if err != nil {
+		return nil, err
+	}
+	if isMember {
+		return nil, ErrAlreadyMember
+	}
+
+	// 6. Проверка бана с правильной ошибкой
+	var banned bool
 	err = s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW())`,
-		chatID, userID).Scan(&dummy)
-	if err == nil {
-		return ErrForbidden // user is banned
+		`SELECT EXISTS(SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW()))`,
+		chatID, userID).Scan(&banned)
+	if err != nil {
+		return nil, err
 	}
+	if banned {
+		return nil, ErrUserBanned
+	}
+
+	// 7. Вставка
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, 'member')
 		ON CONFLICT DO NOTHING
 	`, chatID, userID)
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	// 8. Получение и возврат объекта Member
+	var permissions jsonMap
+	var m Member
+	err = s.db.QueryRowContext(ctx, `
+		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
+		COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), cm.joined_at::text
+		FROM auth.users au
+		JOIN chats.members cm ON cm.user_id = au.id
+		LEFT JOIN users.profiles up ON up.user_id = au.id
+		WHERE cm.chat_id = $1 AND au.id = $2
+		`, chatID, userID).Scan(
+		&m.ID,
+		&m.Username,
+		&m.FirstName,
+		&m.LastName,
+		&m.AvatarURL,
+		&m.Role,
+		&permissions,
+		&m.MutedUntil,
+		&m.JoinedAt,
+	)
+	m.Permissions = map[string]any(permissions)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("added member not found after insertion")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 9. Рассылка WebSocket-события
+	if s.ws != nil {
+		event := MemberAddedEvent{
+			Type:   "chat_member_added",
+			ChatID: chatID,
+			Member: &m,
+		}
+		payload, err := json.Marshal(event)
+		if err != nil {
+			slog.Error("failed to marshal member_added event", "err", err, "chatID", chatID, "userID", userID)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
+	}
+
+	return &m, nil
 }
 
 func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID, reason string) error {
@@ -821,7 +1033,14 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMessages(rows)
+	messages, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
@@ -860,9 +1079,9 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 	var role string
 	var isMuted sql.NullBool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT cm.role, 
+		SELECT cm.role,
 		       (
-		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR 
+		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
 		         (cm.role = 'member' AND cm.muted_until > NOW())
 		       )
 		FROM chats.members cm
@@ -925,6 +1144,9 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 	if metadataBytes != nil {
 		json.Unmarshal(metadataBytes, &msg.Metadata)
 	}
+	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
+		return Message{}, err
+	}
 
 	// Broadcast
 	if s.ws != nil {
@@ -985,6 +1207,12 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+	if metadataBytes != nil {
+		json.Unmarshal(metadataBytes, &msg.Metadata)
+	}
+	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
+		return Message{}, err
+	}
 
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{
@@ -1031,6 +1259,19 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) e
 	return nil
 }
 
+func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1
+	 FROM messages.messages WHERE id = $2
+	AND chat_id = $1 AND deleted_at IS NULL)`, chat_id, messageID).Scan(&exists)
+
+	if err != nil {
+		return exists, err
+	}
+
+	return exists, nil
+}
+
 // ForwardMessage copies a message into a target chat.
 func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetChatID string) (Message, error) {
 	if ok, err := s.isMember(ctx, userID, targetChatID); err != nil || !ok {
@@ -1045,9 +1286,14 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	var deletedAt sql.NullString
 	var metadataBytes []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id::text, chat_id::text, sender_id::text, content, type, reply_to::text, metadata, created_at::text, updated_at::text, deleted_at::text
-		FROM messages.messages WHERE id = $1 AND deleted_at IS NULL
-	`, messageID).Scan(&src.ID, &src.ChatID, &src.SenderID, &src.Content, &src.Type, &replyTo, &metadataBytes, &src.CreatedAt, &src.UpdatedAt, &deletedAt)
+		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
+		       COALESCE(up.first_name, au.first_name, au.username, ''),
+		       m.content, m.type, m.reply_to::text, m.metadata, m.created_at::text, m.updated_at::text, m.deleted_at::text
+		FROM messages.messages m
+		LEFT JOIN auth.users au ON au.id = m.sender_id
+		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+		WHERE m.id = $1 AND m.deleted_at IS NULL
+	`, messageID).Scan(&src.ID, &src.ChatID, &src.SenderID, &src.SenderName, &src.Content, &src.Type, &replyTo, &metadataBytes, &src.CreatedAt, &src.UpdatedAt, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotFound
 	}
@@ -1071,6 +1317,7 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 		src.Metadata = make(map[string]any)
 	}
 	src.Metadata["forwardedFrom"] = src.ID
+	src.Metadata["forwardedSenderName"] = src.SenderName
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
@@ -1274,44 +1521,128 @@ func (s *Service) ListPins(
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	for i := range pins {
+		if err := s.hydrateMessageFields(ctx, &pins[i].Message); err != nil {
+			return nil, err
+		}
+	}
 
 	return pins, nil
 }
 
 func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID string) error {
-	role, err := s.memberRole(ctx, userID, chatID)
+
+	// Проверяет, что чат существует и что пользователь состоит в чате. Возвращает тип чата, роль пользователя и ошибку.
+	chatType, role, err := s.getChatInfo(ctx, userID, chatID)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrForbidden
+		}
+		return err
+	}
+
+	if role == "member" && chatType != "private" {
+		return ErrForbidden
+	}
+
+	//  Проверяет, что сообщение существует, оно принадлежит чату с указанным chatID и не было удалено.
+	messageExists, err := s.getMessage(ctx, chatID, messageID)
+
 	if err != nil {
 		return err
 	}
-	if role == "member" {
-		return ErrForbidden
+
+	if !messageExists {
+		return ErrNotFound
 	}
-	_, err = s.db.ExecContext(ctx, `
+
+	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO messages.pins (chat_id, message_id, pinned_by)
 		VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
 	`, chatID, messageID, userID)
 	if err != nil {
 		return err
 	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return nil
+	}
+
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{"type": "message_pinned", "chatId": chatID, "messageId": messageID})
-		s.ws.BroadcastToChat(chatID, payload, "")
+		pins, err := s.ListPins(ctx, userID, chatID)
+		if err == nil {
+			for _, pin := range pins {
+				if pin.MessageID != messageID {
+					continue
+				}
+				payload, marshalErr := messagePinnedPayload(pin)
+				if marshalErr == nil {
+					s.ws.BroadcastToChat(chatID, payload, "")
+				}
+				break
+			}
+		}
 	}
 	return nil
 }
 
+func messagePinnedPayload(pin Pin) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"type":      "message_pinned",
+		"chatId":    pin.ChatID,
+		"messageId": pin.MessageID,
+		"pin":       pin,
+	})
+}
+
 func (s *Service) UnpinMessage(ctx context.Context, userID, chatID, messageID string) error {
-	role, err := s.memberRole(ctx, userID, chatID)
+
+	// Проверяет, что чат существует и что пользователь состоит в чате. Возвращает тип чата, роль пользователя и ошибку.
+	chatType, role, err := s.getChatInfo(ctx, userID, chatID)
+
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrForbidden
+		}
 		return err
 	}
-	if role == "member" {
+
+	if role == "member" && chatType != "private" {
 		return ErrForbidden
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM messages.pins WHERE chat_id = $1 AND message_id = $2`, chatID, messageID)
+
+	// Проверяет, что сообщение существует, оно принадлежит чату с указанным chatID и не было удалено.
+	messageExists, err := s.getMessage(ctx, chatID, messageID)
+
 	if err != nil {
 		return err
 	}
+
+	if !messageExists {
+		return ErrNotFound
+	}
+
+	result, err := s.db.ExecContext(ctx, `DELETE FROM messages.pins WHERE chat_id = $1 AND message_id = $2`, chatID, messageID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return nil
+	}
+
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{"type": "message_unpinned", "chatId": chatID, "messageId": messageID})
 		s.ws.BroadcastToChat(chatID, payload, "")
@@ -1344,7 +1675,14 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMessages(rows)
+	messages, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
 
 func (s *Service) ToggleFavorite(ctx context.Context, userID, messageID string) (bool, error) {
@@ -1383,7 +1721,14 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMessages(rows)
+	messages, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {

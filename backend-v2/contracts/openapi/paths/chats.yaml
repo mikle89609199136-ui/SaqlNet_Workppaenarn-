@@ -1,0 +1,50 @@
+x-chat-id: &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+x-user-id: &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+x-secure: &secure [{ bearerAuth: [] }]
+/chats:
+  get: { tags: [Chats], summary: List chats, operationId: listChats, security: *secure, parameters: [{ name: archived, in: query, schema: { type: boolean } }], responses: { '200': { description: Chats } } }
+/chats/private:
+  post: { tags: [Chats], summary: Create or get a private chat, operationId: createPrivateChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Existing chat }, '201': { description: Created chat } } }
+/chats/groups:
+  post: { tags: [Chats], summary: Create a group chat, operationId: createGroupChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [title, members], properties: { title: { type: string }, description: { type: string }, avatarUrl: { type: string }, members: { type: array, items: { type: string, format: uuid } } } } } } }, responses: { '201': { description: Created chat } } }
+/chats/{chatId}:
+  parameters: [*chatId]
+  get: { tags: [Chats], summary: Get a chat, operationId: getChat, security: *secure, responses: { '200': { description: Chat }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  patch: { tags: [Chats], summary: Update a group chat, operationId: updateGroupChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { title: { type: string }, description: { type: string }, avatarUrl: { type: string } } } } } }, responses: { '200': { description: Updated chat } } }
+  delete: { tags: [Chats], summary: Delete a chat, operationId: deleteChat, security: *secure, responses: { '200': { description: Deleted } } }
+/chats/{chatId}/members:
+  parameters: [*chatId]
+  get: { tags: [Chats], summary: List chat members, operationId: listChatMembers, security: *secure, responses: { '200': { description: Members } } }
+  post: { tags: [Chats], summary: Add a chat member, operationId: addChatMember, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Member added } } }
+/chats/{chatId}/members-online:
+  get: { tags: [Chats], summary: List online members, operationId: listOnlineChatMembers, security: *secure, parameters: [*chatId], responses: { '200': { description: Online user IDs } } }
+/chats/{chatId}/bans:
+  get: { tags: [Chats], summary: List chat bans, operationId: listChatBans, security: *secure, parameters: [*chatId], responses: { '200': { description: Bans } } }
+/chats/{chatId}/members/{userId}:
+  delete: { tags: [Chats], summary: Remove a chat member, operationId: removeChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Removed } } }
+/chats/{chatId}/members/{userId}/role:
+  post: { tags: [Chats], summary: Set a member role, operationId: setChatMemberRole, security: *secure, parameters: [*chatId, *userId], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [role], properties: { role: { type: string, enum: [owner, admin, member] } } } } } }, responses: { '200': { description: Role updated } } }
+/chats/{chatId}/members/{userId}/ban:
+  post: { tags: [Chats], summary: Ban a member, operationId: banChatMember, security: *secure, parameters: [*chatId, *userId], requestBody: { content: { application/json: { schema: { type: object, properties: { reason: { type: string } } } } } }, responses: { '200': { description: Banned } } }
+/chats/{chatId}/members/{userId}/unban:
+  post: { tags: [Chats], summary: Unban a member, operationId: unbanChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Unbanned } } }
+/chats/{chatId}/members/{userId}/mute:
+  post: { tags: [Chats], summary: Mute a member, operationId: muteChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Muted } } }
+/chats/{chatId}/members/{userId}/unmute:
+  post: { tags: [Chats], summary: Unmute a member, operationId: unmuteChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Unmuted } } }
+/chats/{chatId}/mls-state:
+  get: { tags: [Chats], summary: Get legacy MLS state, operationId: getChatMlsState, security: *secure, parameters: [*chatId], responses: { '200': { description: MLS state } } }
+/chats/{chatId}/pin:
+  post: { tags: [Chats], summary: Pin a chat, operationId: pinChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Pinned } } }
+  delete: { tags: [Chats], summary: Unpin a chat, operationId: unpinChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Unpinned } } }
+/chats/{chatId}/archive:
+  post: { tags: [Chats], summary: Archive a chat, operationId: archiveChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Archived } } }
+  delete: { tags: [Chats], summary: Unarchive a chat, operationId: unarchiveChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Unarchived } } }
+/chats/{chatId}/read:
+  post: { tags: [Chats], summary: Mark a chat read, operationId: markChatRead, security: *secure, parameters: [*chatId], responses: { '200': { description: Marked read } } }
+/chats/{chatId}/pins:
+  get: { tags: [Chats], summary: List pinned messages, operationId: listPinnedMessages, security: *secure, parameters: [*chatId], responses: { '200': { description: Pins } } }
+/chats/{chatId}/pins/{messageId}:
+  parameters: [*chatId, { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+  post: { tags: [Chats], summary: Pin a message, operationId: pinMessage, security: *secure, responses: { '200': { description: Pinned } } }
+  delete: { tags: [Chats], summary: Unpin a message, operationId: unpinMessage, security: *secure, responses: { '200': { description: Unpinned } } }

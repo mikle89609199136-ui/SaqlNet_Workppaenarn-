@@ -4,7 +4,7 @@ test:
 	GOCACHE=/tmp/crane-go-cache go test ./...
 
 build:
-	GOCACHE=/tmp/crane-go-cache go build ./cmd/edge ./cmd/auth ./cmd/user ./cmd/chat ./cmd/migrate-legacy ./cmd/migrate
+	GOCACHE=/tmp/crane-go-cache go build ./cmd/edge ./cmd/auth ./cmd/user ./cmd/chat ./cmd/media ./cmd/admin ./cmd/migrate-legacy ./cmd/migrate
 
 migrate:
 	GOCACHE=/tmp/crane-go-cache go run ./cmd/migrate

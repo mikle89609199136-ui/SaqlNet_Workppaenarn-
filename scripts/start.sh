@@ -25,6 +25,8 @@ kill_port ${EDGE_ADDR:-8080}
 kill_port ${AUTH_ADDR:-8081}
 kill_port ${USER_ADDR:-8082}
 kill_port ${CHAT_ADDR:-8083}
+kill_port ${MEDIA_ADDR:-8084}
+kill_port ${ADMIN_ADDR:-8085}
 kill_port 5005
 
 echo "Starting frontend build..."
@@ -42,13 +44,16 @@ go build -o edge ./cmd/edge
 go build -o auth ./cmd/auth
 go build -o user ./cmd/user
 go build -o chat ./cmd/chat
+go build -o media ./cmd/media
+go build -o admin ./cmd/admin
 
 ./auth &
 ./user &
 ./chat &
+./media &
+./admin &
 ./edge &
 cd ..
 
 echo "Application is now running entirely on Go/Rust backend!"
 wait
-

@@ -15,10 +15,17 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"github.com/go-playground/validator/v10"
 )
 
 type Handler struct {
 	service *Service
+}
+
+var validate *validator.Validate
+
+func init() {
+	validate = validator.New()
 }
 
 func NewHandler(service *Service) *Handler {
@@ -109,17 +116,6 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	case suffix == "" && r.Method == http.MethodGet:
 		chat, err := h.service.Get(r.Context(), current.ID, chatID)
 		respondChat(w, r, chat, err)
-	case suffix == "" && r.Method == http.MethodPatch:
-		var input struct {
-			Title       string `json:"title"`
-			Description string `json:"description"`
-			AvatarURL   string `json:"avatarUrl"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		chat, err := h.service.UpdateChat(r.Context(), current.ID, chatID, input.Title, input.Description, input.AvatarURL)
-		respondChat(w, r, chat, err)
 	case suffix == "" && r.Method == http.MethodDelete:
 		err := h.service.DeleteChat(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -149,7 +145,32 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		respondSuccess(w, r, h.service.AddMember(r.Context(), current.ID, chatID, input.UserID))
+		member, err := h.service.AddMember(r.Context(), current.ID, chatID, input.UserID)
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
+		case errors.Is(err, ErrInvalidChatType):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+		case errors.Is(err, ErrUserNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", err.Error())
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+		case errors.Is(err, ErrAlreadyMember):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "already_member", err.Error())
+		case errors.Is(err, ErrUserBanned):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "user_banned", err.Error())
+		case err != nil:
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to add member")
+		default:
+			response := MemberAddedEvent{
+				Type:   "chat_member_added",
+				ChatID: chatID,
+				Member: member,
+			}
+			httpx.JSON(w, http.StatusCreated, response)
+		}
 	case suffix == "/members-online" && r.Method == http.MethodGet:
 		ids, err := h.service.MembersOnline(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -411,6 +432,10 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 		return
 	}
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "resource not found")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "operation failed")
 		return
@@ -628,6 +653,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
+
 	current := authctx.MustUser(r)
 	chatID, suffix := parseChatPath(r.URL.Path)
 	if chatID == "" || suffix != "/pins" && !strings.HasPrefix(suffix, "/pins/") {
@@ -654,11 +680,23 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	pinsData := PinsData{ChatID: chatID, MessageID: messageID}
+
+	if err := validate.Struct(pinsData); err != nil {
+		if _, ok := err.(validator.ValidationErrors); ok {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_input", "invalid chatId or messageId")
+			return
+		}
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "validation failed")
+		return
+	}
+
 	switch r.Method {
 	case http.MethodPost:
-		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, chatID, messageID))
+		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))
 	case http.MethodDelete:
-		respondSuccess(w, r, h.service.UnpinMessage(r.Context(), current.ID, chatID, messageID))
+		respondSuccess(w, r, h.service.UnpinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))
 	default:
 		methodNotAllowed(w, r)
 	}

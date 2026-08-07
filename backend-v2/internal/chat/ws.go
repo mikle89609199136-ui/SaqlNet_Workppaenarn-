@@ -13,6 +13,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -220,7 +221,7 @@ func (ws *WSServer) readPump(client *Client) {
 						msg["createdAt"] = time.Now().Format(time.RFC3339Nano)
 						// Attach sender display name for client-side notifications.
 						var senderName string
-						ws.db.QueryRow(`SELECT username || '.' || username_discriminator FROM auth.users WHERE id = $1`, client.UserID).Scan(&senderName)
+						ws.db.QueryRow(`SELECT username FROM auth.users WHERE id = $1`, client.UserID).Scan(&senderName)
 						msg["senderName"] = senderName
 						newMessage, _ := json.Marshal(msg)
 						ws.BroadcastToChat(chatID, newMessage, client.UserID)
@@ -561,7 +562,7 @@ func allowedWSOrigin(origin string) bool {
 	if origin == "" {
 		return true
 	}
-	for _, allowed := range strings.Split(config.Value("ALLOWED_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080"), ",") {
+	for _, allowed := range strings.Split(config.Required("ALLOWED_ORIGINS"), ",") {
 		allowed = strings.TrimSpace(allowed)
 		if allowed == "*" || allowed == origin {
 			return true

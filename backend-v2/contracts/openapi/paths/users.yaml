@@ -1,0 +1,145 @@
+x-secure: &secure
+  - bearerAuth: []
+x-error: &error
+  $ref: '../components/responses.yaml#/Error'
+/users/me:
+  get:
+    tags: [Users]
+    summary: Get current profile
+    operationId: getCurrentUser
+    security: *secure
+    responses: { '200': { description: Profile }, '401': *error }
+  put:
+    tags: [Users]
+    summary: Update current profile
+    operationId: updateCurrentUser
+    security: *secure
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UpdateProfileRequest' } } } }
+    responses: { '200': { description: Updated profile }, '400': *error }
+/users/avatar:
+  put:
+    tags: [Users]
+    summary: Update avatar
+    operationId: updateAvatar
+    security: *secure
+    requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { avatar: { type: string }, avatarUrl: { type: string } } } } } }
+    responses: { '200': { description: Updated profile } }
+/users/check-username:
+  get:
+    tags: [Users]
+    summary: Check username availability
+    operationId: checkUsername
+    security: *secure
+    parameters: [{ name: username, in: query, required: true, schema: { type: string } }]
+    responses: { '200': { description: Availability }, '400': *error }
+/users/search:
+  get:
+    tags: [Users]
+    summary: Search users
+    operationId: searchUsers
+    security: *secure
+    parameters: [{ name: q, in: query, schema: { type: string } }]
+    responses: { '200': { description: Search results } }
+/users/qr-code:
+  get:
+    tags: [Users]
+    summary: Generate a profile QR code
+    operationId: getUserQrCode
+    security: *secure
+    parameters: [{ name: username, in: query, required: true, schema: { type: string } }]
+    responses: { '200': { description: QR code data URL }, '404': *error }
+/users/{userId}/profile:
+  get:
+    tags: [Users]
+    summary: Get a public profile
+    operationId: getPublicProfile
+    security: *secure
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    responses: { '200': { description: Public profile }, '404': *error }
+/users/{userId}/status:
+  get:
+    tags: [Users]
+    summary: Get user presence status
+    operationId: getUserStatus
+    security: *secure
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    responses: { '200': { description: User status } }
+/premium/subscribe:
+  post:
+    tags: [Users]
+    summary: Subscribe to premium
+    operationId: subscribePremium
+    security: *secure
+    responses: { '200': { description: Subscribed } }
+/users/all-settings:
+  get:
+    tags: [Users]
+    summary: Get all settings
+    operationId: getAllSettings
+    security: *secure
+    responses: { '200': { description: All settings } }
+  put:
+    tags: [Users]
+    summary: Replace all settings
+    operationId: updateAllSettings
+    security: *secure
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }
+    responses: { '200': { description: Settings updated } }
+/users/settings:
+  get: { tags: [Users], summary: Get settings, operationId: getSettings, security: *secure, responses: { '200': { description: Settings } } }
+  put: { tags: [Users], summary: Update settings, operationId: updateSettings, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated settings } } }
+/users/privacy:
+  put: { tags: [Users], summary: Update privacy, operationId: updatePrivacy, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated privacy } } }
+/users/notifications:
+  get: { tags: [Users], summary: Get notification settings, operationId: getNotifications, security: *secure, responses: { '200': { description: Notification settings } } }
+  put: { tags: [Users], summary: Update notification settings, operationId: updateNotifications, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated } } }
+/users/sounds:
+  get: { tags: [Users], summary: Get sound settings, operationId: getSounds, security: *secure, responses: { '200': { description: Sound settings } } }
+  put: { tags: [Users], summary: Update sound settings, operationId: updateSounds, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated } } }
+/users/advanced-settings:
+  get: { tags: [Users], summary: Get advanced settings, operationId: getAdvancedSettings, security: *secure, responses: { '200': { description: Advanced settings } } }
+  put: { tags: [Users], summary: Update advanced settings, operationId: updateAdvancedSettings, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated } } }
+/users/folders:
+  get: { tags: [Users], summary: List chat folders, operationId: listFolders, security: *secure, responses: { '200': { description: Folders } } }
+  put: { tags: [Users], summary: Update chat folders, operationId: updateFolders, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [folders], properties: { folders: { type: array, items: { type: object, additionalProperties: true } } } } } } }, responses: { '200': { description: Updated } } }
+/users/storage:
+  get: { tags: [Users], summary: Get storage usage, operationId: getStorage, security: *secure, responses: { '200': { description: Storage usage and settings } } }
+/users/storage/settings:
+  put: { tags: [Users], summary: Update storage settings, operationId: updateStorageSettings, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Updated } } }
+/users/storage/cache:
+  delete: { tags: [Users], summary: Clear cache records, operationId: clearStorageCache, security: *secure, responses: { '200': { description: Cache cleared } } }
+/users/storage/all:
+  delete: { tags: [Users], summary: Delete all user data, operationId: deleteAllUserData, security: *secure, responses: { '200': { description: Data deleted } } }
+/users/export:
+  get: { tags: [Users], summary: Export user data, operationId: exportUserData, security: *secure, responses: { '200': { description: JSON export, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } } } }
+/users/blocked:
+  get: { tags: [Users], summary: List blocked users, operationId: listBlockedUsers, security: *secure, responses: { '200': { description: Blocked users } } }
+  post: { tags: [Users], summary: Block a user, operationId: blockUser, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '201': { description: Blocked }, '409': *error } }
+/users/blocked/{userId}:
+  delete: { tags: [Users], summary: Unblock a user, operationId: unblockUser, security: *secure, parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Unblocked } } }
+/users/passcode:
+  get: { tags: [Users], summary: Get passcode state, operationId: getPasscodeState, security: *secure, responses: { '200': { description: Passcode state } } }
+/users/passcode/set:
+  post: { tags: [Users], summary: Set passcode, operationId: setPasscode, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passcode], properties: { passcode: { type: string, minLength: 4 } } } } } }, responses: { '200': { description: Set }, '400': *error } }
+/users/passcode/verify:
+  post: { tags: [Users], summary: Verify passcode, operationId: verifyPasscode, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passcode], properties: { passcode: { type: string } } } } } }, responses: { '200': { description: Verified }, '401': *error } }
+/users/passcode/disable:
+  post: { tags: [Users], summary: Disable passcode, operationId: disablePasscode, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passcode], properties: { passcode: { type: string } } } } } }, responses: { '200': { description: Disabled } } }
+/users/passcode/timeout:
+  put: { tags: [Users], summary: Update passcode timeout, operationId: updatePasscodeTimeout, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [timeout], properties: { timeout: { type: integer, minimum: 0 } } } } } }, responses: { '200': { description: Updated } } }
+/users/devices:
+  get: { tags: [Users], summary: List devices, operationId: listDevices, security: *secure, responses: { '200': { description: Devices } } }
+/users/devices/register:
+  post:
+    tags: [Users]
+    summary: Register a device
+    operationId: registerDevice
+    security: *secure
+    requestBody:
+      required: true
+      content: { application/json: { schema: { type: object, properties: { deviceName: { type: string }, deviceType: { type: string }, userAgent: { type: string }, clientIP: { type: string } } } } }
+    responses: { '200': { description: Registered } }
+/users/devices/terminate-all:
+  post: { tags: [Users], summary: Terminate all devices, operationId: terminateAllDevices, security: *secure, responses: { '200': { description: Terminated } } }
+/users/devices/{sessionId}:
+  delete: { tags: [Users], summary: Delete a device session, operationId: deleteDevice, security: *secure, parameters: [{ name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Deleted }, '404': *error } }

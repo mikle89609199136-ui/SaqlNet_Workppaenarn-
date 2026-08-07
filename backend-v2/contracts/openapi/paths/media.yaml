@@ -1,0 +1,47 @@
+x-secure: &secure [{ bearerAuth: [] }]
+/media:
+  post:
+    tags: [Media]
+    summary: Upload media
+    operationId: uploadMedia
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                required: [file]
+                properties: { file: { type: string, description: Data URL }, fileName: { type: string } }
+              - type: object
+                required: [purpose, file]
+                properties:
+                  purpose: { type: string, enum: [message] }
+                  file: { type: object, required: [ciphertext], additionalProperties: true }
+    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '413': { $ref: '../components/responses.yaml#/Error' }, '415': { $ref: '../components/responses.yaml#/Error' } }
+/media/{uploadId}:
+  get: { tags: [Media], summary: Get media, operationId: getMedia, parameters: [{ name: uploadId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Encrypted media metadata and ciphertext, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, '307': { description: Redirect to object storage }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+/emojis:
+  get: { tags: [Media], summary: List emoji, operationId: listEmojis, responses: { '200': { description: Emoji assets } } }
+/gifs:
+  get: { tags: [Media], summary: List GIFs, operationId: listGifs, security: *secure, responses: { '200': { description: GIFs } } }
+  post: { tags: [Media], summary: Create a GIF, operationId: createGif, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [url], properties: { name: { type: string }, url: { type: string } } } } } }, responses: { '201': { description: Created GIF } } }
+/gifs/favorites:
+  get: { tags: [Media], summary: List favorite GIFs, operationId: listFavoriteGifs, security: *secure, responses: { '200': { description: Favorite GIFs } } }
+/gifs/{gifId}/favorite:
+  parameters: [{ name: gifId, in: path, required: true, schema: { type: string, format: uuid } }]
+  post: { tags: [Media], summary: Favorite a GIF, operationId: favoriteGif, security: *secure, responses: { '201': { description: Favorited } } }
+  delete: { tags: [Media], summary: Unfavorite a GIF, operationId: unfavoriteGif, security: *secure, responses: { '200': { description: Unfavorited } } }
+/stickers/packs:
+  get: { tags: [Media], summary: List sticker packs, operationId: listStickerPacks, security: *secure, responses: { '200': { description: Sticker packs } } }
+  post: { tags: [Media], summary: Create a sticker pack, operationId: createStickerPack, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string }, icon: { type: string, format: byte } } } } } }, responses: { '201': { description: Created pack } } }
+/stickers/packs/{packId}:
+  parameters: [{ name: packId, in: path, required: true, schema: { type: string, format: uuid } }]
+  get: { tags: [Media], summary: List stickers in a pack, operationId: listStickers, security: *secure, responses: { '200': { description: Stickers } } }
+  post: { tags: [Media], summary: Add a sticker, operationId: addSticker, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [image], properties: { image: { type: string, format: byte } } } } } }, responses: { '201': { description: Added sticker } } }
+  delete: { tags: [Media], summary: Delete a sticker pack, operationId: deleteStickerPack, security: *secure, responses: { '200': { description: Deleted pack } } }
+/stickers/{stickerId}:
+  delete: { tags: [Media], summary: Delete a sticker, operationId: deleteSticker, security: *secure, parameters: [{ name: stickerId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Deleted sticker } } }

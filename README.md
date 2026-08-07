@@ -3,21 +3,16 @@
 CraneApp is a secure messenger project with chats, groups, media sharing,
 WebSocket realtime updates, WebRTC calls, and an official support bot.
 
-The repository currently contains two backend generations:
-
-- **Legacy backend**: Node.js/Express gateway under `server/gateway`.
-- **Backend v2 foundation**: Go services under `backend-v2` plus Rust crypto
-  service under `server/crypto-rust`.
-
-The legacy backend remains the main feature-complete implementation. Backend v2
-is the migration path toward Go microservices with Rust-owned server
-cryptography.
+The active backend is the Go service stack under `backend-v2`, with the Rust
+crypto service under `server/crypto-rust`. The former Node.js gateway has been
+removed. `backend-v2/cmd/migrate-legacy` remains available for importing old
+database rows and uploaded files.
 
 ## Current Stack
 
 - Frontend: React/Vite SPA in `client/mobile/react`.
-- Legacy backend: Node.js, Express, `ws`, PostgreSQL.
-- Backend v2: Go edge/auth services, PostgreSQL schemas, OpenAPI, Protobuf.
+- Backend: Go edge/auth/user/chat/media/admin services, PostgreSQL schemas,
+  OpenAPI, Protobuf, NATS, Redis, and S3-compatible object storage.
 - Crypto: Rust service with Argon2id password hashing, signed access tokens,
   AES-256-GCM envelope encryption, and MLS artifact validation.
 - Infrastructure: Docker Compose and Kubernetes manifests.
@@ -25,8 +20,7 @@ cryptography.
 ## Repository Map
 
 - `client/mobile/react` - React client.
-- `dist` - generated React build output served by the Go edge and legacy gateway.
-- `server/gateway` - legacy Node API gateway and WebSocket server.
+- `dist` - generated React build output served by the Go edge.
 - `server/crypto-rust` - Rust crypto service.
 - `backend-v2` - new Go backend foundation.
 - `database` - legacy database bootstrap and schema helpers.
@@ -34,7 +28,7 @@ cryptography.
 - `infrastructure/kubernetes/v2` - Kubernetes foundation for backend v2.
 - `docs/migration-v2` - backend migration notes.
 
-## Legacy Development
+## Development
 
 ```bash
 npm install
@@ -65,9 +59,6 @@ Use this URL for phone-browser QA and future APK/EXE WebView wrappers. The
 desktop SPA remains on `/` and `/chats`.
 
 ## Backend v2 Development
-
-Backend v2 is intentionally isolated from the legacy Node gateway until the full
-cutover is ready.
 
 Run Go tests:
 
@@ -106,7 +97,6 @@ http://localhost:8080/api/v2
 Start from `.env.example` and set production-safe values before deployment:
 
 - `DATABASE_URL`
-- `JWT_SECRET` for the legacy backend
 - `CRYPTO_SIGNING_SECRET`
 - `CRYPTO_ENCRYPTION_SECRET`
 - `ALLOWED_ORIGINS`
@@ -114,27 +104,16 @@ Start from `.env.example` and set production-safe values before deployment:
 Crypto secrets must be at least 32 random characters. Do not commit real
 secrets.
 
-## Backend v2 Migration Status
-
-Implemented:
+## Backend v2
 
 - Go `edge` gateway.
 - Go `auth` service.
 - Go `user` service for profiles, settings, search, and blocked users.
 - Go `chat` service for private/group chats, members, and per-user chat state.
 - Auth PostgreSQL schema and domain foundation schemas.
-- Legacy auth migration dry-run/apply tool.
+- Legacy data and upload migration dry-run/apply tool.
 - OpenAPI v2 and Protobuf contracts.
 - Rust crypto service without fixed mock crypto responses.
 - Docker Compose and Kubernetes foundation.
-
-Still to migrate:
-
-- messages/reactions/pins/forwarding
-- realtime presence and WebSocket delivery
-- calls and WebRTC signaling
-- media storage with S3-compatible backend
-- support/admin/bot flows
-- React client switch to generated API v2 client
 
 See `docs/migration-v2/README.md` for the migration checklist.

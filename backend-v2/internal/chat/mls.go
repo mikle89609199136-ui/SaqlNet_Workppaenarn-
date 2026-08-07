@@ -24,9 +24,9 @@ type MLSGroupState struct {
 }
 
 type mlsValidateResp struct {
-	Valid    bool   `json:"valid"`
-	KeyID    string `json:"key_id"`
-	NextEpoch int64 `json:"next_epoch"`
+	Valid     bool   `json:"valid"`
+	KeyID     string `json:"key_id"`
+	NextEpoch int64  `json:"next_epoch"`
 }
 
 func callRustMLS(ctx context.Context, cryptoURL, path string, body any) (mlsValidateResp, error) {
@@ -133,8 +133,8 @@ func (s *Service) MLSCommit(ctx context.Context, userID, chatID string, commitBy
 		return 0, err
 	}
 	v, err := callRustMLS(ctx, cryptoURL, "/api/v2/crypto/mls/validate-commit", map[string]any{
-		"commit_bytes":   commitBytes,
-		"current_epoch":  currentEpoch,
+		"commit_bytes":  commitBytes,
+		"current_epoch": currentEpoch,
 	})
 	if err != nil {
 		return 0, errors.New("crypto service unavailable")
@@ -306,10 +306,10 @@ func (s *Service) MLSGetProposals(ctx context.Context, userID, chatID string) ([
 			"epoch":         epoch,
 		})
 	}
-	
+
 	if proposals == nil {
 		proposals = []map[string]any{}
 	}
-	
+
 	return proposals, nil
 }

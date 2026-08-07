@@ -48,7 +48,7 @@ services:
       PGPASSWORD: craneapp-local
     volumes:
       - ../../backend-v2/migrations:/migrations:ro
-    command: ["/bin/sh", "-c", "for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done"]
+    command: ["/bin/sh", "-c", "set -e; for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +90,7 @@ services:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
       NATS_URL: nats://nats:4222
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -144,7 +145,7 @@ services:
       CHAT_URL: http://chat:8083
       MEDIA_URL: http://media:8084
       ADMIN_URL: http://admin:8085
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
       CRANE_ENV: production
     ports:
       - "8080:8080"

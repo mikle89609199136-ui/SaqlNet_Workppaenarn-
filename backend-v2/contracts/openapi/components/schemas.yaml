@@ -1,0 +1,126 @@
+Error:
+  type: object
+  required: [code, message, requestId]
+  properties:
+    code: { type: string, example: validation_failed }
+    message: { type: string, example: invalid input }
+    requestId: { type: string }
+User:
+  type: object
+  required: [id, username, firstName]
+  properties:
+    id: { type: string, format: uuid }
+    username: { type: string }
+    firstName: { type: string }
+    lastName: { type: string }
+    language: { type: string }
+    bio: { type: string }
+    avatarUrl: { type: string }
+RegisterRequest:
+  type: object
+  required: [username, password, firstName]
+  properties:
+    username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
+    password: { type: string, format: password, minLength: 6 }
+    firstName: { type: string, minLength: 1 }
+    lastName: { type: string }
+    language: { type: string }
+LoginRequest:
+  type: object
+  required: [username, password]
+  properties:
+    username: { type: string }
+    password: { type: string, format: password }
+    twoFAPassword: { type: string, format: password }
+AuthResponse:
+  type: object
+  required: [user, token]
+  properties:
+    user: { $ref: '#/User' }
+    token: { type: string }
+Success:
+  type: object
+  required: [success]
+  properties:
+    success: { type: boolean, enum: [true] }
+UpdateProfileRequest:
+  type: object
+  properties:
+    firstName: { type: string }
+    lastName: { type: string }
+    bio: { type: string }
+    avatarUrl: { type: string }
+Chat:
+  type: object
+  required: [id, type]
+  properties:
+    id: { type: string, format: uuid }
+    type: { type: string, enum: [private, group, channel] }
+    title: { type: string }
+    description: { type: string }
+    avatarUrl: { type: string }
+    ownerId: { type: string, format: uuid }
+    role: { type: string }
+    isPinned: { type: boolean }
+    isArchived: { type: boolean }
+    memberCount: { type: integer }
+    createdAt: { type: string }
+    updatedAt: { type: string }
+ChatMember:
+  allOf:
+    - { $ref: '#/User' }
+    - type: object
+      properties:
+        role: { type: string, enum: [owner, admin, member] }
+        permissions: { type: object, additionalProperties: true }
+        mutedUntil: { type: string, nullable: true }
+        joinedAt: { type: string }
+Message:
+  type: object
+  required: [id, chatId, senderId, content, type, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    chatId: { type: string, format: uuid }
+    senderId: { type: string, format: uuid }
+    content: { type: string }
+    type: { type: string }
+    replyTo: { type: string, format: uuid, nullable: true }
+    metadata: { type: object, additionalProperties: true }
+    isForwarded: { type: boolean }
+    isPinned: { type: boolean }
+    isEdited: { type: boolean }
+    createdAt: { type: string }
+    updatedAt: { type: string }
+SendMessageRequest:
+  type: object
+  properties:
+    content: { type: string }
+    type: { type: string, default: text }
+    replyTo: { type: string, format: uuid, nullable: true }
+    mediaUrl: { type: string }
+    mediaType: { type: string }
+    fileName: { type: string, maxLength: 255 }
+    sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
+    mediaEncrypted: { type: boolean }
+    mediaEncryption: { type: object, additionalProperties: true }
+    isEncrypted: { type: boolean }
+Reaction:
+  type: object
+  properties:
+    emoji: { type: string }
+    count: { type: integer }
+    myReaction: { type: boolean }
+UploadResponse:
+  type: object
+  required: [success, url]
+  properties:
+    success: { type: boolean }
+    url: { type: string }
+    encrypted: { type: boolean }
+    encryption: {}
+    fileName: { type: string }
+    sizeBytes: { type: integer, format: int64 }
+    contentType: { type: string }
+Object:
+  type: object
+  additionalProperties: true

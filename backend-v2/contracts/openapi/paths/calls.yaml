@@ -1,0 +1,13 @@
+/calls/ice-servers:
+  get: { tags: [Calls], summary: Get ICE servers, operationId: getIceServers, security: [{ bearerAuth: [] }], responses: { '200': { description: ICE configuration } } }
+/calls/rooms:
+  get: { tags: [Calls], summary: List call rooms, operationId: listCallRooms, security: [{ bearerAuth: [] }], responses: { '200': { description: Call rooms } } }
+  post:
+    tags: [Calls]
+    summary: Create a call room
+    operationId: createCallRoom
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [chatId], properties: { type: { type: string }, chatId: { type: string, format: uuid }, title: { type: string }, callKind: { type: string, enum: [audio, video], default: video } } } } } }
+    responses: { '201': { description: Created call room }, '403': { $ref: '../components/responses.yaml#/Error' } }
+/calls/rooms/{id}:
+  get: { tags: [Calls], summary: Get a call room, operationId: getCallRoom, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Call room }, '404': { $ref: '../components/responses.yaml#/Error' } } }

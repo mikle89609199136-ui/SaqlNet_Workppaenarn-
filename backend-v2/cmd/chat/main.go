@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 )
 
 func main() {
+	_ = config.Required("ALLOWED_ORIGINS")
 	pool, err := db.Open(config.Required("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
@@ -65,16 +65,9 @@ func main() {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	mux.Handle("/api/v2/chats", authenticated(http.HandlerFunc(handler.List)))
-	mux.Handle("/api/v2/chats/private", authenticated(http.HandlerFunc(handler.CreatePrivate)))
-	mux.Handle("/api/v2/chats/groups", authenticated(http.HandlerFunc(handler.CreateGroup)))
-	mux.Handle("/api/v2/chats/", authenticated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/pins") {
-			handler.Pins(w, r)
-		} else {
-			handler.Chat(w, r)
-		}
-	})))
+
+	chat.RegisterRoutes(mux, handler, authenticated)
+
 	mux.Handle("/api/v2/messages/read", authenticated(http.HandlerFunc(handler.MessagesRead)))
 	mux.Handle("/api/v2/messages/search", authenticated(http.HandlerFunc(handler.Messages)))
 	mux.Handle("/api/v2/messages/favorites", authenticated(http.HandlerFunc(handler.Messages)))
