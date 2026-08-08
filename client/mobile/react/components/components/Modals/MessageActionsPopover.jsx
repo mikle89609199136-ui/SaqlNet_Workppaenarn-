@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useMessageActions } from "../../../hooks/useMessageActions";
 import { useChatStore } from "../../../store/chat";
-import { Icon } from "../../ui/Icon";
+import { Icon } from "../../ui/Icon.tsx";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
@@ -16,7 +16,6 @@ export const MessageActionsPopover = (props) => {
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
 
-  // Убрали флаг !selectionMode из каждой строки — теперь фильтруем его глобально для группы кнопок
   const buttons = [
     {
       show: !selectionMode,
