@@ -47,10 +47,28 @@ CREATE TABLE IF NOT EXISTS messages.messages (
     content TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL DEFAULT 'text',
     reply_to UUID REFERENCES messages.messages(id),
-    metadata JSONB NOT NULL DEFAULT '{}',
+    content_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+    forwarded_message_id UUID,
+    forwarded_sender_id UUID,
+    forwarded_sender_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS messages.attachments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id UUID NOT NULL REFERENCES messages.messages(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+    media_url TEXT NOT NULL,
+    media_type TEXT NOT NULL DEFAULT '',
+    file_name TEXT NOT NULL DEFAULT '',
+    size_bytes BIGINT NOT NULL DEFAULT 0
+        CHECK (size_bytes >= 0 AND size_bytes <= 104857600),
+    media_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+    media_encryption JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (message_id, position)
 );
 
 CREATE INDEX IF NOT EXISTS chats_chats_type_idx ON chats.chats(type);

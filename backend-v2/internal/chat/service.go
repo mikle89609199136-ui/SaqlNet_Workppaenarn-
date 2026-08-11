@@ -68,28 +68,48 @@ type Member struct {
 	JoinedAt    string         `json:"joinedAt"`
 }
 
+type ForwardedData struct {
+	MessageID  string `json:"messageId"`
+	SenderID   string `json:"senderId"`
+	SenderName string `json:"senderName"`
+}
+
+type AttachmentData struct {
+	ID              string         `json:"id"`
+	Position        int            `json:"position"`
+	MediaURL        string         `json:"mediaUrl"`
+	MediaType       string         `json:"mediaType"`
+	FileName        string         `json:"fileName"`
+	SizeBytes       int64          `json:"sizeBytes"`
+	MediaEncrypted  bool           `json:"mediaEncrypted"`
+	MediaEncryption map[string]any `json:"mediaEncryption"`
+}
+
 type Message struct {
-	ID                  string         `json:"id"`
-	ChatID              string         `json:"chatId"`
-	SenderID            string         `json:"senderId"`
-	SenderName          string         `json:"senderName,omitempty"`
-	SenderFirstName     string         `json:"senderFirstName"`
-	SenderAvatar        string         `json:"senderAvatar,omitempty"`
-	Content             string         `json:"content"`
-	Type                string         `json:"type"`
-	ReplyTo             *string        `json:"replyTo,omitempty"`
-	ReplyToMessageID    *string        `json:"replyToMessageId,omitempty"`
-	ReplySenderName     string         `json:"replySenderName,omitempty"`
-	ReplyToSenderName   string         `json:"replyToSenderName,omitempty"`
-	Reactions           []Reaction     `json:"reactions"`
-	Metadata            map[string]any `json:"metadata,omitempty"`
-	IsForwarded         bool           `json:"isForwarded"`
-	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
-	IsPinned            bool           `json:"isPinned"`
-	IsEdited            bool           `json:"isEdited"`
-	CreatedAt           string         `json:"createdAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	DeletedAt           *string        `json:"deletedAt,omitempty"`
+	ID                  string           `json:"id"`
+	ChatID              string           `json:"chatId"`
+	SenderID            string           `json:"senderId"`
+	SenderName          string           `json:"senderName,omitempty"`
+	SenderFirstName     string           `json:"senderFirstName"`
+	SenderAvatar        string           `json:"senderAvatar,omitempty"`
+	Content             string           `json:"content"`
+	Type                string           `json:"type"`
+	ReplyTo             *string          `json:"replyTo,omitempty"`
+	ReplyToMessageID    *string          `json:"replyToMessageId,omitempty"`
+	ReplySenderName     string           `json:"replySenderName,omitempty"`
+	ReplyToSenderName   string           `json:"replyToSenderName,omitempty"`
+	Reactions           []Reaction       `json:"reactions"`
+	Metadata            map[string]any   `json:"metadata,omitempty"`
+	Attachments         []AttachmentData `json:"attachments"`
+	IsForwarded         bool             `json:"isForwarded"`
+	ForwardedSenderName string           `json:"forwardedSenderName,omitempty"`
+	Forwarded           *ForwardedData   `json:"forwarded"`
+	IsPinned            bool             `json:"isPinned"`
+	IsEdited            bool             `json:"isEdited"`
+	ContentEncrypted    bool             `json:"isEncrypted"`
+	CreatedAt           string           `json:"createdAt"`
+	UpdatedAt           string           `json:"updatedAt"`
+	DeletedAt           *string          `json:"deletedAt,omitempty"`
 }
 
 type Service struct {
@@ -1428,6 +1448,7 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 		src.Metadata = make(map[string]any)
 	}
 	src.Metadata["forwardedFrom"] = src.ID
+	src.Metadata["forwardedSenderId"] = src.SenderID
 	src.Metadata["forwardedSenderName"] = src.SenderName
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }

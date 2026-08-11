@@ -14,7 +14,14 @@ func TestMessagesMigrationMatchesServiceQueries(t *testing.T) {
 	source := string(sql)
 	for _, column := range []string{
 		"reply_to UUID",
-		"metadata JSONB",
+		"content_encrypted BOOLEAN",
+		"forwarded_message_id UUID",
+		"forwarded_sender_id UUID",
+		"forwarded_sender_name TEXT",
+		"CREATE TABLE IF NOT EXISTS messages.attachments",
+		"message_id UUID",
+		"position INTEGER",
+		"media_url TEXT",
 		"updated_at TIMESTAMPTZ",
 	} {
 		if !strings.Contains(source, column) {
@@ -31,7 +38,11 @@ func TestMessagesCompatMigrationBackfillsExistingTables(t *testing.T) {
 	source := string(sql)
 	for _, clause := range []string{
 		"ADD COLUMN IF NOT EXISTS reply_to",
-		"ADD COLUMN IF NOT EXISTS metadata",
+		"ADD COLUMN IF NOT EXISTS content_encrypted",
+		"ADD COLUMN IF NOT EXISTS forwarded_message_id",
+		"ADD COLUMN IF NOT EXISTS forwarded_sender_id",
+		"ADD COLUMN IF NOT EXISTS forwarded_sender_name",
+		"CREATE TABLE IF NOT EXISTS messages.attachments",
 		"ADD COLUMN IF NOT EXISTS updated_at",
 		"ADD COLUMN IF NOT EXISTS deleted_at",
 	} {
