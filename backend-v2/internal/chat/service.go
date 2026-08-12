@@ -48,12 +48,13 @@ type Chat struct {
 }
 
 type LastMessagePreview struct {
-	ID         string     `json:"id"`
-	Content    string     `json:"content"`
-	Type       string     `json:"type"`
-	SenderID   string     `json:"senderId,omitempty"`
-	SenderName string     `json:"senderName"`
-	Reactions  []Reaction `json:"reactions"`
+	ID          string           `json:"id"`
+	Content     string           `json:"content"`
+	Type        string           `json:"type"`
+	SenderID    string           `json:"senderId,omitempty"`
+	SenderName  string           `json:"senderName"`
+	Reactions   []Reaction       `json:"reactions"`
+	Attachments []AttachmentData `json:"attachments"`
 }
 
 type Member struct {
@@ -75,14 +76,14 @@ type ForwardedData struct {
 }
 
 type AttachmentData struct {
-	ID              string         `json:"id"`
-	Position        int            `json:"position"`
-	MediaURL        string         `json:"mediaUrl"`
-	MediaType       string         `json:"mediaType"`
-	FileName        string         `json:"fileName"`
-	SizeBytes       int64          `json:"sizeBytes"`
-	MediaEncrypted  bool           `json:"mediaEncrypted"`
-	MediaEncryption map[string]any `json:"mediaEncryption"`
+	ID              string               `json:"id"`
+	Position        int                  `json:"position"`
+	MediaURL        string               `json:"mediaUrl"`
+	MediaType       string               `json:"mediaType"`
+	FileName        string               `json:"fileName"`
+	SizeBytes       int64                `json:"sizeBytes"`
+	MediaEncrypted  bool                 `json:"mediaEncrypted"`
+	MediaEncryption *MediaEncryptionData `json:"mediaEncryption"`
 }
 
 type Message struct {
@@ -99,7 +100,6 @@ type Message struct {
 	ReplySenderName     string           `json:"replySenderName,omitempty"`
 	ReplyToSenderName   string           `json:"replyToSenderName,omitempty"`
 	Reactions           []Reaction       `json:"reactions"`
-	Metadata            map[string]any   `json:"metadata,omitempty"`
 	Attachments         []AttachmentData `json:"attachments"`
 	IsForwarded         bool             `json:"isForwarded"`
 	ForwardedSenderName string           `json:"forwardedSenderName,omitempty"`
@@ -120,6 +120,7 @@ type Service struct {
 const (
 	maxMediaFilenameBytes = 255
 	maxMediaSizeBytes     = 100 << 20
+	maxMessageAttachments = 10
 )
 
 func sanitizeMediaFilename(filename string) string {
@@ -199,23 +200,6 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 		msg.ReplySenderName = name
 		msg.ReplyToSenderName = name
 	}
-	if msg.Metadata != nil {
-		if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
-			msg.IsForwarded = true
-			if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
-				msg.ForwardedSenderName = name
-			}
-			if msg.ForwardedSenderName == "" {
-				_ = s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(up.first_name, au.first_name, au.username, '')
-					FROM messages.messages m
-					LEFT JOIN auth.users au ON au.id = m.sender_id
-					LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-					WHERE m.id::text = $1
-				`, forwardedFrom).Scan(&msg.ForwardedSenderName)
-			}
-		}
-	}
 	return nil
 }
 
@@ -223,6 +207,109 @@ func (s *Service) hydrateMessagesFields(ctx context.Context, messages []Message)
 	for i := range messages {
 		if err := s.hydrateMessageFields(ctx, &messages[i]); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanMessage(scanner rowScanner, msg *Message) error {
+	var replyTo, forwardedMessageID, forwardedSenderID, forwardedSenderName, deletedAt sql.NullString
+	if err := scanner.Scan(
+		&msg.ID, &msg.ChatID, &msg.SenderID,
+		&msg.SenderName, &msg.SenderAvatar,
+		&msg.Content, &msg.Type, &replyTo, &msg.ContentEncrypted,
+		&forwardedMessageID, &forwardedSenderID, &forwardedSenderName,
+		&msg.IsPinned, &msg.IsEdited,
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt,
+	); err != nil {
+		return err
+	}
+
+	applyMessageNullableFields(msg, replyTo, forwardedMessageID, forwardedSenderID, forwardedSenderName, deletedAt)
+	return nil
+}
+
+func applyMessageNullableFields(msg *Message, replyTo, forwardedMessageID, forwardedSenderID, forwardedSenderName, deletedAt sql.NullString) {
+	if replyTo.Valid {
+		msg.ReplyTo = &replyTo.String
+	}
+	if deletedAt.Valid {
+		msg.DeletedAt = &deletedAt.String
+	}
+	if forwardedMessageID.Valid {
+		msg.Forwarded = &ForwardedData{
+			MessageID:  forwardedMessageID.String,
+			SenderID:   forwardedSenderID.String,
+			SenderName: forwardedSenderName.String,
+		}
+		msg.IsForwarded = true
+		msg.ForwardedSenderName = forwardedSenderName.String
+	}
+	msg.Attachments = []AttachmentData{}
+	msg.Reactions = []Reaction{}
+}
+
+func (s *Service) loadAttachmentsByMessageIDs(ctx context.Context, messageIDs []string) (map[string][]AttachmentData, error) {
+	attachmentsByMessageID := make(map[string][]AttachmentData, len(messageIDs))
+	if len(messageIDs) == 0 {
+		return attachmentsByMessageID, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, message_id::text, position, media_url, media_type,
+		       file_name, size_bytes, media_encrypted, media_encryption
+		FROM messages.attachments
+		WHERE message_id = ANY($1::uuid[])
+		ORDER BY message_id, position
+	`, pq.Array(messageIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID string
+		var attachment AttachmentData
+		var encryptionJSON []byte
+		if err := rows.Scan(
+			&attachment.ID, &messageID, &attachment.Position,
+			&attachment.MediaURL, &attachment.MediaType, &attachment.FileName,
+			&attachment.SizeBytes, &attachment.MediaEncrypted, &encryptionJSON,
+		); err != nil {
+			return nil, err
+		}
+		if len(encryptionJSON) > 0 {
+			var encryption MediaEncryptionData
+			if err := json.Unmarshal(encryptionJSON, &encryption); err != nil {
+				return nil, err
+			}
+			attachment.MediaEncryption = &encryption
+		}
+		attachmentsByMessageID[messageID] = append(attachmentsByMessageID[messageID], attachment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return attachmentsByMessageID, nil
+}
+
+func (s *Service) hydrateMessagesAttachments(ctx context.Context, messages []Message) error {
+	messageIDs := make([]string, 0, len(messages))
+	for i := range messages {
+		messages[i].Attachments = []AttachmentData{}
+		messageIDs = append(messageIDs, messages[i].ID)
+	}
+	attachmentsByMessageID, err := s.loadAttachmentsByMessageIDs(ctx, messageIDs)
+	if err != nil {
+		return err
+	}
+	for i := range messages {
+		if attachments, ok := attachmentsByMessageID[messages[i].ID]; ok {
+			messages[i].Attachments = attachments
 		}
 	}
 	return nil
@@ -324,6 +411,30 @@ func (s *Service) hydrateChatsLastMessageReactions(ctx context.Context, userID s
 	return nil
 }
 
+func (s *Service) hydrateChatsLastMessageAttachments(ctx context.Context, chats []Chat) error {
+	messageIDs := make([]string, 0, len(chats))
+	for i := range chats {
+		if chats[i].LastMessage != nil && chats[i].LastMessage.ID != "" {
+			chats[i].LastMessage.Attachments = []AttachmentData{}
+			messageIDs = append(messageIDs, chats[i].LastMessage.ID)
+		}
+	}
+	attachmentsByMessageID, err := s.loadAttachmentsByMessageIDs(ctx, messageIDs)
+	if err != nil {
+		return err
+	}
+	for i := range chats {
+		lastMessage := chats[i].LastMessage
+		if lastMessage == nil {
+			continue
+		}
+		if attachments, ok := attachmentsByMessageID[lastMessage.ID]; ok {
+			lastMessage.Attachments = attachments
+		}
+	}
+	return nil
+}
+
 func (s *Service) CallRooms() *CallRoomManager {
 	return s.ws.CallRooms()
 }
@@ -395,6 +506,9 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		return nil, err
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageAttachments(ctx, chats); err != nil {
 		return nil, err
 	}
 	s.hydrateRealtimePresence(chats)
@@ -470,6 +584,9 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		return Chat{}, ErrNotFound
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return Chat{}, err
+	}
+	if err := s.hydrateChatsLastMessageAttachments(ctx, chats); err != nil {
 		return Chat{}, err
 	}
 	chat := chats[0]
@@ -1144,7 +1261,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		FROM (
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata,
+		       m.content, m.type, m.reply_to::text, m.content_encrypted,
+		       m.forwarded_message_id::text, m.forwarded_sender_id::text, m.forwarded_sender_name,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM messages.messages m
@@ -1168,6 +1286,9 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err := s.hydrateMessagesReactions(ctx, userID, messages); err != nil {
 		return nil, err
 	}
+	if err := s.hydrateMessagesAttachments(ctx, messages); err != nil {
+		return nil, err
+	}
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
@@ -1175,37 +1296,19 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 }
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
-	var messages []Message
+	messages := make([]Message, 0)
 	for rows.Next() {
 		var msg Message
-		var metadataBytes []byte
-		var replyTo sql.NullString
-		var deletedAt sql.NullString
-		if err := rows.Scan(
-			&msg.ID, &msg.ChatID, &msg.SenderID,
-			&msg.SenderName, &msg.SenderAvatar,
-			&msg.Content, &msg.Type, &replyTo, &metadataBytes,
-			&msg.IsPinned, &msg.IsEdited,
-			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt,
-		); err != nil {
+		if err := scanMessage(rows, &msg); err != nil {
 			return nil, err
-		}
-		if replyTo.Valid {
-			msg.ReplyTo = &replyTo.String
-		}
-		if deletedAt.Valid {
-			msg.DeletedAt = &deletedAt.String
-		}
-		if metadataBytes != nil {
-			json.Unmarshal(metadataBytes, &msg.Metadata)
 		}
 		messages = append(messages, msg)
 	}
 	return messages, rows.Err()
 }
 
-func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string, metadata map[string]any) (Message, error) {
-	content = sanitizeMessageContent(content)
+func (s *Service) SendMessage(ctx context.Context, userID, chatID string, params SendMessageParams) (Message, error) {
+	params.Content = sanitizeMessageContent(params.Content)
 
 	var role string
 	var isMuted sql.NullBool
@@ -1231,50 +1334,96 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 	}
 
 	var replyToSQL sql.NullString
-	if replyTo != nil && *replyTo != "" {
-		replyToSQL = sql.NullString{String: *replyTo, Valid: true}
+	if params.ReplyTo != nil && *params.ReplyTo != "" {
+		replyToSQL = sql.NullString{String: *params.ReplyTo, Valid: true}
 	}
 
-	var msg Message
-	var replyToStr sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
-	metadataJSON, err := json.Marshal(metadata)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Message{}, err
 	}
-	err = s.db.QueryRowContext(ctx, `
+	defer tx.Rollback()
+
+	var msg Message
+	var forwardedMessageID sql.NullString
+	var forwardedSenderID sql.NullString
+	var forwardedSenderName sql.NullString
+
+	if params.Forwarded != nil {
+		forwardedMessageID = sql.NullString{
+			String: params.Forwarded.MessageID,
+			Valid:  true,
+		}
+		forwardedSenderID = sql.NullString{
+			String: params.Forwarded.SenderID,
+			Valid:  true,
+		}
+		forwardedSenderName = sql.NullString{
+			String: params.Forwarded.SenderName,
+			Valid:  true,
+		}
+	}
+	row := tx.QueryRowContext(ctx, `
 		WITH inserted AS (
-			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO messages.messages (
+				chat_id,
+				sender_id,
+				content,
+				type,
+				reply_to,
+				content_encrypted,
+				forwarded_message_id,
+				forwarded_sender_id,
+				forwarded_sender_name
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING *
 		)
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata,
+		       m.content, m.type, m.reply_to::text, m.content_encrypted,
+		       m.forwarded_message_id::text, m.forwarded_sender_id::text, m.forwarded_sender_name,
 		       FALSE, FALSE,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM inserted m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-	`, chatID, userID, content, msgType, replyToSQL, metadataJSON).Scan(
-		&msg.ID, &msg.ChatID, &msg.SenderID,
-		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
-		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
-	if err != nil {
+	`, chatID, userID, params.Content, params.Type, replyToSQL, params.ContentEncrypted,
+		forwardedMessageID, forwardedSenderID, forwardedSenderName)
+	if err = scanMessage(row, &msg); err != nil {
 		return Message{}, err
 	}
-	if replyToStr.Valid {
-		msg.ReplyTo = &replyToStr.String
+
+	for i := range params.Attachments {
+		attachment := &params.Attachments[i]
+		var encryptionValue any
+		if attachment.MediaEncryption != nil {
+			encryptionJSON, err := json.Marshal(attachment.MediaEncryption)
+			if err != nil {
+				return Message{}, err
+			}
+			encryptionValue = string(encryptionJSON)
+		}
+		err = tx.QueryRowContext(ctx, `
+			INSERT INTO messages.attachments (
+				message_id, position, media_url, media_type, file_name,
+				size_bytes, media_encrypted, media_encryption
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			RETURNING id::text
+		`, msg.ID, attachment.Position, attachment.MediaURL, attachment.MediaType,
+			attachment.FileName, attachment.SizeBytes, attachment.MediaEncrypted, encryptionValue,
+		).Scan(&attachment.ID)
+		if err != nil {
+			return Message{}, err
+		}
 	}
-	if deletedAt.Valid {
-		msg.DeletedAt = &deletedAt.String
+	msg.Attachments = params.Attachments
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, err
 	}
-	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
-	}
+
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
 	}
@@ -1296,12 +1445,9 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	content = sanitizeMessageContent(content)
 
 	var msg Message
-	var replyToStr sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
 
 	// Require sender to be a current member of the chat to prevent editing after being kicked.
-	err := s.db.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
 			SET content = $1, updated_at = NOW()
@@ -1312,19 +1458,16 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		)
 		SELECT u.id::text, u.chat_id::text, u.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       u.content, u.type, u.reply_to::text, u.metadata,
+		       u.content, u.type, u.reply_to::text, u.content_encrypted,
+		       u.forwarded_message_id::text, u.forwarded_sender_id::text, u.forwarded_sender_name,
 		       (p.message_id IS NOT NULL), u.updated_at > u.created_at,
 		       u.created_at::text, u.updated_at::text, u.deleted_at::text
 		FROM updated u
 		LEFT JOIN auth.users au ON au.id = u.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = u.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = u.id
-	`, content, messageID, userID).Scan(
-		&msg.ID, &msg.ChatID, &msg.SenderID,
-		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
-		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+	`, content, messageID, userID)
+	err := scanMessage(row, &msg)
 
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
@@ -1332,14 +1475,12 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if err != nil {
 		return Message{}, err
 	}
-	if replyToStr.Valid {
-		msg.ReplyTo = &replyToStr.String
+	attachmentsByMessageID, err := s.loadAttachmentsByMessageIDs(ctx, []string{msg.ID})
+	if err != nil {
+		return Message{}, err
 	}
-	if deletedAt.Valid {
-		msg.DeletedAt = &deletedAt.String
-	}
-	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+	if attachments, ok := attachmentsByMessageID[msg.ID]; ok {
+		msg.Attachments = attachments
 	}
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
@@ -1403,9 +1544,10 @@ func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bo
 	return exists, nil
 }
 
-// ForwardMessage copies a message into a target chat.
-func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetChatID string) (Message, error) {
-	if ok, err := s.isMember(ctx, userID, targetChatID); err != nil || !ok {
+// ForwardMessage copies a message into a target chat. Encrypted content and
+// attachments must be decrypted and re-encrypted for the target chat by the client.
+func (s *Service) ForwardMessage(ctx context.Context, userID, messageID string, params ForwardMessageParams) (Message, error) {
+	if ok, err := s.isMember(ctx, userID, params.TargetChatID); err != nil || !ok {
 		if err != nil {
 			return Message{}, err
 		}
@@ -1413,30 +1555,25 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	}
 
 	var src Message
-	var replyTo sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
-	err := s.db.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, `
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
-		       COALESCE(up.first_name, au.first_name, au.username, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata, m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
+		       m.content, m.type, m.reply_to::text, m.content_encrypted,
+		       m.forwarded_message_id::text, m.forwarded_sender_id::text, m.forwarded_sender_name,
+		       FALSE, m.updated_at > m.created_at,
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM messages.messages m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&src.ID, &src.ChatID, &src.SenderID, &src.SenderName, &src.Content, &src.Type, &replyTo, &metadataBytes, &src.CreatedAt, &src.UpdatedAt, &deletedAt)
+	`, messageID)
+	err := scanMessage(row, &src)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotFound
 	}
 	if err != nil {
 		return Message{}, err
 	}
-	if len(metadataBytes) > 0 {
-		if err := json.Unmarshal(metadataBytes, &src.Metadata); err != nil {
-			return Message{}, err
-		}
-	}
-
 	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
 		if err != nil {
 			return Message{}, err
@@ -1444,13 +1581,61 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 		return Message{}, ErrForbidden
 	}
 
-	if src.Metadata == nil {
-		src.Metadata = make(map[string]any)
+	attachmentsByMessageID, err := s.loadAttachmentsByMessageIDs(ctx, []string{src.ID})
+	if err != nil {
+		return Message{}, err
 	}
-	src.Metadata["forwardedFrom"] = src.ID
-	src.Metadata["forwardedSenderId"] = src.SenderID
-	src.Metadata["forwardedSenderName"] = src.SenderName
-	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+	src.Attachments = attachmentsByMessageID[src.ID]
+
+	content := src.Content
+	contentEncrypted := src.ContentEncrypted
+	if src.ContentEncrypted {
+		if params.Content == nil || !params.ContentEncrypted {
+			return Message{}, ErrInvalidInput
+		}
+		content = *params.Content
+		contentEncrypted = params.ContentEncrypted
+	}
+
+	attachments := src.Attachments
+	hasEncryptedAttachment := false
+	for _, attachment := range src.Attachments {
+		if attachment.MediaEncrypted {
+			hasEncryptedAttachment = true
+			break
+		}
+	}
+	if hasEncryptedAttachment {
+		if len(params.Attachments) == 0 {
+			return Message{}, ErrInvalidInput
+		}
+		for _, attachment := range params.Attachments {
+			if !attachment.MediaEncrypted || attachment.MediaEncryption == nil {
+				return Message{}, ErrInvalidInput
+			}
+		}
+		attachments = params.Attachments
+	}
+	for i := range attachments {
+		attachments[i].ID = ""
+		attachments[i].Position = i
+	}
+
+	forwarded := src.Forwarded
+	if forwarded == nil {
+		forwarded = &ForwardedData{
+			MessageID:  src.ID,
+			SenderID:   src.SenderID,
+			SenderName: src.SenderName,
+		}
+	}
+	return s.SendMessage(ctx, userID, params.TargetChatID, SendMessageParams{
+		Content:          content,
+		Type:             src.Type,
+		ContentEncrypted: contentEncrypted,
+		Attachments:      attachments,
+		Forwarded:        forwarded,
+	})
 }
 
 // Reaction types.
@@ -1581,10 +1766,15 @@ func (s *Service) ListPins(
 			m.content,
 			m.type,
 			m.reply_to::text,
-			m.metadata,
+			m.content_encrypted,
+			m.forwarded_message_id::text,
+			m.forwarded_sender_id::text,
+			m.forwarded_sender_name,
+			TRUE,
 			m.updated_at > m.created_at,
 			m.created_at::text,
-			m.updated_at::text
+			m.updated_at::text,
+			m.deleted_at::text
 		FROM messages.pins AS p
 		JOIN messages.messages AS m
 			ON m.id = p.message_id
@@ -1606,9 +1796,7 @@ func (s *Service) ListPins(
 
 	for rows.Next() {
 		var pin Pin
-		var replyTo sql.NullString
-		var metadataBytes []byte
-
+		var replyTo, forwardedMessageID, forwardedSenderID, forwardedSenderName, deletedAt sql.NullString
 		if err := rows.Scan(
 			&pin.ID,
 			&pin.MessageID,
@@ -1616,37 +1804,17 @@ func (s *Service) ListPins(
 			&pin.PinnedBy,
 			&pin.PinnedAt,
 
-			&pin.Message.ID,
-			&pin.Message.ChatID,
-			&pin.Message.SenderID,
-			&pin.Message.SenderName,
-			&pin.Message.SenderAvatar,
-			&pin.Message.Content,
-			&pin.Message.Type,
-			&replyTo,
-			&metadataBytes,
-			&pin.Message.IsEdited,
-			&pin.Message.CreatedAt,
-			&pin.Message.UpdatedAt,
+			&pin.Message.ID, &pin.Message.ChatID, &pin.Message.SenderID,
+			&pin.Message.SenderName, &pin.Message.SenderAvatar,
+			&pin.Message.Content, &pin.Message.Type,
+			&replyTo, &pin.Message.ContentEncrypted,
+			&forwardedMessageID, &forwardedSenderID, &forwardedSenderName,
+			&pin.Message.IsPinned, &pin.Message.IsEdited,
+			&pin.Message.CreatedAt, &pin.Message.UpdatedAt, &deletedAt,
 		); err != nil {
 			return nil, err
 		}
-
-		if replyTo.Valid {
-			replyToValue := replyTo.String
-			pin.Message.ReplyTo = &replyToValue
-		}
-
-		if len(metadataBytes) > 0 {
-			if err := json.Unmarshal(metadataBytes, &pin.Message.Metadata); err != nil {
-				return nil, err
-			}
-		}
-
-		// Сообщение получено из таблицы закреплений.
-		pin.Message.IsPinned = true
-
-		// WHERE m.deleted_at IS NULL гарантирует, что DeletedAt остаётся nil.
+		applyMessageNullableFields(&pin.Message, replyTo, forwardedMessageID, forwardedSenderID, forwardedSenderName, deletedAt)
 		pins = append(pins, pin)
 	}
 
@@ -1657,6 +1825,16 @@ func (s *Service) ListPins(
 		if err := s.hydrateMessageFields(ctx, &pins[i].Message); err != nil {
 			return nil, err
 		}
+	}
+	messages := make([]Message, len(pins))
+	for i := range pins {
+		messages[i] = pins[i].Message
+	}
+	if err := s.hydrateMessagesAttachments(ctx, messages); err != nil {
+		return nil, err
+	}
+	for i := range pins {
+		pins[i].Message.Attachments = messages[i].Attachments
 	}
 
 	return pins, nil
@@ -1790,7 +1968,8 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.type,
-		       m.reply_to::text, m.metadata,
+		       m.reply_to::text, m.content_encrypted,
+		       m.forwarded_message_id::text, m.forwarded_sender_id::text, m.forwarded_sender_name,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM messages.messages m
@@ -1812,6 +1991,9 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		return nil, err
 	}
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesAttachments(ctx, messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
@@ -1837,7 +2019,8 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.type,
-		       m.reply_to::text, m.metadata,
+		       m.reply_to::text, m.content_encrypted,
+		       m.forwarded_message_id::text, m.forwarded_sender_id::text, m.forwarded_sender_name,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM messages.favorites f
@@ -1858,6 +2041,9 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		return nil, err
 	}
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesAttachments(ctx, messages); err != nil {
 		return nil, err
 	}
 	return messages, nil

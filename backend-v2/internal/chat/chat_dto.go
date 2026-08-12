@@ -31,3 +31,26 @@ type SendMessageInput struct {
 	IsEncrypted bool                         `json:"isEncrypted"`
 	Attachments []SendMessageAttachmentInput `json:"attachments,omitempty"`
 }
+
+type SendMessageParams struct {
+	Content          string
+	Type             string
+	ReplyTo          *string
+	ContentEncrypted bool
+	Attachments      []AttachmentData
+	Forwarded        *ForwardedData
+}
+
+type ForwardMessageInput struct {
+	TargetChatID string                       `json:"targetChatId"`
+	Content      *string                      `json:"content,omitempty"`
+	IsEncrypted  bool                         `json:"isEncrypted"`
+	Attachments  []SendMessageAttachmentInput `json:"attachments,omitempty"`
+}
+
+type ForwardMessageParams struct {
+	TargetChatID     string
+	Content          *string
+	ContentEncrypted bool
+	Attachments      []AttachmentData
+}

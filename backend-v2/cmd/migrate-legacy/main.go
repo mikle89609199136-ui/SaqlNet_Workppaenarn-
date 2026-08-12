@@ -352,7 +352,10 @@ func migrateChats(ctx context.Context, tx *sql.Tx) {
 
 func migrateMessages(ctx context.Context, tx *sql.Tx) {
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO messages.messages (id, chat_id, sender_id, content, type, reply_to, metadata, created_at, updated_at, deleted_at)
+		INSERT INTO messages.messages (
+			id, chat_id, sender_id, content, type, reply_to, content_encrypted,
+			forwarded_message_id, created_at, updated_at, deleted_at
+		)
 		SELECT
 			m.id,
 			m.chat_id,
@@ -360,19 +363,8 @@ func migrateMessages(ctx context.Context, tx *sql.Tx) {
 			COALESCE(m.content, ''),
 			COALESCE(m.type, 'text'),
 			m.reply_to_message_id,
-			jsonb_build_object(
-				'media_url', m.media_url,
-				'media_type', m.media_type,
-				'media_encrypted', m.media_encrypted,
-				'media_encryption', m.media_encryption,
-				'forwarded_from', m.forwarded_from,
-				'voice_duration', m.voice_duration,
-				'is_edited', m.is_edited,
-				'is_encrypted', m.is_encrypted,
-				'encryption_iv', m.encryption_iv,
-				'is_mls', m.is_mls,
-				'mls_epoch', m.mls_epoch
-			) as metadata,
+			COALESCE(m.is_encrypted, FALSE),
+			m.forwarded_from,
 			COALESCE(m.created_at, NOW()),
 			COALESCE(m.edited_at, m.created_at, NOW()),
 			m.deleted_at
@@ -382,7 +374,8 @@ func migrateMessages(ctx context.Context, tx *sql.Tx) {
 		ON CONFLICT (id) DO UPDATE SET
 			content = EXCLUDED.content,
 			type = EXCLUDED.type,
-			metadata = EXCLUDED.metadata,
+			content_encrypted = EXCLUDED.content_encrypted,
+			forwarded_message_id = EXCLUDED.forwarded_message_id,
 			updated_at = EXCLUDED.updated_at,
 			deleted_at = EXCLUDED.deleted_at
 	`)
@@ -526,19 +519,26 @@ func migrateMedia(ctx context.Context, tx *sql.Tx, apply bool) {
 			image_url = EXCLUDED.image_url
 	`)
 
-	messageLinksAffected := execRowsAffected(ctx, tx, "rewrite migrated message media links", `
-		UPDATE messages.messages target
-		SET metadata = jsonb_set(
-			COALESCE(target.metadata, '{}'::jsonb),
-			'{media_url}',
-			to_jsonb('/api/v2/media/' || mf.id::text),
-			TRUE
+	messageLinksAffected := execRowsAffected(ctx, tx, "migrate message attachments", `
+		INSERT INTO messages.attachments (
+			message_id, position, media_url, media_type, file_name,
+			size_bytes, media_encrypted, media_encryption
 		)
-		FROM public.messages legacy
+		SELECT target.id, 0, '/api/v2/media/' || mf.id::text,
+		       COALESCE(legacy.media_type, ''), COALESCE(mf.original_name, ''),
+		       COALESCE(mf.size_bytes, 0), COALESCE(mf.encrypted, FALSE),
+		       mf.encryption
+		FROM messages.messages target
+		JOIN public.messages legacy ON target.id = legacy.id
 		JOIN public.media_files mf ON mf.file_url = legacy.media_url
-		WHERE target.id = legacy.id
-		  AND legacy.media_url IS NOT NULL
-		  AND legacy.media_url <> ''
+		WHERE legacy.media_url IS NOT NULL AND legacy.media_url <> ''
+		ON CONFLICT (message_id, position) DO UPDATE SET
+			media_url = EXCLUDED.media_url,
+			media_type = EXCLUDED.media_type,
+			file_name = EXCLUDED.file_name,
+			size_bytes = EXCLUDED.size_bytes,
+			media_encrypted = EXCLUDED.media_encrypted,
+			media_encryption = EXCLUDED.media_encryption
 	`)
 
 	rows, err := tx.QueryContext(ctx, `

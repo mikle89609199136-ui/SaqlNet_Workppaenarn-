@@ -15,6 +15,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
+
 	"github.com/go-playground/validator/v10"
 )
 
@@ -525,27 +526,31 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
 	case suffix == "" && r.Method == http.MethodPost:
-		var input struct {
-			Content         string         `json:"content"`
-			Type            string         `json:"type"`
-			ReplyTo         *string        `json:"replyTo"`
-			MediaURL        string         `json:"mediaUrl"`
-			MediaType       string         `json:"mediaType"`
-			FileName        string         `json:"fileName"`
-			SizeBytes       int64          `json:"sizeBytes"`
-			MediaEncrypted  bool           `json:"mediaEncrypted"`
-			MediaEncryption map[string]any `json:"mediaEncryption"`
-			IsEncrypted     bool           `json:"isEncrypted"`
-		}
+		var input SendMessageInput
 		if !decode(w, r, &input) {
 			return
 		}
 		if input.Type == "" {
 			input.Type = "text"
 		}
-		var metadata map[string]any
-		if input.MediaURL != "" {
-			fileName, sizeBytes, err := h.service.ValidateMediaMetadata(r.Context(), input.MediaURL, input.FileName, input.SizeBytes, input.MediaEncrypted)
+		if len(input.Attachments) > maxMessageAttachments {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "too_many_attachments", "too many attachments")
+			return
+		}
+		attachments := make([]AttachmentData, 0, len(input.Attachments))
+		for position, attachment := range input.Attachments {
+			if attachment.MediaURL == "" {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_media_metadata", "mediaUrl is required for every attachment")
+				return
+			}
+
+			fileName, sizeBytes, err := h.service.ValidateMediaMetadata(
+				r.Context(),
+				attachment.MediaURL,
+				attachment.FileName,
+				attachment.SizeBytes,
+				attachment.MediaEncrypted,
+			)
 			if errors.Is(err, ErrInvalidInput) {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_media_metadata", "fileName or sizeBytes does not match the uploaded file")
 				return
@@ -554,17 +559,26 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to validate media metadata")
 				return
 			}
-			metadata = map[string]any{
-				"mediaUrl":        input.MediaURL,
-				"mediaType":       input.MediaType,
-				"fileName":        fileName,
-				"sizeBytes":       sizeBytes,
-				"mediaEncrypted":  input.MediaEncrypted,
-				"mediaEncryption": input.MediaEncryption,
-				"isEncrypted":     input.IsEncrypted,
-			}
+
+			attachments = append(attachments, AttachmentData{
+				Position:        position,
+				MediaURL:        attachment.MediaURL,
+				MediaType:       attachment.MediaType,
+				FileName:        fileName,
+				SizeBytes:       sizeBytes,
+				MediaEncrypted:  attachment.MediaEncrypted,
+				MediaEncryption: attachment.MediaEncryption,
+			})
 		}
-		msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, input.Content, input.Type, input.ReplyTo, metadata)
+
+		params := SendMessageParams{
+			Content:          input.Content,
+			Type:             input.Type,
+			ReplyTo:          input.ReplyTo,
+			ContentEncrypted: input.IsEncrypted,
+			Attachments:      attachments,
+		}
+		msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, params)
 		if err != nil {
 			slog.Error("send message failed", "err", err, "chatId", targetID, "userId", current.ID, "type", input.Type)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to send message")
@@ -588,19 +602,52 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
 		respondSuccess(w, r, err)
 	case suffix == "/forward" && r.Method == http.MethodPost:
-		var input struct {
-			TargetChatID string `json:"targetChatId"`
-		}
+		var input ForwardMessageInput
 		if !decode(w, r, &input) {
 			return
 		}
-		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
+		if len(input.Attachments) > maxMessageAttachments {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "too_many_attachments", "too many attachments")
+			return
+		}
+		attachments := make([]AttachmentData, 0, len(input.Attachments))
+		for position, attachment := range input.Attachments {
+			if attachment.MediaURL == "" {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_media_metadata", "mediaUrl is required for every attachment")
+				return
+			}
+			fileName, sizeBytes, err := h.service.ValidateMediaMetadata(
+				r.Context(), attachment.MediaURL, attachment.FileName,
+				attachment.SizeBytes, attachment.MediaEncrypted,
+			)
+			if errors.Is(err, ErrInvalidInput) {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_media_metadata", "invalid forwarded attachment metadata")
+				return
+			}
+			if err != nil {
+				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to validate forwarded attachment")
+				return
+			}
+			attachments = append(attachments, AttachmentData{
+				Position: position, MediaURL: attachment.MediaURL, MediaType: attachment.MediaType,
+				FileName: fileName, SizeBytes: sizeBytes, MediaEncrypted: attachment.MediaEncrypted,
+				MediaEncryption: attachment.MediaEncryption,
+			})
+		}
+		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, ForwardMessageParams{
+			TargetChatID: input.TargetChatID, Content: input.Content,
+			ContentEncrypted: input.IsEncrypted, Attachments: attachments,
+		})
 		if errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			return
 		}
 		if errors.Is(err, ErrForbidden) {
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			return
+		}
+		if errors.Is(err, ErrInvalidInput) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "reencryption_required", "encrypted content must be re-encrypted for the target chat")
 			return
 		}
 		if err != nil {

@@ -85,7 +85,14 @@ Message:
     content: { type: string }
     type: { type: string }
     replyTo: { type: string, format: uuid, nullable: true }
-    metadata: { type: object, additionalProperties: true }
+    isEncrypted: { type: boolean }
+    forwarded:
+      allOf:
+        - { $ref: '#/ForwardedMessage' }
+      nullable: true
+    attachments:
+      type: array
+      items: { $ref: '#/Attachment' }
     isForwarded: { type: boolean }
     isPinned: { type: boolean }
     isEdited: { type: boolean }
@@ -97,13 +104,62 @@ SendMessageRequest:
     content: { type: string }
     type: { type: string, default: text }
     replyTo: { type: string, format: uuid, nullable: true }
+    isEncrypted: { type: boolean }
+    attachments:
+      type: array
+      maxItems: 10
+      items: { $ref: '#/AttachmentInput' }
+MediaEncryption:
+  type: object
+  required: [algorithm, encrypted, iv, version]
+  properties:
+    algorithm: { type: string, enum: [AES-GCM] }
+    encrypted: { type: boolean }
+    fileName: { type: string }
+    iv: { type: string }
+    mimeType: { type: string }
+    sizeBytes: { type: integer, format: int64, minimum: 0 }
+    version: { type: integer }
+AttachmentInput:
+  type: object
+  required: [mediaUrl]
+  properties:
     mediaUrl: { type: string }
     mediaType: { type: string }
     fileName: { type: string, maxLength: 255 }
     sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
     mediaEncrypted: { type: boolean }
-    mediaEncryption: { type: object, additionalProperties: true }
+    mediaEncryption:
+      allOf:
+        - { $ref: '#/MediaEncryption' }
+      nullable: true
+Attachment:
+  allOf:
+    - { $ref: '#/AttachmentInput' }
+    - type: object
+      required: [id, position]
+      properties:
+        id: { type: string, format: uuid }
+        position: { type: integer, minimum: 0 }
+ForwardedMessage:
+  type: object
+  required: [messageId, senderId, senderName]
+  properties:
+    messageId: { type: string, format: uuid }
+    senderId: { type: string, format: uuid }
+    senderName: { type: string }
+ForwardMessageRequest:
+  type: object
+  required: [targetChatId]
+  properties:
+    targetChatId: { type: string, format: uuid }
+    content: { type: string, description: Re-encrypted content for the target chat }
     isEncrypted: { type: boolean }
+    attachments:
+      type: array
+      maxItems: 10
+      description: Re-uploaded and re-encrypted attachments for the target chat
+      items: { $ref: '#/AttachmentInput' }
 Reaction:
   type: object
   properties:
