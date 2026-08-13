@@ -27,6 +27,7 @@ var (
 	ErrOwnershipConflict         = errors.New("ownership changed concurrently")
 	ErrMemberNotFound            = errors.New("member not found")
 	ErrStateUnchanged            = errors.New("state unchanged")
+	ErrMemberMuted               = errors.New("member is muted")
 )
 
 type Chat struct {
