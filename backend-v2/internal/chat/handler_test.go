@@ -366,3 +366,71 @@ func TestHandler_TransferOwnership(t *testing.T) {
 		})
 	}
 }
+
+// TestHandler_SendMessage_Errors проверяет маппинг ошибок SendMessage в HTTP:
+// muted → 403 member_muted; не участник → 403 access_denied.
+func TestHandler_SendMessage_Errors(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	svc := NewService(db, nil)
+	h := NewHandler(svc)
+
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+	chatID := "550e8400-e29b-41d4-a716-446655440002"
+
+	tests := []struct {
+		name           string
+		setupMock      func()
+		expectedStatus int
+		expectedCode   string
+	}{
+		{
+			"MemberMuted",
+			func() {
+				mock.ExpectQuery(`SELECT cm.role`).
+					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", true))
+			},
+			http.StatusForbidden, // 403
+			"member_muted",
+		},
+		{
+			"NotMember",
+			func() {
+				mock.ExpectQuery(`SELECT cm.role`).WillReturnError(sql.ErrNoRows)
+			},
+			http.StatusForbidden, // 403
+			"access_denied",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMock()
+
+			body, _ := json.Marshal(map[string]string{"content": "hello"})
+			req := httptest.NewRequest(http.MethodPost, "/api/v2/messages/"+chatID, bytes.NewReader(body))
+			ctx := authctx.WithUser(req.Context(), authctx.User{ID: userID})
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			h.Messages(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+			var resp struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Error(err)
+			}
+			if resp.Code != tt.expectedCode {
+				t.Errorf("expected error code %q, got %q", tt.expectedCode, resp.Code)
+			}
+		})
+	}
+}

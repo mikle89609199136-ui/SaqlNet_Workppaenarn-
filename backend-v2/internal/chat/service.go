@@ -1302,7 +1302,7 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		SELECT cm.role,
 		       (
 		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-		         (cm.role = 'member' AND cm.muted_until > NOW())
+		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
 		       )
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
@@ -1316,7 +1316,7 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		return Message{}, err
 	}
 	if isMuted.Valid && isMuted.Bool {
-		return Message{}, ErrForbidden
+		return Message{}, ErrMemberMuted
 	}
 
 	var replyToSQL sql.NullString
