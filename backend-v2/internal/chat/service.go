@@ -28,6 +28,7 @@ var (
 	ErrMemberNotFound            = errors.New("member not found")
 	ErrStateUnchanged            = errors.New("state unchanged")
 	ErrMemberMuted               = errors.New("member is muted")
+	ErrCannotModerateTarget      = errors.New("cannot moderate target")
 )
 
 type Chat struct {
@@ -2183,4 +2184,22 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	return tx.Commit()
+}
+
+// AssertCanModerate проверяет иерархию ролей: owner модерирует admin/member,
+// admin — только member, member — никого.
+func AssertCanModerate(actorRole, targetRole string) error {
+	switch actorRole {
+	case "owner":
+		if targetRole == "owner" {
+			return ErrCannotModerateTarget
+		}
+	case "admin":
+		if targetRole != "member" {
+			return ErrCannotModerateTarget
+		}
+	default:
+		return ErrCannotModerateTarget
+	}
+	return nil
 }
