@@ -915,7 +915,7 @@ type muteMemberInput struct {
 	UserID  string `validate:"required,uuid"`
 }
 
-type MemberMutedEvent struct {
+type MemberMuteEvent struct {
 	Type       string     `json:"type"`
 	ChatID     string     `json:"chatId"`
 	UserID     string     `json:"userId"`
@@ -1150,7 +1150,7 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 		return err
 	}
 	if s.ws != nil {
-		payload, _ := json.Marshal(MemberMutedEvent{
+		payload, _ := json.Marshal(MemberMuteEvent{
 			Type:       "chat_member_muted",
 			ChatID:     chatID,
 			UserID:     userID,
@@ -1163,6 +1163,10 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 }
 
 func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID string) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
 		return err
@@ -1170,11 +1174,45 @@ func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID stri
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
+
+	var targetRole string
+	var mutedAt sql.NullTime
+	var currentMutedUntil sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := AssertCanModerate(actorRole, targetRole); err != nil {
+		return err
+	}
+	if !mutedAt.Valid {
+		return nil
+	}
+
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_until = NULL
+		UPDATE chats.members SET muted_at = NULL, muted_until = NULL
 		WHERE chat_id = $1 AND user_id = $2
 	`, chatID, userID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberMuteEvent{
+			Type:     "chat_member_unmuted",
+			ChatID:   chatID,
+			UserID:   userID,
+			ByUserID: actorID,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) MembersOnline(ctx context.Context, userID, chatID string) ([]string, error) {

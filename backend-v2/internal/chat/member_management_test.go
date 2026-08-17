@@ -447,7 +447,7 @@ func TestMuteMember_Success(t *testing.T) {
 			err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, tt.mutedUntil)
 			require.NoError(t, err)
 			require.Len(t, realtime.broadcasts, 1)
-			var event MemberMutedEvent
+			var event MemberMuteEvent
 			err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
 			require.NoError(t, err)
 			require.Equal(t, "chat_member_muted", event.Type)
@@ -504,7 +504,7 @@ func TestMuteMember_Idempotent(t *testing.T) {
 
 			if tt.wantUpdate {
 				require.Len(t, realtime.broadcasts, 1)
-				var event MemberMutedEvent
+				var event MemberMuteEvent
 				err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
 				require.NoError(t, err)
 				require.Equal(t, "chat_member_muted", event.Type)
@@ -517,4 +517,142 @@ func TestMuteMember_Idempotent(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// TestUnmuteMember_InvalidInput проверяет, что UnmuteMember отклоняет
+// невалидные UUID ошибкой ErrInvalidInput и не выполняет ни одного
+// SQL-запроса. Валидация на уровне сервиса — часть критерия «некорректные
+// UUID не приводят к 500».
+func TestUnmuteMember_InvalidInput(t *testing.T) {
+	tests := []struct {
+		name       string
+		actorID    string
+		chatID     string
+		userID     string
+		mutedUntil *time.Time
+	}{
+		{name: "невалидный actorID", actorID: "not-a-uuid", chatID: muteTestChatID, userID: muteTestUserID},
+		{name: "невалидный chatID", actorID: muteTestActorID, chatID: "not-a-uuid", userID: muteTestUserID},
+		{name: "невалидный userID", actorID: muteTestActorID, chatID: muteTestChatID, userID: "not-a-uuid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, _ := newMemberManagementService(t)
+			err := svc.UnmuteMember(context.Background(), tt.actorID, tt.chatID, tt.userID)
+			require.ErrorIs(t, err, ErrInvalidInput)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestUnmuteMember_ForbiddenWhenActorIsMember проверяет, что member не может
+// снимать mute: ErrForbidden, без UPDATE и WS-события.
+func TestUnmuteMember_ForbiddenWhenActorIsMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.ErrorIs(t, err, ErrForbidden)
+	require.NoError(t, mock.ExpectationsWereMet())
+	if len(realtime.broadcasts) != 0 {
+		t.Fatal("unexpected broadcast")
+	}
+}
+
+// TestUnmuteMember_TargetNotMember проверяет, что unmute несуществующего
+// участника возвращает ErrNotFound (404), а не молчаливый success.
+func TestUnmuteMember_TargetNotMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnError(sql.ErrNoRows)
+	err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+	if len(realtime.broadcasts) != 0 {
+		t.Fatal("unexpected broadcast")
+	}
+}
+
+// TestUnmuteMember_CannotModerateTarget проверяет иерархию для unmute:
+// нельзя снимать mute с owner; admin не может у admin. Ожидается
+// ErrCannotModerateTarget, UPDATE и событие не выполняются.
+func TestUnmuteMember_CannotModerateTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		actorRole  string
+		targetRole string
+	}{
+		{name: "owner снимает mute с owner", actorRole: "owner", targetRole: "owner"},
+		{name: "admin снимает mute с admin", actorRole: "admin", targetRole: "admin"},
+		{name: "admin снимает mute с owner", actorRole: "admin", targetRole: "owner"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(tt.actorRole))
+			mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow(tt.targetRole, nil, nil))
+
+			err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+			require.ErrorIs(t, err, ErrCannotModerateTarget)
+			require.NoError(t, mock.ExpectationsWereMet())
+			if len(realtime.broadcasts) != 0 {
+				t.Fatal("unexpected broadcast")
+			}
+		})
+	}
+}
+
+// TestUnmuteMember_NotMutedIsIdempotent проверяет, что unmute незамьюченного
+// участника возвращает success без UPDATE и без WS-события: повторная
+// операция не создаёт ложное событие (критерий приёмки).
+func TestUnmuteMember_NotMutedIsIdempotent(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", nil, nil))
+	err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.NoError(t, err)
+	require.Empty(t, realtime.broadcasts)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUnmuteMember_Success проверяет успешный unmute: owner снимает mute с
+// member — UPDATE обнуляет muted_at/muted_until и в чат уходит событие
+// chat_member_unmuted.
+func TestUnmuteMember_Success(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", time.Now(), nil))
+	mock.ExpectExec(`UPDATE chats\.members SET muted_at = NULL, muted_until = NULL WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.NoError(t, err)
+	require.Len(t, realtime.broadcasts, 1)
+	var event MemberMuteEvent
+	err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+	require.NoError(t, err)
+	require.Equal(t, "chat_member_unmuted", event.Type)
+	require.Equal(t, muteTestChatID, event.ChatID)
+	require.Equal(t, muteTestUserID, event.UserID)
+	require.Equal(t, muteTestActorID, event.ByUserID)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
