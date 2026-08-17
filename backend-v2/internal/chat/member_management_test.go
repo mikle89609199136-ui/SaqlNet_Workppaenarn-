@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
 )
 
 type recordedBroadcast struct {
@@ -41,9 +43,12 @@ func (r *recordingRealtime) BroadcastToUsers(
 }
 
 const (
-	testActorID  = "actor-id"
-	testChatID   = "chat-id"
-	testMemberID = "member-id"
+	testActorID     = "actor-id"
+	testChatID      = "chat-id"
+	testMemberID    = "member-id"
+	muteTestActorID = "550e8400-e29b-41d4-a716-446655440001"
+	muteTestChatID  = "550e8400-e29b-41d4-a716-446655440002"
+	muteTestUserID  = "550e8400-e29b-41d4-a716-446655440003"
 )
 
 func expectActorInfo(mock sqlmock.Sqlmock, chatType, role string) {
@@ -317,5 +322,199 @@ func TestRespondSuccess_MemberNotFound(t *testing.T) {
 	}
 	if response.Code != "member_not_found" {
 		t.Fatalf("code = %q, want member_not_found", response.Code)
+	}
+}
+
+// TestMuteMember_InvalidInput проверяет, что MuteMember отклоняет невалидный
+// ввод (битые UUID, mutedUntil в прошлом) ошибкой ErrInvalidInput и не
+// выполняет ни одного SQL-запроса: ExpectationsWereMet без ожиданий это
+// доказывает. Прошедшая дата mute бессмысленна — mute либо активен, либо нет.
+func TestMuteMember_InvalidInput(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	tests := []struct {
+		name       string
+		actorID    string
+		chatID     string
+		userID     string
+		mutedUntil *time.Time
+	}{
+		{name: "невалидный actorID", actorID: "not-a-uuid", chatID: muteTestChatID, userID: muteTestUserID, mutedUntil: nil},
+		{name: "невалидный chatID", actorID: muteTestActorID, chatID: "not-a-uuid", userID: muteTestUserID, mutedUntil: nil},
+		{name: "невалидный userID", actorID: muteTestActorID, chatID: muteTestChatID, userID: "not-a-uuid", mutedUntil: nil},
+		{name: "mutedUntil в прошлом", actorID: muteTestActorID, chatID: muteTestChatID, userID: muteTestUserID, mutedUntil: &past},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, _ := newMemberManagementService(t)
+			err := svc.MuteMember(context.Background(), tt.actorID, tt.chatID, tt.userID, tt.mutedUntil)
+			require.ErrorIs(t, err, ErrInvalidInput)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestMuteMember_ForbiddenWhenActorIsMember проверяет, что участник с ролью
+// member не может мьютить других: сервис возвращает ErrForbidden и не
+// выполняет UPDATE. Матрица прав: mute доступен только owner/admin.
+func TestMuteMember_ForbiddenWhenActorIsMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil)
+	require.ErrorIs(t, err, ErrForbidden)
+	require.NoError(t, mock.ExpectationsWereMet())
+	if len(realtime.broadcasts) != 0 {
+		t.Fatal("unexpected broadcast")
+	}
+}
+
+// TestMuteMember_TargetNotMember проверяет, что mute несуществующего участника
+// возвращает ErrNotFound (404 member_not_found), а не молчаливый success
+func TestMuteMember_TargetNotMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnError(sql.ErrNoRows)
+	err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil)
+	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+	if len(realtime.broadcasts) != 0 {
+		t.Fatal("unexpected broadcast")
+	}
+}
+
+// TestMuteMember_CannotModerateTarget проверяет иерархию модерации:
+// нельзя мьютить owner; admin не может мьютить admin. Ожидается
+// ErrCannotModerateTarget, UPDATE и WS-событие не выполняются.
+func TestMuteMember_CannotModerateTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		actorRole  string
+		targetRole string
+	}{
+		{name: "owner мьютит owner", actorRole: "owner", targetRole: "owner"},
+		{name: "admin мьютит admin", actorRole: "admin", targetRole: "admin"},
+		{name: "admin мьютит owner", actorRole: "admin", targetRole: "owner"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(tt.actorRole))
+			mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow(tt.targetRole, nil, nil))
+
+			err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil)
+			require.ErrorIs(t, err, ErrCannotModerateTarget)
+			require.NoError(t, mock.ExpectationsWereMet())
+			if len(realtime.broadcasts) != 0 {
+				t.Fatal("unexpected broadcast")
+			}
+		})
+	}
+}
+
+// TestMuteMember_Success проверяет успешный mute: owner мьютит member —
+// выполняется UPDATE muted_at/muted_until и в чат уходит событие
+// chat_member_muted с mutedUntil. Временный и перманентный (nil) mute.
+func TestMuteMember_Success(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	tests := []struct {
+		name       string
+		mutedUntil *time.Time
+	}{
+		{name: "временный mute", mutedUntil: &future},
+		{name: "перманентный mute", mutedUntil: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+			mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", nil, nil))
+			mock.ExpectExec(`UPDATE chats\.members SET muted_at = NOW\(\), muted_until = \$3 WHERE chat_id = \$1 AND user_id = \$2`).
+				WithArgs(muteTestChatID, muteTestUserID, tt.mutedUntil).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, tt.mutedUntil)
+			require.NoError(t, err)
+			require.Len(t, realtime.broadcasts, 1)
+			var event MemberMutedEvent
+			err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+			require.NoError(t, err)
+			require.Equal(t, "chat_member_muted", event.Type)
+			require.Equal(t, muteTestChatID, event.ChatID)
+			require.Equal(t, muteTestUserID, event.UserID)
+			require.Equal(t, muteTestActorID, event.ByUserID)
+			if tt.mutedUntil == nil {
+				require.Nil(t, event.MutedUntil)
+			} else {
+				require.NotNil(t, event.MutedUntil)
+				require.True(t, event.MutedUntil.Equal(*tt.mutedUntil))
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestMuteMember_Idempotent проверяет, что повторный mute с тем же целевым
+// состоянием не выполняет UPDATE и не публикует WS-событие (200 success без
+// шума), а mute с другим mutedUntil — обновляет и публикует. Критерий
+// приёмки: повторная операция не создаёт ложное WebSocket-событие.
+func TestMuteMember_Idempotent(t *testing.T) {
+	now := time.Now()
+	future := time.Now().Add(time.Hour)
+	future2 := time.Now().Add(time.Minute)
+	tests := []struct {
+		name              string
+		mutedAt           *time.Time
+		currentMutedUntil *time.Time
+		newMutedUntil     *time.Time
+		wantUpdate        bool
+	}{
+		{name: "повторный перманентный mute", mutedAt: &now, currentMutedUntil: nil, newMutedUntil: nil, wantUpdate: false},
+		{name: "повторный mute с тем же сроком", mutedAt: &now, currentMutedUntil: &future, newMutedUntil: &future, wantUpdate: false},
+		{name: "mute с другим сроком", mutedAt: &now, currentMutedUntil: &future, newMutedUntil: &future2, wantUpdate: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+			mock.ExpectQuery(`SELECT role, muted_at, muted_until FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", tt.mutedAt, tt.currentMutedUntil))
+			if tt.wantUpdate {
+				mock.ExpectExec(`UPDATE chats\.members SET muted_at = NOW\(\), muted_until = \$3 WHERE chat_id = \$1 AND user_id = \$2`).
+					WithArgs(muteTestChatID, muteTestUserID, tt.newMutedUntil).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+			}
+			err := svc.MuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, tt.newMutedUntil)
+			require.NoError(t, err)
+
+			if tt.wantUpdate {
+				require.Len(t, realtime.broadcasts, 1)
+				var event MemberMutedEvent
+				err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+				require.NoError(t, err)
+				require.Equal(t, "chat_member_muted", event.Type)
+				require.Equal(t, muteTestChatID, event.ChatID)
+				require.Equal(t, muteTestUserID, event.UserID)
+				require.Equal(t, muteTestActorID, event.ByUserID)
+			} else {
+				require.Empty(t, realtime.broadcasts)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
 	}
 }

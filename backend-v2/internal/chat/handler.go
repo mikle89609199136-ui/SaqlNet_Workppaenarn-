@@ -267,7 +267,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "/mute" && r.Method == http.MethodPost {
-			respondSuccess(w, r, h.service.MuteMember(r.Context(), current.ID, chatID, memberID))
+			respondSuccess(w, r, h.service.MuteMember(r.Context(), current.ID, chatID, memberID, nil))
 			return
 		}
 		if action == "/unmute" && r.Method == http.MethodPost {

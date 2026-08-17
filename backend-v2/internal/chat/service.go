@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"path"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/lib/pq"
@@ -908,6 +909,20 @@ type addMemberInput struct {
 	UserID string `validate:"required,uuid"`
 }
 
+type muteMemberInput struct {
+	ActorID string `validate:"required,uuid"`
+	ChatID  string `validate:"required,uuid"`
+	UserID  string `validate:"required,uuid"`
+}
+
+type MemberMutedEvent struct {
+	Type       string     `json:"type"`
+	ChatID     string     `json:"chatId"`
+	UserID     string     `json:"userId"`
+	ByUserID   string     `json:"byUserId"`
+	MutedUntil *time.Time `json:"mutedUntil"`
+}
+
 func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) (*Member, error) {
 	// 1. Валидация входных данных
 	input := addMemberInput{ChatID: chatID, UserID: userID}
@@ -1093,7 +1108,14 @@ func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, 
 	return bans, rows.Err()
 }
 
-func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string) error {
+func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string, mutedUntil *time.Time) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	if mutedUntil != nil && !mutedUntil.After(time.Now()) {
+		return ErrInvalidInput
+	}
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
 		return err
@@ -1101,11 +1123,43 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
+	var targetRole string
+	var mutedAt sql.NullTime
+	var currentMutedUntil sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if err := AssertCanModerate(actorRole, targetRole); err != nil {
+		return err
+	}
+	sameUntil := (!currentMutedUntil.Valid && mutedUntil == nil) || (currentMutedUntil.Valid && mutedUntil != nil && currentMutedUntil.Time.Equal(*mutedUntil))
+	if mutedAt.Valid && sameUntil {
+		return nil
+	}
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_until = NOW() + INTERVAL '365 days'
-		WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'
-	`, chatID, userID)
-	return err
+		UPDATE chats.members SET muted_at = NOW(), muted_until = $3
+		WHERE chat_id = $1 AND user_id = $2
+	`, chatID, userID, mutedUntil)
+	if err != nil {
+		return err
+	}
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberMutedEvent{
+			Type:       "chat_member_muted",
+			ChatID:     chatID,
+			UserID:     userID,
+			ByUserID:   actorID,
+			MutedUntil: mutedUntil,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID string) error {
