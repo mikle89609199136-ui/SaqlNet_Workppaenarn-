@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -525,11 +526,10 @@ func TestMuteMember_Idempotent(t *testing.T) {
 // UUID не приводят к 500».
 func TestUnmuteMember_InvalidInput(t *testing.T) {
 	tests := []struct {
-		name       string
-		actorID    string
-		chatID     string
-		userID     string
-		mutedUntil *time.Time
+		name    string
+		actorID string
+		chatID  string
+		userID  string
 	}{
 		{name: "невалидный actorID", actorID: "not-a-uuid", chatID: muteTestChatID, userID: muteTestUserID},
 		{name: "невалидный chatID", actorID: muteTestActorID, chatID: "not-a-uuid", userID: muteTestUserID},
@@ -613,7 +613,7 @@ func TestUnmuteMember_CannotModerateTarget(t *testing.T) {
 
 // TestUnmuteMember_NotMutedIsIdempotent проверяет, что unmute незамьюченного
 // участника возвращает success без UPDATE и без WS-события: повторная
-// операция не создаёт ложное событие (критерий приёмки).
+// операция не создаёт ложное событие.
 func TestUnmuteMember_NotMutedIsIdempotent(t *testing.T) {
 	svc, mock, realtime := newMemberManagementService(t)
 	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
@@ -655,4 +655,269 @@ func TestUnmuteMember_Success(t *testing.T) {
 	require.Equal(t, muteTestUserID, event.UserID)
 	require.Equal(t, muteTestActorID, event.ByUserID)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBanMember_InvalidInput проверяет, что BanMember отклоняет невалидный
+// ввод (битые UUID, bannedUntil в прошлом, reason длиннее 500 символов)
+// ошибкой ErrInvalidInput и не выполняет ни одного SQL-запроса. Лимит
+// reason — 500
+func TestBanMember_InvalidInput(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	tests := []struct {
+		name        string
+		actorID     string
+		chatID      string
+		userID      string
+		bannedUntil *time.Time
+		reason      string
+	}{
+		{name: "невалидный actorID", actorID: "not-a-uuid", chatID: muteTestChatID, userID: muteTestUserID, bannedUntil: nil, reason: "ban"},
+		{name: "невалидный chatID", actorID: muteTestActorID, chatID: "not-a-uuid", userID: muteTestUserID, bannedUntil: nil, reason: "ban"},
+		{name: "невалидный userID", actorID: muteTestActorID, chatID: muteTestChatID, userID: "not-a-uuid", bannedUntil: nil, reason: "ban"},
+		{name: "bannedUntil в прошлом", actorID: muteTestActorID, chatID: muteTestChatID, userID: muteTestUserID, bannedUntil: &past, reason: "ban"},
+		{name: "reason слишком длинный", actorID: muteTestActorID, chatID: muteTestChatID, userID: muteTestUserID, bannedUntil: nil, reason: strings.Repeat("a", 501)},
+		{name: "reason 501 кириллический символ", actorID: muteTestActorID, chatID: muteTestChatID, userID: muteTestUserID, bannedUntil: nil, reason: strings.Repeat("я", 501)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, _ := newMemberManagementService(t)
+			err := svc.BanMember(context.Background(), tt.actorID, tt.chatID, tt.userID, tt.bannedUntil, tt.reason)
+			require.ErrorIs(t, err, ErrInvalidInput)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestBanMember_ForbiddenWhenActorIsMember проверяет, что member не может
+// банить: ErrForbidden, без транзакции и WS-событий.
+func TestBanMember_ForbiddenWhenActorIsMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+	require.ErrorIs(t, err, ErrForbidden)
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.Len(t, realtime.broadcasts, 0)
+}
+
+// TestBanMember_CannotModerateTarget проверяет иерархию для ban:
+// нельзя банить owner; admin не может банить admin. Ожидается
+// ErrCannotModerateTarget; транзакция не открывается, событий нет.
+func TestBanMember_CannotModerateTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		actorRole  string
+		targetRole string
+	}{
+		{name: "owner банит owner", actorRole: "owner", targetRole: "owner"},
+		{name: "admin банит admin", actorRole: "admin", targetRole: "admin"},
+		{name: "admin банит owner", actorRole: "admin", targetRole: "owner"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(tt.actorRole))
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(tt.targetRole))
+
+			err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+			require.ErrorIs(t, err, ErrCannotModerateTarget)
+			require.NoError(t, mock.ExpectationsWereMet())
+			require.Len(t, realtime.broadcasts, 0)
+		})
+	}
+}
+
+// TestBanMember_UserNotFound проверяет, что ban пользователя, которого нет
+// в auth.users, возвращает ErrUserNotFound (404 user_not_found) до открытия
+// транзакции: нельзя банить несуществующий аккаунт.
+func TestBanMember_UserNotFound(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+	require.ErrorIs(t, err, ErrUserNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.Len(t, realtime.broadcasts, 0)
+}
+
+// TestBanMember_PreventiveBan проверяет превентивный ban: пользователь
+// существует в auth.users, но не участник — создаётся запись в chats.bans
+// и в чат уходит chat_member_banned. chat_member_removed и адресное
+// событие НЕ отправляются: удалять некого.
+func TestBanMember_PreventiveBan(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Проверка существующего бана (нужна для идемпотентности)
+	mock.ExpectQuery(`SELECT banned_until, reason FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnError(sql.ErrNoRows)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`INSERT INTO chats\.bans \(chat_id, user_id, banned_by, reason, banned_until\) VALUES \(\$1, \$2, \$3, \$4, \$5\)`).
+		WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, "spam", nil).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+	require.NoError(t, err)
+	require.Len(t, realtime.broadcasts, 1)
+	var event MemberBannedEvent
+	err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+	require.NoError(t, err)
+	require.Equal(t, "chat_member_banned", event.Type)
+	require.Equal(t, muteTestChatID, event.ChatID)
+	require.Equal(t, muteTestUserID, event.UserID)
+	require.Equal(t, muteTestActorID, event.ByUserID)
+	require.Equal(t, "spam", event.Reason)
+	require.Nil(t, event.BannedUntil)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBanMember_BansExistingMember проверяет ban существующего участника:
+// в транзакции DELETE из chats.members + INSERT в chats.bans; в чат уходят
+// chat_member_banned и chat_member_removed (reason "banned"), забаненному
+// адресно — chat_member_banned через BroadcastToUsers.
+func TestBanMember_BansExistingMember(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	// Проверка существующего бана (нужна для идемпотентности)
+	mock.ExpectQuery(`SELECT banned_until, reason FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnError(sql.ErrNoRows)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`DELETE FROM chats\.members WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO chats\.bans \(chat_id, user_id, banned_by, reason, banned_until\) VALUES \(\$1, \$2, \$3, \$4, \$5\)`).
+		WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, "spam", nil).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+	require.NoError(t, err)
+	require.Len(t, realtime.broadcasts, 3)
+
+	// [0] — chat_member_banned всему чату
+	require.Equal(t, muteTestChatID, realtime.broadcasts[0].chatID)
+	var banned MemberBannedEvent
+	require.NoError(t, json.Unmarshal(realtime.broadcasts[0].payload, &banned))
+	require.Equal(t, "chat_member_banned", banned.Type)
+	require.Equal(t, muteTestUserID, banned.UserID)
+	require.Equal(t, muteTestActorID, banned.ByUserID)
+
+	// [1] — chat_member_removed всему чату
+	require.Equal(t, muteTestChatID, realtime.broadcasts[1].chatID)
+	var removed MemberRemovedEvent
+	require.NoError(t, json.Unmarshal(realtime.broadcasts[1].payload, &removed))
+	require.Equal(t, "chat_member_removed", removed.Type)
+	require.Equal(t, "banned", removed.Reason)
+
+	// [2] — адресное забаненному: chatID записи == userID
+	require.Equal(t, muteTestUserID, realtime.broadcasts[2].chatID)
+	var personal MemberBannedEvent
+	require.NoError(t, json.Unmarshal(realtime.broadcasts[2].payload, &personal))
+	require.Equal(t, "chat_member_banned", personal.Type)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBanMember_Idempotent проверяет идемпотентность ban: активный ban с
+// теми же bannedUntil+reason → success без записи и событий; с другими
+// параметрами или истёкший ban → UPDATE chats.bans + chat_member_banned.
+// Слепой ON CONFLICT DO UPDATE не позволял отличить повтор — поэтому
+// состояние читается явно.
+func TestBanMember_Idempotent(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(time.Hour)
+	future2 := time.Now().Add(time.Minute)
+	tests := []struct {
+		name       string
+		curUntil   *time.Time
+		newUntil   *time.Time
+		curReason  string
+		newReason  string
+		wantUpdate bool
+	}{
+		{name: "повтор перманентного", curUntil: nil, newUntil: nil, curReason: "spam", newReason: "spam", wantUpdate: false},
+		{name: "повтор с тем же сроком", curUntil: &future, newUntil: &future, curReason: "spam", newReason: "spam", wantUpdate: false},
+		{name: "другая причина", curUntil: nil, newUntil: nil, curReason: "spam", newReason: "other", wantUpdate: true},
+		{name: "другой срок", curUntil: &future, newUntil: &future2, curReason: "spam", newReason: "spam", wantUpdate: true},
+		{name: "истёкший ban", curUntil: &past, newUntil: nil, curReason: "spam", newReason: "spam", wantUpdate: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, realtime := newMemberManagementService(t)
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestActorID, muteTestChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+			mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnError(sql.ErrNoRows)
+			mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+				WithArgs(muteTestUserID).
+				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+			mock.ExpectQuery(`SELECT banned_until, reason FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+				WithArgs(muteTestChatID, muteTestUserID).
+				WillReturnRows(sqlmock.NewRows([]string{"banned_until", "reason"}).AddRow(tt.curUntil, tt.curReason))
+
+			if tt.wantUpdate {
+				mock.ExpectBegin()
+				mock.ExpectExec(`UPDATE chats\.bans SET banned_by = \$3, reason = \$4, banned_until = \$5, created_at = NOW\(\) WHERE chat_id = \$1 AND user_id = \$2`).
+					WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, tt.newReason, tt.newUntil).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			}
+			err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, tt.newUntil, tt.newReason)
+			require.NoError(t, err)
+
+			if tt.wantUpdate {
+				require.Len(t, realtime.broadcasts, 1)
+				var event MemberBannedEvent
+				err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+				require.NoError(t, err)
+				require.Equal(t, "chat_member_banned", event.Type)
+				require.Equal(t, muteTestChatID, event.ChatID)
+				require.Equal(t, muteTestUserID, event.UserID)
+				require.Equal(t, muteTestActorID, event.ByUserID)
+				require.Equal(t, tt.newReason, event.Reason)
+				if tt.newUntil == nil {
+					require.Nil(t, event.BannedUntil)
+				} else {
+					require.True(t, event.BannedUntil.Equal(*tt.newUntil))
+				}
+			} else {
+				require.Empty(t, realtime.broadcasts)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

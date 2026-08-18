@@ -259,7 +259,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 				Reason string `json:"reason"`
 			}
 			_ = decode(w, r, &input)
-			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.Reason))
+			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, nil, input.Reason))
 			return
 		}
 		if action == "/unban" && r.Method == http.MethodPost {

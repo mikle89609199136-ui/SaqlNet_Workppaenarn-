@@ -923,6 +923,15 @@ type MemberMuteEvent struct {
 	MutedUntil *time.Time `json:"mutedUntil"`
 }
 
+type MemberBannedEvent struct {
+	Type        string     `json:"type"`
+	ChatID      string     `json:"chatId"`
+	UserID      string     `json:"userId"`
+	ByUserID    string     `json:"byUserId"`
+	Reason      string     `json:"reason"`
+	BannedUntil *time.Time `json:"bannedUntil"`
+}
+
 func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) (*Member, error) {
 	// 1. Валидация входных данных
 	input := addMemberInput{ChatID: chatID, UserID: userID}
@@ -1040,7 +1049,30 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	return &m, nil
 }
 
-func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID, reason string) error {
+// BanMember банит пользователя в групповом чате. Если цель — текущий
+// участник, он удаляется из чата в той же транзакции. Не-участника можно
+// забанить превентивно (он обязан существовать в auth.users).
+//
+// Иерархия: owner банит admin/member, admin — только member (AssertCanModerate).
+// Валидация (UUID, bannedUntil в прошлом, reason длиннее 500 рун) выполняется
+// до любого SQL. Повторный активный ban с теми же bannedUntil и reason —
+// no-op: success без записей и WS-событий; другие параметры или истёкший
+// ban приводят к UPDATE и событию chat_member_banned.
+//
+// WS-события при успехе: chat_member_banned в чат; если цель была участником,
+// дополнительно chat_member_removed (reason "banned") в чат и адресное
+// chat_member_banned забаненному через BroadcastToUsers.
+func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string, bannedUntil *time.Time, reason string) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	if bannedUntil != nil && !bannedUntil.After(time.Now()) {
+		return ErrInvalidInput
+	}
+	if utf8.RuneCountInString(reason) > 500 {
+		return ErrInvalidInput
+	}
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
 		return err
@@ -1048,22 +1080,98 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID, reason
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
+
+	targetRole := ""
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole)
+	switch {
+	case err == nil:
+		// Цель — участник: проверяем иерархию.
+		if err := AssertCanModerate(actorRole, targetRole); err != nil {
+			return err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		// Цель не участник — превентивный ban возможен,
+		// но пользователь обязан существовать.
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrUserNotFound
+		}
+	default:
+		return err
+	}
+
+	// Проверяем существующий ban для идемпотентности.
+	var existingBannedUntil sql.NullTime
+	var existingReason string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2
+		`, chatID, userID).Scan(&existingBannedUntil, &existingReason)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	banExists := err == nil
+	if banExists {
+		active := !existingBannedUntil.Valid || existingBannedUntil.Time.After(time.Now())
+		same := existingReason == reason && ((!existingBannedUntil.Valid && bannedUntil == nil) || (existingBannedUntil.Valid && bannedUntil != nil && existingBannedUntil.Time.Equal(*bannedUntil)))
+		if active && same {
+			return nil // повтор с тем же состоянием: ни записи, ни события
+		}
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	// Remove from chat.
-	_, _ = tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`, chatID, userID)
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO chats.bans (chat_id, user_id, banned_by, reason)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (chat_id, user_id) DO UPDATE SET banned_by = EXCLUDED.banned_by, reason = EXCLUDED.reason, banned_until = NULL, created_at = NOW()
-	`, chatID, userID, actorID, reason)
+	// Участника удаляем из чата; при превентивном ban удалять некого.
+	if targetRole != "" {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
+			return err
+		}
+	}
+
+	if banExists {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE chats.bans SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW()
+			WHERE chat_id = $1 AND user_id = $2
+			`, chatID, userID, actorID, reason, bannedUntil)
+	} else {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until)
+			VALUES ($1, $2, $3, $4, $5)
+		`, chatID, userID, actorID, reason, bannedUntil)
+	}
+
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberBannedEvent{
+			Type: "chat_member_banned", ChatID: chatID, UserID: userID,
+			ByUserID: actorID, Reason: reason, BannedUntil: bannedUntil,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+		if targetRole != "" {
+			removedPayload, _ := json.Marshal(MemberRemovedEvent{
+				Type:   "chat_member_removed",
+				ChatID: chatID,
+				UserID: userID,
+				Reason: "banned",
+			})
+			s.ws.BroadcastToChat(chatID, removedPayload, "")
+			s.ws.BroadcastToUsers([]string{userID}, payload)
+		}
+	}
+	return nil
 }
 
 func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID string) error {
