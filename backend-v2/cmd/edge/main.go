@@ -21,6 +21,22 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
+type rateLimitConfig struct {
+	authRate    float64
+	authBurst   int
+	globalRate  float64
+	globalBurst int
+}
+
+func loadRateLimitConfig() rateLimitConfig {
+	return rateLimitConfig{
+		authRate:    config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
+		authBurst:   config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
+		globalRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
+		globalBurst: config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
+	}
+}
+
 // tokenBucket is a simple per-IP rate limiter.
 type tokenBucket struct {
 	mu       sync.Mutex
@@ -237,9 +253,10 @@ func main() {
 		fs.ServeHTTP(w, r)
 	})
 
-	// Auth: 5 req/s burst 10 per IP. Global: 50 req/s burst 100 per IP.
-	authLimiter := newTokenBucket(5, 10)
-	globalLimiter := newTokenBucket(50, 100)
+	// Rate limits use safe defaults and can be overridden through environment variables.
+	limits := loadRateLimitConfig()
+	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
+	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
 	limitedMux := rateLimitMiddleware(authLimiter, globalLimiter, mux)
 
 	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
