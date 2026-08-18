@@ -74,6 +74,7 @@ ChatMember:
         role: { type: string, enum: [owner, admin, member] }
         permissions: { type: object, additionalProperties: true }
         mutedUntil: { type: string, nullable: true }
+        mutedAt: { type: string, nullable: true, description: 'set when muted; mutedUntil null = permanent mute' }
         joinedAt: { type: string }
 Message:
   type: object
