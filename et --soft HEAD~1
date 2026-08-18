@@ -1,0 +1,413 @@
+[33mcommit 7baa23e40bba45d33be5a0773d516722bfa67852[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfix/backend-v2/messages-forward[m[33m)[m
+Author: MuSliM-95 <samahkinets@gmail.com>
+Date:   Mon Aug 10 10:13:50 2026 -0700
+
+    feat: support sending multiple media files
+
+[1mdiff --git a/client/mobile/react/pages/ChatPage/ChatThreadPage.jsx b/client/mobile/react/pages/ChatPage/ChatThreadPage.jsx[m
+[1mindex c0d4135..a8a1fc4 100644[m
+[1m--- a/client/mobile/react/pages/ChatPage/ChatThreadPage.jsx[m
+[1m+++ b/client/mobile/react/pages/ChatPage/ChatThreadPage.jsx[m
+[36m@@ -75,7 +75,7 @@[m [mexport function ChatThreadPage() {[m
+   } = useChatStore();[m
+   const [isLoading, setIsLoading] = useState(true);[m
+   const [isSending, setIsSending] = useState(false);[m
+[31m-  const [pendingAttachment, setPendingAttachment] = useState(null);[m
+[32m+[m[32m  const [pendingAttachments, setPendingAttachments] = useState([]);[m
+   const [photoEditorFile, setPhotoEditorFile] = useState(null);[m
+   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);[m
+   const [openedImage, setOpenedImage] = useState(null);[m
+[36m@@ -284,9 +284,9 @@[m [mexport function ChatThreadPage() {[m
+       const nextMessage =[m
+         typeof services.messageService.processMessageForDisplay === "function"[m
+           ? await services.messageService.processMessageForDisplay([m
+[31m-              chatId,[m
+[31m-              event.message,[m
+[31m-            )[m
+[32m+[m[32m            chatId,[m
+[32m+[m[32m            event.message,[m
+[32m+[m[32m          )[m
+           : Message.fromAPI(event.message);[m
+       services.messageService.addMessageToCache(chatId, nextMessage);[m
+       setMessages((items) => appendUniqueMessage(items, nextMessage));[m
+[36m@@ -298,11 +298,11 @@[m [mexport function ChatThreadPage() {[m
+         items.map((message) =>[m
+           message.id === event.messageId[m
+             ? {[m
+[31m-                ...message,[m
+[31m-                content: event.content,[m
+[31m-                editedAt: event.editedAt,[m
+[31m-                isEdited: true,[m
+[31m-              }[m
+[32m+[m[32m              ...message,[m
+[32m+[m[32m              content: event.content,[m
+[32m+[m[32m              editedAt: event.editedAt,[m
+[32m+[m[32m              isEdited: true,[m
+[32m+[m[32m            }[m
+             : message,[m
+         ),[m
+       );[m
+[36m@@ -341,18 +341,18 @@[m [mexport function ChatThreadPage() {[m
+     const unsubscribeTyping = eventBus.on("typing", handleTyping);[m
+     const unsubscribeUserTyping = eventBus.on("user_typing", handleTyping);[m
+     const unsubscribePinned = eventBus.on("message_pinned", async (event) => {[m
+[31m-			if (event.chatId && event.chatId !== chatId) return;[m
+[32m+[m[32m      if (event.chatId && event.chatId !== chatId) return;[m
+ [m
+[31m-			const message = await services.messageService.processMessageForDisplay(chatId, event.pin.message)[m
+[31m-			const pinned = { ...event.pin, message }[m
+[31m-			setPinnedMessages((prev) => [...prev, pinned]);[m
+[31m-			services.messageService.addPinnedMessageToCache(chatId, pinned)[m
+[32m+[m[32m      const message = await services.messageService.processMessageForDisplay(chatId, event.pin.message)[m
+[32m+[m[32m      const pinned = { ...event.pin, message }[m
+[32m+[m[32m      setPinnedMessages((prev) => [...prev, pinned]);[m
+[32m+[m[32m      services.messageService.addPinnedMessageToCache(chatId, pinned)[m
+     });[m
+     const unsubscribeUnpinned = eventBus.on("message_unpinned", (event) => {[m
+       if (event.chatId && event.chatId !== chatId) return;[m
+       setPinnedMessages((items) =>[m
+         items.filter((item) => item.messageId !== event.messageId),[m
+[31m-			);[m
+[32m+[m[32m      );[m
+       services.messageService.removePinnedMessageFromCache(event.messageId)[m
+     });[m
+ [m
+[36m@@ -393,10 +393,11 @@[m [mexport function ChatThreadPage() {[m
+   }[m
+ [m
+   async function handleSubmit(event) {[m
+[32m+[m[32m    console.log(pendingAttachments);[m
+     event.preventDefault();[m
+     if (selectionMode) return;[m
+     const content = draft.trim();[m
+[31m-    if ((!content && !pendingAttachment) || isSending) return;[m
+[32m+[m[32m    if ((!content && !pendingAttachments.length) || isSending) return;[m
+ [m
+     setIsSending(true);[m
+     try {[m
+[36m@@ -420,11 +421,10 @@[m [mexport function ChatThreadPage() {[m
+           }),[m
+         );[m
+         setEditingMessage(null);[m
+[31m-      } else if (pendingAttachment) {[m
+[32m+[m[32m      } else if (pendingAttachments?.length) {[m
+         const message = await services.messageService.sendMediaMessage([m
+           chatId,[m
+[31m-          pendingAttachment.file,[m
+[31m-          pendingAttachment.type,[m
+[32m+[m[32m          pendingAttachments,[m
+           content,[m
+           replyToMessage?.id,[m
+         );[m
+[36m@@ -434,7 +434,7 @@[m [mexport function ChatThreadPage() {[m
+             behavior: "smooth",[m
+           });[m
+         });[m
+[31m-        setPendingAttachment(null);[m
+[32m+[m[32m        setPendingAttachments([]);[m
+         setReplyToMessage(null);[m
+         if (attachmentInputRef.current) attachmentInputRef.current.value = "";[m
+       } else {[m
+[36m@@ -464,33 +464,40 @@[m [mexport function ChatThreadPage() {[m
+   }[m
+ [m
+   function handleAttachmentChange(event) {[m
+[31m-    const file = event.target.files?.[0];[m
+[31m-    if (!file) return;[m
+[32m+[m[32m    const files = Array.from(event.target.files || []);[m
+ [m
+[31m-    if (file.size > 100 * 1024 * 1024) {[m
+[31m-      setError([m
+[31m-        t([m
+[31m-          "attachmentTooLarge",[m
+[31m-          "Файл слишком большой. Максимальный размер — 100 МБ.",[m
+[31m-        ),[m
+[31m-      );[m
+[31m-      event.target.value = "";[m
+[31m-      return;[m
+[32m+[m[32m    if (!files.length) return;[m
+[32m+[m
+[32m+[m[32m    const attachments = [];[m
+[32m+[m
+[32m+[m[32m    for (const file of files) {[m
+[32m+[m[32m      if (file.size > 100 * 1024 * 1024) {[m
+[32m+[m[32m        setError([m
+[32m+[m[32m          t([m
+[32m+[m[32m            "attachmentTooLarge",[m
+[32m+[m[32m            `Файл "${file.name}" слишком большой. Максимальный размер — 100 МБ.`,[m
+[32m+[m[32m          ),[m
+[32m+[m[32m        );[m
+[32m+[m[32m        continue;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      attachments.push({[m
+[32m+[m[32m        file,[m
+[32m+[m[32m        type: getMediaMessageType(file.type),[m
+[32m+[m[32m      });[m
+     }[m
+ [m
+[31m-    if (file.type.startsWith("image/")) {[m
+[31m-      setPhotoEditorFile(file);[m
+[31m-      setEditingMessage(null);[m
+[31m-      setError("");[m
+[32m+[m[32m    if (!attachments.length) {[m
+[32m+[m[32m      event.target.value = "";[m
+       return;[m
+     }[m
+ [m
+[31m-    setPendingAttachment({[m
+[31m-      file,[m
+[31m-      type: getMediaMessageType(file.type),[m
+[31m-    });[m
+[32m+[m[32m    setPendingAttachments((prev) => [...prev, ...attachments]);[m
+     setEditingMessage(null);[m
+     setError("");[m
+[32m+[m
+[32m+[m[32m    // Позволяет повторно выбрать тот же файл[m
+[32m+[m[32m    event.target.value = "";[m
+   }[m
+ [m
+   function closePhotoEditor() {[m
+[36m@@ -502,7 +509,7 @@[m [mexport function ChatThreadPage() {[m
+   }[m
+ [m
+   function handlePhotoEditorSave(file) {[m
+[31m-    setPendingAttachment({[m
+[32m+[m[32m    setPendingAttachments({[m
+       file,[m
+       type: "image",[m
+     });[m
+[36m@@ -516,8 +523,8 @@[m [mexport function ChatThreadPage() {[m
+     }[m
+   }[m
+ [m
+[31m-  function removePendingAttachment() {[m
+[31m-    setPendingAttachment(null);[m
+[32m+[m[32m  function removePendingAttachment(idx) {[m
+[32m+[m[32m    setPendingAttachments((media) => media.filter((md, index) => index !== idx));[m
+     if (attachmentInputRef.current) attachmentInputRef.current.value = "";[m
+   }[m
+ [m
+[36m@@ -982,38 +989,45 @@[m [mexport function ChatThreadPage() {[m
+                 </div>[m
+               ) : null}[m
+ [m
+[31m-              {pendingAttachment && ([m
+[32m+[m[32m              {pendingAttachments?.length > 0 && ([m
+                 <div className="thread-attachment-preview">[m
+[31m-                  <span aria-hidden="true">[m
+[31m-                    {getAttachmentIcon(pendingAttachment.type)}[m
+[31m-                  </span>[m
+[32m+[m[32m                  {pendingAttachments.map((attachment, index) => ([m
+[32m+[m[32m                    <div[m
+[32m+[m[32m                      className="thread-attachment-item"[m
+[32m+[m[32m                      key={`${attachment.file.name}-${index}`}[m
+[32m+[m[32m                    >[m
+[32m+[m[32m                      <span aria-hidden="true">[m
+[32m+[m[32m                        {getAttachmentIcon(attachment.type)}[m
+[32m+[m[32m                      </span>[m
+ [m
+[31m-                  <span title={pendingAttachment.file.name}>[m
+[31m-                    {pendingAttachment.file.name}[m
+[31m-                  </span>[m
+[32m+[m[32m                      <span title={attachment.file.name}>[m
+[32m+[m[32m                        {attachment.file.name}[m
+[32m+[m[32m                      </span>[m
+ [m
+[31m-                  <small>{formatFileSize(pendingAttachment.file.size)}</small>[m
+[32m+[m[32m                      <small>{formatFileSize(attachment.file.size)}</small>[m
+ [m
+[31m-                  <button[m
+[31m-                    aria-label={t("removeAttachment", "Убрать вложение")}[m
+[31m-                    className="thread-composer-close-btn"[m
+[31m-                    onClick={removePendingAttachment}[m
+[31m-                    type="button"[m
+[31m-                  >[m
+[31m-                    <svg[m
+[31m-                      fill="none"[m
+[31m-                      height="14"[m
+[31m-                      stroke="currentColor"[m
+[31m-                      strokeLinecap="round"[m
+[31m-                      strokeLinejoin="round"[m
+[31m-                      strokeWidth="2.5"[m
+[31m-                      viewBox="0 0 24 24"[m
+[31m-                      width="14"[m
+[31m-                    >[m
+[31m-                      <line x1="18" x2="6" y1="6" y2="18" />[m
+[31m-                      <line x1="6" x2="18" y1="6" y2="18" />[m
+[31m-                    </svg>[m
+[31m-                  </button>[m
+[32m+[m[32m                      <button[m
+[32m+[m[32m                        aria-label={t("removeAttachment", "Убрать вложение")}[m
+[32m+[m[32m                        className="thread-composer-close-btn"[m
+[32m+[m[32m                        onClick={() => removePendingAttachment(index)}[m
+[32m+[m[32m                        type="button"[m
+[32m+[m[32m                      >[m
+[32m+[m[32m                        <svg[m
+[32m+[m[32m                          fill="none"[m
+[32m+[m[32m                          height="14"[m
+[32m+[m[32m                          stroke="currentColor"[m
+[32m+[m[32m                          strokeLinecap="round"[m
+[32m+[m[32m                          strokeLinejoin="round"[m
+[32m+[m[32m                          strokeWidth="2.5"[m
+[32m+[m[32m                          viewBox="0 0 24 24"[m
+[32m+[m[32m                          width="14"[m
+[32m+[m[32m                        >[m
+[32m+[m[32m                          <line x1="18" x2="6" y1="6" y2="18" />[m
+[32m+[m[32m                          <line x1="6" x2="18" y1="6" y2="18" />[m
+[32m+[m[32m                        </svg>[m
+[32m+[m[32m                      </button>[m
+[32m+[m[32m                    </div>[m
+[32m+[m[32m                  ))}[m
+                 </div>[m
+               )}[m
+ [m
+[36m@@ -1024,6 +1038,7 @@[m [mexport function ChatThreadPage() {[m
+                     aria-label={t("attachFile", "Прикрепить файл")}[m
+                     className="thread-file-input"[m
+                     onChange={handleAttachmentChange}[m
+[32m+[m[32m                    multiple[m
+                     ref={attachmentInputRef}[m
+                     type="file"[m
+                   />[m
+[36m@@ -1083,11 +1098,10 @@[m [mexport function ChatThreadPage() {[m
+ [m
+                   <div className="thread-composer-submit-wrap">[m
+                     <button[m
+[31m-                      className={`thread-composer-action-btn thread-send-btn ${[m
+[31m-                        draft.trim() || pendingAttachment ? "is-visible" : ""[m
+[31m-                      }`}[m
+[32m+[m[32m                      className={`thread-composer-action-btn thread-send-btn ${draft.trim() || pendingAttachments.length ? "is-visible" : ""[m
+[32m+[m[32m                        }`}[m
+                       disabled={[m
+[31m-                        (!draft.trim() && !pendingAttachment) || isSending[m
+[32m+[m[32m                        (!draft.trim() && !pendingAttachments.length) || isSending[m
+                       }[m
+                       type="submit"[m
+                     >[m
+[36m@@ -1112,9 +1126,8 @@[m [mexport function ChatThreadPage() {[m
+ [m
+                     <button[m
+                       aria-label={t("voiceMessage", "Голосовое сообщение")}[m
+[31m-                      className={`thread-composer-action-btn thread-mic-btn ${[m
+[31m-                        !draft.trim() && !pendingAttachment ? "is-visible" : ""[m
+[31m-                      }`}[m
+[32m+[m[32m                      className={`thread-composer-action-btn thread-mic-btn ${!draft.trim() && !pendingAttachments.length ? "is-visible" : ""[m
+[32m+[m[32m                        }`}[m
+                       type="button"[m
+                     >[m
+                       <svg[m
+[1mdiff --git a/client/mobile/react/services/MessageService.js b/client/mobile/react/services/MessageService.js[m
+[1mindex ba6d85f..2ee68a0 100644[m
+[1m--- a/client/mobile/react/services/MessageService.js[m
+[1m+++ b/client/mobile/react/services/MessageService.js[m
+[36m@@ -105,76 +105,73 @@[m [mclass MessageService {[m
+ [m
+   async sendMediaMessage([m
+     chatId,[m
+[31m-    media,[m
+[31m-    mediaType,[m
+[32m+[m[32m    pendingAttachments,[m
+     caption = "",[m
+     replyTo = null,[m
+   ) {[m
+[31m-    if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {[m
+[31m-      throw new Error(`Unsupported media message type: ${mediaType}`);[m
+[31m-    }[m
+[31m-[m
+[31m-    const chatContext = await this.getChatContext(chatId, "media encryption");[m
+[31m-    const encryptedMedia = await this.cryptoService.encryptMedia([m
+[32m+[m[32m    const chatContext = await this.getChatContext([m
+       chatId,[m
+[31m-      media,[m
+[31m-      chatContext,[m
+[32m+[m[32m      "media encryption",[m
+     );[m
+[32m+[m[41m  [m
+[32m+[m[32m    const media = await Promise.all([m
+[32m+[m[32m      pendingAttachments.map((md) =>[m
+[32m+[m[32m        this.cryptoService.encryptMedia([m
+[32m+[m[32m          chatId,[m
+[32m+[m[32m          md.file,[m
+[32m+[m[32m          chatContext,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m      ),[m
+[32m+[m[32m    );[m
+[32m+[m[41m  [m
+     const uploadResponse = await this.apiClient.post([m
+       API_ENDPOINTS.MEDIA_UPLOAD,[m
+       {[m
+[31m-        file: encryptedMedia,[m
+[31m-        type: mediaType,[m
+[32m+[m[32m        files: media,[m
+         purpose: "message",[m
+       },[m
+     );[m
+[31m-[m
+[32m+[m[41m  [m
+     const trimmedCaption = (caption || "").trim();[m
+[32m+[m[41m  [m
+     const encryptedCaption = trimmedCaption[m
+[31m-      ? await this.encryptContent(chatId, trimmedCaption, chatContext)[m
+[32m+[m[32m      ? await this.encryptContent([m
+[32m+[m[32m          chatId,[m
+[32m+[m[32m          trimmedCaption,[m
+[32m+[m[32m          chatContext,[m
+[32m+[m[32m        )[m
+       : "";[m
+[31m-    // Never copy the upload response wholesale into message metadata. Some[m
+[31m-    // deployments return the ciphertext inside `encryption`, which makes the[m
+[31m-    // subsequent /messages request as large as the file and trips the chat[m
+[31m-    // service JSON limit. The media service already stores the ciphertext.[m
+[31m-    const mediaEncryption = this.mediaMetadataFromPayload(encryptedMedia);[m
+[31m-[m
+[32m+[m[41m  [m
+[32m+[m[32m    const mediaEncryption = media.map((encryptedMedia) =>[m
+[32m+[m[32m      this.mediaMetadataFromPayload(encryptedMedia),[m
+[32m+[m[32m    );[m
+[32m+[m[41m  [m
+     const response = await this.apiClient.post([m
+       API_ENDPOINTS.MESSAGE_SEND(chatId),[m
+       {[m
+         content: encryptedCaption,[m
+[31m-        type: mediaType,[m
+[32m+[m[32m        type: "media",[m
+         replyTo,[m
+         mediaUrl: uploadResponse.data?.url,[m
+[31m-        mediaType,[m
+         mediaEncrypted: true,[m
+         mediaEncryption,[m
+         isEncrypted: Boolean(trimmedCaption),[m
+       },[m
+     );[m
+[31m-[m
+[32m+[m[41m  [m
+     const messageObj = response.data?.message ?? response.data;[m
+[31m-    const localUrl =[m
+[31m-      typeof URL !== "undefined" && typeof URL.createObjectURL === "function"[m
+[31m-        ? URL.createObjectURL([m
+[31m-            await this.cryptoService.decryptMedia([m
+[31m-              chatId,[m
+[31m-              encryptedMedia,[m
+[31m-              chatContext,[m
+[31m-            ),[m
+[31m-          )[m
+[31m-        : uploadResponse.data?.url;[m
+[32m+[m[41m  [m
+     const message = Message.fromAPI({[m
+       ...messageObj,[m
+       content: trimmedCaption,[m
+[31m-      mediaUrl: localUrl,[m
+[32m+[m[32m      mediaUrl: uploadResponse.data?.url,[m
+       mediaEncrypted: true,[m
+       mediaEncryption,[m
+     });[m
+[31m-[m
+[32m+[m[41m  [m
+     this.addMessageToCache(chatId, message);[m
+     eventBus.emit("message:sent", message);[m
+[31m-[m
+[32m+[m[41m  [m
+     return message;[m
+   }[m
+ [m

@@ -685,6 +685,36 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
+
+	case suffix == "/bulk-forward" && r.Method == http.MethodPost:
+		var input ForwardMessageInput
+		if !decode(w, r, &input) {
+			return
+		}
+
+		if err := validate.Struct(input); err != nil {
+			if _, ok := err.(validator.ValidationErrors); ok {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_input", "invalid forward data")
+				return
+			}
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "validation failed")
+			return
+		}
+
+		msg, err := h.service.ForwardMessages(r.Context(), input.ChatID, input.TargetChatID, input.Caption, input.Messages)
+		if errors.Is(err, ErrNotFound) {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
+			return
+		}
+		if errors.Is(err, ErrForbidden) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			return
+		}
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "forward failed")
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
 	case suffix == "/reactions" && r.Method == http.MethodGet:
 		reactions, err := h.service.ListReactions(r.Context(), current.ID, targetID)
 		if err != nil {
