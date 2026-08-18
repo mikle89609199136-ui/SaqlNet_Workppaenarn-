@@ -73,6 +73,7 @@ type Member struct {
 	Role        string         `json:"role"`
 	Permissions map[string]any `json:"permissions"`
 	MutedUntil  string         `json:"mutedUntil,omitempty"`
+	MutedAt     string         `json:"mutedAt,omitempty"`
 	JoinedAt    string         `json:"joinedAt"`
 }
 
@@ -684,7 +685,7 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
-		       COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), cm.joined_at::text
+		       COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), COALESCE(cm.muted_at::text, ''), cm.joined_at::text
 		FROM chats.members cm
 		JOIN auth.users au ON au.id = cm.user_id
 		LEFT JOIN users.profiles up ON up.user_id = au.id
@@ -699,7 +700,7 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 	for rows.Next() {
 		var member Member
 		var permissions jsonMap
-		if err := rows.Scan(&member.ID, &member.Username, &member.FirstName, &member.LastName, &member.AvatarURL, &member.Role, &permissions, &member.MutedUntil, &member.JoinedAt); err != nil {
+		if err := rows.Scan(&member.ID, &member.Username, &member.FirstName, &member.LastName, &member.AvatarURL, &member.Role, &permissions, &member.MutedUntil, &member.MutedAt, &member.JoinedAt); err != nil {
 			return nil, err
 		}
 		member.Permissions = map[string]any(permissions)
@@ -1010,7 +1011,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	var m Member
 	err = s.db.QueryRowContext(ctx, `
 		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
-		COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), cm.joined_at::text
+		COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), COALESCE(cm.muted_at::text, ''), cm.joined_at::text
 		FROM auth.users au
 		JOIN chats.members cm ON cm.user_id = au.id
 		LEFT JOIN users.profiles up ON up.user_id = au.id
@@ -1024,6 +1025,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		&m.Role,
 		&permissions,
 		&m.MutedUntil,
+		&m.MutedAt,
 		&m.JoinedAt,
 	)
 	m.Permissions = map[string]any(permissions)

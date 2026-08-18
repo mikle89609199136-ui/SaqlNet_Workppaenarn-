@@ -62,8 +62,8 @@ func TestAddMember_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "joined_at",
-		}).AddRow(userID, "new_user", "Ivan", "Ivanov", "", "member", "{}", "", time.Now().Format(time.RFC3339)))
+			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at",
+		}).AddRow(userID, "new_user", "Ivan", "Ivanov", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
 
 	member, err := svc.AddMember(context.Background(), actorID, chatID, userID)
 	if err != nil {
@@ -76,6 +76,10 @@ func TestAddMember_Success(t *testing.T) {
 
 	if member.ID != userID {
 		t.Errorf("expected member id %s, got %s", userID, member.ID)
+	}
+
+	if member.MutedAt == "" {
+		t.Errorf("expected member.MutedAt to be populated")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -346,8 +350,8 @@ func TestAddMember_Broadcast(t *testing.T) {
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "joined_at",
-		}).AddRow(userID, "user", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339)))
+			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at",
+		}).AddRow(userID, "user", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
 
 	// Вызываем метод.
 	// На RED-фазе мы просто проверяем, что код не падает, если ws == nil,
