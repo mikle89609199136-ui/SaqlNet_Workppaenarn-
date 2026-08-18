@@ -2008,6 +2008,153 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
+func (s *Service) isMessagesCheck(ctx context.Context, chatID string, message []TMessages) (bool, error) {
+	count := len(message)
+	var messageIDS []string = make([]string, count)
+	var ok bool
+
+	for i, msg := range message {
+		messageIDS[i] = msg.MessageID
+	}
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages.messages WHERE chat_id = $1 AND id = ANY($2) 
+	AND deleted_at IS NULL HAVING COUNT(DISTINCT id) = $3)`, chatID, pq.Array(messageIDS), count).Scan(&ok)
+	return ok, err
+}
+
+// Функция проверяет, что пользователь находится во всех чатов по массиву chatIDS. Дубликаты вернут false
+func (s *Service) isMemberOfChats(ctx context.Context, userID string, chatIDS []string) (bool, error) {
+	count := len(chatIDS)
+	var ok bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members 
+	WHERE user_id = $1 AND chat_id = ANY($2) HAVING COUNT(DISTINCT chat_id) = $3)`, userID, pq.Array(chatIDS), count).Scan(&ok)
+	return ok, err
+}
+
+func (s *Service) sendMessages(ctx context.Context, messages []TMessages, caption, targetChatID, userID string) ([]Message, error) {
+	totalLength := len(messages)
+
+	hasCaption := caption != ""
+
+	if hasCaption {
+		totalLength++
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback()
+
+	content := make([]string, totalLength)
+	metadata := make([]*string, totalLength)
+	messageType := make([]string, totalLength)
+
+	startIDX := 0
+	if hasCaption {
+		content[0] = caption
+		metadata[0] = nil
+		startIDX = 1
+	}
+
+	for i, m := range messages {
+		idx := startIDX + i
+		content[idx] = m.Content
+		messageType[idx] = m.Type
+		
+		if m.Metadata == nil {
+			metadata[idx] = nil
+			continue
+		}
+
+		b, err := json.Marshal(m.Metadata)
+		if err != nil {
+			return nil, err
+		}
+
+		st := string(b)
+		metadata[idx] = &st
+	}
+
+	query := `
+	    INSERT INTO messages.messages (chat_id, sender_id, content, metadata, type)
+		SELECT $1, $2, u.content, u.metadata, u.type FROM unnest($3::text[], $4::jsonb[], $5::text[])
+		AS u(content, metadata, type) RETURNING id, chat_id, sender_id, content, metadata, type, created_at`
+
+	rows, err := tx.QueryContext(ctx, query, targetChatID, userID, pq.Array(content), pq.Array(metadata), pq.Array(messageType))
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	result := make([]Message, 0, totalLength)
+
+	for rows.Next() {
+		var message Message
+		if err := rows.Scan(
+			&message.ID,
+			&message.ChatID,
+			&message.SenderID,
+			&message.Content,
+			&message.Metadata,
+			&message.Type,
+			&message.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		result = append(result, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ForwardMessage copies a message into a target chat.
+func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetChatID, caption string, messages []TMessages) (Message, error) {
+
+	if ok, err := s.isMemberOfChats(ctx, userID, []string{chatID, targetChatID}); err != nil || !ok {
+		if err != nil {
+			return Message{}, err
+		}
+
+		return Message{}, ErrForbidden
+	}
+
+	if ok, err := s.isMessagesCheck(ctx, chatID, messages); err != nil || !ok {
+		if err != nil {
+			return Message{}, err
+		}
+		return Message{}, ErrForbidden
+	}
+
+	var src Message
+
+	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
+		if err != nil {
+			return Message{}, err
+		}
+		return Message{}, ErrForbidden
+	}
+
+	if src.Metadata == nil {
+		src.Metadata = make(map[string]any)
+	}
+	src.Metadata["forwardedFrom"] = src.ID
+	src.Metadata["forwardedSenderName"] = src.SenderName
+	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+}
+
 // Reaction types.
 
 type Reaction struct {
