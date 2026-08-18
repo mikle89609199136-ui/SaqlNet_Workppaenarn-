@@ -326,6 +326,93 @@ func TestRespondSuccess_MemberNotFound(t *testing.T) {
 	}
 }
 
+// TestRespondSuccess_CannotModerateTarget проверяет маппинг
+// ErrCannotModerateTarget → 403 cannot_moderate_target (матрица прав:
+// модерация цели запрещена иерархией, а не доступом).
+func TestRespondSuccess_CannotModerateTarget(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/chats/"+handlerChatID+"/members/"+handlerTargetID+"/mute", bytes.NewReader(nil))
+	recorder := httptest.NewRecorder()
+
+	respondSuccess(recorder, req, ErrCannotModerateTarget)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+	var response struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != "cannot_moderate_target" {
+		t.Fatalf("code = %q, want cannot_moderate_target", response.Code)
+	}
+}
+
+// TestRespondSuccess_UserNotFound проверяет маппинг ErrUserNotFound →
+// 404 user_not_found (ban/unban несуществующего пользователя).
+func TestRespondSuccess_UserNotFound(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/chats/"+handlerChatID+"/members/"+handlerTargetID+"/ban", bytes.NewReader(nil))
+	recorder := httptest.NewRecorder()
+
+	respondSuccess(recorder, req, ErrUserNotFound)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+	var response struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != "user_not_found" {
+		t.Fatalf("code = %q, want user_not_found", response.Code)
+	}
+}
+
+// TestHandler_MuteMember_TargetNotMember проверяет, что mute несуществующего
+// участника отвечает 404 member_not_found (а не общим not_found): сервис
+// возвращает ErrNotFound, handler обязан перевести его в member_not_found.
+func TestHandler_MuteMember_TargetNotMember(t *testing.T) {
+	h, mock := newTestHandler(t)
+
+	// Актор — owner, проходит проверку прав.
+	mock.ExpectQuery(memberRoleQuery).
+		WithArgs(handlerActorID, handlerChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	// Цели нет в chats.members → сервис вернёт ErrNotFound.
+	mock.ExpectQuery(muteMemberTargetQuery).
+		WithArgs(handlerTargetID, handlerChatID).
+		WillReturnError(sql.ErrNoRows)
+
+	req := newAuthedRequest(
+		http.MethodPost,
+		"/api/v2/chats/"+handlerChatID+"/members/"+handlerTargetID+"/mute",
+		[]byte(`{}`), // валидный JSON, иначе упадём на decode с 400
+		handlerActorID,
+	)
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assertErrorResponse(t, rr, http.StatusNotFound, "member_not_found")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestHandler_ListBans_InvalidUUID проверяет, что GET /bans с невалидным
+// chatId отвечает 400 validation_failed без обращения к БД (критерий
+// «некорректные UUID не приводят к 500»).
+func TestHandler_ListBans_InvalidUUID(t *testing.T) {
+	h, mock := newTestHandler(t)
+
+	req := newAuthedRequest(http.MethodGet, "/api/v2/chats/not-a-uuid/bans", nil, handlerActorID)
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestMuteMember_InvalidInput проверяет, что MuteMember отклоняет невалидный
 // ввод (битые UUID, mutedUntil в прошлом) ошибкой ErrInvalidInput и не
 // выполняет ни одного SQL-запроса: ExpectationsWereMet без ожиданий это

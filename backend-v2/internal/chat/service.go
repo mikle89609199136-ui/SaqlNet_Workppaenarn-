@@ -1144,10 +1144,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 			WHERE chat_id = $1 AND user_id = $2
 			`, chatID, userID, actorID, reason, bannedUntil)
 	} else {
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until)
-			VALUES ($1, $2, $3, $4, $5)
-		`, chatID, userID, actorID, reason, bannedUntil)
+		_, err = tx.ExecContext(ctx, `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`, chatID, userID, actorID, reason, bannedUntil)
 	}
 
 	if err != nil {
@@ -1225,6 +1222,10 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 }
 
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
+	input := leaveChatInput{ChatID: chatID}
+	if err := validate.Struct(input); err != nil {
+		return nil, ErrInvalidInput
+	}
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
 		return nil, err

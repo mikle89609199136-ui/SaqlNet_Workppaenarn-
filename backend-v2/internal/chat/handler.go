@@ -192,6 +192,10 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 			return
 		}
+		if errors.Is(err, ErrInvalidInput) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "fetch failed")
 			return
@@ -256,10 +260,14 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/ban" && r.Method == http.MethodPost {
 			var input struct {
-				Reason string `json:"reason"`
+				BannedUntil *time.Time `json:"bannedUntil"`
+				Reason      string     `json:"reason"`
 			}
-			_ = decode(w, r, &input)
-			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, nil, input.Reason))
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid ban body")
+				return
+			}
+			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.BannedUntil, input.Reason))
 			return
 		}
 		if action == "/unban" && r.Method == http.MethodPost {
@@ -267,11 +275,28 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "/mute" && r.Method == http.MethodPost {
-			respondSuccess(w, r, h.service.MuteMember(r.Context(), current.ID, chatID, memberID, nil))
+			var input struct {
+				MutedUntil *time.Time `json:"mutedUntil"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mute body")
+				return
+			}
+			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, input.MutedUntil)
+			if errors.Is(err, ErrNotFound) {
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
+				return
+			}
+			respondSuccess(w, r, err)
 			return
 		}
 		if action == "/unmute" && r.Method == http.MethodPost {
-			respondSuccess(w, r, h.service.UnmuteMember(r.Context(), current.ID, chatID, memberID))
+			err := h.service.UnmuteMember(r.Context(), current.ID, chatID, memberID)
+			if errors.Is(err, ErrNotFound) {
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
+				return
+			}
+			respondSuccess(w, r, err)
 			return
 		}
 		if action == "" && r.Method == http.MethodDelete {
@@ -485,6 +510,14 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "resource not found")
+		return
+	}
+	if errors.Is(err, ErrCannotModerateTarget) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "cannot_moderate_target", "cannot moderate target")
+		return
+	}
+	if errors.Is(err, ErrUserNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
 		return
 	}
 	if err != nil {

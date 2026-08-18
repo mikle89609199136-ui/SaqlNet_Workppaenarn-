@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
 )
 
 // Тестовые UUID — валидные, чтобы не срабатывала валидация входных данных.
@@ -40,6 +41,21 @@ const (
 	JOIN auth.users u ON u.id = cm.user_id
 	WHERE cm.chat_id = $1 AND cm.user_id = $2
 	`
+	// muteMemberSelectQuery — точная копия SQL чтения состояния цели в Service.MuteMember.
+	muteMemberTargetQuery = `
+		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`
+	muteMemberUpdateQuery = `
+		UPDATE chats.members SET muted_at = NOW(), muted_until = $3
+		WHERE chat_id = $1 AND user_id = $2
+	`
+	// banTargetRoleQuery — точная копия SQL чтения роли цели в Service.BanMember
+	// (с переносами и отступами, как в service.go).
+	banTargetRoleQuery = `
+		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`
+	banSelectQuery = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
+	banInsertQuery = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
 )
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
@@ -420,6 +436,136 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatalf("mock expectations: %v", err)
 			}
+		})
+	}
+}
+
+// TestHandler_MuteMember_InvalidUUID проверяет, что невалидные UUID в пути
+// mute отклоняются 400 validation_failed без обращения к БД (сервисная
+// валидация + respondSuccess). Закрывает критерий «некорректные UUID не приводят к 500».
+func TestHandler_MuteMember_InvalidUUID(t *testing.T) {
+	h, mock := newTestHandler(t)
+	req := newAuthedRequest(http.MethodPost, "/api/v2/chats/not-a-uuid/members/"+handlerTargetID+"/mute", nil, handlerActorID)
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+	assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestHandler_MuteMember_Body проверяет разбор тела mute: валидный
+// mutedUntil (RFC3339) передаётся в сервис, кривой таймстемп → 400 validation_failed без SQL.
+func TestHandler_MuteMember_Body(t *testing.T) {
+	future := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+	h, mock := newTestHandler(t)
+
+	tests := []struct {
+		name       string
+		setupMock  func()
+		body       string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			"валидное тело",
+			func() {
+				mock.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+				mock.ExpectQuery(muteMemberTargetQuery).
+					WithArgs(handlerTargetID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", nil, nil))
+				mock.ExpectExec(muteMemberUpdateQuery).
+					WithArgs(handlerChatID, handlerTargetID, future).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+			},
+			`{"mutedUntil": "2030-01-01T12:00:00Z"}`,
+			http.StatusOK,
+			"",
+		},
+		{
+			"невалидное тело",
+			nil,
+			`{"mutedUntil": "not-a-timestamp"}`,
+			http.StatusBadRequest, // 400
+			"validation_failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupMock != nil {
+				tt.setupMock()
+			}
+
+			req := newAuthedRequest(http.MethodPost, "/api/v2/chats/"+handlerChatID+"/members/"+handlerTargetID+"/mute", []byte(tt.body), handlerActorID)
+			rr := httptest.NewRecorder()
+			h.Chat(rr, req)
+
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestHandler_BanMember_Body проверяет разбор тела ban: валидные
+// bannedUntil (RFC3339) и reason передаются в сервис, кривой таймстемп →
+// 400 validation_failed без SQL. Раньше ошибка decode молча глоталась
+// (_ = decode), а bannedUntil всегда был nil.
+func TestHandler_BanMember_Body(t *testing.T) {
+	future := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+	h, mock := newTestHandler(t)
+
+	tests := []struct {
+		name       string
+		setupMock  func()
+		body       string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			"валидное тело",
+			func() {
+				mock.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+				mock.ExpectQuery(banTargetRoleQuery).
+					WithArgs(handlerTargetID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+				mock.ExpectQuery(banSelectQuery).
+					WithArgs(handlerChatID, handlerTargetID).
+					WillReturnError(sql.ErrNoRows)
+				mock.ExpectBegin()
+				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
+					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(banInsertQuery).
+					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			`{"bannedUntil": "2030-01-01T12:00:00Z", "reason": "spam"}`,
+			http.StatusOK,
+			"",
+		},
+		{
+			"невалидное тело",
+			nil,
+			`{"bannedUntil": "not-a-timestamp"}`,
+			http.StatusBadRequest, // 400
+			"validation_failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupMock != nil {
+				tt.setupMock()
+			}
+
+			req := newAuthedRequest(http.MethodPost, "/api/v2/chats/"+handlerChatID+"/members/"+handlerTargetID+"/ban", []byte(tt.body), handlerActorID)
+			rr := httptest.NewRecorder()
+			h.Chat(rr, req)
+
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }
