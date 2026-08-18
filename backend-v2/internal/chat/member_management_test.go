@@ -783,7 +783,7 @@ func TestBanMember_PreventiveBan(t *testing.T) {
 	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
 	require.NoError(t, err)
 	require.Len(t, realtime.broadcasts, 1)
-	var event MemberBannedEvent
+	var event MemberBanEvent
 	err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
 	require.NoError(t, err)
 	require.Equal(t, "chat_member_banned", event.Type)
@@ -827,7 +827,7 @@ func TestBanMember_BansExistingMember(t *testing.T) {
 
 	// [0] — chat_member_banned всему чату
 	require.Equal(t, muteTestChatID, realtime.broadcasts[0].chatID)
-	var banned MemberBannedEvent
+	var banned MemberBanEvent
 	require.NoError(t, json.Unmarshal(realtime.broadcasts[0].payload, &banned))
 	require.Equal(t, "chat_member_banned", banned.Type)
 	require.Equal(t, muteTestUserID, banned.UserID)
@@ -842,7 +842,7 @@ func TestBanMember_BansExistingMember(t *testing.T) {
 
 	// [2] — адресное забаненному: chatID записи == userID
 	require.Equal(t, muteTestUserID, realtime.broadcasts[2].chatID)
-	var personal MemberBannedEvent
+	var personal MemberBanEvent
 	require.NoError(t, json.Unmarshal(realtime.broadcasts[2].payload, &personal))
 	require.Equal(t, "chat_member_banned", personal.Type)
 
@@ -901,7 +901,7 @@ func TestBanMember_Idempotent(t *testing.T) {
 
 			if tt.wantUpdate {
 				require.Len(t, realtime.broadcasts, 1)
-				var event MemberBannedEvent
+				var event MemberBanEvent
 				err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
 				require.NoError(t, err)
 				require.Equal(t, "chat_member_banned", event.Type)
@@ -920,4 +920,109 @@ func TestBanMember_Idempotent(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// TestUnbanMember_InvalidInput проверяет, что UnbanMember отклоняет
+// невалидные UUID ошибкой ErrInvalidInput и не выполняет ни одного SQL-запроса.
+func TestUnbanMember_InvalidInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		actorID string
+		chatID  string
+		userID  string
+	}{
+		{name: "невалидный actorID", actorID: "not-a-uuid", chatID: muteTestChatID, userID: muteTestUserID},
+		{name: "невалидный chatID", actorID: muteTestActorID, chatID: "not-a-uuid", userID: muteTestUserID},
+		{name: "невалидный userID", actorID: muteTestActorID, chatID: muteTestChatID, userID: "not-a-uuid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, _ := newMemberManagementService(t)
+			err := svc.UnbanMember(context.Background(), tt.actorID, tt.chatID, tt.userID)
+			require.ErrorIs(t, err, ErrInvalidInput)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestUnbanMember_ForbiddenWhenActorIsMember проверяет, что member не может
+// снимать ban: ErrForbidden, без DELETE и WS-событий.
+func TestUnbanMember_ForbiddenWhenActorIsMember(t *testing.T) {
+	svc, mock, _ := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+
+	err := svc.UnbanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.ErrorIs(t, err, ErrForbidden)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUnbanMember_UserNotFound проверяет, что unban пользователя, которого
+// нет в auth.users, возвращает ErrUserNotFound (404): нельзя разбанить несуществующий аккаунт.
+func TestUnbanMember_UserNotFound(t *testing.T) {
+	svc, mock, _ := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	err := svc.UnbanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.ErrorIs(t, err, ErrUserNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUnbanMember_NotBannedIsIdempotent проверяет, что unban незабаненного
+// (нет активной строки в chats.bans) возвращает success без DELETE и без WS-события.
+func TestUnbanMember_NotBannedIsIdempotent(t *testing.T) {
+	svc, mock, _ := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Проверка существующего бана (нужна для идемпотентности)
+	mock.ExpectQuery(`SELECT banned_until FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnError(sql.ErrNoRows)
+
+	err := svc.UnbanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUnbanMember_Success проверяет успешный unban: owner снимает ban —
+// выполняется DELETE из chats.bans и в чат уходит событие
+// chat_member_unbanned. Пользователь обратно в группу НЕ добавляется
+// (критерий приёмки: unban не добавляет автоматически).
+func TestUnbanMember_Success(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	mock.ExpectQuery(`SELECT role FROM chats\.members WHERE user_id = \$1 AND chat_id = \$2`).
+		WithArgs(muteTestActorID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users WHERE id = \$1\)`).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Проверка существующего бана
+	mock.ExpectQuery(`SELECT banned_until FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"banned_until"}).AddRow(nil))
+	mock.ExpectExec(`DELETE FROM chats\.bans WHERE chat_id = \$1 AND user_id = \$2`).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := svc.UnbanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
+	require.NoError(t, err)
+	require.Len(t, realtime.broadcasts, 1)
+	var event MemberBanEvent
+	err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+	require.NoError(t, err)
+	require.Equal(t, "chat_member_unbanned", event.Type)
+	require.Equal(t, muteTestChatID, event.ChatID)
+	require.Equal(t, muteTestUserID, event.UserID)
+	require.Equal(t, muteTestActorID, event.ByUserID)
+	require.NoError(t, mock.ExpectationsWereMet())
 }

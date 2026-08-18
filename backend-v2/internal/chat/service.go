@@ -923,7 +923,10 @@ type MemberMuteEvent struct {
 	MutedUntil *time.Time `json:"mutedUntil"`
 }
 
-type MemberBannedEvent struct {
+// MemberBanEvent — событие ban/unban участника; Type различает
+// (chat_member_banned / chat_member_unbanned). При unban поля Reason и
+// BannedUntil пустые ("" и null) — клиенты должны их игнорировать.
+type MemberBanEvent struct {
 	Type        string     `json:"type"`
 	ChatID      string     `json:"chatId"`
 	UserID      string     `json:"userId"`
@@ -1155,7 +1158,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	}
 
 	if s.ws != nil {
-		payload, _ := json.Marshal(MemberBannedEvent{
+		payload, _ := json.Marshal(MemberBanEvent{
 			Type: "chat_member_banned", ChatID: chatID, UserID: userID,
 			ByUserID: actorID, Reason: reason, BannedUntil: bannedUntil,
 		})
@@ -1175,6 +1178,10 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 }
 
 func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID string) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
 		return err
@@ -1182,8 +1189,39 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
+
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)
+		`, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrUserNotFound
+	}
+
+	var bannedUntil sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT banned_until FROM chats.bans WHERE chat_id = $1 AND user_id = $2
+		`, chatID, userID).Scan(&bannedUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
 	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
-	return err
+	if err != nil {
+		return err
+	}
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberBanEvent{
+			Type: "chat_member_unbanned", ChatID: chatID, UserID: userID, ByUserID: actorID,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
