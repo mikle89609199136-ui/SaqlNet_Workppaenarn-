@@ -14,6 +14,7 @@ services:
       - MEDIA_URL=http://media:8084
       - ADMIN_URL=http://admin:8085
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       - FRONTEND_DIR=/dist
       - NATS_URL=nats://nats:4222
     depends_on:
