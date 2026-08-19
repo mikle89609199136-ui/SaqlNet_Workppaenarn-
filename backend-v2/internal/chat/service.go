@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-	"uuid"
-
+	
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
