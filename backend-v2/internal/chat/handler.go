@@ -701,7 +701,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		msg, err := h.service.ForwardMessages(r.Context(), input.ChatID, input.TargetChatID, input.Caption, input.Messages)
+		msg, err := h.service.ForwardMessages(r.Context(), current.ID, input.ChatID, input.TargetChatID, input.Caption, input.Messages)
 		if errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			return
@@ -714,7 +714,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "forward failed")
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
+		httpx.JSON(w, http.StatusOK, map[string]any{"messages": msg})
 	case suffix == "/reactions" && r.Method == http.MethodGet:
 		reactions, err := h.service.ListReactions(r.Context(), current.ID, targetID)
 		if err != nil {

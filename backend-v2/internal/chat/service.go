@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
 
@@ -2140,7 +2142,7 @@ func (s *Service) isMemberOfChats(ctx context.Context, userID string, chatIDS []
 	return ok, err
 }
 
-func (s *Service) sendMessages(ctx context.Context, messages []TMessages, caption, targetChatID, userID string) ([]Message, error) {
+func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages, caption, targetChatID, userID string) ([]ResForwardMessage, error) {
 	totalLength := len(messages)
 
 	hasCaption := caption != ""
@@ -2157,53 +2159,136 @@ func (s *Service) sendMessages(ctx context.Context, messages []TMessages, captio
 
 	defer tx.Rollback()
 
+	// Messages
+	messageIDS := make([]string, totalLength)
 	content := make([]string, totalLength)
-	metadata := make([]*string, totalLength)
+	metadata := make([]string, totalLength)
 	messageType := make([]string, totalLength)
 
+	// Attachments
+	attachmentMessageIDs := make([]string, 0)
+	attachmentPosition := make([]int, 0)
+	mediaURL := make([]string, 0)
+	mediaTypes := make([]string, 0)
+	fileName := make([]string, 0)
+	fileSize := make([]int64, 0)
+	mediaEncrypted := make([]bool, 0)
+
 	startIDX := 0
+
+	// Caption — отдельное первое сообщение.
 	if hasCaption {
+		messageIDS[0] = uuid.NewString()
 		content[0] = caption
-		metadata[0] = nil
+		metadata[0] = "{}"
+		messageType[0] = "text"
 		startIDX = 1
 	}
 
+	// Подготавливаем messages + attachments.
 	for i, m := range messages {
+		id := uuid.NewString()
 		idx := startIDX + i
+
+		messageIDS[idx] = id
 		content[idx] = m.Content
 		messageType[idx] = m.Type
-		
-		if m.Metadata == nil {
-			metadata[idx] = nil
-			continue
+
+		if m.Metadata != nil {
+			b, err := json.Marshal(m.Metadata)
+			if err != nil {
+				return nil, err
+			}
+
+			metadata[idx] = string(b)
+		} else {
+			metadata[idx] = "{}"
 		}
 
-		b, err := json.Marshal(m.Metadata)
-		if err != nil {
-			return nil, err
+		for position, attachment := range m.Attachments {
+			attachmentMessageIDs = append(attachmentMessageIDs, id)
+			attachmentPosition = append(attachmentPosition, position)
+			mediaURL = append(mediaURL, attachment.MediaURL)
+			mediaTypes = append(mediaTypes, attachment.ContentType)
+			fileName = append(fileName, attachment.FileName)
+			fileSize = append(fileSize, attachment.FileSize)
+			mediaEncrypted = append(mediaEncrypted, attachment.MediaEncrypted)
 		}
-
-		st := string(b)
-		metadata[idx] = &st
 	}
 
-	query := `
-	    INSERT INTO messages.messages (chat_id, sender_id, content, metadata, type)
-		SELECT $1, $2, u.content, u.metadata, u.type FROM unnest($3::text[], $4::jsonb[], $5::text[])
-		AS u(content, metadata, type) RETURNING id, chat_id, sender_id, content, metadata, type, created_at`
+	// 1. Создаём messages.
+	messagesQuery := `
+	    INSERT INTO messages.messages (id, chat_id, sender_id, content, metadata, type)
+		SELECT u.id, $2, $3, u.content, u.metadata, u.type FROM unnest($1::uuid[], $4::text[], $5::jsonb[], $6::text[])
+		AS u(id, content, metadata, type)`
 
-	rows, err := tx.QueryContext(ctx, query, targetChatID, userID, pq.Array(content), pq.Array(metadata), pq.Array(messageType))
+	if _, err := tx.ExecContext(ctx, messagesQuery, pq.Array(messageIDS), targetChatID, userID, pq.Array(content), pq.Array(metadata), pq.Array(messageType)); err != nil {
+		return nil, err
+	}
+
+	// 2. Создаём attachments, если есть вложения
+	if len(attachmentMessageIDs) > 0 {
+		attachmentsQuery := `
+			INSERT INTO messages.attachments ( message_id, position, media_url, media_type, file_name, size_bytes, media_encrypted) 
+			SELECT u.message_id, u.position, u.media_url, u.media_type, u.file_name, u.size_bytes, u.media_encrypted 
+			FROM unnest($1::uuid[], $2::int[], $3::text[], $4::text[], $5::text[], $6::bigint[], $7::bool[])
+			AS u(message_id, position, media_url, media_type, file_name, size_bytes, media_encrypted)`
+
+		if _, err := tx.ExecContext(ctx, attachmentsQuery, pq.Array(attachmentMessageIDs), pq.Array(attachmentPosition), pq.Array(mediaURL),
+			pq.Array(mediaTypes), pq.Array(fileName), pq.Array(fileSize), pq.Array(mediaEncrypted)); err != nil {
+			return nil, err
+		}
+	}
+
+	// 3. Получаем созданные messages вместе с attachments.
+	const selectQuery = `
+		SELECT m.id, m.chat_id, m.sender_id, m.content, m.metadata, m.type, m.created_at,
+			COALESCE(
+				jsonb_agg(
+					jsonb_build_object(
+						'id', a.id,
+						'messageId', a.message_id,
+						'position', a.position,
+						'mediaUrl', a.media_url,
+						'mediaType', a.media_type,
+						'fileName', a.file_name,
+						'sizeBytes', a.size_bytes,
+						'mediaEncrypted', a.media_encrypted,
+						'createdAt', a.created_at
+					)
+					ORDER BY a.position
+				) FILTER (WHERE a.id IS NOT NULL),
+				'[]'::jsonb
+			) AS attachments
+
+		FROM messages.messages m
+
+		LEFT JOIN messages.attachments a
+			ON a.message_id = m.id
+
+		WHERE m.id = ANY($1::uuid[])
+
+		GROUP BY m.id, m.chat_id, m.sender_id, m.content, m.metadata, m.type, m.created_at
+
+		ORDER BY array_position($1::uuid[], m.id)
+	`
+
+	rows, err := tx.QueryContext(ctx, selectQuery, pq.Array(messageIDS))
 
 	if err != nil {
 		return nil, err
 	}
 
+	
 	defer rows.Close()
 
-	result := make([]Message, 0, totalLength)
+
+	result := make([]ResForwardMessage, 0, totalLength)
 
 	for rows.Next() {
-		var message Message
+		var message ResForwardMessage
+		var attachmentsJSON []byte
+
 		if err := rows.Scan(
 			&message.ID,
 			&message.ChatID,
@@ -2212,7 +2297,12 @@ func (s *Service) sendMessages(ctx context.Context, messages []TMessages, captio
 			&message.Metadata,
 			&message.Type,
 			&message.CreatedAt,
+			&attachmentsJSON,
 		); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal(attachmentsJSON, &message.Attachments); err != nil {
 			return nil, err
 		}
 
@@ -2231,38 +2321,25 @@ func (s *Service) sendMessages(ctx context.Context, messages []TMessages, captio
 }
 
 // ForwardMessage copies a message into a target chat.
-func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetChatID, caption string, messages []TMessages) (Message, error) {
+func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetChatID, caption string, messages []TMessages) ([]ResForwardMessage, error) {
 
 	if ok, err := s.isMemberOfChats(ctx, userID, []string{chatID, targetChatID}); err != nil || !ok {
 		if err != nil {
-			return Message{}, err
+			return nil, err
 		}
 
-		return Message{}, ErrForbidden
+		return nil, ErrForbidden
 	}
 
 	if ok, err := s.isMessagesCheck(ctx, chatID, messages); err != nil || !ok {
 		if err != nil {
-			return Message{}, err
+			return nil, err
 		}
-		return Message{}, ErrForbidden
+		return nil, ErrForbidden
 	}
 
-	var src Message
 
-	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
-		if err != nil {
-			return Message{}, err
-		}
-		return Message{}, ErrForbidden
-	}
-
-	if src.Metadata == nil {
-		src.Metadata = make(map[string]any)
-	}
-	src.Metadata["forwardedFrom"] = src.ID
-	src.Metadata["forwardedSenderName"] = src.SenderName
-	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+	return s.sendForwardMessages(ctx, messages, caption, targetChatID, userID)
 }
 
 // Reaction types.
