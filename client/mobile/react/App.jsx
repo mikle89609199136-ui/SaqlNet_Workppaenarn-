@@ -7,6 +7,10 @@ import { ChatsPage } from './components/Chats/ChatsPage.jsx';
 import { RateLimitPage } from './components/RateLimit/RateLimitPage.jsx';
 import { SettingsPage } from './components/Settings/SettingsPage.jsx';
 import { ContactsPage } from './components/Contacts/ContactsPage.jsx';
+import { ChannelsPage } from './components/Channels/ChannelsPage.jsx';
+import { CallsPage } from './components/Calls/CallsPage.jsx';
+import { CommunitiesPage } from './components/Communities/CommunitiesPage.jsx';
+import { MeetingsPage } from './components/Meetings/MeetingsPage.jsx';
 import { CreateGroupPage } from './components/Chats/CreateGroupPage.jsx';
 import { CallProvider } from './components/Calls/CallProvider.jsx';
 import { CallOverlay } from './components/Calls/CallOverlay.jsx';
@@ -88,6 +92,38 @@ export function App({ basename = '', forceMobile = false }) {
             }
           />
           <Route
+            path="/channels"
+            element={
+              <ProtectedRoute>
+                <AppLayout forceMobile={forceMobile}><ChannelsPage t={translate} /></AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/calls"
+            element={
+              <ProtectedRoute>
+                <AppLayout forceMobile={forceMobile}><CallsPage t={translate} /></AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/communities"
+            element={
+              <ProtectedRoute>
+                <AppLayout forceMobile={forceMobile}><CommunitiesPage t={translate} /></AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/meetings"
+            element={
+              <ProtectedRoute>
+                <AppLayout forceMobile={forceMobile}><MeetingsPage t={translate} /></AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/create-group"
             element={
               <ProtectedRoute>
@@ -162,6 +198,7 @@ function AppLayout({ children, forceMobile = false }) {
   if (location.pathname.startsWith('/contacts')) activeTab = 'contacts';
   else if (location.pathname.startsWith('/settings')) activeTab = 'settings';
   else if (location.pathname.startsWith('/channels')) activeTab = 'channels';
+  else if (location.pathname.startsWith('/calls')) activeTab = 'calls';
   else if (location.pathname.startsWith('/communities')) activeTab = 'communities';
   else if (location.pathname.startsWith('/meetings')) activeTab = 'meetings';
   
@@ -171,6 +208,7 @@ function AppLayout({ children, forceMobile = false }) {
     else if (tab === 'settings') navigate('/settings');
     else if (tab === 'create-group') navigate('/create-group');
     else if (tab === 'channels') navigate('/channels');
+    else if (tab === 'calls') navigate('/calls');
     else if (tab === 'communities') navigate('/communities');
     else if (tab === 'meetings') navigate('/meetings');
   };
@@ -181,6 +219,7 @@ function AppLayout({ children, forceMobile = false }) {
       location.pathname === '/contacts' || 
       location.pathname === '/settings' ||
       location.pathname === '/channels' ||
+      location.pathname === '/calls' ||
       location.pathname === '/communities' ||
       location.pathname === '/meetings'
     );
@@ -205,6 +244,14 @@ function AppLayout({ children, forceMobile = false }) {
                 <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
               </svg>
               <span>Каналы</span>
+            </button>
+
+            {/* Звонки */}
+            <button className={`rail-tab ${activeTab === 'calls' ? 'active' : ''}`} onClick={() => handleTabSelect('calls')}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.95.37 1.87.7 2.75a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.33-1.36a2 2 0 0 1 2.11-.45c.88.33 1.8.57 2.75.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              <span>Звонки</span>
             </button>
 
             {/* Сообщества */}
@@ -260,6 +307,12 @@ function AppLayout({ children, forceMobile = false }) {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11 5L6 9H2v6h4l5 4V5z"/>
             <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+        </button>
+
+        <button className={`rail-tab ${activeTab === 'calls' ? 'active' : ''}`} onClick={() => handleTabSelect('calls')} data-tip="Звонки">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.95.37 1.87.7 2.75a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.33-1.36a2 2 0 0 1 2.11-.45c.88.33 1.8.57 2.75.7A2 2 0 0 1 22 16.92z"/>
           </svg>
         </button>
 
