@@ -70,6 +70,12 @@ export function SettingsPage({ t = (k, f) => f }) {
       localStorage.removeItem('craneapp_user_data');
     });
     disconnectRealtimeSocket();
+  async function handleLogout() {
+    await services.authService.logout().catch(() => {
+      localStorage.removeItem('craneapp_auth_token');
+      localStorage.removeItem('craneapp_user_data');
+    });
+    disconnectRealtimeSocket();
     localStorage.removeItem('craneapp_settings');
     navigate('/login');
   }

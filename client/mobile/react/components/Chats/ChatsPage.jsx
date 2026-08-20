@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { services } from '../../../application/services/serviceContainer.js';
+import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import { useRealtimeSocket } from '../../hooks/useRealtimeSocket.js';
 import { Identicon } from '../common/Identicon.jsx';
 import { useChatsStore } from '../../store/chats.js';
@@ -13,12 +15,15 @@ export function ChatsPage({ t = fallbackTranslate }) {
   const currentUser = useMemo(() => getCurrentUser(), []);
   const typingTimeoutsRef = useRef(new Map());
   const { eventBus } = useRealtimeSocket(true);
+  const typingTimeoutsRef = useRef(new Map());
+  const { eventBus } = useRealtimeSocket(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     let isMounted = true;
 
     services.chatService.getChats()
+      .then((items) => Promise.all(items.map((chat) => decryptChatPreview(chat))))
       .then((items) => Promise.all(items.map((chat) => decryptChatPreview(chat))))
       .then((items) => {
         if (!isMounted) return;
@@ -37,6 +42,78 @@ export function ChatsPage({ t = fallbackTranslate }) {
       isMounted = false;
     };
   }, [t]);
+
+  useEffect(() => {
+    const updatePreview = async (payload) => {
+      const incomingMessage = payload?.message ?? payload;
+      const chatId = payload?.chatId ?? incomingMessage?.chatId;
+      if (!chatId || !incomingMessage) return;
+
+      const previewChat = await decryptChatPreview({
+        id: chatId,
+        lastMessage: {
+          ...incomingMessage,
+          chatId,
+        },
+      });
+
+      setChats((items) => {
+        const index = items.findIndex((chat) => chat.id === chatId);
+        if (index === -1) return items;
+
+        const nextChat = {
+          ...items[index],
+          typingUserId: null,
+          lastMessage: previewChat.lastMessage,
+          lastMessageAt: incomingMessage.createdAt || incomingMessage.timestamp || new Date().toISOString(),
+        };
+        window.clearTimeout(typingTimeoutsRef.current.get(chatId));
+        typingTimeoutsRef.current.delete(chatId);
+        const nextItems = [nextChat, ...items.slice(0, index), ...items.slice(index + 1)];
+        return nextItems;
+      });
+    };
+
+    const handleTyping = (event) => {
+      const chatId = event?.chatId;
+      const userId = event?.userId || event?.senderId || event?.from;
+      if (!chatId || !userId || userId === currentUser?.id) return;
+
+      setChats((items) => items.map((chat) => (
+        chat.id === chatId
+          ? { ...chat, typingUserId: userId, peerIsOnline: chat.type === 'private' ? true : chat.peerIsOnline }
+          : chat
+      )));
+
+      window.clearTimeout(typingTimeoutsRef.current.get(chatId));
+      typingTimeoutsRef.current.set(chatId, window.setTimeout(() => {
+        setChats((items) => items.map((chat) => (
+          chat.id === chatId ? { ...chat, typingUserId: null } : chat
+        )));
+        typingTimeoutsRef.current.delete(chatId);
+      }, 3000));
+    };
+
+    const unsubscribeNew = eventBus.on('new_message', updatePreview);
+    const unsubscribeSent = eventBus.on('message:sent', updatePreview);
+    const unsubscribeTyping = eventBus.on('typing', handleTyping);
+    const unsubscribeUserTyping = eventBus.on('user_typing', handleTyping);
+    const unsubscribeRead = eventBus.on('messages:read', ({ chatId }) => {
+      setChats((items) => items.map((chat) => (
+        chat.id === chatId ? { ...chat, unreadCount: 0 } : chat
+      )));
+    });
+
+    return () => {
+      unsubscribeNew();
+      unsubscribeSent();
+      unsubscribeTyping();
+      unsubscribeUserTyping();
+      unsubscribeRead();
+      typingTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      typingTimeoutsRef.current.clear();
+    };
+  }, [currentUser?.id, eventBus]);
 
   useEffect(() => {
     const updatePreview = async (payload) => {
@@ -134,12 +211,15 @@ function ChatListItem({ chat, t }) {
   const href = `/chats/${encodeURIComponent(chat.id)}`;
   const title = chat.name || t('untitledChat', 'Без названия');
   const lastMessage = chat.typingUserId ? t('typing', 'печатает...') : getLastMessageText(chat, t);
+  const lastMessage = chat.typingUserId ? t('typing', 'печатает...') : getLastMessageText(chat, t);
 
   const peerId = chat.peerId ?? chat.peer_id ?? null;
+  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || chat.typingUserId));
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || chat.typingUserId));
 
   return (
     <Link className="chat-row" to={href}>
+      <div className={`chat-avatar chat-avatar-${chat.type || 'private'} ${isPeerOnline ? 'is-online' : ''}`} style={peerId ? { background: 'none', padding: 0 } : {}}>
       <div className={`chat-avatar chat-avatar-${chat.type || 'private'} ${isPeerOnline ? 'is-online' : ''}`} style={peerId ? { background: 'none', padding: 0 } : {}}>
         {peerId
           ? <Identicon userId={peerId} size={48} />

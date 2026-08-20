@@ -1,9 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatThreadPage } from './ChatThreadPage.jsx';
 import { services } from '../../../application/services/serviceContainer.js';
 import { eventBus } from '../../../core/EventBus.js';
+
+const realtimeMocks = vi.hoisted(() => ({
+  socket: {
+    isConnected: true,
+    send: vi.fn(),
+  },
+}));
 
 const realtimeMocks = vi.hoisted(() => ({
   socket: {
@@ -23,6 +31,7 @@ vi.mock('../../../application/services/serviceContainer.js', () => ({
       editMessage: vi.fn(),
       getMessages: vi.fn(),
       markAsRead: vi.fn(),
+      markAsRead: vi.fn(),
       reactToMessage: vi.fn(),
       sendMessage: vi.fn(),
       sendMediaMessage: vi.fn(),
@@ -35,6 +44,7 @@ vi.mock('../../../application/services/serviceContainer.js', () => ({
 }));
 
 vi.mock('../../hooks/useRealtimeSocket.js', () => ({
+  useRealtimeSocket: () => ({ eventBus, socket: realtimeMocks.socket }),
   useRealtimeSocket: () => ({ eventBus, socket: realtimeMocks.socket }),
 }));
 
@@ -54,10 +64,21 @@ function openMessageActions(messageText) {
   fireEvent.contextMenu(screen.getByText(messageText), { clientX: 120, clientY: 160 });
 }
 
+function openMessageActions(messageText) {
+  fireEvent.contextMenu(screen.getByText(messageText), { clientX: 120, clientY: 160 });
+}
+
 describe('ChatThreadPage', () => {
   beforeEach(() => {
     eventBus.clear();
+    eventBus.clear();
     localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan' }));
+    Object.values(services.chatService).forEach((mock) => mock.mockReset?.());
+    Object.values(services.messageService).forEach((mock) => mock.mockReset?.());
+    Object.values(services.userService).forEach((mock) => mock.mockReset?.());
+    services.messageService.markAsRead.mockResolvedValue({ success: true });
+    realtimeMocks.socket.isConnected = true;
+    realtimeMocks.socket.send.mockReset();
     Object.values(services.chatService).forEach((mock) => mock.mockReset?.());
     Object.values(services.messageService).forEach((mock) => mock.mockReset?.());
     Object.values(services.userService).forEach((mock) => mock.mockReset?.());
@@ -349,6 +370,7 @@ describe('ChatThreadPage', () => {
 
     await screen.findByText('Original');
     openMessageActions('Original');
+    openMessageActions('Original');
     await user.click(screen.getByRole('button', { name: /ответ/i }));
     await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'Reply');
     await user.click(screen.getByRole('button', { name: '➤' }));
@@ -375,12 +397,73 @@ describe('ChatThreadPage', () => {
     await screen.findByText('Old text');
     openMessageActions('Old text');
     await user.click(screen.getByRole('button', { name: /редактировать/i }));
+    openMessageActions('Old text');
+    await user.click(screen.getByRole('button', { name: /редактировать/i }));
     await user.clear(screen.getByRole('textbox', { name: /сообщение/i }));
     await user.type(screen.getByRole('textbox', { name: /сообщение/i }), 'Updated text');
     await user.click(screen.getByRole('button', { name: '➤' }));
 
     expect(await screen.findByText('Updated text')).toBeInTheDocument();
     expect(services.messageService.editMessage).toHaveBeenCalledWith('m1', 'Updated text');
+  });
+
+  it('starts editing the last own message with ArrowUp on an empty composer', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'First own', timestamp: new Date('2026-06-03T12:00:00Z') },
+      { id: 'm2', senderId: 'u2', senderFirstName: 'Anna', content: 'Incoming', timestamp: new Date('2026-06-03T12:01:00Z') },
+      { id: 'm3', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:02:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.click(input);
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.getByText('Редактирование')).toBeInTheDocument();
+    expect(input).toHaveValue('Last own');
+  });
+
+  it('does not start editing with ArrowUp when the composer has text', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.type(input, 'draft');
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.queryByText('Редактирование')).not.toBeInTheDocument();
+    expect(input).toHaveValue('draft');
+  });
+
+  it('closes composer edit mode with Escape', async () => {
+    const user = userEvent.setup();
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Last own', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Last own');
+    const input = screen.getByRole('textbox', { name: /сообщение/i });
+    await user.click(input);
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByText('Редактирование')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByText('Редактирование')).not.toBeInTheDocument();
+    expect(input).toHaveValue('');
   });
 
   it('starts editing the last own message with ArrowUp on an empty composer', async () => {
@@ -454,6 +537,7 @@ describe('ChatThreadPage', () => {
 
     await screen.findByText('Delete me');
     openMessageActions('Delete me');
+    openMessageActions('Delete me');
     await user.click(screen.getByRole('button', { name: /удалить/i }));
 
     await waitFor(() => {
@@ -476,10 +560,49 @@ describe('ChatThreadPage', () => {
 
     await screen.findByText('React here');
     openMessageActions('React here');
+    openMessageActions('React here');
     await user.click(screen.getByRole('button', { name: '👍' }));
 
     expect(await screen.findByText('👍 1')).toBeInTheDocument();
     expect(services.messageService.reactToMessage).toHaveBeenCalledWith('m1', '👍');
+  });
+
+  it('shows message actions only after a context menu interaction', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Hidden actions', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Hidden actions');
+    expect(screen.queryByRole('button', { name: /ответ/i })).not.toBeInTheDocument();
+
+    openMessageActions('Hidden actions');
+
+    expect(screen.getByRole('button', { name: /ответ/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '👍' })).toBeInTheDocument();
+  });
+
+  it('shows message actions after a long touch press', async () => {
+    services.chatService.getChat.mockResolvedValue({ id: 'chat-1', name: 'Team', type: 'group' });
+    services.messageService.getMessages.mockResolvedValue([
+      { id: 'm1', senderId: 'u1', content: 'Touch actions', timestamp: new Date('2026-06-03T12:00:00Z') },
+    ]);
+
+    render(<ChatThreadPage chatId="chat-1" />);
+
+    await screen.findByText('Touch actions');
+    fireEvent.pointerDown(screen.getByText('Touch actions'), {
+      button: 0,
+      clientX: 120,
+      clientY: 160,
+      pointerType: 'touch',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ответ/i })).toBeInTheDocument();
+    }, { timeout: 800 });
   });
 
   it('shows message actions only after a context menu interaction', async () => {
@@ -541,6 +664,7 @@ describe('ChatThreadPage', () => {
 
     expect(await screen.findByText('Realtime hello')).toBeInTheDocument();
     expect(services.messageService.addMessageToCache).toHaveBeenCalled();
+    expect(services.messageService.markAsRead).toHaveBeenCalledWith('chat-1', ['m4']);
     expect(services.messageService.markAsRead).toHaveBeenCalledWith('chat-1', ['m4']);
   });
 

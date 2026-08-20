@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, useNavi
 import { RegisterPage } from './components/Auth/RegisterPage.jsx';
 import { LoginPage } from './components/Auth/LoginPage.jsx';
 import { ChatThreadPage, UserProfilePanel } from './components/Chats/ChatThreadPage.jsx';
+import { ChatThreadPage, UserProfilePanel } from './components/Chats/ChatThreadPage.jsx';
 import { ChatsPage } from './components/Chats/ChatsPage.jsx';
 import { RateLimitPage } from './components/RateLimit/RateLimitPage.jsx';
 import { SettingsPage } from './components/Settings/SettingsPage.jsx';
@@ -14,6 +15,7 @@ import { MeetingsPage } from './components/Meetings/MeetingsPage.jsx';
 import { CreateGroupPage } from './components/Chats/CreateGroupPage.jsx';
 import { CallProvider } from './components/Calls/CallProvider.jsx';
 import { CallOverlay } from './components/Calls/CallOverlay.jsx';
+import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { disconnectRealtimeSocket, useRealtimeSocket } from './hooks/useRealtimeSocket.js';
 import { services } from '../application/services/serviceContainer.js';
 
@@ -352,6 +354,10 @@ function ChatLayout({ forceMobile = false }) {
   const [profileWidth, setProfileWidth] = useState(null);
   const [profileState, setProfileState] = useState({ isOpen: false, isLoading: false, error: '', user: null, chat: null });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
+  const [sidebarWidth, setSidebarWidth] = useState(360);
+  const [profileWidth, setProfileWidth] = useState(null);
+  const [profileState, setProfileState] = useState({ isOpen: false, isLoading: false, error: '', user: null, chat: null });
+  const [profileCloseToken, setProfileCloseToken] = useState(0);
 
   if (isMobile) {
     if (chatId) {
@@ -386,7 +392,34 @@ function ChatLayout({ forceMobile = false }) {
     window.addEventListener('pointerup', handleUp);
   }
 
+  function startResize(kind, event) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startSidebarWidth = sidebarWidth;
+    const startProfileWidth = profileWidth || Math.round(window.innerWidth * 0.25);
+
+    function handleMove(moveEvent) {
+      if (kind === 'sidebar') {
+        const nextWidth = Math.min(Math.max(startSidebarWidth + moveEvent.clientX - startX, 280), 520);
+        setSidebarWidth(nextWidth);
+      } else {
+        const nextWidth = Math.min(Math.max(startProfileWidth - (moveEvent.clientX - startX), 300), 560);
+        setProfileWidth(nextWidth);
+      }
+    }
+
+    function handleUp() {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  }
+
   return (
+    <div className={`chat-workspace ${profileState.isOpen ? 'has-profile' : ''}`}>
+      <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
     <div className={`chat-workspace ${profileState.isOpen ? 'has-profile' : ''}`}>
       <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
         <ChatsPage t={translate} />
@@ -397,8 +430,21 @@ function ChatLayout({ forceMobile = false }) {
         onPointerDown={(event) => startResize('sidebar', event)}
         role="separator"
       />
+      <div
+        aria-label="Изменить ширину списка чатов"
+        className="app-pane-resizer app-pane-resizer-sidebar"
+        onPointerDown={(event) => startResize('sidebar', event)}
+        role="separator"
+      />
       <div className="app-chat-pane">
         {chatId ? (
+          <ChatThreadPage
+            chatId={chatId}
+            onProfileStateChange={setProfileState}
+            profileCloseToken={profileCloseToken}
+            profileMode="panel"
+            t={translate}
+          />
           <ChatThreadPage
             chatId={chatId}
             onProfileStateChange={setProfileState}
@@ -480,6 +526,7 @@ function AuthGuard() {
 }
 
 function clearAuthSession() {
+  disconnectRealtimeSocket();
   disconnectRealtimeSocket();
   localStorage.removeItem('craneapp_auth_token');
   localStorage.removeItem('craneapp_user_data');

@@ -172,6 +172,7 @@ export function ChatThreadPage({
       services.messageService.addMessageToCache(chatId, nextMessage);
       setMessages((items) => appendUniqueMessage(items, nextMessage));
       markMessagesAsRead(chatId, [nextMessage]);
+      markMessagesAsRead(chatId, [nextMessage]);
     });
 
     const unsubscribeEdited = eventBus.on("message_edited", (event) => {

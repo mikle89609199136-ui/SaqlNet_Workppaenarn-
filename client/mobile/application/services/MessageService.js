@@ -221,10 +221,15 @@ class MessageService {
   }
 
   async decryptContent(chatId, content, chatContext, senderId = null) {
+  async decryptContent(chatId, content, chatContext, senderId = null) {
     if (!content) return content;
     if (chatContext.type === "group") {
       return this.cryptoService.decryptGroup(chatId, content);
     }
+    const isOwnMessage = senderId && senderId === this.getMeId();
+    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey, {
+      preferEmbeddedSenderKey: !isOwnMessage,
+    });
     const isOwnMessage = senderId && senderId === this.getMeId();
     return this.cryptoService.decryptDM(content, chatContext.peerPublicKey, {
       preferEmbeddedSenderKey: !isOwnMessage,
@@ -446,6 +451,16 @@ class MessageService {
     if (Array.isArray(data)) return data;
     return data?.messages ?? data?.items ?? [];
   }
+}
+
+function sortMessagesChronologically(messages) {
+  return [...messages].sort((left, right) => messageTime(left) - messageTime(right));
+}
+
+function messageTime(message) {
+  const value = message?.timestamp ?? message?.createdAt ?? message?.created_at;
+  const time = value instanceof Date ? value.getTime() : new Date(value || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 export default MessageService;

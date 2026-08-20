@@ -4,11 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatsPage } from './ChatsPage.jsx';
 import { services } from '../../../application/services/serviceContainer.js';
 import { eventBus } from '../../../core/EventBus.js';
+import { eventBus } from '../../../core/EventBus.js';
 
 vi.mock('../../../application/services/serviceContainer.js', () => ({
   services: {
     chatService: {
       getChats: vi.fn(),
+    },
+    messageService: {
+      processMessageForDisplay: vi.fn(),
     },
     messageService: {
       processMessageForDisplay: vi.fn(),
@@ -20,8 +24,16 @@ vi.mock('../../hooks/useRealtimeSocket.js', () => ({
   useRealtimeSocket: () => ({ eventBus, socket: null }),
 }));
 
+vi.mock('../../hooks/useRealtimeSocket.js', () => ({
+  useRealtimeSocket: () => ({ eventBus, socket: null }),
+}));
+
 describe('ChatsPage', () => {
   beforeEach(() => {
+    eventBus.clear();
+    localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan', username: 'ivan_1' }));
+    services.chatService.getChats.mockReset();
+    services.messageService.processMessageForDisplay.mockReset();
     eventBus.clear();
     localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'u1', firstName: 'Ivan', username: 'ivan_1' }));
     services.chatService.getChats.mockReset();
@@ -50,6 +62,30 @@ describe('ChatsPage', () => {
     expect(screen.getByText('Hello')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /team/i })).toHaveAttribute('href', '/chats/chat-1');
+  });
+
+  it('marks online private chats on the avatar', async () => {
+    services.chatService.getChats.mockResolvedValue([
+      {
+        id: 'chat-1',
+        name: 'Diana',
+        type: 'private',
+        peerId: 'u2',
+        peerIsOnline: true,
+        lastMessage: 'hi',
+        unreadCount: 0,
+        createdAt: new Date('2026-06-03T12:00:00Z'),
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <ChatsPage />
+      </MemoryRouter>
+    );
+
+    const link = await screen.findByRole('link', { name: /diana/i });
+    expect(link.querySelector('.chat-avatar')).toHaveClass('is-online');
   });
 
   it('marks online private chats on the avatar', async () => {
