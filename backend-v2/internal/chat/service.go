@@ -1303,7 +1303,7 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return ErrMemberNotFound
 	}
 	if err != nil {
 		return err
@@ -1315,12 +1315,26 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 	if mutedAt.Valid && sameUntil {
 		return nil
 	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_at = NOW(), muted_until = $3
-		WHERE chat_id = $1 AND user_id = $2
-	`, chatID, userID, mutedUntil)
+	res, err := s.db.ExecContext(ctx, `UPDATE chats.members SET muted_at = NOW(), muted_until = $3 WHERE chat_id = $1 AND user_id = $2 AND (muted_at IS NULL OR muted_until IS DISTINCT FROM $3)`, chatID, userID, mutedUntil)
 	if err != nil {
 		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// Гонка: состояние изменилось между SELECT и UPDATE. Различаем
+		// «участника удалили» и «нужное состояние уже достигнуто» —
+		// событие публикуем только при фактическом изменении.
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrMemberNotFound
+		}
+		return nil
 	}
 	if s.ws != nil {
 		payload, _ := json.Marshal(MemberMuteEvent{
@@ -1361,7 +1375,7 @@ func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID stri
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return ErrMemberNotFound
 	}
 	if err != nil {
 		return err
@@ -1374,12 +1388,26 @@ func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID stri
 		return nil
 	}
 
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_at = NULL, muted_until = NULL
-		WHERE chat_id = $1 AND user_id = $2
-	`, chatID, userID)
+	res, err := s.db.ExecContext(ctx, `UPDATE chats.members SET muted_at = NULL, muted_until = NULL	WHERE chat_id = $1 AND user_id = $2 AND muted_at IS NOT NULL`, chatID, userID)
 	if err != nil {
 		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// Гонка: состояние изменилось между SELECT и UPDATE. Различаем
+		// «участника удалили» и «нужное состояние уже достигнуто» —
+		// событие публикуем только при фактическом изменении.
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrMemberNotFound
+		}
+		return nil
 	}
 
 	if s.ws != nil {

@@ -50,10 +50,6 @@ const (
 	muteMemberTargetQuery = `
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`
-	muteMemberUpdateQuery = `
-		UPDATE chats.members SET muted_at = NOW(), muted_until = $3
-		WHERE chat_id = $1 AND user_id = $2
-	`
 	// banTargetRoleQuery — точная копия SQL чтения роли цели в Service.BanMember
 	// (с переносами и отступами, как в service.go).
 	banTargetRoleQuery = `
