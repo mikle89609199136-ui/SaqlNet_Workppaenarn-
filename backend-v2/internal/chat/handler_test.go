@@ -23,7 +23,12 @@ const (
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
 const (
-	memberRoleQuery       = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	memberRoleQuery = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	// actorChatInfoQuery — точная копия SQL getChatInfo: тип чата и роль
+	// актора одним запросом. Используется moderation-методами (mute/ban/...),
+	// которые после правки №1 проверяют chats.chats.type = 'group'.
+	actorChatInfoQuery = `SELECT c.type, cm.role
+		FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`
 	memberRoleLockQuery   = `SELECT role FROM chats.members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`
 	ownerLockQuery        = `SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
@@ -468,9 +473,9 @@ func TestHandler_MuteMember_Body(t *testing.T) {
 		{
 			"валидное тело",
 			func() {
-				mock.ExpectQuery(memberRoleQuery).
+				mock.ExpectQuery(actorChatInfoQuery).
 					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 				mock.ExpectQuery(muteMemberTargetQuery).
 					WithArgs(handlerTargetID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", nil, nil))
@@ -525,9 +530,9 @@ func TestHandler_BanMember_Body(t *testing.T) {
 		{
 			"валидное тело",
 			func() {
-				mock.ExpectQuery(memberRoleQuery).
+				mock.ExpectQuery(actorChatInfoQuery).
 					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 				mock.ExpectQuery(banTargetRoleQuery).
 					WithArgs(handlerTargetID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))

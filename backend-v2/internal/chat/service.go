@@ -1078,9 +1078,15 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	if utf8.RuneCountInString(reason) > 500 {
 		return ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
@@ -1181,9 +1187,15 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 	if err := validate.Struct(input); err != nil {
 		return ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
@@ -1228,9 +1240,15 @@ func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, 
 	if err := validate.Struct(input); err != nil {
 		return nil, ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrForbidden
+	}
 	if err != nil {
 		return nil, err
+	}
+	if chatType != "group" {
+		return nil, ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return nil, ErrForbidden
@@ -1265,9 +1283,15 @@ func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string
 	if mutedUntil != nil && !mutedUntil.After(time.Now()) {
 		return ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
@@ -1316,9 +1340,15 @@ func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID stri
 	if err := validate.Struct(input); err != nil {
 		return ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
