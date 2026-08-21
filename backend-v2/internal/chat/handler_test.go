@@ -163,10 +163,11 @@ func TestHandler_AddMember(t *testing.T) {
 			func() {
 				// Все проверки проходят, вставка успешна
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectQuery(`SELECT .* FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at"}).AddRow(handlerTargetID, "u", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
+				mock.ExpectCommit()
 			},
 			http.StatusCreated, // 201
 			"",
@@ -175,7 +176,13 @@ func TestHandler_AddMember(t *testing.T) {
 			"AlreadyMember",
 			func() {
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"?"}).AddRow(true))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+				// Вставка не сработала — различаем причину: бана нет, membership есть
+				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				mock.ExpectRollback()
 			},
 			http.StatusConflict, // 409
 			"already_member",
@@ -184,8 +191,12 @@ func TestHandler_AddMember(t *testing.T) {
 			"UserBanned",
 			func() {
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"?"}).AddRow(true))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(0, 0))
+				// Активный бан — причина найдена сразу, membership не проверяем
+				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				mock.ExpectRollback()
 			},
 			http.StatusConflict, // 409
 			"user_banned",

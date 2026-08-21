@@ -975,41 +975,64 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		return nil, ErrUserNotFound
 	}
 
-	// 5. Проверка, что пользователь ещё не в группе
-	var isMember bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&isMember)
+	// 5. Транзакция: согласованная блокировка пары (chat, user) — та же
+	// формула, что в BanMember, чтобы исключить гонку add/ban.
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	if isMember {
-		return nil, ErrAlreadyMember
-	}
+	defer tx.Rollback()
 
-	// 6. Проверка бана с правильной ошибкой
-	var banned bool
-	err = s.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW()))`,
-		chatID, userID).Scan(&banned)
-	if err != nil {
+	var lockDummy any
+	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
 		return nil, err
 	}
-	if banned {
-		return nil, ErrUserBanned
-	}
 
-	// 7. Вставка
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, 'member')
+	// 6. Условная вставка: не выполняется при активном бане или существующем
+	// membership. Пред-проверки не нужны — финальная истина в RowsAffected.
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.members (chat_id, user_id, role)
+		SELECT $1, $2, 'member'
+		WHERE NOT EXISTS(
+			SELECT 1 FROM chats.bans
+			WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW())
+		)
 		ON CONFLICT DO NOTHING
 	`, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		// Различаем причину отказа: активный бан, затем membership.
+		var banned bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW()))`,
+			chatID, userID).Scan(&banned); err != nil {
+			return nil, err
+		}
+		if banned {
+			return nil, ErrUserBanned
+		}
+		var isMember bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`,
+			chatID, userID).Scan(&isMember); err != nil {
+			return nil, err
+		}
+		if isMember {
+			return nil, ErrAlreadyMember
+		}
+		return nil, errors.New("member insert conflict without known reason")
+	}
 
 	// 8. Получение и возврат объекта Member
 	var permissions jsonMap
 	var m Member
-	err = s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
 		COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), COALESCE(cm.muted_at::text, ''), cm.joined_at::text
 		FROM auth.users au
@@ -1033,6 +1056,9 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		return nil, errors.New("added member not found after insertion")
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
