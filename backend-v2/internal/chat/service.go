@@ -1058,15 +1058,20 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 // участник, он удаляется из чата в той же транзакции. Не-участника можно
 // забанить превентивно (он обязан существовать в auth.users).
 //
-// Иерархия: owner банит admin/member, admin — только member (AssertCanModerate).
-// Валидация (UUID, bannedUntil в прошлом, reason длиннее 500 рун) выполняется
-// до любого SQL. Повторный активный ban с теми же bannedUntil и reason —
-// no-op: success без записей и WS-событий; другие параметры или истёкший
-// ban приводят к UPDATE и событию chat_member_banned.
+// Гонки: первым запросом внутри транзакции берётся pg_advisory_xact_lock
+// по паре (chat_id, user_id) — тот же lock берёт AddMember, поэтому
+// параллельные add/ban одной пары сериализуются. Membership и существующий
+// ban перечитываются уже после lock, внутри транзакции.
 //
-// WS-события при успехе: chat_member_banned в чат; если цель была участником,
-// дополнительно chat_member_removed (reason "banned") в чат и адресное
-// chat_member_banned забаненному через BroadcastToUsers.
+// Иерархия: owner банит admin/member, admin — только member (AssertCanModerate).
+// Валидация (UUID, bannedUntil в прошлом, reason длиннее 500 рун) — до любого SQL.
+// Повторный активный ban с теми же bannedUntil и reason — no-op без записей
+// и событий; другие параметры или истёкший ban — upsert chats.bans и событие.
+//
+// WS-события при успехе: chat_member_banned в чат — всегда;
+// chat_member_removed (reason "banned") в чат и адресное chat_member_banned
+// забаненному — только если DELETE membership фактически удалил строку
+// (RowsAffected == 1): при гонке с RemoveMember/LeaveChat ложных событий нет.
 func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string, bannedUntil *time.Time, reason string) error {
 	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
 	if err := validate.Struct(input); err != nil {
@@ -1225,20 +1230,17 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 		return ErrUserNotFound
 	}
 
-	var bannedUntil sql.NullTime
-	err = s.db.QueryRowContext(ctx, `
-		SELECT banned_until FROM chats.bans WHERE chat_id = $1 AND user_id = $2
-		`, chatID, userID).Scan(&bannedUntil)
-	if errors.Is(err, sql.ErrNoRows) {
+	// Идемпотентность: событие шлём только если бан реально существовал и удалён
+	res, err := s.db.ExecContext(ctx, `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
-	if err != nil {
-		return err
 	}
 	if s.ws != nil {
 		payload, _ := json.Marshal(MemberBanEvent{

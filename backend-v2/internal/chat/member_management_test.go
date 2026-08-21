@@ -67,7 +67,6 @@ const (
 	memberExistsQuery        = `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`
 	userExistsQuery          = `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`
 	banStateQuery            = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
-	banUntilQuery            = `SELECT banned_until FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banUpdateQuery           = `UPDATE chats.bans SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW() WHERE chat_id = $1 AND user_id = $2`
 	banDeleteQuery           = `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banMemberDeleteQuery     = `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`
@@ -1081,20 +1080,21 @@ func TestUnbanMember_UserNotFound(t *testing.T) {
 }
 
 // TestUnbanMember_NotBannedIsIdempotent проверяет, что unban незабаненного
-// (нет активной строки в chats.bans) возвращает success без DELETE и без WS-события.
+// (DELETE затронул 0 строк) возвращает nil без WS-события.
 func TestUnbanMember_NotBannedIsIdempotent(t *testing.T) {
-	svc, mock, _ := newMemberManagementService(t)
+	svc, mock, realtime := newMemberManagementService(t)
 	expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
 	mock.ExpectQuery(userExistsQuery).
 		WithArgs(muteTestUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	// Проверка существующего бана (нужна для идемпотентности)
-	mock.ExpectQuery(banUntilQuery).
+	mock.ExpectExec(banDeleteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
-		WillReturnError(sql.ErrNoRows)
+		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	err := svc.UnbanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
 	require.NoError(t, err)
+	require.Empty(t, realtime.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1108,10 +1108,6 @@ func TestUnbanMember_Success(t *testing.T) {
 	mock.ExpectQuery(userExistsQuery).
 		WithArgs(muteTestUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-	// Проверка существующего бана
-	mock.ExpectQuery(banUntilQuery).
-		WithArgs(muteTestChatID, muteTestUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"banned_until"}).AddRow(nil))
 	mock.ExpectExec(banDeleteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
