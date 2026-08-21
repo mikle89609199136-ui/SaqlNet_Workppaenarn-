@@ -71,6 +71,8 @@ const (
 	banUpdateQuery           = `UPDATE chats.bans SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW() WHERE chat_id = $1 AND user_id = $2`
 	banDeleteQuery           = `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banMemberDeleteQuery     = `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`
+	banMemberLockQuery       = `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`
+	banUpsertQuery           = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (chat_id, user_id) DO UPDATE SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW()`
 )
 
 func expectActorInfo(mock sqlmock.Sqlmock, chatType, role string) {
@@ -94,6 +96,16 @@ func expectTargetRole(mock sqlmock.Sqlmock, role string) {
 	mock.ExpectQuery(targetRoleQuery).
 		WithArgs(testChatID, testMemberID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(role))
+}
+
+// expectBanMemberLock мокает advisory lock пары (chat, user), который
+// BanMember и AddMember берут первым запросом внутри транзакции для
+// согласованной сериализации операций ban/add.
+func expectBanMemberLock(t testing.TB, mock sqlmock.Sqlmock, chatID, userID string) {
+	t.Helper()
+	mock.ExpectQuery(banMemberLockQuery).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 }
 
 func newMemberManagementService(t *testing.T) (*Service, sqlmock.Sqlmock, *recordingRealtime) {
@@ -799,8 +811,9 @@ func TestBanMember_ForbiddenWhenActorIsMember(t *testing.T) {
 }
 
 // TestBanMember_CannotModerateTarget проверяет иерархию для ban:
-// нельзя банить owner; admin не может банить admin. Ожидается
-// ErrCannotModerateTarget; транзакция не открывается, событий нет.
+// нельзя банить owner; admin не может банить admin.
+// Ожидается ErrCannotModerateTarget: транзакция открывается и берёт lock,
+// но после проверки иерархии откатывается; записи и событий нет.
 func TestBanMember_CannotModerateTarget(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -815,9 +828,15 @@ func TestBanMember_CannotModerateTarget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, mock, realtime := newMemberManagementService(t)
 			expectActorRole(t, mock, muteTestActorID, muteTestChatID, tt.actorRole)
+			mock.ExpectQuery(userExistsQuery).
+				WithArgs(muteTestUserID).
+				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+			mock.ExpectBegin()
+			expectBanMemberLock(t, mock, muteTestChatID, muteTestUserID)
 			mock.ExpectQuery(targetRoleByUserQuery).
 				WithArgs(muteTestUserID, muteTestChatID).
 				WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow(tt.targetRole))
+			mock.ExpectRollback()
 
 			err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
 			require.ErrorIs(t, err, ErrCannotModerateTarget)
@@ -834,9 +853,6 @@ func TestBanMember_UserNotFound(t *testing.T) {
 	svc, mock, realtime := newMemberManagementService(t)
 
 	expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
-	mock.ExpectQuery(targetRoleByUserQuery).
-		WithArgs(muteTestUserID, muteTestChatID).
-		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(userExistsQuery).
 		WithArgs(muteTestUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -854,19 +870,19 @@ func TestBanMember_UserNotFound(t *testing.T) {
 func TestBanMember_PreventiveBan(t *testing.T) {
 	svc, mock, realtime := newMemberManagementService(t)
 	expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
-	mock.ExpectQuery(targetRoleByUserQuery).
-		WithArgs(muteTestUserID, muteTestChatID).
-		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(userExistsQuery).
 		WithArgs(muteTestUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectBegin()
+	expectBanMemberLock(t, mock, muteTestChatID, muteTestUserID)
+	mock.ExpectQuery(targetRoleByUserQuery).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnError(sql.ErrNoRows)
 	// Проверка существующего бана (нужна для идемпотентности)
 	mock.ExpectQuery(banStateQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
 		WillReturnError(sql.ErrNoRows)
-
-	mock.ExpectBegin()
-	mock.ExpectExec(banInsertQuery).
+	mock.ExpectExec(banUpsertQuery).
 		WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, "spam", nil).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
@@ -893,6 +909,11 @@ func TestBanMember_PreventiveBan(t *testing.T) {
 func TestBanMember_BansExistingMember(t *testing.T) {
 	svc, mock, realtime := newMemberManagementService(t)
 	expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
+	mock.ExpectQuery(userExistsQuery).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectBegin()
+	expectBanMemberLock(t, mock, muteTestChatID, muteTestUserID)
 	mock.ExpectQuery(targetRoleByUserQuery).
 		WithArgs(muteTestUserID, muteTestChatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
@@ -900,12 +921,10 @@ func TestBanMember_BansExistingMember(t *testing.T) {
 	mock.ExpectQuery(banStateQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
 		WillReturnError(sql.ErrNoRows)
-
-	mock.ExpectBegin()
 	mock.ExpectExec(banMemberDeleteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(banInsertQuery).
+	mock.ExpectExec(banUpsertQuery).
 		WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, "spam", nil).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
@@ -966,22 +985,26 @@ func TestBanMember_Idempotent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, mock, realtime := newMemberManagementService(t)
 			expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
-			mock.ExpectQuery(targetRoleByUserQuery).
-				WithArgs(muteTestUserID, muteTestChatID).
-				WillReturnError(sql.ErrNoRows)
 			mock.ExpectQuery(userExistsQuery).
 				WithArgs(muteTestUserID).
 				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+			mock.ExpectBegin()
+			expectBanMemberLock(t, mock, muteTestChatID, muteTestUserID)
+			mock.ExpectQuery(targetRoleByUserQuery).
+				WithArgs(muteTestUserID, muteTestChatID).
+				WillReturnError(sql.ErrNoRows)
 			mock.ExpectQuery(banStateQuery).
 				WithArgs(muteTestChatID, muteTestUserID).
 				WillReturnRows(sqlmock.NewRows([]string{"banned_until", "reason"}).AddRow(tt.curUntil, tt.curReason))
 
 			if tt.wantUpdate {
-				mock.ExpectBegin()
-				mock.ExpectExec(banUpdateQuery).
+				mock.ExpectExec(banUpsertQuery).
 					WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, tt.newReason, tt.newUntil).
 					WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
 			}
 			err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, tt.newUntil, tt.newReason)
 			require.NoError(t, err)
@@ -1240,5 +1263,50 @@ func TestUnmuteMember_ConcurrentlyReachedStateNoEvent(t *testing.T) {
 	err := svc.UnmuteMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID)
 	require.NoError(t, err)
 	require.Len(t, realtime.broadcasts, 0)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBanMember_MemberDisappearedNoRemovedEvent проверяет гонку: цель была
+// участником при чтении роли внутри транзакции, но DELETE затронул 0 строк
+// (membership конкурентно удалён). Бан создаётся и событие chat_member_banned
+// публикуется, но ложные chat_member_removed и персональное событие
+// «удалённому» участнику отправляться не должны.
+func TestBanMember_MemberDisappearedNoRemovedEvent(t *testing.T) {
+	svc, mock, realtime := newMemberManagementService(t)
+	expectActorRole(t, mock, muteTestActorID, muteTestChatID, "owner")
+	mock.ExpectQuery(userExistsQuery).
+		WithArgs(muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	mock.ExpectBegin()
+	expectBanMemberLock(t, mock, muteTestChatID, muteTestUserID)
+	mock.ExpectQuery(targetRoleByUserQuery).
+		WithArgs(muteTestUserID, muteTestChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	// Проверка существующего бана (нужна для идемпотентности)
+	mock.ExpectQuery(banStateQuery).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(banMemberDeleteQuery).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(banUpsertQuery).
+		WithArgs(muteTestChatID, muteTestUserID, muteTestActorID, "spam", nil).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err := svc.BanMember(context.Background(), muteTestActorID, muteTestChatID, muteTestUserID, nil, "spam")
+	require.NoError(t, err)
+
+	require.Len(t, realtime.broadcasts, 1)
+	var event MemberBanEvent
+	err = json.Unmarshal(realtime.broadcasts[0].payload, &event)
+	require.NoError(t, err)
+	require.Equal(t, "chat_member_banned", event.Type)
+	require.Equal(t, muteTestChatID, event.ChatID)
+	require.Equal(t, muteTestUserID, event.UserID)
+	require.Equal(t, muteTestActorID, event.ByUserID)
+	require.Equal(t, "spam", event.Reason)
+	require.Nil(t, event.BannedUntil)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -529,16 +529,21 @@ func TestHandler_BanMember_Body(t *testing.T) {
 				mock.ExpectQuery(actorChatInfoQuery).
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
+				mock.ExpectQuery(userExistsQuery).
+					WithArgs(muteTestUserID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+				mock.ExpectBegin()
+				mock.ExpectQuery(banMemberLockQuery).WithArgs(handlerChatID, handlerTargetID).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectQuery(banTargetRoleQuery).
 					WithArgs(handlerTargetID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				mock.ExpectQuery(banSelectQuery).
 					WithArgs(handlerChatID, handlerTargetID).
 					WillReturnError(sql.ErrNoRows)
-				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectExec(banInsertQuery).
+				mock.ExpectExec(banUpsertQuery).
 					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
 			},

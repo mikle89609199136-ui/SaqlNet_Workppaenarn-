@@ -1092,46 +1092,14 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 		return ErrForbidden
 	}
 
-	targetRole := ""
-	err = s.db.QueryRowContext(ctx, `
-		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
-		`, userID, chatID).Scan(&targetRole)
-	switch {
-	case err == nil:
-		// Цель — участник: проверяем иерархию.
-		if err := AssertCanModerate(actorRole, targetRole); err != nil {
-			return err
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Цель не участник — превентивный ban возможен,
-		// но пользователь обязан существовать.
-		var exists bool
-		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return ErrUserNotFound
-		}
-	default:
+	// Пользователь обязан существовать — и для ban участника, и для
+	// превентивного ban не-участника.
+	var userExists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&userExists); err != nil {
 		return err
 	}
-
-	// Проверяем существующий ban для идемпотентности.
-	var existingBannedUntil sql.NullTime
-	var existingReason string
-	err = s.db.QueryRowContext(ctx, `
-		SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2
-		`, chatID, userID).Scan(&existingBannedUntil, &existingReason)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	banExists := err == nil
-	if banExists {
-		active := !existingBannedUntil.Valid || existingBannedUntil.Time.After(time.Now())
-		same := existingReason == reason && ((!existingBannedUntil.Valid && bannedUntil == nil) || (existingBannedUntil.Valid && bannedUntil != nil && existingBannedUntil.Time.Equal(*bannedUntil)))
-		if active && same {
-			return nil // повтор с тем же состоянием: ни записи, ни события
-		}
+	if !userExists {
+		return ErrUserNotFound
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1139,26 +1107,72 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 		return err
 	}
 	defer tx.Rollback()
-	// Участника удаляем из чата; при превентивном ban удалять некого.
-	if targetRole != "" {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
+
+	// Согласованная блокировка пары (chat, user): AddMember берёт тот же
+	// lock до проверок membership/ban — гонка add/ban исключена.
+	var lockDummy any
+	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
+		return err
+	}
+
+	// Membership перечитываем внутри транзакции, после lock.
+	memberToRemove := false
+	var targetRole string
+	err = tx.QueryRowContext(ctx, `
+		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole)
+	switch {
+	case err == nil:
+		if err := AssertCanModerate(actorRole, targetRole); err != nil {
 			return err
+		}
+		memberToRemove = true
+	case errors.Is(err, sql.ErrNoRows):
+		// Цель не участник — превентивный ban.
+	default:
+		return err
+	}
+
+	// Существующий ban тоже перечитываем внутри транзакции (идемпотентность).
+	var existingBannedUntil sql.NullTime
+	var existingReason string
+	err = tx.QueryRowContext(ctx, `
+		SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2
+		`, chatID, userID).Scan(&existingBannedUntil, &existingReason)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil {
+		active := !existingBannedUntil.Valid || existingBannedUntil.Time.After(time.Now())
+		same := existingReason == reason && ((!existingBannedUntil.Valid && bannedUntil == nil) || (existingBannedUntil.Valid && bannedUntil != nil && existingBannedUntil.Time.Equal(*bannedUntil)))
+		if active && same {
+			return nil // повтор с тем же состоянием: ни записи, ни событий
 		}
 	}
 
-	if banExists {
-		_, err = tx.ExecContext(ctx, `
-			UPDATE chats.bans SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW()
-			WHERE chat_id = $1 AND user_id = $2
-			`, chatID, userID, actorID, reason, bannedUntil)
-	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`, chatID, userID, actorID, reason, bannedUntil)
+	// Участника удаляем из чата; факт удаления определяет состав событий.
+	memberRemoved := false
+	if memberToRemove {
+		res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+		if err != nil {
+			return err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		memberRemoved = affected == 1
 	}
 
-	if err != nil {
+	// Единый upsert: атомарен при гонке ban/unban, всегда затрагивает строку.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (chat_id, user_id) DO UPDATE SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW()
+		`, chatID, userID, actorID, reason, bannedUntil); err != nil {
 		return err
 	}
-	if err = tx.Commit(); err != nil {
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -1168,7 +1182,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 			ByUserID: actorID, Reason: reason, BannedUntil: bannedUntil,
 		})
 		s.ws.BroadcastToChat(chatID, payload, "")
-		if targetRole != "" {
+		if memberRemoved {
 			removedPayload, _ := json.Marshal(MemberRemovedEvent{
 				Type:   "chat_member_removed",
 				ChatID: chatID,
