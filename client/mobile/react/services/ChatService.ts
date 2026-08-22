@@ -128,7 +128,9 @@ export class ChatService {
 
   async updateChat(
     chatId: string,
-    data: Partial<Omit<IChatDto, "id" | "peerId" | "peerPublicKey" | "ownerId" | "createdAt" | "type">>
+    data: Partial<
+      Omit<IChatDto, 'id' | 'peerId' | 'peerPublicKey' | 'ownerId' | 'createdAt' | 'type'>
+    >
   ): Promise<IChatDto> {
     const response = await this.apiClient.put<IChatResponse>(
       API_ENDPOINTS.CHAT_BY_ID(chatId),

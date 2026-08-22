@@ -75,7 +75,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     try {
       if (selectionMode) {
         // исравить тут, либо сортировка в хронологии, либо асинхронный цикл
-        const sortedMessages = sortMessagesChronologically(selectedMessages)
+        const sortedMessages = sortMessagesChronologically(selectedMessages);
         await Promise.all(
           sortedMessages.map((selectedMessage) => {
             if (selectedMessage.senderId !== currentUser?.id) return;

@@ -23,7 +23,7 @@ export interface IMessageEditedEvent {
 export interface IMessageDeletedEvent {
   type: string;
   messageId: string;
-  previousMessage: IMessageDto | null
+  previousMessage: IMessageDto | null;
   chatId: string;
 }
 export interface IMessagePinEvent {
@@ -46,7 +46,7 @@ export interface IReactionUpdatedEvent {
 }
 
 export interface IMessagesReadEvent {
-  chatId: string
+  chatId: string;
 }
 
 export interface IChatUpdatedEvent {
@@ -192,7 +192,7 @@ export interface IWsEventMap {
   [WS_EVENTS.MESSAGE.LOCAL.SENT]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
   [WS_EVENTS.MESSAGE.UNPINNED]: IMessageUnpinEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.READ]: IMessagesReadEvent
+  [WS_EVENTS.MESSAGE.LOCAL.READ]: IMessagesReadEvent;
 
   [WS_EVENTS.OTHER.PING]: IPingEvent;
   [WS_EVENTS.OTHER.PONG]: IPongEvent;

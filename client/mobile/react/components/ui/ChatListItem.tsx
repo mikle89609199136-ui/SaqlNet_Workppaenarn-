@@ -12,7 +12,9 @@ interface Props {
 export function ChatListItem({ chat }: Props) {
   const { t } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const lastMessage = chat.typingUserId ? t('typing', 'печатает...') : getLastMessageText(chat.lastMessage, t);
+  const lastMessage = chat.typingUserId
+    ? t('typing', 'печатает...')
+    : getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || chat.typingUserId));
@@ -38,9 +40,7 @@ export function ChatListItem({ chat }: Props) {
         </div>
         <div className="chat-subline">
           <span>{lastMessage}</span>
-          {chat.unreadCount > 0 && (
-            <strong className="chat-unread">{chat.unreadCount}</strong>
-          )}
+          {chat.unreadCount > 0 && <strong className="chat-unread">{chat.unreadCount}</strong>}
         </div>
       </div>
     </Link>

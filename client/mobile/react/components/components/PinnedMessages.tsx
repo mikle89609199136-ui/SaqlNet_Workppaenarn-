@@ -61,7 +61,7 @@ export const PinnedMessages = ({ messages, setPinnedMessagesOpen }: Props) => {
 
     setCurrentPinnedMessageIndex((prev) => (prev === 0 ? messages.length - 1 : prev! - 1));
   };
-	const currentMessageNumber = currentPinnedMessageIndex + 1;
+  const currentMessageNumber = currentPinnedMessageIndex + 1;
   return (
     <div className="flex items-center gap-x-2 transition-colors border-b border-border bg-panel hover:bg-[rgba(255,255,255,0.05)] py-1.5 md:py-3 px-2 pr-4">
       <button

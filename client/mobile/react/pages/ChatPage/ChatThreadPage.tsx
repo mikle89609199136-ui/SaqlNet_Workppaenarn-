@@ -237,7 +237,7 @@ export function ChatThreadPage() {
     setMessages(loadedMessages);
     setPinnedMessages(loadedPinnedMessages);
     markMessagesAsRead(chatId, loadedMessages);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, {chatId})
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
     setIsLoading(false);
   }, [loadedChat, loadedMessages, loadedPinnedMessages, chatId]);
 

@@ -19,4 +19,4 @@ export const CrossIcon = (props: TIconProps) => {
     </svg>
   );
 };
-CrossIcon
+CrossIcon;

@@ -353,7 +353,9 @@ export class MessageService {
   }
 
   async deleteMessage(chatId: string, messageId: string) {
-    const response = await this.apiClient.delete<IDeleteMessageResponse>(API_ENDPOINTS.MESSAGE_BY_ID(messageId));
+    const response = await this.apiClient.delete<IDeleteMessageResponse>(
+      API_ENDPOINTS.MESSAGE_BY_ID(messageId)
+    );
     this.removeMessageFromCache(messageId);
     eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.DELETED, {
       messageId: messageId,
@@ -386,7 +388,10 @@ export class MessageService {
       { targetChatId }
     );
 
-    const processedMessage = await this.processMessageForDisplay(targetChatId, response.data.message);;
+    const processedMessage = await this.processMessageForDisplay(
+      targetChatId,
+      response.data.message
+    );
     const message = sortMessagesChronologically<IMessageDto>(
       await Promise.all(
         [processedMessage].map(async (item: IMessageDto) => {

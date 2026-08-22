@@ -1,23 +1,8 @@
-import type { IEncryptedMedia } from "./encryption.types";
+import type { IEncryptedMedia } from './encryption.types';
 
 export type TMessageType =
-  | "text"
-  | "image"
-  | "audio"
-  | "video"
-  | "voice"
-  | "sticker"
-  | "gif"
-  | "file"
-  | "call"
-export type TMediaMessageType =
-  | "image"
-  | "audio"
-  | "video"
-  | "voice"
-  | "sticker"
-  | "gif"
-  | "file";
+  'text' | 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file' | 'call';
+export type TMediaMessageType = 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file';
 
 interface IForwardedMetadata {
   forwardedFrom: string;
@@ -28,7 +13,7 @@ interface IMediaMetadata {
   fileName: string;
   isEncrypted: boolean;
   mediaEncrypted: boolean;
-  mediaEncryption: IEncryptedMedia
+  mediaEncryption: IEncryptedMedia;
   mediaType: TMediaMessageType;
   mediaUrl: string;
   sizeBytes: number;
@@ -66,13 +51,11 @@ export interface IMessageDto {
 
 export type TMessagesList = IMessageDto[];
 
-
-
 export interface IPinnedMessageDto {
   id: string;
   content: string;
   type: TMessageType;
-  senderId: string
+  senderId: string;
 }
 
 export interface IPinnedDto {
@@ -114,17 +97,15 @@ export interface IMediaDisplayPatch {
   mediaUnavailableReason?: string;
 }
 
-
 export interface IPinMessagePayload {
   chatId: string;
   messageId: string;
 }
 
 export interface IEmojiDto {
-  emoji: string
-  count: number
-  myReaction: boolean
+  emoji: string;
+  count: number;
+  myReaction: boolean;
 }
 
-export type TEmojisList = IEmojiDto[]
-
+export type TEmojisList = IEmojiDto[];

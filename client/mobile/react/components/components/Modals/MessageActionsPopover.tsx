@@ -144,7 +144,7 @@ export const MessageActionsPopover = ({
               onClick={() => actions.runMessageAction(b.action)}
               type="button"
             >
-              <Icon name={b.icon} className='fill-transparent'/>
+              <Icon name={b.icon} className="fill-transparent" />
               <span>{t(b.key, b.def)}</span>
             </button>
           ))}
