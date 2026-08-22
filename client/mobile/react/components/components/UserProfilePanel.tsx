@@ -1,16 +1,23 @@
 import { useCall, useProfileEdit } from '@/hooks';
 import type { IProfileState } from '@/pages';
 import { useProfileStore } from '@/store';
-import type { TCallKind } from '@/types';
+import type { TCallKind, TIconTypes } from '@/types';
 import { getChatSubtitle } from '@/utils';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '../ui/Icon';
+import { Icon } from '../ui';
 import { Identicon } from '../ui/Identicon';
 
 interface Props {
   profileState: IProfileState;
   onClose: () => void;
+}
+
+interface IActionButton {
+  handleClick: () => void;
+  title: string;
+  disabled: boolean;
+  name: TIconTypes;
 }
 
 interface IField {
@@ -48,7 +55,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
 
   const sharedMedia = useMemo(() => {
     return profileState.messages.filter(
-      (m) => m.mediaUrl && ['image', 'gif', 'sticker', 'video'].includes(m.mediaType || m.type)
+      (m) => m.mediaUrl && ['image', 'gif', 'sticker', 'video'].includes(m.type)
     );
   }, [profileState.messages]);
 
@@ -71,11 +78,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     }
   };
 
-  const actionButtons = [
+  const actionButtons: IActionButton[] = [
     {
       handleClick: onClose,
       disabled: false,
-      name: 'message-circle',
+      name: 'checkCircle', // was message-circle, should check
       title: t('chat', 'Чат'),
     },
     {

@@ -6,7 +6,7 @@ import { cn, getChatSubtitle } from '@/utils';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { Identicon } from '../ui';
+import { Icon, Identicon } from '../ui';
 
 interface Props {
   typingUserId?: string | null;
@@ -144,7 +144,7 @@ export const ChatThreadHeader = ({
           >
             <button
               aria-label={chat.title}
-              className={cn("thread-avatar", isPeerOnline && 'is-online')}
+              className={cn('thread-avatar', isPeerOnline && 'is-online')}
               tabIndex={-1}
               type="button"
             >
@@ -171,22 +171,7 @@ export const ChatThreadHeader = ({
                 title={t('audioCall', 'Аудиозвонок')}
                 type="button"
               >
-                <svg
-                  aria-hidden="true"
-                  className="thread-call-icon"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  width="24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <g fill="none">
-                    <path d="M0 0h24v24H0z" />
-                    <path
-                      d="M4.477 4.116c-2.924 3.217-1.362 8.196 2.932 12.51 4.204 4.222 9.407 5.8 12.486 2.936 1.685-1.567 1.436-4.343-.645-6.198l-.19-.161c-1.931-1.563-4.734-1.568-6.445-.027l-.088.082-.05-.042c-.187-.16-.43-.381-.724-.673l-.298-.303-.306-.326q-.138-.152-.246-.277l-.124-.147-.07.075c1.69-1.697 1.706-4.72.006-6.75-1.887-2.255-4.75-2.335-6.238-.699M9.335 5.97c1.18 1.41 1.049 3.371.099 4.325l-.148.14c-.63.567-1.246.901 1.032 3.218 2.458 2.499 2.765 1.622 3.405.952 1.006-1.01 2.975-1.104 4.329.103 1.497 1.334 1.335 2.868.617 3.536-2.222 2.067-6.476.636-9.984-2.888S3.621 7.734 5.81 5.326c.508-.558 2.101-1.057 3.526.644"
-                      fill="currentColor"
-                    />
-                  </g>
-                </svg>
+                <Icon name="phone" className="thread-call-icon stroke-transparent fill-current" />
               </button>
 
               <button
@@ -195,28 +180,13 @@ export const ChatThreadHeader = ({
                 title={t('videoCall', 'Видео')}
                 type="button"
               >
-                <svg
-                  aria-hidden="true"
-                  className="thread-call-icon thread-call-icon-video"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  width="24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <g fill="none">
-                    <path d="M0 0h24v24H0z" />
-                    <path
-                      clipRule="evenodd"
-                      d="M6.5 5.75A3.5 3.5 0 0 0 3 9.25v5.5a3.5 3.5 0 0 0 3.5 3.5h7a3.5 3.5 0 0 0 3.5-3.5v-.52l2.65 2.07A1.45 1.45 0 0 0 22 15.15v-6.3a1.45 1.45 0 0 0-2.35-1.15L17 9.77v-.52a3.5 3.5 0 0 0-3.5-3.5h-7Zm-1.7 3.5A1.7 1.7 0 0 1 6.5 7.55h7a1.7 1.7 0 0 1 1.7 1.7v5.5a1.7 1.7 0 0 1-1.7 1.7h-7a1.7 1.7 0 0 1-1.7-1.7v-5.5Zm12.2 2.8 3.2 2.5v-5.1L17 11.95v.1Z"
-                      fill="currentColor"
-                      fillRule="evenodd"
-                    />
-                  </g>
-                </svg>
+                <Icon
+                  name="video"
+                  className="thread-call-icon thread-call-icon-video stroke-transparent fill-current"
+                />
               </button>
             </div>
 
-            {/* Мобильная версия */}
             <div className="thread-header-card thread-call-mobile">
               <button
                 className="thread-call-button"
@@ -227,22 +197,7 @@ export const ChatThreadHeader = ({
                 onTouchStart={handleTouchStart}
                 type="button"
               >
-                <svg
-                  aria-hidden="true"
-                  className="thread-call-icon"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  width="22"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <g fill="none">
-                    <path d="M0 0h24v24H0z" />
-                    <path
-                      d="M4.477 4.116c-2.924 3.217-1.362 8.196 2.932 12.51 4.204 4.222 9.407 5.8 12.486 2.936 1.685-1.567 1.436-4.343-.645-6.198l-.19-.161c-1.931-1.563-4.734-1.568-6.445-.027l-.088.082-.05-.042c-.187-.16-.43-.381-.724-.673l-.298-.303-.306-.326q-.138-.152-.246-.277l-.124-.147-.07.075c1.69-1.697 1.706-4.72.006-6.75-1.887-2.255-4.75-2.335-6.238-.699M9.335 5.97c1.18 1.41 1.049 3.371.099 4.325l-.148.14c-.63.567-1.246.901 1.032 3.218 2.458 2.499 2.765 1.622 3.405.952 1.006-1.01 2.975-1.104 4.329.103 1.497 1.334 1.335 2.868.617 3.536-2.222 2.067-6.476.636-9.984-2.888S3.621 7.734 5.81 5.326c.508-.558 2.101-1.057 3.526.644"
-                      fill="currentColor"
-                    />
-                  </g>
-                </svg>
+                <Icon name="phone" className="thread-call-icon" />
               </button>
 
               {showCallMenu && (
@@ -256,7 +211,8 @@ export const ChatThreadHeader = ({
                   >
                     <svg fill="currentColor" height="18" viewBox="0 0 24 24" width="18">
                       <path d="M6.62 10.79a15.053 15.053 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
-                    </svg>
+                    </svg>{' '}
+                    {/* microphone icon */}
                     {t('audioCall', 'Аудио')}
                   </button>
 
@@ -267,9 +223,7 @@ export const ChatThreadHeader = ({
                     }}
                     type="button"
                   >
-                    <svg fill="currentColor" height="18" viewBox="0 0 24 24" width="18">
-                      <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
-                    </svg>
+                    <Icon name="video" />
                     {t('videoCall', 'Видео')}
                   </button>
                 </div>

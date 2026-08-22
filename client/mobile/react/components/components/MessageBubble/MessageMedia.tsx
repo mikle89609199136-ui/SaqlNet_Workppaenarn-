@@ -1,8 +1,8 @@
+import { Icon } from '@/components/ui';
 import type { IMessageDto } from '@/types';
 import { formatFileSize } from '@/utils';
 import React, { type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from '../../ui/Icon';
 
 interface Props {
   message: IMessageDto;
@@ -54,7 +54,7 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
   if (actualType === 'file') {
     return (
       <a className="message-media-file flex gap-x-1" download href={mediaUrl}>
-        <Icon name="media-file" className="size-9" />
+        <Icon name="file" className="size-9" />
         <div className="flex flex-col">
           <span className="text-sm">{mediaEncryption.fileName}</span>
           <span className="text-xs text-[rgba(255,255,255,0.58)]">

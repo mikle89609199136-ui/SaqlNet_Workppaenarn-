@@ -1,5 +1,4 @@
 export interface IEncryptedMedia {
-  fileName?: string;
   version: number;
   encrypted: boolean;
   algorithm: string;
@@ -7,4 +6,5 @@ export interface IEncryptedMedia {
   ciphertext: string;
   mimeType: string;
   sizeBytes: number;
+  fileName?: string;
 }

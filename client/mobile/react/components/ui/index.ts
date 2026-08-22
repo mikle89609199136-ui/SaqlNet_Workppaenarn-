@@ -5,7 +5,7 @@ export { ComposerContextBanner } from './ComposerContextBanner';
 export { ComposerForm } from './ComposerForm';
 export { ComposerRow } from './ComposerRow';
 export { ComposerWrapper } from './ComposerWrapper';
-export { Icon } from './Icon';
+export { Icon } from './Icon/Icon';
 export { Identicon } from './Identicon';
 export { MessageCheckbox } from './MessageCheckbox';
 export { MessagesList } from './MessagesList';

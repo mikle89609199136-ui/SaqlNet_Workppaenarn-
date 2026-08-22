@@ -5,48 +5,8 @@ import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Modal } from '../ui';
+import { Icon, Modal } from '../ui';
 import { Identicon } from '../ui/Identicon';
-
-const XIcon = ({ className }: { className?: string }) => {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  );
-};
-
-const SearchIcon = ({ className }: { className?: string }) => {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="m21 21-4.34-4.34" />
-      <circle cx="11" cy="11" r="8" />
-    </svg>
-  );
-};
 
 interface Props {
   messages: TMessagesList;
@@ -106,7 +66,7 @@ export const ForwardChatMessagesModal = ({
   };
 
   return (
-    <Modal className='max-w-4/5 md:max-w-1/5' onClose={onClose}>
+    <Modal className="max-w-4/5 md:max-w-1/5" onClose={onClose}>
       <header className="flex justify-between px-6">
         <h2 className="text-xl w-full text-left">{t('forward', 'Переслать...')}</h2>
 
@@ -115,14 +75,17 @@ export const ForwardChatMessagesModal = ({
           onClick={onClose}
           className="cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)] shrink-0"
         >
-          <XIcon />
+          <Icon name="cross" />
         </button>
       </header>
 
       <div className="flex flex-col mb-auto">
         <div className="px-6 border-b border-border">
           <label className="flex gap-x-2 items-center relative">
-            <SearchIcon className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 opacity-70" />
+            <Icon
+              name="search"
+              className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 opacity-70"
+            />
             <input
               type="search"
               value={search}
@@ -188,36 +151,3 @@ export const ForwardChatMessagesModal = ({
     </Modal>
   );
 };
-
-// async function decryptChatPreview(chat: IChatDto) {
-//   if (!chat?.id || !chat.lastMessage || typeof chat.lastMessage === 'string') {
-//     return chat;
-//   }
-
-//   if (chat.lastMessage.type === 'call') {
-//     return {
-//       ...chat,
-//       lastMessage: {
-//         ...chat.lastMessage,
-//         content: formatCallPreview(chat.lastMessage.content),
-//       },
-//     };
-//   }
-
-//   try {
-//     const message = await services.messageService.processMessageForDisplay(chat.id, {
-//       ...chat.lastMessage,
-//       chatId: chat.lastMessage.chatId ?? chat.id,
-//     });
-//     return {
-//       ...chat,
-//       lastMessage: {
-//         ...chat.lastMessage,
-//         content: message.content,
-//       },
-//     };
-//   } catch (error) {
-//     console.warn('Failed to decrypt chat preview', error);
-//     return chat;
-//   }
-// }

@@ -1,7 +1,7 @@
 import { Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { useChatStore, useProfileStore } from '@/store';
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TIconTypes } from '@/types';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,11 +12,15 @@ interface Props {
   onSelection: (message: IMessageDto) => void;
   draftRef?: RefObject<HTMLInputElement | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
-  updateMessage: (
-    items: TMessagesList,
-    messageId: string,
-    data: Partial<Omit<IMessageDto, 'id'>>
-  ) => TMessagesList;
+}
+
+interface IActionButton {
+  show: boolean;
+  icon: TIconTypes;
+  key: string;
+  def: string;
+  action: () => void;
+  className?: string;
 }
 
 export const MessageActionsPopover = ({
@@ -24,14 +28,12 @@ export const MessageActionsPopover = ({
   onSelection,
   draftRef,
   setIsForwardModalOpen,
-  updateMessage,
 }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { t } = useTranslation();
   const actions = useMessageActions({
     draftRef,
     setIsForwardModalOpen,
-    updateMessage,
   });
   const { selectedMessages, pinnedMessages, selectionMode, actionMenu } = useChatStore();
 
@@ -39,7 +41,7 @@ export const MessageActionsPopover = ({
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
 
-  const buttons = [
+  const buttons: IActionButton[] = [
     {
       show: !selectionMode,
       icon: 'reply',
@@ -142,7 +144,7 @@ export const MessageActionsPopover = ({
               onClick={() => actions.runMessageAction(b.action)}
               type="button"
             >
-              <Icon name={b.icon} />
+              <Icon name={b.icon} className="fill-transparent" />
               <span>{t(b.key, b.def)}</span>
             </button>
           ))}
@@ -155,7 +157,7 @@ export const MessageActionsPopover = ({
           }
           type="button"
         >
-          <Icon name="check-circle" className="fill-transparent" />
+          <Icon name="checkCircle" className="fill-transparent" />
           <span>
             {isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать')}
           </span>

@@ -1,7 +1,7 @@
 import { services } from '@/services';
 import { useChatStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
-import { appendUniqueMessage, updateMessage, updatePinnedMessage } from '@/utils';
+import { appendUniqueMessage } from '@/utils';
 import {
   useState,
   type Dispatch,
@@ -29,7 +29,6 @@ export function useComposerSendMessage({
 }: Params) {
   const { t } = useTranslation();
 
-  const setPinnedMessages = useChatStore((state) => state.setPinnedMessages);
   const setMessages = useChatStore((state) => state.setMessages);
   const draft = useChatStore((state) => state.draft);
   const setDraft = useChatStore((state) => state.setDraft);
@@ -38,6 +37,8 @@ export function useComposerSendMessage({
   const replyToMessage = useChatStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
   const setError = useChatStore((state) => state.setError);
+  const updateMessage = useChatStore((state) => state.updateMessage);
+  const updatePinnedMessage = useChatStore((state) => state.updatePinnedMessage);
   const { chatId = '' } = useParams<{ chatId: string }>();
 
   const [isSending, setIsSending] = useState(false);
@@ -55,17 +56,17 @@ export function useComposerSendMessage({
     setIsSending(true);
     try {
       if (editingMessage) {
-        const result = await services.messageService.editMessage(editingMessage.id, content);
-        setMessages((items) =>
-          updateMessage(items, editingMessage.id, {
-            content: result.content,
-            updatedAt: result.updatedAt,
-            isEdited: true,
-          })
+        const result = await services.messageService.editMessage(
+          editingMessage.id,
+          chatId,
+          content
         );
-        setPinnedMessages((items) =>
-          updatePinnedMessage(items, editingMessage.id, { content: result.content })
-        );
+        updateMessage(editingMessage.id, {
+          content: result.content,
+          updatedAt: result.updatedAt,
+          isEdited: true,
+        });
+        updatePinnedMessage(editingMessage.id, { content: result.content });
         setEditingMessage(null);
       } else if (pendingAttachment) {
         const message = await services.messageService.sendMediaMessage(

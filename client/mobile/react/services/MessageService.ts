@@ -4,6 +4,7 @@ import { eventBus, getRawChat } from '@/core';
 import { useChatStore } from '@/store';
 import type {
   IChatContext,
+  IDeleteMessageResponse,
   IEmojisResponse,
   IEncryptedMedia,
   ILastMessageDto,
@@ -56,20 +57,22 @@ export class MessageService {
     });
 
     const chatContext = await this.getChatContext(chatId, 'decryption');
-    const messages = response.data.messages ? sortMessagesChronologically(
-      await Promise.all(
-        response.data.messages.map(async (item: IMessageDto) => {
-          return this.processMessageForDisplay(chatId, item, chatContext);
-        })
-      )
-    )  : [];
+    const messages = response.data.messages
+      ? sortMessagesChronologically<IMessageDto>(
+          await Promise.all(
+            response.data.messages.map(async (item: IMessageDto) => {
+              return this.processMessageForDisplay(chatId, item, chatContext);
+            })
+          )
+        )
+      : [];
 
     if (offset === 0) {
       this.messages.set(chatId, messages);
     }
 
     if (offset > 0 && cached) {
-      this.messages.set(chatId, sortMessagesChronologically([...cached, ...messages]));
+      this.messages.set(chatId, sortMessagesChronologically<IMessageDto>([...cached, ...messages]));
     }
 
     return messages;
@@ -116,7 +119,7 @@ export class MessageService {
     const message: IMessageDto = { ...messageObj, content: content.trim() };
 
     this.addMessageToCache(chatId, message);
-    // eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.SENT, { message, chatId });
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.SENT, { message, chatId, type: WS_EVENTS.MESSAGE.NEW });
 
     return message;
   }
@@ -254,7 +257,7 @@ export class MessageService {
     if (chatContext.type === 'group') {
       return this.cryptoService.encryptGroup(chatId, content);
     }
-    return this.cryptoService.encryptDM(content, chatContext.peerPublicKey);
+    return this.cryptoService.encryptDM(content, chatContext.peerPublicKey!);
   }
 
   async decryptContent(
@@ -268,7 +271,7 @@ export class MessageService {
       return this.cryptoService.decryptGroup(chatId, content);
     }
     const isOwnMessage = senderId && senderId === this.getMeId();
-    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey, {
+    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey!, {
       preferEmbeddedSenderKey: !isOwnMessage,
     });
   }
@@ -294,7 +297,7 @@ export class MessageService {
     }
 
     try {
-      const response = await this.apiClient.get(mediaUrl);
+      const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
       const encryptedPayload = response.data;
       const blob = await this.cryptoService.decryptMedia(chatId, encryptedPayload, chatContext);
       const objectUrl =
@@ -327,7 +330,7 @@ export class MessageService {
     return metadata;
   }
 
-  async editMessage(messageId: string, content: string) {
+  async editMessage(messageId: string, chatId: string, content: string) {
     if (typeof content !== 'string' || !content.trim()) {
       throw new Error('Message must be a string');
     }
@@ -338,8 +341,8 @@ export class MessageService {
     const message = response.data;
     this.updatePinnedMessageInCache(messageId, message);
     this.updateMessageInCache(messageId, message);
-    eventBus.emit(WS_EVENTS.MESSAGE.EDITED, {
-      chatId: '',
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.EDITED, {
+      chatId: chatId,
       messageId,
       type: WS_EVENTS.MESSAGE.EDITED,
       updatedAt: new Date(),
@@ -349,12 +352,15 @@ export class MessageService {
     return message;
   }
 
-  async deleteMessage(messageId: string) {
-    const response = await this.apiClient.delete(API_ENDPOINTS.MESSAGE_BY_ID(messageId));
+  async deleteMessage(chatId: string, messageId: string) {
+    const response = await this.apiClient.delete<IDeleteMessageResponse>(
+      API_ENDPOINTS.MESSAGE_BY_ID(messageId)
+    );
     this.removeMessageFromCache(messageId);
-    eventBus.emit(WS_EVENTS.MESSAGE.DELETED, {
-      messageId,
-      chatId: '',
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.DELETED, {
+      messageId: messageId,
+      previousMessage: response.data.lastMessage,
+      chatId: chatId,
       type: WS_EVENTS.MESSAGE.DELETED,
     });
     return response.data;
@@ -372,7 +378,7 @@ export class MessageService {
       }
     });
 
-    // eventBus.emit('messages:read', { chatId, messageIds });
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
     return response.data;
   }
 
@@ -382,16 +388,19 @@ export class MessageService {
       { targetChatId }
     );
 
-    const message = sortMessagesChronologically(
+    const processedMessage = await this.processMessageForDisplay(
+      targetChatId,
+      response.data.message
+    );
+    const message = sortMessagesChronologically<IMessageDto>(
       await Promise.all(
-        [response.data.message].map(async (item: IMessageDto) => {
+        [processedMessage].map(async (item: IMessageDto) => {
           return this.processMessageForDisplay(targetChatId, item);
         })
       )
     )[0];
 
     this.addMessageToCache(targetChatId, message);
-    // eventBus.emit("message:sent", { message, chatId: targetChatId });
 
     return message;
   }
@@ -414,7 +423,7 @@ export class MessageService {
 
     const chatContext = await this.getChatContext(chatId, 'decryption');
 
-    const messages = sortMessagesChronologically(
+    const messages = sortMessagesChronologically<IPinnedDto>(
       await Promise.all(
         response.map(async (item: IPinnedDto) => {
           return {
@@ -478,7 +487,7 @@ export class MessageService {
     }
     this.pinnedMessages.set(
       chatId,
-      sortMessagesChronologically([...this.getOrCreatePinnedMessages(chatId), message])
+      sortMessagesChronologically<IPinnedDto>([...this.getOrCreatePinnedMessages(chatId), message])
     );
   }
 
@@ -497,7 +506,7 @@ export class MessageService {
     }
     this.messages.set(
       chatId,
-      sortMessagesChronologically([...this.getOrCreateMessages(chatId), message])
+      sortMessagesChronologically<IMessageDto>([...this.getOrCreateMessages(chatId), message])
     );
   }
 

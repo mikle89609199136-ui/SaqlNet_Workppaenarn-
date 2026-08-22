@@ -1,6 +1,5 @@
 import { useChatStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
-import { getMediaMessageType } from '@/utils';
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -8,6 +7,13 @@ interface Params {
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
+}
+
+function getMediaMessageType(mimeType = '') {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  return 'file';
 }
 
 export function useAttachmentPicker({
