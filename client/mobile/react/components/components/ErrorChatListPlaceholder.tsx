@@ -1,14 +1,19 @@
-import { useTranslation } from "react-i18next";
+import { useTranslation } from 'react-i18next';
 
-export function ErrorChatListPlaceholder({ message, onRetry }) {
+interface Props {
+  message: string;
+  onRetry: () => void;
+}
+
+export function ErrorChatListPlaceholder({ message, onRetry }: Props) {
   const { t } = useTranslation();
   return (
     <div className="chats-state">
       <div className="chats-state-icon">!</div>
-      <h2>{t("loadingError", "Ошибка загрузки")}</h2>
+      <h2>{t('loadingError', 'Ошибка загрузки')}</h2>
       <p>{message}</p>
       <button className="chats-retry" onClick={onRetry} type="button">
-        {t("retry", "Повторить")}
+        {t('retry', 'Повторить')}
       </button>
     </div>
   );

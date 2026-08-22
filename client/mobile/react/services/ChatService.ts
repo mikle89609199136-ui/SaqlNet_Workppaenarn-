@@ -4,22 +4,57 @@ import type {
   IChatDto,
   IChatResponse,
   IChatsResponse,
+  ICreateGroupChatResponse,
   IMembersListResponse,
   ISearchUsersResponse,
   TChatRole,
   TChatType,
+  TMembersList,
 } from '@/types';
 
 export class ChatService {
   private apiClient: ApiClient;
+  private membersRequests = new Map<string, Promise<TMembersList>>();
+  private chatsRequest: Promise<IChatDto[]> | null = null;
+
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
 
   async getChats() {
-    const response = await this.apiClient.get<IChatsResponse>(API_ENDPOINTS.CHATS);
+    if (this.chatsRequest) {
+      return this.chatsRequest;
+    }
 
-    return response.data.chats;
+    const request = this.apiClient
+      .get<IChatsResponse>(API_ENDPOINTS.CHATS)
+      .then((response) => response.data.chats)
+      .catch((err) => {
+        this.chatsRequest = null;
+        throw err;
+      });
+
+    this.chatsRequest = request;
+    return request;
+  }
+
+  private patchChatsCache(updater: (chats: IChatDto[]) => IChatDto[]) {
+    if (!this.chatsRequest) return; // кэша ещё нет — следующий getChats() сходит за свежими данными сам
+    this.chatsRequest = this.chatsRequest.then(updater);
+  }
+
+  patchChat(chatId: string, patch: Partial<IChatDto>) {
+    this.patchChatsCache((chats) =>
+      chats.map((chat) => (chat.id === chatId ? { ...chat, ...patch } : chat))
+    );
+  }
+
+  addChatToCache(chat: IChatDto) {
+    this.patchChatsCache((chats) => [chat, ...chats]);
+  }
+
+  removeChatFromCache(chatId: string) {
+    this.patchChatsCache((chats) => chats.filter((chat) => chat.id !== chatId));
   }
 
   async getChat(chatId: string) {
@@ -47,10 +82,12 @@ export class ChatService {
     title: string;
     description: string;
     members: string[];
-  }) {
-    return this.apiClient
-      .post(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
+  }): Promise<ICreateGroupChatResponse> {
+    const chat = await this.apiClient
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
       .then((response) => response.data);
+
+    return chat;
   }
 
   async searchUsers(query: string) {
@@ -59,10 +96,22 @@ export class ChatService {
       .then((response) => response.data.users);
   }
 
-  async getMembers(chatId: string) {
-    return this.apiClient
+  async getMembers(chatId: string): Promise<TMembersList> {
+    const cached = this.membersRequests.get(chatId);
+    if (cached) {
+      return cached;
+    }
+
+    const request = this.apiClient
       .get<IMembersListResponse>(API_ENDPOINTS.CHAT_MEMBERS(chatId))
-      .then((response) => response.data.members);
+      .then((response) => response.data.members)
+      .catch((err) => {
+        this.membersRequests.delete(chatId); // не кэшируем ошибку — следующий вызов попробует заново
+        throw err;
+      });
+
+    this.membersRequests.set(chatId, request);
+    return request;
   }
 
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
@@ -79,7 +128,7 @@ export class ChatService {
 
   async updateChat(
     chatId: string,
-    data: { title?: string; description?: string }
+    data: Partial<Omit<IChatDto, "id" | "peerId" | "peerPublicKey" | "ownerId" | "createdAt" | "type">>
   ): Promise<IChatDto> {
     const response = await this.apiClient.put<IChatResponse>(
       API_ENDPOINTS.CHAT_BY_ID(chatId),

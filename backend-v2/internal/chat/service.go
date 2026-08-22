@@ -1690,34 +1690,159 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	return msg, nil
 }
 
-func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) error {
+func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (*Message, error) {
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
 	var chatID string
+	var createdAt time.Time
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	// Require sender to be a current member to prevent deletion after being kicked.
-	err := s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE messages.messages AS m
 		SET deleted_at = NOW()
 		FROM chats.members AS cm
 		WHERE m.id = $1 AND (m.sender_id = $2 OR cm.role = 'owner' OR (cm.role = 'admin' AND cm.permissions->>'can_delete_messages' = 'true')) AND m.deleted_at IS NULL
 		  AND cm.chat_id = m.chat_id AND cm.user_id = $2
-		RETURNING m.chat_id::text
-	`, messageID, userID).Scan(&chatID)
+		RETURNING m.chat_id::text, m.created_at
+	`, messageID, userID).Scan(&chatID, &createdAt)
 
 	if err == sql.ErrNoRows {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID)
+	if err != nil {
+		return nil, err
+	}
+	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{
-			"type":      "message_deleted",
-			"chatId":    chatID,
-			"messageId": messageID,
+			"type":            "message_deleted",
+			"chatId":          chatID,
+			"messageId":       messageID,
+			"previousMessage": previousMessage,
 		})
 		s.ws.BroadcastToChat(chatID, payload, userID)
 	}
 
+	return lastMessage, nil
+}
+
+// loadMessageAfterDelete returns either the newest message before the deleted
+// message (when before is non-nil), or the newest remaining message in the chat.
+func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string) (*Message, error) {
+	var msg Message
+	var replyTo sql.NullString
+	var metadataBytes, reactionsBytes []byte
+	var deletedAt sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
+		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
+		       m.content, m.type, m.reply_to::text, m.metadata,
+		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text,
+		       COALESCE((
+		           SELECT jsonb_agg(jsonb_build_object(
+		               'emoji', grouped.emoji,
+		               'count', grouped.reaction_count,
+		               'myReaction', grouped.my_reaction
+		           ) ORDER BY grouped.reaction_count DESC, grouped.emoji)
+		           FROM (
+		               SELECT r.emoji, COUNT(*) AS reaction_count,
+		                      BOOL_OR(r.user_id = $4) AS my_reaction
+		               FROM messages.reactions r
+		               WHERE r.message_id = m.id
+		               GROUP BY r.emoji
+		           ) grouped
+		       ), '[]'::jsonb)
+		FROM messages.messages m
+		LEFT JOIN auth.users au ON au.id = m.sender_id
+		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+		LEFT JOIN messages.pins p ON p.message_id = m.id
+		WHERE m.chat_id = $1
+		  AND m.deleted_at IS NULL
+		  AND ($2::timestamptz IS NULL OR (m.created_at, m.id) < ($2, $3::uuid))
+		ORDER BY m.created_at DESC, m.id DESC
+		LIMIT 1
+	`, chatID, before, messageID, userID).Scan(
+		&msg.ID, &msg.ChatID, &msg.SenderID,
+		&msg.SenderName, &msg.SenderAvatar,
+		&msg.Content, &msg.Type, &replyTo, &metadataBytes,
+		&msg.IsPinned, &msg.IsEdited,
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &reactionsBytes,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if replyTo.Valid {
+		msg.ReplyTo = &replyTo.String
+		msg.ReplyToMessageID = msg.ReplyTo
+	}
+	if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(reactionsBytes, &msg.Reactions); err != nil {
+		return nil, err
+	}
+	msg.SenderFirstName = msg.SenderName
+	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
+func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message) error {
+	if msg.ReplyTo != nil {
+		var name string
+		err := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+			FROM messages.messages m
+			LEFT JOIN auth.users au ON au.id = m.sender_id
+			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+			WHERE m.id = $1
+		`, *msg.ReplyTo).Scan(&name)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		msg.ReplySenderName = name
+		msg.ReplyToSenderName = name
+	}
+	if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
+		msg.IsForwarded = true
+		if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
+			msg.ForwardedSenderName = name
+		}
+		if msg.ForwardedSenderName == "" {
+			_ = tx.QueryRowContext(ctx, `
+				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				FROM messages.messages m
+				LEFT JOIN auth.users au ON au.id = m.sender_id
+				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+				WHERE m.id::text = $1
+			`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+		}
+	}
 	return nil
 }
 

@@ -1,5 +1,5 @@
 import { services } from '@/services';
-import type { IChatDto, IMessageDto, IPinnedDto, TMessagesList } from '@/types';
+import type { IChatDto, IMessageDto, IPinnedDto, IPinnedMessageDto, TMessagesList } from '@/types';
 import { create } from 'zustand';
 
 export interface IActionMenu {
@@ -41,6 +41,8 @@ interface IChatActions {
   resetChatState: () => void;
   updateChat: (data: Partial<IChatDto>) => Promise<void>;
   markAsRead: (messageId: string) => void;
+  updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => void;
+  updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => void;
 }
 
 const initialChatState: IChatState = {
@@ -109,6 +111,28 @@ export const useChatStore = create<InitialState>((set, get) => {
       messages[messageIndex] = readMessage;
 
       set({ messages });
+    },
+    updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => {
+      const messages = get().messages;
+      const updatedMessages = messages.map((message) =>
+        message.id === messageId ? { ...message, ...patch } : message
+      );
+      set({ messages: updatedMessages });
+    },
+    updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => {
+      const pinnedMessages = get().pinnedMessages;
+      const updatedPinnedMessages = pinnedMessages.map((item) =>
+        item.id === messageId
+          ? {
+              ...item,
+              message: {
+                ...item.message,
+                ...patch,
+              },
+            }
+          : item
+      );
+      set({ pinnedMessages: updatedPinnedMessages });
     },
   };
 });

@@ -1,10 +1,9 @@
 import { ROUTES } from '@/consts';
-import { cn } from '@/utils';
+import { cn, getLastMessageText } from '@/utils';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Identicon } from '@/components/ui';
 import type { IChatDto } from '@/types';
-import type { TFunction } from 'i18next';
 
 interface Props {
   chat: IChatDto;
@@ -13,7 +12,7 @@ interface Props {
 export function ChatListItem({ chat }: Props) {
   const { t } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const lastMessage = chat.isTyping ? t('typing', 'печатает...') : getLastMessageText(chat, t);
+  const lastMessage = chat.typingUserId ? t('typing', 'печатает...') : getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || chat.typingUserId));
@@ -34,28 +33,21 @@ export function ChatListItem({ chat }: Props) {
         <div className="chat-topline">
           <span className="chat-title">{title}</span>
           <span className="chat-time">
-            {formatChatTime(chat.updatedAt || chat.lastMessageAt || chat.createdAt)}
+            {chat.lastMessageAt && formatChatTime(chat.lastMessageAt)}
           </span>
         </div>
         <div className="chat-subline">
           <span>{lastMessage}</span>
-          {chat.unreadCount > 0 ? (
+          {chat.unreadCount > 0 && (
             <strong className="chat-unread">{chat.unreadCount}</strong>
-          ) : null}
+          )}
         </div>
       </div>
     </Link>
   );
 }
 
-function getLastMessageText(chat: IChatDto, t: TFunction) {
-  if (typeof chat.lastMessage === 'string')
-    return chat.lastMessage || t('noMessages', 'Нет сообщений');
-  if (chat.lastMessage?.content) return chat.lastMessage.content;
-  return t('noMessages', 'Нет сообщений');
-}
-
-function formatChatTime(value: Date | string) {
+function formatChatTime(value: Date | string): string {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '';

@@ -26,7 +26,7 @@ import type {
   IUserDto,
   TMessagesList,
 } from '@/types';
-import { appendUniqueMessage, updateMessage, updatePinnedMessage } from '@/utils';
+import { appendUniqueMessage } from '@/utils';
 import {
   useCallback,
   useEffect,
@@ -60,24 +60,24 @@ export function ChatThreadPage() {
   const { onProfileStateChange, profileCloseToken, profileMode } =
     useOutletContext<IOutletContext>();
   const { t } = useTranslation();
-  const {
-    chat,
-    setChat,
-    messages,
-    setMessages,
-    error,
-    setError,
-    setEditingMessage,
-    selectedMessages,
-    setSelectedMessages,
-    pinnedMessages,
-    setPinnedMessages,
-    selectionMode,
-    setSelectionMode,
-    actionMenu,
-    setActionMenu,
-    resetChatState,
-  } = useChatStore();
+  const chat = useChatStore((state) => state.chat);
+  const setChat = useChatStore((state) => state.setChat);
+  const messages = useChatStore((state) => state.messages);
+  const setMessages = useChatStore((state) => state.setMessages);
+  const error = useChatStore((state) => state.error);
+  const setError = useChatStore((state) => state.setError);
+  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
+  const selectedMessages = useChatStore((state) => state.selectedMessages);
+  const setSelectedMessages = useChatStore((state) => state.setSelectedMessages);
+  const pinnedMessages = useChatStore((state) => state.pinnedMessages);
+  const setPinnedMessages = useChatStore((state) => state.setPinnedMessages);
+  const selectionMode = useChatStore((state) => state.selectionMode);
+  const setSelectionMode = useChatStore((state) => state.setSelectionMode);
+  const actionMenu = useChatStore((state) => state.actionMenu);
+  const setActionMenu = useChatStore((state) => state.setActionMenu);
+  const resetChatState = useChatStore((state) => state.resetChatState);
+  const updateMessage = useChatStore((state) => state.updateMessage);
+  const updatePinnedMessage = useChatStore((state) => state.updatePinnedMessage);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAttachment, setPendingAttachment] = useState<IPendingAttachment | null>(null);
   const [photoEditorFile, setPhotoEditorFile] = useState<File | null>(null);
@@ -115,13 +115,8 @@ export function ChatThreadPage() {
     handleForward,
     handleCloseForwardModal,
   } = useMessageActions({
-    currentUser,
-    chatId,
-    chatType: chat?.type,
-    chatRole: chat?.role,
     draftRef,
     setIsForwardModalOpen,
-    updateMessage,
   });
 
   const loadMoreMessages = useCallback(async () => {
@@ -242,6 +237,7 @@ export function ChatThreadPage() {
     setMessages(loadedMessages);
     setPinnedMessages(loadedPinnedMessages);
     markMessagesAsRead(chatId, loadedMessages);
+    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, {chatId})
     setIsLoading(false);
   }, [loadedChat, loadedMessages, loadedPinnedMessages, chatId]);
 
@@ -258,7 +254,6 @@ export function ChatThreadPage() {
 
   useEffect(() => {
     const unsubscribeNew = eventBus.on(WS_EVENTS.MESSAGE.NEW, async (event) => {
-      console.log(event, 'event');
       if (event.chatId !== chatId || !event.message) return;
       const nextMessage = await services.messageService.processMessageForDisplay(
         chatId,
@@ -271,27 +266,16 @@ export function ChatThreadPage() {
       markMessagesAsRead(chatId, [nextMessage]);
     });
 
-    const unsubscribeEdited = eventBus.on('message_edited', (event) => {
-      setMessages((items) =>
-        items.map((message) =>
-          message.id === event.messageId
-            ? {
-                ...message,
-                content: event.content,
-                editedAt: event.updatedAt,
-                isEdited: true,
-              }
-            : message
-        )
-      );
-      setPinnedMessages((items) =>
-        updatePinnedMessage(items, event.messageId, {
-          content: event.content,
-        })
-      );
+    const unsubscribeEdited = eventBus.on(WS_EVENTS.MESSAGE.EDITED, (event) => {
+      updateMessage(event.messageId, {
+        content: event.content,
+        isEdited: true,
+        updatedAt: event.updatedAt,
+      });
+      updatePinnedMessage(event.messageId, { content: event.content });
     });
 
-    const unsubscribeDeleted = eventBus.on('message_deleted', (event) => {
+    const unsubscribeDeleted = eventBus.on(WS_EVENTS.MESSAGE.DELETED, (event) => {
       if (event.chatId && event.chatId !== chatId) return;
       setMessages((items) => items.filter((message) => message.id !== event.messageId));
     });
@@ -345,7 +329,7 @@ export function ChatThreadPage() {
     const messageIds = nextMessages
       .filter((message) => message?.id && message.senderId !== currentUser?.id)
       .map((message) => message.id);
-    if (messageIds.length === 0 || typeof services.messageService.markAsRead !== 'function') return;
+    if (messageIds.length === 0) return;
     services.messageService.markAsRead(targetChatId, messageIds).catch((err) => {
       console.warn('Failed to mark messages as read', err);
     });
@@ -420,8 +404,6 @@ export function ChatThreadPage() {
           onSelection={toggleMessageSelection}
           actionMenu={actionMenu}
           setIsForwardModalOpen={setIsForwardModalOpen}
-          ref={draftRef}
-          updateMessage={updateMessage}
           setPinnedMessagesOpen={setPinnedMessagesOpen}
         />
       )}
@@ -451,12 +433,7 @@ export function ChatThreadPage() {
               <MessageActionsPopover
                 message={selectedActionMessage}
                 onSelection={toggleMessageSelection}
-                currentUser={currentUser}
                 draftRef={draftRef}
-                chatId={chatId}
-                chatType={chat?.type}
-                chatRole={chat?.role}
-                updateMessage={updateMessage}
                 setIsForwardModalOpen={setIsForwardModalOpen}
               />
             </>

@@ -1,14 +1,16 @@
-import type { TMediaMessageType, TMessageType } from '@/types';
+import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
-export type TChatType = 'private' | 'group';
+export type TChatType = 'private' | 'group' | 'channel';
 
 export type TChatRole = 'member' | 'admin' | 'owner';
 
 export interface ILastMessageDto {
+  id: string;
   content: string;
   type: TMessageType;
   senderId: string;
   senderName: string;
+  reactions: TReactionsList;
 }
 
 export interface IChatDto {
@@ -27,23 +29,15 @@ export interface IChatDto {
   createdAt: Date;
   updatedAt: Date;
   memberCount: number;
-  lastMessageAt: Date;
+  lastMessageAt?: Date;
   unreadCount: number;
-  lastMessage: ILastMessageDto;
+  lastMessage?: ILastMessageDto;
 }
 
 export type TChatsList = IChatDto[];
 
-export interface IChatResponse {
-  chat: IChatDto;
-}
-
-export interface IChatsResponse {
-  chats: TChatsList;
-}
-
 export interface IChatContext {
-  type: string;
+  type: TChatType;
   peerPublicKey: string | null;
   [key: string]: unknown;
 }
@@ -61,10 +55,6 @@ export interface IMemberDto {
 }
 
 export type TMembersList = IMemberDto[];
-
-export interface IMembersListResponse {
-  members: TMembersList;
-}
 
 export interface IPendingAttachment {
   file: File;

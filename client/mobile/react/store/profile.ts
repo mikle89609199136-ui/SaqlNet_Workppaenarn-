@@ -63,12 +63,10 @@ export const useProfileStore = create<InitialState>((set, get) => ({
   clearProfile: () => {
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
-    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     set({
       user: null,
       isAuth: false,
       token: null,
-      settings: DEFAULT_PROFILE_SETTINGS,
     });
   },
 }));

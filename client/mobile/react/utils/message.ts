@@ -1,4 +1,4 @@
-import type { IMessageDto, IPinnedMessageDto, TMessagesList, TPinnedList } from '@/types';
+import type { IMessageDto, TMessagesList } from '@/types';
 
 export const hasMessageMedia = (msg: IMessageDto) => !!(msg.mediaUrl || msg.mediaUnavailable);
 
@@ -21,37 +21,4 @@ export function getMessagePreview(message: IMessageDto | null) {
 export function appendUniqueMessage(items: TMessagesList, nextMessage: IMessageDto) {
   if (items.some((message) => message.id === nextMessage.id)) return items;
   return [...items, nextMessage];
-}
-
-export function updateMessage(
-  items: TMessagesList,
-  messageId: string,
-  patch: Partial<Omit<IMessageDto, 'id'>>
-) {
-  return items.map((message) => (message.id === messageId ? { ...message, ...patch } : message));
-}
-
-export function updatePinnedMessage(
-  items: TPinnedList,
-  messageId: string,
-  patch: Partial<Omit<IPinnedMessageDto, 'id'>>
-) {
-  return items.map((item) =>
-    item.message.id === messageId
-      ? {
-          ...item,
-          message: {
-            ...item.message,
-            ...patch,
-          },
-        }
-      : item
-  );
-}
-
-export function getMediaMessageType(mimeType = '') {
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType.startsWith('video/')) return 'video';
-  if (mimeType.startsWith('audio/')) return 'audio';
-  return 'file';
 }
