@@ -11,7 +11,7 @@ describe('MeetingsPage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: /встречи/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /встречи/i })).toBeInTheDocument();
     expect(screen.getByText(/раздел в разработке/i)).toBeInTheDocument();
   });
 });

@@ -11,7 +11,7 @@ describe('ChannelsPage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: /каналы/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /каналы/i })).toBeInTheDocument();
     expect(screen.getByText(/раздел в разработке/i)).toBeInTheDocument();
   });
 });
