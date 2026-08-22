@@ -23,7 +23,12 @@ const (
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
 const (
-	memberRoleQuery       = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	memberRoleQuery = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	// actorChatInfoQuery — точная копия SQL getChatInfo: тип чата и роль
+	// актора одним запросом. Используется moderation-методами (mute/ban/...),
+	// которые после правки №1 проверяют chats.chats.type = 'group'.
+	actorChatInfoQuery = `SELECT c.type, cm.role
+		FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`
 	memberRoleLockQuery   = `SELECT role FROM chats.members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`
 	ownerLockQuery        = `SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
@@ -45,10 +50,6 @@ const (
 	muteMemberTargetQuery = `
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`
-	muteMemberUpdateQuery = `
-		UPDATE chats.members SET muted_at = NOW(), muted_until = $3
-		WHERE chat_id = $1 AND user_id = $2
-	`
 	// banTargetRoleQuery — точная копия SQL чтения роли цели в Service.BanMember
 	// (с переносами и отступами, как в service.go).
 	banTargetRoleQuery = `
@@ -162,10 +163,11 @@ func TestHandler_AddMember(t *testing.T) {
 			func() {
 				// Все проверки проходят, вставка успешна
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectQuery(`SELECT .* FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at"}).AddRow(handlerTargetID, "u", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
+				mock.ExpectCommit()
 			},
 			http.StatusCreated, // 201
 			"",
@@ -174,7 +176,13 @@ func TestHandler_AddMember(t *testing.T) {
 			"AlreadyMember",
 			func() {
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"?"}).AddRow(true))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+				// Вставка не сработала — различаем причину: бана нет, membership есть
+				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				mock.ExpectRollback()
 			},
 			http.StatusConflict, // 409
 			"already_member",
@@ -183,8 +191,12 @@ func TestHandler_AddMember(t *testing.T) {
 			"UserBanned",
 			func() {
 				expectAddMemberPrechecks(mock)
-				mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"?"}).AddRow(true))
+				mock.ExpectBegin()
+				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(0, 0))
+				// Активный бан — причина найдена сразу, membership не проверяем
+				mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				mock.ExpectRollback()
 			},
 			http.StatusConflict, // 409
 			"user_banned",
@@ -468,9 +480,9 @@ func TestHandler_MuteMember_Body(t *testing.T) {
 		{
 			"валидное тело",
 			func() {
-				mock.ExpectQuery(memberRoleQuery).
+				mock.ExpectQuery(actorChatInfoQuery).
 					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 				mock.ExpectQuery(muteMemberTargetQuery).
 					WithArgs(handlerTargetID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role", "muted_at", "muted_until"}).AddRow("member", nil, nil))
@@ -525,19 +537,24 @@ func TestHandler_BanMember_Body(t *testing.T) {
 		{
 			"валидное тело",
 			func() {
-				mock.ExpectQuery(memberRoleQuery).
+				mock.ExpectQuery(actorChatInfoQuery).
 					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
+				mock.ExpectQuery(userExistsQuery).
+					WithArgs(muteTestUserID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+				mock.ExpectBegin()
+				mock.ExpectQuery(banMemberLockQuery).WithArgs(handlerChatID, handlerTargetID).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectQuery(banTargetRoleQuery).
 					WithArgs(handlerTargetID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				mock.ExpectQuery(banSelectQuery).
 					WithArgs(handlerChatID, handlerTargetID).
 					WillReturnError(sql.ErrNoRows)
-				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectExec(banInsertQuery).
+				mock.ExpectExec(banUpsertQuery).
 					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
 			},
