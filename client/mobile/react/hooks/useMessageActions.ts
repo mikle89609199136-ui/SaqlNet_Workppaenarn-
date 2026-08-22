@@ -2,7 +2,7 @@ import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
 import { useToasts } from '@/hooks';
 import { services, translateText } from '@/services';
 import { useChatStore, useProfileStore } from '@/store';
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,37 +11,31 @@ import { useParams } from 'react-router-dom';
 interface Props {
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
   draftRef?: RefObject<HTMLInputElement | null>;
-  updateMessage: (
-    messages: TMessagesList,
-    messageId: string,
-    data: Partial<Omit<IMessageDto, 'id'>>
-  ) => TMessagesList;
 }
 
-export const useMessageActions = ({ updateMessage, setIsForwardModalOpen, draftRef }: Props) => {
+export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const [translatingIds, setTranslatingIds] = useState(new Set());
   const chatType = useChatStore((state) => state.chat?.type);
   const chatRole = useChatStore((state) => state.chat?.role);
+  const updateMessage = useChatStore((state) => state.updateMessage);
+  const setMessages = useChatStore((state) => state.setMessages);
+  const setError = useChatStore((state) => state.setError);
+  const editingMessage = useChatStore((state) => state.editingMessage);
+  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
+  const setDraft = useChatStore((state) => state.setDraft);
+  const replyToMessage = useChatStore((state) => state.replyToMessage);
+  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
+  const selectedMessages = useChatStore((state) => state.selectedMessages);
+  const setSelectedMessages = useChatStore((state) => state.setSelectedMessages);
+  const selectionMode = useChatStore((state) => state.selectionMode);
+  const setSelectionMode = useChatStore((state) => state.setSelectionMode);
+  const translations = useChatStore((state) => state.translations);
+  const setTranslations = useChatStore((state) => state.setTranslations);
+  const setActionMenu = useChatStore((state) => state.setActionMenu);
 
-  const {
-    setMessages,
-    setError,
-    editingMessage,
-    setEditingMessage,
-    setDraft,
-    replyToMessage,
-    setReplyToMessage,
-    selectedMessages,
-    setSelectedMessages,
-    selectionMode,
-    setSelectionMode,
-    translations,
-    setTranslations,
-    setActionMenu,
-  } = useChatStore();
   const { showToast } = useToasts();
 
   const handleTranslateMessage = async (message: IMessageDto) => {
@@ -80,11 +74,13 @@ export const useMessageActions = ({ updateMessage, setIsForwardModalOpen, draftR
   const handleDelete = async (message: IMessageDto) => {
     try {
       if (selectionMode) {
+        // исравить тут, либо сортировка в хронологии, либо асинхронный цикл
+        const sortedMessages = sortMessagesChronologically(selectedMessages);
         await Promise.all(
-          selectedMessages.map((selectedMessage) => {
+          sortedMessages.map((selectedMessage) => {
             if (selectedMessage.senderId !== currentUser?.id) return;
 
-            services.messageService.deleteMessage(selectedMessage.id);
+            services.messageService.deleteMessage(chatId, selectedMessage.id);
           })
         );
 
@@ -101,7 +97,7 @@ export const useMessageActions = ({ updateMessage, setIsForwardModalOpen, draftR
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
-        await services.messageService.deleteMessage(message.id);
+        await services.messageService.deleteMessage(chatId, message.id);
         setMessages((items) => items.filter((item) => item.id !== message.id));
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
@@ -118,13 +114,12 @@ export const useMessageActions = ({ updateMessage, setIsForwardModalOpen, draftR
   };
 
   const handleReact = async (message: IMessageDto, emoji: string) => {
-    if (message.reactions.find((reaction) => reaction.myReaction) && !currentUser?.isPremium) return;
+    if (message.reactions.find((reaction) => reaction.myReaction) && !currentUser?.isPremium)
+      return;
 
     try {
       const result = await services.messageService.reactToMessage(message.id, emoji);
-      setMessages((items) =>
-        updateMessage(items, message.id, { reactions: result.reactions || [] })
-      );
+      updateMessage(message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
       setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));

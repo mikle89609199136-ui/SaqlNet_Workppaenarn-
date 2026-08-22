@@ -4,13 +4,11 @@ import {
   UserProfilePanel,
 } from '@/components/components';
 import { ChatListItem, ChatsSkeleton } from '@/components/ui';
-import { WS_EVENTS } from '@/consts';
-import { useIsMobile, useRealtimeSocket } from '@/hooks';
+import { useChatLastMessagePreview, useIsMobile } from '@/hooks';
 import { services } from '@/services';
-import { useChatsStore, useProfileStore } from '@/store';
-import type { ITypingEvent } from '@/types';
+import { useChatsStore } from '@/store';
 import { decryptChatLastMessagePreview } from '@/utils';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
@@ -20,9 +18,6 @@ export function ChatsPage() {
   const setChats = useChatsStore((state) => state.setChats);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const currentUser = useProfileStore((state) => state.user);
-  const typingTimeoutsRef = useRef(new Map());
-  const { eventBus } = useRealtimeSocket(true);
   const { chatId } = useParams();
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(360);
@@ -67,92 +62,7 @@ export function ChatsPage() {
     fetchChatsList();
   }, []);
 
-  useEffect(() => {
-    const updatePreview = async () => {};
-
-    const handleTyping = (event: ITypingEvent) => {
-      const chatId = event.chatId;
-      const userId = event.userId || event.senderId;
-      if (!chatId || !userId || userId === currentUser?.id) return;
-      console.log(event)
-      setChats((items) =>
-        items.map((chat) =>
-          chat.id === chatId
-            ? {
-                ...chat,
-                typingUserId: userId,
-                peerIsOnline: chat.type === 'private' ? true : chat.peerIsOnline,
-              }
-            : chat
-        )
-      );
-
-      window.clearTimeout(typingTimeoutsRef.current.get(chatId));
-      typingTimeoutsRef.current.set(
-        chatId,
-        window.setTimeout(() => {
-          setChats((items) =>
-            items.map((chat) => (chat.id === chatId ? { ...chat, typingUserId: null } : chat))
-          );
-          typingTimeoutsRef.current.delete(chatId);
-        }, 3000)
-      );
-    };
-
-    const unsubscribeNewMessage = eventBus.on(WS_EVENTS.MESSAGE.NEW, async (event) => {
-      if (!event.chatId || !event.message) return;
-
-      const lastMessage = await decryptChatLastMessagePreview(event.chatId, {
-        content: event.message.content,
-        id: event.message.id,
-        reactions: event.message.reactions,
-        senderId: event.message.senderId,
-        senderName: event.message.senderName,
-        type: event.message.type,
-      });
-
-      setChats((items) => {
-        const index = items.findIndex((chat) => chat.id === chatId);
-        if (index === -1) return items;
-
-        const nextChat = {
-          ...items[index],
-          typingUserId: null,
-          lastMessage: lastMessage,
-          lastMessageAt: event.message.createdAt,
-        };
-        window.clearTimeout(typingTimeoutsRef.current.get(chatId));
-        typingTimeoutsRef.current.delete(chatId);
-        const nextItems = [nextChat, ...items.slice(0, index), ...items.slice(index + 1)];
-        return nextItems;
-      });
-    });
-    // const unsubscribeSent = eventBus.on("message:sent", updatePreview);
-    // const unsubscribeEdited = eventBus.on("message:edited", updatePreview);
-    const unsubscribeMessageEdited = eventBus.on(WS_EVENTS.MESSAGE.EDITED, updatePreview);
-    const unsubscribeUserTyping = eventBus.on(WS_EVENTS.USER.TYPING, handleTyping);
-    // const unsubscribeUserTyping = eventBus.on("user_typing", handleTyping);
-    // const unsubscribeMessagesRead = eventBus.on(WS_EVENTS.MESSAGE.MESSAGE_READ, ({ chatId }) => {
-    //   setChats((items) =>
-    //     items.map((chat) =>
-    //       chat.id === chatId ? { ...chat, unreadCount: 0 } : chat,
-    //     ),
-    //   );
-    // });
-
-    return () => {
-      unsubscribeNewMessage();
-      // unsubscribeSent();
-      // unsubscribeEdited();
-      unsubscribeMessageEdited();
-      // unsubscribeSent();
-      unsubscribeUserTyping();
-      // unsubscribeUserTyping();
-      // unsubscribeMessagesRead();
-      typingTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-      typingTimeoutsRef.current.clear();
-    };
-  }, [currentUser?.id, eventBus]);
+  useChatLastMessagePreview();
 
   function startResize(kind: string, event: PointerEvent) {
     event.preventDefault();

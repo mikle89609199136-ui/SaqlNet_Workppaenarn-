@@ -1,7 +1,7 @@
 import { Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { useChatStore, useProfileStore } from '@/store';
-import type { IMessageDto, TIconTypes, TMessagesList } from '@/types';
+import type { IMessageDto, TIconTypes } from '@/types';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,11 +12,6 @@ interface Props {
   onSelection: (message: IMessageDto) => void;
   draftRef?: RefObject<HTMLInputElement | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
-  updateMessage: (
-    items: TMessagesList,
-    messageId: string,
-    data: Partial<Omit<IMessageDto, 'id'>>
-  ) => TMessagesList;
 }
 
 interface IActionButton {
@@ -33,14 +28,12 @@ export const MessageActionsPopover = ({
   onSelection,
   draftRef,
   setIsForwardModalOpen,
-  updateMessage,
 }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { t } = useTranslation();
   const actions = useMessageActions({
     draftRef,
     setIsForwardModalOpen,
-    updateMessage,
   });
   const { selectedMessages, pinnedMessages, selectionMode, actionMenu } = useChatStore();
 
@@ -151,7 +144,7 @@ export const MessageActionsPopover = ({
               onClick={() => actions.runMessageAction(b.action)}
               type="button"
             >
-              <Icon name={b.icon} />
+              <Icon name={b.icon} className="fill-transparent" />
               <span>{t(b.key, b.def)}</span>
             </button>
           ))}

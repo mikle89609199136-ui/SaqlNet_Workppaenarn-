@@ -7,13 +7,11 @@ export { formatFileSize, getMaxUploadSize, isValidFileSize, parseFileSize } from
 export { formatLastSeen } from './formatLastSeen';
 export { getAttachmentIcon } from './getAttachmentIcon';
 export { getChatSubtitle } from './getChatSubtitle';
+export { getLastMessageText } from './getLastMessageText';
 export {
   appendUniqueMessage,
   formatMessageTime,
-  getMediaMessageType,
   getMessagePreview,
   hasMessageMedia,
-  updateMessage,
-  updatePinnedMessage,
 } from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';

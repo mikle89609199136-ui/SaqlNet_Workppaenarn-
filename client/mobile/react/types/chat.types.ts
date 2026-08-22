@@ -29,20 +29,12 @@ export interface IChatDto {
   createdAt: Date;
   updatedAt: Date;
   memberCount: number;
-  lastMessageAt: Date;
+  lastMessageAt?: Date;
   unreadCount: number;
-  lastMessage: ILastMessageDto;
+  lastMessage?: ILastMessageDto;
 }
 
 export type TChatsList = IChatDto[];
-
-export interface IChatResponse {
-  chat: IChatDto;
-}
-
-export interface IChatsResponse {
-  chats: TChatsList;
-}
 
 export interface IChatContext {
   type: TChatType;
@@ -63,10 +55,6 @@ export interface IMemberDto {
 }
 
 export type TMembersList = IMemberDto[];
-
-export interface IMembersListResponse {
-  members: TMembersList;
-}
 
 export interface IPendingAttachment {
   file: File;
