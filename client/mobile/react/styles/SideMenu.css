@@ -1,0 +1,105 @@
+/* Оверлей / Фон */
+.sidebar-backdrop {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  /* nav-rail имеет ширину около 64px–72px. 
+     Привязываем левый край оверлея прямо к правой границе nav-rail */
+  left: 68px; /* установи ширину твоего nav-rail, например 64px или 68px */
+  right: 0;
+  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+}
+
+/* Сам выезжающий блок SideMenu */
+.sidebar-drawer {
+  height: 100%;
+  
+  /* Делаем ширину такой же, как у списка чатов (обычно 320px–380px) 
+     Или 100% от контейнера, если на мобильных устройствах */
+  width: 360px; 
+  max-width: 100%;
+  border-radius: 0 !important;
+  background-color: var(--bg-surface, #0a0a0c); /* ваш переменный фоновый цвет */
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  
+  /* Анимация появления слева направо */
+  animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* На мобильных экранах (когда nav-rail снизу или скрыт) */
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    left: 0; /* растягиваем на весь экран */
+  }
+  
+  .sidebar-drawer {
+    width: 85vw; /* занимает почти весь экран по ширине */
+  }
+}
+
+/* Контейнер шапки */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08); /* Мягкий стеклянный разделитель */
+  margin-bottom: 8px;
+  padding-top: 26px;
+  padding-bottom: 20px;
+}
+
+/* Группа иконка + заголовок */
+.sidebar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-header-icon {
+  font-size: 18px;
+  opacity: 0.8;
+}
+
+/* Заголовок */
+.sidebar-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+  letter-spacing: -0.02em;
+}
+
+/* Кнопка закрытия (крестик) */
+.sidebar-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.sidebar-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}

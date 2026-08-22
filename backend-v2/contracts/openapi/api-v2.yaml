@@ -1,892 +1,146 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: CraneApp API v2
-  version: 0.1.0
+  version: 0.2.0
+  description: Public REST API exposed by the CraneApp edge gateway.
 servers:
   - url: /api/v2
+tags:
+  - { name: Auth, description: Authentication and sessions }
+  - { name: Users, description: Profiles and preferences }
+  - { name: Encryption, description: Encryption keys }
+  - { name: Support, description: User support requests }
+  - { name: Chats, description: Chats and membership }
+  - { name: Messages, description: Messages and reactions }
+  - { name: MLS, description: Messaging Layer Security }
+  - { name: Calls, description: Call rooms and ICE configuration }
+  - { name: Media, description: Uploads, GIFs, stickers and emoji }
+  - { name: Admin, description: Administrative operations }
 paths:
-  /auth/register:
-    post:
-      operationId: register
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-      responses:
-        '201':
-          description: Registered
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-  /auth/login:
-    post:
-      operationId: login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Authenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '401':
-          $ref: '#/components/responses/Error'
-  /auth/public-key:
-    post:
-      operationId: savePublicKey
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [publicKey]
-              properties:
-                publicKey: { type: string }
-      responses:
-        '200': { description: Public key saved }
-  /users/me:
-    get:
-      operationId: getCurrentUser
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Current user profile
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [user]
-                properties:
-                  user: { $ref: '#/components/schemas/UserProfile' }
-        '401': { $ref: '#/components/responses/Error' }
-    put:
-      operationId: updateCurrentUser
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
-      responses:
-        '200':
-          description: Updated profile
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [user]
-                properties:
-                  user: { $ref: '#/components/schemas/UserProfile' }
-  /users/avatar:
-    put:
-      operationId: updateAvatar
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                avatar: { type: string }
-                avatarUrl: { type: string }
-      responses:
-        '200':
-          description: Updated profile
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [user]
-                properties:
-                  user: { $ref: '#/components/schemas/UserProfile' }
-  /users/search:
-    get:
-      operationId: searchUsers
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: q
-          required: true
-          schema: { type: string, minLength: 1 }
-      responses:
-        '200':
-          description: User search results
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [users]
-                properties:
-                  users:
-                    type: array
-                    items: { $ref: '#/components/schemas/UserSearchResult' }
-  /users/settings:
-    get:
-      operationId: getUserSettings
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: User settings
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/UserSettingsResponse' }
-    put:
-      operationId: updateUserSettings
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, additionalProperties: true }
-      responses:
-        '200':
-          description: Updated settings
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [settings]
-                properties:
-                  settings: { type: object, additionalProperties: true }
-  /users/privacy:
-    put:
-      operationId: updateUserPrivacy
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, additionalProperties: true }
-      responses:
-        '200':
-          description: Updated privacy settings
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [privacy]
-                properties:
-                  privacy: { type: object, additionalProperties: true }
-  /users/notifications:
-    get:
-      operationId: getNotificationSettings
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Notification settings } }
-    put:
-      operationId: updateNotificationSettings
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
-      responses: { '200': { description: Updated notification settings } }
-  /users/sounds:
-    get:
-      operationId: getSoundSettings
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Sound settings } }
-    put:
-      operationId: updateSoundSettings
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
-      responses: { '200': { description: Updated sound settings } }
-  /users/advanced-settings:
-    get:
-      operationId: getAdvancedSettings
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Advanced settings } }
-    put:
-      operationId: updateAdvancedSettings
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
-      responses: { '200': { description: Updated advanced settings } }
-  /users/folders:
-    get:
-      operationId: listFolders
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Chat folders } }
-    put:
-      operationId: updateFolders
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [folders]
-              properties:
-                folders: { type: array, items: { type: object, additionalProperties: true } }
-      responses: { '200': { description: Folders updated } }
-  /users/storage:
-    get:
-      operationId: getStorageUsage
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Storage usage and settings } }
-  /users/storage/settings:
-    put:
-      operationId: updateStorageSettings
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
-      responses: { '200': { description: Storage settings updated } }
-  /users/storage/cache:
-    delete:
-      operationId: clearStorageCache
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: Cache cleared } }
-  /users/storage/all:
-    delete:
-      operationId: deleteAllUserData
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: User data deleted } }
-  /users/export:
-    get:
-      operationId: exportUserData
-      security: [{ bearerAuth: [] }]
-      responses: { '200': { description: User data export } }
-  /users/blocked:
-    get:
-      operationId: listBlockedUsers
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Blocked users
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [blocked]
-                properties:
-                  blocked:
-                    type: array
-                    items: { $ref: '#/components/schemas/BlockedUser' }
-    post:
-      operationId: blockUser
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [userId]
-              properties:
-                userId: { type: string, format: uuid }
-      responses:
-        '201':
-          description: User blocked
-  /users/blocked/{userId}:
-    delete:
-      operationId: unblockUser
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: userId
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: User unblocked
-  /chats:
-    get:
-      operationId: listChats
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: archived
-          schema: { type: boolean }
-      responses:
-        '200':
-          description: Chat list
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [chats]
-                properties:
-                  chats:
-                    type: array
-                    items: { $ref: '#/components/schemas/Chat' }
-  /chats/private:
-    post:
-      operationId: createPrivateChat
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [userId]
-              properties:
-                userId: { type: string, format: uuid }
-      responses:
-        '200': { description: Existing private chat }
-        '201': { description: Private chat created }
-  /chats/groups:
-    post:
-      operationId: createGroupChat
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateGroupChatRequest' }
-      responses:
-        '201': { description: Group chat created }
-  /chats/{chatId}:
-    get:
-      operationId: getChat
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: chatId
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Chat details
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [chat]
-                properties:
-                  chat: { $ref: '#/components/schemas/Chat' }
-  /chats/{chatId}/members:
-    get:
-      operationId: listChatMembers
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: chatId
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Chat members
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [members]
-                properties:
-                  members:
-                    type: array
-                    items: { $ref: '#/components/schemas/ChatMember' }
-  /chats/{chatId}/mls-state:
-    get:
-      operationId: getChatMlsState
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: chatId
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200': { description: MLS state }
-  /chats/{chatId}/pin:
-    post:
-      operationId: pinChat
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Chat pinned } }
-    delete:
-      operationId: unpinChat
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Chat unpinned } }
-  /chats/{chatId}/archive:
-    post:
-      operationId: archiveChat
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Chat archived } }
-    delete:
-      operationId: unarchiveChat
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Chat unarchived } }
-  /chats/{chatId}/read:
-    post:
-      operationId: markChatRead
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Chat marked read } }
-  /chats/{chatId}/pins:
-    get:
-      operationId: listPins
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        '200':
-          description: Pinned messages
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  pins:
-                    type: array
-                    items: { $ref: '#/components/schemas/Pin' }
-  /chats/{chatId}/pins/{messageId}:
-    post:
-      operationId: pinMessage
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - { in: path, name: chatId, required: true, schema: { type: string, format: uuid } }
-        - { in: path, name: messageId, required: true, schema: { type: string, format: uuid } }
-      responses: { '200': { description: Message pinned } }
-    delete:
-      operationId: unpinMessage
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - { in: path, name: chatId, required: true, schema: { type: string, format: uuid } }
-        - { in: path, name: messageId, required: true, schema: { type: string, format: uuid } }
-      responses: { '200': { description: Message unpinned } }
-  /messages/{messageId}/reactions:
-    get:
-      operationId: listReactions
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: messageId, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        '200':
-          description: Reactions
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  reactions:
-                    type: array
-                    items: { $ref: '#/components/schemas/Reaction' }
-    post:
-      operationId: toggleReaction
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: messageId, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [emoji]
-              properties:
-                emoji: { type: string }
-      responses:
-        '200':
-          description: Reaction toggled
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  added: { type: boolean }
-                  reactions:
-                    type: array
-                    items: { $ref: '#/components/schemas/Reaction' }
-  /messages/{chatId}:
-    post:
-      operationId: sendMessage
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: chatId, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SendMessageRequest' }
-      responses:
-        '200':
-          description: Message sent
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [message]
-                properties:
-                  message: { $ref: '#/components/schemas/Message' }
-  /messages/{messageId}/forward:
-    post:
-      operationId: forwardMessage
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: messageId, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [targetChatId]
-              properties:
-                targetChatId: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Message forwarded
-  /media:
-    post:
-      operationId: uploadMedia
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
-          application/json:
-            schema:
-              oneOf:
-                - type: object
-                  required: [file]
-                  properties:
-                    file: { type: string, description: Data URL }
-                    fileName: { type: string, maxLength: 255, description: Original base filename }
-                - type: object
-                  required: [purpose, file]
-                  properties:
-                    purpose: { type: string, const: message }
-                    file:
-                      type: object
-                      required: [ciphertext]
-                      properties:
-                        ciphertext: { type: string, format: byte }
-                        mimeType: { type: string }
-                        fileName: { type: string, maxLength: 255 }
-                        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
-                        version: {}
-                        algorithm: {}
-                        iv: {}
-      responses:
-        '201':
-          description: Upload created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UploadResponse'
-  /media/{uploadId}:
-    get:
-      operationId: getMedia
-      parameters: [{ in: path, name: uploadId, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        '307': { description: Redirect to presigned URL }
-        '404': { $ref: '#/components/responses/Error' }
-  /admin/users:
-    get:
-      operationId: adminListUsers
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - { in: query, name: q, schema: { type: string } }
-        - { in: query, name: limit, schema: { type: integer } }
-        - { in: query, name: offset, schema: { type: integer } }
-      responses:
-        '200': { description: User list }
-        '403': { $ref: '#/components/responses/Error' }
-  /admin/users/{userId}/disable:
-    post:
-      operationId: adminDisableUser
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: userId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: User disabled } }
-  /admin/users/{userId}/enable:
-    post:
-      operationId: adminEnableUser
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: userId, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: User enabled } }
-  /admin/reports:
-    get:
-      operationId: adminListReports
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - { in: query, name: status, schema: { type: string } }
-        - { in: query, name: limit, schema: { type: integer } }
-        - { in: query, name: offset, schema: { type: integer } }
-      responses:
-        '200': { description: Report list }
-    post:
-      operationId: createReport
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [targetType, targetId, reason]
-              properties:
-                targetType: { type: string, enum: [user, message, chat] }
-                targetId: { type: string, format: uuid }
-                reason: { type: string }
-      responses:
-        '201': { description: Report created }
-  /admin/reports/{reportId}/resolve:
-    post:
-      operationId: adminResolveReport
-      security: [{ bearerAuth: [] }]
-      parameters: [{ in: path, name: reportId, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                resolution: { type: string }
-      responses: { '200': { description: Report resolved } }
-  /calls/rooms:
-    post:
-      operationId: createCallRoom
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                type: { type: string }
-                chatId: { type: string }
-                title: { type: string }
-      responses:
-        '201': { description: Call room created }
-  /emojis:
-    get:
-      operationId: listEmojis
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Emoji assets }
+  /auth/register: { $ref: './paths/auth.yaml#/~1auth~1register' }
+  /auth/login: { $ref: './paths/auth.yaml#/~1auth~1login' }
+  /auth/public-key: { $ref: './paths/auth.yaml#/~1auth~1public-key' }
+  /auth/qr-token: { $ref: './paths/auth.yaml#/~1auth~1qr-token' }
+  /auth/qr-status/{token}: { $ref: './paths/auth.yaml#/~1auth~1qr-status~1{token}' }
+  /auth/qr-confirm: { $ref: './paths/auth.yaml#/~1auth~1qr-confirm' }
+  /auth/logout: { $ref: './paths/auth.yaml#/~1auth~1logout' }
+  /auth/logout-all: { $ref: './paths/auth.yaml#/~1auth~1logout-all' }
+  /auth/sessions: { $ref: './paths/auth.yaml#/~1auth~1sessions' }
+  /auth/change-password: { $ref: './paths/auth.yaml#/~1auth~1change-password' }
+  /auth/2fa/status: { $ref: './paths/auth.yaml#/~1auth~12fa~1status' }
+  /auth/2fa/enable: { $ref: './paths/auth.yaml#/~1auth~12fa~1enable' }
+  /auth/2fa/disable: { $ref: './paths/auth.yaml#/~1auth~12fa~1disable' }
+  /auth/2fa/verify: { $ref: './paths/auth.yaml#/~1auth~12fa~1verify' }
+
+  /users/me: { $ref: './paths/users.yaml#/~1users~1me' }
+  /users/avatar: { $ref: './paths/users.yaml#/~1users~1avatar' }
+  /users/check-username: { $ref: './paths/users.yaml#/~1users~1check-username' }
+  /users/search: { $ref: './paths/users.yaml#/~1users~1search' }
+  /users/qr-code: { $ref: './paths/users.yaml#/~1users~1qr-code' }
+  /users/{userId}/profile: { $ref: './paths/users.yaml#/~1users~1{userId}~1profile' }
+  /users/{userId}/status: { $ref: './paths/users.yaml#/~1users~1{userId}~1status' }
+  /premium/subscribe: { $ref: './paths/users.yaml#/~1premium~1subscribe' }
+  /users/all-settings: { $ref: './paths/users.yaml#/~1users~1all-settings' }
+  /users/settings: { $ref: './paths/users.yaml#/~1users~1settings' }
+  /users/privacy: { $ref: './paths/users.yaml#/~1users~1privacy' }
+  /users/notifications: { $ref: './paths/users.yaml#/~1users~1notifications' }
+  /users/sounds: { $ref: './paths/users.yaml#/~1users~1sounds' }
+  /users/advanced-settings: { $ref: './paths/users.yaml#/~1users~1advanced-settings' }
+  /users/folders: { $ref: './paths/users.yaml#/~1users~1folders' }
+  /users/storage: { $ref: './paths/users.yaml#/~1users~1storage' }
+  /users/storage/settings: { $ref: './paths/users.yaml#/~1users~1storage~1settings' }
+  /users/storage/cache: { $ref: './paths/users.yaml#/~1users~1storage~1cache' }
+  /users/storage/all: { $ref: './paths/users.yaml#/~1users~1storage~1all' }
+  /users/export: { $ref: './paths/users.yaml#/~1users~1export' }
+  /users/blocked: { $ref: './paths/users.yaml#/~1users~1blocked' }
+  /users/blocked/{userId}: { $ref: './paths/users.yaml#/~1users~1blocked~1{userId}' }
+  /users/passcode: { $ref: './paths/users.yaml#/~1users~1passcode' }
+  /users/passcode/set: { $ref: './paths/users.yaml#/~1users~1passcode~1set' }
+  /users/passcode/verify: { $ref: './paths/users.yaml#/~1users~1passcode~1verify' }
+  /users/passcode/disable: { $ref: './paths/users.yaml#/~1users~1passcode~1disable' }
+  /users/passcode/timeout: { $ref: './paths/users.yaml#/~1users~1passcode~1timeout' }
+  /users/devices: { $ref: './paths/users.yaml#/~1users~1devices' }
+  /users/devices/register: { $ref: './paths/users.yaml#/~1users~1devices~1register' }
+  /users/devices/terminate-all: { $ref: './paths/users.yaml#/~1users~1devices~1terminate-all' }
+  /users/devices/{sessionId}: { $ref: './paths/users.yaml#/~1users~1devices~1{sessionId}' }
+
+  /encryption/keys: { $ref: './paths/encryption.yaml#/~1encryption~1keys' }
+  /encryption/keys/{userId}: { $ref: './paths/encryption.yaml#/~1encryption~1keys~1{userId}' }
+  /encryption/chat-keys/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1chat-keys~1{chatId}' }
+  /encryption/rotate-key/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1rotate-key~1{chatId}' }
+  /encryption/my-key/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1my-key~1{chatId}' }
+
+  /support/requests: { $ref: './paths/support.yaml#/~1support~1requests' }
+  /support/requests/{requestId}: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}' }
+  /support/requests/{requestId}/messages: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}~1messages' }
+  /support/requests/{requestId}/reply: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}~1reply' }
+
+  /chats: { $ref: './paths/chats.yaml#/~1chats' }
+  /chats/private: { $ref: './paths/chats.yaml#/~1chats~1private' }
+  /chats/groups: { $ref: './paths/chats.yaml#/~1chats~1groups' }
+  /chats/{chatId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}' }
+  /chats/{chatId}/members: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members' }
+  /chats/{chatId}/members-online: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members-online' }
+  /chats/{chatId}/bans: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1bans' }
+  /chats/{chatId}/members/{userId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}' }
+  /chats/{chatId}/members/{userId}/role: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1role' }
+  /chats/{chatId}/members/{userId}/ban: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1ban' }
+  /chats/{chatId}/members/{userId}/unban: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1unban' }
+  /chats/{chatId}/members/{userId}/mute: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1mute' }
+  /chats/{chatId}/members/{userId}/unmute: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1unmute' }
+  /chats/{chatId}/mls-state: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1mls-state' }
+  /chats/{chatId}/pin: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pin' }
+  /chats/{chatId}/archive: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1archive' }
+  /chats/{chatId}/read: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1read' }
+  /chats/{chatId}/pins: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins' }
+  /chats/{chatId}/pins/{messageId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins~1{messageId}' }
+
+  /messages/read: { $ref: './paths/messages.yaml#/~1messages~1read' }
+  /messages/search: { $ref: './paths/messages.yaml#/~1messages~1search' }
+  /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
+  /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
+  /messages/{messageId}/forward: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1forward' }
+  /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
+  /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
+
+  /mls/keypackages: { $ref: './paths/mls.yaml#/~1mls~1keypackages' }
+  /mls/keypackages/{userId}: { $ref: './paths/mls.yaml#/~1mls~1keypackages~1{userId}' }
+  /mls/group/{chatId}/state: { $ref: './paths/mls.yaml#/~1mls~1group~1{chatId}~1state' }
+  /mls/group/{chatId}/commit: { $ref: './paths/mls.yaml#/~1mls~1group~1{chatId}~1commit' }
+  /mls/group/{chatId}/welcome: { $ref: './paths/mls.yaml#/~1mls~1group~1{chatId}~1welcome' }
+  /mls/group/{chatId}/proposals: { $ref: './paths/mls.yaml#/~1mls~1group~1{chatId}~1proposals' }
+
+  /calls/ice-servers: { $ref: './paths/calls.yaml#/~1calls~1ice-servers' }
+  /calls/rooms: { $ref: './paths/calls.yaml#/~1calls~1rooms' }
+  /calls/rooms/{id}: { $ref: './paths/calls.yaml#/~1calls~1rooms~1{id}' }
+
+  /media: { $ref: './paths/media.yaml#/~1media' }
+  /media/{uploadId}: { $ref: './paths/media.yaml#/~1media~1{uploadId}' }
+  /emojis: { $ref: './paths/media.yaml#/~1emojis' }
+  /gifs: { $ref: './paths/media.yaml#/~1gifs' }
+  /gifs/favorites: { $ref: './paths/media.yaml#/~1gifs~1favorites' }
+  /gifs/{gifId}/favorite: { $ref: './paths/media.yaml#/~1gifs~1{gifId}~1favorite' }
+  /stickers/packs: { $ref: './paths/media.yaml#/~1stickers~1packs' }
+  /stickers/packs/{packId}: { $ref: './paths/media.yaml#/~1stickers~1packs~1{packId}' }
+  /stickers/{stickerId}: { $ref: './paths/media.yaml#/~1stickers~1{stickerId}' }
+
+  /admin/users: { $ref: './paths/admin.yaml#/~1admin~1users' }
+  /admin/users/{userId}/disable: { $ref: './paths/admin.yaml#/~1admin~1users~1{userId}~1disable' }
+  /admin/users/{userId}/enable: { $ref: './paths/admin.yaml#/~1admin~1users~1{userId}~1enable' }
+  /admin/users/{userId}/mute: { $ref: './paths/admin.yaml#/~1admin~1users~1{userId}~1mute' }
+  /admin/users/{userId}/unmute: { $ref: './paths/admin.yaml#/~1admin~1users~1{userId}~1unmute' }
+  /admin/reports: { $ref: './paths/admin.yaml#/~1admin~1reports' }
+  /admin/reports/{reportId}: { $ref: './paths/admin.yaml#/~1admin~1reports~1{reportId}' }
+  /admin/reports/{reportId}/resolve: { $ref: './paths/admin.yaml#/~1admin~1reports~1{reportId}~1resolve' }
+  /admin/support/requests: { $ref: './paths/admin.yaml#/~1admin~1support~1requests' }
+  /admin/support/requests/{requestId}/status: { $ref: './paths/admin.yaml#/~1admin~1support~1requests~1{requestId}~1status' }
+  /admin/support/requests/{requestId}/reply: { $ref: './paths/admin.yaml#/~1admin~1support~1requests~1{requestId}~1reply' }
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
+    bearerAuth: { $ref: './components/security.yaml#/bearerAuth' }
   responses:
-    Error:
-      description: Error response
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+    Error: { $ref: './components/responses.yaml#/Error' }
   schemas:
-    RegisterRequest:
-      type: object
-      required: [username, password, firstName]
-      properties:
-        username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
-        password: { type: string, minLength: 10 }
-        firstName: { type: string, minLength: 1, maxLength: 64 }
-        lastName: { type: string, maxLength: 64 }
-    LoginRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username: { type: string }
-        password: { type: string }
-    AuthResponse:
-      type: object
-      required: [user, token]
-      properties:
-        user:
-          $ref: '#/components/schemas/User'
-        token:
-          type: string
-    User:
-      type: object
-      required: [id, username, firstName, lastName]
-      properties:
-        id: { type: string, format: uuid }
-        username: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
-    UserProfile:
-      allOf:
-        - $ref: '#/components/schemas/User'
-        - type: object
-          required: [bio, avatarUrl, badges]
-          properties:
-            bio: { type: string }
-            avatarUrl: { type: string }
-            badges:
-              type: array
-              items: { type: string }
-    UserSearchResult:
-      type: object
-      required: [id, username, firstName, lastName, avatarUrl]
-      properties:
-        id: { type: string, format: uuid }
-        username: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
-        avatarUrl: { type: string }
-    BlockedUser:
-      allOf:
-        - $ref: '#/components/schemas/UserSearchResult'
-        - type: object
-          required: [blockedAt]
-          properties:
-            blockedAt: { type: string }
-    UpdateProfileRequest:
-      type: object
-      properties:
-        firstName: { type: string, maxLength: 64 }
-        lastName: { type: string, maxLength: 64 }
-        bio: { type: string }
-        avatarUrl: { type: string }
-    UserSettingsResponse:
-      type: object
-      required: [settings, privacy]
-      properties:
-        settings: { type: object, additionalProperties: true }
-        privacy: { type: object, additionalProperties: true }
-    Chat:
-      type: object
-      required: [id, type, title, description, avatarUrl, ownerId, role, isPinned, isArchived, createdAt, updatedAt, memberCount]
-      properties:
-        id: { type: string, format: uuid }
-        type: { type: string, enum: [private, group, channel] }
-        title: { type: string }
-        description: { type: string }
-        avatarUrl: { type: string }
-        ownerId: { type: string, format: uuid }
-        role: { type: string, enum: [owner, admin, member] }
-        isPinned: { type: boolean }
-        isArchived: { type: boolean }
-        lastReadAt: { type: string }
-        createdAt: { type: string }
-        updatedAt: { type: string }
-        memberCount: { type: integer }
-        lastMessageAt: { type: string }
-    ChatMember:
-      type: object
-      required: [id, username, firstName, lastName, avatarUrl, role, permissions, joinedAt]
-      properties:
-        id: { type: string, format: uuid }
-        username: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
-        avatarUrl: { type: string }
-        role: { type: string, enum: [owner, admin, member] }
-        permissions: { type: object, additionalProperties: true }
-        mutedUntil: { type: string }
-        joinedAt: { type: string }
-    CreateGroupChatRequest:
-      type: object
-      required: [title, members]
-      properties:
-        title: { type: string, minLength: 1, maxLength: 128 }
-        description: { type: string }
-        avatarUrl: { type: string }
-        members:
-          type: array
-          items: { type: string, format: uuid }
-    Reaction:
-      type: object
-      required: [emoji, count, myReaction]
-      properties:
-        emoji: { type: string }
-        count: { type: integer }
-        myReaction: { type: boolean }
-    Pin:
-      type: object
-      required: [id, messageId, chatId, pinnedBy, pinnedAt]
-      properties:
-        id: { type: string, format: uuid }
-        messageId: { type: string, format: uuid }
-        chatId: { type: string, format: uuid }
-        pinnedBy: { type: string, format: uuid }
-        pinnedAt: { type: string }
-        message: { $ref: '#/components/schemas/Message' }
-    SendMessageRequest:
-      type: object
-      properties:
-        content: { type: string }
-        type: { type: string }
-        replyTo: { type: [string, 'null'], format: uuid }
-        mediaUrl: { type: string }
-        mediaType: { type: string }
-        fileName: { type: string, maxLength: 255 }
-        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
-        mediaEncrypted: { type: boolean }
-        mediaEncryption: { type: object, additionalProperties: true }
-        isEncrypted: { type: boolean }
-    Message:
-      type: object
-      required: [id, chatId, senderId, senderFirstName, content, type, isForwarded, isPinned, isEdited, createdAt, updatedAt]
-      properties:
-        id: { type: string, format: uuid }
-        chatId: { type: string, format: uuid }
-        senderId: { type: string, format: uuid }
-        senderName: { type: string }
-        senderFirstName: { type: string }
-        senderAvatar: { type: string }
-        content: { type: string }
-        type: { type: string }
-        replyTo: { type: string, format: uuid }
-        replyToMessageId: { type: string, format: uuid }
-        replySenderName: { type: string }
-        replyToSenderName: { type: string, description: Compatibility alias used by the current frontend }
-        metadata:
-          type: object
-          additionalProperties: true
-          properties:
-            mediaUrl: { type: string }
-            mediaType: { type: string }
-            fileName: { type: string, maxLength: 255 }
-            sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
-        isForwarded: { type: boolean }
-        forwardedSenderName: { type: string }
-        isPinned: { type: boolean }
-        isEdited: { type: boolean }
-        createdAt: { type: string }
-        updatedAt: { type: string }
-    UploadResponse:
-      type: object
-      required: [success, url, fileName, sizeBytes, contentType]
-      properties:
-        success: { type: boolean, const: true }
-        url: { type: string }
-        fileName: { type: string, maxLength: 255 }
-        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 104857600 }
-        contentType: { type: string }
-        encrypted: { type: boolean }
-        encryption: { type: string, description: JSON-encoded encryption metadata }
-    Upload:
-      type: object
-      required: [id, uploaderId, filename, contentType, sizeBytes, createdAt]
-      properties:
-        id: { type: string, format: uuid }
-        uploaderId: { type: string, format: uuid }
-        filename: { type: string }
-        contentType: { type: string }
-        sizeBytes: { type: integer, format: int64 }
-        url: { type: string }
-        createdAt: { type: string }
-    Error:
-      type: object
-      required: [code, message]
-      properties:
-        code: { type: string }
-        message: { type: string }
-        requestId: { type: string }
-        details: {}
+    Error: { $ref: './components/schemas.yaml#/Error' }
+    User: { $ref: './components/schemas.yaml#/User' }
+    Message: { $ref: './components/schemas.yaml#/Message' }

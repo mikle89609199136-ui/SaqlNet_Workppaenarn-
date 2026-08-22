@@ -1,0 +1,88 @@
+.settings-choice {
+  position: relative;
+  width: min(220px, 50%);
+}
+
+.settings-choice summary {
+  display: flex;
+  min-height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.settings-choice summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-choice summary svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: transform 0.18s ease;
+}
+
+.settings-choice[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.settings-choice[open] summary {
+  border-color: rgba(255, 45, 139, 0.55);
+  box-shadow: 0 0 0 3px rgba(255, 45, 139, 0.12);
+}
+
+.settings-choice-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 13px;
+  background: rgba(30, 30, 34, 0.98);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(18px);
+}
+
+.settings-choice-menu button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.settings-choice-menu button:hover,
+.settings-choice-menu button.active {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.settings-choice-check {
+  color: #ff3b98;
+  font-weight: 800;
+}
+
+[data-theme="light"] .settings-choice-menu {
+  background: rgba(255, 255, 255, 0.98);
+}

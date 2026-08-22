@@ -1,0 +1,29 @@
+x-secure: &secure [{ bearerAuth: [] }]
+x-user: &user { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+x-report: &report { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
+x-request: &request { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+/admin/users:
+  get: { tags: [Admin], summary: List users, operationId: adminListUsers, security: *secure, parameters: [{ name: q, in: query, schema: { type: string } }, { name: limit, in: query, schema: { type: integer } }, { name: offset, in: query, schema: { type: integer } }], responses: { '200': { description: Users }, '403': { $ref: '../components/responses.yaml#/Error' } } }
+/admin/users/{userId}/disable:
+  post: { tags: [Admin], summary: Disable a user, operationId: adminDisableUser, security: *secure, parameters: [*user], responses: { '200': { description: Disabled } } }
+/admin/users/{userId}/enable:
+  post: { tags: [Admin], summary: Enable a user, operationId: adminEnableUser, security: *secure, parameters: [*user], responses: { '200': { description: Enabled } } }
+/admin/users/{userId}/mute:
+  post: { tags: [Admin], summary: Mute a user, operationId: adminMuteUser, security: *secure, parameters: [*user], requestBody: { content: { application/json: { schema: { type: object, properties: { reason: { type: string }, duration: { type: string, example: 24h } } } } } }, responses: { '200': { description: Muted } } }
+/admin/users/{userId}/unmute:
+  post: { tags: [Admin], summary: Unmute a user, operationId: adminUnmuteUser, security: *secure, parameters: [*user], responses: { '200': { description: Unmuted } } }
+/admin/reports:
+  get: { tags: [Admin], summary: List reports, operationId: adminListReports, security: *secure, parameters: [{ name: status, in: query, schema: { type: string } }, { name: limit, in: query, schema: { type: integer } }, { name: offset, in: query, schema: { type: integer } }], responses: { '200': { description: Reports } } }
+  post: { tags: [Admin], summary: Create a report, operationId: createReport, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [targetType, targetId, reason], properties: { targetType: { type: string, enum: [user, message, chat] }, targetId: { type: string, format: uuid }, reason: { type: string }, description: { type: string } } } } } }, responses: { '201': { description: Created report } } }
+/admin/reports/{reportId}:
+  get: { tags: [Admin], summary: Get a report, operationId: adminGetReport, security: *secure, parameters: [*report], responses: { '200': { description: Report }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+/admin/reports/{reportId}/resolve:
+  post: { tags: [Admin], summary: Resolve a report, operationId: adminResolveReport, security: *secure, parameters: [*report], requestBody: { content: { application/json: { schema: { type: object, properties: { resolution: { type: string } } } } } }, responses: { '200': { description: Resolved } } }
+/admin/support/requests:
+  get: { tags: [Admin], summary: List support requests, operationId: adminListSupportRequests, security: *secure, parameters: [{ name: limit, in: query, schema: { type: integer } }, { name: offset, in: query, schema: { type: integer } }], responses: { '200': { description: Requests } } }
+/admin/support/requests/{requestId}/status:
+  parameters: [*request]
+  put: { tags: [Admin], summary: Replace support request status, operationId: adminPutSupportStatus, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string } } } } } }, responses: { '200': { description: Updated } } }
+  patch: { tags: [Admin], summary: Update support request status, operationId: adminPatchSupportStatus, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string } } } } } }, responses: { '200': { description: Updated } } }
+/admin/support/requests/{requestId}/reply:
+  post: { tags: [Admin], summary: Reply to a support request, operationId: adminReplySupportRequest, security: *secure, parameters: [*request], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { content: { type: string }, message: { type: string } } } } } }, responses: { '200': { description: Replied } } }

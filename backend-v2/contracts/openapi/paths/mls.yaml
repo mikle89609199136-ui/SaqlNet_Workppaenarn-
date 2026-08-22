@@ -1,0 +1,18 @@
+x-secure: &secure [{ bearerAuth: [] }]
+x-chat: &chat { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+/mls/keypackages:
+  post: { tags: [MLS], summary: Upload MLS key packages, operationId: uploadMlsKeyPackages, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [keypackages], properties: { keypackages: { type: array, items: { type: string } } } } } } }, responses: { '200': { description: Uploaded }, '400': { $ref: '../components/responses.yaml#/Error' } } }
+/mls/keypackages/{userId}:
+  get: { tags: [MLS], summary: Fetch an MLS key package, operationId: getMlsKeyPackage, security: *secure, parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Key package }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+/mls/group/{chatId}/state:
+  get: { tags: [MLS], summary: Get MLS group state, operationId: getMlsGroupState, security: *secure, parameters: [*chat], responses: { '200': { description: Group state } } }
+/mls/group/{chatId}/commit:
+  post: { tags: [MLS], summary: Commit an MLS update, operationId: commitMlsUpdate, security: *secure, parameters: [*chat], requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Committed } } }
+/mls/group/{chatId}/welcome:
+  parameters: [*chat]
+  get: { tags: [MLS], summary: Get MLS welcome data, operationId: getMlsWelcome, security: *secure, responses: { '200': { description: Welcome data } } }
+  post: { tags: [MLS], summary: Store MLS welcome data, operationId: storeMlsWelcome, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Stored } } }
+/mls/group/{chatId}/proposals:
+  parameters: [*chat]
+  get: { tags: [MLS], summary: List MLS proposals, operationId: listMlsProposals, security: *secure, responses: { '200': { description: Proposals } } }
+  post: { tags: [MLS], summary: Add an MLS proposal, operationId: addMlsProposal, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Added } } }

@@ -1,0 +1,24 @@
+/encryption/keys:
+  post:
+    tags: [Encryption]
+    summary: Upload a public encryption key
+    operationId: uploadEncryptionKey
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [publicKey, keyId], properties: { publicKey: { type: string }, keyId: { type: string }, pqPublicKey: { type: string } } } } } }
+    responses: { '200': { description: Key saved }, '400': { $ref: '../components/responses.yaml#/Error' } }
+/encryption/keys/{userId}:
+  get:
+    tags: [Encryption]
+    summary: Get a user's public encryption key
+    operationId: getEncryptionKey
+    security: [{ bearerAuth: [] }]
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    responses: { '200': { description: Public key }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } }
+/encryption/chat-keys/{chatId}:
+  parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }]
+  get: { tags: [Encryption], summary: Get encrypted chat keys, operationId: getChatKeys, security: [{ bearerAuth: [] }], responses: { '200': { description: Chat keys } } }
+  post: { tags: [Encryption], summary: Save encrypted chat keys, operationId: saveChatKeys, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Keys saved } } }
+/encryption/rotate-key/{chatId}:
+  post: { tags: [Encryption], summary: Rotate a chat key, operationId: rotateChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Key rotated } } }
+/encryption/my-key/{chatId}:
+  get: { tags: [Encryption], summary: Get the current user's chat key, operationId: getMyChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: User chat key }, '404': { $ref: '../components/responses.yaml#/Error' } } }

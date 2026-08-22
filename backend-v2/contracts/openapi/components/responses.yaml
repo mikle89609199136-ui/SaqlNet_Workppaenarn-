@@ -1,0 +1,6 @@
+Error:
+  description: Request failed
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Error'

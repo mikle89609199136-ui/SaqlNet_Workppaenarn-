@@ -48,7 +48,7 @@ services:
       PGPASSWORD: craneapp-local
     volumes:
       - ../../backend-v2/migrations:/migrations:ro
-    command: ["/bin/sh", "-c", "for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done"]
+    command: ["/bin/sh", "-c", "set -e; for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done"]
     depends_on:
       postgres:
         condition: service_healthy

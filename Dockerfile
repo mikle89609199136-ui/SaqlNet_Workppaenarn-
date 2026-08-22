@@ -1,27 +1,24 @@
-FROM node:20-alpine
-
-# Нативные зависимости для bcrypt и sharp
-RUN apk add --no-cache python3 make g++ vips-dev
-
-WORKDIR /app
-
-# Копируем манифесты зависимостей первыми для кэширования слоя
+FROM node:20-alpine AS frontend
+WORKDIR /src
 COPY package.json package-lock.json ./
-
-# Устанавливаем production-зависимости строго по lockfile и проверяем критичные runtime imports
-RUN npm ci --omit=dev \
-  && node -e "require('express'); require('bcrypt'); require('bcryptjs'); require('sharp')"
-
-# Копируем весь проект
+RUN npm ci
 COPY . .
+RUN npm run build:react
 
-# Railway подставит PORT автоматически
-ENV NODE_ENV=production
+FROM golang:1.26-alpine AS backend
+WORKDIR /src
+COPY backend-v2/go.mod backend-v2/go.sum ./
+RUN go mod download
+COPY backend-v2/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/edge ./cmd/edge
+
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates wget
+COPY --from=backend /out/edge /service
+COPY --from=frontend /src/dist /dist
 ENV PORT=3000
-
+ENV FRONTEND_DIR=/dist
 EXPOSE 3000
-
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null || exit 1
-
-CMD ["node", "--max-old-space-size=512", "server/gateway/apiGateway.js"]
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health/live" >/dev/null || exit 1
+ENTRYPOINT ["/service"]

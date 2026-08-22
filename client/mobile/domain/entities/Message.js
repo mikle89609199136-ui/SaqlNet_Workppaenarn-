@@ -65,16 +65,33 @@ class Message {
       isRead: data.isRead ?? data.is_read ?? false,
       attachments: data.attachments ?? [],
       replyTo: data.replyTo ?? data.reply_to ?? null,
-      replyToContent: data.replyToContent ?? data.reply_to_content ?? data.replyToData?.content ?? null,
+      replyToContent:
+        data.replyToContent ?? data.reply_to_content ?? data.replyToData?.content ?? null,
       isEdited: data.isEdited ?? data.is_edited ?? false,
       editedAt: data.editedAt ?? data.edited_at ?? null,
       reactions: data.reactions ?? [],
       status: data.status ?? 'sent',
       mediaUrl: data.mediaUrl ?? data.media_url ?? metadata.mediaUrl ?? metadata.media_url ?? null,
-      mediaOriginalUrl: data.mediaOriginalUrl ?? data.media_original_url ?? metadata.mediaOriginalUrl ?? metadata.media_original_url ?? null,
-      mediaType: data.mediaType ?? data.media_type ?? metadata.mediaType ?? metadata.media_type ?? null,
-      mediaEncrypted: data.mediaEncrypted ?? data.media_encrypted ?? metadata.mediaEncrypted ?? metadata.media_encrypted ?? false,
-      mediaEncryption: data.mediaEncryption ?? data.media_encryption ?? metadata.mediaEncryption ?? metadata.media_encryption ?? null,
+      mediaOriginalUrl:
+        data.mediaOriginalUrl ??
+        data.media_original_url ??
+        metadata.mediaOriginalUrl ??
+        metadata.media_original_url ??
+        null,
+      mediaType:
+        data.mediaType ?? data.media_type ?? metadata.mediaType ?? metadata.media_type ?? null,
+      mediaEncrypted:
+        data.mediaEncrypted ??
+        data.media_encrypted ??
+        metadata.mediaEncrypted ??
+        metadata.media_encrypted ??
+        false,
+      mediaEncryption:
+        data.mediaEncryption ??
+        data.media_encryption ??
+        metadata.mediaEncryption ??
+        metadata.media_encryption ??
+        null,
       mediaUnavailable: data.mediaUnavailable ?? data.media_unavailable ?? false,
       mediaUnavailableReason: data.mediaUnavailableReason ?? data.media_unavailable_reason ?? null,
       voiceDuration: data.voiceDuration ?? data.voice_duration ?? 0,
@@ -114,7 +131,7 @@ class Message {
     };
   }
 
-  markAsRead() {
+  w() {
     this.isRead = true;
     this.status = 'read';
     return this;

@@ -57,3 +57,9 @@ data/
 .DS_Store
 Thumbs.db
 backend-v2/edge
+
+# AI
+AGENTS.md
+.serena
+.agents
+.kimi-code

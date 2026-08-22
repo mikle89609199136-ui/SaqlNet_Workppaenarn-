@@ -64,7 +64,7 @@ func (h *Handler) QRCode(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "qr generation failed")
 		return
 	}
-	
+
 	base64Encoded := base64.StdEncoding.EncodeToString(png)
 	dataURL := fmt.Sprintf("data:image/png;base64,%s", base64Encoded)
 
@@ -522,26 +522,34 @@ func (h *Handler) Passcode(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, state)
 	case path == "/api/v2/users/passcode/set" && r.Method == http.MethodPost:
-		var input struct{ Passcode string `json:"passcode"` }
+		var input struct {
+			Passcode string `json:"passcode"`
+		}
 		if !decode(w, r, &input) {
 			return
 		}
 		err := h.service.SetPasscode(r.Context(), current.ID, input.Passcode)
 		respondPasscode(w, r, err)
 	case path == "/api/v2/users/passcode/verify" && r.Method == http.MethodPost:
-		var input struct{ Passcode string `json:"passcode"` }
+		var input struct {
+			Passcode string `json:"passcode"`
+		}
 		if !decode(w, r, &input) {
 			return
 		}
 		respondPasscode(w, r, h.service.VerifyPasscode(r.Context(), current.ID, input.Passcode))
 	case path == "/api/v2/users/passcode/disable" && r.Method == http.MethodPost:
-		var input struct{ Passcode string `json:"passcode"` }
+		var input struct {
+			Passcode string `json:"passcode"`
+		}
 		if !decode(w, r, &input) {
 			return
 		}
 		respondPasscode(w, r, h.service.DisablePasscode(r.Context(), current.ID, input.Passcode))
 	case path == "/api/v2/users/passcode/timeout" && r.Method == http.MethodPut:
-		var input struct{ Timeout int `json:"timeout"` }
+		var input struct {
+			Timeout int `json:"timeout"`
+		}
 		if !decode(w, r, &input) {
 			return
 		}

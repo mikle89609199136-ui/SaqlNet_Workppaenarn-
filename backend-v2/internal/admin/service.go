@@ -9,31 +9,31 @@ import (
 )
 
 var (
-	ErrNotFound    = errors.New("not found")
-	ErrForbidden   = errors.New("access denied")
+	ErrNotFound     = errors.New("not found")
+	ErrForbidden    = errors.New("access denied")
 	ErrInvalidInput = errors.New("invalid input")
 )
 
 type UserSummary struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	Phone       string `json:"phone"`
-	Email       string `json:"email"`
-	DisabledAt  string `json:"disabledAt,omitempty"`
-	CreatedAt   string `json:"createdAt"`
+	ID         string `json:"id"`
+	Username   string `json:"username"`
+	Phone      string `json:"phone"`
+	Email      string `json:"email"`
+	DisabledAt string `json:"disabledAt,omitempty"`
+	CreatedAt  string `json:"createdAt"`
 }
 
 type Report struct {
-	ID           string `json:"id"`
-	ReporterID   string `json:"reporterId"`
-	TargetType   string `json:"targetType"`
-	TargetID     string `json:"targetId"`
-	Reason       string `json:"reason"`
-	Description  string `json:"description,omitempty"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"createdAt"`
-	ResolvedAt   string `json:"resolvedAt,omitempty"`
-	ResolvedBy   string `json:"resolvedBy,omitempty"`
+	ID          string `json:"id"`
+	ReporterID  string `json:"reporterId"`
+	TargetType  string `json:"targetType"`
+	TargetID    string `json:"targetId"`
+	Reason      string `json:"reason"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"createdAt"`
+	ResolvedAt  string `json:"resolvedAt,omitempty"`
+	ResolvedBy  string `json:"resolvedBy,omitempty"`
 }
 
 type SupportRequest struct {
@@ -265,7 +265,9 @@ func (s *Service) ListSupportRequests(ctx context.Context, adminID string, limit
 	if err := s.requireAdmin(ctx, adminID); err != nil {
 		return nil, err
 	}
-	if limit <= 0 || limit > 200 { limit = 50 }
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id::text, user_id::text, subject, status, created_at::text
 		FROM support.requests ORDER BY created_at DESC LIMIT $1 OFFSET $2
@@ -300,7 +302,9 @@ func (s *Service) ReplyToSupportRequest(ctx context.Context, adminID, requestID,
 	var userID string
 	err := s.db.QueryRowContext(ctx, "SELECT user_id::text FROM support.requests WHERE id = $1", requestID).Scan(&userID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) { return ErrNotFound }
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `

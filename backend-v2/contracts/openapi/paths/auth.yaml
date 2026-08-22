@@ -1,0 +1,123 @@
+/auth/register:
+  post:
+    tags: [Auth]
+    summary: Register a user
+    operationId: register
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/RegisterRequest' } } } }
+    responses:
+      '201': { description: Registered, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/AuthResponse' } } } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '409': { $ref: '../components/responses.yaml#/Error' }
+/auth/login:
+  post:
+    tags: [Auth]
+    summary: Authenticate a user
+    operationId: login
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/LoginRequest' } } } }
+    responses:
+      '200':
+        description: Authenticated or 2FA challenge
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: '../components/schemas.yaml#/AuthResponse' }
+                - type: object
+                  required: [twoFARequired, userId]
+                  properties:
+                    twoFARequired: { type: boolean, enum: [true] }
+                    userId: { type: string, format: uuid }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+/auth/public-key:
+  post:
+    tags: [Auth]
+    summary: Save the authenticated user's public key
+    operationId: saveAuthPublicKey
+    security: [{ bearerAuth: [] }]
+    requestBody:
+      required: true
+      content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string } } } } }
+    responses: { '200': { description: Saved }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' } }
+/auth/qr-token:
+  post:
+    tags: [Auth]
+    summary: Create a QR login token
+    operationId: createQrToken
+    responses: { '200': { description: QR token and QR image created } }
+/auth/qr-status/{token}:
+  get:
+    tags: [Auth]
+    summary: Get QR login status
+    operationId: getQrStatus
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    responses: { '200': { description: Pending, confirmed, or expired QR login status } }
+/auth/qr-confirm:
+  post:
+    tags: [Auth]
+    summary: Confirm a QR login
+    operationId: confirmQrLogin
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [qrToken], properties: { qrToken: { type: string } } } } } }
+    responses: { '200': { description: Confirmed }, '400': { $ref: '../components/responses.yaml#/Error' } }
+/auth/logout:
+  post:
+    tags: [Auth]
+    summary: Revoke the current token
+    operationId: logout
+    security: [{ bearerAuth: [] }]
+    responses: { '200': { description: Logged out } }
+/auth/logout-all:
+  post:
+    tags: [Auth]
+    summary: Revoke all user tokens
+    operationId: logoutAll
+    security: [{ bearerAuth: [] }]
+    responses: { '200': { description: All sessions revoked } }
+/auth/sessions:
+  get:
+    tags: [Auth]
+    summary: List authenticated sessions
+    operationId: listAuthSessions
+    security: [{ bearerAuth: [] }]
+    responses: { '200': { description: Sessions } }
+/auth/change-password:
+  post:
+    tags: [Auth]
+    summary: Change password
+    operationId: changePassword
+    security: [{ bearerAuth: [] }]
+    requestBody:
+      required: true
+      content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { type: string, format: password, minLength: 10 } } } } }
+    responses: { '200': { description: Password changed }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' } }
+/auth/2fa/status:
+  get:
+    tags: [Auth]
+    summary: Get 2FA status
+    operationId: getTwoFactorStatus
+    security: [{ bearerAuth: [] }]
+    responses: { '200': { description: 2FA status } }
+/auth/2fa/enable:
+  post:
+    tags: [Auth]
+    summary: Enable 2FA
+    operationId: enableTwoFactor
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
+    responses: { '200': { description: 2FA enabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
+/auth/2fa/disable:
+  post:
+    tags: [Auth]
+    summary: Disable 2FA
+    operationId: disableTwoFactor
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
+    responses: { '200': { description: 2FA disabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
+/auth/2fa/verify:
+  post:
+    tags: [Auth]
+    summary: Verify 2FA password
+    operationId: verifyTwoFactor
+    security: [{ bearerAuth: [] }]
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
+    responses: { '200': { description: Verification result }, '401': { $ref: '../components/responses.yaml#/Error' } }

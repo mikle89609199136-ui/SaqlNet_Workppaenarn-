@@ -199,7 +199,7 @@ func (h *Handler) uploadSignalKeys(w http.ResponseWriter, r *http.Request, userI
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	
+
 	cryptoURL := os.Getenv("CRYPTO_SERVICE_URL")
 	if cryptoURL == "" {
 		cryptoURL = "http://localhost:5005"

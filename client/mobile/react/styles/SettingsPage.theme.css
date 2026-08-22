@@ -1,0 +1,159 @@
+:root, [data-theme="dark"] {
+  --bg-primary: #0e0f12;
+  --bg-card: #19191c;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --border-color: rgba(255, 255, 255, 0.18);
+  --hover-bg: rgba(255, 255, 255, 0.12);
+  --shadow-color: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] {
+  --bg-primary: #f4f5f8;
+  --bg-card: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(230, 230, 230, 0.8) 100%);
+  --text-primary: #111827;
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --border-color: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.06);
+  --shadow-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .settings-overview-profile,
+[data-theme="light"] .settings-overview-group {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+/* Применяем глобальную плавную смену цветов */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ==========================================
+   Выпадающее меню (Dropdown)
+   ========================================== */
+.theme-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 16px;
+  width: 170px;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 10px 30px var(--shadow-color);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(12px);
+  animation: dropdownFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.theme-option-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.theme-option-btn:hover {
+  background: var(--bg-hover);
+}
+
+.theme-option-btn:active {
+  transform: scale(0.98);
+}
+
+.theme-option-btn.active {
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+
+.theme-option-btn .check-mark {
+  color: #ff2d8b; /* твой акцентный цвет */
+  font-weight: bold;
+}
+
+/* Стрелочка ▼ */
+.chevron-icon {
+  display: inline-block;
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chevron-icon.open {
+  transform: rotate(180deg);
+}
+
+/* Анимация появления меню */
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Пример для карточек настроек */
+.settings-header,
+.settings-profile-card,
+.settings-block-group {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  box-shadow: 0 8px 20px var(--shadow-color);
+}
+
+.settings-header h1,
+.settings-profile-info h2,
+.settings-row-left {
+  color: var(--text-primary);
+}
+
+.settings-row-item:hover {
+  background-color: var(--hover-bg);
+}
+
+/* Для стрелки назад */
+.back-arrow-btn {
+  color: var(--text-primary);
+}
+.back-arrow-btn:hover {
+  background-color: var(--hover-bg);
+}
+
+[data-theme="light"] .icon-user {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+}
+
+[data-theme="light"] .icon-bell {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.73 21a2 2 0 0 1-3.46 0'/%3E%3C/svg%3E");
+}
+
+[data-theme="light"] .icon-sound {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E");
+}
+
+[data-theme="light"] .icon-palette {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13.5' cy='6.5' r='.5'/%3E%3Ccircle cx='17.5' cy='10.5' r='.5'/%3E%3Ccircle cx='8.5' cy='7.5' r='.5'/%3E%3Ccircle cx='6.5' cy='12.5' r='.5'/%3E%3Cpath d='M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.78 1.7-1.7 0-.42-.16-.8-.44-1.1-.28-.31-.43-.72-.43-1.2 0-.93.77-1.7 1.7-1.7H17c2.76 0 5-2.24 5-5 0-5.52-4.48-9.9-10-9.9z'/%3E%3C/svg%3E");
+}
+
+[data-theme="light"] .icon-globe {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='2' y1='12' x2='22' y2='12'/%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/%3E%3C/svg%3E");
+}
+
