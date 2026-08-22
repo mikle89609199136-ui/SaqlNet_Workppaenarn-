@@ -11,11 +11,8 @@ export type {
 export type {
   IChatContext,
   IChatDto,
-  IChatResponse,
-  IChatsResponse,
   ILastMessageDto,
   IMemberDto,
-  IMembersListResponse,
   IPendingAttachment,
   TChatRole,
   TChatsList,
@@ -26,21 +23,14 @@ export type { IEncryptedMedia } from './encryption.types';
 export type { TIconTypes } from './icons';
 export type {
   IEmojiDto,
-  IEmojisResponse,
   IMediaDisplayPatch,
   IMediaItem,
   IMediaPayload,
-  IMessageApiResponse,
   IMessageDto,
-  IMessageResponse,
-  IMessagesResponse,
   IPinMessagePayload,
   IPinnedDto,
-  IPinnedListResponse,
   IPinnedMessageDto,
   IReaction,
-  IReactionsResponse,
-  IUploadResponse,
   TEmojisList,
   TMediaMessageType,
   TMessagesList,
@@ -49,17 +39,23 @@ export type {
   TReactionsList,
 } from './message.types';
 export type {
+  IChatResponse,
+  IChatsResponse,
   ICreateGroupChatResponse,
+  IDeleteMessageResponse,
+  IEmojisResponse,
+  IMembersListResponse,
+  IMessageApiResponse,
+  IMessageResponse,
+  IMessagesResponse,
   IMlsStateResponse,
-  ISuccessResponse,
-} from './response.types';
-export type {
-  ISearchUserDto,
+  IPinnedListResponse,
+  IReactionsResponse,
   ISearchUsersResponse,
-  ISettingsDto,
-  IUserDto,
-  TSearchUsersList,
-} from './user.types';
+  ISuccessResponse,
+  IUploadResponse,
+} from './response.types';
+export type { ISearchUserDto, ISettingsDto, IUserDto, TSearchUsersList } from './user.types';
 export type {
   ICallAnswerEvent,
   ICallCenceledEvent,
@@ -78,6 +74,7 @@ export type {
   IMessageEditedEvent,
   IMessageNewEvent,
   IMessagePinEvent,
+  IMessagesReadEvent,
   IMessageUnpinEvent,
   IPingEvent,
   IPongEvent,

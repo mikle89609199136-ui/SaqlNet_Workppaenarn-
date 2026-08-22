@@ -2,7 +2,7 @@ import { ChatThreadHeader, MessageActionsPopover } from '@/components/components
 import { ComposerWrapper, MessagesList } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { type IActionMenu } from '@/store';
-import type { IMessageDto, IPinnedDto, TMessagesList, TPinnedList } from '@/types';
+import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
 import { type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -16,11 +16,6 @@ interface Props {
   onSelection: (message: IMessageDto) => void;
   actionMenu: IActionMenu | null;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
-  updateMessage: (
-    items: TMessagesList,
-    messageId: string,
-    patch: Partial<Omit<IMessageDto, 'id'>>
-  ) => TMessagesList;
   setPinnedMessagesOpen: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -34,13 +29,11 @@ export const PinnedMessagesPage = ({
   onSelection,
   actionMenu,
   setIsForwardModalOpen,
-  updateMessage,
   setPinnedMessagesOpen,
 }: Props) => {
   const { t } = useTranslation();
   const { handleUnpinMessage } = useMessageActions({
     setIsForwardModalOpen,
-    updateMessage,
   });
 
   const handleUnpinAllMessages = () => {
@@ -72,7 +65,6 @@ export const PinnedMessagesPage = ({
           <MessageActionsPopover
             message={selectedActionMessage.message}
             onSelection={onSelection}
-            updateMessage={updateMessage}
             setIsForwardModalOpen={setIsForwardModalOpen}
           />
           {openedImage && (

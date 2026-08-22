@@ -66,7 +66,7 @@ export const ForwardChatMessagesModal = ({
   };
 
   return (
-    <Modal className='max-w-4/5 md:max-w-1/5' onClose={onClose}>
+    <Modal className="max-w-4/5 md:max-w-1/5" onClose={onClose}>
       <header className="flex justify-between px-6">
         <h2 className="text-xl w-full text-left">{t('forward', 'Переслать...')}</h2>
 
@@ -75,14 +75,17 @@ export const ForwardChatMessagesModal = ({
           onClick={onClose}
           className="cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)] shrink-0"
         >
-          <Icon name='cross' />
+          <Icon name="cross" />
         </button>
       </header>
 
       <div className="flex flex-col mb-auto">
         <div className="px-6 border-b border-border">
           <label className="flex gap-x-2 items-center relative">
-            <Icon name='search' className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 opacity-70" />
+            <Icon
+              name="search"
+              className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 opacity-70"
+            />
             <input
               type="search"
               value={search}

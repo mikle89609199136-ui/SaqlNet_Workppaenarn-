@@ -1,6 +1,6 @@
-import { services } from "@/services";
-import type { ILastMessageDto } from "@/types";
-import { formatCallPreview } from "./call";
+import { services } from '@/services';
+import type { ILastMessageDto } from '@/types';
+import { formatCallPreview } from './call';
 
 export async function decryptChatLastMessagePreview(
   chatId: string,

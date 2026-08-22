@@ -45,6 +45,7 @@ export interface IE2EPayload {
   senderPublicKey?: string;
   senderKeyFp?: string;
   recipientKeyFp?: string;
+  recipientPublicKey?: string;
 }
 
 export class CryptoService {
@@ -62,9 +63,10 @@ export class CryptoService {
   private publicKeyUploaded = false;
   private accountId: string | null = null;
 
-  constructor(apiClient: ApiClient, accountId: string) {
+  private dbPromise: Promise<IDBDatabase> | null = null;
+
+  constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
-    this.accountId = accountId;
   }
 
   async init(): Promise<void> {
@@ -134,7 +136,9 @@ export class CryptoService {
 
   // --- IndexedDB ---
   initDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
+    if (this.dbPromise) return this.dbPromise;
+
+    this.dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(this.dbName, this.dbVersion);
       req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
         const db = (e.target as IDBOpenDBRequest).result;
@@ -144,7 +148,12 @@ export class CryptoService {
       };
       req.onsuccess = (e: Event) => resolve((e.target as IDBOpenDBRequest).result);
       req.onerror = () => reject(req.error);
+      req.onblocked = () => {
+        console.warn('IndexedDB open blocked — another connection is holding an upgrade');
+      };
     });
+
+    return this.dbPromise;
   }
 
   async dbGet<T = unknown>(key: string): Promise<T | undefined> {
@@ -246,8 +255,15 @@ export class CryptoService {
     if (!content) return content;
     if (!recipientPubKeyB64) return content;
     if (!this.hasWebCrypto()) return content;
-    if (!this.ready) await this.init();
     if (!this.privateKey) return content;
+    if (!this.ready) {
+      try {
+        await this.init();
+      } catch (e) {
+        console.warn('Crypto init failed during encryptDM, sending unencrypted', e);
+        return content;
+      }
+    }
 
     // Simplistic mock of Signal/ECDH for demo purposes based on legacy
     try {
@@ -280,6 +296,7 @@ export class CryptoService {
         data: this.bufToB64(ciphertext),
         senderPublicKey,
         senderKeyFp,
+        recipientPubKeyB64: recipientPubKeyB64,
         recipientKeyFp,
       });
     } catch (e) {
@@ -324,7 +341,7 @@ export class CryptoService {
   ): Promise<string> {
     try {
       if (!payloadStr.startsWith('{')) return payloadStr; // not json
-      const payload = JSON.parse(payloadStr);
+      const payload: IE2EPayload = JSON.parse(payloadStr);
       if (!payload.e2e || !payload.iv || !payload.data) return payloadStr;
       if (!this.hasWebCrypto()) return E2E_UNAVAILABLE_MESSAGE;
       if (!this.ready) await this.init();
@@ -332,7 +349,7 @@ export class CryptoService {
       const preferEmbeddedSenderKey = options.preferEmbeddedSenderKey !== false;
       const senderKey = preferEmbeddedSenderKey
         ? payload.senderPublicKey || senderPubKeyB64
-        : senderPubKeyB64;
+        : payload.recipientPublicKey || senderPubKeyB64;
       if (!senderKey) return '🔒 [Отсутствует публичный ключ отправителя]';
 
       const peerKey = await crypto.subtle.importKey(
@@ -359,12 +376,17 @@ export class CryptoService {
 
       return new TextDecoder().decode(decrypted);
     } catch (e) {
-      console.warn(
-        'E2E Decrypt failed:',
-        e,
-        await this.decryptDebugInfo(payloadStr, senderPubKeyB64, options)
-      );
-      return '🔒 [Ошибка расшифровки E2E]';
+      const debugInfo = await this.decryptDebugInfo(payloadStr, senderPubKeyB64, options);
+      console.warn('E2E Decrypt failed:', e, debugInfo);
+
+      const keyMismatch =
+        debugInfo.localPublicKeyFp &&
+        debugInfo.payloadRecipientKeyFp &&
+        debugInfo.localPublicKeyFp !== debugInfo.payloadRecipientKeyFp;
+
+      return keyMismatch
+        ? '🔒 [Ключ собеседника изменился — сообщение больше не расшифровывается]'
+        : '🔒 [Ошибка расшифровки E2E]';
     }
   }
 
@@ -530,7 +552,6 @@ export class CryptoService {
 
     const material = JSON.stringify({
       purpose: 'craneapp-media-v1',
-      accountId: this.accountId,
       chatId,
       state,
     });

@@ -4,10 +4,10 @@ export interface IUserDto {
   firstName: string;
   lastName: string;
   bio: string;
-  avatarUrl: string
-  isPremium: boolean
-  isBot: boolean
-  badges: string[] // неизвестно какое dto у бэйджа
+  avatarUrl: string;
+  isPremium: boolean;
+  isBot: boolean;
+  badges: string[]; // неизвестно какое dto у бэйджа
 }
 
 export interface ISettingsDto {
@@ -26,7 +26,3 @@ export interface ISearchUserDto {
 }
 
 export type TSearchUsersList = ISearchUserDto[];
-
-export interface ISearchUsersResponse {
-  users: TSearchUsersList;
-}

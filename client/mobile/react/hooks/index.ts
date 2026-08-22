@@ -1,5 +1,6 @@
 export { useAttachmentPicker } from './useAttachmentsPicker';
 export { useCall } from './useCall';
+export { useChatLastMessagePreview } from './useChatLastMessagePreview';
 export { useClickOutside } from './useClickOutside';
 export { useComposerSendMessage } from './useComposerSendMessage';
 export { useComposerShortcuts } from './useComposerShortcuts';

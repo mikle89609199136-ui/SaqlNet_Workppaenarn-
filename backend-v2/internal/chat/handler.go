@@ -636,8 +636,15 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, msg)
 	case suffix == "" && r.Method == http.MethodDelete:
-		err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
-		respondSuccess(w, r, err)
+		lastMessage, err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
+		if err != nil {
+			respondSuccess(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"success":     true,
+			"lastMessage": lastMessage,
+		})
 	case suffix == "/forward" && r.Method == http.MethodPost:
 		var input struct {
 			TargetChatID string `json:"targetChatId"`
