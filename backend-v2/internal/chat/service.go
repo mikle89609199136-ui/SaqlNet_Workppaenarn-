@@ -47,22 +47,6 @@ type Chat struct {
 	LastReadAt    string              `json:"lastReadAt,omitempty"`
 	CreatedAt     string              `json:"createdAt"`
 	UpdatedAt     string              `json:"updatedAt"`
-	ID            string              `json:"id"`
-	Type          string              `json:"type"`
-	Title         string              `json:"title"`
-	Description   string              `json:"description"`
-	AvatarURL     string              `json:"avatarUrl"`
-	PeerPublicKey string              `json:"peerPublicKey,omitempty"`
-	PeerID        string              `json:"peerId,omitempty"`
-	PeerIsOnline  bool                `json:"peerIsOnline,omitempty"`
-	PeerLastSeen  string              `json:"peerLastSeen,omitempty"`
-	OwnerID       string              `json:"ownerId"`
-	Role          string              `json:"role"`
-	IsPinned      bool                `json:"isPinned"`
-	IsArchived    bool                `json:"isArchived"`
-	LastReadAt    string              `json:"lastReadAt,omitempty"`
-	CreatedAt     string              `json:"createdAt"`
-	UpdatedAt     string              `json:"updatedAt"`
 	MemberCount   int                 `json:"memberCount"`
 	LastMessageAt string              `json:"lastMessageAt,omitempty"`
 	UnreadCount   int                 `json:"unreadCount"`
@@ -574,16 +558,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	return chat, nil
 }
 
-func (s *Service) hydrateRealtimePresence(chats []Chat) {
-	if s.ws == nil {
-		return
-	}
-	for i := range chats {
-		if chats[i].Type == "private" && s.ws.IsUserConnected(chats[i].PeerID) {
-			chats[i].PeerIsOnline = true
-		}
-	}
-}
+
 
 func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (string, string, error) {
 	var chatType, role string
