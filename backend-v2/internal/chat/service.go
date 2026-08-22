@@ -47,6 +47,22 @@ type Chat struct {
 	LastReadAt    string              `json:"lastReadAt,omitempty"`
 	CreatedAt     string              `json:"createdAt"`
 	UpdatedAt     string              `json:"updatedAt"`
+	ID            string              `json:"id"`
+	Type          string              `json:"type"`
+	Title         string              `json:"title"`
+	Description   string              `json:"description"`
+	AvatarURL     string              `json:"avatarUrl"`
+	PeerPublicKey string              `json:"peerPublicKey,omitempty"`
+	PeerID        string              `json:"peerId,omitempty"`
+	PeerIsOnline  bool                `json:"peerIsOnline,omitempty"`
+	PeerLastSeen  string              `json:"peerLastSeen,omitempty"`
+	OwnerID       string              `json:"ownerId"`
+	Role          string              `json:"role"`
+	IsPinned      bool                `json:"isPinned"`
+	IsArchived    bool                `json:"isArchived"`
+	LastReadAt    string              `json:"lastReadAt,omitempty"`
+	CreatedAt     string              `json:"createdAt"`
+	UpdatedAt     string              `json:"updatedAt"`
 	MemberCount   int                 `json:"memberCount"`
 	LastMessageAt string              `json:"lastMessageAt,omitempty"`
 	UnreadCount   int                 `json:"unreadCount"`
@@ -342,6 +358,13 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			       COUNT(DISTINCT m.id) FILTER (
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+			       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
+			       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
+			       COALESCE(peer.peer_id, ''),
+			       COALESCE(peer.is_online, FALSE), COALESCE(peer.last_seen, ''),
+			       COUNT(DISTINCT m.id) FILTER (
+			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
@@ -355,6 +378,24 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         COALESCE(up.avatar_url, '') AS avatar_url,
 			         au.username AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username || '.' || au.username_discriminator::text AS display_username,
 			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
 			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
 			  FROM chats.members pm
@@ -376,6 +417,11 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen,
+			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			WHERE COALESCE(cs.is_archived, FALSE) = $2
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
+			         peer.is_online, peer.last_seen,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
@@ -388,6 +434,21 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		return nil, err
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	s.hydrateRealtimePresence(chats)
+	return chats, nil
+	chats, err := scanChats(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	s.hydrateRealtimePresence(chats)
+	return chats, nil
+	chats, err := scanChats(rows)
+	if err != nil {
 		return nil, err
 	}
 	s.hydrateRealtimePresence(chats)
@@ -415,7 +476,16 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			       COUNT(DISTINCT m.id) FILTER (
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
+			       COALESCE(cs.last_read_at::text, ''), c.created_at::text, c.updated_at::text,
+			       COUNT(DISTINCT cm_all.user_id)::int, COALESCE(MAX(m.created_at)::text, ''),
+			       COALESCE(peer.peer_id, ''),
+			       COALESCE(peer.is_online, FALSE), COALESCE(peer.last_seen, ''),
+			       COUNT(DISTINCT m.id) FILTER (
+			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
+			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
+		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
@@ -433,6 +503,24 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			         COALESCE(up.first_name, au.first_name, '') AS first_name,
+			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
+			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			  FROM chats.members pm
+			  JOIN auth.users au ON au.id = pm.user_id
+			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -445,6 +533,11 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
+			WHERE c.id = $2
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
+			         peer.is_online, peer.last_seen,
+			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 			WHERE c.id = $2
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
@@ -475,7 +568,21 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	if chat.Type == "private" && s.ws != nil && s.ws.IsUserConnected(chat.PeerID) {
 		chat.PeerIsOnline = true
 	}
+	if chat.Type == "private" && s.ws != nil && s.ws.IsUserConnected(chat.PeerID) {
+		chat.PeerIsOnline = true
+	}
 	return chat, nil
+}
+
+func (s *Service) hydrateRealtimePresence(chats []Chat) {
+	if s.ws == nil {
+		return
+	}
+	for i := range chats {
+		if chats[i].Type == "private" && s.ws.IsUserConnected(chats[i].PeerID) {
+			chats[i].PeerIsOnline = true
+		}
+	}
 }
 
 func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (string, string, error) {
@@ -1196,12 +1303,17 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 	for rows.Next() {
 		var chat Chat
 		var unreadCount int
+		var lmSenderID, lmContent, lmType, lmSender sql.NullString
+		var lmSenderID, lmContent, lmType, lmSender sql.NullString
 		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
+			&unreadCount, &lmSenderID, &lmContent, &lmType, &lmSender,
+			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
+			&unreadCount, &lmSenderID, &lmContent, &lmType, &lmSender,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
 		); err != nil {
 			return nil, err
@@ -1212,6 +1324,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 				ID:         lmID.String,
 				Content:    lmContent.String,
 				Type:       lmType.String,
+				SenderID:   lmSenderID.String,
 				SenderID:   lmSenderID.String,
 				SenderName: lmSender.String,
 			}
@@ -1231,6 +1344,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
 		FROM (
+				SELECT *
+		FROM (
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.type, m.reply_to::text, m.metadata,
@@ -1243,6 +1358,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		WHERE m.chat_id = $1 AND m.deleted_at IS NULL
 		ORDER BY m.created_at DESC
 		LIMIT $2 OFFSET $3
+		) recent_messages
+		ORDER BY created_at ASC
 		) recent_messages
 		ORDER BY created_at ASC
 	`, chatID, limit, offset)
@@ -1382,6 +1499,8 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 }
 
 func (s *Service) EditMessage(ctx context.Context, userID, messageID, content string) (Message, error) {
+	content = sanitizeMessageContent(content)
+
 	content = sanitizeMessageContent(content)
 
 	var msg Message

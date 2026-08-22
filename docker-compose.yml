@@ -6,8 +6,10 @@ services:
         SERVICE: edge
     ports:
       - "3000:3000"
+      - "3080:3000"
     environment:
       - EDGE_ADDR=:3000
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3080
       - AUTH_URL=http://auth:8081
       - USER_URL=http://user:8082
       - CHAT_URL=http://chat:8083
