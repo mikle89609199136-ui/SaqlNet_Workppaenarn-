@@ -558,7 +558,6 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	return chat, nil
 }
 
-
 func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (string, string, error) {
 	var chatType, role string
 	err := s.db.QueryRowContext(ctx, `SELECT c.type, cm.role
