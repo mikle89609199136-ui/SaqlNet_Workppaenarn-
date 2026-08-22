@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatsPage } from './ChatsPage.jsx';
 import { services } from '../../../application/services/serviceContainer.js';
 import { eventBus } from '../../../core/EventBus.js';
-import { eventBus } from '../../../core/EventBus.js';
 
 vi.mock('../../../application/services/serviceContainer.js', () => ({
   services: {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,12 +6,6 @@ import { ChatThreadPage } from './ChatThreadPage.jsx';
 import { services } from '../../../application/services/serviceContainer.js';
 import { eventBus } from '../../../core/EventBus.js';
 
-const realtimeMocks = vi.hoisted(() => ({
-  socket: {
-    isConnected: true,
-    send: vi.fn(),
-  },
-}));
 
 const realtimeMocks = vi.hoisted(() => ({
   socket: {
