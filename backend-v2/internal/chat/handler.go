@@ -673,7 +673,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		added, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
 		if errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			return
@@ -690,7 +690,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"added": added, "reactions": reactions})
+		httpx.JSON(w, http.StatusOK, map[string]any{"action": status, "current emoji": currentEmoji, "reactions": reactions})
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
