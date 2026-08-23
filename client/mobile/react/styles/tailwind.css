@@ -230,19 +230,6 @@
     border: 2px solid #050505;
     box-shadow: 0 0 0 1px rgba(42,171,238,0.28);
   }
-  .chat-avatar { @apply relative w-12 h-12 rounded-full flex items-center justify-center text-white font-bold; background: #2b77e7; }
-  .chat-avatar.is-online::after {
-    content: "";
-    position: absolute;
-    right: 1px;
-    bottom: 1px;
-    width: 12px;
-    height: 12px;
-    border-radius: 999px;
-    background: #2AABEE;
-    border: 2px solid #050505;
-    box-shadow: 0 0 0 1px rgba(42,171,238,0.28);
-  }
   .chat-avatar-group, .chat-avatar-channel { background: #17a66a; }
   .chat-main { @apply min-w-0 flex flex-col justify-center gap-1.5; }
   .chat-topline, .chat-subline { @apply min-w-0 flex items-center justify-between gap-3; }
@@ -369,62 +356,6 @@
       min-width: 0;
       max-width: none;
     }
-    @media (min-width: 768px) {
-      @apply flex-1 flex flex-col overflow-hidden h-full;
-      min-width: 420px;
-      background: rgba(7,7,10,0.7);
-    }
-  }
-  .chat-workspace {
-    @media (min-width: 768px) { @apply flex w-full h-full overflow-hidden; }
-  }
-  .app-pane-resizer {
-    @media (min-width: 768px) {
-      @apply relative shrink-0 w-[1px] cursor-col-resize;
-      background: rgba(255,255,255,0.12);
-    }
-  }
-  .app-pane-resizer::after {
-    @media (min-width: 768px) {
-      content: "";
-      position: absolute;
-      inset: 0 -5px;
-    }
-  }
-  .app-pane-resizer:hover {
-    @media (min-width: 768px) { background: rgba(42,171,238,0.65); }
-  }
-  .app-profile-pane {
-    @media (min-width: 768px) {
-      @apply shrink-0 h-full overflow-hidden;
-      flex-basis: 30%;
-      min-width: 300px;
-      max-width: 560px;
-      background: #0b0b0f;
-    }
-  }
-  @media (min-width: 768px) and (max-width: 1180px) {
-    .chat-workspace.has-profile .app-sidebar-pane,
-    .chat-workspace.has-profile .app-pane-resizer-sidebar {
-      display: none;
-    }
-  }
-  @media (min-width: 768px) and (max-width: 920px) {
-    .chat-workspace:not(.has-profile) .app-sidebar-pane,
-    .chat-workspace:not(.has-profile) .app-pane-resizer-sidebar {
-      display: none;
-    }
-  }
-  @media (min-width: 768px) and (max-width: 980px) {
-    .chat-workspace.has-profile .app-chat-pane,
-    .chat-workspace.has-profile .app-pane-resizer-profile {
-      display: none;
-    }
-    .chat-workspace.has-profile .app-profile-pane {
-      flex: 1 1 auto;
-      min-width: 0;
-      max-width: none;
-    }
   }
   .app-sidebar-pane .chats-page {
     @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 flex flex-col overflow-hidden; }
@@ -455,7 +386,6 @@
 
   .nav-rail {
     @media (min-width: 768px) {
-      @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100] shrink-0;
       @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100] shrink-0;
       background: var(--color-rail);
       border-right: 1px solid rgba(255,255,255,0.08);
@@ -777,20 +707,9 @@
   }
 	  .thread-header {
 	    @apply min-h-[70px] grid gap-[10px] items-center;
-	  .thread-header {
-	    @apply min-h-[70px] grid gap-[10px] items-center;
     padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     grid-template-columns: 40px 44px minmax(0,1fr) auto;
-	    background: rgba(14,14,14,0.86);
-	    backdrop-filter: blur(14px);
-	    -webkit-backdrop-filter: blur(14px);
-	    z-index: 5;
-	    @media (max-width: 767px) {
-	      position: sticky;
-	      top: 0;
-	    }
-	  }
 	    background: rgba(14,14,14,0.86);
 	    backdrop-filter: blur(14px);
 	    -webkit-backdrop-filter: blur(14px);
@@ -804,9 +723,6 @@
     @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[30px] leading-none no-underline;
     background: rgba(255,255,255,0.06);
     padding-bottom: 3px;
-  }
-  .thread-back:hover {
-    background: rgba(255,255,255,0.1);
   }
   .thread-avatar {
     @apply relative w-11 h-11 rounded-full flex items-center justify-center bg-[#2b77e7] text-white font-extrabold;
