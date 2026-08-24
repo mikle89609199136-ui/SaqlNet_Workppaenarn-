@@ -1,0 +1,72 @@
+# CODEOWNERS — владельцы областей кода.
+#
+# Владельцы автоматически добавляются в ревьюеры Pull Request, затрагивающих их
+# файлы. Побеждает последнее совпавшее правило, поэтому более узкие пути
+# указываются ниже более широких.
+#
+# Обязательным ревью становится после включения в настройках защиты master
+# опции «Require review from Code Owners». До этого владелец назначается
+# автоматически, но merge технически не блокируется.
+
+# ─────────────────────────────────────────────────────────────
+# Фронтенд
+# ─────────────────────────────────────────────────────────────
+
+/client/                  @MaxDon26 @KufuVampire
+/public/                  @MaxDon26 @KufuVampire
+/index.html               @MaxDon26 @KufuVampire
+/mobile.html              @MaxDon26 @KufuVampire
+/vite.config.ts           @MaxDon26 @KufuVampire
+/tsconfig.json            @MaxDon26 @KufuVampire
+/tsconfig.app.json        @MaxDon26 @KufuVampire
+/tsconfig.node.json       @MaxDon26 @KufuVampire
+/vitest.config.js         @MaxDon26 @KufuVampire
+/.prettierrc              @MaxDon26 @KufuVampire
+
+# package.json и package-lock.json намеренно не включены: файлы общие,
+# в них зависимости и фронтенда, и остатки серверной части.
+# Будут закреплены за фронтендом после выделения отдельного манифеста.
+
+# ─────────────────────────────────────────────────────────────
+# Требует обсуждения — владельцы не назначены
+#
+# Строки ниже закомментированы и не действуют. Раскомментировать,
+# подставив ответственных, после согласования на встрече.
+# ─────────────────────────────────────────────────────────────
+
+# Go-сервисы. Один владелец на весь backend-v2 или разные по сервисам
+# (auth, user, chat, media, admin, edge)?
+# /backend-v2/                    @owner
+
+# Контракты API. Затрагивают обе стороны: изменение схемы ломает клиент.
+# Предлагается двойное владение — бэкенд и фронтенд.
+# /backend-v2/contracts/          @backend-owner @MaxDon26 @KufuVampire
+
+# Миграции БД. Необратимы в production, возможно нужен отдельный владелец.
+# /backend-v2/migrations/         @owner
+# /database/                      @owner
+
+# Rust crypto-сервис. Отвечает за шифрование и токены.
+# /server/crypto-rust/            @owner
+
+# Устаревшая серверная часть на Node.js. README объявляет её удалённой,
+# но каталог существует и упоминается в Dockerfile.prod и docker-compose.yml.
+# Нужно решить: удалять или назначать владельца.
+# /server/services/               @owner
+# /server/middleware/             @owner
+# /server/gateway-go/             @owner
+
+# Инфраструктура и деплой.
+# /infrastructure/                @owner
+# /deploy/                        @owner
+# /Dockerfile*                    @owner
+# /docker-compose.yml             @owner
+# /supervisord.conf               @owner
+# /amvera.yaml /amvera.yml        @owner
+# /railway.json                   @owner
+# /docker-entrypoint.sh           @owner
+
+# CI и конфигурация репозитория. Меняет правила для всех.
+# /.github/                       @owner
+# /scripts/                       @owner
+# /lefthook.yml                   @owner
