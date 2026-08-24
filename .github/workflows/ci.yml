@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  # Определение изменённых путей запрашивает список файлов Pull Request через API
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
