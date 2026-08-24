@@ -1,13 +1,15 @@
 # Stage 1: Build frontend
 FROM node:20-slim AS frontend
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install --include=dev
-COPY vite.config.ts index.html mobile.html ./
+# WORKDIR двухуровневый: vite собирает в ../dist, то есть в /app/dist —
+# именно оттуда финальный образ забирает результат.
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/vite.config.ts frontend/index.html frontend/mobile.html ./
 RUN echo "css-bust-v8"
-COPY client ./client
-COPY public ./public
-RUN npm run build:react
+COPY frontend/src ./src
+COPY frontend/public ./public
+RUN npm run build
 
 # Stage 2: Build Go services
 FROM golang:1.26-alpine AS gobuilder
