@@ -586,3 +586,21 @@ func TestHandler_BanMember_Body(t *testing.T) {
 		})
 	}
 }
+
+// TestHandler_ListBans_PrivateChatRejected проверяет HTTP-маппинг запрета
+// moderation-операций в private chat: ErrInvalidChatType из Service.ListBans
+// должен стать 400 invalid_chat_type, а не общим 500 internal_error.
+func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
+	h, mock := newTestHandler(t)
+
+	mock.ExpectQuery(actorChatInfoQuery).
+		WithArgs(handlerActorID, handlerChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("private", "member"))
+
+	req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+handlerChatID+"/bans", nil, handlerActorID)
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
