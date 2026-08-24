@@ -11,7 +11,6 @@ const syntaxRoots = [
   'client/mobile/infrastructure',
   'client/mobile/shared',
   'client/mobile/presentation',
-  'server/services/message-service',
 ];
 
 const sizeLimits = [
@@ -43,15 +42,7 @@ const sourceExtensions = new Set([
   '.yml',
   '.yaml',
 ]);
-const sourceRoots = [
-  'client',
-  'database',
-  'docs',
-  'infrastructure',
-  'public',
-  'scripts',
-  'server',
-];
+const sourceRoots = ['client', 'docs', 'infrastructure', 'public', 'scripts', 'server'];
 const largeSourceAllowlist = new Set([
   // Cohesive UI/runtime entrypoints; covered by build and dedicated tests.
   'client/mobile/react/components/media-editor/PhotoEditorModal.jsx',
@@ -87,7 +78,9 @@ for (const limit of sizeLimits) {
   const lines = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/).length;
   if (lines > limit.maxLines) {
     failed = true;
-    console.error(`Monolith limit exceeded: ${limit.file} has ${lines} lines, limit is ${limit.maxLines}`);
+    console.error(
+      `Monolith limit exceeded: ${limit.file} has ${lines} lines, limit is ${limit.maxLines}`
+    );
   }
 }
 
