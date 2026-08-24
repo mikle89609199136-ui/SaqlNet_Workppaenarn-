@@ -1,8 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { resolve } from 'node:path';
-import path from 'path';
+import path, { resolve } from 'node:path';
 
 export default defineConfig(({ mode }) => {
   // DEV_API_PROXY_TARGET позволяет проксировать dev-запросы на удалённый стенд
@@ -17,7 +16,7 @@ export default defineConfig(({ mode }) => {
     publicDir: 'public',
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
+        '@': path.resolve(import.meta.dirname, './src'),
       },
     },
     server: {
@@ -41,8 +40,8 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       rollupOptions: {
         input: {
-          main: resolve(__dirname, 'index.html'),
-          mobile: resolve(__dirname, 'mobile.html'),
+          main: resolve(import.meta.dirname, 'index.html'),
+          mobile: resolve(import.meta.dirname, 'mobile.html'),
         },
       },
     },
