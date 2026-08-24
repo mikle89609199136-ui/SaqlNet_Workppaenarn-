@@ -1,4 +1,4 @@
-import { ChatThreadHeader, MessageActionsPopover } from '@/components/components';
+import { ChatThreadHeader, MessageActionsPopover } from '@/components/features';
 import { ComposerWrapper, MessagesList } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { type IActionMenu } from '@/store';
@@ -19,7 +19,7 @@ interface Props {
   setPinnedMessagesOpen: Dispatch<SetStateAction<boolean>>;
 }
 
-export const PinnedMessagesPage = ({
+export const PinnedMessagesView = ({
   pinnedMessages,
   onClose,
   isLoading,

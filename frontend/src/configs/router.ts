@@ -111,7 +111,7 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/components/EmptyChatPlaceholder.js').then((m) => ({
+                      import('../components/features/EmptyChatPlaceholder.js').then((m) => ({
                         Component: m.EmptyChatPlaceholder,
                       })),
                   },
@@ -121,7 +121,7 @@ export const router = createBrowserRouter([
                     shouldRevalidate: ({ currentParams, nextParams }) =>
                       currentParams.chatId !== nextParams.chatId,
                     lazy: () =>
-                      import('../pages/ChatPage/ChatThreadPage.js').then((m) => ({
+                      import('../pages/ChatThreadPage/ChatThreadPage.js').then((m) => ({
                         Component: m.ChatThreadPage,
                       })),
                   },

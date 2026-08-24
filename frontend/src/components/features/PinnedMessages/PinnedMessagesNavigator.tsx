@@ -18,7 +18,7 @@ interface Props {
   setPinnedMessagesOpen: Dispatch<SetStateAction<boolean>>;
 }
 
-export const PinnedMessages = ({ messages, setPinnedMessagesOpen }: Props) => {
+export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Props) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
 
