@@ -2,7 +2,7 @@ import {
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
-} from '@/components/components';
+} from '@/components/features';
 import { ChatListItem, ChatsSkeleton } from '@/components/ui';
 import { useChatLastMessagePreview, useIsMobile } from '@/hooks';
 import { services } from '@/services';

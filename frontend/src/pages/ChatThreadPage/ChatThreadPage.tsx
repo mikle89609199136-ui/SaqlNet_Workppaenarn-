@@ -6,9 +6,10 @@ import {
   GroupInfoModal,
   MessageActionsPopover,
   PhotoEditorModal,
-  PinnedMessages,
+  PinnedMessagesNavigator,
+  PinnedMessagesView,
   UserProfileModal,
-} from '@/components/components';
+} from '@/components/features';
 import { MessagesList } from '@/components/ui/';
 import { useMessageActions, useRealtimeSocket } from '@/hooks';
 import { getMessages, services } from '@/services';
@@ -17,7 +18,6 @@ import '@/styles/ChatThreadPage.css';
 import { useLoaderData, useOutletContext, useParams } from 'react-router-dom';
 
 import { WS_EVENTS } from '@/consts';
-import { PinnedMessagesPage } from '@/pages';
 import type {
   IChatDto,
   IMessageDto,
@@ -394,7 +394,7 @@ export function ChatThreadPage() {
         />
       )}
       {isPinnedMessagesOpen && (
-        <PinnedMessagesPage
+        <PinnedMessagesView
           pinnedMessages={pinnedMessages}
           onClose={() => setPinnedMessagesOpen(false)}
           isLoading={isLoading}
@@ -416,7 +416,10 @@ export function ChatThreadPage() {
             profileModal={profileModal}
           />
 
-          <PinnedMessages messages={pinnedMessages} setPinnedMessagesOpen={setPinnedMessagesOpen} />
+          <PinnedMessagesNavigator
+            messages={pinnedMessages}
+            setPinnedMessagesOpen={setPinnedMessagesOpen}
+          />
           <MessagesList
             error={error}
             isLoading={isLoading}

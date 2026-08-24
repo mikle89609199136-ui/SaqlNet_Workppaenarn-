@@ -15,5 +15,6 @@ export { MessageContentRenderer } from './MessageBubble/MessageContent';
 export { MessageMedia } from './MessageBubble/MessageMedia';
 export { MessageActionsPopover } from './Modals/MessageActionsPopover';
 export { UserProfileModal } from './Modals/UserProfileModal';
-export { PinnedMessages } from './PinnedMessages';
+export { PinnedMessagesNavigator } from './PinnedMessages/PinnedMessagesNavigator';
+export { PinnedMessagesView } from './PinnedMessages/PinnedMessagesView';
 export { UserProfilePanel } from './UserProfilePanel';
