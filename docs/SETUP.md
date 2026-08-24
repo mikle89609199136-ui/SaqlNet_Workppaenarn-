@@ -67,7 +67,11 @@ cargo --version
 
    ```bash
    npm ci
+   cd frontend && npm ci && cd ..
    ```
+
+   Первая команда ставит инструменты репозитория, вторая — зависимости клиента.
+   У фронтенда собственный `package.json` в `frontend/`.
 
 4. Создайте локальный файл окружения:
 
@@ -98,7 +102,7 @@ cargo --version
 7. Запустите фронтенд:
 
    ```bash
-   npm exec vite -- --host 127.0.0.1 --port 3000
+   cd frontend && npm run dev
    ```
 
 8. Откройте приложение:
@@ -109,10 +113,11 @@ cargo --version
 
 ## Проверки
 
-Установите frontend-зависимости из lock-файла:
+Установите зависимости из lock-файлов:
 
 ```bash
 npm ci
+cd frontend && npm ci && cd ..
 ```
 
 Запустите полный набор frontend-проверок из корня проекта:

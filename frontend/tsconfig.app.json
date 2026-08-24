@@ -16,7 +16,7 @@
     "jsx": "react-jsx",
 
     "paths": {
-      "@/*": ["./client/mobile/react/*"]
+      "@/*": ["./src/*"]
     },
 
     /* Linting */
@@ -25,5 +25,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["client/mobile/react"]
+  "include": ["src"]
 }

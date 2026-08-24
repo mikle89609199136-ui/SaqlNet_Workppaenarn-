@@ -7,7 +7,7 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   // DEV_API_PROXY_TARGET позволяет проксировать dev-запросы на удалённый стенд
   // вместо локального backend v2. Без VITE_-префикса, чтобы значение не попало
-  // в клиентский бандл. По умолчанию — локальный edge-gateway.
+  // в клиентский бандл. Читается из frontend/.env — vite запускается отсюда.
   const env = loadEnv(mode, process.cwd(), '');
   const apiTarget = env.DEV_API_PROXY_TARGET || 'http://localhost:8080';
   const wsTarget = apiTarget.replace(/^http/, 'ws');
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     publicDir: 'public',
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './client/mobile/react'),
+        '@': path.resolve(__dirname, './src'),
       },
     },
     server: {
@@ -34,7 +34,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      outDir: 'dist',
+      // Собранный фронтенд остаётся в корневом dist/: на этот путь рассчитывают
+      // docker-compose.yml, scripts/start.sh, supervisord.conf и frontendFallback()
+      // в backend-v2/cmd/edge. emptyOutDir обязателен, потому что outDir вне корня.
+      outDir: '../dist',
       emptyOutDir: true,
       rollupOptions: {
         input: {

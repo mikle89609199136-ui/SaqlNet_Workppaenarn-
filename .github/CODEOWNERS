@@ -12,20 +12,15 @@
 # Фронтенд
 # ─────────────────────────────────────────────────────────────
 
-/client/                  @MaxDon26 @KufuVampire
-/public/                  @MaxDon26 @KufuVampire
-/index.html               @MaxDon26 @KufuVampire
-/mobile.html              @MaxDon26 @KufuVampire
-/vite.config.ts           @MaxDon26 @KufuVampire
-/tsconfig.json            @MaxDon26 @KufuVampire
-/tsconfig.app.json        @MaxDon26 @KufuVampire
-/tsconfig.node.json       @MaxDon26 @KufuVampire
-/vitest.config.js         @MaxDon26 @KufuVampire
+/frontend/                 @MaxDon26 @KufuVampire
 /.prettierrc              @MaxDon26 @KufuVampire
 
-# package.json и package-lock.json намеренно не включены: файлы общие,
-# в них зависимости и фронтенда, и остатки серверной части.
-# Будут закреплены за фронтендом после выделения отдельного манифеста.
+# Legacy-клиент: та же зона ответственности до его удаления.
+/client/                  @MaxDon26 @KufuVampire
+
+# frontend/package.json закреплён правилом /frontend/ выше.
+# Корневые package.json и package-lock.json не включены: там остались
+# только legacy-зависимости и служебные скрипты репозитория.
 
 # ─────────────────────────────────────────────────────────────
 # Требует обсуждения — владельцы не назначены
