@@ -2,7 +2,7 @@ import { ROUTES } from '@/consts';
 import { cn, getLastMessageText } from '@/utils';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Identicon } from '@/components/ui';
+import { Identicon } from './Identicon';
 import type { IChatDto } from '@/types';
 
 interface Props {

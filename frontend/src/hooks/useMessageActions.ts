@@ -1,6 +1,7 @@
 import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
-import { useToasts } from '@/hooks';
-import { services, translateText } from '@/services';
+import { useToasts } from './useToasts';
+import { services } from '@/services/serviceContainer';
+import { translateText } from '@/services/translatorApi';
 import { useChatStore, useProfileStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils';

@@ -1,4 +1,5 @@
-import { ChatThreadHeader, MessageActionsPopover } from '@/components/features';
+import { ChatThreadHeader } from '../ChatThreadHeader';
+import { MessageActionsPopover } from '../Modals/MessageActionsPopover';
 import { ComposerWrapper, MessagesList } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { type IActionMenu } from '@/store';

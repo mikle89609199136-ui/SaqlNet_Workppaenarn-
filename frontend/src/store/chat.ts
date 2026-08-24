@@ -1,4 +1,4 @@
-import { services } from '@/services';
+import { services } from '@/services/serviceContainer';
 import type { IChatDto, IMessageDto, IPinnedDto, IPinnedMessageDto, TMessagesList } from '@/types';
 import { create } from 'zustand';
 

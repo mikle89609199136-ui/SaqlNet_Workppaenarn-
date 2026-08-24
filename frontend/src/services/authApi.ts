@@ -1,7 +1,7 @@
-import { DEFAULT_PROFILE_SETTINGS } from "@/consts";
-import { useProfileStore } from "@/store";
-import type { ISettingsDto, IUserDto } from "@/types";
-import { services } from "@/services";
+import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
+import { useProfileStore } from '@/store/profile';
+import type { ISettingsDto, IUserDto } from '@/types';
+import { services } from '@/services/serviceContainer';
 
 export async function registerUser({
   firstName,
@@ -17,14 +17,14 @@ export async function registerUser({
   return services.authService.register({
     firstName,
     language,
-    lastName: "",
+    lastName: '',
     password,
     username,
   });
 }
 
 export async function loginUser({
-  clientIP = "",
+  clientIP = '',
   password,
   twoFAPassword,
   username,
@@ -66,5 +66,5 @@ export function saveAuthSession({
   useProfileStore.getState().setToken(token);
   useProfileStore.getState().setUser(user);
   useProfileStore.getState().setSettings(settings);
-  window.dispatchEvent(new CustomEvent("craneapp:auth-session-saved"));
+  window.dispatchEvent(new CustomEvent('craneapp:auth-session-saved'));
 }
