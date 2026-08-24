@@ -501,9 +501,15 @@ export class MessageService {
   }
 
   addMessageToCache(chatId: string, message: IMessageDto) {
+    // Дополняем только ту историю, которая уже загружена с сервера.
+    // Иначе getMessages примет запись из одного сообщения за полную историю
+    // чата и не станет запрашивать остальное: чат откроется почти пустым.
+    // Сюда попадают пересылка, отправка и любое входящее событие по чужим чатам,
+    // поэтому создавать запись здесь нельзя.
     if (!this.messages.has(chatId)) {
-      this.messages.set(chatId, []);
+      return;
     }
+
     this.messages.set(
       chatId,
       sortMessagesChronologically<IMessageDto>([...this.getOrCreateMessages(chatId), message])
