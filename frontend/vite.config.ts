@@ -29,6 +29,12 @@ export default defineConfig(({ mode }) => {
           target: wsTarget,
           ws: true,
           changeOrigin: true,
+          // Сервер сверяет заголовок Origin со списком ALLOWED_ORIGINS и
+          // отвечает 403 на рукопожатие, если адрес ему незнаком. Через прокси
+          // туда уходит http://localhost:3000, поэтому подменяем на адрес стенда.
+          headers: {
+            Origin: apiTarget,
+          },
         },
       },
     },
