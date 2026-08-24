@@ -8,7 +8,6 @@ export { ComposerWrapper } from './ComposerWrapper';
 export { Icon } from './Icon/Icon';
 export { Identicon } from './Identicon';
 export { MessageCheckbox } from './MessageCheckbox';
-export { MessagesList } from './MessagesList';
 export { Modal } from './Modal';
 export { RouteLoadingFallback } from './RouteLoadingFallback';
 export { ChatsSkeleton } from './Skeletons/ChatSkeleton';

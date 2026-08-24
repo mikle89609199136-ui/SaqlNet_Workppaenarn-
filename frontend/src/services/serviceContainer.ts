@@ -1,6 +1,6 @@
-import { apiClient } from '@/api';
-import { STORAGE_KEYS } from '@/consts';
-import { useProfileStore } from '@/store';
+import { apiClient } from '@/api/apiFactory';
+import { STORAGE_KEYS } from '@/consts/storageKeys';
+import { useProfileStore } from '@/store/profile';
 
 import { AdminService } from './AdminService';
 import { AuthService } from './AuthService';

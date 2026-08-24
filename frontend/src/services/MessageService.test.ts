@@ -1,35 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// В проекте есть циклы через barrel-файлы: MessageService берёт утилиту из @/utils,
-// а тот тянет clearAuthSession → @/hooks и decryptChatPreview → @/services →
-// serviceContainer → MessageService. Браузерная сборка это разруливает, изоляция
-// в тестах — нет, поэтому подменяем узлы цикла.
-// Полная цепочка цикла: MessageService → @/core → chatCache → @/api → apiFactory →
-// @/configs → router → @/services → serviceContainer → MessageService.
-vi.mock('@/services', () => ({ services: {} }));
-vi.mock('@/hooks', () => ({ disconnectRealtimeSocket: () => {} }));
-vi.mock('@/configs', () => ({
-  config: { apiBaseUrl: 'http://localhost/api/v2', socketUrl: 'ws://localhost/ws' },
-}));
-
-vi.mock('@/store', () => {
-  const store = (state: Record<string, unknown>) => ({
-    getState: () => state,
-    setState: () => {},
-    subscribe: () => () => {},
-  });
-
-  return {
-    useChatStore: store({ markAsRead: () => {} }),
-    useProfileStore: store({ user: null, token: null, setUser: () => {} }),
-    useChatsStore: store({ chats: [], setChats: () => {} }),
-    useCallStore: store({}),
-    useToastStore: store({ toasts: [], addToast: () => {} }),
-    useThemeStore: store({ theme: 'dark' }),
-    useLanguageStore: store({ language: 'ru' }),
-  };
-});
-
 import { MessageService } from './MessageService';
 import type { ApiClient } from '@/api';
 import type { CryptoService } from './CryptoService';
