@@ -1,7 +1,9 @@
-import { API_ENDPOINTS, ApiClient } from '@/api';
+import { API_ENDPOINTS } from '@/api/endpoints';
+import { ApiClient } from '@/api/ApiClient';
 import { STORAGE_KEYS, WS_EVENTS } from '@/consts';
-import { eventBus, getRawChat } from '@/core';
-import { useChatStore } from '@/store';
+import { eventBus } from '@/core/EventBus';
+import { getRawChat } from '@/core/chatCache';
+import { useChatStore } from '@/store/chat';
 import type {
   IChatContext,
   IDeleteMessageResponse,
@@ -22,7 +24,7 @@ import type {
   TMessageType,
   TPinnedList,
 } from '@/types';
-import { sortMessagesChronologically } from '@/utils';
+import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import type { CryptoService } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
