@@ -373,8 +373,11 @@ export class MessageService {
   }
 
   /**
-   * Отмечает сообщения прочитанными и возвращает те из них, что есть в кеше чата.
+   * Отмечает сообщения прочитанными и возвращает подтверждённые идентификаторы.
    * Обновление состояния — забота вызывающей стороны: сервис не знает о сторе.
+   *
+   * Список строится из того, что приняли на сервере, а не из кеша чата:
+   * при первом открытии чата кеш ещё пуст, и отметка не доходила до интерфейса.
    */
   async markAsRead(chatId: string, messageIds: string[]) {
     const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_READ, {
@@ -382,12 +385,8 @@ export class MessageService {
       messageIds,
     });
 
-    const readIds = (this.messages.get(chatId) ?? [])
-      .filter((message) => messageIds.includes(message.id))
-      .map((message) => message.id);
-
     eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
-    return { ...response.data, readIds };
+    return { ...response.data, readIds: messageIds };
   }
 
   async forwardMessage(messageId: string, targetChatId: string) {

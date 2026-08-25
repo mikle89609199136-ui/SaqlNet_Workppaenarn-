@@ -121,3 +121,29 @@ describe('сторож открытого текста', () => {
     expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
   });
 });
+
+describe('MessageService: отметка о прочтении', () => {
+  it('should confirm ids even when the chat was never loaded', async () => {
+    // При первом открытии чата внутренний кеш пуст. Раньше список
+    // подтверждённых строился из него — и отметка не доходила до интерфейса.
+    server.use(http.post(api('/messages/read'), () => HttpResponse.json({ success: true })));
+
+    const result = await createService().markAsRead(TARGET_CHAT, ['m-1', 'm-2']);
+
+    expect(result.readIds).toEqual(['m-1', 'm-2']);
+  });
+
+  it('should send the chat and the messages to the server', async () => {
+    let body: unknown = null;
+    server.use(
+      http.post(api('/messages/read'), async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await createService().markAsRead(TARGET_CHAT, ['m-1']);
+
+    expect(body).toEqual({ chatId: TARGET_CHAT, messageIds: ['m-1'] });
+  });
+});
