@@ -1,77 +1,16 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/consts';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
+import { stubCrypto } from '@/test/harness/stubCrypto';
 
-// ── Окружение, без которого правка не доходит до сервера ─────────────────────
-
-/**
- * Ключевая пара живёт в IndexedDB, а её владелец определяется по записи
- * пользователя в localStorage. В jsdom нет ни того, ни другого: без них
- * правка обрывается на шифровании и никакого PUT не случается.
- */
-const keyStorage = new Map<string, unknown>();
-
-function installMemoryIndexedDB(): void {
-  if (globalThis.indexedDB) return;
-
-  const settle = <T,>(result: T) => {
-    const request: Record<string, unknown> = { result, onsuccess: null, onerror: null };
-    queueMicrotask(() =>
-      (request.onsuccess as ((e: unknown) => void) | null)?.({ target: request })
-    );
-    return request;
-  };
-
-  const database = {
-    objectStoreNames: { contains: () => true },
-    createObjectStore: () => {},
-    transaction: () => ({
-      objectStore: () => ({
-        get: (key: string) => settle(keyStorage.get(key)),
-        put: (value: unknown, key: string) => {
-          keyStorage.set(key, value);
-          return settle(undefined);
-        },
-      }),
-    }),
-  };
-
-  globalThis.indexedDB = { open: () => settle(database) } as unknown as IDBFactory;
-}
-
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-/** Настоящий публичный ключ собеседника: подделка не пройдёт importKey. */
-async function makePeerPublicKey(): Promise<string> {
-  const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, [
-    'deriveKey',
-    'deriveBits',
-  ]);
-
-  return toBase64(await crypto.subtle.exportKey('spki', pair.publicKey));
-}
-
-// ── Наблюдение за правкой ────────────────────────────────────────────────────
-
-interface IEditRequest {
-  method: string;
-  path: string;
-  content: string;
-}
-
-let peerPublicKey = '';
+const PEER_PUBLIC_KEY = 'ключ-собеседника';
 
 const ORIGINAL_TEXT = 'старый текст';
 
@@ -82,7 +21,7 @@ const ORIGINAL_TEXT = 'старый текст';
  */
 function setupChat() {
   const me = makeUser({ id: 'user-1', firstName: 'Я' });
-  const chat = makeChat({ ownerId: 'user-1', peerId: 'user-2', peerPublicKey });
+  const chat = makeChat({ ownerId: 'user-1', peerId: 'user-2', peerPublicKey: PEER_PUBLIC_KEY });
   const mine = makeMessage({ chatId: chat.id, senderId: me.id, content: ORIGINAL_TEXT });
   const editRequests: IEditRequest[] = [];
 
@@ -126,13 +65,9 @@ async function replaceDraftAndSubmit(user: ReturnType<typeof userEvent.setup>, t
 }
 
 describe('редактирование своего сообщения', () => {
-  beforeAll(async () => {
-    installMemoryIndexedDB();
-    peerPublicKey = await makePeerPublicKey();
-  });
-
   beforeEach(() => {
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ id: 'user-1', username: 'tester' }));
+    stubCrypto();
   });
 
   it('should open the composer with the original text after choosing edit', async () => {
