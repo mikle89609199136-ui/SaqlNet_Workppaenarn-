@@ -97,20 +97,19 @@ export const useChatStore = create<InitialState>((set, get) => {
     },
     markAsRead: (messageId: string) => {
       const messages = get().messages;
+      // findIndex отдаёт 0 для первого сообщения и -1, если ничего не нашёл:
+      // проверка на ложность отсекала бы первое и пропускала отсутствующее.
       const messageIndex = messages.findIndex((message) => message.id === messageId);
 
-      if (!messageIndex) return;
+      if (messageIndex === -1) return;
 
-      const message = messages[messageIndex];
-      const readMessage = {
-        ...message,
-        isRead: true,
-        status: 'read',
-      };
+      // Новый массив, а не изменение на месте: Zustand сравнивает по ссылке,
+      // и с прежней подписчики не узнали бы об изменении.
+      const updatedMessages = messages.map((message, index) =>
+        index === messageIndex ? { ...message, isRead: true, status: 'read' as const } : message
+      );
 
-      messages[messageIndex] = readMessage;
-
-      set({ messages });
+      set({ messages: updatedMessages });
     },
     updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => {
       const messages = get().messages;
