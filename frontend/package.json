@@ -13,7 +13,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "check:cycles": "dpdm --no-tree --no-warning --tsconfig tsconfig.app.json --exit-code circular:1 --transform src/main.tsx"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -36,6 +37,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.2",
+    "dpdm": "^4.3.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.1",

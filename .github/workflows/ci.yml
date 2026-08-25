@@ -104,7 +104,7 @@ jobs:
       # для изолированного тестирования. dpdm учитывает, что import type
       # стирается при компиляции, и не считает такие связи циклами.
       - name: Check for import cycles
-        run: npx --yes dpdm --no-tree --no-warning --exit-code circular:1 --transform src/main.tsx
+        run: npm run check:cycles
 
       - name: Run React tests
         run: npm run test
