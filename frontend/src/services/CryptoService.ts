@@ -45,7 +45,9 @@ export interface IE2EPayload {
   senderPublicKey?: string;
   senderKeyFp?: string;
   recipientKeyFp?: string;
-  recipientPublicKey?: string;
+  // Имя поля совпадает с тем, что записывает encryptDM. Переименовывать нельзя:
+  // сообщения, отправленные раньше, хранят именно это имя.
+  recipientPubKeyB64?: string;
 }
 
 export class CryptoService {
@@ -105,10 +107,8 @@ export class CryptoService {
       await this.generateAndStoreKeys();
     }
 
-    if (!this.publicKeyUploaded) {
-      await this.uploadPublicKey();
-      this.publicKeyUploaded = true;
-    }
+    // Флаг выставляет сам uploadPublicKey — и только после успешного ответа.
+    await this.uploadPublicKey();
 
     this.ready = true;
   }
@@ -241,6 +241,10 @@ export class CryptoService {
     const pubB64 = this.bufToB64(pubRaw);
     try {
       await this.apiClient.post('/auth/public-key', { publicKey: pubB64 });
+      // Только после успешного ответа: иначе одна сетевая ошибка оставит
+      // собеседников без ключа до перезагрузки вкладки, и все отправленные
+      // за сессию сообщения окажутся для них нечитаемыми.
+      this.publicKeyUploaded = true;
       console.debug('🔐 Crypto: public key uploaded', {
         accountId: this.accountId,
         keyFp: await this.publicKeyFingerprint(pubB64),
@@ -253,16 +257,25 @@ export class CryptoService {
   // --- Encryption/Decryption ---
   async encryptDM(content: string, recipientPubKeyB64: string): Promise<string> {
     if (!content) return content;
-    if (!recipientPubKeyB64) return content;
-    if (!this.hasWebCrypto()) return content;
-    if (!this.privateKey) return content;
+
+    // Ни один путь ниже не возвращает исходный текст: незашифрованная отправка
+    // в мессенджере с E2E хуже неотправки. Текст ошибки доходит до пользователя
+    // через setError в композере, поэтому он на русском.
+    if (!this.hasWebCrypto()) {
+      throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
+    }
+
+    if (!recipientPubKeyB64) {
+      throw new Error('У собеседника нет ключа шифрования — сообщение не отправлено');
+    }
+
+    // Инициализация обязательно до проверки privateKey: до неё ключ всегда null.
     if (!this.ready) {
-      try {
-        await this.init();
-      } catch (e) {
-        console.warn('Crypto init failed during encryptDM, sending unencrypted', e);
-        return content;
-      }
+      await this.init();
+    }
+
+    if (!this.privateKey) {
+      throw new Error('Ключи шифрования не готовы, попробуйте ещё раз');
     }
 
     // Simplistic mock of Signal/ECDH for demo purposes based on legacy
@@ -301,7 +314,7 @@ export class CryptoService {
       });
     } catch (e) {
       console.warn('E2E Encrypt failed:', e);
-      return content;
+      throw new Error('Не удалось зашифровать сообщение');
     }
   }
 
@@ -349,7 +362,7 @@ export class CryptoService {
       const preferEmbeddedSenderKey = options.preferEmbeddedSenderKey !== false;
       const senderKey = preferEmbeddedSenderKey
         ? payload.senderPublicKey || senderPubKeyB64
-        : payload.recipientPublicKey || senderPubKeyB64;
+        : payload.recipientPubKeyB64 || senderPubKeyB64;
       if (!senderKey) return '🔒 [Отсутствует публичный ключ отправителя]';
 
       const peerKey = await crypto.subtle.importKey(
@@ -379,14 +392,24 @@ export class CryptoService {
       const debugInfo = await this.decryptDebugInfo(payloadStr, senderPubKeyB64, options);
       console.warn('E2E Decrypt failed:', e, debugInfo);
 
-      const keyMismatch =
-        debugInfo.localPublicKeyFp &&
+      // Своё сообщение шифровалось для ключа собеседника, чужое — для нашего.
+      // Поэтому сверять payload.recipientKeyFp нужно с разными ключами:
+      // сравнение со своим всегда даёт расхождение на исходящих сообщениях.
+      const isOwnMessage = Boolean(
+        debugInfo.localPublicKeyFp && debugInfo.payloadSenderKeyFp === debugInfo.localPublicKeyFp
+      );
+      const expectedKeyFp = isOwnMessage ? debugInfo.fallbackPeerKeyFp : debugInfo.localPublicKeyFp;
+      const keyChanged = Boolean(
+        expectedKeyFp &&
         debugInfo.payloadRecipientKeyFp &&
-        debugInfo.localPublicKeyFp !== debugInfo.payloadRecipientKeyFp;
+        expectedKeyFp !== debugInfo.payloadRecipientKeyFp
+      );
 
-      return keyMismatch
+      if (!keyChanged) return '🔒 [Ошибка расшифровки E2E]';
+
+      return isOwnMessage
         ? '🔒 [Ключ собеседника изменился — сообщение больше не расшифровывается]'
-        : '🔒 [Ошибка расшифровки E2E]';
+        : '🔒 [Ваши ключи изменились — сообщение больше не расшифровывается]';
     }
   }
 
