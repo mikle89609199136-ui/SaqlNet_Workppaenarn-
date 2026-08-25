@@ -88,13 +88,15 @@ export class ApiClient {
 
     const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
     let normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
-    const basePath = new URL(normalizedBase, window.location.href).pathname
-      .replace(/\/+$/, '')
-      .replace(/^\/+/, '');
+    // Относительная база разрешается от адреса страницы; вне браузера
+    // подставляется любой корректный origin — важен только путь.
+    const documentUrl = globalThis.location?.href ?? 'http://localhost/';
+    const absoluteBase = new URL(normalizedBase, documentUrl);
+    const basePath = absoluteBase.pathname.replace(/\/+$/, '').replace(/^\/+/, '');
     if (basePath && normalizedEndpoint.startsWith(`${basePath}/`)) {
       normalizedEndpoint = normalizedEndpoint.slice(basePath.length + 1);
     }
-    const url = new URL(normalizedEndpoint, normalizedBase);
+    const url = new URL(normalizedEndpoint, absoluteBase);
 
     this.appendParams(url, params);
     return url.toString();

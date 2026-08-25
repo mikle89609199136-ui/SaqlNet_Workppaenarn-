@@ -10,7 +10,9 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
+import { useCallStore } from '@/store/call';
 import { useChatStore } from '@/store/chat';
+import { useChatsStore } from '@/store/chats';
 import { useProfileStore } from '@/store/profile';
 import { useToastStore } from '@/store/toast';
 
@@ -103,9 +105,8 @@ afterEach(() => {
   eventBus.clear();
   resetRealtimeSocketForTests();
 
-  // Сбрасываются только сторы, не тянущие за собой сервисы.
-  // chats и call подключатся после того, как serviceContainer перестанет
-  // выполнять работу при импорте (#243).
+  useCallStore.setState(useCallStore.getInitialState(), true);
+  useChatsStore.setState(useChatsStore.getInitialState(), true);
   useChatStore.setState(useChatStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   useToastStore.setState(useToastStore.getInitialState(), true);
