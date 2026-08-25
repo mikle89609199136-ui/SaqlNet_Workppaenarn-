@@ -1,6 +1,6 @@
-import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from "@/consts";
-import type { ISettingsDto, IUserDto } from "@/types";
-import { create } from "zustand";
+import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from '@/consts';
+import type { ISettingsDto, IUserDto } from '@/types';
+import { create } from 'zustand';
 
 interface InitialState {
   token: string | null;
@@ -11,7 +11,7 @@ interface InitialState {
   setUser: (user: IUserDto) => void;
   setToken: (token: string) => void;
   setSettings: (settings: ISettingsDto) => void;
-  updateUser: (data: Partial<Omit<IUserDto, "id">>) => void;
+  updateUser: (data: Partial<Omit<IUserDto, 'id'>>) => void;
   clearProfile: () => void;
 }
 
@@ -36,7 +36,7 @@ function readStoredSettings(): ISettingsDto {
 const storedUser = readStoredUser();
 
 export const useProfileStore = create<InitialState>((set, get) => ({
-  token: localStorage.getItem(STORAGE_KEYS.TOKEN) || "",
+  token: localStorage.getItem(STORAGE_KEYS.TOKEN) || '',
   user: storedUser,
   settings: readStoredSettings(),
   isAuth: !!storedUser,

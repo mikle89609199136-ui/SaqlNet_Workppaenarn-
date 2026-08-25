@@ -4,7 +4,7 @@ function hashBytes(str: string) {
   let seed = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
     seed ^= str.charCodeAt(i);
-    seed = (Math.imul(seed, 0x01000193) >>> 0);
+    seed = Math.imul(seed, 0x01000193) >>> 0;
   }
   for (let i = 0; i < 16; i++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -14,9 +14,9 @@ function hashBytes(str: string) {
 }
 
 interface Props {
-	userId: string | null
-	size: number
-	className?: string
+  userId: string | null;
+  size: number;
+  className?: string;
 }
 
 export function Identicon({ userId = '', size = 40, className = '' }: Props) {
@@ -36,13 +36,20 @@ export function Identicon({ userId = '', size = 40, className = '' }: Props) {
     for (let col = 0; col < 3; col++) {
       const filled = (h[byteIdx] >> bitShift) & 1;
       bitShift++;
-      if (bitShift === 8) { bitShift = 0; byteIdx++; }
+      if (bitShift === 8) {
+        bitShift = 0;
+        byteIdx++;
+      }
       if (!filled) continue;
       const x1 = col * cell;
       const x2 = (4 - col) * cell;
-      rects.push(<rect key={`${row}-${col}`} x={x1} y={row * cell} width={cell} height={cell} fill={fg} />);
+      rects.push(
+        <rect key={`${row}-${col}`} x={x1} y={row * cell} width={cell} height={cell} fill={fg} />
+      );
       if (col !== 2) {
-        rects.push(<rect key={`${row}-m${col}`} x={x2} y={row * cell} width={cell} height={cell} fill={fg} />);
+        rects.push(
+          <rect key={`${row}-m${col}`} x={x2} y={row * cell} width={cell} height={cell} fill={fg} />
+        );
       }
     }
   }

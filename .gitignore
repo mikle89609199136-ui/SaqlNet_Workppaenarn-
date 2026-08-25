@@ -55,7 +55,6 @@ data/
 # OS
 .DS_Store
 Thumbs.db
-backend-v2/edge
 
 # AI
 AGENTS.md

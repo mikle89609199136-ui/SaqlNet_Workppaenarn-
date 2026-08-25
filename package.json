@@ -8,7 +8,6 @@
     "npm": ">=9.0.0"
   },
   "scripts": {
-    "setup": "node setup.js",
     "start": "bash scripts/start.sh",
     "dev": "cd frontend && npm run dev",
     "build:react": "cd frontend && npm run build",

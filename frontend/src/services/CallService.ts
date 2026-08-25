@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from "@/api";
+import { API_ENDPOINTS } from '@/api';
 
 export class CallService {
   constructor(apiClient) {

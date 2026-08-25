@@ -6,7 +6,7 @@ export interface IApiClientOptions {
 export type TQueryParamValue = string | number | boolean | null | undefined;
 export type TQueryParams = Record<string, TQueryParamValue>;
 
-export interface IRequestOptions extends Omit<RequestInit, "headers" | "body"> {
+export interface IRequestOptions extends Omit<RequestInit, 'headers' | 'body'> {
   params?: TQueryParams;
   data?: unknown;
   headers?: Record<string, string>;
@@ -32,39 +32,30 @@ export class ApiClient {
     this.baseUrl = baseUrl;
     this.getToken = options.getToken ?? (() => null);
     this.defaultHeaders = {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options.headers,
     };
   }
 
-  get<T = unknown>(
-    endpoint: string,
-    params: TQueryParams = {},
-  ): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: "GET", params });
+  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params });
   }
 
-  post<T = unknown>(
-    endpoint: string,
-    data: unknown = null,
-  ): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: "POST", data });
+  post<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'POST', data });
   }
 
-  put<T = unknown>(
-    endpoint: string,
-    data: unknown = null,
-  ): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: "PUT", data });
+  put<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'PUT', data });
   }
 
   delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: "DELETE" });
+    return this.request<T>(endpoint, { method: 'DELETE' });
   }
 
   async request<T = unknown>(
     endpoint: string,
-    options: IRequestOptions = {},
+    options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
     const token = this.getToken();
@@ -75,15 +66,14 @@ export class ApiClient {
     };
 
     if (data === null || data === undefined) {
-      const { "Content-Type": _omit, ...rest } = requestHeaders;
+      const { 'Content-Type': _omit, ...rest } = requestHeaders;
       requestHeaders = rest;
     }
 
     const response = await fetch(this.buildUrl(endpoint, params), {
       ...requestOptions,
       headers: requestHeaders,
-      body:
-        data === null || data === undefined ? undefined : JSON.stringify(data),
+      body: data === null || data === undefined ? undefined : JSON.stringify(data),
     });
 
     return this.parseResponse<T>(response);
@@ -96,13 +86,11 @@ export class ApiClient {
       return url.toString();
     }
 
-    const normalizedBase = this.baseUrl.endsWith("/")
-      ? this.baseUrl
-      : `${this.baseUrl}/`;
-    let normalizedEndpoint = String(endpoint).replace(/^\/+/, "");
+    const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    let normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
     const basePath = new URL(normalizedBase, window.location.href).pathname
-      .replace(/\/+$/, "")
-      .replace(/^\/+/, "");
+      .replace(/\/+$/, '')
+      .replace(/^\/+/, '');
     if (basePath && normalizedEndpoint.startsWith(`${basePath}/`)) {
       normalizedEndpoint = normalizedEndpoint.slice(basePath.length + 1);
     }
@@ -121,28 +109,25 @@ export class ApiClient {
   }
 
   async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
-    const contentType = response.headers?.get?.("content-type") ?? "";
+    const contentType = response.headers?.get?.('content-type') ?? '';
     const payload: unknown =
-      contentType.includes("application/json") ||
-      typeof response.text !== "function"
+      contentType.includes('application/json') || typeof response.text !== 'function'
         ? await response.json()
         : await response.text();
 
     if (!response.ok) {
       if (response.status === 401) {
-        window.dispatchEvent(new CustomEvent("craneapp:unauthorized"));
+        window.dispatchEvent(new CustomEvent('craneapp:unauthorized'));
       }
-      const payloadObj = (
-        payload && typeof payload === "object" ? payload : {}
-      ) as {
+      const payloadObj = (payload && typeof payload === 'object' ? payload : {}) as {
         error?: string;
         message?: string;
       };
       const message =
         payloadObj?.error ||
         payloadObj?.message ||
-        (typeof payload === "string" ? payload : JSON.stringify(payload)) ||
-        "Request failed";
+        (typeof payload === 'string' ? payload : JSON.stringify(payload)) ||
+        'Request failed';
       const error = new Error(message) as IApiError;
       error.status = response.status;
       error.data = payload;

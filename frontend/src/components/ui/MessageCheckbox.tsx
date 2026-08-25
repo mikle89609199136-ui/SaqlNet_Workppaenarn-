@@ -1,5 +1,5 @@
-import { cn } from "@/utils";
-import { useTranslation } from "react-i18next";
+import { cn } from '@/utils';
+import { useTranslation } from 'react-i18next';
 
 const Check = ({ className }: { className?: string }) => {
   return (
@@ -12,7 +12,7 @@ const Check = ({ className }: { className?: string }) => {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={cn("opacity-90", className)}
+      className={cn('opacity-90', className)}
     >
       <path d="M20 6 9 17l-5-5" />
     </svg>
@@ -31,16 +31,14 @@ export function MessageCheckbox({ isChecked, className }: Props) {
     <button
       type="button"
       className={`size-6 flex items-center justify-center shrink-0 rounded-full
-        border-2 transition-colors ${isChecked ? "border-accent bg-accent" : "border-zinc-500 bg-transparent"} ${className}`}
+        border-2 transition-colors ${isChecked ? 'border-accent bg-accent' : 'border-zinc-500 bg-transparent'} ${className}`}
       aria-pressed={!!isChecked}
       aria-label={
-        isChecked
-          ? t("uncheckMessage", "Снять выбор")
-          : t("checkMessage", "Выбрать сообщение")
+        isChecked ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать сообщение')
       }
     >
       <Check
-        className={`size-4 opacity-0 transition-opacity ${isChecked ? "fill-accent opacity-100" : ""}`}
+        className={`size-4 opacity-0 transition-opacity ${isChecked ? 'fill-accent opacity-100' : ''}`}
       />
     </button>
   );

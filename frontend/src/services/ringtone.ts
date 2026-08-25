@@ -11,8 +11,7 @@ export function startRingtone(): void {
   try {
     const AudioContextClass =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new AudioContextClass();
 
     const ringtoneTimer = setInterval(() => {
@@ -20,7 +19,7 @@ export function startRingtone(): void {
       [0, 0.5].forEach((offset) => {
         const o1 = ctx.createOscillator();
         const g1 = ctx.createGain();
-        o1.type = "sine";
+        o1.type = 'sine';
         o1.frequency.value = 440;
         g1.gain.setValueAtTime(0, t0 + offset);
         g1.gain.linearRampToValueAtTime(0.55, t0 + offset + 0.04);
@@ -29,7 +28,7 @@ export function startRingtone(): void {
 
         const o2 = ctx.createOscillator();
         const g2 = ctx.createGain();
-        o2.type = "sine";
+        o2.type = 'sine';
         o2.frequency.value = 480;
         g2.gain.setValueAtTime(0, t0 + offset);
         g2.gain.linearRampToValueAtTime(0.45, t0 + offset + 0.04);
@@ -56,7 +55,7 @@ export function startRingtone(): void {
 
     ringtoneHandle = { ctx, ringtoneTimer, vibrateTimer };
   } catch (e) {
-    console.warn("Ringtone failed:", e);
+    console.warn('Ringtone failed:', e);
   }
 }
 

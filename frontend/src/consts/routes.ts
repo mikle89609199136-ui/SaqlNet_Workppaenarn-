@@ -1,29 +1,29 @@
 export const REACT_ROUTES = {
-  HOME: "/",
-  LOGIN: "/login",
-  REGISTER: "register",
-  CHATS: "/chats",
-  CHAT_BY_ID: "/chats/:chatId",
-  CONTACTS: "/contacts",
-  SETTINGS: "/settings",
-  CREATE_GROUP: "/create-group",
+  HOME: '/',
+  LOGIN: '/login',
+  REGISTER: 'register',
+  CHATS: '/chats',
+  CHAT_BY_ID: '/chats/:chatId',
+  CONTACTS: '/contacts',
+  SETTINGS: '/settings',
+  CREATE_GROUP: '/create-group',
 };
 
 class Routes {
-  HOME = "/";
+  HOME = '/';
 
-  CHATS = "/chats";
+  CHATS = '/chats';
   CHAT_BY_ID = (chatId: string) => `/chats/${encodeURIComponent(chatId)}`;
 
-  SETTINGS = "/settings";
-  CREATE_GROUP = "/create-group";
+  SETTINGS = '/settings';
+  CREATE_GROUP = '/create-group';
 
-  LOGIN = "/login";
-  REGISTER = "/register";
-  MENU = "/menu";
-  CHANNELS = "/channels";
-  COMMUNITIES = "/communities";
-  MEETINGS = "/meetings";
+  LOGIN = '/login';
+  REGISTER = '/register';
+  MENU = '/menu';
+  CHANNELS = '/channels';
+  COMMUNITIES = '/communities';
+  MEETINGS = '/meetings';
 }
 
 export const ROUTES = new Routes();

@@ -4,11 +4,16 @@ import { useRef, type PropsWithChildren } from 'react';
 
 interface Props {
   classNameOverlay?: string;
-  className?: string
+  className?: string;
   onClose: () => void;
 }
 
-export const Modal = ({ children, classNameOverlay, className, onClose }: PropsWithChildren<Props>) => {
+export const Modal = ({
+  children,
+  classNameOverlay,
+  className,
+  onClose,
+}: PropsWithChildren<Props>) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useClickOutside<HTMLDivElement>(modalRef, onClose);
@@ -22,7 +27,10 @@ export const Modal = ({ children, classNameOverlay, className, onClose }: PropsW
     >
       <div
         ref={modalRef}
-        className={cn("flex flex-col bg-[#0a0a0d] rounded-2xl pt-4.5 w-full  gap-y-4 h-full", className)}
+        className={cn(
+          'flex flex-col bg-[#0a0a0d] rounded-2xl pt-4.5 w-full  gap-y-4 h-full',
+          className
+        )}
       >
         {children}
       </div>

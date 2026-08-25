@@ -74,10 +74,15 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
 
   const { t } = useTranslation();
 
-  const currentState = useMemo(() => ({ filters, rotation, flipX, flipY, crop, cropRatio, objects }), [crop, cropRatio, filters, flipX, flipY, objects, rotation]);
+  const currentState = useMemo(
+    () => ({ filters, rotation, flipX, flipY, crop, cropRatio, objects }),
+    [crop, cropRatio, filters, flipX, flipY, objects, rotation]
+  );
   stateRef.current = currentState;
 
-  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,7 +92,10 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     const observer = new ResizeObserver(updateSize);
     observer.observe(canvas);
     window.addEventListener('resize', updateSize);
-    return () => { observer.disconnect(); window.removeEventListener('resize', updateSize); };
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
   }, [isReady]);
 
   useEffect(() => {
@@ -102,9 +110,11 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   }, [editingTextId, tool]);
 
   const selectedObject = objects.find((item) => item.id === selectedId) || null;
-  const filterString = useMemo(() => (
-    `brightness(${filters.brightness}%) contrast(${filters.contrast}%) saturate(${filters.saturate}%) sepia(${filters.sepia}%) blur(${filters.blur}px)`
-  ), [filters]);
+  const filterString = useMemo(
+    () =>
+      `brightness(${filters.brightness}%) contrast(${filters.contrast}%) saturate(${filters.saturate}%) sepia(${filters.sepia}%) blur(${filters.blur}px)`,
+    [filters]
+  );
 
   const applySnapshot = useCallback((snapshot) => {
     setFilters(snapshot.filters);
@@ -194,11 +204,18 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     context.translate(canvas.width / 2, canvas.height / 2);
     context.rotate((rotation * Math.PI) / 180);
     context.scale(flipX, flipY);
-    context.drawImage(image, -sourceWidth * scale / 2, -sourceHeight * scale / 2, sourceWidth * scale, sourceHeight * scale);
+    context.drawImage(
+      image,
+      (-sourceWidth * scale) / 2,
+      (-sourceHeight * scale) / 2,
+      sourceWidth * scale,
+      sourceHeight * scale
+    );
     context.restore();
 
     objects.forEach((object) => {
-      const isEditingSelectedText = object.type === 'text' && object.id === editingTextId && tool === 'text';
+      const isEditingSelectedText =
+        object.type === 'text' && object.id === editingTextId && tool === 'text';
       if (!isEditingSelectedText) drawObject(context, object, canvas.width, canvas.height);
     });
     if (selectedObject && tool === 'text' && editingTextId !== selectedObject.id) {
@@ -214,9 +231,15 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') onCancelRef.current?.();
       const target = event.target;
-      const isEditingField = target instanceof HTMLElement
-        && (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId && tool === 'text' && !isEditingField) {
+      const isEditingField =
+        target instanceof HTMLElement &&
+        (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
+      if (
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        selectedId &&
+        tool === 'text' &&
+        !isEditingField
+      ) {
         event.preventDefault();
         deleteSelectedText();
       }
@@ -336,7 +359,12 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
         setSelectedId(hit.id);
         setEditingTextId(hit.id);
         setTextDraft(hit.text);
-        pointerRef.current = { mode: 'move-text', id: hit.id, start: point, initial: { x: hit.x, y: hit.y } };
+        pointerRef.current = {
+          mode: 'move-text',
+          id: hit.id,
+          start: point,
+          initial: { x: hit.x, y: hit.y },
+        };
       } else {
         const object = createTextObject(point, '');
         const next = [...objects, object];
@@ -371,9 +399,17 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     if (active.mode === 'move-text') {
       const dx = point.x - active.start.x;
       const dy = point.y - active.start.y;
-      setObjects((items) => items.map((item) => item.id === active.id
-        ? { ...item, x: clamp(active.initial.x + dx, 0, 1), y: clamp(active.initial.y + dy, 0, 1) }
-        : item));
+      setObjects((items) =>
+        items.map((item) =>
+          item.id === active.id
+            ? {
+                ...item,
+                x: clamp(active.initial.x + dx, 0, 1),
+                y: clamp(active.initial.y + dy, 0, 1),
+              }
+            : item
+        )
+      );
     }
   }
 
@@ -409,7 +445,10 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
 
   function eraseAtPoint(point) {
     const canvas = canvasRef.current;
-    const normalizedRadius = Math.max(0.012, (brushSize * 2.8) / Math.max(320, canvas?.clientWidth || 1000));
+    const normalizedRadius = Math.max(
+      0.012,
+      (brushSize * 2.8) / Math.max(320, canvas?.clientWidth || 1000)
+    );
 
     setObjects((items) => {
       let changed = false;
@@ -452,7 +491,7 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
 
   function updateSelectedText(patch, shouldCommit = false) {
     if (!selectedId) return;
-    const next = objects.map((item) => item.id === selectedId ? { ...item, ...patch } : item);
+    const next = objects.map((item) => (item.id === selectedId ? { ...item, ...patch } : item));
     setObjects(next);
     if (shouldCommit) commit({ objects: next });
   }
@@ -469,7 +508,13 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   function handleCropPointerDown(event, handle) {
     event.preventDefault();
     event.stopPropagation();
-    pointerRef.current = { mode: 'crop', handle, startX: event.clientX, startY: event.clientY, initial: { ...crop } };
+    pointerRef.current = {
+      mode: 'crop',
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      initial: { ...crop },
+    };
     window.addEventListener('pointermove', handleCropPointerMove);
     window.addEventListener('pointerup', handleCropPointerUp, { once: true });
   }
@@ -488,8 +533,10 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
       next.x = clamp(active.initial.x + dx, 0, 1 - active.initial.width);
       next.y = clamp(active.initial.y + dy, 0, 1 - active.initial.height);
     } else {
-      if (active.handle.includes('e')) next.width = clamp(active.initial.width + dx, min, 1 - active.initial.x);
-      if (active.handle.includes('s')) next.height = clamp(active.initial.height + dy, min, 1 - active.initial.y);
+      if (active.handle.includes('e'))
+        next.width = clamp(active.initial.width + dx, min, 1 - active.initial.x);
+      if (active.handle.includes('s'))
+        next.height = clamp(active.initial.height + dy, min, 1 - active.initial.y);
       if (active.handle.includes('w')) {
         next.x = clamp(active.initial.x + dx, 0, active.initial.x + active.initial.width - min);
         next.width = active.initial.width + (active.initial.x - next.x);
@@ -523,25 +570,42 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
       output.height = sh;
       output.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
       const blob = await new Promise((resolve, reject) => {
-        output.toBlob((result) => result ? resolve(result) : reject(new Error('Не удалось подготовить изображение')), 'image/jpeg', 0.94);
+        output.toBlob(
+          (result) =>
+            result ? resolve(result) : reject(new Error('Не удалось подготовить изображение')),
+          'image/jpeg',
+          0.94
+        );
       });
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-      onSave(new File([blob], `${baseName}-edited.jpg`, { type: 'image/jpeg', lastModified: Date.now() }));
+      onSave(
+        new File([blob], `${baseName}-edited.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
   const canUndo = historyIndexRef.current > 0;
-  const canRedo = historyIndexRef.current >= 0 && historyIndexRef.current < historyRef.current.length - 1;
+  const canRedo =
+    historyIndexRef.current >= 0 && historyIndexRef.current < historyRef.current.length - 1;
 
   return (
     <div className="photo-editor-backdrop" role="presentation">
-      <section aria-label={t('photoEditor', 'Редактор фотографии')} aria-modal="true" className="photo-editor-modal" role="dialog">
+      <section
+        aria-label={t('photoEditor', 'Редактор фотографии')}
+        aria-modal="true"
+        className="photo-editor-modal"
+        role="dialog"
+      >
         <div className="photo-editor-stage-shell">
           <div className="photo-editor-history-float">
-            <button aria-label="Отменить" disabled={!canUndo} onClick={undo} type="button">↶</button>
-            <button aria-label="Повторить" disabled={!canRedo} onClick={redo} type="button">↷</button>
+            <button aria-label="Отменить" disabled={!canUndo} onClick={undo} type="button">
+              ↶
+            </button>
+            <button aria-label="Повторить" disabled={!canRedo} onClick={redo} type="button">
+              ↷
+            </button>
           </div>
           <div className="photo-editor-stage" ref={stageRef}>
             {!isReady ? <div className="photo-editor-loader">Загрузка…</div> : null}
@@ -553,7 +617,9 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
               onPointerUp={handleCanvasPointerUp}
               ref={canvasRef}
             />
-            {tool === 'text' && selectedObject?.type === 'text' && editingTextId === selectedObject.id ? (
+            {tool === 'text' &&
+            selectedObject?.type === 'text' &&
+            editingTextId === selectedObject.id ? (
               <div
                 className="photo-editor-inline-text-wrap"
                 onPointerDown={(event) => event.stopPropagation()}
@@ -562,7 +628,9 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
                   top: `${selectedObject.y * 100}%`,
                   transform: `translate(-50%, -50%) rotate(${selectedObject.rotation || 0}deg)`,
                   '--inline-font-size': `${Math.max(18, selectedObject.size * (canvasDisplayWidth / 1000))}px`,
-                  '--inline-font-family': (FONTS.find((item) => item.id === selectedObject.font) || FONTS[0]).family,
+                  '--inline-font-family': (
+                    FONTS.find((item) => item.id === selectedObject.font) || FONTS[0]
+                  ).family,
                   '--inline-text-color': selectedObject.color,
                 }}
               >
@@ -586,20 +654,39 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
                   rows={1}
                   value={selectedObject.text}
                 />
-                <button aria-label="Удалить текст" className="photo-editor-inline-delete" onClick={deleteSelectedText} onPointerDown={(event) => event.preventDefault()} type="button">×</button>
+                <button
+                  aria-label="Удалить текст"
+                  className="photo-editor-inline-delete"
+                  onClick={deleteSelectedText}
+                  onPointerDown={(event) => event.preventDefault()}
+                  type="button"
+                >
+                  ×
+                </button>
               </div>
             ) : null}
             {tool === 'transform' && isReady ? (
               <div
                 className="photo-editor-crop-box"
                 onPointerDown={(event) => handleCropPointerDown(event, 'move')}
-                style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` }}
+                style={{
+                  left: `${crop.x * 100}%`,
+                  top: `${crop.y * 100}%`,
+                  width: `${crop.width * 100}%`,
+                  height: `${crop.height * 100}%`,
+                }}
               >
                 {['nw', 'ne', 'sw', 'se'].map((handle) => (
-                  <span className={`crop-handle crop-${handle}`} key={handle} onPointerDown={(event) => handleCropPointerDown(event, handle)} />
+                  <span
+                    className={`crop-handle crop-${handle}`}
+                    key={handle}
+                    onPointerDown={(event) => handleCropPointerDown(event, handle)}
+                  />
                 ))}
-                <span className="crop-grid crop-grid-v1" /><span className="crop-grid crop-grid-v2" />
-                <span className="crop-grid crop-grid-h1" /><span className="crop-grid crop-grid-h2" />
+                <span className="crop-grid crop-grid-v1" />
+                <span className="crop-grid crop-grid-v2" />
+                <span className="crop-grid crop-grid-h1" />
+                <span className="crop-grid crop-grid-h2" />
               </div>
             ) : null}
           </div>
@@ -614,10 +701,26 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
                 <PanelTitle>Тип кисти</PanelTitle>
                 <div className="photo-editor-brushes">
                   {BRUSHES.map((brush) => (
-                    <button className={brushType === brush.id ? 'is-active' : ''} key={brush.id} onClick={() => setBrushType(brush.id)} title={brush.label} type="button">{brush.icon}</button>
+                    <button
+                      className={brushType === brush.id ? 'is-active' : ''}
+                      key={brush.id}
+                      onClick={() => setBrushType(brush.id)}
+                      title={brush.label}
+                      type="button"
+                    >
+                      {brush.icon}
+                    </button>
                   ))}
                 </div>
-                <EditorRange label="Размер кисти" max={80} min={1} onAfterChange={() => {}} onChange={setBrushSize} suffix="" value={brushSize} />
+                <EditorRange
+                  label="Размер кисти"
+                  max={80}
+                  min={1}
+                  onAfterChange={() => {}}
+                  onChange={setBrushSize}
+                  suffix=""
+                  value={brushSize}
+                />
               </>
             ) : null}
 
@@ -625,25 +728,61 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
               <>
                 <div className="photo-editor-text-actions">
                   <p>Нажмите на изображение и вводите текст прямо поверх него.</p>
-                  <button onClick={addText} type="button">＋ Добавить по центру</button>
-                  <button className="is-danger" disabled={!selectedObject} onClick={deleteSelectedText} type="button">⌫</button>
+                  <button onClick={addText} type="button">
+                    ＋ Добавить по центру
+                  </button>
+                  <button
+                    className="is-danger"
+                    disabled={!selectedObject}
+                    onClick={deleteSelectedText}
+                    type="button"
+                  >
+                    ⌫
+                  </button>
                 </div>
                 <PanelTitle>Цвет</PanelTitle>
-                <ColorPicker color={selectedObject?.color || brushColor} onChange={(value) => {
-                  setBrushColor(value);
-                  if (selectedObject) updateSelectedText({ color: value }, true);
-                }} />
+                <ColorPicker
+                  color={selectedObject?.color || brushColor}
+                  onChange={(value) => {
+                    setBrushColor(value);
+                    if (selectedObject) updateSelectedText({ color: value }, true);
+                  }}
+                />
                 <PanelTitle>Шрифт</PanelTitle>
                 <div className="photo-editor-fonts">
                   {FONTS.map((font) => (
-                    <button className={(selectedObject?.font || textFont) === font.id ? 'is-active' : ''} key={font.id} onClick={() => {
-                      setTextFont(font.id);
-                      if (selectedObject) updateSelectedText({ font: font.id }, true);
-                    }} style={{ fontFamily: font.family }} type="button">{font.label}</button>
+                    <button
+                      className={(selectedObject?.font || textFont) === font.id ? 'is-active' : ''}
+                      key={font.id}
+                      onClick={() => {
+                        setTextFont(font.id);
+                        if (selectedObject) updateSelectedText({ font: font.id }, true);
+                      }}
+                      style={{ fontFamily: font.family }}
+                      type="button"
+                    >
+                      {font.label}
+                    </button>
                   ))}
                 </div>
-                <EditorRange label="Размер текста" max={180} min={20} onChange={(value) => selectedObject && updateSelectedText({ size: value })} onAfterChange={() => selectedObject && commit()} suffix="" value={selectedObject?.size || 64} />
-                <EditorRange label="Поворот текста" max={180} min={-180} onChange={(value) => selectedObject && updateSelectedText({ rotation: value })} onAfterChange={() => selectedObject && commit()} suffix="°" value={selectedObject?.rotation || 0} />
+                <EditorRange
+                  label="Размер текста"
+                  max={180}
+                  min={20}
+                  onChange={(value) => selectedObject && updateSelectedText({ size: value })}
+                  onAfterChange={() => selectedObject && commit()}
+                  suffix=""
+                  value={selectedObject?.size || 64}
+                />
+                <EditorRange
+                  label="Поворот текста"
+                  max={180}
+                  min={-180}
+                  onChange={(value) => selectedObject && updateSelectedText({ rotation: value })}
+                  onAfterChange={() => selectedObject && commit()}
+                  suffix="°"
+                  value={selectedObject?.rotation || 0}
+                />
               </>
             ) : null}
 
@@ -651,14 +790,35 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
               <>
                 <PanelTitle>Трансформация</PanelTitle>
                 <div className="photo-editor-action-row">
-                  <button onClick={rotateImage} title="Повернуть" type="button">↻</button>
-                  <button onClick={() => flipImage('x')} title="Отразить по горизонтали" type="button">↔</button>
-                  <button onClick={() => flipImage('y')} title="Отразить по вертикали" type="button">↕</button>
+                  <button onClick={rotateImage} title="Повернуть" type="button">
+                    ↻
+                  </button>
+                  <button
+                    onClick={() => flipImage('x')}
+                    title="Отразить по горизонтали"
+                    type="button"
+                  >
+                    ↔
+                  </button>
+                  <button
+                    onClick={() => flipImage('y')}
+                    title="Отразить по вертикали"
+                    type="button"
+                  >
+                    ↕
+                  </button>
                 </div>
                 <PanelTitle>Пропорции</PanelTitle>
                 <div className="photo-editor-ratios">
                   {RATIOS.map((item) => (
-                    <button className={cropRatio === item.value ? 'is-active' : ''} key={item.label} onClick={() => selectRatio(item.value)} type="button">{item.label}</button>
+                    <button
+                      className={cropRatio === item.value ? 'is-active' : ''}
+                      key={item.label}
+                      onClick={() => selectRatio(item.value)}
+                      type="button"
+                    >
+                      {item.label}
+                    </button>
                   ))}
                 </div>
               </>
@@ -666,23 +826,113 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
 
             {tool === 'adjust' ? (
               <>
-                <div className="photo-editor-filter-head"><PanelTitle>Фильтры</PanelTitle><button onClick={resetFilters} type="button">Сбросить</button></div>
-                <EditorRange label="Яркость" max={200} min={0} onAfterChange={commitFilters} onChange={(value) => updateFilter('brightness', value)} value={filters.brightness} />
-                <EditorRange label="Контраст" max={200} min={0} onAfterChange={commitFilters} onChange={(value) => updateFilter('contrast', value)} value={filters.contrast} />
-                <EditorRange label="Насыщенность" max={200} min={0} onAfterChange={commitFilters} onChange={(value) => updateFilter('saturate', value)} value={filters.saturate} />
-                <EditorRange label="Сепия" max={100} min={0} onAfterChange={commitFilters} onChange={(value) => updateFilter('sepia', value)} value={filters.sepia} />
-                <EditorRange label="Размытие" max={20} min={0} onAfterChange={commitFilters} onChange={(value) => updateFilter('blur', value)} suffix="px" value={filters.blur} />
+                <div className="photo-editor-filter-head">
+                  <PanelTitle>Фильтры</PanelTitle>
+                  <button onClick={resetFilters} type="button">
+                    Сбросить
+                  </button>
+                </div>
+                <EditorRange
+                  label="Яркость"
+                  max={200}
+                  min={0}
+                  onAfterChange={commitFilters}
+                  onChange={(value) => updateFilter('brightness', value)}
+                  value={filters.brightness}
+                />
+                <EditorRange
+                  label="Контраст"
+                  max={200}
+                  min={0}
+                  onAfterChange={commitFilters}
+                  onChange={(value) => updateFilter('contrast', value)}
+                  value={filters.contrast}
+                />
+                <EditorRange
+                  label="Насыщенность"
+                  max={200}
+                  min={0}
+                  onAfterChange={commitFilters}
+                  onChange={(value) => updateFilter('saturate', value)}
+                  value={filters.saturate}
+                />
+                <EditorRange
+                  label="Сепия"
+                  max={100}
+                  min={0}
+                  onAfterChange={commitFilters}
+                  onChange={(value) => updateFilter('sepia', value)}
+                  value={filters.sepia}
+                />
+                <EditorRange
+                  label="Размытие"
+                  max={20}
+                  min={0}
+                  onAfterChange={commitFilters}
+                  onChange={(value) => updateFilter('blur', value)}
+                  suffix="px"
+                  value={filters.blur}
+                />
               </>
             ) : null}
           </div>
 
           <nav className="photo-editor-toolbar">
-            <button aria-label="Закрыть" className="is-cancel" onClick={onCancel} title="Закрыть" type="button">×</button>
-            <button aria-label="Кисть" className={tool === 'draw' ? 'is-active' : ''} onClick={() => setTool('draw')} title="Кисть" type="button">✎</button>
-            <button aria-label="Текст" className={tool === 'text' ? 'is-active' : ''} onClick={() => setTool('text')} title="Текст" type="button">T</button>
-            <button aria-label="Размер и обрезка" className={tool === 'transform' ? 'is-active' : ''} onClick={() => setTool('transform')} title="Размер и обрезка" type="button">⌗</button>
-            <button aria-label="Фильтры" className={tool === 'adjust' ? 'is-active' : ''} onClick={() => setTool('adjust')} title="Фильтры" type="button">✣</button>
-            <button aria-label="Сохранить" className="is-save" disabled={!isReady || isSaving} onClick={saveImage} title="Сохранить" type="button">✓</button>
+            <button
+              aria-label="Закрыть"
+              className="is-cancel"
+              onClick={onCancel}
+              title="Закрыть"
+              type="button"
+            >
+              ×
+            </button>
+            <button
+              aria-label="Кисть"
+              className={tool === 'draw' ? 'is-active' : ''}
+              onClick={() => setTool('draw')}
+              title="Кисть"
+              type="button"
+            >
+              ✎
+            </button>
+            <button
+              aria-label="Текст"
+              className={tool === 'text' ? 'is-active' : ''}
+              onClick={() => setTool('text')}
+              title="Текст"
+              type="button"
+            >
+              T
+            </button>
+            <button
+              aria-label="Размер и обрезка"
+              className={tool === 'transform' ? 'is-active' : ''}
+              onClick={() => setTool('transform')}
+              title="Размер и обрезка"
+              type="button"
+            >
+              ⌗
+            </button>
+            <button
+              aria-label="Фильтры"
+              className={tool === 'adjust' ? 'is-active' : ''}
+              onClick={() => setTool('adjust')}
+              title="Фильтры"
+              type="button"
+            >
+              ✣
+            </button>
+            <button
+              aria-label="Сохранить"
+              className="is-save"
+              disabled={!isReady || isSaving}
+              onClick={saveImage}
+              title="Сохранить"
+              type="button"
+            >
+              ✓
+            </button>
           </nav>
         </aside>
       </section>
@@ -697,8 +947,20 @@ function PanelTitle({ children }) {
 function ColorPicker({ color, onChange }) {
   return (
     <div className="photo-editor-colors">
-      {COLORS.map((item) => <button aria-label={item} className={color === item ? 'is-active' : ''} key={item} onClick={() => onChange(item)} style={{ background: item }} type="button" />)}
-      <label className="photo-editor-custom-color" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}>
+      {COLORS.map((item) => (
+        <button
+          aria-label={item}
+          className={color === item ? 'is-active' : ''}
+          key={item}
+          onClick={() => onChange(item)}
+          style={{ background: item }}
+          type="button"
+        />
+      ))}
+      <label
+        className="photo-editor-custom-color"
+        style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
+      >
         <input onChange={(event) => onChange(event.target.value)} type="color" value={color} />
       </label>
     </div>
@@ -708,8 +970,20 @@ function ColorPicker({ color, onChange }) {
 function EditorRange({ label, min, max, value, onChange, onAfterChange, suffix = '%' }) {
   return (
     <label className="photo-editor-range">
-      <span>{label}</span><strong>{value}{suffix}</strong>
-      <input max={max} min={min} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onAfterChange} onTouchEnd={onAfterChange} type="range" value={value} />
+      <span>{label}</span>
+      <strong>
+        {value}
+        {suffix}
+      </strong>
+      <input
+        max={max}
+        min={min}
+        onChange={(event) => onChange(Number(event.target.value))}
+        onPointerUp={onAfterChange}
+        onTouchEnd={onAfterChange}
+        type="range"
+        value={value}
+      />
     </label>
   );
 }
@@ -720,7 +994,7 @@ function drawObject(context, object, width, height) {
     const size = object.size * (width / 1000);
     context.save();
     context.translate(object.x * width, object.y * height);
-    context.rotate((object.rotation || 0) * Math.PI / 180);
+    context.rotate(((object.rotation || 0) * Math.PI) / 180);
     context.font = `700 ${size}px ${font.family}`;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
@@ -760,7 +1034,8 @@ function drawObject(context, object, width, height) {
 
   context.beginPath();
   context.moveTo(points[0].x, points[0].y);
-  for (let index = 1; index < points.length; index += 1) context.lineTo(points[index].x, points[index].y);
+  for (let index = 1; index < points.length; index += 1)
+    context.lineTo(points[index].x, points[index].y);
   context.stroke();
 
   if (object.brush === 'arrow') {
@@ -770,9 +1045,15 @@ function drawObject(context, object, width, height) {
     const head = Math.max(14, context.lineWidth * 3);
     context.beginPath();
     context.moveTo(end.x, end.y);
-    context.lineTo(end.x - head * Math.cos(angle - Math.PI / 6), end.y - head * Math.sin(angle - Math.PI / 6));
+    context.lineTo(
+      end.x - head * Math.cos(angle - Math.PI / 6),
+      end.y - head * Math.sin(angle - Math.PI / 6)
+    );
     context.moveTo(end.x, end.y);
-    context.lineTo(end.x - head * Math.cos(angle + Math.PI / 6), end.y - head * Math.sin(angle + Math.PI / 6));
+    context.lineTo(
+      end.x - head * Math.cos(angle + Math.PI / 6),
+      end.y - head * Math.sin(angle + Math.PI / 6)
+    );
     context.stroke();
   }
   context.restore();
@@ -788,7 +1069,7 @@ function drawSelection(context, object, width, height) {
   const boxWidth = metrics.width + 28;
   const boxHeight = size * 1.45;
   context.translate(object.x * width, object.y * height);
-  context.rotate((object.rotation || 0) * Math.PI / 180);
+  context.rotate(((object.rotation || 0) * Math.PI) / 180);
   context.strokeStyle = 'rgba(255,255,255,.9)';
   context.lineWidth = 2;
   context.setLineDash([8, 6]);
@@ -800,9 +1081,10 @@ function findTextAtPoint(objects, point, canvas) {
   for (let index = objects.length - 1; index >= 0; index -= 1) {
     const object = objects[index];
     if (object.type !== 'text') continue;
-    const width = Math.max(0.08, object.text.length * object.size / 12000);
+    const width = Math.max(0.08, (object.text.length * object.size) / 12000);
     const height = Math.max(0.05, object.size / 1200);
-    if (Math.abs(point.x - object.x) <= width && Math.abs(point.y - object.y) <= height) return object;
+    if (Math.abs(point.x - object.x) <= width && Math.abs(point.y - object.y) <= height)
+      return object;
   }
   return null;
 }

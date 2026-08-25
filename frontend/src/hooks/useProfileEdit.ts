@@ -1,12 +1,12 @@
-import { services } from "@/services";
-import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { services } from '@/services';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const useProfileEdit = (profileUser, displayName: string) => {
   const [editableUser, setEditableUser] = useState(profileUser);
   const [isEditing, setIsEditing] = useState(false);
-  const [editDraft, setEditDraft] = useState({ firstName: "", bio: "" });
-  const [editError, setEditError] = useState("");
+  const [editDraft, setEditDraft] = useState({ firstName: '', bio: '' });
+  const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const { t } = useTranslation();
 
@@ -14,22 +14,22 @@ export const useProfileEdit = (profileUser, displayName: string) => {
   useEffect(() => {
     setEditableUser(profileUser);
     setIsEditing(false);
-    setEditError("");
+    setEditError('');
   }, [profileUser]);
 
   const startEdit = () => {
     setEditDraft({
       firstName: editableUser?.firstName || displayName,
-      bio: editableUser?.bio || "",
+      bio: editableUser?.bio || '',
     });
-    setEditError("");
+    setEditError('');
     setIsEditing(true);
   };
 
   const saveProfileEdit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    setEditError("");
+    setEditError('');
     try {
       // Предполагается, что services импортируется глобально или передан
       const updated = await services.userService.updateMe({
@@ -39,9 +39,7 @@ export const useProfileEdit = (profileUser, displayName: string) => {
       setEditableUser(updated);
       setIsEditing(false);
     } catch (err) {
-      setEditError(
-        err.message || t("profileSaveError", "Не удалось сохранить профиль"),
-      );
+      setEditError(err.message || t('profileSaveError', 'Не удалось сохранить профиль'));
     } finally {
       setIsSaving(false);
     }

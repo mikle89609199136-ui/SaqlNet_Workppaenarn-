@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import "../../styles/SettingsPage.css";
-import { FixedSearchBar } from "./FixedSearchBar.js";
-import { SettingsDetailPage } from "./SettingsDetailPage.js";
-import { SettingsSidebar } from "./SettingsSidebar.js";
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../styles/SettingsPage.css';
+import { FixedSearchBar } from './FixedSearchBar.js';
+import { SettingsDetailPage } from './SettingsDetailPage.js';
+import { SettingsSidebar } from './SettingsSidebar.js';
 
 export function SettingsPage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<string>("account");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<string>('account');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleSearchChange = (query) => {
     setSearchQuery(query);
@@ -26,17 +26,14 @@ export function SettingsPage() {
           activeTab={activeTab}
           onSelectTab={(tab) => {
             setActiveTab(tab);
-            setSearchQuery("");
+            setSearchQuery('');
           }}
           t={t}
         />
       </div>
 
       <div className="settings-right-pane">
-        <SettingsDetailPage
-          activeTab={activeTab}
-          searchQuery={searchQuery}
-        />
+        <SettingsDetailPage activeTab={activeTab} searchQuery={searchQuery} />
       </div>
     </div>
   );

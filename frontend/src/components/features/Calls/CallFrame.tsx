@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useCallStore } from "@/store";
+import { useEffect, useRef } from 'react';
+import { useCallStore } from '@/store';
 
 interface ICallFrameProps {
   src: string;
@@ -13,7 +13,5 @@ export function CallFrame({ src }: ICallFrameProps) {
     return () => useCallStore.getState().attachCallFrame(null);
   }, []);
 
-  return (
-    <iframe ref={frameRef} src={src} title="call" allow="camera; microphone" />
-  );
+  return <iframe ref={frameRef} src={src} title="call" allow="camera; microphone" />;
 }

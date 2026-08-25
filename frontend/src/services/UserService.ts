@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from "@/api";
+import { API_ENDPOINTS } from '@/api';
 
 export class UserService {
   constructor(apiClient) {
@@ -30,9 +30,7 @@ export class UserService {
   }
 
   getSettings() {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_SETTINGS)
-      .then((response) => response.data);
+    return this.apiClient.get(API_ENDPOINTS.USER_SETTINGS).then((response) => response.data);
   }
 
   updateSettings(settings) {
@@ -68,10 +66,7 @@ export class UserService {
   }
 
   updateAdvancedSettings(settings) {
-    return this.updatePreference(
-      API_ENDPOINTS.USER_ADVANCED_SETTINGS,
-      settings,
-    );
+    return this.updatePreference(API_ENDPOINTS.USER_ADVANCED_SETTINGS, settings);
   }
 
   getFolders() {
@@ -87,9 +82,7 @@ export class UserService {
   }
 
   getStorage() {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_STORAGE)
-      .then((response) => response.data);
+    return this.apiClient.get(API_ENDPOINTS.USER_STORAGE).then((response) => response.data);
   }
 
   updateStorageSettings(settings) {
@@ -105,15 +98,11 @@ export class UserService {
   }
 
   deleteAllData() {
-    return this.apiClient
-      .delete(API_ENDPOINTS.USER_STORAGE_ALL)
-      .then((response) => response.data);
+    return this.apiClient.delete(API_ENDPOINTS.USER_STORAGE_ALL).then((response) => response.data);
   }
 
   exportData() {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_EXPORT)
-      .then((response) => response.data);
+    return this.apiClient.get(API_ENDPOINTS.USER_EXPORT).then((response) => response.data);
   }
 
   listBlocked() {

@@ -1,25 +1,21 @@
-import { useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { ROUTES } from "../../consts/routes.js";
-import { STORAGE_KEYS } from "../../consts/storageKeys.js";
-import { useToasts } from "../../hooks/useToasts.js";
-import {
-  registerUser,
-  saveAuthSession,
-  uploadAvatar,
-} from "../../services/authApi.js";
-import { cn } from "../../utils/cn.js";
+import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { ROUTES } from '../../consts/routes.js';
+import { STORAGE_KEYS } from '../../consts/storageKeys.js';
+import { useToasts } from '../../hooks/useToasts.js';
+import { registerUser, saveAuthSession, uploadAvatar } from '../../services/authApi.js';
+import { cn } from '../../utils/cn.js';
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 export function RegisterPage() {
   const [step, setStep] = useState(1);
-  const [avatar, setAvatar] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordRepeat, setPasswordRepeat] = useState("");
+  const [avatar, setAvatar] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordRepeat, setPasswordRepeat] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordRepeat, setShowPasswordRepeat] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,14 +37,13 @@ export function RegisterPage() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (readerEvent) =>
-      setAvatar(String(readerEvent.target?.result || ""));
+    reader.onload = (readerEvent) => setAvatar(String(readerEvent.target?.result || ''));
     reader.readAsDataURL(file);
   }
 
   function continueFromName() {
     if (!firstName.trim()) {
-      showToast("error", t("enterName", "Введите имя"), "⚠️");
+      showToast('error', t('enterName', 'Введите имя'), '⚠️');
       return;
     }
 
@@ -60,40 +55,25 @@ export function RegisterPage() {
     const cleanFirstName = firstName.trim();
 
     if (cleanUsername.length < 3) {
-      showToast(
-        "error",
-        t("usernameMinError", "Юзернейм: минимум 3 символа"),
-        "⚠️",
-      );
+      showToast('error', t('usernameMinError', 'Юзернейм: минимум 3 символа'), '⚠️');
       return;
     }
     if (!USERNAME_PATTERN.test(cleanUsername)) {
-      showToast(
-        "error",
-        t("usernameFormatError", "Только буквы, цифры и _"),
-        "⚠️",
-      );
+      showToast('error', t('usernameFormatError', 'Только буквы, цифры и _'), '⚠️');
       return;
     }
     if (password.length < 6) {
-      showToast(
-        "error",
-        t("passwordMinError", "Пароль минимум 6 символов"),
-        "⚠️",
-      );
+      showToast('error', t('passwordMinError', 'Пароль минимум 6 символов'), '⚠️');
       return;
     }
     if (password !== passwordRepeat) {
-      showToast("error", t("passwordsMismatch", "Пароли не совпадают"), "⚠️");
+      showToast('error', t('passwordsMismatch', 'Пароли не совпадают'), '⚠️');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const language =
-        i18n.language ||
-        localStorage.getItem(STORAGE_KEYS.LANGUAGE) ||
-        "ru";
+      const language = i18n.language || localStorage.getItem(STORAGE_KEYS.LANGUAGE) || 'ru';
       const data = await registerUser({
         firstName: cleanFirstName,
         language,
@@ -102,12 +82,12 @@ export function RegisterPage() {
       });
       saveAuthSession({ language, token: data.token, user: data.user });
       await uploadAvatar({ avatar, token: data.token }).catch(() => {});
-      showToast("success", t("welcomeDone", "Добро пожаловать!"), "🎉");
+      showToast('success', t('welcomeDone', 'Добро пожаловать!'), '🎉');
       window.setTimeout(() => {
         window.location.href = ROUTES.CHATS;
       }, 600);
     } catch (error) {
-      showToast("error", error.message, "❌");
+      showToast('error', error.message, '❌');
       setIsSubmitting(false);
     }
   }
@@ -135,9 +115,7 @@ export function RegisterPage() {
           onPasswordRepeatChange={setPasswordRepeat}
           onSubmit={submitRegistration}
           onTogglePassword={() => setShowPassword((value) => !value)}
-          onTogglePasswordRepeat={() =>
-            setShowPasswordRepeat((value) => !value)
-          }
+          onTogglePasswordRepeat={() => setShowPasswordRepeat((value) => !value)}
           onUsernameChange={setUsername}
           password={password}
           passwordRepeat={passwordRepeat}
@@ -154,53 +132,38 @@ export function RegisterPage() {
 function WelcomeStep({ active, onNext }) {
   const { t } = useTranslation();
   return (
-    <section className={cn("screen", { active })} aria-hidden={!active}>
+    <section className={cn('screen', { active })} aria-hidden={!active}>
       <div className="welcome-logo">
-        <img
-          src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png"
-          alt="CraneApp"
-        />
+        <img src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png" alt="CraneApp" />
       </div>
       <div className="welcome-title">
-        {t("welcomeRegisterTitle", "Добро пожаловать<br>в CraneApp")
-          .split("<br>")
+        {t('welcomeRegisterTitle', 'Добро пожаловать<br>в CraneApp')
+          .split('<br>')
           .map((line, index) => (
             <FragmentLine index={index} key={line} line={line} />
           ))}
       </div>
       <div className="welcome-features">
-        <Feature
-          icon="🔒"
-          text={t("welcomeFeatureE2E", "End-to-end шифрование всех сообщений")}
-        />
+        <Feature icon="🔒" text={t('welcomeFeatureE2E', 'End-to-end шифрование всех сообщений')} />
         <Feature
           icon="⚡️"
-          text={t(
-            "welcomeFeatureDelivery",
-            "Мгновенная доставка в любой точке мира",
-          )}
+          text={t('welcomeFeatureDelivery', 'Мгновенная доставка в любой точке мира')}
         />
         <Feature
           icon="🎨"
-          text={t(
-            "welcomeFeatureMedia",
-            "Голосовые, видео, стикеры и многое другое",
-          )}
+          text={t('welcomeFeatureMedia', 'Голосовые, видео, стикеры и многое другое')}
         />
         <Feature
           icon="🛡️"
-          text={t(
-            "welcomeFeaturePrivacy",
-            "Полная защита данных и приватность",
-          )}
+          text={t('welcomeFeaturePrivacy', 'Полная защита данных и приватность')}
         />
       </div>
       <button className="btn-primary" type="button" onClick={onNext}>
-        {t("createAccount", "Создать аккаунт")}
+        {t('createAccount', 'Создать аккаунт')}
       </button>
       <div className="footer-link">
-        {t("alreadyHaveAccount", "Уже есть аккаунт?")}{" "}
-        <Link to={ROUTES.LOGIN}>{t("login", "Войти")}</Link>
+        {t('alreadyHaveAccount', 'Уже есть аккаунт?')}{' '}
+        <Link to={ROUTES.LOGIN}>{t('login', 'Войти')}</Link>
       </div>
     </section>
   );
@@ -218,60 +181,47 @@ function NameStep({
 }) {
   const { t } = useTranslation();
   return (
-    <section className={cn("screen", { active })} aria-hidden={!active}>
+    <section className={cn('screen', { active })} aria-hidden={!active}>
       <BackButton onClick={onBack} />
       <ProgressDots activeIndex={0} />
-      <div className="step-title">{t("whatIsYourName", "Как вас зовут?")}</div>
-      <div className="step-sub">
-        {t("addPhotoName", "Добавьте фото и введите своё имя")}
-      </div>
+      <div className="step-title">{t('whatIsYourName', 'Как вас зовут?')}</div>
+      <div className="step-sub">{t('addPhotoName', 'Добавьте фото и введите своё имя')}</div>
 
       <button
         className="avatar-upload"
         type="button"
         onClick={() => avatarInputRef.current?.click()}
-        style={avatar ? { border: "2px solid rgba(255,0,127,0.4)" } : undefined}
+        style={avatar ? { border: '2px solid rgba(255,0,127,0.4)' } : undefined}
       >
-        {avatar ? (
-          <img src={avatar} alt="" />
-        ) : (
-          <span style={{ fontSize: 36 }}>🔒</span>
-        )}
+        {avatar ? <img src={avatar} alt="" /> : <span style={{ fontSize: 36 }}>🔒</span>}
         <div className="avatar-edit-overlay">
           <CameraIcon />
         </div>
       </button>
-      <div className="avatar-upload-hint">
-        {t("tapAddPhoto", "Нажмите чтобы добавить фото")}
-      </div>
+      <div className="avatar-upload-hint">{t('tapAddPhoto', 'Нажмите чтобы добавить фото')}</div>
       <input
         ref={avatarInputRef}
         type="file"
         accept="image/*"
-        style={{ display: "none" }}
+        style={{ display: 'none' }}
         onChange={onAvatarChange}
       />
 
       <div className="field" style={{ marginTop: 20 }}>
-        <label htmlFor="firstName">{t("firstName", "Имя")}</label>
+        <label htmlFor="firstName">{t('firstName', 'Имя')}</label>
         <input
           id="firstName"
           type="text"
           value={firstName}
           onChange={(event) => onFirstNameChange(event.target.value)}
-          placeholder={t("firstNamePlaceholder", "Ваше имя")}
+          placeholder={t('firstNamePlaceholder', 'Ваше имя')}
           autoComplete="given-name"
           maxLength={64}
         />
       </div>
 
-      <button
-        className="btn-primary"
-        type="button"
-        onClick={onNext}
-        style={{ marginTop: 8 }}
-      >
-        {t("continueAction", "Продолжить")}
+      <button className="btn-primary" type="button" onClick={onNext} style={{ marginTop: 8 }}>
+        {t('continueAction', 'Продолжить')}
       </button>
     </section>
   );
@@ -281,32 +231,21 @@ function CredentialsStep(props) {
   const strength = getStrengthStyle(props.passwordScore);
   const { t } = useTranslation();
   return (
-    <section
-      className={cn("screen", { active: props.active })}
-      aria-hidden={!props.active}
-    >
+    <section className={cn('screen', { active: props.active })} aria-hidden={!props.active}>
       <BackButton onClick={props.onBack} />
       <ProgressDots activeIndex={1} />
-      <div style={{ fontSize: 48, marginBottom: 8, textAlign: "center" }}>
-        🔐
-      </div>
-      <div className="step-title">
-        {t("chooseLoginTitle", "Придумайте логин")}
-      </div>
-      <div className="step-sub">
-        {t("chooseLoginSub", "Юзернейм и пароль для входа")}
-      </div>
+      <div style={{ fontSize: 48, marginBottom: 8, textAlign: 'center' }}>🔐</div>
+      <div className="step-title">{t('chooseLoginTitle', 'Придумайте логин')}</div>
+      <div className="step-sub">{t('chooseLoginSub', 'Юзернейм и пароль для входа')}</div>
 
       <div className="field">
-        <label htmlFor="username">{t("username", "Юзернейм")}</label>
+        <label htmlFor="username">{t('username', 'Юзернейм')}</label>
         <input
           id="username"
           type="text"
           value={props.username}
           onChange={(event) =>
-            props.onUsernameChange(
-              event.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
-            )
+            props.onUsernameChange(event.target.value.replace(/[^a-zA-Z0-9_]/g, ''))
           }
           placeholder="@username"
           autoComplete="username"
@@ -316,10 +255,10 @@ function CredentialsStep(props) {
       </div>
       <PasswordField
         id="password"
-        label={t("password", "Пароль")}
+        label={t('password', 'Пароль')}
         onChange={props.onPasswordChange}
         onToggle={props.onTogglePassword}
-        placeholder={t("passwordMin", "Минимум 6 символов")}
+        placeholder={t('passwordMin', 'Минимум 6 символов')}
         show={props.showPassword}
         value={props.password}
       />
@@ -328,10 +267,10 @@ function CredentialsStep(props) {
       </div>
       <PasswordField
         id="password2"
-        label={t("repeatPassword", "Повторите пароль")}
+        label={t('repeatPassword', 'Повторите пароль')}
         onChange={props.onPasswordRepeatChange}
         onToggle={props.onTogglePasswordRepeat}
-        placeholder={t("repeatPassword", "Повторите пароль")}
+        placeholder={t('repeatPassword', 'Повторите пароль')}
         show={props.showPasswordRepeat}
         value={props.passwordRepeat}
       />
@@ -343,33 +282,25 @@ function CredentialsStep(props) {
         disabled={props.isSubmitting}
       >
         {props.isSubmitting
-          ? t("creatingAccount", "Создание аккаунта...")
-          : t("createAccount", "Создать аккаунт")}
+          ? t('creatingAccount', 'Создание аккаунта...')
+          : t('createAccount', 'Создать аккаунт')}
       </button>
       <div className="footer-link">
-        {t("alreadyHaveAccount", "Уже есть аккаунт?")}{" "}
-        <a href={props.loginHref}>{t("login", "Войти")}</a>
+        {t('alreadyHaveAccount', 'Уже есть аккаунт?')}{' '}
+        <a href={props.loginHref}>{t('login', 'Войти')}</a>
       </div>
     </section>
   );
 }
 
-function PasswordField({
-  id,
-  label,
-  onChange,
-  onToggle,
-  placeholder,
-  show,
-  value,
-}) {
+function PasswordField({ id, label, onChange, onToggle, placeholder, show, value }) {
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
-      <div style={{ position: "relative" }}>
+      <div style={{ position: 'relative' }}>
         <input
           id={id}
-          type={show ? "text" : "password"}
+          type={show ? 'text' : 'password'}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
@@ -387,10 +318,7 @@ function PasswordField({
 function Feature({ icon, text }) {
   return (
     <div className="feature">
-      <div
-        className="feature-icon"
-        style={{ background: "rgba(255,0,127,0.15)" }}
-      >
+      <div className="feature-icon" style={{ background: 'rgba(255,0,127,0.15)' }}>
         {icon}
       </div>
       <span>{text}</span>
@@ -402,10 +330,7 @@ function ProgressDots({ activeIndex }) {
   return (
     <div className="dots">
       {[0, 1].map((index) => (
-        <div
-          className={`dot ${index === activeIndex ? "active" : ""}`}
-          key={index}
-        />
+        <div className={`dot ${index === activeIndex ? 'active' : ''}`} key={index} />
       ))}
     </div>
   );
@@ -508,10 +433,10 @@ function getPasswordScore(password) {
 }
 
 function getStrengthStyle(score) {
-  const colors = ["#FF4B4B", "#FF8C00", "#FFD700", "#00C853", "#00E676"];
-  const widths = ["20%", "40%", "60%", "80%", "100%"];
+  const colors = ['#FF4B4B', '#FF8C00', '#FFD700', '#00C853', '#00E676'];
+  const widths = ['20%', '40%', '60%', '80%', '100%'];
   return {
-    background: score > 0 ? colors[score - 1] : "transparent",
-    width: score > 0 ? widths[score - 1] : "0%",
+    background: score > 0 ? colors[score - 1] : 'transparent',
+    width: score > 0 ? widths[score - 1] : '0%',
   };
 }

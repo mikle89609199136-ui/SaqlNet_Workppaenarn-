@@ -1,11 +1,11 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
 interface InitialState {
-  language: "ru" | "en";
-  setLanguage: (language: "ru" | "en") => void;
+  language: 'ru' | 'en';
+  setLanguage: (language: 'ru' | 'en') => void;
 }
 
 export const useLanguageStore = create<InitialState>((set) => ({
-  language: "ru",
+  language: 'ru',
   setLanguage: (language) => set({ language }),
 }));

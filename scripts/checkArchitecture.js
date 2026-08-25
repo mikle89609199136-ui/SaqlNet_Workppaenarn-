@@ -11,7 +11,6 @@ const syntaxRoots = [
   'client/mobile/infrastructure',
   'client/mobile/shared',
   'client/mobile/presentation',
-  'server/services/message-service',
 ];
 
 const sizeLimits = [
@@ -43,9 +42,9 @@ const sourceExtensions = new Set([
   '.yml',
   '.yaml',
 ]);
+
 const sourceRoots = [
   'client',
-  'database',
   'docs',
   'infrastructure',
   'frontend/public',

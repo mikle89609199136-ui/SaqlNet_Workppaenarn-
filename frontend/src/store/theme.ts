@@ -1,6 +1,6 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export type TThemeType = "light" | "dark" | "system";
+export type TThemeType = 'light' | 'dark' | 'system';
 
 interface InitialState {
   theme: TThemeType;
@@ -8,6 +8,6 @@ interface InitialState {
 }
 
 export const useThemeStore = create<InitialState>((set) => ({
-  theme: "dark",
+  theme: 'dark',
   setTheme: (theme) => set({ theme }),
 }));

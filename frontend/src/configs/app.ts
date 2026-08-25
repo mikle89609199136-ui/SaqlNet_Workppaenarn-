@@ -9,7 +9,9 @@ export const config = {
   apiBaseUrl: envApiBaseUrl || `${window.location.origin}/api/v2`,
 
   // WebSocket Configuration
-  socketUrl: envSocketUrl || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
+  socketUrl:
+    envSocketUrl ||
+    `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
 
   // Media Configuration
   maxFileSize: 50 * 1024 * 1024, // 50MB
@@ -29,6 +31,6 @@ export const config = {
     e2eEncryption: false, // Not implemented yet
     aiAssistant: true,
     stickers: true,
-    channels: true
-  }
+    channels: true,
+  },
 };

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo } from 'react';
 
 interface Props {
   content: string;
@@ -24,12 +24,12 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
         key={match.index}
         className="hashtag-link"
         style={{
-          color: "var(--rd-accent, #ff2d8b)",
-          cursor: "pointer",
-          fontWeight: "bold",
+          color: 'var(--rd-accent, #ff2d8b)',
+          cursor: 'pointer',
+          fontWeight: 'bold',
         }}
         onClick={() => {
-          if (typeof window.handleUnifiedSearch === "function") {
+          if (typeof window.handleUnifiedSearch === 'function') {
             window.handleUnifiedSearch(hashtag);
           } else {
             alert(`Поиск по хэштегу: ${hashtag}`);
@@ -37,7 +37,7 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
         }}
       >
         {hashtag}
-      </span>,
+      </span>
     );
     lastIndex = regex.lastIndex;
   }
@@ -47,9 +47,7 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
     parts.push(textAfter);
   }
 
-  return (
-    <div className="message-content">{parts.length > 0 ? parts : content}</div>
-  );
+  return <div className="message-content">{parts.length > 0 ? parts : content}</div>;
 });
 
-MessageContentRenderer.displayName = "MessageContentRenderer";
+MessageContentRenderer.displayName = 'MessageContentRenderer';

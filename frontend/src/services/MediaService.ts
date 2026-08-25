@@ -1,8 +1,8 @@
-import type { ApiClient } from "@/api";
-import { STORAGE_KEYS } from "@/consts";
+import type { ApiClient } from '@/api';
+import { STORAGE_KEYS } from '@/consts';
 
 export class MediaService {
-  private apiClient: ApiClient
+  private apiClient: ApiClient;
 
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
