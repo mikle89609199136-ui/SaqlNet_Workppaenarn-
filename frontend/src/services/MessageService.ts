@@ -42,6 +42,36 @@ export class MessageService {
     this.pinnedMessages = new Map();
   }
 
+  /**
+   * Загружает страницу истории и расшифровывает её.
+   *
+   * В отличие от getMessages не заглядывает во внутренний кеш и не пишет
+   * в него: свежестью данных распоряжается слой запросов. Этот метод
+   * останется, когда внутренние Map будут удалены.
+   */
+  async fetchMessagesPage(
+    chatId: string,
+    offset: number = 0,
+    limit: number = 50
+  ): Promise<TMessagesList> {
+    const response = await this.apiClient.get<IMessagesResponse>(API_ENDPOINTS.MESSAGES(chatId), {
+      limit,
+      offset,
+    });
+
+    if (!response.data.messages) return [];
+
+    const chatContext = await this.getChatContext(chatId, 'decryption');
+
+    return sortMessagesChronologically<IMessageDto>(
+      await Promise.all(
+        response.data.messages.map((item: IMessageDto) =>
+          this.processMessageForDisplay(chatId, item, chatContext)
+        )
+      )
+    );
+  }
+
   async getMessages(
     chatId: string,
     offset: number = 0,
