@@ -47,6 +47,9 @@ export interface IMessageDto {
   metadata?: IForwardedMetadata | IMediaMetadata;
   forwardedSenderName: string;
   reactions: TReactionsList;
+  /** Проставляются после подтверждения отметки о прочтении сервером. */
+  isRead?: boolean;
+  status?: string;
 }
 
 export type TMessagesList = IMessageDto[];

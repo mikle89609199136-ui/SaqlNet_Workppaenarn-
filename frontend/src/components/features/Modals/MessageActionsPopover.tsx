@@ -1,6 +1,9 @@
 import { Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
+import { pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatStore, useProfileStore } from '@/store';
+import { useQuery } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,12 +33,16 @@ export const MessageActionsPopover = ({
   setIsForwardModalOpen,
 }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
+  const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const actions = useMessageActions({
     draftRef,
     setIsForwardModalOpen,
   });
-  const { selectedMessages, pinnedMessages, selectionMode, actionMenu } = useChatStore();
+  const { selectedMessages, selectionMode, actionMenu } = useChatStore();
+  // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
+  // сообщение, чтобы показать «Закрепить» или «Открепить».
+  const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
 
   const mine = message.senderId === currentUser?.id;
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);

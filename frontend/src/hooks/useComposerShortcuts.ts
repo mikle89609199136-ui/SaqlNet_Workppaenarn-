@@ -1,3 +1,4 @@
+import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatStore, useProfileStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { useEffect, type RefObject } from 'react';
@@ -9,11 +10,11 @@ export function useComposerShortcuts(
   const draft = useChatStore((state) => state.draft);
   const editingMessage = useChatStore((state) => state.editingMessage);
   const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const messages = useChatStore((state) => state.messages);
   const setDraft = useChatStore((state) => state.setDraft);
   const setEditingMessage = useChatStore((state) => state.setEditingMessage);
   const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
   const user = useProfileStore((state) => state.user);
+  const messages = useThreadMessagesData();
 
   function startEdit(message: IMessageDto) {
     setEditingMessage(message);

@@ -1,4 +1,4 @@
-import type { IChatDto, IMessageDto, IPinnedDto, IPinnedMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TMessagesList } from '@/types';
 import { create } from 'zustand';
 
 export interface IActionMenu {
@@ -9,15 +9,23 @@ export interface IActionMenu {
 
 type TTranslations = Record<string, string>;
 
+/**
+ * Состояние интерфейса открытого чата.
+ *
+ * Данные с сервера — сам чат, история и закреплённые — живут в кеше запросов
+ * и сюда не попадают. Здесь только то, что рождается в интерфейсе и умирает
+ * вместе с ним: черновик, выделение, открытые меню, показанные переводы.
+ *
+ * Раньше те же сообщения лежали ещё и здесь, и во внутреннем кеше сервиса.
+ * Синхронизировать три копии приходилось вручную в каждом обработчике,
+ * и там, где об этом забывали, данные расходились.
+ */
 interface IChatState {
-  chat: IChatDto | null;
-  messages: TMessagesList;
   error: string;
   editingMessage: IMessageDto | null;
   draft: string;
   replyToMessage: IMessageDto | null;
   selectedMessages: TMessagesList;
-  pinnedMessages: IPinnedDto[];
   selectionMode: boolean;
   translations: TTranslations;
   actionMenu: IActionMenu | null;
@@ -26,33 +34,23 @@ interface IChatState {
 type Updater<T> = (updater: T | ((prev: T) => T)) => void;
 
 interface IChatActions {
-  setChat: (chat: IChatDto | null) => void;
-  setMessages: Updater<TMessagesList>;
   setError: (error: string) => void;
   setEditingMessage: (message: IMessageDto | null) => void;
   setDraft: (draft: string) => void;
   setReplyToMessage: (message: IMessageDto | null) => void;
   setSelectedMessages: Updater<TMessagesList>;
-  setPinnedMessages: Updater<IPinnedDto[]>;
   setSelectionMode: (mode: boolean) => void;
   setTranslations: Updater<TTranslations>;
   setActionMenu: (menu: IActionMenu | null) => void;
   resetChatState: () => void;
-  updateChat: (data: Partial<IChatDto>) => void;
-  markAsRead: (messageId: string) => void;
-  updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => void;
-  updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => void;
 }
 
 const initialChatState: IChatState = {
-  chat: null,
-  messages: [],
   error: '',
   editingMessage: null,
   draft: '',
   replyToMessage: null,
   selectedMessages: [],
-  pinnedMessages: [],
   selectionMode: false,
   translations: {},
   actionMenu: null,
@@ -60,7 +58,7 @@ const initialChatState: IChatState = {
 
 type InitialState = IChatState & IChatActions;
 
-export const useChatStore = create<InitialState>((set, get) => {
+export const useChatStore = create<InitialState>((set) => {
   const withUpdater =
     <K extends keyof IChatState>(key: K) =>
     (updater: IChatState[K] | ((prev: IChatState[K]) => IChatState[K])) =>
@@ -76,64 +74,14 @@ export const useChatStore = create<InitialState>((set, get) => {
 
   return {
     ...initialChatState,
-    setChat: (chat) => set({ chat }),
-    setMessages: withUpdater('messages'),
     setError: (error) => set({ error }),
     setEditingMessage: (editingMessage) => set({ editingMessage }),
     setDraft: (draft) => set({ draft }),
     setReplyToMessage: (replyToMessage) => set({ replyToMessage }),
     setSelectedMessages: withUpdater('selectedMessages'),
-    setPinnedMessages: withUpdater('pinnedMessages'),
     setSelectionMode: (selectionMode) => set({ selectionMode }),
     setTranslations: withUpdater('translations'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     resetChatState: () => set(initialChatState),
-    // Только состояние: запрос к серверу выполняет вызывающая сторона.
-    // Стор не ходит в сеть — иначе он зависит от сервисов, а сервисы от него.
-    updateChat: (data) => {
-      const chat = get().chat;
-      if (!chat) return;
-      set({ chat: { ...chat, ...data } });
-    },
-    markAsRead: (messageId: string) => {
-      const messages = get().messages;
-      // findIndex отдаёт 0 для первого сообщения и -1, если ничего не нашёл:
-      // проверка на ложность отсекала бы первое и пропускала отсутствующее.
-      const messageIndex = messages.findIndex((message) => message.id === messageId);
-
-      if (messageIndex === -1) return;
-
-      // Новый массив, а не изменение на месте: Zustand сравнивает по ссылке,
-      // и с прежней подписчики не узнали бы об изменении.
-      const updatedMessages = messages.map((message, index) =>
-        index === messageIndex ? { ...message, isRead: true, status: 'read' as const } : message
-      );
-
-      set({ messages: updatedMessages });
-    },
-    updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => {
-      const messages = get().messages;
-      const updatedMessages = messages.map((message) =>
-        message.id === messageId ? { ...message, ...patch } : message
-      );
-      set({ messages: updatedMessages });
-    },
-    updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => {
-      const pinnedMessages = get().pinnedMessages;
-      const updatedPinnedMessages = pinnedMessages.map((item) =>
-        // Сравниваем с messageId: id принадлежит закреплению, а вызывающие
-        // передают идентификатор сообщения.
-        item.messageId === messageId
-          ? {
-              ...item,
-              message: {
-                ...item.message,
-                ...patch,
-              },
-            }
-          : item
-      );
-      set({ pinnedMessages: updatedPinnedMessages });
-    },
   };
 });

@@ -43,11 +43,6 @@ export const useChatLastMessagePreview = () => {
         extractLastMessage(event.message)
       );
 
-      const processedMessage = await services.messageService.processMessageForDisplay(
-        event.chatId,
-        event.message
-      );
-      services.messageService.addMessageToCache(event.chatId, processedMessage);
       setChats((items) => {
         const index = items.findIndex((chat) => chat.id === event.chatId);
         if (index === -1) return items;

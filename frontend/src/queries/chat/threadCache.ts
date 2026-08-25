@@ -1,14 +1,15 @@
+import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 
 /**
  * Форма кеша истории: страницы в том порядке, в каком их загрузили.
  * Первая страница — самые свежие сообщения, последующие уходят вглубь.
+ *
+ * Тип берётся из библиотеки, а не описывается заново: иначе он разойдётся
+ * с тем, что на самом деле лежит в кеше постраничного запроса.
  */
-export interface IThreadPages {
-  pages: TMessagesList[];
-  pageParams: number[];
-}
+export type IThreadPages = InfiniteData<TMessagesList>;
 
 /** Плоский список для отрисовки: страницы склеиваются и сортируются по времени. */
 export function flattenThread(data: IThreadPages | undefined): TMessagesList {
