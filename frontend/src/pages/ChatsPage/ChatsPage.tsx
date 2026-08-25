@@ -7,7 +7,7 @@ import { ChatListItem, ChatsSkeleton } from '@/components/ui';
 import { useChatLastMessagePreview, useIsMobile } from '@/hooks';
 import { services } from '@/services';
 import { useChatsStore } from '@/store';
-import { decryptChatLastMessagePreview } from '@/utils';
+import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useParams } from 'react-router-dom';

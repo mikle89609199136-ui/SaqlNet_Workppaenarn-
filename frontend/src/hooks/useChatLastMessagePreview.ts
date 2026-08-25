@@ -10,7 +10,7 @@ import type {
   IMessageNewEvent,
   ITypingEvent,
 } from '@/types';
-import { decryptChatLastMessagePreview } from '@/utils';
+import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useEffect, useRef } from 'react';
 import { useRealtimeSocket } from './useRealtimeSocket';
 

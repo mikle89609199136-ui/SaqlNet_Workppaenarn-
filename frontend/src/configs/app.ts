@@ -1,17 +1,34 @@
 const envApiBaseUrl = import.meta.env?.VITE_API_BASE_URL;
 const envSocketUrl = import.meta.env?.VITE_SOCKET_URL;
 
+// Адреса вычисляются при обращении, а не при импорте модуля: иначе файл
+// нельзя импортировать вне браузера — например, в тестах без DOM.
+function resolveApiBaseUrl(): string {
+  if (envApiBaseUrl) return envApiBaseUrl;
+  const origin = globalThis.location?.origin;
+  return origin ? `${origin}/api/v2` : '/api/v2';
+}
+
+function resolveSocketUrl(): string {
+  if (envSocketUrl) return envSocketUrl;
+  const location = globalThis.location;
+  if (!location) return '/ws';
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+}
+
 export const config = {
   version: '1.0.0',
   appName: 'CraneApp',
 
   // API Configuration
-  apiBaseUrl: envApiBaseUrl || `${window.location.origin}/api/v2`,
+  get apiBaseUrl() {
+    return resolveApiBaseUrl();
+  },
 
   // WebSocket Configuration
-  socketUrl:
-    envSocketUrl ||
-    `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
+  get socketUrl() {
+    return resolveSocketUrl();
+  },
 
   // Media Configuration
   maxFileSize: 50 * 1024 * 1024, // 50MB
