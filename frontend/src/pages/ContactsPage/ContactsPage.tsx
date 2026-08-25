@@ -48,9 +48,7 @@ export function ContactsPage() {
       const data = await services.chatService.createChat('private', [userId]);
       if (data.chatId) {
         showToast('success', 'Чат создан!', '✓');
-        setTimeout(() => {
-          navigate(`/chats/${encodeURIComponent(data.chatId)}`);
-        }, 800);
+        navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       } else {
         throw new Error(data.error || 'Не удалось создать чат');
       }
