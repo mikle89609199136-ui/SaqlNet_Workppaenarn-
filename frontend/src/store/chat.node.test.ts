@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { makeMessage } from '@/test/fixtures';
+import { makeMessage, makePin } from '@/test/fixtures';
 import { useChatStore } from './chat';
 
 describe('отметка о прочтении в сторе', () => {
@@ -54,5 +54,31 @@ describe('отметка о прочтении в сторе', () => {
     useChatStore.getState().markAsRead(messages[0].id);
 
     expect(useChatStore.getState().messages).not.toBe(messages);
+  });
+});
+
+describe('обновление закреплённого сообщения в сторе', () => {
+  beforeEach(() => {
+    useChatStore.setState(useChatStore.getInitialState(), true);
+  });
+
+  it('should update the pinned copy by the message id', () => {
+    // Вызывающие передают идентификатор сообщения, а сравнивался
+    // идентификатор самого закрепления — совпадений не было никогда.
+    const pin = makePin();
+    useChatStore.setState({ pinnedMessages: [pin] });
+
+    useChatStore.getState().updatePinnedMessage(pin.messageId, { content: 'новый текст' });
+
+    expect(useChatStore.getState().pinnedMessages[0].message.content).toBe('новый текст');
+  });
+
+  it('should ignore the pin id', () => {
+    const pin = makePin();
+    useChatStore.setState({ pinnedMessages: [pin] });
+
+    useChatStore.getState().updatePinnedMessage(pin.id, { content: 'не должно примениться' });
+
+    expect(useChatStore.getState().pinnedMessages[0].message.content).toBe(pin.message.content);
   });
 });
