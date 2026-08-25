@@ -55,3 +55,12 @@ export async function getRawChat(apiClient: ApiClient, chatId: string): Promise<
 export function invalidateChat(chatId: string) {
   cache.delete(chatId);
 }
+
+/**
+ * Полный сброс. Кеш живёт на уровне модуля, поэтому между тестами в нём
+ * остаются промисы предыдущего сценария — вплоть до тех, что уже никогда
+ * не завершатся.
+ */
+export function clearChatCache() {
+  cache.clear();
+}

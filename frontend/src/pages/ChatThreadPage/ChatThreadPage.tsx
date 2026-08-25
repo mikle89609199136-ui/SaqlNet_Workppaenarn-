@@ -29,9 +29,9 @@ import {
   type SetStateAction,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTypingStore } from '@/store/typing';
 import { useMarkAsRead } from './hooks/useMarkAsRead';
 import { useThreadMessages } from './hooks/useThreadMessages';
-import { useThreadRealtime } from './hooks/useThreadRealtime';
 
 export interface IProfileModal {
   isOpen: boolean;
@@ -97,19 +97,7 @@ export function ChatThreadPage() {
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
   const markMessagesAsRead = useMarkAsRead(chatId, currentUser?.id);
-
-  // Сообщение передаётся целиком: искать его в messages бесполезно —
-  // там ещё состояние предыдущего рендера, и отметка не уходила бы.
-  const handleIncomingMessage = useCallback(
-    (message: IMessageDto) => markMessagesAsRead([message]),
-    [markMessagesAsRead]
-  );
-
-  const { typingUserId } = useThreadRealtime({
-    chatId,
-    currentUserId: currentUser?.id,
-    onIncomingMessage: handleIncomingMessage,
-  });
+  const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
 
   const {
     handleCancelSelection,
@@ -127,12 +115,16 @@ export function ChatThreadPage() {
     setProfileModal(CLOSED_PROFILE);
   }, [chatId, resetChatState]);
 
-  // Отмечаем прочитанным один раз на загруженную историю, а не на каждое
-  // её изменение: иначе отправка своего сообщения порождала бы новый запрос.
+  // Отмечаются только те, что ещё не отмечены: история меняется и от
+  // собственных отправок, и от входящих, а лишний запрос здесь не нужен.
   useEffect(() => {
-    if (isLoading || messages.length === 0) return;
-    markMessagesAsRead(messages);
-  }, [chatId, isLoading]);
+    if (isLoading) return;
+
+    const unread = messages.filter((message) => !message.isRead);
+    if (unread.length === 0) return;
+
+    markMessagesAsRead(unread);
+  }, [messages, isLoading, markMessagesAsRead]);
 
   useEffect(() => {
     if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return;
