@@ -2,13 +2,15 @@ package auth
 
 import (
 	"errors"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
 const (
-	minPasswordLength = 10
-	maxPasswordLength = 64
+	minPasswordLength         = 10
+	maxPasswordLength         = 64
+	passwordSpecialCharacters = "!@#$%^&*()_+-=[]{}|;:'\",.<>/?`~"
 )
 
 var ErrInvalidPassword = errors.New("invalid password")
@@ -63,8 +65,8 @@ func ValidatePassword(password string) error {
 		if unicode.IsSpace(character) {
 			return &PasswordValidationError{Reason: PasswordWhitespaceNotAllowed}
 		}
-		hasDigit = hasDigit || unicode.IsDigit(character)
-		hasSpecial = hasSpecial || unicode.IsPunct(character) || unicode.IsSymbol(character)
+		hasDigit = hasDigit || character >= '0' && character <= '9'
+		hasSpecial = hasSpecial || strings.ContainsRune(passwordSpecialCharacters, character)
 	}
 
 	if !hasDigit {

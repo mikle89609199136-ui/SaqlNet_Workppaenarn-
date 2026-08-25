@@ -74,12 +74,18 @@ func TestValidatePassword(t *testing.T) {
 			password: strings.Repeat("я", minPasswordLength-2) + "1!",
 		},
 		{
-			name:     "unicode digit is accepted",
-			password: strings.Repeat("a", minPasswordLength-2) + "١!",
+			name:       "unicode digit does not satisfy digit requirement",
+			password:   strings.Repeat("a", minPasswordLength-2) + "١!",
+			wantReason: PasswordDigitRequired,
 		},
 		{
-			name:     "unicode symbol is accepted as special character",
-			password: strings.Repeat("a", minPasswordLength-2) + "1€",
+			name:       "unicode symbol outside whitelist does not satisfy special requirement",
+			password:   strings.Repeat("a", minPasswordLength-2) + "1€",
+			wantReason: PasswordSpecialRequired,
+		},
+		{
+			name:     "whitelisted special character is accepted",
+			password: strings.Repeat("a", minPasswordLength-2) + "1@",
 		},
 	}
 
