@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { MessageService } from './MessageService';
-import type { ApiClient } from '@/api';
-import type { CryptoService } from './CryptoService';
+import { http, HttpResponse } from 'msw';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createApiClient } from '@/api/apiFactory';
+import { api } from '@/test/msw/handlers';
+import { server } from '@/test/msw/server';
+import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
+import type { CryptoService } from './CryptoService';
+import { MessageService } from './MessageService';
 
 const TARGET_CHAT = 'chat-target';
-const SOURCE_CHAT = 'chat-source';
 
 function message(id: string, chatId: string, content: string): IMessageDto {
   return {
@@ -19,85 +21,70 @@ function message(id: string, chatId: string, content: string): IMessageDto {
   } as IMessageDto;
 }
 
-/**
- * Сервис ходит в сеть только через ApiClient, поэтому подменяем его целиком.
- * historyOf задаёт, что сервер отдаёт для конкретного чата.
- */
-function createApiClient(historyOf: Record<string, IMessageDto[]>) {
-  const get = vi.fn(async (endpoint: string) => {
-    if (endpoint.startsWith('/messages/')) {
-      const chatId = endpoint.replace('/messages/', '');
-      return { data: { messages: historyOf[chatId] ?? [] }, status: 200, headers: new Headers() };
-    }
-
-    // getChatContext запрашивает сам чат
-    return {
-      data: { chat: { id: TARGET_CHAT, type: 'private', peerPublicKey: null } },
-      status: 200,
-      headers: new Headers(),
-    };
-  });
-
-  const post = vi.fn(async () => ({
-    data: { message: message('forwarded-1', TARGET_CHAT, 'переслано') },
-    status: 200,
-    headers: new Headers(),
-  }));
-
-  return { get, post } as unknown as ApiClient & { get: typeof get; post: typeof post };
-}
-
-// Шифрование в этих сценариях не участвует: контент возвращается как есть.
-const cryptoStub = {
+// Заглушка шифрования: контент проходит насквозь. Настоящая криптография
+// проверяется в CryptoService.node.test.ts — здесь важна работа с историей.
+const passthroughCrypto = {
   decryptDM: async (content: string) => content,
   decryptGroup: async (_chatId: string, content: string) => content,
   encryptDM: async (content: string) => content,
   encryptGroup: async (_chatId: string, content: string) => content,
 } as unknown as CryptoService;
 
-describe('MessageService.getMessages', () => {
-  let api: ReturnType<typeof createApiClient>;
+function createService() {
+  return new MessageService(createApiClient(), passthroughCrypto);
+}
+
+/** Сервер отдаёт заданную историю и подтверждает пересылку. */
+function serveHistory(history: IMessageDto[]) {
+  server.use(
+    http.get(api(`/messages/${TARGET_CHAT}`), () => HttpResponse.json({ messages: history })),
+    http.post(api('/messages/:messageId/forward'), () =>
+      HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') })
+    )
+  );
+}
+
+describe('MessageService: история чата', () => {
   let service: MessageService;
 
   beforeEach(() => {
-    api = createApiClient({
-      [TARGET_CHAT]: [
-        message('old-1', TARGET_CHAT, 'первое'),
-        message('old-2', TARGET_CHAT, 'второе'),
-      ],
-    });
-    service = new MessageService(api, cryptoStub);
+    serveHistory([
+      message('old-1', TARGET_CHAT, 'первое'),
+      message('old-2', TARGET_CHAT, 'второе'),
+    ]);
+    service = createService();
   });
 
-  it('запрашивает историю с сервера, когда чат ещё не открывали', async () => {
-    const messages = await service.getMessages(TARGET_CHAT);
-
-    expect(messages).toHaveLength(2);
-    expect(api.get).toHaveBeenCalledWith(
-      `/messages/${TARGET_CHAT}`,
-      expect.objectContaining({ offset: 0 })
+  it('should request history from the server on first open', async () => {
+    let requestedUrl = '';
+    server.use(
+      http.get(api(`/messages/${TARGET_CHAT}`), ({ request }) => {
+        requestedUrl = request.url;
+        return HttpResponse.json({ messages: [] });
+      })
     );
+
+    await service.getMessages(TARGET_CHAT);
+
+    expect(new URL(requestedUrl).searchParams.get('offset')).toBe('0');
   });
 
-  it('отдаёт историю целевого чата после пересылки в него', async () => {
-    // Пересылка в чат, который в этой сессии не открывали.
+  it('should keep the target chat history after forwarding into it', async () => {
+    // Регрессия #174: пересылка в чат, который в этой сессии не открывали,
+    // подменяла всю его историю одним пересланным сообщением.
     await service.forwardMessage('source-message', TARGET_CHAT);
 
-    const messages = await service.getMessages(TARGET_CHAT);
-    const ids = messages.map((item) => item.id);
+    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
 
-    // История чата обязана присутствовать, а не подменяться одним пересланным сообщением.
     expect(ids).toContain('old-1');
     expect(ids).toContain('old-2');
-    expect(messages.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('не теряет историю, если чат открывали до пересылки', async () => {
+  it('should keep both history and the forwarded message when the chat was open', async () => {
     await service.getMessages(TARGET_CHAT);
     await service.forwardMessage('source-message', TARGET_CHAT);
 
-    const messages = await service.getMessages(TARGET_CHAT);
-    const ids = messages.map((item) => item.id);
+    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
 
     expect(ids).toContain('old-1');
     expect(ids).toContain('old-2');
@@ -105,17 +92,32 @@ describe('MessageService.getMessages', () => {
   });
 });
 
-describe('MessageService.forwardMessage', () => {
-  it('отправляет запрос пересылки с целевым чатом', async () => {
-    const api = createApiClient({ [TARGET_CHAT]: [] });
-    const service = new MessageService(api, cryptoStub);
+describe('MessageService: пересылка', () => {
+  it('should send the target chat in the request body', async () => {
+    let body: unknown = null;
+    server.use(
+      http.post(api('/messages/source-message/forward'), async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
+      })
+    );
 
-    await service.forwardMessage('source-message', TARGET_CHAT);
+    await createService().forwardMessage('source-message', TARGET_CHAT);
 
-    expect(api.post).toHaveBeenCalledWith('/messages/source-message/forward', {
-      targetChatId: TARGET_CHAT,
-    });
+    expect(body).toEqual({ targetChatId: TARGET_CHAT });
   });
 });
 
-export { SOURCE_CHAT };
+describe('сторож открытого текста', () => {
+  it('should catch a plaintext body reaching the network', async () => {
+    // Проверка самого сторожа: он обязан замечать секрет в теле запроса.
+    // Если этот тест начнёт проходить молча, защита перестала работать.
+    const secret = secretText('пароль');
+
+    server.use(http.post(api('/probe'), () => HttpResponse.json({ ok: true })));
+    await createApiClient().post('/probe', { note: secret });
+
+    const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
+    expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+  });
+});
