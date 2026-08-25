@@ -456,7 +456,7 @@ export class MessageService {
   async unpinMessage(chatId: string, messageId: string) {
     const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId));
 
-    this.removePinnedMessageFromCache(chatId);
+    this.removePinnedMessageFromCache(messageId);
     return response.data;
   }
 
@@ -502,7 +502,9 @@ export class MessageService {
     this.pinnedMessages.forEach((messages, chatId) => {
       this.pinnedMessages.set(
         chatId,
-        messages.filter((message) => message.id !== messageId)
+        // Сравнивать нужно с messageId: поле id принадлежит самому
+        // закреплению, а не сообщению, и с ним совпадений не будет.
+        messages.filter((pinned) => pinned.messageId !== messageId)
       );
     });
   }

@@ -121,7 +121,9 @@ export const useChatStore = create<InitialState>((set, get) => {
     updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => {
       const pinnedMessages = get().pinnedMessages;
       const updatedPinnedMessages = pinnedMessages.map((item) =>
-        item.id === messageId
+        // Сравниваем с messageId: id принадлежит закреплению, а вызывающие
+        // передают идентификатор сообщения.
+        item.messageId === messageId
           ? {
               ...item,
               message: {
