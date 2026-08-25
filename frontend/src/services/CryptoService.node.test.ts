@@ -1,34 +1,13 @@
-// @vitest-environment node
 import { STORAGE_KEYS } from '@/consts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ApiClient } from '@/api/ApiClient';
 import { CryptoService } from './CryptoService';
 
-// Окружение node, а не jsdom: под Node 20 jsdom не признаёт ArrayBuffer,
-// созданный вне своего realm, и любой importKey падает с TypeError.
-// DOM здесь не нужен — из браузерных API сервису требуются только WebCrypto
-// и localStorage, второй подменяется ниже.
-const memoryStorage = new Map<string, string>();
-
-globalThis.localStorage = {
-  getItem: (key: string) => memoryStorage.get(key) ?? null,
-  setItem: (key: string, value: string) => {
-    memoryStorage.set(key, value);
-  },
-  removeItem: (key: string) => {
-    memoryStorage.delete(key);
-  },
-  clear: () => {
-    memoryStorage.clear();
-  },
-  key: (index: number) => [...memoryStorage.keys()][index] ?? null,
-  get length() {
-    return memoryStorage.size;
-  },
-} as Storage;
-
-// IndexedDB сервису тоже нужен, но его хранилище подменяется в createService.
-// Сама криптография настоящая: WebCrypto доступен нативно.
+// Суффикс .node.test.ts отправляет файл в окружение node: под jsdom
+// crypto.subtle.importKey падает с TypeError, потому что jsdom не признаёт
+// ArrayBuffer, созданный вне своего realm. localStorage приходит из
+// src/test/setup/node.ts, IndexedDB подменяется в createService.
+// Сама криптография настоящая — WebCrypto доступен нативно.
 function createService(accountId: string) {
   const apiClient = {
     post: async () => ({ data: {} }),
