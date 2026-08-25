@@ -1,0 +1,82 @@
+name: Баг
+description: Сообщить о неправильном поведении
+labels: ["type:bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Заголовок** должен описывать конкретную проблему.
+
+        Хорошо: «Пересылка теряет вложения в групповых чатах»
+        Плохо: «Баг», «Чаты», «Не работает»
+
+        Справа проставьте метки `module:*` (какая область) и `stack:*` (фронт / бэк / оба).
+        Если не уверены — оставьте, определим при разборе.
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что происходит
+      description: Наблюдаемое поведение
+      placeholder: После пересылки сообщения с картинкой в целевом чате вместо изображения пустой блок.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидалось
+      description: Корректное поведение
+      placeholder: Пересланное сообщение отображается вместе с вложением.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      description: Последовательность действий, приводящая к проблеме
+      placeholder: |
+        1. Открыть личный чат
+        2. Отправить сообщение с картинкой
+        3. Переслать его в групповой чат
+        4. Открыть групповой чат
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Где воспроизводится
+      options:
+        - Стенд
+        - Локально
+        - Production
+        - Везде
+    validations:
+      required: true
+
+  - type: input
+    id: frequency
+    attributes:
+      label: Как часто воспроизводится
+      description: Всегда или иногда. Если иногда — при каких условиях
+      placeholder: Всегда / иногда, примерно в половине случаев
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Скриншот или видео
+      description: Перетащите файл в это поле. Приложите консоль браузера, если есть ошибки
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Дополнительный контекст
+      description: Связанные задачи и Pull Request, известные обходные пути, что уже проверяли
+    validations:
+      required: false

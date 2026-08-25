@@ -1,0 +1,76 @@
+name: Задача
+description: Новая функциональность, рефакторинг, тесты, документация или техническая работа
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Заголовок** должен описывать конкретный результат.
+
+        Хорошо: «Реализовать добавление участника в групповой чат»
+        Плохо: «Групповые чаты», «Доработки», «Backend»
+
+        Справа проставьте метки: `type:*` (feature / refactor / test / docs / chore),
+        `module:*` (какая область) и `stack:*` (фронт / бэк / оба).
+        Если не уверены — оставьте, определим при разборе.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст
+      description: Какую проблему решаем и почему это нужно сейчас
+      placeholder: |
+        Сейчас участника можно добавить в группу только через прямой запрос к API.
+        В интерфейсе такой возможности нет, из-за чего владелец группы не может
+        пригласить пользователя без помощи разработчика.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Что требуется
+      description: Что необходимо реализовать. Списком, по пунктам
+      placeholder: |
+        - Добавить кнопку «Добавить участника» в информацию о группе
+        - Реализовать поиск пользователя по username
+        - Показывать ошибку, если пользователь уже состоит в группе
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract
+    attributes:
+      label: Изменения API или контракта
+      description: |
+        Заполняется, если задача меняет контракт: endpoint, method, request, response,
+        коды ошибок, WebSocket-события, схема БД
+      placeholder: |
+        POST /api/v2/chats/{chatId}/members
+        Request: { "userId": "uuid" }
+        Response 201: { "member": Member }
+        Errors: 409 already_member, 409 user_banned, 404 user_not_found
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерии приёмки
+      description: Наблюдаемые условия, при выполнении которых задача считается сделанной
+      placeholder: |
+        - Новый участник появляется в списке участников группы
+        - Группа появляется в списке чатов добавленного пользователя
+        - Повторное добавление показывает ошибку «уже в группе»
+        - Обычный участник не видит кнопку добавления
+        - Изменение появляется у остальных участников без перезагрузки страницы
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Ограничения и заметки
+      description: Известные ограничения, зависимости от других задач, что намеренно не делаем
+    validations:
+      required: false

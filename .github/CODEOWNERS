@@ -1,0 +1,67 @@
+# CODEOWNERS — владельцы областей кода.
+#
+# Владельцы автоматически добавляются в ревьюеры Pull Request, затрагивающих их
+# файлы. Побеждает последнее совпавшее правило, поэтому более узкие пути
+# указываются ниже более широких.
+#
+# Обязательным ревью становится после включения в настройках защиты master
+# опции «Require review from Code Owners». До этого владелец назначается
+# автоматически, но merge технически не блокируется.
+
+# ─────────────────────────────────────────────────────────────
+# Фронтенд
+# ─────────────────────────────────────────────────────────────
+
+/frontend/                 @MaxDon26 @KufuVampire
+/.prettierrc              @MaxDon26 @KufuVampire
+
+# Legacy-клиент: та же зона ответственности до его удаления.
+/client/                  @MaxDon26 @KufuVampire
+
+# frontend/package.json закреплён правилом /frontend/ выше.
+# Корневые package.json и package-lock.json не включены: там остались
+# только legacy-зависимости и служебные скрипты репозитория.
+
+# ─────────────────────────────────────────────────────────────
+# Требует обсуждения — владельцы не назначены
+#
+# Строки ниже закомментированы и не действуют. Раскомментировать,
+# подставив ответственных, после согласования на встрече.
+# ─────────────────────────────────────────────────────────────
+
+# Go-сервисы. Один владелец на весь backend-v2 или разные по сервисам
+# (auth, user, chat, media, admin, edge)?
+# /backend-v2/                    @owner
+
+# Контракты API. Затрагивают обе стороны: изменение схемы ломает клиент.
+# Предлагается двойное владение — бэкенд и фронтенд.
+# /backend-v2/contracts/          @backend-owner @MaxDon26 @KufuVampire
+
+# Миграции БД. Необратимы в production, возможно нужен отдельный владелец.
+# /backend-v2/migrations/         @owner
+# /database/                      @owner
+
+# Rust crypto-сервис. Отвечает за шифрование и токены.
+# /server/crypto-rust/            @owner
+
+# Устаревшая серверная часть на Node.js. README объявляет её удалённой,
+# но каталог существует и упоминается в Dockerfile.prod и docker-compose.yml.
+# Нужно решить: удалять или назначать владельца.
+# /server/services/               @owner
+# /server/middleware/             @owner
+# /server/gateway-go/             @owner
+
+# Инфраструктура и деплой.
+# /infrastructure/                @owner
+# /deploy/                        @owner
+# /Dockerfile*                    @owner
+# /docker-compose.yml             @owner
+# /supervisord.conf               @owner
+# /amvera.yaml /amvera.yml        @owner
+# /railway.json                   @owner
+# /docker-entrypoint.sh           @owner
+
+# CI и конфигурация репозитория. Меняет правила для всех.
+# /.github/                       @owner
+# /scripts/                       @owner
+# /lefthook.yml                   @owner

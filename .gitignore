@@ -28,7 +28,6 @@ uploads/
 # Build outputs
 dist/
 build/
-client/mobile/react-dist/
 
 # Test and coverage outputs
 coverage/
@@ -63,4 +62,3 @@ AGENTS.md
 .serena
 .agents
 .kimi-code
-
