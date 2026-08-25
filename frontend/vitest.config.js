@@ -23,7 +23,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: [nodePattern],
-          setupFiles: ['./src/test/setup/node.ts'],
+          setupFiles: ['./src/test/setup/msw.ts', './src/test/setup/node.ts'],
         },
       },
       {
@@ -34,7 +34,7 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['src/**/*.test.{ts,tsx}'],
           exclude: [nodePattern],
-          setupFiles: ['./src/test/setup/dom.ts'],
+          setupFiles: ['./src/test/setup/msw.ts', './src/test/setup/dom.ts'],
           // ApiClient.buildUrl строит абсолютный URL от origin страницы:
           // без явного адреса jsdom отдаёт about:blank и запросы не собираются.
           environmentOptions: {
@@ -44,6 +44,11 @@ export default defineConfig({
       },
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // Детерминированный адрес API: обработчики MSW не должны зависеть от того,
+    // есть ли в окружении window.location.
+    env: {
+      VITE_API_BASE_URL: 'http://localhost:3000/api/v2',
+    },
     clearMocks: true,
     restoreMocks: true,
     testTimeout: 15000,

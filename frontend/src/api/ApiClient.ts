@@ -119,7 +119,9 @@ export class ApiClient {
 
     if (!response.ok) {
       if (response.status === 401) {
-        window.dispatchEvent(new CustomEvent('craneapp:unauthorized'));
+        // Слушатель живёт в AuthGuard. Вне браузера событию некуда идти,
+        // но и падать из-за этого запрос не должен.
+        globalThis.dispatchEvent?.(new CustomEvent('craneapp:unauthorized'));
       }
       const payloadObj = (payload && typeof payload === 'object' ? payload : {}) as {
         error?: string;
