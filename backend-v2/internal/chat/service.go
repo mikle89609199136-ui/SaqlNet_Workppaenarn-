@@ -1559,6 +1559,7 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 // Querier is an interface that both *sql.DB and *sql.Tx implement.
 type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
 // listReactionsInternal executes the aggregation query using any Querier
@@ -1587,6 +1588,20 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+// isMemberWithQuerier executes the query using any Querier
+// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
+	var exists bool
+	err := q.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
+		userID, chatID,
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // ToggleReaction adds or removes a reaction (toggle semantics).
@@ -1636,7 +1651,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	// 3. Check membership inside transaction
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
 			return false, nil, fmt.Errorf("check membership: %w", err)
@@ -1646,20 +1661,14 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	// 4. Acquire advisory lock for the (message_id, user_id) pair
-	// pg_try_advisory_xact_lock returns boolean: true if lock acquired, false if not
-	var locked bool
-	err = tx.QueryRowContext(ctx,
-		`SELECT pg_try_advisory_xact_lock($1)`,
+	// pg_advisory_xact_lock blocks until lock is available or timeout occurs
+	_, err = tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock($1)`,
 		getAdvisoryKey(messageID, userID),
-	).Scan(&locked)
+	)
 	if err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
 		return false, nil, fmt.Errorf("acquire lock: %w", err)
-	}
-	if !locked {
-		// Could not acquire lock - another transaction is working on this pair
-		log.Printf("[chat-service-ToggleReaction]:concurrent operation in progress for message %s user %s", messageID, userID)
-		return false, nil, fmt.Errorf("concurrent operation in progress, please retry")
 	}
 
 	// 5. Now safely query the current reaction (with lock held)
