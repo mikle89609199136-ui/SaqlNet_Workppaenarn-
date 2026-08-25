@@ -58,7 +58,7 @@ func TestRegister_CreatesUserWithExactUsername(t *testing.T) {
 	mock.ExpectExec("INSERT INTO users.settings").WithArgs("user_id", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	user, token, err := svc.Register(context.Background(), "ivan", "password", "Ivan", "", "")
+	user, token, err := svc.Register(context.Background(), "ivan", "Password1!", "Ivan", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestRegister_ReturnsErrUsernameTakenOnDuplicate(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO auth.users").WithArgs("ivan", "hash", "Ivan", "").WillReturnError(pgErr)
 	mock.ExpectRollback()
 
-	_, _, err = svc.Register(context.Background(), "ivan", "password", "Ivan", "", "")
+	_, _, err = svc.Register(context.Background(), "ivan", "Password1!", "Ivan", "", "")
 	if !errors.Is(err, auth.ErrUsernameTaken) {
 		t.Fatalf("expected ErrUsernameTaken, got %v", err)
 	}
@@ -133,7 +133,7 @@ func TestRegister_StoresUsernameLowercase(t *testing.T) {
 	mock.ExpectExec("INSERT INTO users.settings").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	user, _, err := svc.Register(context.Background(), "Ivan", "password", "Ivan", "", "")
+	user, _, err := svc.Register(context.Background(), "Ivan", "Password1!", "Ivan", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,5 +232,152 @@ func TestLogin_ReturnsInvalidCredentialsWhenUserNotFound(t *testing.T) {
 	_, _, err = svc.Login(context.Background(), "ivan", "password", "")
 	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestRegister_RejectsInvalidPasswordBeforeHashingOrDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	hashCalled := false
+	crypto := &mockCrypto{
+		hashFunc: func(ctx context.Context, password string) (string, error) {
+			hashCalled = true
+			return "hash", nil
+		},
+	}
+	svc := auth.NewService(db, crypto)
+
+	_, _, err = svc.Register(context.Background(), "ivan", "password", "Ivan", "", "")
+	assertPasswordValidationError(t, err)
+	if hashCalled {
+		t.Fatal("HashPassword was called for an invalid password")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChangePassword_RejectsInvalidNewPasswordAfterCurrentPasswordVerification(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	verifyCalled := false
+	hashCalled := false
+	crypto := &mockCrypto{
+		verifyFunc: func(ctx context.Context, password, hash string) (bool, error) {
+			verifyCalled = true
+			return true, nil
+		},
+		hashFunc: func(ctx context.Context, password string) (string, error) {
+			hashCalled = true
+			return "new-hash", nil
+		},
+	}
+	svc := auth.NewService(db, crypto)
+
+	mock.ExpectQuery("SELECT password_hash FROM auth.users").
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow("current-hash"))
+
+	err = svc.ChangePassword(context.Background(), "user-id", "current-password", "password")
+	assertPasswordValidationError(t, err)
+	if !verifyCalled {
+		t.Fatal("VerifyPassword was not called before new password validation")
+	}
+	if hashCalled {
+		t.Fatal("HashPassword was called for an invalid new password")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChangePassword_WrongCurrentPasswordTakesPriority(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	hashCalled := false
+	crypto := &mockCrypto{
+		verifyFunc: func(ctx context.Context, password, hash string) (bool, error) {
+			return false, nil
+		},
+		hashFunc: func(ctx context.Context, password string) (string, error) {
+			hashCalled = true
+			return "new-hash", nil
+		},
+	}
+	svc := auth.NewService(db, crypto)
+
+	mock.ExpectQuery("SELECT password_hash FROM auth.users").
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow("current-hash"))
+
+	err = svc.ChangePassword(context.Background(), "user-id", "wrong-password", "password")
+	if !errors.Is(err, auth.ErrWrongPassword) {
+		t.Fatalf("expected ErrWrongPassword, got %v", err)
+	}
+	if errors.Is(err, auth.ErrInvalidPassword) {
+		t.Fatalf("expected wrong current password to take priority, got %v", err)
+	}
+	if hashCalled {
+		t.Fatal("HashPassword was called after current password verification failed")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTwoFAEnable_RejectsInvalidPasswordBeforeHashingOrDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	hashCalled := false
+	crypto := &mockCrypto{
+		hashFunc: func(ctx context.Context, password string) (string, error) {
+			hashCalled = true
+			return "hash", nil
+		},
+	}
+	svc := auth.NewService(db, crypto)
+
+	err = svc.TwoFAEnable(context.Background(), "user-id", "password")
+	assertPasswordValidationError(t, err)
+	if hashCalled {
+		t.Fatal("HashPassword was called for an invalid 2FA password")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertPasswordValidationError(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, auth.ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword, got %v", err)
+	}
+	var validationErr *auth.PasswordValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *PasswordValidationError, got %T", err)
 	}
 }
