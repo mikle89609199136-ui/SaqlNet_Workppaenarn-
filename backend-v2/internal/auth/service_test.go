@@ -290,8 +290,17 @@ func TestChangePassword_RejectsInvalidNewPasswordAfterCurrentPasswordVerificatio
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow("current-hash"))
 
-	err = svc.ChangePassword(context.Background(), "user-id", "current-password", "password")
-	assertPasswordValidationError(t, err)
+	err = svc.ChangePassword(context.Background(), "user-id", "current-password", "password123")
+	if !errors.Is(err, auth.ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword, got %v", err)
+	}
+	var validationErr *auth.PasswordValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected PasswordValidationError, got %T", err)
+	}
+	if validationErr.Reason != auth.PasswordSpecialRequired {
+		t.Fatalf("expected reason %q, got %q", auth.PasswordSpecialRequired, validationErr.Reason)
+	}
 	if !verifyCalled {
 		t.Fatal("VerifyPassword was not called before new password validation")
 	}
