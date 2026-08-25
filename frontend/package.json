@@ -13,7 +13,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check:cycles": "dpdm --no-tree --no-warning --tsconfig tsconfig.app.json --exit-code circular:1 --transform src/main.tsx"
   },
   "dependencies": {
