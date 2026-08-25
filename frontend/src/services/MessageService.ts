@@ -336,10 +336,15 @@ export class MessageService {
       throw new Error('Message must be a string');
     }
 
+    const trimmedContent = content.trim();
+    const chatContext = await this.getChatContext(chatId, 'encryption');
+    const encryptedContent = await this.encryptContent(chatId, trimmedContent, chatContext);
+
     const response = await this.apiClient.put<IMessageDto>(API_ENDPOINTS.MESSAGE_BY_ID(messageId), {
-      content: content.trim(),
+      content: encryptedContent,
     });
-    const message = response.data;
+    // Как в sendMessage: на сервер уходит шифртекст, в интерфейс — исходный текст.
+    const message: IMessageDto = { ...response.data, content: trimmedContent };
     this.updatePinnedMessageInCache(messageId, message);
     this.updateMessageInCache(messageId, message);
     eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.EDITED, {
