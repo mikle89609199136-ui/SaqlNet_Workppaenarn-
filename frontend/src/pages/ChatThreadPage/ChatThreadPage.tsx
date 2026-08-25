@@ -13,21 +13,13 @@ import {
 } from '@/components/features';
 
 import { useMessageActions, useRealtimeSocket } from '@/hooks';
-import { getMessages, services } from '@/services';
+import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatStore, useProfileStore } from '@/store';
 import '@/styles/ChatThreadPage.css';
-import { useLoaderData, useOutletContext, useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 
-import { WS_EVENTS } from '@/consts';
-import type {
-  IChatDto,
-  IMessageDto,
-  IPendingAttachment,
-  ITypingEvent,
-  IUserDto,
-  TMessagesList,
-} from '@/types';
-import { appendUniqueMessage } from '@/utils';
+import type { IChatDto, IMessageDto, IPendingAttachment, IUserDto, TMessagesList } from '@/types';
+import { useQuery } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
@@ -37,6 +29,9 @@ import {
   type SetStateAction,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMarkAsRead } from './hooks/useMarkAsRead';
+import { useThreadMessages } from './hooks/useThreadMessages';
+import { useThreadRealtime } from './hooks/useThreadRealtime';
 
 export interface IProfileModal {
   isOpen: boolean;
@@ -56,58 +51,65 @@ interface IOutletContext {
   profileMode: 'modal' | 'panel';
 }
 
+const CLOSED_PROFILE: IProfileModal = { isOpen: false, isLoading: false, error: '', user: null };
+
 export function ChatThreadPage() {
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { onProfileStateChange, profileCloseToken, profileMode } =
     useOutletContext<IOutletContext>();
   const { t } = useTranslation();
-  const markAsRead = useChatStore((state) => state.markAsRead);
-  const chat = useChatStore((state) => state.chat);
-  const setChat = useChatStore((state) => state.setChat);
-  const messages = useChatStore((state) => state.messages);
-  const setMessages = useChatStore((state) => state.setMessages);
+
+  const currentUser = useProfileStore((state) => state.user);
+
+  // В сторе осталось только состояние интерфейса: данные чата живут в кеше запросов.
   const error = useChatStore((state) => state.error);
   const setError = useChatStore((state) => state.setError);
   const setEditingMessage = useChatStore((state) => state.setEditingMessage);
   const selectedMessages = useChatStore((state) => state.selectedMessages);
   const setSelectedMessages = useChatStore((state) => state.setSelectedMessages);
-  const pinnedMessages = useChatStore((state) => state.pinnedMessages);
-  const setPinnedMessages = useChatStore((state) => state.setPinnedMessages);
   const selectionMode = useChatStore((state) => state.selectionMode);
   const setSelectionMode = useChatStore((state) => state.setSelectionMode);
   const actionMenu = useChatStore((state) => state.actionMenu);
   const setActionMenu = useChatStore((state) => state.setActionMenu);
   const resetChatState = useChatStore((state) => state.resetChatState);
-  const updateMessage = useChatStore((state) => state.updateMessage);
-  const updatePinnedMessage = useChatStore((state) => state.updatePinnedMessage);
-  const [isLoading, setIsLoading] = useState(true);
+
   const [pendingAttachment, setPendingAttachment] = useState<IPendingAttachment | null>(null);
   const [photoEditorFile, setPhotoEditorFile] = useState<File | null>(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [openedImage, setOpenedImage] = useState<string | null>(null);
-  const [typingUserId, setTypingUserId] = useState<string | null>(null);
-  const [profileModal, setProfileModal] = useState<IProfileModal>({
-    isOpen: false,
-    isLoading: false,
-    error: '',
-    user: null,
-  });
+  const [profileModal, setProfileModal] = useState<IProfileModal>(CLOSED_PROFILE);
   const [isPinnedMessagesOpen, setPinnedMessagesOpen] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [isForwardModalOpen, setIsForwardModalOpen] = useState(false);
-  const currentUser = useProfileStore((state) => state.user);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRef = useRef<HTMLInputElement>(null);
-
   const messagesRef = useRef<HTMLElement>(null);
-  const chatIdRef = useRef(chatId);
 
-  const { eventBus, socket } = useRealtimeSocket(Boolean(chatId));
-  const { loadedChat, loadedMessages, loadedPinnedMessages } = useLoaderData();
+  const { socket } = useRealtimeSocket(Boolean(chatId));
+
+  const { data: chat = null } = useQuery(chatQuery(chatId));
+  const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
+  const {
+    messages,
+    isLoading,
+    error: messagesError,
+  } = useThreadMessages({ chatId, containerRef: messagesRef });
+
+  const markMessagesAsRead = useMarkAsRead(chatId, currentUser?.id);
+
+  // Сообщение передаётся целиком: искать его в messages бесполезно —
+  // там ещё состояние предыдущего рендера, и отметка не уходила бы.
+  const handleIncomingMessage = useCallback(
+    (message: IMessageDto) => markMessagesAsRead([message]),
+    [markMessagesAsRead]
+  );
+
+  const { typingUserId } = useThreadRealtime({
+    chatId,
+    currentUserId: currentUser?.id,
+    onIncomingMessage: handleIncomingMessage,
+  });
 
   const {
     handleCancelSelection,
@@ -116,63 +118,21 @@ export function ChatThreadPage() {
     handleDelete,
     handleForward,
     handleCloseForwardModal,
-  } = useMessageActions({
-    draftRef,
-    setIsForwardModalOpen,
-  });
+  } = useMessageActions({ draftRef, setIsForwardModalOpen });
 
-  const loadMoreMessages = useCallback(async () => {
-    const requestChatId = chatId;
-    if (isLoadingMore || !hasMore) return;
-
-    const container = messagesRef.current;
-    if (!container) return;
-
-    setIsLoadingMore(true);
-
-    const prevHeight = container.scrollHeight;
-
-    const nextOffset = offset + 50;
-
-    const olderMessages = await getMessages({ chatId, offset: nextOffset });
-
-    if (chatIdRef.current !== requestChatId) {
-      return;
-    }
-
-    if (olderMessages.length < 50) {
-      setHasMore(false);
-    }
-
-    setMessages((prev) => [...olderMessages, ...prev]);
-    setOffset(nextOffset);
-
-    requestAnimationFrame(() => {
-      container.scrollTop += container.scrollHeight - prevHeight;
-    });
-
-    setIsLoadingMore(false);
-  }, [chatId, offset, hasMore, isLoadingMore]);
-
+  // Черновик, выделение и открытые меню принадлежат конкретному чату:
+  // при переходе в соседний они не должны переезжать вместе с окном.
   useEffect(() => {
-    chatIdRef.current = chatId;
-  }, [chatId]);
+    resetChatState();
+    setProfileModal(CLOSED_PROFILE);
+  }, [chatId, resetChatState]);
 
+  // Отмечаем прочитанным один раз на загруженную историю, а не на каждое
+  // её изменение: иначе отправка своего сообщения порождала бы новый запрос.
   useEffect(() => {
-    const container = messagesRef.current;
-    if (!container) return;
-
-    const onScroll = () => {
-      const hasOverflow = container.scrollHeight > container.clientHeight;
-      if (hasOverflow && container.scrollTop <= 50) {
-        loadMoreMessages();
-      }
-    };
-
-    container.addEventListener('scroll', onScroll);
-
-    return () => container.removeEventListener('scroll', onScroll);
-  }, [loadMoreMessages]);
+    if (isLoading || messages.length === 0) return;
+    markMessagesAsRead(messages);
+  }, [chatId, isLoading]);
 
   useEffect(() => {
     if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return;
@@ -180,25 +140,27 @@ export function ChatThreadPage() {
   }, [chat, messages, onProfileStateChange, profileMode, profileModal]);
 
   useEffect(() => {
-    setProfileModal({ isOpen: false, isLoading: false, error: '', user: null });
-  }, [chatId]);
-
-  useEffect(() => {
     if (profileCloseToken === 0) return;
-    setProfileModal({ isOpen: false, isLoading: false, error: '', user: null });
+    setProfileModal(CLOSED_PROFILE);
   }, [profileCloseToken]);
 
   useEffect(() => {
-    if (!selectionMode) return;
+    if (isLoading) return;
+
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+    });
+  }, [chatId, isLoading]);
+
+  useEffect(() => {
+    if (!selectionMode) return undefined;
+
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') handleCancelSelection();
     };
 
     window.addEventListener('keydown', closeOnEscape);
-
-    return () => {
-      window.removeEventListener('keydown', closeOnEscape);
-    };
+    return () => window.removeEventListener('keydown', closeOnEscape);
   }, [selectionMode]);
 
   useEffect(() => {
@@ -220,126 +182,14 @@ export function ChatThreadPage() {
 
   useEffect(() => {
     if (!openedImage) return undefined;
+
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenedImage(null);
     };
+
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [openedImage]);
-
-  useEffect(() => {
-    setOffset(0);
-    setHasMore(true);
-    setIsLoadingMore(false);
-  }, [chatId]);
-
-  useEffect(() => {
-    resetChatState();
-    setChat(loadedChat);
-    setMessages(loadedMessages);
-    setPinnedMessages(loadedPinnedMessages);
-    markMessagesAsRead(chatId, loadedMessages);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
-    setIsLoading(false);
-  }, [loadedChat, loadedMessages, loadedPinnedMessages, chatId]);
-
-  useEffect(() => {
-    if (isLoading) return;
-
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({
-        block: 'end',
-        behavior: 'auto',
-      });
-    });
-  }, [chatId, isLoading]);
-
-  useEffect(() => {
-    const unsubscribeNew = eventBus.on(WS_EVENTS.MESSAGE.NEW, async (event) => {
-      if (event.chatId !== chatId || !event.message) return;
-      const nextMessage = await services.messageService.processMessageForDisplay(
-        chatId,
-        event.message
-      );
-
-      if (chatIdRef.current !== chatId) return;
-      services.messageService.addMessageToCache(chatId, nextMessage);
-      setMessages((items) => appendUniqueMessage(items, nextMessage));
-      markMessagesAsRead(chatId, [nextMessage]);
-    });
-
-    const unsubscribeEdited = eventBus.on(WS_EVENTS.MESSAGE.EDITED, (event) => {
-      updateMessage(event.messageId, {
-        content: event.content,
-        isEdited: true,
-        updatedAt: event.updatedAt,
-      });
-      updatePinnedMessage(event.messageId, { content: event.content });
-    });
-
-    const unsubscribeDeleted = eventBus.on(WS_EVENTS.MESSAGE.DELETED, (event) => {
-      if (event.chatId && event.chatId !== chatId) return;
-      setMessages((items) => items.filter((message) => message.id !== event.messageId));
-    });
-
-    const handleTyping = (event: ITypingEvent) => {
-      if (event.chatId !== chatId) return;
-      const userId = event.userId || event.senderId;
-      if (!userId || userId === currentUser?.id) return;
-
-      setTypingUserId(userId);
-
-      const currentChat = chat?.type === 'private' ? { ...chat } : chat;
-      setChat(currentChat);
-      window.clearTimeout(typingTimeoutRef.current || undefined);
-      typingTimeoutRef.current = window.setTimeout(() => {
-        setTypingUserId(null);
-      }, 3000);
-    };
-    const unsubscribeTyping = eventBus.on('typing', handleTyping);
-    // const unsubscribeUserTyping = eventBus.on("user_typing", handleTyping);
-    const unsubscribePinned = eventBus.on('message_pinned', async (event) => {
-      if (event.chatId && event.chatId !== chatId) return;
-
-      const message = await services.messageService.processMessageForDisplay(
-        chatId,
-        event.pin.message
-      );
-      const pinned = { ...event.pin, message };
-      setPinnedMessages((prev) => [...prev, pinned]);
-      services.messageService.addPinnedMessageToCache(chatId, pinned);
-    });
-    const unsubscribeUnpinned = eventBus.on('message_unpinned', (event) => {
-      if (event.chatId && event.chatId !== chatId) return;
-      setPinnedMessages((items) => items.filter((item) => item.messageId !== event.messageId));
-      services.messageService.removePinnedMessageFromCache(event.messageId);
-    });
-
-    return () => {
-      unsubscribeNew();
-      unsubscribeEdited();
-      unsubscribeDeleted();
-      unsubscribeTyping();
-      // unsubscribeUserTyping();
-      unsubscribePinned();
-      unsubscribeUnpinned();
-      window.clearTimeout(typingTimeoutRef.current || undefined);
-    };
-  }, [chatId, currentUser?.id, eventBus]);
-
-  function markMessagesAsRead(targetChatId: string, nextMessages: TMessagesList) {
-    const messageIds = nextMessages
-      .filter((message) => message?.id && message.senderId !== currentUser?.id)
-      .map((message) => message.id);
-    if (messageIds.length === 0) return;
-    services.messageService
-      .markAsRead(targetChatId, messageIds)
-      // Сервис возвращает подтверждённые идентификаторы, состояние обновляем здесь.
-      .then(({ readIds }) => readIds.forEach((id) => markAsRead(id)))
-      .catch((err) => {
-        console.warn('Failed to mark messages as read', err);
-      });
-  }
 
   function closePhotoEditor() {
     setPhotoEditorFile(null);
@@ -350,11 +200,7 @@ export function ChatThreadPage() {
   }
 
   function handlePhotoEditorSave(file: File) {
-    setPendingAttachment({
-      file,
-      type: 'image',
-    });
-
+    setPendingAttachment({ file, type: 'image' });
     setPhotoEditorFile(null);
     setEditingMessage(null);
     setError('');
@@ -366,28 +212,25 @@ export function ChatThreadPage() {
 
   const toggleMessageSelection = useCallback(
     (message: IMessageDto) => {
-      setSelectedMessages((messages) => {
-        const isMessageSelected = messages.find(({ id }) => id === message.id);
+      setSelectedMessages((items) => {
+        const isSelected = items.some(({ id }) => id === message.id);
 
-        if (isMessageSelected) {
-          const next = messages.filter(({ id }) => id !== message.id);
+        if (!isSelected) return [...items, message];
 
-          if (next.length === 0) {
-            setSelectionMode(false);
-          }
+        const next = items.filter(({ id }) => id !== message.id);
+        if (next.length === 0) setSelectionMode(false);
 
-          return next;
-        }
-
-        return [...messages, message];
+        return next;
       });
     },
-    [selectedMessages, setSelectionMode]
+    [setSelectedMessages, setSelectionMode]
   );
 
   const selectedActionMessage = actionMenu
     ? messages.find((message) => message.id === actionMenu.messageId)
     : null;
+
+  const threadError = error || messagesError;
 
   return (
     <>
@@ -404,7 +247,7 @@ export function ChatThreadPage() {
           pinnedMessages={pinnedMessages}
           onClose={() => setPinnedMessagesOpen(false)}
           isLoading={isLoading}
-          error={error}
+          error={threadError}
           openedImage={openedImage}
           setOpenedImage={setOpenedImage}
           onSelection={toggleMessageSelection}
@@ -427,7 +270,7 @@ export function ChatThreadPage() {
             setPinnedMessagesOpen={setPinnedMessagesOpen}
           />
           <MessagesList
-            error={error}
+            error={threadError}
             isLoading={isLoading}
             messages={messages}
             setOpenedImage={setOpenedImage}
@@ -495,14 +338,7 @@ export function ChatThreadPage() {
 
           {profileMode === 'modal' && (
             <UserProfileModal
-              onClose={() =>
-                setProfileModal({
-                  isOpen: false,
-                  isLoading: false,
-                  error: '',
-                  user: null,
-                })
-              }
+              onClose={() => setProfileModal(CLOSED_PROFILE)}
               profileModal={profileModal}
             />
           )}

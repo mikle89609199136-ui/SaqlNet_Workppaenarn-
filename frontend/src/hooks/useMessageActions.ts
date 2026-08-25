@@ -1,10 +1,13 @@
 import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
 import { useToasts } from './useToasts';
+import { chatQuery } from '@/queries/chat/threadQueries';
+import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { useChatStore, useProfileStore } from '@/store';
 import type { IMessageDto } from '@/types';
-import { sortMessagesChronologically } from '@/utils';
+import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
@@ -19,10 +22,10 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const [translatingIds, setTranslatingIds] = useState(new Set());
-  const chatType = useChatStore((state) => state.chat?.type);
-  const chatRole = useChatStore((state) => state.chat?.role);
-  const updateMessage = useChatStore((state) => state.updateMessage);
-  const setMessages = useChatStore((state) => state.setMessages);
+  const queryClient = useQueryClient();
+  const { data: chat } = useQuery(chatQuery(chatId));
+  const chatType = chat?.type;
+  const chatRole = chat?.role;
   const setError = useChatStore((state) => state.setError);
   const editingMessage = useChatStore((state) => state.editingMessage);
   const setEditingMessage = useChatStore((state) => state.setEditingMessage);
@@ -75,31 +78,25 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const handleDelete = async (message: IMessageDto) => {
     try {
       if (selectionMode) {
-        // исравить тут, либо сортировка в хронологии, либо асинхронный цикл
-        const sortedMessages = sortMessagesChronologically(selectedMessages);
+        // Удалять можно только свои сообщения — чужие отсеиваются заранее,
+        // иначе в набор попадали undefined вместо идентификаторов.
+        const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
+
+        // Именно возврат промиса делает ожидание настоящим: без него
+        // Promise.all завершался мгновенно, а отказы становились
+        // необработанными и не доходили до catch.
         await Promise.all(
-          sortedMessages.map((selectedMessage) => {
-            if (selectedMessage.senderId !== currentUser?.id) return;
-
-            services.messageService.deleteMessage(chatId, selectedMessage.id);
-          })
+          own.map((item) => services.messageService.deleteMessage(chatId, item.id))
         );
 
-        const selectedIds = new Set(
-          selectedMessages.map((message) => {
-            if (message.senderId !== currentUser?.id) return;
-            return message.id;
-          })
-        );
-
-        setMessages((messages) => messages.filter((message) => !selectedIds.has(message.id)));
+        own.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
         handleCancelSelection();
       }
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
         await services.messageService.deleteMessage(chatId, message.id);
-        setMessages((items) => items.filter((item) => item.id !== message.id));
+        dropThreadMessage(queryClient, chatId, message.id);
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
           setDraft('');
@@ -120,7 +117,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
     try {
       const result = await services.messageService.reactToMessage(message.id, emoji);
-      updateMessage(message.id, { reactions: result.reactions || [] });
+      patchThreadMessage(queryClient, chatId, message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
       setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
@@ -141,7 +138,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       setError(err.message || t('messageUnpinError', 'Не удалось открепить сообщение'));
       if (
         chatType === CHAT_TYPES.GROUP &&
-        (chatRole !== CHAT_ROLES.ADMIN || chatRole !== CHAT_ROLES.OWNER)
+        chatRole !== CHAT_ROLES.ADMIN &&
+        chatRole !== CHAT_ROLES.OWNER
       ) {
         showToast(
           'error',
@@ -172,7 +170,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       setError(err.message || t('messagePinError', 'Не удалось закрепить сообщение'));
       if (
         chatType === CHAT_TYPES.GROUP &&
-        (chatRole !== CHAT_ROLES.ADMIN || chatRole !== CHAT_ROLES.OWNER)
+        chatRole !== CHAT_ROLES.ADMIN &&
+        chatRole !== CHAT_ROLES.OWNER
       ) {
         showToast(
           'error',
@@ -241,7 +240,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
   function handleCopyMessage(message: IMessageDto) {
     if (selectionMode) {
-      const sortedMessages = sortMessagesChronologically(selectedMessages);
+      const sortedMessages = sortMessagesChronologically<IMessageDto>(selectedMessages);
 
       const allContent = sortedMessages.map((message) => message.content).join('\n');
       navigator.clipboard.writeText(allContent);

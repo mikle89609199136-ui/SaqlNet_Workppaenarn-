@@ -1,5 +1,6 @@
 import { MessageCheckbox } from '@/components/ui';
 import { useMessageLongPress } from '@/hooks';
+import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { cn, formatMessageTime, hasMessageMedia } from '@/utils';
@@ -26,9 +27,11 @@ export const MessageBubble = memo(
     const isSelected = useChatStore((state) =>
       state.selectedMessages.some(({ id }) => id === message.id)
     );
-    const repliedMessage = useChatStore((state) =>
-      message.replyTo ? state.messages.find(({ id }) => id === message.replyTo) : null
-    );
+    // Исходное сообщение ответа ищется в истории чата — она живёт в кеше запросов.
+    const threadMessages = useThreadMessagesData();
+    const repliedMessage = message.replyTo
+      ? threadMessages.find(({ id }) => id === message.replyTo)
+      : null;
 
     const { t } = useTranslation();
     const mine = message.senderId === currentUserId;

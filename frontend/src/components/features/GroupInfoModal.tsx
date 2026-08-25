@@ -1,7 +1,10 @@
 import { Identicon, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
-import { useChatsStore, useChatStore, useProfileStore } from '@/store';
+import { chatQuery } from '@/queries/chat/threadQueries';
+import { chatKeys } from '@/queries/keys';
+import { useChatsStore, useProfileStore } from '@/store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IMemberDto, TChatRole, TMembersList } from '@/types';
 import { cn } from '@/utils';
 import { useEffect, useState } from 'react';
@@ -26,13 +29,12 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   const [isEditMode, setEditMode] = useState(false);
   const [chatName, setChatName] = useState('');
   const deleteChat = useChatsStore((state) => state.deleteChat);
-  const chat = useChatStore((state) => state.chat);
-  const updateChat = useChatStore((state) => state.updateChat);
-  const setChat = useChatStore((state) => state.setChat);
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
+  const queryClient = useQueryClient();
+  const { data: chat } = useQuery(chatQuery(chatId));
 
   useEffect(() => {
     fetchMembers();
@@ -103,9 +105,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   const handleSaveEdited = async () => {
     if (!chat) return;
 
-    // Запрос делает компонент, стор только хранит результат.
     await services.chatService.updateChat(chat.id, { title: chatName });
-    updateChat({ title: chatName });
+    // Название хранится в кеше чата: перезапрашиваем его вместо ручной правки
+    // в двух местах, как было раньше.
+    await queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) });
     handleToggleEditMode();
   };
 
@@ -116,7 +119,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       const result = await deleteChat(chat.id);
 
       if (!result.success) throw new Error('Could not delete chat, try again');
-      setChat(null);
+      queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
       navigate('/chats');
     } catch (err: any) {
       showToast('error', err.message || 'Не удалось удалить чат, попробуйте ещё раз', '❌');

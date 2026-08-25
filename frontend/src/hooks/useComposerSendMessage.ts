@@ -1,7 +1,9 @@
+import { chatKeys } from '@/queries/keys';
+import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services';
 import { useChatStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
-import { appendUniqueMessage } from '@/utils';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useState,
   type Dispatch,
@@ -28,8 +30,8 @@ export function useComposerSendMessage({
   setPendingAttachment,
 }: Params) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
 
-  const setMessages = useChatStore((state) => state.setMessages);
   const draft = useChatStore((state) => state.draft);
   const setDraft = useChatStore((state) => state.setDraft);
   const editingMessage = useChatStore((state) => state.editingMessage);
@@ -37,8 +39,6 @@ export function useComposerSendMessage({
   const replyToMessage = useChatStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
   const setError = useChatStore((state) => state.setError);
-  const updateMessage = useChatStore((state) => state.updateMessage);
-  const updatePinnedMessage = useChatStore((state) => state.updatePinnedMessage);
   const { chatId = '' } = useParams<{ chatId: string }>();
 
   const [isSending, setIsSending] = useState(false);
@@ -61,12 +61,14 @@ export function useComposerSendMessage({
           chatId,
           content
         );
-        updateMessage(editingMessage.id, {
+
+        patchThreadMessage(queryClient, chatId, editingMessage.id, {
           content: result.content,
           updatedAt: result.updatedAt,
           isEdited: true,
         });
-        updatePinnedMessage(editingMessage.id, { content: result.content });
+        // Закреплённая копия того же сообщения живёт отдельным запросом.
+        void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
         setEditingMessage(null);
       } else if (pendingAttachment) {
         const message = await services.messageService.sendMediaMessage(
@@ -76,7 +78,8 @@ export function useComposerSendMessage({
           content,
           replyToMessage?.id
         );
-        setMessages((items) => appendUniqueMessage(items, message));
+
+        putThreadMessage(queryClient, chatId, message);
         scrollToBottom();
         setPendingAttachment(null);
         setReplyToMessage(null);
@@ -88,7 +91,8 @@ export function useComposerSendMessage({
           'text',
           replyToMessage?.id
         );
-        setMessages((items) => appendUniqueMessage(items, message));
+
+        putThreadMessage(queryClient, chatId, message);
         scrollToBottom();
         setReplyToMessage(null);
       }

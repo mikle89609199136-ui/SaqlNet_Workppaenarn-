@@ -1,8 +1,9 @@
 import { useCall } from '@/hooks';
 import type { IProfileModal } from '@/pages';
 import { services } from '@/services';
-import { useChatStore } from '@/store';
+import { chatQuery } from '@/queries/chat/threadQueries';
 import { cn, getChatSubtitle } from '@/utils';
+import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
@@ -26,8 +27,9 @@ export const ChatThreadHeader = ({
   onClosePinnedMessagePage,
 }: Props) => {
   const { t } = useTranslation();
-  const chat = useChatStore((state) => state.chat);
   const { chatId = '' } = useParams<{ chatId: string }>();
+  // Заголовок читает чат из кеша запросов — того же, что наполняет страница.
+  const { data: chat } = useQuery(chatQuery(chatId));
   const { initiateCall } = useCall();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);

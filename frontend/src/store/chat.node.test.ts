@@ -1,84 +1,60 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { makeMessage, makePin } from '@/test/fixtures';
+import { makeMessage } from '@/test/fixtures';
 import { useChatStore } from './chat';
 
-describe('отметка о прочтении в сторе', () => {
+// Данные чата переехали в кеш запросов, здесь осталось только состояние
+// интерфейса. Проверки отметки о прочтении и обновления закреплённых теперь
+// живут рядом с новой реализацией — в threadCache и useMarkAsRead.
+describe('состояние интерфейса чата', () => {
   beforeEach(() => {
     useChatStore.setState(useChatStore.getInitialState(), true);
   });
 
-  it('should mark the very first message of the thread', () => {
-    // findIndex возвращает 0 для первого элемента, и проверка на ложность
-    // отсекала именно его: самое старое сообщение не помечалось никогда.
-    const [first, second] = [makeMessage(), makeMessage()];
-    useChatStore.setState({ messages: [first, second] });
+  it('should keep the draft and the message being edited', () => {
+    const message = makeMessage();
 
-    useChatStore.getState().markAsRead(first.id);
+    useChatStore.getState().setDraft('черновик');
+    useChatStore.getState().setEditingMessage(message);
 
-    expect(useChatStore.getState().messages[0].isRead).toBe(true);
+    expect(useChatStore.getState().draft).toBe('черновик');
+    expect(useChatStore.getState().editingMessage?.id).toBe(message.id);
   });
 
-  it('should mark a message in the middle of the thread', () => {
-    const [first, second, third] = [makeMessage(), makeMessage(), makeMessage()];
-    useChatStore.setState({ messages: [first, second, third] });
+  it('should collect selected messages', () => {
+    const first = makeMessage();
+    const second = makeMessage();
 
-    useChatStore.getState().markAsRead(second.id);
+    useChatStore.getState().setSelectionMode(true);
+    useChatStore.getState().setSelectedMessages([first]);
+    useChatStore.getState().setSelectedMessages((items) => [...items, second]);
 
-    const messages = useChatStore.getState().messages;
-    expect(messages[1].isRead).toBe(true);
-    expect(messages[0].isRead).toBeFalsy();
-    expect(messages[2].isRead).toBeFalsy();
+    expect(useChatStore.getState().selectedMessages).toHaveLength(2);
   });
 
-  it('should leave the thread untouched for an unknown message', () => {
-    // findIndex вернёт -1, и запись по такому индексу портила массив.
-    const messages = [makeMessage(), makeMessage()];
-    useChatStore.setState({ messages });
+  it('should drop everything when the chat is left', () => {
+    // Черновик и выделение принадлежат конкретному чату: при переходе
+    // в соседний они не должны переезжать вместе с окном.
+    useChatStore.getState().setDraft('черновик');
+    useChatStore.getState().setSelectionMode(true);
+    useChatStore.getState().setActionMenu({ messageId: 'm-1', x: 0, y: 0 });
+    useChatStore.getState().setError('ошибка');
 
-    useChatStore.getState().markAsRead('сообщения-с-таким-id-нет');
+    useChatStore.getState().resetChatState();
 
-    const next = useChatStore.getState().messages;
-    expect(next).toHaveLength(2);
-    expect(next.some((message) => message.isRead)).toBe(false);
-    // Длина при записи по индексу -1 не меняется, поэтому проверяем сам факт
-    // появления такого свойства у массива.
-    expect(Object.hasOwn(next, -1)).toBe(false);
+    const state = useChatStore.getState();
+    expect(state.draft).toBe('');
+    expect(state.selectionMode).toBe(false);
+    expect(state.actionMenu).toBeNull();
+    expect(state.error).toBe('');
   });
 
-  it('should replace the array so subscribers re-render', () => {
-    // Раньше массив менялся на месте и уходил в set по той же ссылке —
-    // Zustand сравнивает по ссылке, поэтому подписчики ничего не замечали.
-    const messages = [makeMessage()];
-    useChatStore.setState({ messages });
+  it('should no longer hold server data', () => {
+    // Возврат сообщений сюда означал бы возвращение двух источников правды
+    // и ручной синхронизации между ними.
+    const state = useChatStore.getState() as unknown as Record<string, unknown>;
 
-    useChatStore.getState().markAsRead(messages[0].id);
-
-    expect(useChatStore.getState().messages).not.toBe(messages);
-  });
-});
-
-describe('обновление закреплённого сообщения в сторе', () => {
-  beforeEach(() => {
-    useChatStore.setState(useChatStore.getInitialState(), true);
-  });
-
-  it('should update the pinned copy by the message id', () => {
-    // Вызывающие передают идентификатор сообщения, а сравнивался
-    // идентификатор самого закрепления — совпадений не было никогда.
-    const pin = makePin();
-    useChatStore.setState({ pinnedMessages: [pin] });
-
-    useChatStore.getState().updatePinnedMessage(pin.messageId, { content: 'новый текст' });
-
-    expect(useChatStore.getState().pinnedMessages[0].message.content).toBe('новый текст');
-  });
-
-  it('should ignore the pin id', () => {
-    const pin = makePin();
-    useChatStore.setState({ pinnedMessages: [pin] });
-
-    useChatStore.getState().updatePinnedMessage(pin.id, { content: 'не должно примениться' });
-
-    expect(useChatStore.getState().pinnedMessages[0].message.content).toBe(pin.message.content);
+    expect(state.messages).toBeUndefined();
+    expect(state.chat).toBeUndefined();
+    expect(state.pinnedMessages).toBeUndefined();
   });
 });

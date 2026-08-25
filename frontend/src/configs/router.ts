@@ -1,3 +1,5 @@
+import { chatQuery, messagesQuery } from '@/queries/chat/threadQueries';
+import { queryClient } from '@/queries/queryClient';
 import { useProfileStore } from '@/store';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard.js';
@@ -47,19 +49,25 @@ function redirectHome() {
   return redirect(token ? REACT_ROUTES.CHATS : REACT_ROUTES.LOGIN);
 }
 
+/**
+ * Предзагрузка чата.
+ *
+ * Загрузчик больше не источник данных: он лишь наполняет кеш до первой
+ * отрисовки, а страница читает через запросы. Так тред остаётся живым —
+ * события и мутации обновляют ровно то, что нарисовано, тогда как прежний
+ * useLoaderData отдавал снимок, замороженный до следующей навигации.
+ *
+ * Закреплённые сюда не входят: панель закреплённых не нужна, чтобы показать
+ * чат, а ожидание её ответа задерживало весь экран (#225).
+ */
 const chatLoader = async ({ params }: { params: Params }) => {
   const { chatId = '' } = params;
   try {
-    const [chat, messages, pinnedMessages] = await Promise.all([
-      services.chatService.getChat(chatId),
-      services.messageService.getMessages(chatId),
-      services.messageService.listPins(chatId),
+    await Promise.all([
+      queryClient.ensureQueryData(chatQuery(chatId)),
+      queryClient.ensureInfiniteQueryData(messagesQuery(chatId)),
     ]);
-    return {
-      loadedChat: chat,
-      loadedMessages: messages,
-      loadedPinnedMessages: pinnedMessages,
-    };
+    return null;
   } catch (error: any) {
     throw new Response(error.message || 'Не удалось загрузить чат', {
       status: 500,
