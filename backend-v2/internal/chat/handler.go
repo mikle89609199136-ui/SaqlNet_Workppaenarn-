@@ -196,6 +196,10 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
 			return
 		}
+		if errors.Is(err, ErrInvalidChatType) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "fetch failed")
 			return
