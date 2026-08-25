@@ -1,5 +1,7 @@
-import { WS_EVENTS } from "@/consts";
-import { services, startRingtone, stopRingtone, WebSocketClient } from "@/services";
+import { WS_EVENTS } from '@/consts';
+import { services } from '@/services/serviceContainer';
+import { startRingtone, stopRingtone } from '@/services/ringtone';
+import { WebSocketClient } from '@/services/WebSocketClient';
 import type {
   IActiveCall,
   ICallInviteResponsePayload,
@@ -7,8 +9,8 @@ import type {
   IMemberDto,
   TCallKind,
   TCallRoomType,
-} from "@/types";
-import { create } from "zustand";
+} from '@/types';
+import { create } from 'zustand';
 
 interface CallStore {
   incomingCall: IIncomingCall | null;
@@ -31,7 +33,7 @@ interface CallStore {
     type: TCallRoomType,
     title: string,
     kind: TCallKind,
-    peerId?: string | null,
+    peerId?: string | null
   ) => Promise<void>;
   endCall: () => void;
   minimizeCall: () => void;
@@ -40,7 +42,7 @@ interface CallStore {
 
 function postHangup(frame: HTMLIFrameElement | null): void {
   try {
-    frame?.contentWindow?.postMessage({ type: "crane_hangup" }, "*");
+    frame?.contentWindow?.postMessage({ type: 'crane_hangup' }, '*');
   } catch {}
 }
 
@@ -51,7 +53,7 @@ function readLocalUser(): {
   avatarUrl?: string;
 } {
   try {
-    return JSON.parse(localStorage.getItem("craneapp_user_data") || "{}");
+    return JSON.parse(localStorage.getItem('craneapp_user_data') || '{}');
   } catch {
     return {};
   }
@@ -76,7 +78,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
           to: payload.from,
           roomId: payload.roomId,
           accepted: false,
-          reason: "busy",
+          reason: 'busy',
         });
       }
       return;
@@ -95,11 +97,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   handleInviteResponse: (payload) => {
     const { activeCall, callFrameRef } = get();
-    if (
-      !activeCall ||
-      payload.roomId !== activeCall.roomId ||
-      payload.accepted
-    ) {
+    if (!activeCall || payload.roomId !== activeCall.roomId || payload.accepted) {
       return;
     }
     postHangup(callFrameRef);
@@ -123,9 +121,9 @@ export const useCallStore = create<CallStore>((set, get) => ({
     set({
       activeCall: {
         roomId: incomingCall.roomId,
-        type: incomingCall.callType || "private",
+        type: incomingCall.callType || 'private',
         kind: incomingCall.kind,
-        title: incomingCall.title || incomingCall.fromName || "",
+        title: incomingCall.title || incomingCall.fromName || '',
       },
       incomingCall: null,
     });
@@ -142,7 +140,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
         to: incomingCall.from,
         roomId: incomingCall.roomId,
         accepted: false,
-        reason: "rejected",
+        reason: 'rejected',
       });
     }
 
@@ -154,7 +152,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
     if (activeCall || incomingCall) return;
 
     try {
-      const callType: TCallRoomType = type === "group" ? "group" : "private";
+      const callType: TCallRoomType = type === 'group' ? 'group' : 'private';
       const room = await services.callService.createRoom({
         type: callType,
         chatId,
@@ -162,13 +160,13 @@ export const useCallStore = create<CallStore>((set, get) => ({
         callKind: kind,
       });
       const roomId: string | undefined = room?.id;
-      if (!roomId) throw new Error("Room creation failed");
+      if (!roomId) throw new Error('Room creation failed');
 
       if (socket?.isConnected) {
         let targets: string[] = [];
         const user = readLocalUser();
 
-        if (callType !== "group") {
+        if (callType !== 'group') {
           if (peerId) targets = [peerId];
         } else {
           const members = await services.chatService.getMembers(chatId);
@@ -179,14 +177,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
         targets.forEach((to) =>
           socket.send({
-            type: "call_invite",
+            type: 'call_invite',
             to,
             roomId,
             kind,
             fromName: user.firstName || user.username,
             fromAvatar: user.avatarUrl || null,
             title,
-          }),
+          })
         );
       }
 
@@ -195,8 +193,8 @@ export const useCallStore = create<CallStore>((set, get) => ({
         isMinimized: false,
       });
     } catch (err) {
-      console.error("Call initiation failed:", err);
-      alert("Не удалось начать звонок");
+      console.error('Call initiation failed:', err);
+      alert('Не удалось начать звонок');
     }
   },
 

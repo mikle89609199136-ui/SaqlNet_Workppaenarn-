@@ -1,4 +1,4 @@
-import { services } from '@/services';
+import { services } from '@/services/serviceContainer';
 import type { ILastMessageDto } from '@/types';
 import { formatCallPreview } from './call';
 

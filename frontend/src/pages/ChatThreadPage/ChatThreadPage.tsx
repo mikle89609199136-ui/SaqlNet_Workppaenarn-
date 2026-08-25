@@ -8,9 +8,10 @@ import {
   PhotoEditorModal,
   PinnedMessagesNavigator,
   PinnedMessagesView,
+  MessagesList,
   UserProfileModal,
 } from '@/components/features';
-import { MessagesList } from '@/components/ui/';
+
 import { useMessageActions, useRealtimeSocket } from '@/hooks';
 import { getMessages, services } from '@/services';
 import { useChatStore, useProfileStore } from '@/store';
@@ -60,6 +61,7 @@ export function ChatThreadPage() {
   const { onProfileStateChange, profileCloseToken, profileMode } =
     useOutletContext<IOutletContext>();
   const { t } = useTranslation();
+  const markAsRead = useChatStore((state) => state.markAsRead);
   const chat = useChatStore((state) => state.chat);
   const setChat = useChatStore((state) => state.setChat);
   const messages = useChatStore((state) => state.messages);
@@ -330,9 +332,13 @@ export function ChatThreadPage() {
       .filter((message) => message?.id && message.senderId !== currentUser?.id)
       .map((message) => message.id);
     if (messageIds.length === 0) return;
-    services.messageService.markAsRead(targetChatId, messageIds).catch((err) => {
-      console.warn('Failed to mark messages as read', err);
-    });
+    services.messageService
+      .markAsRead(targetChatId, messageIds)
+      // Сервис возвращает подтверждённые идентификаторы, состояние обновляем здесь.
+      .then(({ readIds }) => readIds.forEach((id) => markAsRead(id)))
+      .catch((err) => {
+        console.warn('Failed to mark messages as read', err);
+      });
   }
 
   function closePhotoEditor() {

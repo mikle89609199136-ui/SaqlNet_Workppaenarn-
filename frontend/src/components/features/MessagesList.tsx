@@ -2,9 +2,9 @@ import { useChatStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageBubble } from '../features';
-import { ThreadSkeleton } from './Skeletons/ThreadSkeleton';
-import { ThreadState } from './ThreadState';
+import { MessageBubble } from './MessageBubble/MessageBubble';
+import { ThreadSkeleton } from '../ui/Skeletons/ThreadSkeleton';
+import { ThreadState } from '../ui/ThreadState';
 
 interface Props {
   messages: TMessagesList;

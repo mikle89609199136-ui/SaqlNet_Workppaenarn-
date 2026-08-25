@@ -18,3 +18,4 @@ export { UserProfileModal } from './Modals/UserProfileModal';
 export { PinnedMessagesNavigator } from './PinnedMessages/PinnedMessagesNavigator';
 export { PinnedMessagesView } from './PinnedMessages/PinnedMessagesView';
 export { UserProfilePanel } from './UserProfilePanel';
+export { MessagesList } from './MessagesList';

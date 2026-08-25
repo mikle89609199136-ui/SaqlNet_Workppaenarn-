@@ -100,7 +100,11 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     setEditMode(true);
   };
 
-  const handleSaveEdited = () => {
+  const handleSaveEdited = async () => {
+    if (!chat) return;
+
+    // Запрос делает компонент, стор только хранит результат.
+    await services.chatService.updateChat(chat.id, { title: chatName });
     updateChat({ title: chatName });
     handleToggleEditMode();
   };

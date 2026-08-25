@@ -1,4 +1,3 @@
-import { services } from '@/services';
 import type { IChatDto, IMessageDto, IPinnedDto, IPinnedMessageDto, TMessagesList } from '@/types';
 import { create } from 'zustand';
 
@@ -39,7 +38,7 @@ interface IChatActions {
   setTranslations: Updater<TTranslations>;
   setActionMenu: (menu: IActionMenu | null) => void;
   resetChatState: () => void;
-  updateChat: (data: Partial<IChatDto>) => Promise<void>;
+  updateChat: (data: Partial<IChatDto>) => void;
   markAsRead: (messageId: string) => void;
   updateMessage: (messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) => void;
   updatePinnedMessage: (messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) => void;
@@ -89,10 +88,11 @@ export const useChatStore = create<InitialState>((set, get) => {
     setTranslations: withUpdater('translations'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     resetChatState: () => set(initialChatState),
-    updateChat: async (data) => {
+    // Только состояние: запрос к серверу выполняет вызывающая сторона.
+    // Стор не ходит в сеть — иначе он зависит от сервисов, а сервисы от него.
+    updateChat: (data) => {
       const chat = get().chat;
       if (!chat) return;
-      await services.chatService.updateChat(chat.id, data);
       set({ chat: { ...chat, ...data } });
     },
     markAsRead: (messageId: string) => {

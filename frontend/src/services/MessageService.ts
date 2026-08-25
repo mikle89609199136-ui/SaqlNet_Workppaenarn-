@@ -1,7 +1,8 @@
-import { API_ENDPOINTS, ApiClient } from '@/api';
+import { API_ENDPOINTS } from '@/api/endpoints';
+import { ApiClient } from '@/api/ApiClient';
 import { STORAGE_KEYS, WS_EVENTS } from '@/consts';
-import { eventBus, getRawChat } from '@/core';
-import { useChatStore } from '@/store';
+import { eventBus } from '@/core/EventBus';
+import { getRawChat } from '@/core/chatCache';
 import type {
   IChatContext,
   IDeleteMessageResponse,
@@ -22,7 +23,7 @@ import type {
   TMessageType,
   TPinnedList,
 } from '@/types';
-import { sortMessagesChronologically } from '@/utils';
+import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import type { CryptoService } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
@@ -366,20 +367,22 @@ export class MessageService {
     return response.data;
   }
 
+  /**
+   * Отмечает сообщения прочитанными и возвращает те из них, что есть в кеше чата.
+   * Обновление состояния — забота вызывающей стороны: сервис не знает о сторе.
+   */
   async markAsRead(chatId: string, messageIds: string[]) {
     const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_READ, {
       chatId,
       messageIds,
     });
 
-    this.messages.get(chatId)?.forEach((message) => {
-      if (messageIds.includes(message.id)) {
-        useChatStore.getState().markAsRead(message.id);
-      }
-    });
+    const readIds = (this.messages.get(chatId) ?? [])
+      .filter((message) => messageIds.includes(message.id))
+      .map((message) => message.id);
 
     eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
-    return response.data;
+    return { ...response.data, readIds };
   }
 
   async forwardMessage(messageId: string, targetChatId: string) {

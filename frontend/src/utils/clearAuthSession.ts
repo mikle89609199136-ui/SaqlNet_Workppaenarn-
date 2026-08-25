@@ -1,5 +1,5 @@
-import { disconnectRealtimeSocket } from "@/hooks";
-import { useProfileStore } from "@/store";
+import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { useProfileStore } from '@/store/profile';
 
 export function clearAuthSession() {
   const { token, clearProfile } = useProfileStore.getState();
