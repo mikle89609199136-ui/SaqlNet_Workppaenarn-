@@ -11,6 +11,12 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
+const (
+	actorID = "550e8400-e29b-41d4-a716-446655440001"
+	chatID  = "550e8400-e29b-41d4-a716-446655440002"
+	userID  = "550e8400-e29b-41d4-a716-446655440003"
+)
+
 // TestAddMember_Success проверяет успешное добавление пользователя в группу
 // владельцем чата при соблюдении всех условий: валидные UUID, правильный тип чата,
 // существование активного пользователя, отсутствие дублей и банов.
@@ -23,10 +29,6 @@ func TestAddMember_Success(t *testing.T) {
 
 	// Инициализируем сервис. WSServer пока nil.
 	svc := chat.NewService(db, nil)
-
-	actorID := "550e8400-e29b-41d4-a716-446655440000"
-	chatID := "550e8400-e29b-41d4-a716-446655440000"
-	userID := "550e8400-e29b-41d4-a716-446655440000"
 
 	// 1. Проверка роли актора (owner или admin)
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
@@ -43,17 +45,13 @@ func TestAddMember_Success(t *testing.T) {
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	// 4. Проверка, что пользователь ещё не в группе
-	mock.ExpectQuery(`SELECT 1 FROM chats\.members`).
+	// Транзакция: блокировка пары (chat, user) — та же формула, что в BanMember
+	mock.ExpectBegin()
+	mock.ExpectQuery(`pg_advisory_xact_lock`).
 		WithArgs(chatID, userID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+		WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 
-	// 5. Проверка, что пользователь не забанен в этом чате
-	mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).
-		WithArgs(chatID, userID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-
-	// 6. Вставка нового участника
+	// Условная вставка: не выполнится при активном бане или существующем membership
 	mock.ExpectExec(`INSERT INTO chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -62,8 +60,9 @@ func TestAddMember_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "joined_at",
-		}).AddRow(userID, "new_user", "Ivan", "Ivanov", "", "member", "{}", "", time.Now().Format(time.RFC3339)))
+			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at",
+		}).AddRow(userID, "new_user", "Ivan", "Ivanov", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
+	mock.ExpectCommit()
 
 	member, err := svc.AddMember(context.Background(), actorID, chatID, userID)
 	if err != nil {
@@ -76,6 +75,10 @@ func TestAddMember_Success(t *testing.T) {
 
 	if member.ID != userID {
 		t.Errorf("expected member id %s, got %s", userID, member.ID)
+	}
+
+	if member.MutedAt == "" {
+		t.Errorf("expected member.MutedAt to be populated")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -124,10 +127,6 @@ func TestAddMember_ChatNotFound(t *testing.T) {
 
 	svc := chat.NewService(db, nil)
 
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
-
 	// Эмулируем, что проверка роли прошла (актор — владелец),
 	// но при запросе данных самого чата он не найден.
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
@@ -155,10 +154,6 @@ func TestAddMember_PrivateChat(t *testing.T) {
 
 	svc := chat.NewService(db, nil)
 
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
-
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
 		WithArgs(actorID, chatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
@@ -185,10 +180,6 @@ func TestAddMember_UserNotFound(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	svc := chat.NewService(db, nil)
-
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
 
 	// Подкейс A: Пользователя вообще нет в таблице auth.users
 	t.Run("UserDoesNotExist", func(t *testing.T) {
@@ -243,10 +234,6 @@ func TestAddMember_Forbidden(t *testing.T) {
 
 	svc := chat.NewService(db, nil)
 
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
-
 	// Актор имеет роль 'member'
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
 		WithArgs(actorID, chatID).
@@ -269,10 +256,6 @@ func TestAddMember_Conflict(t *testing.T) {
 
 	svc := chat.NewService(db, nil)
 
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
-
 	// Подкейс A: Пользователь уже в группе
 	t.Run("AlreadyMember", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT role FROM chats\.members`).
@@ -282,10 +265,21 @@ func TestAddMember_Conflict(t *testing.T) {
 		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users`).
 			WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-		// Находим запись в chats.members
+		mock.ExpectBegin()
+		mock.ExpectQuery(`pg_advisory_xact_lock`).
+			WithArgs(chatID, userID).
+			WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+		// Вставка не сработала — различаем причину
+		mock.ExpectExec(`INSERT INTO chats\.members`).
+			WithArgs(chatID, userID).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).
+			WithArgs(chatID, userID).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectQuery(`SELECT 1 FROM chats\.members`).
 			WithArgs(chatID, userID).
-			WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(true))
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectRollback()
 
 		_, err = svc.AddMember(context.Background(), actorID, chatID, userID)
 		if !errors.Is(err, chat.ErrAlreadyMember) {
@@ -301,13 +295,18 @@ func TestAddMember_Conflict(t *testing.T) {
 			WithArgs(chatID).WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users`).
 			WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery(`SELECT 1 FROM chats\.members`).
-			WithArgs(chatID, userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-
-		// Находим запись в chats.bans
+		mock.ExpectBegin()
+		mock.ExpectQuery(`pg_advisory_xact_lock`).
+			WithArgs(chatID, userID).
+			WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+		mock.ExpectExec(`INSERT INTO chats\.members`).
+			WithArgs(chatID, userID).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		// Активный бан — причина найдена сразу, membership не проверяем
 		mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).
 			WithArgs(chatID, userID).
-			WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(true))
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectRollback()
 
 		_, err = svc.AddMember(context.Background(), actorID, chatID, userID)
 		if !errors.Is(err, chat.ErrUserBanned) {
@@ -330,24 +329,27 @@ func TestAddMember_Broadcast(t *testing.T) {
 	// или замокать интерфейс, если он будет выделен в процессе GREEN.
 	svc := chat.NewService(db, nil)
 
-	actorID := "550e8400-e29b-41d4-a716-446655440001"
-	chatID := "550e8400-e29b-41d4-a716-446655440002"
-	userID := "550e8400-e29b-41d4-a716-446655440003"
-
 	// Настраиваем все успешные проверки (копия Happy Path)
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).WithArgs(actorID, chatID).WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
 	mock.ExpectQuery(`SELECT type FROM chats\.chats`).WithArgs(chatID).WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users`).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-	mock.ExpectQuery(`SELECT 1 FROM chats\.members`).WithArgs(chatID, userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).WithArgs(chatID, userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	// Транзакция: блокировка пары (chat, user) — та же формула, что в BanMember
+	mock.ExpectBegin()
+	mock.ExpectQuery(`pg_advisory_xact_lock`).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 
-	mock.ExpectExec(`INSERT INTO chats\.members`).WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(1, 1))
+	// Условная вставка: не выполнится при активном бане или существующем membership
+	mock.ExpectExec(`INSERT INTO chats\.members`).
+		WithArgs(chatID, userID).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "joined_at",
-		}).AddRow(userID, "user", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339)))
+			"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at",
+		}).AddRow(userID, "user", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
+	mock.ExpectCommit()
 
 	// Вызываем метод.
 	// На RED-фазе мы просто проверяем, что код не падает, если ws == nil,
@@ -357,6 +359,53 @@ func TestAddMember_Broadcast(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAddMember_InsertConflictUnknownReason проверяет, что если условный
+// INSERT затронул 0 строк, но ни активного бана, ни membership не найдено
+// (теоретически недостижимая гонка), возвращается внутренняя ошибка,
+// а не ErrAlreadyMember/ErrUserBanned.
+func TestAddMember_InsertConflictUnknownReason(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	svc := chat.NewService(db, nil)
+
+	mock.ExpectQuery(`SELECT role FROM chats\.members`).
+		WithArgs(actorID, chatID).WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+	mock.ExpectQuery(`SELECT type FROM chats\.chats`).
+		WithArgs(chatID).WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM auth\.users`).
+		WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`pg_advisory_xact_lock`).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
+	mock.ExpectExec(`INSERT INTO chats\.members`).
+		WithArgs(chatID, userID).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT 1 FROM chats\.bans`).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery(`SELECT 1 FROM chats\.members`).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectRollback()
+
+	_, err = svc.AddMember(context.Background(), actorID, chatID, userID)
+	if err == nil {
+		t.Fatal("expected internal error, got nil")
+	}
+	if errors.Is(err, chat.ErrAlreadyMember) || errors.Is(err, chat.ErrUserBanned) {
+		t.Fatalf("expected generic internal error, got %v", err)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}

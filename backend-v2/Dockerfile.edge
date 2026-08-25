@@ -1,0 +1,22 @@
+FROM node:20-alpine AS frontend
+# WORKDIR двухуровневый: vite собирает в ../dist, то есть в /app/dist.
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/vite.config.ts frontend/index.html frontend/mobile.html ./
+COPY frontend/src ./src
+COPY frontend/public ./public
+RUN npm run build
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY backend-v2/go.mod backend-v2/go.sum ./
+RUN go mod download
+COPY backend-v2/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/service ./cmd/edge
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/service /service
+COPY --from=frontend /app/dist /dist
+USER nonroot:nonroot
+ENTRYPOINT ["/service"]

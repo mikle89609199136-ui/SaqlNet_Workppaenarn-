@@ -1,0 +1,1 @@
+// Legacy code removed during React migration

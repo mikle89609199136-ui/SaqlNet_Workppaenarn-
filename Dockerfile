@@ -1,9 +1,10 @@
 FROM node:20-alpine AS frontend
-WORKDIR /src
-COPY package.json package-lock.json ./
+# WORKDIR двухуровневый: vite собирает в ../dist, то есть в /src/dist.
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY . .
-RUN npm run build:react
+COPY frontend/ ./
+RUN npm run build
 
 FROM golang:1.26-alpine AS backend
 WORKDIR /src
