@@ -1,6 +1,6 @@
 export { useProfileStore } from './profile';
 export { useCallStore } from './call';
-export { useChatStore, type IActionMenu } from './chat';
+export { useChatUiStore, type IActionMenu } from './chatUi';
 export { useLanguageStore } from './language';
 export { useThemeStore, type TThemeType } from './theme';
 export { useToastStore } from './toast';

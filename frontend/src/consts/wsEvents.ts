@@ -5,15 +5,6 @@ export const WS_EVENTS = {
     DELETED: 'message_deleted',
     PINNED: 'message_pinned',
     UNPINNED: 'message_unpinned',
-    // local events used global prefix like message and ":" symbol, example message:edited
-    LOCAL: {
-      EDITED: 'message:edited',
-      READ: 'message:read',
-      SENT: 'message:sent',
-      DELETED: 'message:deleted',
-      PIN: 'message:pin',
-      UNPIN: 'message:unpin',
-    },
   },
   SOCKET: {
     CONNECTED: 'socket:connected',

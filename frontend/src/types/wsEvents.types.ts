@@ -185,14 +185,10 @@ export interface IWsEventMap {
   [WS_EVENTS.CHAT.UPDATED]: IChatUpdatedEvent;
 
   [WS_EVENTS.MESSAGE.DELETED]: IMessageDeletedEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.DELETED]: IMessageDeletedEvent;
   [WS_EVENTS.MESSAGE.EDITED]: IMessageEditedEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.EDITED]: IMessageEditedEvent;
   [WS_EVENTS.MESSAGE.NEW]: IMessageNewEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.SENT]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
   [WS_EVENTS.MESSAGE.UNPINNED]: IMessageUnpinEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.READ]: IMessagesReadEvent;
 
   [WS_EVENTS.OTHER.PING]: IPingEvent;
   [WS_EVENTS.OTHER.PONG]: IPongEvent;

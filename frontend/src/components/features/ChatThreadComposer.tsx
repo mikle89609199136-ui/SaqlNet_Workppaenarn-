@@ -5,7 +5,7 @@ import {
   useTypingIndicator,
 } from '@/hooks';
 import { WebSocketClient } from '@/services';
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/utils';
 import {
@@ -46,8 +46,8 @@ export const ChatThreadComposer = ({
 }: Props) => {
   const { t } = useTranslation();
 
-  const draft = useChatStore((state) => state.draft);
-  const setDraft = useChatStore((state) => state.setDraft);
+  const draft = useChatUiStore((state) => state.draft);
+  const setDraft = useChatUiStore((state) => state.setDraft);
 
   const formRef = useRef<HTMLFormElement | null>(null);
 

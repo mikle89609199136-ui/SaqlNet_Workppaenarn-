@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eventBus } from '@/core/EventBus';
-import { useChatStore } from '@/store/chat';
+import { useChatUiStore } from '@/store/chatUi';
 import { useProfileStore } from '@/store/profile';
 
 // Тесты самой инфраструктуры: если сброс состояния между тестами перестанет
@@ -34,16 +34,16 @@ describe('окружение jsdom', () => {
 
 describe('сброс глобального состояния', () => {
   it('should accept state written by a test', () => {
-    useChatStore.getState().setDraft('черновик из первого теста');
+    useChatUiStore.getState().setDraft('черновик из первого теста');
     useProfileStore.getState().setToken('токен из первого теста');
     eventBus.on('new_message', () => {});
     localStorage.setItem('craneapp_probe', 'значение');
 
-    expect(useChatStore.getState().draft).toBe('черновик из первого теста');
+    expect(useChatUiStore.getState().draft).toBe('черновик из первого теста');
   });
 
   it('should not leak that state into the next test', () => {
-    expect(useChatStore.getState().draft).toBe('');
+    expect(useChatUiStore.getState().draft).toBe('');
     expect(useProfileStore.getState().token).toBe('');
     expect(localStorage.getItem('craneapp_probe')).toBeNull();
 

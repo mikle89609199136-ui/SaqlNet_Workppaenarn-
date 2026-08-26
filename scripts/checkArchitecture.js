@@ -38,6 +38,8 @@ const sourceExtensions = new Set([
   '.js',
   '.jsx',
   '.md',
+  '.ts',
+  '.tsx',
   '.txt',
   '.yml',
   '.yaml',
@@ -54,8 +56,7 @@ const sourceRoots = [
 ];
 const largeSourceAllowlist = new Set([
   // Cohesive UI/runtime entrypoints; covered by build and dedicated tests.
-  'frontend/src/components/components/media-editor/PhotoEditorModal.tsx',
-  'frontend/src/pages/ChatPage/ChatThreadPage.tsx',
+  'frontend/src/components/features/media-editor/PhotoEditorModal.tsx',
   'frontend/src/styles/tailwind.css',
   'client/mobile/screens/chats/chats.html',
   'client/mobile/screens/chats/chats_v5.js',
