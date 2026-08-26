@@ -3,11 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../consts/routes.js';
 import { useToasts } from '../../hooks/useToasts.js';
+import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer.js';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ISearchUserDto, TSearchUsersList } from '@/types/user.types.js';
 
 export function CreateGroupPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { showToast } = useToasts();
 
   const [title, setTitle] = useState('');
@@ -59,6 +62,8 @@ export function CreateGroupPage() {
         members,
       });
       if (data.chatId) {
+        // Без этого созданная группа появлялась в списке только после перезагрузки.
+        await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
         showToast('success', 'Группа успешно создана!', '🎉');
         navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       }

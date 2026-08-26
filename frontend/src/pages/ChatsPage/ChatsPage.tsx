@@ -4,20 +4,22 @@ import {
   UserProfilePanel,
 } from '@/components/features';
 import { ChatListItem, ChatsSkeleton } from '@/components/ui';
-import { useChatLastMessagePreview, useIsMobile } from '@/hooks';
-import { services } from '@/services';
-import { useChatsStore } from '@/store';
-import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
-import { useEffect, useState } from 'react';
+import { useIsMobile } from '@/hooks';
+import { chatsQuery } from '@/queries/chats/chatsQuery';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
 
 export function ChatsPage() {
-  const chats = useChatsStore((state) => state.chats);
-  const setChats = useChatsStore((state) => state.setChats);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: chats = [],
+    isPending: isLoading,
+    error: loadError,
+    refetch: refetchChats,
+  } = useQuery(chatsQuery());
+  const error = loadError ? (loadError as Error).message : '';
   const { chatId } = useParams();
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(360);
@@ -32,37 +34,6 @@ export function ChatsPage() {
   });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
   const { t } = useTranslation();
-
-  const fetchChatsList = () => {
-    services.chatService
-      .getChats()
-      .then((items) =>
-        Promise.all(
-          items.map(async (chat) => ({
-            ...chat,
-            lastMessage: chat.lastMessage
-              ? await decryptChatLastMessagePreview(chat.id, chat.lastMessage)
-              : chat.lastMessage,
-          }))
-        )
-      )
-      .then((items) => {
-        setChats(items);
-        setError('');
-      })
-      .catch((err) => {
-        setError(err.message || t('chatsLoadError', 'Не удалось загрузить чаты'));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    fetchChatsList();
-  }, []);
-
-  useChatLastMessagePreview();
 
   function startResize(kind: string, event: PointerEvent) {
     event.preventDefault();
@@ -110,7 +81,7 @@ export function ChatsPage() {
       <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
         {isLoading ? <ChatsSkeleton /> : null}
         {!isLoading && error && (
-          <ErrorChatListPlaceholder message={error} onRetry={fetchChatsList} />
+          <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}
         {!isLoading && !error && chats.length === 0 && <EmptyChatListPlaceholder />}
         {!isLoading && !error && chats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}

@@ -13,7 +13,6 @@ import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
 import { useCallStore } from '@/store/call';
 import { useChatStore } from '@/store/chat';
-import { useChatsStore } from '@/store/chats';
 import { useProfileStore } from '@/store/profile';
 import { useToastStore } from '@/store/toast';
 
@@ -110,7 +109,6 @@ afterEach(() => {
   clearChatCache();
 
   useCallStore.setState(useCallStore.getInitialState(), true);
-  useChatsStore.setState(useChatsStore.getInitialState(), true);
   useChatStore.setState(useChatStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   useToastStore.setState(useToastStore.getInitialState(), true);

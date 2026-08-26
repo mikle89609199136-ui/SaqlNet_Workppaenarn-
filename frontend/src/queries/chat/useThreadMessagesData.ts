@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { TMessagesList } from '@/types';
-import { flattenThread } from './threadCache';
+import { EMPTY_THREAD } from './threadCache';
 import { messagesQuery } from './threadQueries';
 
 /**
@@ -16,5 +16,5 @@ export function useThreadMessagesData(): TMessagesList {
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { data } = useInfiniteQuery(messagesQuery(chatId));
 
-  return flattenThread(data);
+  return data ?? EMPTY_THREAD;
 }

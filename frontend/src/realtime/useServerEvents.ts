@@ -8,7 +8,6 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/queries/chat/threadCacheActions';
-import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 import { useTypingStore } from '@/store/typing';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
@@ -42,17 +41,13 @@ export function useServerEvents(enabled: boolean): void {
       // но перебор ключей объекта эту связь теряет.
       eventBus.on(eventType as keyof IWsEventMap, (payload: any) => {
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём
-        // в кеш, а перезапрашиваем только список чатов.
+        // в кеш, вместо того чтобы запрашивать историю заново.
         if (eventType === WS_EVENTS.MESSAGE.NEW && payload?.chatId && payload?.message) {
           void services.messageService
             .processMessageForDisplay(payload.chatId, payload.message)
-            .then((message) => {
-              putThreadMessage(queryClient, payload.chatId, message);
-              // Только список чатов: ключ чата — префикс для его истории,
-              // и инвалидация по нему тут же перезапросила бы ленту,
-              // затерев только что вставленное сообщение.
-              void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-            })
+            // Превью в списке чатов обновит сама запись в ленту: правило
+            // «изменилась лента — устарело превью» живёт в одном месте.
+            .then((message) => putThreadMessage(queryClient, payload.chatId, message))
             .catch((error) => {
               // Шина ловит только синхронные исключения, поэтому отказ
               // асинхронного обработчика иначе потерялся бы бесследно.
