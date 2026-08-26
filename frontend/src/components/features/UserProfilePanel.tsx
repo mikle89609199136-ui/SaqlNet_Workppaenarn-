@@ -1,6 +1,8 @@
 import { useCall, useProfileEdit } from '@/hooks';
 import type { IProfileState } from '@/pages';
+import { userProfileQuery } from '@/queries/users/userProfileQuery';
 import { useProfileStore } from '@/store';
+import { useQuery } from '@tanstack/react-query';
 import type { TCallKind, TIconTypes } from '@/types';
 import { getChatSubtitle } from '@/utils';
 import { memo, useMemo } from 'react';
@@ -32,7 +34,16 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
 
-  const baseUser = profileState.user;
+  // Профиль читается по идентификатору, а не передаётся сверху: раньше его
+  // запрашивал обработчик клика по шапке, и каждое открытие панели означало
+  // новый запрос (#232).
+  const {
+    data: baseUser = null,
+    isPending,
+    error: loadError,
+  } = useQuery(userProfileQuery(profileState.userId ?? ''));
+  const isLoading = Boolean(profileState.userId) && isPending;
+  const error = loadError ? (loadError as Error).message : '';
 
   const displayName = useMemo(() => {
     return (
@@ -42,8 +53,6 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
       t('user', 'Пользователь')
     );
   }, [baseUser, profileState.chat, t]);
-
-  if (!currentUser) return;
 
   const edit = useProfileEdit(baseUser, displayName);
   const profileUser = edit.editableUser || baseUser;
@@ -58,6 +67,10 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
       (m) => m.mediaUrl && ['image', 'gif', 'sticker', 'video'].includes(m.type)
     );
   }, [profileState.messages]);
+
+  // Выход ниже всех хуков: раньше он стоял между ними, и React получал
+  // разное число вызовов на разных рендерах.
+  if (!currentUser) return null;
 
   const username = profileUser?.username ? `@${profileUser.username}` : '';
   const status = profileUser?.isBot ? t('bot', 'бот') : getChatSubtitle(profileState.chat, null, t);
@@ -120,10 +133,10 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
         )}
       </header>
 
-      {profileState.isLoading ? (
+      {isLoading ? (
         <div className="user-profile-state">{t('loading', 'Загрузка...')}</div>
-      ) : profileState.error ? (
-        <div className="user-profile-state is-error">{profileState.error}</div>
+      ) : error ? (
+        <div className="user-profile-state is-error">{error}</div>
       ) : (
         <div className="user-profile-scroll">
           <div className="user-profile-hero">
