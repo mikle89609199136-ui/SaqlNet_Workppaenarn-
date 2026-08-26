@@ -1,13 +1,33 @@
 import { eventBus } from '@/core';
 
+/**
+ * Потолок паузы между попытками. Дальше растить нечего: полминуты — предел
+ * того, сколько человек согласен ждать возвращения связи, не перезагружая
+ * страницу.
+ */
+const MAX_RECONNECT_DELAY_MS = 30_000;
+
+/** Разброс паузы, доля. Нужен, чтобы вкладки не возвращались одной волной. */
+const JITTER = 0.2;
+
 export class WebSocketClient {
   constructor(url, options = {}) {
     this.url = url;
     this.getToken = options.getToken ?? (() => null);
     this.reconnectDelay = options.reconnectDelay ?? 1000;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+    this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY_MS;
     this.socket = null;
     this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
+    this.shouldReconnect = true;
+    this.watchingForWakeUps = false;
+
+    // Обработчики хранятся, иначе их нечем будет снять при выходе из
+    // аккаунта — и они пережили бы сам клиент.
+    this.handleOnline = () => this.reconnectNow();
+    this.handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') this.reconnectNow();
+    };
   }
 
   connect() {
@@ -15,6 +35,11 @@ export class WebSocketClient {
     if (!token) {
       return null;
     }
+
+    this.shouldReconnect = true;
+    this.watchForWakeUps();
+    this.cancelScheduledReconnect();
+
     if (
       this.socket?.readyState === WebSocket.OPEN ||
       this.socket?.readyState === WebSocket.CONNECTING
@@ -56,9 +81,15 @@ export class WebSocketClient {
   }
 
   disconnect() {
-    this.reconnectAttempts = this.maxReconnectAttempts;
-    this.socket?.close();
+    this.shouldReconnect = false;
+    this.cancelScheduledReconnect();
+    this.stopWatchingForWakeUps();
+
+    // Ссылка обнуляется до закрытия: иначе событие close объявит о разрыве
+    // связи, которую разорвали нарочно, и назначит переподключение.
+    const socket = this.socket;
     this.socket = null;
+    socket?.close();
   }
 
   send(payload) {
@@ -127,14 +158,90 @@ export class WebSocketClient {
     this.socket = null;
     eventBus.emit('socket:disconnected');
 
-    if (!this.getToken()) {
-      return;
-    }
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      return;
-    }
+    this.scheduleReconnect();
+  }
+
+  /**
+   * Назначить следующую попытку.
+   *
+   * Попытки не кончаются. Прежний клиент делал пять штук раз в секунду и
+   * после этого молчал до перезагрузки страницы: пятисекундной ямы в метро
+   * хватало, чтобы остаться без сообщений до конца сессии — без единого
+   * признака в интерфейсе.
+   *
+   * Пауза удваивается, поэтому недоступный сервер не получает шквал
+   * запросов, а вернувшийся отвечает быстро: первая попытка идёт через
+   * секунду.
+   */
+  scheduleReconnect() {
+    if (!this.shouldReconnect) return;
+    if (!this.getToken()) return;
+    // Попытка уже назначена. Второй таймер означал бы два соединения.
+    if (this.reconnectTimer !== null) return;
 
     this.reconnectAttempts += 1;
-    window.setTimeout(() => this.connect(), this.reconnectDelay);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, this.nextReconnectDelay());
+  }
+
+  nextReconnectDelay() {
+    const шаг = Math.min(
+      this.reconnectDelay * 2 ** (this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+
+    // Разброс: после перезапуска сервера все вкладки всех пользователей
+    // отсчитывают одну и ту же паузу от одного и того же мгновения.
+    return Math.round(шаг * (1 - JITTER + Math.random() * JITTER * 2));
+  }
+
+  cancelScheduledReconnect() {
+    if (this.reconnectTimer === null) return;
+
+    window.clearTimeout?.(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  /**
+   * Связь появилась — пробовать сейчас, а не досиживать паузу.
+   *
+   * К этому моменту пауза могла вырасти до получаса ожидания на двоих:
+   * человек видит, что сеть вернулась, а приложение — ещё нет.
+   */
+  reconnectNow() {
+    if (!this.shouldReconnect || this.isConnected || !this.getToken()) return;
+
+    // Соединение могло зависнуть в попытке подключиться ещё тогда, когда
+    // сети не было: мёртвым браузер признает его нескоро. Начинаем начисто.
+    const прежний = this.socket;
+    this.socket = null;
+    прежний?.close();
+
+    this.cancelScheduledReconnect();
+    this.reconnectAttempts = 0;
+    this.connect();
+  }
+
+  /** Возвращение сети и возвращение к вкладке — поводы попробовать снова. */
+  watchForWakeUps() {
+    if (this.watchingForWakeUps) return;
+    this.watchingForWakeUps = true;
+
+    window.addEventListener?.('online', this.handleOnline);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+  }
+
+  stopWatchingForWakeUps() {
+    if (!this.watchingForWakeUps) return;
+    this.watchingForWakeUps = false;
+
+    window.removeEventListener?.('online', this.handleOnline);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
   }
 }

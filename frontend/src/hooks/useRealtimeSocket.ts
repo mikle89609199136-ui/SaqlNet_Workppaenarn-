@@ -20,8 +20,8 @@ function sharedRealtimeSocket(): WebSocketClient {
   if (!sharedSocket) {
     sharedSocket = new WebSocketClient(config.socketUrl, {
       getToken: () => window.localStorage.getItem(STORAGE_KEYS.TOKEN),
-      maxReconnectAttempts: config.maxReconnectAttempts,
       reconnectDelay: config.reconnectDelay,
+      maxReconnectDelay: config.maxReconnectDelay,
     });
   }
 
