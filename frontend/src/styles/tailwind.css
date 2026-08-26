@@ -237,6 +237,8 @@
   .chat-title { @apply text-base font-bold; }
   .chat-time { @apply shrink-0 text-xs; color: rgba(255,255,255,0.4); }
   .chat-subline { @apply text-sm; color: rgba(255,255,255,0.54); }
+  /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
+  .chat-draft-label { color: rgba(255,120,120,0.9); }
   .chat-unread { @apply min-w-[24px] h-[22px] py-0 px-[7px] rounded-[11px] inline-flex items-center justify-center bg-accent text-white text-xs; }
 
   .chats-state { @apply py-[52px] px-6 text-center; }

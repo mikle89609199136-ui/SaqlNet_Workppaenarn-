@@ -1,5 +1,6 @@
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatUiStore, useProfileStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
 import { useEffect, type RefObject } from 'react';
 
@@ -7,10 +8,8 @@ export function useComposerShortcuts(
   draftRef: RefObject<HTMLInputElement | null>,
   formRef: RefObject<HTMLFormElement | null>
 ) {
-  const draft = useChatUiStore((state) => state.draft);
   const editingMessage = useChatUiStore((state) => state.editingMessage);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
-  const setDraft = useChatUiStore((state) => state.setDraft);
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
   const user = useProfileStore((state) => state.user);
@@ -19,14 +18,14 @@ export function useComposerShortcuts(
   function startEdit(message: IMessageDto) {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setDraft(message.content || '');
+    setComposerText(draftRef.current, message.content || '');
     draftRef.current?.focus();
   }
 
   function cancelComposerMode() {
     setEditingMessage(null);
     setReplyToMessage(null);
-    setDraft('');
+    setComposerText(draftRef.current, '');
   }
 
   useEffect(() => {
@@ -49,7 +48,11 @@ export function useComposerShortcuts(
         return;
       }
 
-      if (event.key !== 'ArrowUp' || draft.trim() || editingMessage || replyToMessage) return;
+      // Пустое поле читается из самого элемента: текста в состоянии React
+      // больше нет, и это к лучшему — раньше слушатель клавиш
+      // переустанавливался на каждый набранный символ.
+      const пусто = !draftRef.current?.value.trim();
+      if (event.key !== 'ArrowUp' || !пусто || editingMessage || replyToMessage) return;
       const lastOwnMessage = [...messages].reverse().find((m) => m.senderId === user?.id);
       if (!lastOwnMessage) return;
 
@@ -59,7 +62,7 @@ export function useComposerShortcuts(
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [draft, editingMessage, replyToMessage, messages, user?.id]);
+  }, [editingMessage, replyToMessage, messages, user?.id]);
 
   return { cancelComposerMode };
 }

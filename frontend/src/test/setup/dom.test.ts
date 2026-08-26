@@ -34,16 +34,16 @@ describe('окружение jsdom', () => {
 
 describe('сброс глобального состояния', () => {
   it('should accept state written by a test', () => {
-    useChatUiStore.getState().setDraft('черновик из первого теста');
+    useChatUiStore.getState().setError('ошибка из первого теста');
     useProfileStore.getState().setToken('токен из первого теста');
     eventBus.on('new_message', () => {});
     localStorage.setItem('craneapp_probe', 'значение');
 
-    expect(useChatUiStore.getState().draft).toBe('черновик из первого теста');
+    expect(useChatUiStore.getState().error).toBe('ошибка из первого теста');
   });
 
   it('should not leak that state into the next test', () => {
-    expect(useChatUiStore.getState().draft).toBe('');
+    expect(useChatUiStore.getState().error).toBe('');
     expect(useProfileStore.getState().token).toBe('');
     expect(localStorage.getItem('craneapp_probe')).toBeNull();
 

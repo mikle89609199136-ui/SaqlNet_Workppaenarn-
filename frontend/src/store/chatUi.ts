@@ -14,7 +14,11 @@ type TTranslations = Record<string, string>;
  *
  * Данные с сервера — сам чат, история и закреплённые — живут в кеше запросов
  * и сюда не попадают. Здесь только то, что рождается в интерфейсе и умирает
- * вместе с ним: черновик, выделение, открытые меню, показанные переводы.
+ * вместе с ним: выделение, открытые меню, показанные переводы.
+ *
+ * Недописанное сообщение живёт отдельно, в store/chatDrafts: у него свой
+ * срок жизни (переживает уход в соседний чат) и своё требование — не
+ * перерисовывать интерфейс на каждый набранный символ.
  *
  * Раньше те же сообщения лежали ещё и здесь, и во внутреннем кеше сервиса.
  * Синхронизировать три копии приходилось вручную в каждом обработчике,
@@ -23,7 +27,6 @@ type TTranslations = Record<string, string>;
 interface IChatState {
   error: string;
   editingMessage: IMessageDto | null;
-  draft: string;
   replyToMessage: IMessageDto | null;
   selectedMessages: TMessagesList;
   selectionMode: boolean;
@@ -36,7 +39,6 @@ type Updater<T> = (updater: T | ((prev: T) => T)) => void;
 interface IChatActions {
   setError: (error: string) => void;
   setEditingMessage: (message: IMessageDto | null) => void;
-  setDraft: (draft: string) => void;
   setReplyToMessage: (message: IMessageDto | null) => void;
   setSelectedMessages: Updater<TMessagesList>;
   setSelectionMode: (mode: boolean) => void;
@@ -48,7 +50,6 @@ interface IChatActions {
 const initialChatState: IChatState = {
   error: '',
   editingMessage: null,
-  draft: '',
   replyToMessage: null,
   selectedMessages: [],
   selectionMode: false,
@@ -76,7 +77,6 @@ export const useChatUiStore = create<InitialState>((set) => {
     ...initialChatState,
     setError: (error) => set({ error }),
     setEditingMessage: (editingMessage) => set({ editingMessage }),
-    setDraft: (draft) => set({ draft }),
     setReplyToMessage: (replyToMessage) => set({ replyToMessage }),
     setSelectedMessages: withUpdater('selectedMessages'),
     setSelectionMode: (selectionMode) => set({ selectionMode }),

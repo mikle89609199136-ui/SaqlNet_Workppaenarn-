@@ -4,6 +4,7 @@ import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { chatKeys } from '@/queries/keys';
+import { clearDraft } from '@/store/chatDrafts';
 import { useProfileStore } from '@/store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TChatRole } from '@/types';
@@ -102,6 +103,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     try {
       await services.chatService.deleteChat(chat.id);
 
+      clearDraft(chat.id);
       queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
       await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       navigate('/chats');
