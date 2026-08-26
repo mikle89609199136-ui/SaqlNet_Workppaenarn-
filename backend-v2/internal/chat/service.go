@@ -2037,6 +2037,19 @@ const (
 	StatusReplaced ReactionStatus = "replaced"
 )
 
+// ReactionResponse – reaction without myReaction flag for WebSocket payload
+type ReactionResponse struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+}
+
+// ChangeResponse – information about the reaction change
+type ChangeResponse struct {
+	Action        string  `json:"action"`        // "added", "removed", "replaced"
+	Emoji         *string `json:"emoji"`         // current emoji (nil if removed)
+	PreviousEmoji *string `json:"previousEmoji"` // previous emoji (nil if none)
+}
+
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
@@ -2075,7 +2088,7 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	return result, rows.Err()
 }
 
-// isMemberWithQuerier executes the query using any Querier
+// isMemberWithQuerier executes the aggregation query using any Querier
 // (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
 	var exists bool
@@ -2173,6 +2186,15 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
 	}
 
+	// Store the previous emoji (if any) as a pointer
+	var previousEmoji *string
+	if hasCurrent {
+		prev := currentEmoji
+		previousEmoji = &prev
+	} else {
+		previousEmoji = nil
+	}
+
 	// create status variable
 	var status ReactionStatus
 
@@ -2237,17 +2259,46 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 	committed = true
 
-	// 9. Broadcast realtime update
+	// 9. Build the change response
+	change := ChangeResponse{
+		Action: string(status),
+	}
+
+	switch status {
+	case StatusAdded:
+		change.Emoji = &emoji
+		change.PreviousEmoji = nil
+	case StatusRemoved:
+		change.Emoji = nil
+		change.PreviousEmoji = previousEmoji
+	case StatusReplaced:
+		change.Emoji = &emoji                // new emoji
+		change.PreviousEmoji = previousEmoji // old emoji
+	}
+
+	// 10. Convert reactions to response format without myReaction flag
+	reactionResponses := make([]ReactionResponse, len(reactions))
+	for i, r := range reactions {
+		reactionResponses[i] = ReactionResponse{
+			Emoji: r.Emoji,
+			Count: r.Count,
+		}
+	}
+
+	// 11. Send WebSocket notification
 	if s.ws != nil {
 		payload, err := json.Marshal(map[string]any{
 			"type":      "reaction_updated",
 			"chatId":    chatID,
 			"messageId": messageID,
-			"reactions": reactions,
+			"actorId":   userID,
+			"change":    change,
+			"reactions": reactionResponses,
 		})
 		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:failed to marshal payload: %v", err)
+			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
 		} else {
+			log.Printf("WS Payload:%s", string(payload))
 			s.ws.BroadcastToChat(chatID, payload, "")
 		}
 	}
