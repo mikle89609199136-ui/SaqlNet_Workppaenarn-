@@ -18,7 +18,6 @@ import (
 
 var (
 	ErrNotFound                  = errors.New("chat not found")
-	ErrMessageNotFound           = errors.New("message was not found")
 	ErrForbidden                 = errors.New("access denied")
 	ErrInvalidInput              = errors.New("invalid input")
 	ErrUserNotFound              = errors.New("user not found")
