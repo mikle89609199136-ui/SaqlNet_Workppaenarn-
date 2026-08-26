@@ -1607,7 +1607,7 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	return result, rows.Err()
 }
 
-// isMemberWithQuerier executes the aggregation query using any Querier
+// isMemberWithQuerier executes the query using any Querier
 // (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
 	var exists bool
@@ -1785,6 +1785,20 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	return status, currentEmoji, reactions, nil
+}
+
+// getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
+func getAdvisoryKey(messageID, userID string) int64 {
+	// Combine both IDs into a single string and hash to 64-bit
+	// Using FNV-1a 64-bit hash for good distribution and low collision rate
+	h := fnv.New64a()
+	h.Write([]byte(messageID))
+	h.Write([]byte(":"))
+	h.Write([]byte(userID))
+
+	// FNV-1a returns uint64, convert to int64
+	// PostgreSQL advisory locks work with signed 64-bit integers
+	return int64(h.Sum64())
 }
 
 // getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
