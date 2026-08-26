@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { chatKeys } from '@/queries/keys';
-import { patchMessage, type IThreadPages } from '@/queries/chat/threadCache';
+import { markThreadRead } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
 import type { TMessagesList } from '@/types';
 
@@ -26,16 +25,7 @@ export function useMarkAsRead(chatId: string, currentUserId?: string) {
 
       services.messageService
         .markAsRead(chatId, messageIds)
-        .then(({ readIds }) => {
-          queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) => {
-            if (!current) return current;
-            return readIds.reduce<IThreadPages>(
-              (data: IThreadPages, id: string) =>
-                patchMessage(data, id, { isRead: true, status: 'read' }),
-              current
-            );
-          });
-        })
+        .then(({ readIds }) => markThreadRead(queryClient, chatId, readIds))
         .catch((error) => {
           // Непрочитанная отметка не стоит того, чтобы ронять открытый чат.
           console.warn('Failed to mark messages as read', error);
