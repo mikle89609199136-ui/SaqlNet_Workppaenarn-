@@ -64,6 +64,34 @@ export function patchThreadMessage(
   markChatListStale(queryClient);
 }
 
+/**
+ * Отметка сообщений прочитанными.
+ *
+ * Кроме самой ленты обновляется список чатов: счётчик непрочитанных живёт
+ * там, и без этого бейдж висел до перезагрузки страницы. Раньше связь
+ * поддерживал отдельный хук со своими подписками, вместе с которым она и
+ * потерялась.
+ *
+ * Идентификаторы приходят подтверждённые сервером — отмечается ровно то,
+ * что он принял.
+ */
+export function markThreadRead(
+  queryClient: QueryClient,
+  chatId: string,
+  messageIds: string[]
+): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current
+      ? messageIds.reduce(
+          (thread, messageId) => patchMessage(thread, messageId, { isRead: true, status: 'read' }),
+          current
+        )
+      : current
+  );
+
+  markChatListStale(queryClient);
+}
+
 export function dropThreadMessage(
   queryClient: QueryClient,
   chatId: string,
