@@ -1,5 +1,5 @@
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { useEffect, type RefObject } from 'react';
 
@@ -7,12 +7,12 @@ export function useComposerShortcuts(
   draftRef: RefObject<HTMLInputElement | null>,
   formRef: RefObject<HTMLFormElement | null>
 ) {
-  const draft = useChatStore((state) => state.draft);
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
+  const draft = useChatUiStore((state) => state.draft);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
+  const setDraft = useChatUiStore((state) => state.setDraft);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
   const user = useProfileStore((state) => state.user);
   const messages = useThreadMessagesData();
 

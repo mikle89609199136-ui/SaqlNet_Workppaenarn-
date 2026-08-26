@@ -58,7 +58,7 @@ const initialChatState: IChatState = {
 
 type InitialState = IChatState & IChatActions;
 
-export const useChatStore = create<InitialState>((set) => {
+export const useChatUiStore = create<InitialState>((set) => {
   const withUpdater =
     <K extends keyof IChatState>(key: K) =>
     (updater: IChatState[K] | ((prev: IChatState[K]) => IChatState[K])) =>

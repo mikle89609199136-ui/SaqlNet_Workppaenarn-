@@ -1,4 +1,4 @@
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import type { ChangeEvent, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,7 +10,7 @@ interface Props {
 
 export const AttachmentControl = ({ inputRef, onChange, isSending }: Props) => {
   const { t } = useTranslation();
-  const editingMessage = useChatStore((state) => state.editingMessage);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
 
   return (
     <>
