@@ -18,7 +18,6 @@ import (
 
 var (
 	ErrNotFound                  = errors.New("chat not found")
-	ErrMessageNotFound           = errors.New("message was not found")
 	ErrForbidden                 = errors.New("access denied")
 	ErrInvalidInput              = errors.New("invalid input")
 	ErrUserNotFound              = errors.New("user not found")
@@ -1552,6 +1551,24 @@ type Reaction struct {
 	MyReaction bool   `json:"myReaction"`
 }
 
+// ReactionStatus represents the outcome of a reaction toggle operation.
+// It is returned only when the operation succeeds (error == nil).
+type ReactionStatus string
+
+const (
+	// StatusAdded indicates that a new reaction was successfully inserted
+	// for the user and message.
+	StatusAdded ReactionStatus = "added"
+
+	// StatusRemoved indicates that an existing reaction was successfully
+	// deleted (the user toggled off the same emoji).
+	StatusRemoved ReactionStatus = "removed"
+
+	// StatusReplaced indicates that the user changed their reaction from
+	// one emoji to another (update of the existing record).
+	StatusReplaced ReactionStatus = "replaced"
+)
+
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
@@ -1606,26 +1623,27 @@ func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, ch
 
 // ToggleReaction adds or removes a reaction (toggle semantics).
 // Returns:
-//   - bool: true if the user has a reaction after the operation, false if it was removed.
+//   - ReactionStatus: "added", "removed", "replaced"
+//   - string: current emoji for response
 //   - []Reaction: aggregated reactions with the myReaction flag.
 //   - error: if we have error.
-func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (bool, []Reaction, error) {
+func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
 	// check - if emoji not empty
 	if emoji == "" {
 		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
-		return false, nil, ErrInvalidInput
+		return "", "", nil, ErrInvalidInput
 	}
 	// check the length of emoji and symbols
 	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
 		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
-		return false, nil, ErrInvalidInput
+		return "", "", nil, ErrInvalidInput
 	}
 
 	// 1. Start transaction with READ COMMITTED isolation level
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to begin transaction: %v", err)
-		return false, nil, fmt.Errorf("begin tx: %w", err)
+		return "", "", nil, fmt.Errorf("begin tx: %w", err)
 	}
 
 	committed := false
@@ -1643,21 +1661,21 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	).Scan(&chatID)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		log.Printf("[chat-service-ToggleReaction]:message not found: %v", err)
-		return false, nil, ErrMessageNotFound
+		log.Printf("[chat-service-ToggleReaction]:chat was not found: %v", err)
+		return "", "", nil, ErrNotFound
 	} else if err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to get chatID: %v", err)
-		return false, nil, fmt.Errorf("get chatID: %w", err)
+		return "", "", nil, fmt.Errorf("get chatID: %w", err)
 	}
 
 	// 3. Check membership inside transaction
 	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
-			return false, nil, fmt.Errorf("check membership: %w", err)
+			return "", "", nil, fmt.Errorf("check membership: %w", err)
 		}
 		log.Printf("[chat-service-ToggleReaction]:user not a member: %v", userID)
-		return false, nil, ErrForbidden
+		return "", "", nil, ErrForbidden
 	}
 
 	// 4. Acquire advisory lock for the (message_id, user_id) pair
@@ -1668,7 +1686,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	)
 	if err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
-		return false, nil, fmt.Errorf("acquire lock: %w", err)
+		return "", "", nil, fmt.Errorf("acquire lock: %w", err)
 	}
 
 	// 5. Now safely query the current reaction (with lock held)
@@ -1684,8 +1702,11 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		hasCurrent = false
 	} else if err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to get current reaction: %v", err)
-		return false, nil, fmt.Errorf("get current reaction: %w", err)
+		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
 	}
+
+	// create status variable
+	var status ReactionStatus
 
 	// 6. Perform the appropriate action based on the current state
 	switch {
@@ -1698,9 +1719,11 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		)
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", err)
-			return false, nil, fmt.Errorf("insert reaction: %w", err)
+			return "", "", nil, fmt.Errorf("insert reaction: %w", err)
 		}
+
 		currentEmoji = emoji
+		status = StatusAdded
 
 	case currentEmoji == emoji:
 		// Same emoji – remove the reaction (toggle off)
@@ -1711,9 +1734,11 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		)
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", err)
-			return false, nil, fmt.Errorf("delete reaction: %w", err)
+			return "", "", nil, fmt.Errorf("delete reaction: %w", err)
 		}
+
 		currentEmoji = ""
+		status = StatusRemoved
 
 	default:
 		// Different emoji – update the existing one
@@ -1724,21 +1749,23 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		)
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]:update reaction failed: %v", err)
-			return false, nil, fmt.Errorf("update reaction: %w", err)
+			return "", "", nil, fmt.Errorf("update reaction: %w", err)
 		}
+
 		currentEmoji = emoji
+		status = StatusReplaced
 	}
 
 	// 7. Fetch the aggregated counts per emoji for the message
 	reactions, err := s.listReactionsInternal(ctx, tx, messageID, userID)
 	if err != nil {
-		return false, nil, fmt.Errorf("get aggregates: %w", err)
+		return "", "", nil, fmt.Errorf("get aggregates: %w", err)
 	}
 
 	// 8. Commit transaction (automatically releases advisory lock)
 	if err = tx.Commit(); err != nil {
 		log.Printf("[chat-service-ToggleReaction]:failed to commit transaction: %v", err)
-		return false, nil, fmt.Errorf("commit transaction: %w", err)
+		return "", "", nil, fmt.Errorf("commit transaction: %w", err)
 	}
 	committed = true
 
@@ -1757,7 +1784,21 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		}
 	}
 
-	return currentEmoji != "", reactions, nil
+	return status, currentEmoji, reactions, nil
+}
+
+// getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
+func getAdvisoryKey(messageID, userID string) int64 {
+	// Combine both IDs into a single string and hash to 64-bit
+	// Using FNV-1a 64-bit hash for good distribution and low collision rate
+	h := fnv.New64a()
+	h.Write([]byte(messageID))
+	h.Write([]byte(":"))
+	h.Write([]byte(userID))
+
+	// FNV-1a returns uint64, convert to int64
+	// PostgreSQL advisory locks work with signed 64-bit integers
+	return int64(h.Sum64())
 }
 
 // getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
