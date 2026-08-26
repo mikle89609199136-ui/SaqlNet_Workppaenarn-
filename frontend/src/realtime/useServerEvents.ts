@@ -10,6 +10,7 @@ import {
 } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
 import { useTypingStore } from '@/store/typing';
+import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
 
@@ -97,10 +98,15 @@ export function useServerEvents(enabled: boolean): void {
       if (event.chatId && userId) setTyping(event.chatId, userId);
     });
 
+    // Состояние связи отслеживается здесь, а не там, где показывается:
+    // обрыв случается и на экране без индикатора.
+    const stopConnectionWatch = startConnectionWatch();
+
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
       unsubscribeReconnect();
+      stopConnectionWatch();
     };
   }, [enabled, eventBus, queryClient, setTyping]);
 }

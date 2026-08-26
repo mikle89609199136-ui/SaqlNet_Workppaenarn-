@@ -1,12 +1,27 @@
-import { useCall } from '@/hooks';
+import { useCall, useConnectionStatus } from '@/hooks';
+import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/pages';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { cn, getChatSubtitle } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { Icon, Identicon } from '../ui';
+
+/**
+ * Что сказать вместо «был(а) недавно», пока связи нет.
+ *
+ * Состояние связи важнее всего остального: если сообщения не ходят, знать
+ * о собеседнике, что он «онлайн», человеку незачем — эти сведения тех же
+ * секунд, что и молчащий чат.
+ */
+function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | null {
+  if (status === 'connected') return null;
+
+  return status === 'offline' ? t('noNetwork', 'Нет сети') : t('connecting', 'Соединяемся…');
+}
 
 interface Props {
   typingUserId?: string | null;
@@ -27,6 +42,7 @@ export const ChatThreadHeader = ({
 }: Props) => {
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
+  const connection = useConnectionStatus();
   // Заголовок читает чат из кеша запросов — того же, что наполняет страница.
   const { data: chat } = useQuery(chatQuery(chatId));
   const { initiateCall } = useCall();
@@ -36,7 +52,8 @@ export const ChatThreadHeader = ({
 
   if (!chat) return;
 
-  const subtitle = getChatSubtitle(chat, typingUserId, t);
+  const noticeSubtitle = connectionSubtitle(connection, t);
+  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
 
   const handleCallClick = () => {
@@ -146,7 +163,7 @@ export const ChatThreadHeader = ({
 
             <div className="thread-title-wrap">
               <h1>{chat.title}</h1>
-              <p>{subtitle}</p>
+              <p className={cn(noticeSubtitle && 'thread-subtitle-notice')}>{subtitle}</p>
             </div>
           </div>
 

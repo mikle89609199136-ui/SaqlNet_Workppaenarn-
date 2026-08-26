@@ -1,6 +1,7 @@
 export { useAttachmentPicker } from './useAttachmentPicker';
 export { useCall } from './useCall';
 export { useClickOutside } from './useClickOutside';
+export { useConnectionStatus } from './useConnectionStatus';
 export { useComposerSendMessage } from './useComposerSendMessage';
 export { useComposerShortcuts } from './useComposerShortcuts';
 export { useDebounce } from './useDebounce';
