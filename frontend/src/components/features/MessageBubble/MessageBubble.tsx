@@ -1,7 +1,7 @@
 import { MessageCheckbox } from '@/components/ui';
 import { useMessageLongPress } from '@/hooks';
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { cn, formatMessageTime, hasMessageMedia } from '@/utils';
 import { memo, type Dispatch, type SetStateAction } from 'react';
@@ -20,11 +20,11 @@ interface Props {
 
 export const MessageBubble = memo(
   ({ currentUserId, message, translations, onOpenImage, onSelection }: Props) => {
-    const setActionMenu = useChatStore((state) => state.setActionMenu);
-    const actionMenu = useChatStore((state) => state.actionMenu);
-    const isActionTarget = useChatStore((state) => state.actionMenu?.messageId === message.id);
-    const selectionMode = useChatStore((state) => state.selectionMode);
-    const isSelected = useChatStore((state) =>
+    const setActionMenu = useChatUiStore((state) => state.setActionMenu);
+    const actionMenu = useChatUiStore((state) => state.actionMenu);
+    const isActionTarget = useChatUiStore((state) => state.actionMenu?.messageId === message.id);
+    const selectionMode = useChatUiStore((state) => state.selectionMode);
+    const isSelected = useChatUiStore((state) =>
       state.selectedMessages.some(({ id }) => id === message.id)
     );
     // Исходное сообщение ответа ищется в истории чата — она живёт в кеше запросов.

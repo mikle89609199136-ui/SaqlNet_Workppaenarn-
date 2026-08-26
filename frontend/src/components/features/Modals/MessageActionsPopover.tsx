@@ -1,7 +1,7 @@
 import { Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { pinsQuery } from '@/queries/chat/threadQueries';
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
@@ -39,7 +39,7 @@ export const MessageActionsPopover = ({
     draftRef,
     setIsForwardModalOpen,
   });
-  const { selectedMessages, selectionMode, actionMenu } = useChatStore();
+  const { selectedMessages, selectionMode, actionMenu } = useChatUiStore();
   // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));

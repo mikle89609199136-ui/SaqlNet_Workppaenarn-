@@ -74,14 +74,6 @@ export const IGNORED_EVENTS: string[] = [
   WS_EVENTS.CALL.OFFER,
   WS_EVENTS.CALL.ANSWER,
   WS_EVENTS.CALL.ICE,
-  // Локальные события: их слушает только список чатов и они уйдут
-  // вместе с его переездом на запросы.
-  WS_EVENTS.MESSAGE.LOCAL.SENT,
-  WS_EVENTS.MESSAGE.LOCAL.EDITED,
-  WS_EVENTS.MESSAGE.LOCAL.DELETED,
-  WS_EVENTS.MESSAGE.LOCAL.READ,
-  WS_EVENTS.MESSAGE.LOCAL.PIN,
-  WS_EVENTS.MESSAGE.LOCAL.UNPIN,
 ];
 
 export function resolveInvalidations(eventType: string, payload: IEventPayload): QueryKey[] {

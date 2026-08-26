@@ -14,7 +14,7 @@ import {
 
 import { useMessageActions, useRealtimeSocket } from '@/hooks';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
 import '@/styles/ChatThreadPage.css';
 import { useOutletContext, useParams } from 'react-router-dom';
 
@@ -61,16 +61,16 @@ export function ChatThreadPage() {
   const currentUser = useProfileStore((state) => state.user);
 
   // В сторе осталось только состояние интерфейса: данные чата живут в кеше запросов.
-  const error = useChatStore((state) => state.error);
-  const setError = useChatStore((state) => state.setError);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const selectedMessages = useChatStore((state) => state.selectedMessages);
-  const setSelectedMessages = useChatStore((state) => state.setSelectedMessages);
-  const selectionMode = useChatStore((state) => state.selectionMode);
-  const setSelectionMode = useChatStore((state) => state.setSelectionMode);
-  const actionMenu = useChatStore((state) => state.actionMenu);
-  const setActionMenu = useChatStore((state) => state.setActionMenu);
-  const resetChatState = useChatStore((state) => state.resetChatState);
+  const error = useChatUiStore((state) => state.error);
+  const setError = useChatUiStore((state) => state.setError);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const selectedMessages = useChatUiStore((state) => state.selectedMessages);
+  const setSelectedMessages = useChatUiStore((state) => state.setSelectedMessages);
+  const selectionMode = useChatUiStore((state) => state.selectionMode);
+  const setSelectionMode = useChatUiStore((state) => state.setSelectionMode);
+  const actionMenu = useChatUiStore((state) => state.actionMenu);
+  const setActionMenu = useChatUiStore((state) => state.setActionMenu);
+  const resetChatState = useChatUiStore((state) => state.resetChatState);
 
   const [pendingAttachment, setPendingAttachment] = useState<IPendingAttachment | null>(null);
   const [photoEditorFile, setPhotoEditorFile] = useState<File | null>(null);

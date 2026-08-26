@@ -1,4 +1,4 @@
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import { getMessagePreview } from '@/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -8,8 +8,8 @@ interface Props {
 
 export const ComposerContextBanner = ({ onCancel }: Props) => {
   const { t } = useTranslation();
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   if (!editingMessage && !replyToMessage) return null;
 
   return (

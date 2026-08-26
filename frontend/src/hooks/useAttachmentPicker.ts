@@ -1,4 +1,4 @@
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,8 +22,8 @@ export function useAttachmentPicker({
   attachmentInputRef,
 }: Params) {
   const { t } = useTranslation();
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const setError = useChatStore((state) => state.setError);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const setError = useChatUiStore((state) => state.setError);
 
   function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];

@@ -13,7 +13,7 @@ import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
 import { useCallStore } from '@/store/call';
-import { useChatStore } from '@/store/chat';
+import { useChatUiStore } from '@/store/chatUi';
 import { useProfileStore } from '@/store/profile';
 import { useToastStore } from '@/store/toast';
 
@@ -114,7 +114,7 @@ afterEach(() => {
   // предыдущего теста, и расшифровка ждёт ответа, которого не будет.
 
   useCallStore.setState(useCallStore.getInitialState(), true);
-  useChatStore.setState(useChatStore.getInitialState(), true);
+  useChatUiStore.setState(useChatUiStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   useToastStore.setState(useToastStore.getInitialState(), true);
 

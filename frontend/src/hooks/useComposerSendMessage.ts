@@ -1,7 +1,7 @@
 import { chatKeys } from '@/queries/keys';
 import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services';
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import type { IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,13 +32,13 @@ export function useComposerSendMessage({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  const draft = useChatStore((state) => state.draft);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
-  const setError = useChatStore((state) => state.setError);
+  const draft = useChatUiStore((state) => state.draft);
+  const setDraft = useChatUiStore((state) => state.setDraft);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
+  const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
+  const setError = useChatUiStore((state) => state.setError);
   const { chatId = '' } = useParams<{ chatId: string }>();
 
   const [isSending, setIsSending] = useState(false);
