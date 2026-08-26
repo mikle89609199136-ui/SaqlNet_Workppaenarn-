@@ -11,6 +11,7 @@ import {
 import { services } from '@/services/serviceContainer';
 import { useTypingStore } from '@/store/typing';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
+import { resyncAfterReconnect } from './resyncAfterReconnect';
 
 /**
  * Единственный подписчик на события сервера.
@@ -81,6 +82,14 @@ export function useServerEvents(enabled: boolean): void {
       })
     );
 
+    // Восстановление связи. Пока её не было, сообщения приходили в
+    // пустоту: свежесть ленты держится на сокете, а перезапрос при
+    // возврате сети отключён намеренно. Без этого пропущенное не
+    // появилось бы в разговоре никогда.
+    const unsubscribeReconnect = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
+      void resyncAfterReconnect(queryClient);
+    });
+
     // «Печатает» живёт три секунды и не кешируется — это не данные,
     // а эфемерное состояние интерфейса.
     const unsubscribeTyping = eventBus.on(WS_EVENTS.USER.TYPING, (event) => {
@@ -91,6 +100,7 @@ export function useServerEvents(enabled: boolean): void {
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
+      unsubscribeReconnect();
     };
   }, [enabled, eventBus, queryClient, setTyping]);
 }
