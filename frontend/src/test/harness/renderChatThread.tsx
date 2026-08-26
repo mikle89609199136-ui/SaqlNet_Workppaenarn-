@@ -3,6 +3,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ChatThreadPage } from '@/pages/ChatThreadPage/ChatThreadPage';
+import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { chatKeys } from '@/queries/keys';
 import { RealtimeEvents } from '@/realtime/RealtimeEvents';
 import { useProfileStore } from '@/store/profile';
@@ -61,6 +62,10 @@ export function renderChatThread({
   queryClient = createTestQueryClient(),
 }: IRenderChatThreadOptions): RenderResult {
   useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
+
+  // Шифрование спрашивает данные чата у кеша запросов — того же, в котором
+  // живёт экран. В приложении эту связь ставит точка входа.
+  registerChatResolver(queryClient);
 
   queryClient.setQueryData(chatKeys.detail(chat.id), chat);
   queryClient.setQueryData(chatKeys.pins(chat.id), pins);

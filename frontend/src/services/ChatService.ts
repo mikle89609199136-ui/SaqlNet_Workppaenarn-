@@ -1,5 +1,4 @@
 import { API_ENDPOINTS, ApiClient } from '@/api';
-import { getRawChat, invalidateChat } from '@/core';
 import type {
   IChatDto,
   IChatResponse,
@@ -26,9 +25,11 @@ export class ChatService {
     return response.data.chats;
   }
 
-  async getChat(chatId: string) {
-    const raw = await getRawChat(this.apiClient, chatId);
-    return raw;
+  // Запрос без собственного кеша: это функция загрузки для chat-запроса,
+  // и кеширование — его забота.
+  async getChat(chatId: string): Promise<IChatDto> {
+    const response = await this.apiClient.get<IChatResponse>(API_ENDPOINTS.CHAT_BY_ID(chatId));
+    return response.data.chat;
   }
 
   async createChat(type: TChatType, participants: string[], title = '') {
@@ -101,31 +102,26 @@ export class ChatService {
       API_ENDPOINTS.CHAT_BY_ID(chatId),
       data
     );
-    invalidateChat(chatId);
     return response.data.chat;
   }
 
   async deleteChat<T>(chatId: string): Promise<T> {
     const response = await this.apiClient.delete<T>(API_ENDPOINTS.CHAT_BY_ID(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 
   async muteChat(chatId: string, duration: number) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
-    invalidateChat(chatId);
     return response.data;
   }
 
   async pinChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 
   async archiveChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 }

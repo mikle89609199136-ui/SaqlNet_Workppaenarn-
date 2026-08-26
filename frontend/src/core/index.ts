@@ -1,2 +1,2 @@
 export { eventBus, EventBus } from './EventBus';
-export { getRawChat, invalidateChat } from './chatCache';
+export { resolveChat, setChatResolver, type TChatResolver } from './chatResolver';
