@@ -14,7 +14,6 @@ import type {
 
 export class ChatService {
   private apiClient: ApiClient;
-  private membersRequests = new Map<string, Promise<TMembersList>>();
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
@@ -70,22 +69,12 @@ export class ChatService {
     );
   }
 
+  // Свежесть списка — забота слоя запросов: раньше промис оставался в
+  // сервисе навсегда, и смена роли не была видна даже после переоткрытия.
   async getMembers(chatId: string): Promise<TMembersList> {
-    const cached = this.membersRequests.get(chatId);
-    if (cached) {
-      return cached;
-    }
-
-    const request = this.apiClient
+    return this.apiClient
       .get<IMembersListResponse>(API_ENDPOINTS.CHAT_MEMBERS(chatId))
-      .then((response) => response.data.members)
-      .catch((err) => {
-        this.membersRequests.delete(chatId); // не кэшируем ошибку — следующий вызов попробует заново
-        throw err;
-      });
-
-    this.membersRequests.set(chatId, request);
-    return request;
+      .then((response) => response.data.members ?? []);
   }
 
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
@@ -106,7 +95,9 @@ export class ChatService {
       Omit<IChatDto, 'id' | 'peerId' | 'peerPublicKey' | 'ownerId' | 'createdAt' | 'type'>
     >
   ): Promise<IChatDto> {
-    const response = await this.apiClient.put<IChatResponse>(
+    // Сервер принимает частичное изменение чата методом PATCH: с PUT
+    // переименование группы отвечало 405.
+    const response = await this.apiClient.patch<IChatResponse>(
       API_ENDPOINTS.CHAT_BY_ID(chatId),
       data
     );

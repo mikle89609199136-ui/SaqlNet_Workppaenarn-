@@ -49,6 +49,10 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'PUT', data });
   }
 
+  patch<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'PATCH', data });
+  }
+
   delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }

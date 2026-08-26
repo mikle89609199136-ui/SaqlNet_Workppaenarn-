@@ -18,7 +18,7 @@ import { useChatStore, useProfileStore } from '@/store';
 import '@/styles/ChatThreadPage.css';
 import { useOutletContext, useParams } from 'react-router-dom';
 
-import type { IChatDto, IMessageDto, IPendingAttachment, IUserDto, TMessagesList } from '@/types';
+import type { IChatDto, IMessageDto, IPendingAttachment, TMessagesList } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import {
   useCallback,
@@ -35,9 +35,8 @@ import { useThreadMessages } from './hooks/useThreadMessages';
 
 export interface IProfileModal {
   isOpen: boolean;
-  isLoading: boolean;
-  user: IUserDto | null;
-  error: string;
+  /** Чей профиль показывать. Сами данные читает панель — по этому идентификатору. */
+  userId: string | null;
 }
 
 export interface IProfileState extends IProfileModal {
@@ -51,7 +50,7 @@ interface IOutletContext {
   profileMode: 'modal' | 'panel';
 }
 
-const CLOSED_PROFILE: IProfileModal = { isOpen: false, isLoading: false, error: '', user: null };
+const CLOSED_PROFILE: IProfileModal = { isOpen: false, userId: null };
 
 export function ChatThreadPage() {
   const { chatId = '' } = useParams<{ chatId: string }>();
