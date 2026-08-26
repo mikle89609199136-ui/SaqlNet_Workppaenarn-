@@ -5,6 +5,7 @@ import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCach
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { useChatUiStore, useProfileStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,7 +30,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setError = useChatUiStore((state) => state.setError);
   const editingMessage = useChatUiStore((state) => state.editingMessage);
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
-  const setDraft = useChatUiStore((state) => state.setDraft);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
@@ -97,7 +97,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         dropThreadMessage(queryClient, chatId, message.id);
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
-          setDraft('');
+          setComposerText(draftRef?.current ?? null, '');
         }
         if (replyToMessage?.id === message.id) {
           setReplyToMessage(null);
@@ -222,9 +222,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const startEdit = (message: IMessageDto) => {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setDraft(message.content || '');
-    if (!draftRef || !draftRef.current) return;
-    draftRef.current.focus();
+    setComposerText(draftRef?.current ?? null, message.content || '');
+    draftRef?.current?.focus();
   };
 
   const closeMessageActions = () => {

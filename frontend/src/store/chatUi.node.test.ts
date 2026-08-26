@@ -10,13 +10,13 @@ describe('состояние интерфейса чата', () => {
     useChatUiStore.setState(useChatUiStore.getInitialState(), true);
   });
 
-  it('should keep the draft and the message being edited', () => {
+  it('should keep the message being edited', () => {
+    // Недописанный текст здесь больше не хранится: он живёт в chatDrafts,
+    // отдельно для каждого чата и вне React.
     const message = makeMessage();
 
-    useChatUiStore.getState().setDraft('черновик');
     useChatUiStore.getState().setEditingMessage(message);
 
-    expect(useChatUiStore.getState().draft).toBe('черновик');
     expect(useChatUiStore.getState().editingMessage?.id).toBe(message.id);
   });
 
@@ -32,9 +32,8 @@ describe('состояние интерфейса чата', () => {
   });
 
   it('should drop everything when the chat is left', () => {
-    // Черновик и выделение принадлежат конкретному чату: при переходе
+    // Выделение и открытые меню принадлежат конкретному чату: при переходе
     // в соседний они не должны переезжать вместе с окном.
-    useChatUiStore.getState().setDraft('черновик');
     useChatUiStore.getState().setSelectionMode(true);
     useChatUiStore.getState().setActionMenu({ messageId: 'm-1', x: 0, y: 0 });
     useChatUiStore.getState().setError('ошибка');
@@ -42,7 +41,6 @@ describe('состояние интерфейса чата', () => {
     useChatUiStore.getState().resetChatState();
 
     const state = useChatUiStore.getState();
-    expect(state.draft).toBe('');
     expect(state.selectionMode).toBe(false);
     expect(state.actionMenu).toBeNull();
     expect(state.error).toBe('');

@@ -5,16 +5,19 @@ import {
   useTypingIndicator,
 } from '@/hooks';
 import { WebSocketClient } from '@/services';
-import { useChatUiStore } from '@/store';
+import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/utils';
 import {
+  useEffect,
   useRef,
+  useState,
   type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
 } from 'react';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   AttachmentControl,
@@ -46,10 +49,22 @@ export const ChatThreadComposer = ({
 }: Props) => {
   const { t } = useTranslation();
 
-  const draft = useChatUiStore((state) => state.draft);
-  const setDraft = useChatUiStore((state) => state.setDraft);
+  const { chatId = '' } = useParams<{ chatId: string }>();
+
+  // Текст живёт в самом поле, а не в состоянии React: иначе каждый символ
+  // перерисовывал бы композер со всеми его частями. Здесь хранится
+  // единственное, от чего зависит вид, — есть ли что отправлять.
+  const [hasText, setHasText] = useState(() => readDraft(chatId).length > 0);
 
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  // Возврат в чат: поле заполняется тем, что осталось недописанным.
+  useEffect(() => {
+    const saved = readDraft(chatId);
+
+    if (draftRef.current) draftRef.current.value = saved;
+    setHasText(saved.length > 0);
+  }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();
   const { cancelComposerMode } = useComposerShortcuts(draftRef, formRef);
@@ -61,13 +76,23 @@ export const ChatThreadComposer = ({
   const { handleSubmit, isSending } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
+    draftRef,
     pendingAttachment,
     selectionMode,
     setPendingAttachment,
   });
 
   function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    setDraft(event.target.value);
+    const text = event.target.value;
+
+    // Пустое поле — не черновик: пометка в списке чатов должна пропасть
+    // сразу, а не через полсекунды после стирания последнего символа.
+    if (text) writeDraft(chatId, text);
+    else clearDraft(chatId);
+
+    // Перерисовка только на переходе «пусто ↔ есть текст»: остальные
+    // символы состояние не трогают.
+    setHasText(text.trim().length > 0);
     sendTyping();
   }
 
@@ -88,16 +113,15 @@ export const ChatThreadComposer = ({
           className="thread-composer-input"
           onChange={handleDraftChange}
           placeholder={t('messagePlaceholder', 'Сообщение...')}
-          value={draft}
         />
 
         <div className="thread-composer-submit-wrap">
           <button
             className={cn(
               'thread-composer-action-btn thread-send-btn',
-              (draft.trim() || pendingAttachment) && 'is-visible'
+              (hasText || pendingAttachment) && 'is-visible'
             )}
-            disabled={(!draft.trim() && !pendingAttachment) || isSending}
+            disabled={(!hasText && !pendingAttachment) || isSending}
             type="submit"
           >
             {isSending ? (
@@ -123,7 +147,7 @@ export const ChatThreadComposer = ({
             aria-label={t('voiceMessage', 'Голосовое сообщение')}
             className={cn(
               'thread-composer-action-btn thread-mic-btn',
-              !draft.trim() && !pendingAttachment && 'is-visible'
+              !hasText && !pendingAttachment && 'is-visible'
             )}
             type="button"
           >
