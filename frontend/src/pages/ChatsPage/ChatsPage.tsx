@@ -26,9 +26,7 @@ export function ChatsPage() {
   const [profileWidth, setProfileWidth] = useState<number | null>(null);
   const [profileState, setProfileState] = useState<IProfileState>({
     isOpen: false,
-    isLoading: false,
-    error: '',
-    user: null,
+    userId: null,
     chat: null,
     messages: [],
   });
@@ -141,14 +139,7 @@ export function ChatsPage() {
           >
             <UserProfilePanel
               onClose={() => {
-                setProfileState({
-                  isOpen: false,
-                  isLoading: false,
-                  error: '',
-                  user: null,
-                  chat: null,
-                  messages: [],
-                });
+                setProfileState({ isOpen: false, userId: null, chat: null, messages: [] });
                 setProfileCloseToken((value) => value + 1);
               }}
               profileState={profileState}

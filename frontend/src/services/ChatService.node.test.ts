@@ -26,3 +26,25 @@ describe('поиск пользователей', () => {
     expect(found.map((user) => user.username)).toEqual(['boris']);
   });
 });
+
+describe('переименование группы', () => {
+  it('should send a PATCH request', async () => {
+    // Сервер принимает частичное изменение чата методом PATCH, а фронт
+    // отправлял PUT и получал 405 — переименование не работало вовсе.
+    let method = '';
+    server.use(
+      http.patch(api('/chats/chat-1'), () =>
+        HttpResponse.json({ chat: { id: 'chat-1', title: 'Новое название' } })
+      ),
+      http.all(api('/chats/chat-1'), ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({ error: 'method not allowed' }, { status: 405 });
+      })
+    );
+
+    const chat = await services.chatService.updateChat('chat-1', { title: 'Новое название' });
+
+    expect(method).toBe('');
+    expect(chat.title).toBe('Новое название');
+  });
+});

@@ -1,6 +1,5 @@
 import { useCall } from '@/hooks';
 import type { IProfileModal } from '@/pages';
-import { services } from '@/services';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { cn, getChatSubtitle } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -61,11 +60,13 @@ export const ChatThreadHeader = ({
     if (timerRef.current) clearTimeout(timerRef.current);
   };
 
-  async function openChatProfile() {
+  // Клик по шапке только называет, чей профиль показать: запрос делает
+  // панель, и повторное открытие обходится кешем (#232).
+  function openChatProfile() {
     if (!setProfileModal) return;
 
     if (profileModal?.isOpen) {
-      setProfileModal({ isOpen: false, isLoading: false, error: '', user: null });
+      setProfileModal({ isOpen: false, userId: null });
       return;
     }
 
@@ -75,23 +76,7 @@ export const ChatThreadHeader = ({
     }
     if (chat?.type !== 'private' || !chat.peerId) return;
 
-    setProfileModal({ isOpen: true, isLoading: true, error: '', user: null });
-    try {
-      const profile = await services.userService.getProfile(chat.peerId);
-      setProfileModal({
-        isOpen: true,
-        isLoading: false,
-        error: '',
-        user: profile,
-      });
-    } catch (err: any) {
-      setProfileModal({
-        isOpen: true,
-        isLoading: false,
-        error: err.message || t('profileLoadError', 'Не удалось загрузить профиль'),
-        user: null,
-      });
-    }
+    setProfileModal({ isOpen: true, userId: chat.peerId });
   }
 
   return (

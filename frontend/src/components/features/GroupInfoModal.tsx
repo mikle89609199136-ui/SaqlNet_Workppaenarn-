@@ -1,11 +1,12 @@
 import { Identicon, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
+import { membersQuery } from '@/queries/chat/membersQuery';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { chatKeys } from '@/queries/keys';
 import { useProfileStore } from '@/store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IMemberDto, TChatRole, TMembersList } from '@/types';
+import type { TChatRole } from '@/types';
 import { cn } from '@/utils';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,9 +24,6 @@ const dangerBtn =
 
 export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { showToast } = useToasts();
-  const [members, setMembers] = useState<TMembersList>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<IMemberDto | null>(null);
   const [isEditMode, setEditMode] = useState(false);
   const [chatName, setChatName] = useState('');
   const navigate = useNavigate();
@@ -34,10 +32,14 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { chatId = '' } = useParams<{ chatId: string }>();
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
+  const {
+    data: members = [],
+    isPending: isLoading,
+    error: membersError,
+  } = useQuery({ ...membersQuery(chatId), enabled: Boolean(chatId) && isOpen });
 
-  useEffect(() => {
-    fetchMembers();
-  }, [chat]);
+  // Права видны из той же записи об участнике, что и всё остальное.
+  const currentUser = members.find((member) => member.id === currentUserData?.id) ?? null;
 
   useEffect(() => {
     if (chat) {
@@ -45,24 +47,11 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     }
   }, [chat]);
 
-  if (!chat) return;
+  useEffect(() => {
+    if (membersError) showToast('error', 'Ошибка загрузки участников', '❌');
+  }, [membersError, showToast]);
 
-  async function fetchMembers() {
-    setIsLoading(true);
-    try {
-      const nextMembers = await services.chatService.getMembers(chatId);
-      setMembers(nextMembers);
-      const myMember = nextMembers.find((m) => m.id === currentUserData?.id);
-
-      if (myMember) {
-        setCurrentUser(myMember);
-      }
-    } catch (err) {
-      showToast('error', 'Ошибка загрузки участников', '❌');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  if (!chat) return null;
 
   async function handleAction(
     action: string,
@@ -73,19 +62,15 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     try {
       if (action === 'change-participant-role') {
         await services.chatService.setMemberRole(chatId, userId, body?.role);
-        setMembers((members) =>
-          members.map((member) => (member.id === userId ? { ...member, role: body?.role } : member))
-        );
-        return;
-      }
-
-      if (action === 'kick-participant') {
+      } else if (action === 'kick-participant') {
         await services.chatService.removeMember(chatId, userId);
-        setMembers((members) => members.filter((member) => member.id !== userId));
-        return;
+      } else {
+        throw new Error('Unsupported group action');
       }
 
-      throw new Error('Unsupported group action');
+      // Перезапрос вместо правки списка на месте: раньше изменение жило
+      // только в состоянии модалки и пропадало при переоткрытии.
+      await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
       showToast('error', err.message || 'Ошибка выполнения действия', '❌');
     }
