@@ -750,6 +750,14 @@
     & h1 { @apply overflow-hidden m-0 text-white text-[17px] leading-[1.2] text-ellipsis whitespace-nowrap; }
     & p  { margin: 3px 0 0; color: rgba(255,255,255,0.48); font-size: 12px; }
   }
+  /* Пока связи нет, подзаголовок говорит о ней, а не о собеседнике. */
+  .thread-title-wrap p.thread-subtitle-notice {
+    color: rgba(255,255,255,0.78);
+    animation: bgPulse 1.1s ease-in-out infinite alternate;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .thread-title-wrap p.thread-subtitle-notice { animation: none; }
+  }
   .thread-call-actions { @apply h-full flex items-center justify-end gap-2; }
   .thread-call-button {
     @apply w-9 h-9 p-0 border-0 bg-transparent flex items-center justify-center cursor-pointer rounded-[10px];
