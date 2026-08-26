@@ -4,7 +4,7 @@
 .codex
 
 node_modules
-client/mobile/react-dist
+frontend/node_modules
 dist
 coverage
 

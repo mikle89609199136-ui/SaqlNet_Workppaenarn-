@@ -28,7 +28,6 @@ uploads/
 # Build outputs
 dist/
 build/
-client/mobile/react-dist/
 
 # Test and coverage outputs
 coverage/
@@ -56,12 +55,9 @@ data/
 # OS
 .DS_Store
 Thumbs.db
-backend-v2/edge
 
 # AI
 AGENTS.md
 .serena
 .agents
 .kimi-code
-docs/*
-!docs/SETUP.md
