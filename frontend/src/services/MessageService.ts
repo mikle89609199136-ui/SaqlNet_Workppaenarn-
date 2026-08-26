@@ -1,7 +1,7 @@
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { ApiClient } from '@/api/ApiClient';
 import { STORAGE_KEYS } from '@/consts';
-import { getRawChat } from '@/core/chatCache';
+import { resolveChat } from '@/core/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,
@@ -221,7 +221,7 @@ export class MessageService {
 
   async getChatContext(chatId: string, purpose: string): Promise<IChatContext> {
     try {
-      const chat = await getRawChat(this.apiClient, chatId);
+      const chat = await resolveChat(chatId);
 
       return {
         ...(chat || {}),
