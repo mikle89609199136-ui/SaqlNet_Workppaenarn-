@@ -15,6 +15,7 @@ class FakeSocket {
 
   readyState = FakeSocket.CONNECTING;
   closeCalls = 0;
+  sent: string[] = [];
 
   private listeners = new Map<string, Array<(event: unknown) => void>>();
 
@@ -29,6 +30,10 @@ class FakeSocket {
     const forType = this.listeners.get(type) ?? [];
     forType.push(handler);
     this.listeners.set(type, forType);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
   }
 
   close(): void {
@@ -151,5 +156,50 @@ describe('смена соединения', () => {
     первый.finishClosing();
 
     expect(объявлений).toBe(0);
+  });
+});
+
+describe('сердцебиение', () => {
+  it('should answer the server ping', () => {
+    // Сервер держит соединение, пока клиент хоть что-то присылает, и рвёт
+    // молчащего через полторы минуты. Проверено на живом стенде: соединение
+    // без ответов закрывается на сотой секунде с кодом 1006.
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    socket.deliver({ type: 'ping' });
+
+    expect(socket.sent).toEqual([JSON.stringify({ type: 'pong' })]);
+  });
+
+  it('should not answer a ping from a socket it no longer owns', () => {
+    const client = makeClient();
+    const первый = client.connect() as unknown as FakeSocket;
+    первый.open();
+    первый.close();
+
+    const второй = client.connect() as unknown as FakeSocket;
+    второй.open();
+
+    первый.deliver({ type: 'ping' });
+
+    expect(первый.sent).toEqual([]);
+  });
+
+  it('should keep passing the ping to subscribers', () => {
+    // Событие остаётся в общей шине: она сама решает, что с ним делать.
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    let услышано = 0;
+    eventBus.on('ping' as never, () => {
+      услышано += 1;
+    });
+
+    socket.deliver({ type: 'ping' });
+
+    expect(услышано).toBe(1);
   });
 });

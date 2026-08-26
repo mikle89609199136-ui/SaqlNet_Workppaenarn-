@@ -73,6 +73,15 @@ export class WebSocketClient {
     }
   }
 
+  /** Ответ на сердцебиение. Молча: обрыв здесь важнее любой диагностики. */
+  sendPong() {
+    try {
+      this.send({ type: 'pong' });
+    } catch {
+      // Соединение уже закрывается — отвечать некому и незачем.
+    }
+  }
+
   get isConnected() {
     return this.socket?.readyState === WebSocket.OPEN;
   }
@@ -93,6 +102,15 @@ export class WebSocketClient {
   handleMessage(event) {
     try {
       const message = JSON.parse(event.data);
+
+      // Сервер держит соединение, пока клиент хоть что-то присылает, и
+      // рвёт молчащего через полторы минуты. Своё сердцебиение он шлёт
+      // обычным сообщением, а не служебным кадром протокола, поэтому
+      // браузер на него не отвечает — приходится отвечать самим. Без
+      // этого соединение обрывается каждые полторы минуты у всякого,
+      // кто читает, но не пишет.
+      if (message.type === 'ping') this.sendPong();
+
       const payload = message.payload ?? message;
       eventBus.emit(message.type, payload);
       eventBus.emit('socket:message', message);
