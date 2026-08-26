@@ -8,6 +8,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { clearChatCache } from '@/core/chatCache';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
 import { useCallStore } from '@/store/call';
@@ -104,6 +105,9 @@ afterEach(() => {
   // продолжают срабатывать в следующем.
   eventBus.clear();
   resetRealtimeSocketForTests();
+  // Кеш чатов живёт на уровне модуля: без сброса в нём остаются промисы
+  // предыдущего теста, и расшифровка ждёт ответа, которого не будет.
+  clearChatCache();
 
   useCallStore.setState(useCallStore.getInitialState(), true);
   useChatsStore.setState(useChatsStore.getInitialState(), true);

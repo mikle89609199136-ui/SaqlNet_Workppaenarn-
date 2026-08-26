@@ -4,6 +4,7 @@ import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ChatThreadPage } from '@/pages/ChatThreadPage/ChatThreadPage';
 import { chatKeys } from '@/queries/keys';
+import { RealtimeEvents } from '@/realtime/RealtimeEvents';
 import { useProfileStore } from '@/store/profile';
 import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
@@ -101,6 +102,9 @@ export function renderChatThread({
   return render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
+        {/* События сервера обрабатываются на уровне приложения, а не страницы:
+            без этого подписчика тред не узнает о входящих сообщениях. */}
+        <RealtimeEvents />
         <RouterProvider router={router} />
       </I18nextProvider>
     </QueryClientProvider>
