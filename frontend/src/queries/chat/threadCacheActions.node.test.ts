@@ -2,7 +2,12 @@ import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
 import { chatKeys } from '../keys';
-import { dropThreadMessage, patchThreadMessage, putThreadMessage } from './threadCacheActions';
+import {
+  dropThreadMessage,
+  markThreadRead,
+  patchThreadMessage,
+  putThreadMessage,
+} from './threadCacheActions';
 import { flattenThread, type IThreadPages } from './threadCache';
 
 const CHAT_ID = 'chat-1';
@@ -61,6 +66,38 @@ describe('запись сообщения в тред', () => {
 
     expect(invalidated).toContainEqual(chatKeys.messages(CHAT_ID));
     expect(invalidated).toContainEqual(chatKeys.list());
+  });
+});
+
+describe('отметка прочитанным', () => {
+  it('should mark the chat list as stale so the unread badge clears', () => {
+    // Счётчик непрочитанных живёт в списке чатов, а не в ленте: пока его
+    // никто не помечал устаревшим, бейдж висел до перезагрузки страницы.
+    seedThread([makeMessage({ id: 'm-1', isRead: false })]);
+
+    markThreadRead(queryClient, CHAT_ID, ['m-1']);
+
+    expect(invalidated).toContainEqual(chatKeys.list());
+  });
+
+  it('should mark only the confirmed messages as read', () => {
+    seedThread([
+      makeMessage({ id: 'm-1', isRead: false }),
+      makeMessage({ id: 'm-2', isRead: false }),
+    ]);
+
+    markThreadRead(queryClient, CHAT_ID, ['m-1']);
+
+    const thread = flattenThread(
+      queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))
+    );
+    expect(thread.find((message) => message.id === 'm-1')?.isRead).toBe(true);
+    expect(thread.find((message) => message.id === 'm-2')?.isRead).toBe(false);
+  });
+
+  it('should survive an empty thread', () => {
+    // Событие о прочтении может прийти по чату, историю которого не грузили.
+    expect(() => markThreadRead(queryClient, CHAT_ID, ['m-1'])).not.toThrow();
   });
 });
 
