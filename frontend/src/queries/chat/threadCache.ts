@@ -12,6 +12,14 @@ import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically
 export type IThreadPages = InfiniteData<TMessagesList>;
 
 /** Плоский список для отрисовки: страницы склеиваются и сортируются по времени. */
+/**
+ * Пустая лента для случая, когда история ещё не загружена.
+ *
+ * Одна на всех: ленту читают через зависимости эффектов, и новый пустой
+ * массив на каждом рендере запускал бы их так же, как новая история.
+ */
+export const EMPTY_THREAD: TMessagesList = [];
+
 export function flattenThread(data: IThreadPages | undefined): TMessagesList {
   if (!data) return [];
   return sortMessagesChronologically<IMessageDto>(data.pages.flat());

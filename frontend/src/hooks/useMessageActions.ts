@@ -85,9 +85,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         // Именно возврат промиса делает ожидание настоящим: без него
         // Promise.all завершался мгновенно, а отказы становились
         // необработанными и не доходили до catch.
-        await Promise.all(
-          own.map((item) => services.messageService.deleteMessage(chatId, item.id))
-        );
+        await Promise.all(own.map((item) => services.messageService.deleteMessage(item.id)));
 
         own.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
         handleCancelSelection();
@@ -95,7 +93,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
-        await services.messageService.deleteMessage(chatId, message.id);
+        await services.messageService.deleteMessage(message.id);
         dropThreadMessage(queryClient, chatId, message.id);
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);

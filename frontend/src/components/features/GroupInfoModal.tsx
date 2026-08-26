@@ -3,7 +3,7 @@ import { useToasts } from '@/hooks';
 import { services } from '@/services';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { chatKeys } from '@/queries/keys';
-import { useChatsStore, useProfileStore } from '@/store';
+import { useProfileStore } from '@/store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IMemberDto, TChatRole, TMembersList } from '@/types';
 import { cn } from '@/utils';
@@ -28,7 +28,6 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   const [currentUser, setCurrentUser] = useState<IMemberDto | null>(null);
   const [isEditMode, setEditMode] = useState(false);
   const [chatName, setChatName] = useState('');
-  const deleteChat = useChatsStore((state) => state.deleteChat);
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);
   const { t } = useTranslation();
@@ -116,10 +115,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
 
   const handleDeleteChat = async () => {
     try {
-      const result = await deleteChat(chat.id);
+      await services.chatService.deleteChat(chat.id);
 
-      if (!result.success) throw new Error('Could not delete chat, try again');
       queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       navigate('/chats');
     } catch (err: any) {
       showToast('error', err.message || 'Не удалось удалить чат, попробуйте ещё раз', '❌');

@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Identicon } from '../../components/ui/Identicon.js';
 import { useToasts } from '../../hooks/useToasts.js';
+import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer.js';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function ContactsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showToast } = useToasts();
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +50,8 @@ export function ContactsPage() {
     try {
       const data = await services.chatService.createChat('private', [userId]);
       if (data.chatId) {
+        // Без этого созданный чат появлялся в списке только после перезагрузки.
+        await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
         showToast('success', 'Чат создан!', '✓');
         navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       } else {

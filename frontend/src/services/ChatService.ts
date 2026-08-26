@@ -15,46 +15,16 @@ import type {
 export class ChatService {
   private apiClient: ApiClient;
   private membersRequests = new Map<string, Promise<TMembersList>>();
-  private chatsRequest: Promise<IChatDto[]> | null = null;
-
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
 
+  // Свежестью списка распоряжается слой запросов: собственный кеш здесь
+  // сбрасывался только при ошибке, и успешный ответ жил до перезагрузки
+  // вкладки — созданный чат в списке не появлялся.
   async getChats() {
-    if (this.chatsRequest) {
-      return this.chatsRequest;
-    }
-
-    const request = this.apiClient
-      .get<IChatsResponse>(API_ENDPOINTS.CHATS)
-      .then((response) => response.data.chats)
-      .catch((err) => {
-        this.chatsRequest = null;
-        throw err;
-      });
-
-    this.chatsRequest = request;
-    return request;
-  }
-
-  private patchChatsCache(updater: (chats: IChatDto[]) => IChatDto[]) {
-    if (!this.chatsRequest) return; // кэша ещё нет — следующий getChats() сходит за свежими данными сам
-    this.chatsRequest = this.chatsRequest.then(updater);
-  }
-
-  patchChat(chatId: string, patch: Partial<IChatDto>) {
-    this.patchChatsCache((chats) =>
-      chats.map((chat) => (chat.id === chatId ? { ...chat, ...patch } : chat))
-    );
-  }
-
-  addChatToCache(chat: IChatDto) {
-    this.patchChatsCache((chats) => [chat, ...chats]);
-  }
-
-  removeChatFromCache(chatId: string) {
-    this.patchChatsCache((chats) => chats.filter((chat) => chat.id !== chatId));
+    const response = await this.apiClient.get<IChatsResponse>(API_ENDPOINTS.CHATS);
+    return response.data.chats;
   }
 
   async getChat(chatId: string) {
@@ -91,9 +61,13 @@ export class ChatService {
   }
 
   async searchUsers(query: string) {
-    return this.apiClient
-      .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
-      .then((response) => response.data.users);
+    return (
+      this.apiClient
+        .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
+        // Когда никто не нашёлся, сервер присылает null вместо пустого списка,
+        // а вызывающий код рисует результат перебором.
+        .then((response) => response.data.users ?? [])
+    );
   }
 
   async getMembers(chatId: string): Promise<TMembersList> {

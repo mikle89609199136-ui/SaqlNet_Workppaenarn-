@@ -1,6 +1,7 @@
 import { useDebounce } from '@/hooks';
 import { services } from '@/services';
-import { useChatsStore } from '@/store';
+import { chatsQuery } from '@/queries/chats/chatsQuery';
+import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +23,7 @@ export const ForwardChatMessagesModal = ({
   setSelectionMode,
 }: Props) => {
   const { t } = useTranslation();
-  const chats = useChatsStore((state) => state.chats);
+  const { data: chats = [] } = useQuery(chatsQuery());
 
   const navigate = useNavigate();
   const [search, setSearch] = useState('');

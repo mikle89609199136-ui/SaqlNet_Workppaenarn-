@@ -1,3 +1,4 @@
+import { useTypingStore } from '@/store/typing';
 import { ROUTES } from '@/consts';
 import { cn, getLastMessageText } from '@/utils';
 import { useTranslation } from 'react-i18next';
@@ -12,12 +13,13 @@ interface Props {
 export function ChatListItem({ chat }: Props) {
   const { t } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const lastMessage = chat.typingUserId
+  const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
+  const lastMessage = typingUserId
     ? t('typing', 'печатает...')
     : getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
-  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || chat.typingUserId));
+  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
 
   return (
     <Link className="chat-row" to={ROUTES.CHAT_BY_ID(chat.id)} aria-label={title}>

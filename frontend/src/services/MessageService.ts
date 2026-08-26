@@ -1,7 +1,6 @@
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { ApiClient } from '@/api/ApiClient';
-import { STORAGE_KEYS, WS_EVENTS } from '@/consts';
-import { eventBus } from '@/core/EventBus';
+import { STORAGE_KEYS } from '@/consts';
 import { getRawChat } from '@/core/chatCache';
 import type {
   IChatContext,
@@ -15,13 +14,11 @@ import type {
   IMessagesResponse,
   IPinnedDto,
   IPinnedListResponse,
-  IPinnedMessageDto,
   IReactionsResponse,
   ISuccessResponse,
   TMediaMessageType,
   TMessagesList,
   TMessageType,
-  TPinnedList,
 } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import type { CryptoService } from './CryptoService';
@@ -32,14 +29,9 @@ const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не
 export class MessageService {
   private apiClient: ApiClient;
   private cryptoService: CryptoService;
-  private messages: Map<string, TMessagesList>;
-  private pinnedMessages: Map<string, TPinnedList>;
-
   constructor(apiClient: ApiClient, cryptoService: CryptoService) {
     this.apiClient = apiClient;
     this.cryptoService = cryptoService;
-    this.messages = new Map();
-    this.pinnedMessages = new Map();
   }
 
   /**
@@ -70,43 +62,6 @@ export class MessageService {
         )
       )
     );
-  }
-
-  async getMessages(
-    chatId: string,
-    offset: number = 0,
-    limit: number = 50
-  ): Promise<TMessagesList> {
-    const cached = this.messages.get(chatId);
-    if (cached && offset === 0) {
-      return cached;
-    }
-
-    const response = await this.apiClient.get<IMessagesResponse>(API_ENDPOINTS.MESSAGES(chatId), {
-      limit,
-      offset,
-    });
-
-    const chatContext = await this.getChatContext(chatId, 'decryption');
-    const messages = response.data.messages
-      ? sortMessagesChronologically<IMessageDto>(
-          await Promise.all(
-            response.data.messages.map(async (item: IMessageDto) => {
-              return this.processMessageForDisplay(chatId, item, chatContext);
-            })
-          )
-        )
-      : [];
-
-    if (offset === 0) {
-      this.messages.set(chatId, messages);
-    }
-
-    if (offset > 0 && cached) {
-      this.messages.set(chatId, sortMessagesChronologically<IMessageDto>([...cached, ...messages]));
-    }
-
-    return messages;
   }
 
   getMeId(): string | null {
@@ -148,9 +103,6 @@ export class MessageService {
 
     const messageObj = response.data.message;
     const message: IMessageDto = { ...messageObj, content: content.trim() };
-
-    this.addMessageToCache(chatId, message);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.SENT, { message, chatId, type: WS_EVENTS.MESSAGE.NEW });
 
     return message;
   }
@@ -213,7 +165,6 @@ export class MessageService {
       mediaEncryption,
     };
 
-    this.addMessageToCache(chatId, message);
     return message;
   }
 
@@ -375,30 +326,14 @@ export class MessageService {
     });
     // Как в sendMessage: на сервер уходит шифртекст, в интерфейс — исходный текст.
     const message: IMessageDto = { ...response.data, content: trimmedContent };
-    this.updatePinnedMessageInCache(messageId, message);
-    this.updateMessageInCache(messageId, message);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.EDITED, {
-      chatId: chatId,
-      messageId,
-      type: WS_EVENTS.MESSAGE.EDITED,
-      updatedAt: new Date(),
-      content: message.content,
-    });
 
     return message;
   }
 
-  async deleteMessage(chatId: string, messageId: string) {
+  async deleteMessage(messageId: string) {
     const response = await this.apiClient.delete<IDeleteMessageResponse>(
       API_ENDPOINTS.MESSAGE_BY_ID(messageId)
     );
-    this.removeMessageFromCache(messageId);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.DELETED, {
-      messageId: messageId,
-      previousMessage: response.data.lastMessage,
-      chatId: chatId,
-      type: WS_EVENTS.MESSAGE.DELETED,
-    });
     return response.data;
   }
 
@@ -415,7 +350,6 @@ export class MessageService {
       messageIds,
     });
 
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
     return { ...response.data, readIds: messageIds };
   }
 
@@ -437,8 +371,6 @@ export class MessageService {
       )
     )[0];
 
-    this.addMessageToCache(targetChatId, message);
-
     return message;
   }
 
@@ -449,30 +381,20 @@ export class MessageService {
   }
 
   async listPins(chatId: string) {
-    const cached = this.pinnedMessages.get(chatId);
-    if (cached) {
-      return cached;
-    }
-
-    const response = await this.apiClient
+    const pins = await this.apiClient
       .get<IPinnedListResponse>(API_ENDPOINTS.CHAT_PINS(chatId))
       .then((response) => response.data?.pins ?? []);
 
     const chatContext = await this.getChatContext(chatId, 'decryption');
 
-    const messages = sortMessagesChronologically<IPinnedDto>(
+    return sortMessagesChronologically<IPinnedDto>(
       await Promise.all(
-        response.map(async (item: IPinnedDto) => {
-          return {
-            ...item,
-            message: await this.processMessageForDisplay(chatId, item.message, chatContext),
-          };
-        })
+        pins.map(async (item: IPinnedDto) => ({
+          ...item,
+          message: await this.processMessageForDisplay(chatId, item.message, chatContext),
+        }))
       )
     );
-
-    this.pinnedMessages.set(chatId, messages);
-    return messages;
   }
 
   async pinMessage(chatId: string, messageId: string) {
@@ -486,7 +408,6 @@ export class MessageService {
   async unpinMessage(chatId: string, messageId: string) {
     const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId));
 
-    this.removePinnedMessageFromCache(messageId);
     return response.data;
   }
 
@@ -494,87 +415,5 @@ export class MessageService {
     return this.apiClient
       .post<IEmojisResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
       .then((response) => response.data);
-  }
-
-  updateMessageInCache(messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) {
-    this.messages.forEach((messages, chatId) => {
-      this.messages.set(
-        chatId,
-        messages.map((message) => (message.id === messageId ? { ...message, ...patch } : message))
-      );
-    });
-  }
-
-  updatePinnedMessageInCache(messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) {
-    this.pinnedMessages.forEach((pinnedMessages, chatId) => {
-      this.pinnedMessages.set(
-        chatId,
-        pinnedMessages.map((pinned) =>
-          pinned.messageId === messageId
-            ? { ...pinned, message: { ...pinned.message, ...patch } }
-            : pinned
-        )
-      );
-    });
-  }
-
-  addPinnedMessageToCache(chatId: string, message: IPinnedDto) {
-    if (!this.pinnedMessages.has(chatId)) {
-      this.pinnedMessages.set(chatId, []);
-    }
-    this.pinnedMessages.set(
-      chatId,
-      sortMessagesChronologically<IPinnedDto>([...this.getOrCreatePinnedMessages(chatId), message])
-    );
-  }
-
-  removePinnedMessageFromCache(messageId: string) {
-    this.pinnedMessages.forEach((messages, chatId) => {
-      this.pinnedMessages.set(
-        chatId,
-        // Сравнивать нужно с messageId: поле id принадлежит самому
-        // закреплению, а не сообщению, и с ним совпадений не будет.
-        messages.filter((pinned) => pinned.messageId !== messageId)
-      );
-    });
-  }
-
-  addMessageToCache(chatId: string, message: IMessageDto) {
-    // Дополняем только ту историю, которая уже загружена с сервера.
-    // Иначе getMessages примет запись из одного сообщения за полную историю
-    // чата и не станет запрашивать остальное: чат откроется почти пустым.
-    // Сюда попадают пересылка, отправка и любое входящее событие по чужим чатам,
-    // поэтому создавать запись здесь нельзя.
-    if (!this.messages.has(chatId)) {
-      return;
-    }
-
-    this.messages.set(
-      chatId,
-      sortMessagesChronologically<IMessageDto>([...this.getOrCreateMessages(chatId), message])
-    );
-  }
-
-  removeMessageFromCache(messageId: string) {
-    this.messages.forEach((messages, chatId) => {
-      this.messages.set(
-        chatId,
-        messages.filter((message) => message.id !== messageId)
-      );
-    });
-  }
-
-  private getOrCreateMessages(chatId: string): TMessagesList {
-    if (!this.messages.has(chatId)) {
-      this.messages.set(chatId, []);
-    }
-    return this.messages.get(chatId)!;
-  }
-
-  private getOrCreatePinnedMessages(chatId: string): TPinnedList {
-    if (!this.pinnedMessages.has(chatId)) {
-      this.pinnedMessages.set(chatId, []);
-    }
-    return this.pinnedMessages.get(chatId)!;
   }
 }
