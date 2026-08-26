@@ -62,21 +62,88 @@ class FakeSocket {
   }
 }
 
-function makeClient() {
+/** Назначенная, но ещё не сработавшая попытка переподключиться. */
+interface Таймер {
+  задержка: number;
+  запустить: () => void;
+  отменён: boolean;
+  сработал: boolean;
+}
+
+let таймеры: Таймер[] = [];
+let слушатели: Map<string, Array<() => void>>;
+let видимость: 'visible' | 'hidden';
+
+function makeClient(options: Record<string, unknown> = {}) {
   return new WebSocketClient('ws://localhost/ws', {
     getToken: () => 'токен',
     reconnectDelay: 0,
+    ...options,
   });
+}
+
+/** Попытка, которая назначена и ещё ждёт своего часа. */
+function назначено(): Таймер | undefined {
+  return таймеры.filter((т) => !т.отменён && !т.сработал).at(-1);
+}
+
+function разбудить(событие: 'online' | 'visibilitychange'): void {
+  for (const слушатель of слушатели.get(событие) ?? []) слушатель();
 }
 
 beforeEach(() => {
   FakeSocket.instances = [];
+  таймеры = [];
+  слушатели = new Map();
+  видимость = 'visible';
+
+  const addEventListener = (тип: string, обработчик: () => void) => {
+    слушатели.set(тип, [...(слушатели.get(тип) ?? []), обработчик]);
+  };
+
   vi.stubGlobal('WebSocket', FakeSocket);
-  vi.stubGlobal('window', { location: { href: 'http://localhost/' }, setTimeout: () => 0 });
+  vi.stubGlobal('window', {
+    location: { href: 'http://localhost/' },
+    setTimeout: (обработчик: () => void, задержка: number) => {
+      const таймер: Таймер = {
+        задержка,
+        отменён: false,
+        сработал: false,
+        запустить: () => {
+          таймер.сработал = true;
+          обработчик();
+        },
+      };
+      таймеры.push(таймер);
+      return таймеры.length;
+    },
+    clearTimeout: (id: number) => {
+      const таймер = таймеры[id - 1];
+      if (таймер) таймер.отменён = true;
+    },
+    addEventListener,
+    removeEventListener: (тип: string, обработчик: () => void) => {
+      слушатели.set(
+        тип,
+        (слушатели.get(тип) ?? []).filter((х) => х !== обработчик)
+      );
+    },
+  });
+  vi.stubGlobal('document', {
+    get visibilityState() {
+      return видимость;
+    },
+    addEventListener,
+    removeEventListener: () => {},
+  });
+
+  // Разброс паузы выключен: тест проверяет её рост, а не случайность.
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
 });
 
 afterEach(() => {
   eventBus.clear();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -201,5 +268,163 @@ describe('сердцебиение', () => {
     socket.deliver({ type: 'ping' });
 
     expect(услышано).toBe(1);
+  });
+});
+
+describe('переподключение', () => {
+  it('should keep trying long after the old five attempts ran out', () => {
+    // Прежний клиент делал пять попыток раз в секунду и после этого молчал
+    // до перезагрузки страницы. Пятисекундной ямы в метро хватало, чтобы
+    // остаться без сообщений до конца сессии.
+    const client = makeClient({ reconnectDelay: 1000 });
+    let socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    for (let попытка = 0; попытка < 20; попытка += 1) {
+      socket.finishClosing();
+      назначено()?.запустить();
+      socket = FakeSocket.instances.at(-1) as FakeSocket;
+    }
+
+    expect(FakeSocket.instances).toHaveLength(21);
+  });
+
+  it('should double the pause up to the ceiling', () => {
+    // Недоступный сервер не должен получать шквал запросов, а вернувшийся —
+    // отвечать быстро: первая попытка идёт через секунду.
+    const client = makeClient({ reconnectDelay: 1000, maxReconnectDelay: 30000 });
+    let socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    const паузы: number[] = [];
+    for (let попытка = 0; попытка < 7; попытка += 1) {
+      socket.finishClosing();
+      const таймер = назначено();
+      паузы.push(таймер?.задержка ?? -1);
+      таймер?.запустить();
+      socket = FakeSocket.instances.at(-1) as FakeSocket;
+    }
+
+    expect(паузы).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+  });
+
+  it('should start counting from scratch after a successful connection', () => {
+    const client = makeClient({ reconnectDelay: 1000 });
+    let socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    for (let попытка = 0; попытка < 3; попытка += 1) {
+      socket.finishClosing();
+      назначено()?.запустить();
+      socket = FakeSocket.instances.at(-1) as FakeSocket;
+    }
+
+    socket.open();
+    socket.finishClosing();
+
+    expect(назначено()?.задержка).toBe(1000);
+  });
+
+  it('should not schedule a second attempt while one is pending', () => {
+    // Два таймера означали бы два соединения.
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    socket.finishClosing();
+    socket.finishClosing();
+
+    expect(таймеры.filter((т) => !т.отменён && !т.сработал)).toHaveLength(1);
+  });
+
+  it('should stop reconnecting after a deliberate disconnect', () => {
+    // Выход из аккаунта: возвращаться некуда и незачем.
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    client.disconnect();
+    socket.finishClosing();
+
+    expect(назначено()).toBeUndefined();
+  });
+
+  it('should try at once when the network comes back', () => {
+    // Пауза к этому моменту могла вырасти до получаса ожидания на двоих:
+    // человек видит, что сеть вернулась, а приложение — ещё нет.
+    const client = makeClient({ reconnectDelay: 1000 });
+    let socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    for (let попытка = 0; попытка < 6; попытка += 1) {
+      socket.finishClosing();
+      назначено()?.запустить();
+      socket = FakeSocket.instances.at(-1) as FakeSocket;
+    }
+    socket.finishClosing();
+    expect(назначено()?.задержка).toBe(30000);
+
+    const былоСоединений = FakeSocket.instances.length;
+    разбудить('online');
+
+    expect(FakeSocket.instances.length).toBe(былоСоединений + 1);
+    expect(назначено()).toBeUndefined();
+  });
+
+  it('should try at once when the tab comes back', () => {
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    socket.finishClosing();
+
+    const былоСоединений = FakeSocket.instances.length;
+    разбудить('visibilitychange');
+
+    expect(FakeSocket.instances.length).toBe(былоСоединений + 1);
+  });
+
+  it('should leave a hidden tab alone', () => {
+    // Событие приходит и когда вкладку прячут: тогда пробовать незачем.
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    socket.finishClosing();
+
+    видимость = 'hidden';
+    const былоСоединений = FakeSocket.instances.length;
+    разбудить('visibilitychange');
+
+    expect(FakeSocket.instances.length).toBe(былоСоединений);
+  });
+
+  it('should drop a connection still hanging from the outage', () => {
+    // Соединение, начатое без сети, браузер признает мёртвым нескоро, а
+    // клиент считает его живым и новое не открывает.
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    socket.finishClosing();
+
+    // Назначенная попытка сработала, но соединение так и висит.
+    назначено()?.запустить();
+    const зависшее = FakeSocket.instances.at(-1) as FakeSocket;
+    expect(зависшее.readyState).toBe(FakeSocket.CONNECTING);
+
+    разбудить('online');
+
+    expect(зависшее.closeCalls).toBe(1);
+    expect(FakeSocket.instances.at(-1)).not.toBe(зависшее);
+  });
+
+  it('should not wake up after a deliberate disconnect', () => {
+    const client = makeClient({ reconnectDelay: 1000 });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    client.disconnect();
+
+    const былоСоединений = FakeSocket.instances.length;
+    разбудить('online');
+
+    expect(FakeSocket.instances.length).toBe(былоСоединений);
   });
 });
