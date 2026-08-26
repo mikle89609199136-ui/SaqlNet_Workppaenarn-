@@ -1801,20 +1801,6 @@ func getAdvisoryKey(messageID, userID string) int64 {
 	return int64(h.Sum64())
 }
 
-// getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
-func getAdvisoryKey(messageID, userID string) int64 {
-	// Combine both IDs into a single string and hash to 64-bit
-	// Using FNV-1a 64-bit hash for good distribution and low collision rate
-	h := fnv.New64a()
-	h.Write([]byte(messageID))
-	h.Write([]byte(":"))
-	h.Write([]byte(userID))
-
-	// FNV-1a returns uint64, convert to int64
-	// PostgreSQL advisory locks work with signed 64-bit integers
-	return int64(h.Sum64())
-}
-
 // Message pin types.
 
 type Pin struct {
