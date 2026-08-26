@@ -1,9 +1,13 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
 import { useToasts } from '../../hooks/useToasts';
 import { services } from '../../services/serviceContainer';
 import '../../styles/SettingsControls.css';
+import { meQuery } from '@/queries/users/meQuery';
+import { settingsQuery } from '@/queries/users/settingsQuery';
+import { userKeys } from '@/queries/keys';
 import { useLanguageStore, useProfileStore, useThemeStore, type TThemeType } from '@/store';
 import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
 import { useTranslation } from 'react-i18next';
@@ -21,11 +25,20 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
   const setTheme = useThemeStore((state) => state.setTheme);
   const language = useLanguageStore((state) => state.language);
   const setLanguage = useLanguageStore((state) => state.setLanguage);
-  const [user, setUser] = useState({});
-  const [privacy, setPrivacy] = useState({});
-  const [sessions, setSessions] = useState([]);
+  const queryClient = useQueryClient();
+  // Те же запросы, что наполняет загрузчик защищённой ветки: открытие
+  // настроек больше не обращается к серверу повторно (#223).
+  const { data: user = {}, isPending: isUserPending } = useQuery(meQuery());
+  const { data: settingsPayload, isPending: isSettingsPending } = useQuery(settingsQuery());
+  const loading = isUserPending || isSettingsPending;
+
+  const privacy = settingsPayload?.privacy ?? {};
+  // Статус двухфакторной и список сессий сервер пока не отдаёт — запросы
+  // закомментированы. Раньше эти значения молча брались из несуществующих
+  // элементов Promise.all, и страница показывала «выключено» и «сессий
+  // нет» независимо от того, как обстоят дела на самом деле.
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [sessions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [accountView, setAccountView] = useState('overview');
   const settings = useProfileStore((state) => state.settings);
@@ -35,31 +48,13 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
     setAccountView('overview');
   }, [activeTab]);
 
+  // Настройки дублируются в сторе: их читают экраны за пределами этой
+  // страницы. Запись идёт через стор, а не в localStorage напрямую —
+  // иначе источников правды о пользователе становится три.
   useEffect(() => {
-    let active = true;
-    Promise.all([
-      services.userService.getMe(),
-      services.userService.getSettings(),
-      // services.authService.twoFAStatus(),
-      // services.authService.sessions(),
-    ])
-      .then(([nextUser, payload, enabled, nextSessions]) => {
-        if (!active) return;
-        setUser(nextUser || {});
-        setSettings({ ...DEFAULT_PROFILE_SETTINGS, ...(payload?.settings || {}) });
-        setPrivacy(payload?.privacy || {});
-        setTwoFAEnabled(enabled || false);
-        setSessions(nextSessions || []);
-        if (nextUser) {
-          localStorage.setItem('craneapp_user_data', JSON.stringify(nextUser));
-        }
-      })
-      .catch(() => showToast('error', 'Не удалось загрузить настройки', '⚠️'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [showToast]);
+    if (!settingsPayload) return;
+    setSettings({ ...DEFAULT_PROFILE_SETTINGS, ...(settingsPayload.settings || {}) });
+  }, [settingsPayload, setSettings]);
 
   const query = searchQuery.trim().toLocaleLowerCase();
   const visible = useMemo(() => {
@@ -87,9 +82,20 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
     }
   }
 
+  /** Профиль изменил сам пользователь — обновляем оба его представления. */
+  function handleUserChange(next: any) {
+    queryClient.setQueryData(userKeys.me(), next);
+    useProfileStore.getState().setUser(next);
+  }
+
   async function savePrivacy(patch) {
     const next = { ...privacy, ...patch };
-    setPrivacy(next);
+    // Переключатель обязан отозваться сразу, поэтому новое значение
+    // кладётся в кеш до ответа сервера.
+    queryClient.setQueryData(userKeys.settings(), (current: any) => ({
+      ...current,
+      privacy: next,
+    }));
     try {
       await services.userService.updatePrivacy(next);
       showToast('success', 'Настройки приватности сохранены', '✓');
@@ -116,7 +122,7 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
           user={user}
           saving={saving}
           setSaving={setSaving}
-          onUserChange={setUser}
+          onUserChange={handleUserChange}
           onBack={() => setAccountView('overview')}
           showToast={showToast}
         />

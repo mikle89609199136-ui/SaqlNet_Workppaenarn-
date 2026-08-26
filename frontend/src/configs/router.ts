@@ -1,5 +1,6 @@
 import { chatQuery, messagesQuery } from '@/queries/chat/threadQueries';
 import { queryClient } from '@/queries/queryClient';
+import { meQuery } from '@/queries/users/meQuery';
 import { useProfileStore } from '@/store';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard.js';
@@ -7,7 +8,6 @@ import { AppLayout } from '../components/layouts/AppLayout.js';
 import { RootLayout } from '../components/layouts/RootLayout.js';
 import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
 import { REACT_ROUTES } from '../consts/routes';
-import { services } from '../services/serviceContainer.js';
 import { clearAuthSession } from '../utils/clearAuthSession.js';
 
 async function requireSession({ request }: { request: Request }) {
@@ -18,9 +18,15 @@ async function requireSession({ request }: { request: Request }) {
   }
 
   try {
-    const setUser = useProfileStore.getState().setUser;
-    const user = await services.userService.getMe();
-    setUser(user);
+    // Профиль читается из кеша запросов: загрузчик срабатывает на каждой
+    // навигации, а данные, которые меняются раз в сессию, незачем
+    // перезапрашивать при каждом переходе.
+    //
+    // Именно fetchQuery, а не ensureQueryData: второй отдаёт что угодно,
+    // лишь бы оно было в кеше, и после инвалидации профиля навигация
+    // вернула бы прежние имя и аватар.
+    const user = await queryClient.fetchQuery(meQuery());
+    useProfileStore.getState().setUser(user);
   } catch (error: any) {
     if (error?.name === 'AbortError') throw error;
 
