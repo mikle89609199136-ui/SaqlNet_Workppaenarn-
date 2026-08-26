@@ -22,13 +22,37 @@ export class WebSocketClient {
       return this.socket;
     }
 
-    this.socket = new WebSocket(this.buildUrl(token));
-    this.socket.addEventListener('open', () => this.handleOpen());
-    this.socket.addEventListener('message', (event) => this.handleMessage(event));
-    this.socket.addEventListener('close', () => this.handleClose());
-    this.socket.addEventListener('error', (event) => eventBus.emit('socket:error', event));
+    // Каждый обработчик знает, какому соединению он принадлежит, и молчит,
+    // если клиент успел переключиться на другое. Иначе события уходящего
+    // соединения распоряжаются текущим: закрытие старого обнуляло ссылку
+    // на живое новое, и закрыть его после этого было уже некому.
+    const socket = new WebSocket(this.buildUrl(token));
+    this.socket = socket;
 
-    return this.socket;
+    socket.addEventListener('open', () => {
+      if (this.socket !== socket) {
+        // Соединение установилось, когда его уже бросили: без этого оно
+        // осталось бы открытым навсегда и продолжало принимать трафик.
+        socket.close();
+        return;
+      }
+
+      this.handleOpen();
+    });
+
+    socket.addEventListener('message', (event) => {
+      if (this.socket !== socket) return;
+      this.handleMessage(event);
+    });
+
+    socket.addEventListener('close', () => this.handleClose(socket));
+
+    socket.addEventListener('error', (event) => {
+      if (this.socket !== socket) return;
+      eventBus.emit('socket:error', event);
+    });
+
+    return socket;
   }
 
   disconnect() {
@@ -77,7 +101,11 @@ export class WebSocketClient {
     }
   }
 
-  handleClose() {
+  handleClose(socket = this.socket) {
+    // Закрылось не то соединение, которым клиент пользуется сейчас:
+    // ни ссылку обнулять, ни переподключаться не нужно.
+    if (this.socket !== socket) return;
+
     this.socket = null;
     eventBus.emit('socket:disconnected');
 
