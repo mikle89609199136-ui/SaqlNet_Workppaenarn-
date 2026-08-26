@@ -5,8 +5,6 @@
 -- Actions: remove duplicates, change the unique constraint.
 -- ============================================================
 
-BEGIN; -- Start transaction for atomicity.
-
 -- -----------------------------------------------------------------
 -- Step 1. Remove duplicate records
 -- -----------------------------------------------------------------
@@ -30,7 +28,7 @@ WITH ranked AS (
         id,   -- record identifier to delete specific rows later
         ROW_NUMBER() OVER (
             PARTITION BY message_id, user_id   -- group by (message, user)
-            ORDER BY created_at DESC           -- sort within group: newest first
+            ORDER BY created_at DESC, id DESC  -- sort within group: newest first
         ) AS rn                                -- row number within the group
     FROM messages.reactions
 )
@@ -70,13 +68,6 @@ BEGIN
     END IF;
 END $$;
 
--- -----------------------------------------------------------------
--- Commit the transaction
--- -----------------------------------------------------------------
--- All changes (deleting duplicates, changing constraints) become
--- permanent only after COMMIT. If an error occurs at any earlier step,
--- the entire block will be rolled back (ROLLBACK) automatically.
-COMMIT;
 
 -- Additional note:
 --

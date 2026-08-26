@@ -144,30 +144,38 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 			expectedCurrent:   "👍",
 			expectedReactions: []Reaction{{Emoji: "👍", Count: 1, MyReaction: true}},
 			setupMock: func(mock sqlmock.Sqlmock, messageID, userID, chatID, initialEmoji, toggleEmoji string) {
-				// Expectations for adding a reaction (as in original test)
+				mock.ExpectBegin()
+
+				// 1. Get chatID
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+
+				// 2. Check membership
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 				)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
-				// No current reaction
+
+				// 3. Advisory lock
+				mock.ExpectExec(regexp.QuoteMeta(
+					`SELECT pg_advisory_xact_lock($1)`,
+				)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
+
+				// 4. No current reaction
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 				)).WithArgs(messageID, userID).WillReturnError(sql.ErrNoRows)
-				// Insert
+
+				// 5. Insert
 				mock.ExpectExec(regexp.QuoteMeta(
 					`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 				)).WithArgs(messageID, userID, toggleEmoji).WillReturnResult(sqlmock.NewResult(1, 1))
-				// Aggregation
+
+				// 6. Aggregation
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
-				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
-					AddRow(toggleEmoji, 1, true))
+				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).AddRow(toggleEmoji, 1, true))
+
 				mock.ExpectCommit()
 			},
 		},
@@ -179,26 +187,34 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 			expectedCurrent:   "",
 			expectedReactions: []Reaction{}, // empty
 			setupMock: func(mock sqlmock.Sqlmock, messageID, userID, chatID, initialEmoji, toggleEmoji string) {
-				// Expectations for removing (as in original test)
+				mock.ExpectBegin()
+
+				// 1. Get chatID
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+
+				// 2. Check membership
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 				)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
-				// Current reaction exists
+
+				// 3. Advisory lock
+				mock.ExpectExec(regexp.QuoteMeta(
+					`SELECT pg_advisory_xact_lock($1)`,
+				)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
+
+				// 4. Current reaction exists
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji"}).AddRow(initialEmoji))
-				// Delete
+
+				// 5. Delete
 				mock.ExpectExec(regexp.QuoteMeta(
 					`DELETE FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 				)).WithArgs(messageID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
-				// Aggregation returns empty
+
+				// 6. Aggregation returns empty
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}))
@@ -213,30 +229,38 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 			expectedCurrent:   "❤️",
 			expectedReactions: []Reaction{{Emoji: "❤️", Count: 1, MyReaction: true}},
 			setupMock: func(mock sqlmock.Sqlmock, messageID, userID, chatID, initialEmoji, toggleEmoji string) {
-				// Expectations for replacing (as in original test)
+				mock.ExpectBegin()
+
+				// 1. Get chatID
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+
+				// 2. Check membership
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 				)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
-				// Current reaction exists
+
+				// 3. Advisory lock
+				mock.ExpectExec(regexp.QuoteMeta(
+					`SELECT pg_advisory_xact_lock($1)`,
+				)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
+
+				// 4. Current reaction exists
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji"}).AddRow(initialEmoji))
-				// Update
+
+				// 5. Update
 				mock.ExpectExec(regexp.QuoteMeta(
 					`UPDATE messages.reactions SET emoji = $1 WHERE message_id = $2 AND user_id = $3`,
 				)).WithArgs(toggleEmoji, messageID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
-				// Aggregation returns new emoji
+
+				// 6. Aggregation returns new emoji
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
-				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
-					AddRow(toggleEmoji, 1, true))
+				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).AddRow(toggleEmoji, 1, true))
+
 				mock.ExpectCommit()
 			},
 		},
@@ -312,97 +336,63 @@ func TestToggleReaction_AfterReplacement_OnlyOneUserReaction(t *testing.T) {
 
 	// Setup test dependencies: database mock, service instance, WebSocket mock
 	db, mock, service, ws := setupTest(t)
-	// Ensure database connection is properly closed
 	defer db.Close()
 
-	// ===== STEP 1: Validate message exists and retrieve chat ID =====
-	// The service verifies the message exists and gets its chat ID
-	// This query filters out soft-deleted messages (deleted_at IS NULL)
-	// Expected: Return the chat_id associated with this message
+	// ===== STEP 1: Begin database transaction =====
+	// All subsequent operations (validation, membership, lock, reaction) run inside the transaction.
+	mock.ExpectBegin()
+
+	// ===== STEP 2: Validate message exists and retrieve chat ID =====
+	// The service verifies the message exists and gets its chat ID.
+	// This query filters out soft-deleted messages (deleted_at IS NULL).
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
-	// ===== STEP 2: Verify user is a member of the chat =====
-	// Authorization check - only chat members can modify reactions
-	// The EXISTS subquery returns true if the user belongs to the chat
-	// Expected: true (user has permission to react)
+	// ===== STEP 3: Verify user is a member of the chat =====
+	// Authorization check - only chat members can modify reactions.
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 	)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	// ===== STEP 3: Begin database transaction =====
-	// Start a new transaction with RepeatableRead isolation level
-	// Ensures consistent snapshot view throughout the operation
-	mock.ExpectBegin()
-
-	// ===== STEP 4: Lock the message row to prevent race conditions =====
-	// SELECT FOR UPDATE acquires an exclusive lock on the message row
-	// Prevents concurrent operations from creating duplicate reactions
-	// Expected: Return 1 (message exists and is now locked)
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+	// ===== STEP 4: Acquire advisory lock to prevent race conditions =====
+	// pg_advisory_xact_lock is used (blocking version)
+	// This ensures exclusive access for this (message, user) pair and waits if needed.
+	mock.ExpectExec(regexp.QuoteMeta(
+		`SELECT pg_advisory_xact_lock($1)`,
+	)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
 	// ===== STEP 5: Retrieve the user's current reaction =====
-	// Query to check what emoji the user currently has on this message
-	// Expected: Return the existing emoji ("👍" in this case)
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji"}).AddRow(oldEmoji))
 
 	// ===== STEP 6: Update the reaction to the new emoji =====
-	// The UPDATE changes the emoji while keeping the same record
-	// This preserves the invariant: one reaction per user per message
-	// Expected: 1 row affected (the updated reaction)
 	mock.ExpectExec(regexp.QuoteMeta(
 		`UPDATE messages.reactions SET emoji = $1 WHERE message_id = $2 AND user_id = $3`,
 	)).WithArgs(newEmoji, messageID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// ===== STEP 7: Fetch aggregated reactions with multiple emojis =====
-	// This is the CRITICAL verification step for this test.
-	// We simulate a scenario where other users have reacted with different emojis.
-	// The query returns aggregated counts for THREE different emojis:
-	//   1. "❤️" - count=1, myReaction=true (the user's NEW reaction)
-	//   2. "👍" - count=3, myReaction=false (other users still have 👍)
-	//   3. "😊" - count=2, myReaction=false (other users have this too)
-	//
-	// Key expectations:
-	// - The user should appear in ONLY ONE emoji's count (❤️)
-	// - The user should NOT appear in the old emoji's count (👍)
-	// - The myReaction flag should be true ONLY for ❤️
-	// - The myReaction flag should be false for all other emojis
+	// Simulate a scenario with three emojis, where the user's reaction appears only once.
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
-		AddRow("❤️", 1, true). // User's new reaction - myReaction=true
-		AddRow("😊", 2, false). // Other users only - myReaction=false
-		AddRow("👍", 3, false)) // Other users still have thumbs up - myReaction=false
+		AddRow("❤️", 1, true). // User's new reaction
+		AddRow("😊", 2, false). // Other users
+		AddRow("👍", 3, false)) // Other users still have thumbs up
 
 	// ===== STEP 8: Commit transaction =====
-	// Make all changes permanent in the database
 	mock.ExpectCommit()
 
 	// ===== EXECUTE: Call the service method =====
-	// The method performs the replacement operation and returns aggregated results
 	status, currentEmoji, reactions, err := service.ToggleReaction(ctx, userID, messageID, newEmoji)
 
 	// ===== VERIFICATIONS =====
-
-	// Verify no error occurred during the operation
 	require.NoError(t, err)
-
-	// Verify the status is "replaced" (reaction was updated)
 	assert.Equal(t, StatusReplaced, status)
-
-	// Verify the current emoji is the new emoji (❤️)
 	assert.Equal(t, newEmoji, currentEmoji)
 
-	// ===== CRITICAL VERIFICATION: EXACTLY ONE USER REACTION =====
-	//
-	// We iterate through all aggregated reactions and count how many have
-	// myReaction=true. This should be exactly 1, indicating the user has
-	// only one reaction on this message.
+	// Verify the user has exactly ONE reaction after replacement
 	var myReactionsCount int
 	var userEmoji string
 	for _, r := range reactions {
@@ -411,58 +401,28 @@ func TestToggleReaction_AfterReplacement_OnlyOneUserReaction(t *testing.T) {
 			userEmoji = r.Emoji
 		}
 	}
-
-	// Verify the user has exactly ONE reaction after replacement
-	// This is the key invariant: one user = one reaction per message
 	assert.Equal(t, 1, myReactionsCount,
-		"User should have exactly ONE reaction on a message, but found %d",
-		myReactionsCount)
-
-	// Verify the one reaction is the NEW emoji (❤️), not the old one
+		"User should have exactly ONE reaction on a message, but found %d", myReactionsCount)
 	assert.Equal(t, newEmoji, userEmoji,
-		"User's only reaction should be the new emoji (%s), but got %s",
-		newEmoji, userEmoji)
+		"User's only reaction should be the new emoji (%s), but got %s", newEmoji, userEmoji)
 
-	// ===== VERIFY INDIVIDUAL REACTION DETAILS =====
-	// The reactions are ordered by count descending (most popular first)
-	// Expect the order: ❤️ (1), 😊 (2), 👍 (3)
+	// Verify individual reaction details (order: most popular first)
 	assert.Len(t, reactions, 3, "Should have 3 distinct emojis with reactions")
-
-	// Verify the first reaction: ❤️ (user's reaction, count=1)
 	assert.Equal(t, "❤️", reactions[0].Emoji)
 	assert.Equal(t, 1, reactions[0].Count)
-	assert.True(t, reactions[0].MyReaction,
-		"User should have myReaction=true for their reaction (❤️)")
-
-	// Verify the second reaction: 😊 (count=2, not user's reaction)
+	assert.True(t, reactions[0].MyReaction, "User should have myReaction=true for their reaction (❤️)")
 	assert.Equal(t, "😊", reactions[1].Emoji)
 	assert.Equal(t, 2, reactions[1].Count)
-	assert.False(t, reactions[1].MyReaction,
-		"User should have myReaction=false for reactions they didn't make (😊)")
-
-	// Verify the third reaction: 👍 (count=3, not user's reaction)
+	assert.False(t, reactions[1].MyReaction, "User should have myReaction=false for reactions they didn't make (😊)")
 	assert.Equal(t, "👍", reactions[2].Emoji)
 	assert.Equal(t, 3, reactions[2].Count)
-	assert.False(t, reactions[2].MyReaction,
-		"User should have myReaction=false for reactions they didn't make (👍)")
+	assert.False(t, reactions[2].MyReaction, "User should have myReaction=false for reactions they didn't make (👍)")
 
-	// ===== VERIFY THE USER'S OLD REACTION IS GONE =====
-	// After replacement, the user should NOT appear in the old emoji's count
-	// In our mock, the old emoji (👍) has count=3, but all from other users
-	// The myReaction=false confirms the user is NOT part of that count
-
-	// ===== WEBSOCKET VERIFICATION =====
-	// Verify WebSocket broadcast was triggered for real-time updates
+	// WebSocket verification
 	assert.True(t, ws.BroadcastToChatCalled)
-
-	// Verify the broadcast was sent to the correct chat
 	assert.Equal(t, chatID, ws.BroadcastToChatChatID)
 
-	// Optional: Verify the broadcast payload contains the correct reactions
-	// The payload should include all three emojis with their counts and myReaction flags
-
-	// ===== FINAL VERIFICATION =====
-	// Ensure all SQL expectations were met exactly as defined
+	// Final verification of all SQL expectations
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -495,67 +455,39 @@ func TestToggleReaction_AggregatedCountsCorrect(t *testing.T) {
 	db, mock, service, ws := setupTest(t)
 	defer db.Close()
 
-	// ===== STEP 1: Validate message exists and retrieve chat ID =====
-	// Verify the message exists and get its chat ID
-	// This query filters out soft-deleted messages
-	// Expected: Return the chat_id associated with this message
+	// ===== STEP 1: Begin database transaction =====
+	// All subsequent operations run inside the transaction.
+	mock.ExpectBegin()
+
+	// ===== STEP 2: Validate message exists and retrieve chat ID =====
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
-	// ===== STEP 2: Verify user is a member of the chat =====
-	// Authorization check - only chat members can react
-	// Expected: true (user has permission)
+	// ===== STEP 3: Verify user is a member of the chat =====
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 	)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	// ===== STEP 3: Begin database transaction =====
-	// Start a new transaction with RepeatableRead isolation level
-	// Ensures consistent snapshot view throughout the operation
-	mock.ExpectBegin()
-
-	// ===== STEP 4: Lock the message row =====
-	// SELECT FOR UPDATE acquires an exclusive lock on the message row
-	// Prevents concurrent modifications during aggregation
-	// Expected: Return 1 (message exists and is locked)
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+	// ===== STEP 4: Acquire advisory lock to prevent race conditions =====
+	// pg_advisory_xact_lock (blocking version).
+	mock.ExpectExec(regexp.QuoteMeta(
+		`SELECT pg_advisory_xact_lock($1)`,
+	)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
 	// ===== STEP 5: Check if user already has a reaction =====
-	// Query to check if the user already has a reaction on this message
-	// Expected: No rows (user hasn't reacted yet)
+	// No existing reaction (sql.ErrNoRows) means we will insert.
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnError(sql.ErrNoRows)
 
 	// ===== STEP 6: Insert the user's new reaction =====
-	// User is adding their first reaction to this message
-	// Expected: 1 row inserted
 	mock.ExpectExec(regexp.QuoteMeta(
 		`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 	)).WithArgs(messageID, userID, emoji).WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// ===== STEP 7: Fetch aggregated reactions with rich test data =====
-	// THIS IS THE CRITICAL VERIFICATION STEP.
-	// We mock a scenario with MULTIPLE EMOJIS and VARYING COUNTS to verify
-	// that the aggregation query correctly counts, groups, and orders the results.
-	//
-	// The mock data represents the following state:
-	//   1. "👍" - 5 reactions (MOST POPULAR) - User has reacted with this
-	//   2. "❤️" - 3 reactions (SECOND MOST POPULAR) - User has NOT reacted
-	//   3. "😊" - 1 reaction (LEAST POPULAR) - User has NOT reacted
-	//   4. "🔥" - 0 reactions (SHOULD NOT APPEAR) - No one has used this
-	//
-	// The aggregation query must:
-	//   - GROUP BY emoji
-	//   - COUNT(*) each emoji's occurrences
-	//   - Use bool_or(user_id = $2) to flag user's reactions
-	//   - ORDER BY cnt DESC (most popular first)
-	//
-	// Important: Only emojis with count > 0 should appear in results.
-	// Emojis with 0 reactions should be excluded from the response.
+	// Mock data: 3 emojis with varying counts, user has reaction only on "👍".
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
@@ -564,113 +496,65 @@ func TestToggleReaction_AggregatedCountsCorrect(t *testing.T) {
 		AddRow("😊", 1, false))  // Least popular, user has not reacted
 
 	// ===== STEP 8: Commit transaction =====
-	// Make all changes permanent in the database
 	mock.ExpectCommit()
 
 	// ===== EXECUTE: Call the service method =====
-	// The method inserts the user's reaction and returns aggregated counts
 	status, currentEmoji, reactions, err := service.ToggleReaction(ctx, userID, messageID, emoji)
 
 	// ===== VERIFICATIONS =====
-
-	// Verify no error occurred during the operation
 	require.NoError(t, err)
-
-	// Verify the status is "added" (new reaction created)
 	assert.Equal(t, StatusAdded, status)
-
-	// Verify the current emoji is the one we added
 	assert.Equal(t, emoji, currentEmoji)
 
-	// ===== CRITICAL VERIFICATION 1: REACTION COUNT =====
-	// Verify we have exactly 3 reactions (not 4, because "🔥" has 0 reactions)
-	// The aggregate query should filter out emojis with COUNT(*) = 0
-	assert.Len(t, reactions, 3,
-		"Should have 3 reactions (emojis with count > 0), got %d", len(reactions))
+	// Verify exactly 3 reactions (emojis with count > 0)
+	assert.Len(t, reactions, 3)
 
-	// ===== VERIFICATION 2: ORDERING (MOST POPULAR FIRST) =====
-	// Verify reactions are sorted by count in DESCENDING order
-	// This is critical for UI display where most popular reactions should appear first
-	assert.GreaterOrEqual(t, reactions[0].Count, reactions[1].Count,
-		"First reaction should have highest count (most popular)")
-	assert.GreaterOrEqual(t, reactions[1].Count, reactions[2].Count,
-		"Second reaction should have higher count than third")
+	// Verify ordering: most popular first
+	assert.GreaterOrEqual(t, reactions[0].Count, reactions[1].Count)
+	assert.GreaterOrEqual(t, reactions[1].Count, reactions[2].Count)
 
-	// ===== VERIFICATION 3: FIRST REACTION (MOST POPULAR - 👍 with 5) =====
-	// This is the most popular reaction and the user's own reaction
-	assert.Equal(t, "👍", reactions[0].Emoji,
-		"First reaction should be the most popular emoji '👍'")
-	assert.Equal(t, 5, reactions[0].Count,
-		"Most popular emoji '👍' should have count of 5")
-	assert.True(t, reactions[0].MyReaction,
-		"User should have myReaction=true for '👍' (they just added it)")
+	// Verify first reaction: 👍 with 5, myReaction=true
+	assert.Equal(t, "👍", reactions[0].Emoji)
+	assert.Equal(t, 5, reactions[0].Count)
+	assert.True(t, reactions[0].MyReaction)
 
-	// ===== VERIFICATION 4: SECOND REACTION (SECOND MOST POPULAR - ❤️ with 3) =====
-	// This is the second most popular reaction and NOT the user's reaction
-	assert.Equal(t, "❤️", reactions[1].Emoji,
-		"Second reaction should be the second most popular emoji '❤️'")
-	assert.Equal(t, 3, reactions[1].Count,
-		"Second most popular emoji '❤️' should have count of 3")
-	assert.False(t, reactions[1].MyReaction,
-		"User should have myReaction=false for '❤️' (they didn't react with it)")
+	// Verify second reaction: ❤️ with 3, myReaction=false
+	assert.Equal(t, "❤️", reactions[1].Emoji)
+	assert.Equal(t, 3, reactions[1].Count)
+	assert.False(t, reactions[1].MyReaction)
 
-	// ===== VERIFICATION 5: THIRD REACTION (LEAST POPULAR - 😊 with 1) =====
-	// This is the least popular reaction and NOT the user's reaction
-	assert.Equal(t, "😊", reactions[2].Emoji,
-		"Third reaction should be the least popular emoji '😊'")
-	assert.Equal(t, 1, reactions[2].Count,
-		"Least popular emoji '😊' should have count of 1")
-	assert.False(t, reactions[2].MyReaction,
-		"User should have myReaction=false for '😊' (they didn't react with it)")
+	// Verify third reaction: 😊 with 1, myReaction=false
+	assert.Equal(t, "😊", reactions[2].Emoji)
+	assert.Equal(t, 1, reactions[2].Count)
+	assert.False(t, reactions[2].MyReaction)
 
-	// ===== VERIFICATION 6: AGGREGATION ACCURACY CHECKS =====
-	// Additional checks to ensure the aggregation is mathematically correct
-
-	// Calculate total reactions from the aggregated data
-	totalReactions := 0
+	// Verify total reactions sum
+	total := 0
 	for _, r := range reactions {
-		totalReactions += r.Count
+		total += r.Count
+	}
+	assert.Equal(t, 9, total)
+
+	// Verify each count > 0
+	for _, r := range reactions {
+		assert.Greater(t, r.Count, 0)
 	}
 
-	// The total number of reactions should equal the sum of all individual reactions
-	// 5 + 3 + 1 = 9 total reactions across all emojis
-	assert.Equal(t, 9, totalReactions,
-		"Total reactions (5+3+1) should equal 9")
-
-	// Verify each reaction count is a positive integer (should never be 0 or negative)
-	for _, r := range reactions {
-		assert.Greater(t, r.Count, 0,
-			"Reaction count for '%s' should be greater than 0", r.Emoji)
-	}
-
-	// Verify the myReaction flag is set correctly for each emoji
-	// Only the emoji the user reacted with should have myReaction=true
-	var myReactionsCount int
+	// Verify exactly one reaction with myReaction=true
+	var myCount int
 	for _, r := range reactions {
 		if r.MyReaction {
-			myReactionsCount++
-			// The user's reaction should be the one they added
-			assert.Equal(t, emoji, r.Emoji,
-				"User's reaction should be '%s', but got '%s'", emoji, r.Emoji)
+			myCount++
+			assert.Equal(t, emoji, r.Emoji)
 		}
 	}
+	assert.Equal(t, 1, myCount)
 
-	// User should have exactly one reaction (myReaction=true)
-	assert.Equal(t, 1, myReactionsCount,
-		"User should have exactly one reaction with myReaction=true")
-
-	// ===== WEBSOCKET VERIFICATION =====
-	// Verify WebSocket broadcast was triggered
+	// WebSocket verification
 	assert.True(t, ws.BroadcastToChatCalled)
-
-	// Verify the broadcast was sent to the correct chat
 	assert.Equal(t, chatID, ws.BroadcastToChatChatID)
 
-	// Optional: Verify the WebSocket payload contains the correct counts
-	// This ensures real-time updates accurately reflect the aggregated state
-
-	// ===== FINAL VERIFICATION =====
-	// Ensure all SQL expectations were met exactly as defined
+	// Final verification of all SQL expectations
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -689,50 +573,58 @@ func TestToggleReaction_WebSocketBroadcast(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			userID := "550e8400-e29b-41d4-a716-446655440003"    // The user performing the toggle
-			messageID := "550e8400-e29b-41d4-a716-446655440003" // The message with multiple reactions
-			chatID := "550e8400-e29b-41d4-a716-446655440001"    // The chat containing the message
-			emoji := "👍"                                        // The emoji the user is adding
+			userID := "550e8400-e29b-41d4-a716-446655440003"
+			messageID := "550e8400-e29b-41d4-a716-446655440003"
+			chatID := "550e8400-e29b-41d4-a716-446655440001"
+			emoji := "👍"
 
 			db, mock, service, ws := setupTest(t)
 			defer db.Close()
 
-			// Common expectations for both cases
+			// ===== STEP 1: Begin transaction =====
+			mock.ExpectBegin()
+
+			// ===== STEP 2: Validate message and get chat ID =====
 			mock.ExpectQuery(regexp.QuoteMeta(
 				`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 			)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
+			// ===== STEP 3: Verify user is a member =====
 			mock.ExpectQuery(regexp.QuoteMeta(
 				`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 			)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-			mock.ExpectBegin()
-			mock.ExpectQuery(regexp.QuoteMeta(
-				`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-			)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+			// ===== STEP 4: Acquire advisory lock =====
+			// Replaced with pg_advisory_xact_lock (blocking)
+			mock.ExpectExec(regexp.QuoteMeta(
+				`SELECT pg_advisory_xact_lock($1)`,
+			)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
+			// ===== STEP 5: Check current reaction (none) =====
 			mock.ExpectQuery(regexp.QuoteMeta(
 				`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 			)).WithArgs(messageID, userID).WillReturnError(sql.ErrNoRows)
 
 			if tc.shouldSucceed {
-				// Successful insert
+				// ===== STEP 6: Insert reaction =====
 				mock.ExpectExec(regexp.QuoteMeta(
 					`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 				)).WithArgs(messageID, userID, emoji).WillReturnResult(sqlmock.NewResult(1, 1))
 
+				// ===== STEP 7: Aggregate reactions =====
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
 					AddRow("👍", 1, true))
 
+				// ===== STEP 8: Commit =====
 				mock.ExpectCommit()
 			} else {
-				// Failing insert
+				// Failing insert - no commit
 				mock.ExpectExec(regexp.QuoteMeta(
 					`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 				)).WithArgs(messageID, userID, emoji).WillReturnError(errors.New("insert error"))
-				// No ExpectCommit
+				// No ExpectCommit - transaction will roll back
 			}
 
 			// Execute
@@ -753,44 +645,51 @@ func TestToggleReaction_WebSocketBroadcast(t *testing.T) {
 	}
 }
 
-// TestToggleReaction_ConcurrentCalls_NoDuplicateReactions demonstrates that
+// TestToggleReaction_DoubleCalls_NoDuplicateReactions demonstrates that
 // calling ToggleReaction twice with the same emoji does not create two reactions.
 // It verifies the toggle-off behavior: first call adds, second call removes.
 // This protects against duplicate reactions from rapid successive clicks.
-func TestToggleReaction_ConcurrentCalls_NoDuplicateReactions(t *testing.T) {
+func TestToggleReaction_DoubleCalls_NoDuplicateReactions(t *testing.T) {
 	ctx := context.Background()
 
-	userID := "550e8400-e29b-41d4-a716-446655440003"    // The user performing the toggle
-	messageID := "550e8400-e29b-41d4-a716-446655440003" // The message with multiple reactions
-	chatID := "550e8400-e29b-41d4-a716-446655440001"    // The chat containing the message
-	emoji := "👍"                                        // The emoji the user is adding
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+	messageID := "550e8400-e29b-41d4-a716-446655440003"
+	chatID := "550e8400-e29b-41d4-a716-446655440001"
+	emoji := "👍"
 
 	db, mock, service, ws := setupTest(t)
 	defer db.Close()
 
 	// ===== FIRST CALL: Add reaction =====
-	// Expect all queries for adding
+	// Begin transaction
+	mock.ExpectBegin()
+
+	// Validate message and get chat ID
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
+	// Verify membership
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 	)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+	// Advisory lock - using blocking version with Exec
+	mock.ExpectExec(regexp.QuoteMeta(
+		`SELECT pg_advisory_xact_lock($1)`,
+	)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
+	// No current reaction
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnError(sql.ErrNoRows)
 
+	// Insert
 	mock.ExpectExec(regexp.QuoteMeta(
 		`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 	)).WithArgs(messageID, userID, emoji).WillReturnResult(sqlmock.NewResult(1, 1))
 
+	// Aggregation
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}).
@@ -808,28 +707,35 @@ func TestToggleReaction_ConcurrentCalls_NoDuplicateReactions(t *testing.T) {
 	assert.Equal(t, 1, ws.BroadcastToChatCount) // first broadcast
 
 	// ===== SECOND CALL: Remove reaction (toggle off) =====
-	// Expect all queries for deletion
+	// Begin transaction
+	mock.ExpectBegin()
+
+	// Validate message and get chat ID
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
+	// Verify membership
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 	)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+	// Advisory lock - using blocking version with Exec
+	mock.ExpectExec(regexp.QuoteMeta(
+		`SELECT pg_advisory_xact_lock($1)`,
+	)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
+	// Current reaction exists
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji"}).AddRow(emoji))
 
+	// Delete
 	mock.ExpectExec(regexp.QuoteMeta(
 		`DELETE FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
 
+	// Aggregation returns empty
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction FROM messages.reactions WHERE message_id = $1 GROUP BY emoji ORDER BY cnt DESC`,
 	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}))
@@ -874,11 +780,13 @@ func TestHandler_ToggleReaction_ErrorScenarios(t *testing.T) {
 			name:  "message not found → 404",
 			emoji: "👍",
 			setupMocks: func(mock sqlmock.Sqlmock, messageID, userID, chatID string) {
-				// First query fails with sql.ErrNoRows
+				// Transaction begins before the message check
+				mock.ExpectBegin()
+				// Then the message existence check fails with sql.ErrNoRows
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 				)).WithArgs(messageID).WillReturnError(sql.ErrNoRows)
-				// No further expectations
+				// No further expectations (rollback will happen automatically)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "not_found",
@@ -888,14 +796,17 @@ func TestHandler_ToggleReaction_ErrorScenarios(t *testing.T) {
 			name:  "user not a member → 403",
 			emoji: "👍",
 			setupMocks: func(mock sqlmock.Sqlmock, messageID, userID, chatID string) {
-				// First query succeeds, returns chatID
+				// Transaction begins
+				mock.ExpectBegin()
+				// Message exists, returns chatID
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
-				// Second query returns false (not a member)
+				// Membership check returns false (not a member)
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 				)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				// No further expectations (rollback will happen)
 			},
 			expectedStatus: http.StatusForbidden,
 			expectedCode:   "access_denied",
@@ -923,9 +834,9 @@ func TestHandler_ToggleReaction_ErrorScenarios(t *testing.T) {
 			handler := NewHandler(service)
 
 			// Test data
-			userID := "550e8400-e29b-41d4-a716-446655440003"    // The user performing the toggle
-			messageID := "550e8400-e29b-41d4-a716-446655440003" // The message with multiple reactions
-			chatID := "550e8400-e29b-41d4-a716-446655440001"    // The chat containing the message
+			userID := "550e8400-e29b-41d4-a716-446655440003"
+			messageID := "550e8400-e29b-41d4-a716-446655440003"
+			chatID := "550e8400-e29b-41d4-a716-446655440001"
 
 			// Setup mocks for this test case
 			tc.setupMocks(mock, messageID, userID, chatID)
@@ -974,21 +885,17 @@ func TestHandler_ToggleReaction_ErrorScenarios(t *testing.T) {
 // - The X-Request-ID header is propagated to the error response
 // - The transaction is rolled back (no COMMIT is expected or executed)
 func TestHandler_ToggleReaction_TransactionErrorRollback(t *testing.T) {
-	// ===== STEP 1: Setup test dependencies =====
-	// Initialize the database mock, service instance, and WebSocket mock.
+	// Setup test dependencies
 	db, mock, service, _ := setupTest(t)
 	defer db.Close()
 
-	// ===== STEP 2: Create the handler under test =====
 	handler := NewHandler(service)
 
-	// ===== STEP 3: Define test data =====
-	userID := "550e8400-e29b-41d4-a716-446655440003"    // The user performing the toggle
-	messageID := "550e8400-e29b-41d4-a716-446655440003" // The message with multiple reactions
-	chatID := "550e8400-e29b-41d4-a716-446655440001"    // The chat containing the message
-	emoji := "👍"                                        // The emoji the user is adding
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+	messageID := "550e8400-e29b-41d4-a716-446655440003"
+	chatID := "550e8400-e29b-41d4-a716-446655440001"
+	emoji := "👍"
 
-	// ===== STEP 4: Build the HTTP request =====
 	body, _ := json.Marshal(map[string]string{"emoji": emoji})
 	req := httptest.NewRequest(http.MethodPost, "/api/v2/messages/"+messageID+"/reactions", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
@@ -1000,58 +907,52 @@ func TestHandler_ToggleReaction_TransactionErrorRollback(t *testing.T) {
 	ctx := authctx.WithUser(req.Context(), user)
 	req = req.WithContext(ctx)
 
-	// ===== STEP 5: Configure database mock expectations =====
-	// 5.1: Message exists – return chat_id
+	// ===== Mock expectations in correct order =====
+	// 1. Begin transaction
+	mock.ExpectBegin()
+
+	// 2. Check message exists and get chat_id
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
-	// 5.2: User is a member – return true
+	// 3. Verify membership
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 	)).WithArgs(userID, chatID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-	// 5.3: Begin transaction
-	mock.ExpectBegin()
+	// 4. Acquire advisory lock - replaced with blocking version using Exec
+	mock.ExpectExec(regexp.QuoteMeta(
+		`SELECT pg_advisory_xact_lock($1)`,
+	)).WithArgs(getAdvisoryKey(messageID, userID)).WillReturnResult(sqlmock.NewResult(0, 0))
 
-	// 5.4: Lock the message row – succeed
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT 1 FROM messages.messages where id = $1 FOR UPDATE`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
-
-	// 5.5: Check current reaction – user has none (sql.ErrNoRows)
+	// 5. Check current reaction – user has none
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
 	)).WithArgs(messageID, userID).WillReturnError(sql.ErrNoRows)
 
-	// 5.6: Attempt to INSERT the new reaction – SIMULATE AN ERROR
-	// This will cause the service to return an error and rollback the transaction.
+	// 6. Attempt INSERT – simulate error
 	mock.ExpectExec(regexp.QuoteMeta(
 		`INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`,
 	)).WithArgs(messageID, userID, emoji).WillReturnError(errors.New("duplicate key violation or connection failure"))
 
-	// IMPORTANT: No ExpectCommit is set, because the transaction should be rolled back.
-	// The service's deferred rollback will be triggered, and we verify that no commit happens.
+	// No ExpectCommit – transaction will roll back
 
-	// ===== STEP 6: Execute the request =====
+	// Execute request
 	w := httptest.NewRecorder()
 	handler.Messages(w, req)
 
-	// ===== STEP 7: Verify HTTP status code =====
-	// The handler should return 500 Internal Server Error for any unexpected DB error
+	// Verify HTTP 500
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
-	// ===== STEP 8: Verify error response body =====
+	// Verify error response
 	var resp httpx.Error
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-
 	assert.Equal(t, "internal_error", resp.Code)
 	assert.Equal(t, "reaction failed", resp.Message)
 	assert.Equal(t, "test-request-id", resp.RequestID)
 
-	// ===== STEP 9: Verify all SQL expectations were met =====
-	// This ensures that we executed exactly the expected queries up to the point of failure,
-	// and that no COMMIT was attempted (since we didn't set an expectation for it).
+	// Verify all expectations (no commit was expected)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
