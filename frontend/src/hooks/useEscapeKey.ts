@@ -18,5 +18,5 @@ export function useEscapeKey({ active, onClose }: Params) {
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [active, onClose]);
+  }, [active]);
 }
