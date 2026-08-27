@@ -62,6 +62,6 @@ export function stubCrypto({ keyUnavailable = false }: IStubCryptoOptions = {}):
   );
 
   vi.spyOn(services.cryptoService, 'decryptMessage').mockImplementation(
-    async (_chatId: string, payload: string) => decode(payload)
+    async (_chatId: string, payload: string) => ({ text: decode(payload) })
   );
 }

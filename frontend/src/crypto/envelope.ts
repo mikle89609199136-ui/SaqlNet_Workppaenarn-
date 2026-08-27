@@ -1,4 +1,5 @@
 import { base64ToBytes, bytesToBase64, bytesToUtf8, utf8ToBytes } from './encoding';
+import type { ISignedParts } from './signing';
 
 /**
  * Конверт сообщения: то, что уходит на сервер вместо текста.
@@ -35,9 +36,15 @@ export interface IEnvelopeV2 {
   epoch: number;
   iv: string;
   data: string;
-  /** Отпечаток ключа подписи. Появляется этапом позже. */
+  /** Отпечаток ключа, которым подписано. Только подсказка, не доказательство. */
   kid?: string;
   sig?: string;
+}
+
+/** Кто подписывает исходящее сообщение. */
+export interface IEnvelopeSigner {
+  fingerprint: string;
+  sign(parts: ISignedParts): Promise<string>;
 }
 
 /**
@@ -171,7 +178,8 @@ export async function encryptMessage(
   chatId: string,
   epoch: number,
   senderId: string,
-  text: string
+  text: string,
+  signer?: IEnvelopeSigner
 ): Promise<string> {
   const key = await derivePurposeKey(chatKey, chatId, 'msg', epoch);
   const iv = randomIv();
@@ -189,6 +197,17 @@ export async function encryptMessage(
     iv: bytesToBase64(iv),
     data: bytesToBase64(ciphertext),
   };
+
+  if (signer) {
+    envelope.kid = signer.fingerprint;
+    envelope.sig = await signer.sign({
+      chatId,
+      epoch,
+      senderId,
+      iv: envelope.iv,
+      data: envelope.data,
+    });
+  }
 
   return JSON.stringify(envelope);
 }

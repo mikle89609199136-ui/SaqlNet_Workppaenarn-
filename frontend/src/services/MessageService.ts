@@ -23,7 +23,7 @@ import type {
   TMessageType,
 } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
-import type { CryptoService } from './CryptoService';
+import type { CryptoService, IDecryptedMessage } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
@@ -184,13 +184,16 @@ export class MessageService {
   ) {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
     let content = item.content;
+    let senderVerified: boolean | undefined;
 
     if (content) {
-      content = await this.decryptContent(chatId, content, context, item.senderId);
+      const decrypted = await this.decryptContent(chatId, content, context, item.senderId);
+      content = decrypted.text;
+      senderVerified = decrypted.senderVerified;
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return { ...item, content, ...mediaPatch };
+    return { ...item, content, senderVerified, ...mediaPatch };
   }
 
   async processPinnedMessageForDisplay(
@@ -202,7 +205,8 @@ export class MessageService {
 
     let content = message.message.content;
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.message.senderId);
+      content = (await this.decryptContent(chatId, content, context, message.message.senderId))
+        .text;
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message);
@@ -222,7 +226,7 @@ export class MessageService {
 
     let content = message.content;
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.senderId);
+      content = (await this.decryptContent(chatId, content, context, message.senderId)).text;
     }
 
     return { ...message, content };
@@ -259,8 +263,8 @@ export class MessageService {
     content: string,
     chatContext: IChatContext,
     senderId: string | null = null
-  ) {
-    if (!content || !this.isEncrypted(chatContext)) return content;
+  ): Promise<IDecryptedMessage> {
+    if (!content || !this.isEncrypted(chatContext)) return { text: content };
 
     return this.cryptoService.decryptMessage(chatId, content, senderId ?? '');
   }
