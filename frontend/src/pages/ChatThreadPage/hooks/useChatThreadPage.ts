@@ -112,7 +112,7 @@ export function useChatThreadPage({
     markMessagesAsRead(unread);
   }, [messages, isLoading, markMessagesAsRead]);
 
-  useAutoScrollToBottom(bottomRef, [chatId, isLoading]);
+  useAutoScrollToBottom(bottomRef, chatId, isLoading);
 
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });

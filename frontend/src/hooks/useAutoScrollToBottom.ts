@@ -1,4 +1,4 @@
-import { useEffect, type DependencyList, type RefObject } from 'react';
+import { useEffect, type RefObject } from 'react';
 
 export function scrollToBottomRef(
   anchorRef: RefObject<HTMLDivElement | null>,
@@ -11,9 +11,10 @@ export function scrollToBottomRef(
 
 export function useAutoScrollToBottom(
   anchorRef: RefObject<HTMLDivElement | null>,
-  deps: DependencyList
+  chatId: string,
+  isLoading: boolean
 ) {
   useEffect(() => {
     scrollToBottomRef(anchorRef, 'auto');
-  }, deps);
+  }, [chatId, isLoading]);
 }
