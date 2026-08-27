@@ -1115,6 +1115,14 @@
     & span { color: #2AABEE; font-size: 13px; }
     & strong { color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-wrap; }
   }
+  /* Код безопасности читают вслух, поэтому моноширинный шрифт и цифры
+     одинаковой ширины: так не теряется место при сверке. */
+  .user-profile-safety-row .user-profile-safety-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
   .user-profile-copy-row {
     @apply relative w-full grid gap-1 border-0 text-left cursor-pointer;
     padding: 13px 48px 13px 16px;
