@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"path"
@@ -26,8 +27,6 @@ var (
 	ErrNotFound  = errors.New("upload not found")
 	ErrForbidden = errors.New("access denied")
 )
-
-const maxUploadBytes = 100 << 20 // 100 MB
 
 const maxFilenameBytes = 255
 
@@ -63,13 +62,14 @@ type Upload struct {
 }
 
 type Service struct {
-	db     *sql.DB
-	store  Store
-	bucket string
+	db             *sql.DB
+	store          Store
+	bucket         string
+	maxUploadBytes int64
 }
 
-func NewService(db *sql.DB, store Store, bucket string) *Service {
-	return &Service{db: db, store: store, bucket: bucket}
+func NewService(db *sql.DB, store Store, bucket string, maxUploadBytes int64) *Service {
+	return &Service{db: db, store: store, bucket: bucket, maxUploadBytes: maxUploadBytes}
 }
 
 func sanitizeFilename(filename string) string {
@@ -86,7 +86,7 @@ func sanitizeFilename(filename string) string {
 }
 
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
-	if int64(len(data)) > maxUploadBytes {
+	if int64(len(data)) > s.maxUploadBytes {
 		return Upload{}, ErrTooBig
 	}
 
@@ -128,17 +128,17 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 }
 
 func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
-	data, err := base64.StdEncoding.DecodeString(base64Ciphertext)
+	data, err := decodeBase64Payload(base64Ciphertext, s.maxUploadBytes)
 	if err != nil {
+		if errors.Is(err, ErrTooBig) {
+			return Upload{}, err
+		}
 		return Upload{}, fmt.Errorf("invalid ciphertext base64: %w", err)
 	}
 	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
-	if fh.Size > maxUploadBytes {
-		return Upload{}, ErrTooBig
-	}
 	ct := fh.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "application/octet-stream"
@@ -154,12 +154,31 @@ func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileH
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, sizeCheckReadLimit(s.maxUploadBytes)))
 	if err != nil {
 		return Upload{}, err
 	}
 
 	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "")
+}
+
+func decodeBase64Payload(encoded string, maxBytes int64) ([]byte, error) {
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
+	data, err := io.ReadAll(io.LimitReader(decoder, sizeCheckReadLimit(maxBytes)))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, ErrTooBig
+	}
+	return data, nil
+}
+
+func sizeCheckReadLimit(maxBytes int64) int64 {
+	if maxBytes == math.MaxInt64 {
+		return maxBytes
+	}
+	return maxBytes + 1
 }
 
 func (s *Service) Get(ctx context.Context, userID, uploadID string) (Upload, error) {
