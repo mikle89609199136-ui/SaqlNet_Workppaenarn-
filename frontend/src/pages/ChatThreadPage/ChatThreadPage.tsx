@@ -12,7 +12,7 @@ import {
   UserProfileModal,
 } from '@/components/features';
 
-import { useMessageActions, useRealtimeSocket } from '@/hooks';
+import { useChatEncryption, useMessageActions, useRealtimeSocket } from '@/hooks';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
 import '@/styles/ChatThreadPage.css';
@@ -86,6 +86,11 @@ export function ChatThreadPage() {
   const messagesRef = useRef<HTMLElement>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
+
+  // Ключ чата готовится до первой отправки, а не в момент нажатия
+  // «отправить»: создание ключа и раздача его участникам — это несколько
+  // запросов, и ждать их с уже набранным сообщением незачем.
+  useChatEncryption(chatId);
 
   const { data: chat = null } = useQuery(chatQuery(chatId));
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));

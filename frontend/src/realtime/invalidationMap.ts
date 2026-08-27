@@ -42,8 +42,13 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.CHAT.UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 
-  [WS_EVENTS.CHAT.ADD_MEMBER]: ({ chatId }) =>
+  [WS_EVENTS.CHAT.MEMBER_ADDED]: ({ chatId }) =>
     chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_REMOVED]: ({ chatId }) =>
+    chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: ({ chatId }) => (chatId ? [chatKeys.members(chatId)] : []),
 };
 
 /**

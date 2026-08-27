@@ -38,4 +38,23 @@ export const defaultHandlers = [
   http.post(api('/messages/read'), () => HttpResponse.json({ success: true })),
 
   http.post(api('/auth/public-key'), () => HttpResponse.json({ success: true })),
+
+  // Ключи шифрования: по умолчанию сервер пуст, как у нового аккаунта.
+  http.post(api('/encryption/keys'), () => HttpResponse.json({ ok: true })),
+
+  http.get(api('/encryption/keys/:userId'), () =>
+    HttpResponse.json({ code: 'key_not_found' }, { status: 404 })
+  ),
+
+  http.get(api('/encryption/chat-keys/:chatId'), () => HttpResponse.json({ keys: [] })),
+
+  http.post(api('/encryption/chat-keys/:chatId'), () => HttpResponse.json({ ok: true })),
+
+  http.post(api('/encryption/rotate-key/:chatId'), () => HttpResponse.json({ ok: true })),
+
+  http.get(api('/encryption/my-key/:chatId'), () =>
+    HttpResponse.json({ code: 'key_not_found' }, { status: 404 })
+  ),
+
+  http.get(api('/chats/:chatId/members'), () => HttpResponse.json({ members: [] })),
 ];

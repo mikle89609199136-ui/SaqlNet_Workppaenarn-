@@ -54,7 +54,7 @@ export const ForwardChatMessagesModal = ({
     try {
       setForwarding(true);
       for (const message of messages) {
-        await services.messageService.forwardMessage(message.id, chatId);
+        await services.messageService.forwardMessage(message, chatId);
       }
 
       setSelectedMessages([]);

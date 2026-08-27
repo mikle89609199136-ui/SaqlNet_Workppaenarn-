@@ -61,6 +61,20 @@ export interface IChatAddMemberEvent {
   member: IMemberDto;
 }
 
+export interface IChatMemberRemovedEvent {
+  type: string;
+  chatId: string;
+  userId: string;
+  reason?: string;
+}
+
+export interface IChatMemberRoleUpdatedEvent {
+  type: string;
+  chatId: string;
+  userId: string;
+  role: string;
+}
+
 export interface ITypingEvent {
   type: string;
   chatId: string;
@@ -181,7 +195,9 @@ export interface IWsEventMap {
   [WS_EVENTS.CALL.PEER_JOINED]: ICallPeerJoinedEvent;
   [WS_EVENTS.CALL.PEER_LEFT]: ICallPeerLeftEvent;
 
-  [WS_EVENTS.CHAT.ADD_MEMBER]: IChatAddMemberEvent;
+  [WS_EVENTS.CHAT.MEMBER_ADDED]: IChatAddMemberEvent;
+  [WS_EVENTS.CHAT.MEMBER_REMOVED]: IChatMemberRemovedEvent;
+  [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: IChatMemberRoleUpdatedEvent;
   [WS_EVENTS.CHAT.UPDATED]: IChatUpdatedEvent;
 
   [WS_EVENTS.MESSAGE.DELETED]: IMessageDeletedEvent;

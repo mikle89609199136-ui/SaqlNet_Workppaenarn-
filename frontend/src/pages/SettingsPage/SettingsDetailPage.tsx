@@ -108,6 +108,12 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
   async function logout(all = false) {
     if (all) await services.authService.logoutAll().catch(() => {});
     else await services.authService.logout().catch(() => {});
+
+    // Завершение всех сеансов стирает и ключи шифрования: это тот самый
+    // случай, ради которого кнопку нажимают — чужой или потерянный
+    // компьютер. Обычный выход ключи оставляет.
+    if (all) await services.cryptoService.wipeDevice().catch(() => {});
+
     disconnectRealtimeSocket();
     localStorage.removeItem('craneapp_settings');
     navigate('/login');
