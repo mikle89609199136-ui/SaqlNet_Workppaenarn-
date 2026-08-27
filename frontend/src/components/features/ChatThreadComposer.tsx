@@ -4,7 +4,6 @@ import {
   useComposerShortcuts,
   useTypingIndicator,
 } from '@/hooks';
-import { WebSocketClient } from '@/services';
 import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/utils';
@@ -29,7 +28,6 @@ import {
 
 interface Props {
   selectionMode: boolean;
-  socket: WebSocketClient;
   pendingAttachment: IPendingAttachment | null;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;

@@ -9,6 +9,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { Icon, Identicon } from '../ui';
+import { useTypingStore } from '@/store/typing';
 
 /**
  * Что сказать вместо «был(а) недавно», пока связи нет.
@@ -24,7 +25,6 @@ function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | n
 }
 
 interface Props {
-  typingUserId?: string | null;
   setIsGroupInfoOpen?: Dispatch<SetStateAction<boolean>>;
   profileModal?: IProfileModal;
   setProfileModal?: Dispatch<SetStateAction<IProfileModal>>;
@@ -33,7 +33,6 @@ interface Props {
 }
 
 export const ChatThreadHeader = ({
-  typingUserId,
   setIsGroupInfoOpen,
   profileModal,
   setProfileModal,
@@ -49,6 +48,7 @@ export const ChatThreadHeader = ({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
+  const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
 
   if (!chat) return;
 
