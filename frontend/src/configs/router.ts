@@ -69,10 +69,12 @@ function redirectHome() {
 const chatLoader = async ({ params }: { params: Params }) => {
   const { chatId = '' } = params;
   try {
-    await Promise.all([
-      queryClient.ensureQueryData(chatQuery(chatId)),
-      queryClient.ensureInfiniteQueryData(messagesQuery(chatId)),
-    ]);
+    // Историю запрашиваем сразу, но не ждём: пока она идёт, на её месте
+    // рисуется скелет, а шапка и поле ввода уже на экране. Ожидание обоих
+    // ответов означало белый экран на всё время самого медленного.
+    void queryClient.prefetchInfiniteQuery(messagesQuery(chatId));
+
+    await queryClient.ensureQueryData(chatQuery(chatId));
     return null;
   } catch (error: any) {
     throw new Response(error.message || 'Не удалось загрузить чат', {
