@@ -5,7 +5,6 @@ import {
   useEncryptionState,
   useTypingIndicator,
 } from '@/hooks';
-import { WebSocketClient } from '@/services';
 import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IEncryptionState } from '@/crypto/encryptionStatus';
 import type { TFunction } from 'i18next';
@@ -49,7 +48,6 @@ function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string
 
 interface Props {
   selectionMode: boolean;
-  socket: WebSocketClient;
   pendingAttachment: IPendingAttachment | null;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
