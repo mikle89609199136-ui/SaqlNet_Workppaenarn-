@@ -7,4 +7,6 @@ export interface IEncryptedMedia {
   mimeType: string;
   sizeBytes: number;
   fileName?: string;
+  /** Эпоха ключа чата, которым зашифрован файл. */
+  keyEpoch?: number;
 }

@@ -80,6 +80,12 @@ export const MessageBubble = memo(
 
           <MessageMedia message={message} onOpenImage={onOpenImage} />
 
+          {message.senderVerified === false && (
+            <p className="message-unverified">
+              {t('senderNotConfirmed', '⚠️ Не удалось подтвердить отправителя')}
+            </p>
+          )}
+
           {message.type === 'call' ? (
             <CallMessageContent message={message} />
           ) : (

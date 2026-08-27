@@ -4,6 +4,7 @@ import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
+import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';
 import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
@@ -50,6 +51,19 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         return next;
       });
       return;
+    }
+
+    // Перевод отправляет расшифрованный текст в Google. Обещать сквозное
+    // шифрование и молча делать это — обман, поэтому спрашиваем. Один раз
+    // на аккаунт: вопрос на каждое сообщение приучил бы жать «да» не читая.
+    if (!hasTranslatorConsent()) {
+      const agreed = window.confirm(
+        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
+      );
+
+      if (!agreed) return;
+
+      rememberTranslatorConsent();
     }
 
     setTranslatingIds((prev) => new Set(prev).add(message.id));

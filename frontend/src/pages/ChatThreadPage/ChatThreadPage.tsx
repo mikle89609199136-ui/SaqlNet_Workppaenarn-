@@ -9,6 +9,7 @@ import {
   PinnedMessagesNavigator,
   PinnedMessagesView,
   MessagesList,
+  SafetyCodeNotice,
   UserProfileModal,
 } from '@/components/features';
 
@@ -43,6 +44,7 @@ export function ChatThreadPage() {
   const { t } = useTranslation();
 
   const {
+    chatId,
     chat,
     pinnedMessages,
     messages,
@@ -154,6 +156,8 @@ export function ChatThreadPage() {
               <img alt="" onClick={(event) => event.stopPropagation()} src={modals.openedImage} />
             </div>
           )}
+
+          <SafetyCodeNotice chatId={chatId} />
 
           {!selectionMode && (
             <ChatThreadComposer

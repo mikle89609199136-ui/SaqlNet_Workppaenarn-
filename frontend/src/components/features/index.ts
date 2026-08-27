@@ -19,3 +19,4 @@ export { PinnedMessagesNavigator } from './PinnedMessages/PinnedMessagesNavigato
 export { PinnedMessagesView } from './PinnedMessages/PinnedMessagesView';
 export { UserProfilePanel } from './UserProfilePanel';
 export { MessagesList } from './MessagesList';
+export { SafetyCodeNotice } from './SafetyCodeNotice';

@@ -861,6 +861,13 @@
     line-height: 1;
   }
   .message-reply-preview { @apply mb-[6px] rounded-lg text-xs; padding: 6px 8px; border-left: 3px solid rgba(245,200,75,0.9); background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.72); }
+  /* Автор не подтверждён: текст показываем, но с оговоркой. Прятать нельзя
+     — подделка и рассчитана на то, что её прочтут как настоящую. */
+  .message-unverified {
+    margin: 0 0 4px;
+    font-size: 12px;
+    color: #ffb020;
+  }
   .message-reactions {
     @apply mt-[7px] flex flex-wrap gap-[5px];
     & span { min-height: 22px; padding: 2px 7px; border-radius: 11px; background: rgba(255,255,255,0.12); font-size: 12px; &.is-mine { background: rgba(245,200,75,0.28); } }
@@ -1107,6 +1114,14 @@
     &:last-child { border-bottom: 0; }
     & span { color: #2AABEE; font-size: 13px; }
     & strong { color: #fff; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-wrap; }
+  }
+  /* Код безопасности читают вслух, поэтому моноширинный шрифт и цифры
+     одинаковой ширины: так не теряется место при сверке. */
+  .user-profile-safety-row .user-profile-safety-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
   }
   .user-profile-copy-row {
     @apply relative w-full grid gap-1 border-0 text-left cursor-pointer;

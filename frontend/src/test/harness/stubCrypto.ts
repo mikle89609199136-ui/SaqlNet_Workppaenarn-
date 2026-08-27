@@ -11,17 +11,17 @@ import { services } from '@/services/serviceContainer';
  * Поэтому криптографический контракт проверяется там, где криптография
  * действительно выполняется, — в файлах `*.node.test.ts`, а тестам страницы
  * достаточно, чтобы содержимое на проводе отличалось от того, что видит
- * пользователь. Подмена сохраняет ровно это свойство и отказ при отсутствии
- * ключа собеседника.
+ * пользователь. Подмена сохраняет ровно это свойство и готовность ключа.
  */
 
 const ENVELOPE_MARKER = 'e2e-stub';
 
 function encode(content: string): string {
   return JSON.stringify({
-    e2e: true,
+    v: 2,
+    epoch: 1,
     marker: ENVELOPE_MARKER,
-    data: Buffer.from(content, 'utf8').toString('base64'),
+    ct: Buffer.from(content, 'utf8').toString('base64'),
   });
 }
 
@@ -29,27 +29,39 @@ function decode(payload: string): string {
   try {
     const parsed = JSON.parse(payload);
     if (parsed?.marker !== ENVELOPE_MARKER) return payload;
-    return Buffer.from(parsed.data, 'base64').toString('utf8');
+    return Buffer.from(parsed.ct, 'base64').toString('utf8');
   } catch {
     // Не конверт — значит содержимое не шифровали, отдаём как есть.
     return payload;
   }
 }
 
-export function stubCrypto(): void {
-  vi.spyOn(services.cryptoService, 'encryptDM').mockImplementation(
-    async (content: string, recipientPubKeyB64: string) => {
-      if (!content) return content;
-      // Поведение настоящего сервиса: без ключа собеседника шифровать нечем,
-      // и отправлять открытый текст вместо этого нельзя.
-      if (!recipientPubKeyB64) {
-        throw new Error('У собеседника нет ключа шифрования — сообщение не отправлено');
+export interface IStubCryptoOptions {
+  /** Ключ чата не готов: так выглядит чат, где шифровать пока нечем. */
+  keyUnavailable?: boolean;
+}
+
+export function stubCrypto({ keyUnavailable = false }: IStubCryptoOptions = {}): void {
+  const ready = {
+    chatKey: keyUnavailable ? null : { key: new Uint8Array(32), epoch: 1 },
+    membersWithoutIdentity: [],
+  };
+
+  vi.spyOn(services.cryptoService, 'ensureChatKey').mockResolvedValue(ready);
+  vi.spyOn(services.cryptoService, 'healChatKeys').mockResolvedValue(ready);
+  vi.spyOn(services.cryptoService, 'rotateChatKey').mockResolvedValue(ready);
+
+  vi.spyOn(services.cryptoService, 'encryptMessage').mockImplementation(
+    async (_chatId: string, text: string) => {
+      if (keyUnavailable) {
+        throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
       }
-      return encode(content);
+
+      return text ? encode(text) : text;
     }
   );
 
-  vi.spyOn(services.cryptoService, 'decryptDM').mockImplementation(async (payload: string) =>
-    decode(payload)
+  vi.spyOn(services.cryptoService, 'decryptMessage').mockImplementation(
+    async (_chatId: string, payload: string) => ({ text: decode(payload) })
   );
 }

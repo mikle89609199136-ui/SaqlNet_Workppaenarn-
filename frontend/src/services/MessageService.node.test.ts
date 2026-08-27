@@ -21,13 +21,12 @@ function message(id: string, chatId: string, content: string): IMessageDto {
   } as IMessageDto;
 }
 
-// Заглушка шифрования: контент проходит насквозь. Настоящая криптография
-// проверяется в CryptoService.node.test.ts.
+// Заглушка шифрования: содержимое проходит насквозь. Настоящая
+// криптография проверяется в src/crypto/*.node.test.ts.
 const passthroughCrypto = {
-  decryptDM: async (content: string) => content,
-  decryptGroup: async (_chatId: string, content: string) => content,
-  encryptDM: async (content: string) => content,
-  encryptGroup: async (_chatId: string, content: string) => content,
+  decryptMessage: async (_chatId: string, content: string) => ({ text: content }),
+  encryptMessage: async (_chatId: string, content: string) => content,
+  ensureChatKey: async () => ({ chatKey: null, membersWithoutIdentity: [] }),
 } as unknown as CryptoService;
 
 function createService() {
@@ -76,18 +75,34 @@ describe('MessageService: загрузка истории', () => {
 });
 
 describe('MessageService: пересылка', () => {
-  it('should send the target chat in the request body', async () => {
-    let body: unknown = null;
+  it('should send the message into the target chat as a new one', async () => {
+    // Серверная пересылка копировала шифртекст исходного чата, а ключи у
+    // чатов разные — в целевом такое сообщение не расшифровалось бы
+    // никогда. Поэтому текст шифруется заново, ключом целевого чата.
+    let body: Record<string, unknown> | null = null;
     server.use(
-      http.post(api('/messages/source-message/forward'), async ({ request }) => {
-        body = await request.json();
+      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
       })
     );
 
-    await createService().forwardMessage('source-message', TARGET_CHAT);
+    await createService().forwardMessage(
+      message('source', 'chat-source', 'переслано'),
+      TARGET_CHAT
+    );
 
-    expect(body).toEqual({ targetChatId: TARGET_CHAT });
+    expect(body).toMatchObject({ content: 'переслано', type: 'text' });
+  });
+
+  it('should refuse to forward what it could not read', async () => {
+    // Пересылка идёт из ленты: если сообщение не расшифровалось, пересылать
+    // нечего — уйдёт сама заглушка, и получатель увидит замок как текст.
+    const unreadable = message('source', 'chat-source', '🔒 Ключ шифрования недоступен');
+
+    await expect(createService().forwardMessage(unreadable, TARGET_CHAT)).rejects.toThrow(
+      /не удалось расшифровать/
+    );
   });
 });
 

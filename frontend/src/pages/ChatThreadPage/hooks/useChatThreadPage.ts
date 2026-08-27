@@ -1,5 +1,6 @@
 import {
   useAutoScrollToBottom,
+  useChatEncryption,
   useChatModals,
   useMessageActions,
   useMessageSelection,
@@ -53,6 +54,7 @@ export function useChatThreadPage({
   const messagesRef = useRef<HTMLElement>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
+  useChatEncryption(chatId);
 
   const { data: chat = null } = useQuery(chatQuery(chatId));
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));

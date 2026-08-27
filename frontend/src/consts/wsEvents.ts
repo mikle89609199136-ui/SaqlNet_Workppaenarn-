@@ -13,7 +13,11 @@ export const WS_EVENTS = {
     MESSAGE: 'socket:message',
   },
   CHAT: {
-    ADD_MEMBER: 'add_chat_member',
+    // Имена сверены с backend-v2/internal/chat/service.go: прежнее
+    // 'add_chat_member' сервер не присылал никогда.
+    MEMBER_ADDED: 'chat_member_added',
+    MEMBER_REMOVED: 'chat_member_removed',
+    MEMBER_ROLE_UPDATED: 'chat_member_role_updated',
     UPDATED: 'chat_updated',
   },
   REACTIONS: {

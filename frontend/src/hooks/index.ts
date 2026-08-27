@@ -3,9 +3,10 @@ export { scrollToBottomRef, useAutoScrollToBottom } from './useAutoScrollToBotto
 export { useCall } from './useCall';
 export { useChatModals } from './useChatModals';
 export { useClickOutside } from './useClickOutside';
+export { useChatEncryption, useEncryptionState } from './useChatEncryption';
+export { useConnectionStatus } from './useConnectionStatus';
 export { useComposerSendMessage } from './useComposerSendMessage';
 export { useComposerShortcuts } from './useComposerShortcuts';
-export { useConnectionStatus } from './useConnectionStatus';
 export { useDebounce } from './useDebounce';
 export { useEscapeKey } from './useEscapeKey';
 export { useIsMobile } from './useIsMobile';
@@ -15,6 +16,8 @@ export { useMessageSelection } from './useMessageSelection';
 export { usePhotoEditor } from './usePhotoEditor';
 export { useProfileEdit } from './useProfileEdit';
 export { useProfilePanel } from './useProfilePanel';
+export { useSafetyCode } from './useSafetyCode';
+export { useSecurityNotice } from './useSecurityNotice';
 export {
   disconnectRealtimeSocket,
   resetRealtimeSocketForTests,

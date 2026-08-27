@@ -64,6 +64,36 @@
 	background-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Смена ключа собеседника: сказать обязательно, но не пугать — честная
+   смена устройства выглядит ровно так же. */
+.safety-code-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 12px 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 10px;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.32);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.safety-code-notice button {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+}
+
+.safety-code-notice button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .thread-composer {
 	background: transparent !important;
 	border: none !important;
