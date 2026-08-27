@@ -2,10 +2,13 @@ import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
+  useEncryptionState,
   useTypingIndicator,
 } from '@/hooks';
 import { WebSocketClient } from '@/services';
 import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
+import type { IEncryptionState } from '@/crypto/encryptionStatus';
+import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/utils';
 import {
@@ -26,6 +29,23 @@ import {
   ComposerForm,
   ComposerRow,
 } from '../ui';
+
+/** Что написано в поле ввода, пока сообщение не набрано. */
+function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
+  if (encryption.status === 'preparing') {
+    return t('encryptionPreparing', 'Готовим шифрование...');
+  }
+
+  if (encryption.status === 'unavailable') {
+    return t('encryptionUnavailable', 'Шифрование недоступно');
+  }
+
+  if (encryption.unreachable.length > 0) {
+    return t('peerNeedsUpdate', 'Собеседник прочтёт после обновления приложения');
+  }
+
+  return t('messagePlaceholder', 'Сообщение...');
+}
 
 interface Props {
   selectionMode: boolean;
@@ -50,6 +70,11 @@ export const ChatThreadComposer = ({
   const { t } = useTranslation();
 
   const { chatId = '' } = useParams<{ chatId: string }>();
+
+  // Пока ключ чата не готов, отправлять нечем: сообщение ушло бы открытым
+  // текстом или не ушло вовсе, и человеку лучше узнать об этом до того,
+  // как он его наберёт.
+  const encryption = useEncryptionState(chatId);
 
   // Текст живёт в самом поле, а не в состоянии React: иначе каждый символ
   // перерисовывал бы композер со всеми его частями. Здесь хранится
@@ -111,8 +136,9 @@ export const ChatThreadComposer = ({
           ref={draftRef}
           aria-label={t('message', 'Сообщение')}
           className="thread-composer-input"
+          disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
-          placeholder={t('messagePlaceholder', 'Сообщение...')}
+          placeholder={composerPlaceholder(encryption, t)}
         />
 
         <div className="thread-composer-submit-wrap">

@@ -121,7 +121,7 @@ export class MessageService {
     }
 
     const chatContext = await this.getChatContext(chatId, 'media encryption');
-    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media, chatContext);
+    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media);
     const uploadResponse = await this.apiClient.post<IUploadResponse>(API_ENDPOINTS.MEDIA_UPLOAD, {
       file: encryptedMedia,
       type: mediaType,
@@ -163,7 +163,7 @@ export class MessageService {
     const localUrl =
       canRegister && uploadedUrl
         ? await resolveMediaObjectUrl(uploadedUrl, () =>
-            this.cryptoService.decryptMedia(chatId, encryptedMedia, chatContext)
+            this.cryptoService.decryptMedia(chatId, encryptedMedia)
           )
         : uploadedUrl;
     const message = {
@@ -189,7 +189,7 @@ export class MessageService {
       content = await this.decryptContent(chatId, content, context, item.senderId);
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, item, context);
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
     return { ...item, content, ...mediaPatch };
   }
 
@@ -205,7 +205,7 @@ export class MessageService {
       content = await this.decryptContent(chatId, content, context, message.message.senderId);
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message, context);
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message);
 
     return {
       ...message,
@@ -228,27 +228,30 @@ export class MessageService {
     return { ...message, content };
   }
 
+  /**
+   * Тип чата — всё, что шифрованию нужно знать о чате.
+   *
+   * Ключей здесь больше нет: они не привязаны к собеседнику, а живут у
+   * самого чата. Осталась одна развилка — каналы не шифруются.
+   */
   async getChatContext(chatId: string, purpose: string): Promise<IChatContext> {
     try {
       const chat = await resolveChat(chatId);
-
-      return {
-        ...(chat || {}),
-        type: chat?.type || 'private',
-        peerPublicKey: chat?.peerPublicKey || null,
-      };
+      return { type: chat?.type || 'private' };
     } catch (e) {
-      console.warn(`Failed to fetch chat info for ${purpose} context`, e);
-      return { type: 'private', peerPublicKey: null };
+      console.warn(`Не удалось получить чат для ${purpose}`, e);
+      return { type: 'private' };
     }
   }
 
+  private isEncrypted(chatContext: IChatContext): boolean {
+    return chatContext.type !== 'channel';
+  }
+
   async encryptContent(chatId: string, content: string, chatContext: IChatContext) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.encryptGroup(chatId, content);
-    }
-    return this.cryptoService.encryptDM(content, chatContext.peerPublicKey!);
+    if (!content || !this.isEncrypted(chatContext)) return content;
+
+    return this.cryptoService.encryptMessage(chatId, content);
   }
 
   async decryptContent(
@@ -257,17 +260,12 @@ export class MessageService {
     chatContext: IChatContext,
     senderId: string | null = null
   ) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.decryptGroup(chatId, content);
-    }
-    const isOwnMessage = senderId && senderId === this.getMeId();
-    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey!, {
-      preferEmbeddedSenderKey: !isOwnMessage,
-    });
+    if (!content || !this.isEncrypted(chatContext)) return content;
+
+    return this.cryptoService.decryptMessage(chatId, content, senderId ?? '');
   }
 
-  async resolveMediaForDisplay(chatId: string, item: IMessageDto, chatContext: IChatContext) {
+  async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
     if (!metadata || !('mediaUrl' in metadata)) {
@@ -295,7 +293,7 @@ export class MessageService {
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
               const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-              return this.cryptoService.decryptMedia(chatId, response.data, chatContext);
+              return this.cryptoService.decryptMedia(chatId, response.data);
             })
           : mediaUrl;
 
@@ -365,17 +363,35 @@ export class MessageService {
     return { ...response.data, readIds: messageIds };
   }
 
-  async forwardMessage(messageId: string, targetChatId: string) {
-    const response = await this.apiClient.post<IMessageResponse>(
-      API_ENDPOINTS.MESSAGE_FORWARD(messageId),
-      { targetChatId }
-    );
+  /**
+   * Пересылка.
+   *
+   * Делается на клиенте: у каждого чата свой ключ, и серверная пересылка,
+   * копирующая шифртекст как есть, дала бы в целевом чате сообщение,
+   * которое не расшифруется никогда. Поэтому текст берётся уже
+   * расшифрованным — из ленты, откуда его и выбрали, — и шифруется
+   * заново ключом целевого чата.
+   *
+   * Пометки «переслано» пока не будет: маршрут отправки не принимает
+   * признак пересылки. Задача заведена бэкенду.
+   */
+  async forwardMessage(message: IMessageDto, targetChatId: string) {
+    const content = message.content ?? '';
 
-    // Одна обработка, а не две: прежде сообщение прогонялось через
-    // расшифровку дважды — второй раз уже по расшифрованному объекту.
-    // Это давало лишний запрос, лишнюю расшифровку и вторую копию
-    // файла в памяти, до которой было уже не дотянуться.
-    return this.processMessageForDisplay(targetChatId, response.data.message);
+    if (content.startsWith('🔒')) {
+      throw new Error('Нельзя переслать сообщение, которое не удалось расшифровать');
+    }
+
+    const media = (message as IMessageDto & { mediaUrl?: string | null }).mediaUrl;
+
+    if (MEDIA_MESSAGE_TYPES.has(message.type) && media) {
+      // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
+      const blob = await fetch(media).then((response) => response.blob());
+
+      return this.sendMediaMessage(targetChatId, blob, message.type as TMediaMessageType, content);
+    }
+
+    return this.sendMessage(targetChatId, content, message.type);
   }
 
   async listReactions(messageId: string) {

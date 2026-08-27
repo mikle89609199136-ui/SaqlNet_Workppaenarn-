@@ -1,6 +1,11 @@
 import { HttpResponse, http } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveChat, setChatResolver } from '@/core/chatResolver';
+import {
+  resolveChat,
+  resolveMembers,
+  setChatResolver,
+  setMembersResolver,
+} from '@/core/chatResolver';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { queryClient } from '../queryClient';
@@ -11,6 +16,7 @@ const CHAT_ID = 'chat-1';
 
 afterEach(() => {
   setChatResolver(null);
+  setMembersResolver(null);
   queryClient.clear();
 });
 
@@ -18,6 +24,7 @@ describe('источник данных чата для шифрования', (
   it('should fail loudly when nothing was registered', async () => {
     // Молчание здесь означало бы сообщение, отправленное без шифрования.
     await expect(resolveChat(CHAT_ID)).rejects.toThrow(/не зарегистрирован/i);
+    await expect(resolveMembers(CHAT_ID)).rejects.toThrow(/не зарегистрирован/i);
   });
 
   it('should serve a repeated request from the query cache', async () => {
@@ -25,9 +32,7 @@ describe('источник данных чата для шифрования', (
     server.use(
       http.get(api(`/chats/${CHAT_ID}`), () => {
         requests += 1;
-        return HttpResponse.json({
-          chat: { id: CHAT_ID, type: 'private', title: 'Чат', peerPublicKey: 'ключ' },
-        });
+        return HttpResponse.json({ chat: { id: CHAT_ID, type: 'private', title: 'Чат' } });
       })
     );
     registerChatResolver();
@@ -38,54 +43,51 @@ describe('источник данных чата для шифрования', (
     expect(requests).toBe(1);
   });
 
-  it('should not remember a private chat without the peer key', async () => {
-    // Ключ собеседника может появиться позже. Запомнив ответ без него,
-    // мы оставили бы чат незашифрованным до перезагрузки вкладки.
+  it('should remember the chat record', async () => {
+    // Прежде запись о личном чате без ключа собеседника выбрасывалась из
+    // кеша: ключ мог появиться позже. Теперь ключ принадлежит чату, а не
+    // собеседнику, и выбрасывать нечего.
     server.use(
       http.get(api(`/chats/${CHAT_ID}`), () =>
-        HttpResponse.json({
-          chat: { id: CHAT_ID, type: 'private', title: 'Чат', peerPublicKey: null },
-        })
+        HttpResponse.json({ chat: { id: CHAT_ID, type: 'private', title: 'Чат' } })
       )
     );
     registerChatResolver();
 
     await resolveChat(CHAT_ID);
 
-    expect(queryClient.getQueryData(chatKeys.detail(CHAT_ID))).toBeUndefined();
+    expect(queryClient.getQueryData(chatKeys.detail(CHAT_ID))).toMatchObject({ type: 'private' });
   });
 
-  it('should keep the loaded thread when the chat record is dropped', async () => {
-    // Ключ чата — префикс ключей его истории и закреплённых: удаление по
-    // нему унесло бы вместе с записью о чате всю загруженную ленту.
+  it('should serve chat members for key distribution', async () => {
+    // Ключ чата заворачивается для каждого участника отдельно, поэтому
+    // шифрованию нужен их список — и берётся он из того же кеша, которым
+    // живёт интерфейс.
     server.use(
-      http.get(api(`/chats/${CHAT_ID}`), () =>
-        HttpResponse.json({
-          chat: { id: CHAT_ID, type: 'private', title: 'Чат', peerPublicKey: null },
-        })
+      http.get(api(`/chats/${CHAT_ID}/members`), () =>
+        HttpResponse.json({ members: [{ id: 'user-1' }, { id: 'user-2' }] })
       )
     );
     registerChatResolver();
-    queryClient.setQueryData(chatKeys.messages(CHAT_ID), {
-      pages: [[{ id: 'm-1' }]],
-      pageParams: [0],
-    });
 
-    await resolveChat(CHAT_ID);
+    const members = await resolveMembers(CHAT_ID);
 
-    expect(queryClient.getQueryData(chatKeys.messages(CHAT_ID))).toBeDefined();
+    expect(members.map((member) => member.id)).toEqual(['user-1', 'user-2']);
   });
 
-  it('should remember a group chat, which has no peer key by nature', async () => {
+  it('should serve a repeated members request from the cache', async () => {
+    let requests = 0;
     server.use(
-      http.get(api(`/chats/${CHAT_ID}`), () =>
-        HttpResponse.json({ chat: { id: CHAT_ID, type: 'group', title: 'Группа' } })
-      )
+      http.get(api(`/chats/${CHAT_ID}/members`), () => {
+        requests += 1;
+        return HttpResponse.json({ members: [{ id: 'user-1' }] });
+      })
     );
     registerChatResolver();
 
-    await resolveChat(CHAT_ID);
+    await resolveMembers(CHAT_ID);
+    await resolveMembers(CHAT_ID);
 
-    expect(queryClient.getQueryData(chatKeys.detail(CHAT_ID))).toMatchObject({ type: 'group' });
+    expect(requests).toBe(1);
   });
 });

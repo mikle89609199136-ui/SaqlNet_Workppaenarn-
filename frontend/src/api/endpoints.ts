@@ -52,6 +52,12 @@ export const API_ENDPOINTS = {
   CHAT_PINS: (chatId: string) => `/chats/${chatId}/pins`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
+  ENCRYPTION_KEYS: '/encryption/keys',
+  ENCRYPTION_KEY_OF: (userId: string) => `/encryption/keys/${userId}`,
+  ENCRYPTION_CHAT_KEYS: (chatId: string) => `/encryption/chat-keys/${chatId}`,
+  ENCRYPTION_CHAT_KEY_ROTATE: (chatId: string) => `/encryption/rotate-key/${chatId}`,
+  ENCRYPTION_MY_KEY: (chatId: string) => `/encryption/my-key/${chatId}`,
+
   MEDIA_UPLOAD: '/media',
   MEDIA_GET: (uploadId: string) => `/media/${uploadId}`,
 

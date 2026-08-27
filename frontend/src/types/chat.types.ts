@@ -36,10 +36,15 @@ export interface IChatDto {
 
 export type TChatsList = IChatDto[];
 
+/**
+ * Что шифрованию нужно знать о чате.
+ *
+ * Только тип: ключ принадлежит чату, а не собеседнику, поэтому
+ * `peerPublicKey` здесь больше не нужен. Индексной сигнатуры тоже нет —
+ * с ней компилировалось обращение к любому выдуманному полю.
+ */
 export interface IChatContext {
   type: TChatType;
-  peerPublicKey: string | null;
-  [key: string]: unknown;
 }
 
 export interface IMemberDto {

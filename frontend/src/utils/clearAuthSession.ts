@@ -1,5 +1,7 @@
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { forgetEncryptionStates } from '@/crypto/encryptionStatus';
 import { clearMediaObjectUrls } from '@/services/mediaObjectUrls';
+import { services } from '@/services/serviceContainer';
 import { clearAllDrafts } from '@/store/chatDrafts';
 import { queryClient } from '@/queries/queryClient';
 import { useProfileStore } from '@/store/profile';
@@ -17,5 +19,10 @@ export function clearAuthSession() {
   // Недописанные сообщения — тоже открытый текст, и они не должны
   // достаться следующему, кто войдёт в этой вкладке.
   clearAllDrafts();
+  // Ключи с устройства не стираются: на своём компьютере повторный вход не
+  // должен выглядеть для собеседников как вход с нового устройства. Стирает
+  // их «завершить все сеансы».
+  services.cryptoService.forgetSession();
+  forgetEncryptionStates();
   clearProfile();
 }

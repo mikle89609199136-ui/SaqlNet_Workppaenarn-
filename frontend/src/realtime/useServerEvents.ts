@@ -9,6 +9,7 @@ import {
   putThreadMessage,
 } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
+import { resolveChat } from '@/core/chatResolver';
 import { useTypingStore } from '@/store/typing';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
@@ -91,6 +92,36 @@ export function useServerEvents(enabled: boolean): void {
       void resyncAfterReconnect(queryClient);
     });
 
+    // Состав чата изменился — ключ чата пора менять: вошедший не должен
+    // читать написанное до него, вышедший — написанное после.
+    //
+    // Ротацию делает только владелец чата. Если бы её начинал каждый, кто
+    // услышал событие, несколько участников одновременно записали бы разные
+    // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
+    // сервере идёт построчно, без транзакции.
+    const rotateIfOwner = async (chatId?: string) => {
+      if (!chatId) return;
+
+      try {
+        const chat = await resolveChat(chatId);
+        const me = services.cryptoService.getAccountId();
+
+        if (chat?.ownerId && me && chat.ownerId === me) {
+          await services.cryptoService.rotateChatKey(chatId);
+        }
+      } catch (error) {
+        console.warn('Не удалось обновить ключ чата после смены состава', error);
+      }
+    };
+
+    const unsubscribeMemberAdded = eventBus.on(WS_EVENTS.CHAT.MEMBER_ADDED, (event) => {
+      void rotateIfOwner(event?.chatId);
+    });
+
+    const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
+      void rotateIfOwner(event?.chatId);
+    });
+
     // «Печатает» живёт три секунды и не кешируется — это не данные,
     // а эфемерное состояние интерфейса.
     const unsubscribeTyping = eventBus.on(WS_EVENTS.USER.TYPING, (event) => {
@@ -106,6 +137,8 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
       unsubscribeReconnect();
+      unsubscribeMemberAdded();
+      unsubscribeMemberRemoved();
       stopConnectionWatch();
     };
   }, [enabled, eventBus, queryClient, setTyping]);
