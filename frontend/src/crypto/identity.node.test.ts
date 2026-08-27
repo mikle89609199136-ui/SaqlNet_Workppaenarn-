@@ -69,6 +69,16 @@ describe('личность аккаунта', () => {
     await expect(crypto.subtle.exportKey('pkcs8', identity.ecdsaPrivate)).rejects.toThrow();
   });
 
+  it('should be able to verify with the published key', async () => {
+    // Список прав раздаётся паре: приватному достаётся подпись, публичному
+    // проверка. С одним лишь 'sign' публичный ключ остаётся без прав, и
+    // подпись не проверяется ничем — а выглядит это как «подпись не сошлась».
+    const identity = await loadOrCreateIdentity('alice');
+
+    expect(identity.ecdsa.usages).toContain('verify');
+    expect(identity.ecdsaPrivate.usages).toContain('sign');
+  });
+
   it('should carry both keys through the bundle', async () => {
     const identity = await loadOrCreateIdentity('alice');
     const decoded = await decodeBundle(identity.bundle);

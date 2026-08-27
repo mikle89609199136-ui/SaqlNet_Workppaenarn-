@@ -61,6 +61,35 @@ interface IKeyResponse {
 
 const peerCache = new Map<string, { identity: IPublicIdentity | null; at: number }>();
 
+export const PEER_BUNDLES_PREFIX = 'peerbundles:';
+
+/** Сколько прежних связок помнить о человеке. */
+const PEER_HISTORY_LIMIT = 5;
+
+/**
+ * Запомнить связку собеседника.
+ *
+ * Нужно для проверки подписи: человек мог сменить устройство после того,
+ * как отправил сообщение, и его прежние сообщения подписаны ключом,
+ * которого на сервере уже нет. Без истории они выглядели бы поддельными.
+ */
+async function rememberPeerBundle(userId: string, bundle: string): Promise<void> {
+  const storageKey = `${PEER_BUNDLES_PREFIX}${userId}`;
+  const known = (await readKey<string[]>(storageKey)) ?? [];
+
+  if (known.includes(bundle)) return;
+
+  await writeKey(storageKey, [...known, bundle].slice(-PEER_HISTORY_LIMIT));
+}
+
+/** Связки, которые мы видели у этого человека раньше. */
+export async function knownPeerIdentities(userId: string): Promise<IPublicIdentity[]> {
+  const bundles = (await readKey<string[]>(`${PEER_BUNDLES_PREFIX}${userId}`)) ?? [];
+  const identities = await Promise.all(bundles.map((bundle) => decodeBundle(bundle)));
+
+  return identities.filter((identity): identity is IPublicIdentity => identity !== null);
+}
+
 function identityStorageKey(accountId: string): string {
   return `identity:${accountId}`;
 }
@@ -134,7 +163,10 @@ async function createIdentity(accountId: string): Promise<IStoredIdentity> {
   // extractable: false относится к приватному ключу. Публичный извлекаем
   // всегда — иначе его нечем было бы опубликовать.
   const ecdh = await crypto.subtle.generateKey(ECDH_ALGORITHM, false, ['deriveBits']);
-  const ecdsa = await crypto.subtle.generateKey(ECDSA_ALGORITHM, false, ['sign']);
+  // Оба права обязательны: список раздаётся паре, приватному достаётся
+  // подпись, публичному — проверка. С одним лишь 'sign' публичный ключ
+  // остаётся без прав, и проверка подписи отказывает.
+  const ecdsa = await crypto.subtle.generateKey(ECDSA_ALGORITHM, false, ['sign', 'verify']);
 
   const bundle = encodeBundle(await exportSpki(ecdh.publicKey), await exportSpki(ecdsa.publicKey));
 
@@ -220,6 +252,8 @@ export async function fetchPeerIdentity(
   try {
     const response = await apiClient.get<IKeyResponse>(API_ENDPOINTS.ENCRYPTION_KEY_OF(userId));
     identity = response.data?.publicKey ? await decodeBundle(response.data.publicKey) : null;
+
+    if (identity) await rememberPeerBundle(userId, identity.bundle);
   } catch {
     // 404 — ключа нет; остальное тоже не повод падать: заворачивание для
     // этого участника просто не состоится, о чём узнает вызывающий код.

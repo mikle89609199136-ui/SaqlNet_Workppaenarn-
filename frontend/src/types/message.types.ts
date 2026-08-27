@@ -47,6 +47,11 @@ export interface IMessageDto {
   metadata?: IForwardedMetadata | IMediaMetadata;
   forwardedSenderName: string;
   reactions: TReactionsList;
+  /**
+   * Удалось ли подтвердить автора подписью. `false` — не удалось: текст
+   * показывается, но с оговоркой.
+   */
+  senderVerified?: boolean;
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   status?: string;

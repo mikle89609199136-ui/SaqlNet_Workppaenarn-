@@ -15,11 +15,14 @@ import {
 import {
   fetchPeerIdentity,
   forgetPeerIdentities,
+  knownPeerIdentities,
   loadOrCreateIdentity,
+  PEER_BUNDLES_PREFIX,
   publishIdentity,
   type ILocalIdentity,
 } from '@/crypto/identity';
 import { removeKey, removeKeysWithPrefix } from '@/crypto/keyStore';
+import { signParts, verifyParts, type ISignedParts } from '@/crypto/signing';
 import type { IEncryptedMedia } from '@/types';
 
 /**
@@ -46,6 +49,18 @@ interface IMediaInput {
   bytes: ArrayBuffer;
   mimeType: string;
   fileName?: string;
+}
+
+export interface IDecryptedMessage {
+  text: string;
+  /**
+   * Удалось ли подтвердить, что сообщение написал тот, кто указан.
+   *
+   * `undefined` — вопрос не стоит: своё сообщение, обычный текст или
+   * заглушка. `false` — подпись не сошлась ни с нынешней связкой
+   * отправителя, ни с прежними, либо её нет вовсе.
+   */
+  senderVerified?: boolean;
 }
 
 export class CryptoService {
@@ -178,27 +193,66 @@ export class CryptoService {
       throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
     }
 
-    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text);
+    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text, {
+      fingerprint: identity.fingerprint,
+      sign: (parts) => signParts(identity.ecdsaPrivate, parts),
+    });
   }
 
-  async decryptMessage(chatId: string, content: string, senderId: string): Promise<string> {
-    if (!content) return content;
-    if (!this.hasWebCrypto()) return KEY_UNAVAILABLE_PLACEHOLDER;
+  /**
+   * Проверка подписи.
+   *
+   * Сначала — нынешняя связка отправителя, потом прежние: человек мог
+   * сменить устройство после того, как отправил сообщение, и по нынешнему
+   * ключу его собственное сообщение выглядело бы поддельным.
+   */
+  private async isSenderConfirmed(parts: ISignedParts, signature: string): Promise<boolean> {
+    const current = await fetchPeerIdentity(this.apiClient, parts.senderId);
+    if (current && (await verifyParts(current.ecdsa, parts, signature))) return true;
+
+    for (const known of await knownPeerIdentities(parts.senderId)) {
+      if (await verifyParts(known.ecdsa, parts, signature)) return true;
+    }
+
+    return false;
+  }
+
+  async decryptMessage(
+    chatId: string,
+    content: string,
+    senderId: string
+  ): Promise<IDecryptedMessage> {
+    if (!content) return { text: content };
+    if (!this.hasWebCrypto()) return { text: KEY_UNAVAILABLE_PLACEHOLDER };
 
     const envelope = parseEnvelope(content);
 
-    if (!envelope) return isLegacyContent(content) ? LEGACY_MESSAGE_PLACEHOLDER : content;
+    if (!envelope) {
+      return { text: isLegacyContent(content) ? LEGACY_MESSAGE_PLACEHOLDER : content };
+    }
 
     try {
-      await this.requireIdentity();
+      const identity = await this.requireIdentity();
       const chatKey = await this.chatKeys.forEpoch(chatId, envelope.epoch);
 
-      if (!chatKey) return KEY_UNAVAILABLE_PLACEHOLDER;
+      if (!chatKey) return { text: KEY_UNAVAILABLE_PLACEHOLDER };
 
-      return await decryptMessage(chatKey.key, chatId, senderId, envelope);
+      const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+
+      // Своё сообщение проверять не у кого и незачем.
+      if (senderId === identity.accountId) return { text };
+
+      const senderVerified = envelope.sig
+        ? await this.isSenderConfirmed(
+            { chatId, epoch: envelope.epoch, senderId, iv: envelope.iv, data: envelope.data },
+            envelope.sig
+          )
+        : false;
+
+      return { text, senderVerified };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
-      return KEY_UNAVAILABLE_PLACEHOLDER;
+      return { text: KEY_UNAVAILABLE_PLACEHOLDER };
     }
   }
 
@@ -280,6 +334,7 @@ export class CryptoService {
     if (accountId) {
       await this.chatKeys.wipe(accountId);
       await removeKey(`identity:${accountId}`);
+      await removeKeysWithPrefix(PEER_BUNDLES_PREFIX);
     }
 
     this.forgetSession();

@@ -24,7 +24,7 @@ function message(id: string, chatId: string, content: string): IMessageDto {
 // Заглушка шифрования: содержимое проходит насквозь. Настоящая
 // криптография проверяется в src/crypto/*.node.test.ts.
 const passthroughCrypto = {
-  decryptMessage: async (_chatId: string, content: string) => content,
+  decryptMessage: async (_chatId: string, content: string) => ({ text: content }),
   encryptMessage: async (_chatId: string, content: string) => content,
   ensureChatKey: async () => ({ chatKey: null, membersWithoutIdentity: [] }),
 } as unknown as CryptoService;
