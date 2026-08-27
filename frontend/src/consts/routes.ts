@@ -6,7 +6,6 @@ export const REACT_ROUTES = {
   CHAT_BY_ID: '/chats/:chatId',
   CONTACTS: '/contacts',
   SETTINGS: '/settings',
-  CREATE_GROUP: '/create-group',
 };
 
 class Routes {
@@ -16,7 +15,6 @@ class Routes {
   CHAT_BY_ID = (chatId: string) => `/chats/${encodeURIComponent(chatId)}`;
 
   SETTINGS = '/settings';
-  CREATE_GROUP = '/create-group';
 
   LOGIN = '/login';
   REGISTER = '/register';

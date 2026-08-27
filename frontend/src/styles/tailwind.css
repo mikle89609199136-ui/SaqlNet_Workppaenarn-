@@ -184,7 +184,24 @@
   .chats-header h1 { @apply m-0 text-white text-2xl font-bold; }
   .chats-kicker { @apply m-0 mb-1 text-xs font-extrabold uppercase tracking-[0.08em]; color: rgba(255,255,255,0.42); }
   .chats-user { @apply w-11 h-11 border border-[rgba(255,255,255,0.1)] rounded-[14px] flex items-center justify-center text-white font-extrabold; background: linear-gradient(135deg, #1e8fff, var(--color-accent)); }
-  .chats-toolbar { @apply block mb-3; }
+  .chats-toolbar { @apply flex items-center gap-2 mb-3; }
+  /* Кнопка новой группы: раньше создать её было нельзя вовсе — страница
+     существовала, а ссылки на неё не было ни на одном экране. */
+  .chats-new-group {
+    @apply shrink-0 w-11 h-11 rounded-xl flex items-center justify-center cursor-pointer;
+    border: 1px solid var(--color-border);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.72);
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  }
+  .chats-new-group:hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.16);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .chats-new-group:active { transform: translateY(0); }
+  .chats-new-group:focus-visible { outline: 2px solid rgba(43,119,231,0.72); outline-offset: 2px; }
   .chats-search {
     @apply min-w-0 h-11 px-3.5 border border-border rounded-xl flex items-center gap-2.5 no-underline cursor-pointer select-none;
     background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
@@ -207,6 +224,34 @@
   .chats-search-icon { @apply shrink-0 text-[15px] leading-none; }
   .chats-search-placeholder { @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px]; }
   .chats-icon-button { @apply w-8 h-8 flex items-center justify-center bg-transparent text-white text-2xl no-underline; }
+  /* Окно создания группы */
+  .create-group-avatar {
+    @apply w-16 h-16 rounded-2xl flex items-center justify-center cursor-pointer overflow-hidden;
+    border: 1px dashed rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.6);
+    & img { @apply w-full h-full object-cover; }
+  }
+  .create-group-avatar:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
+  .create-group-field {
+    @apply w-full h-11 px-3 rounded-xl outline-none;
+    border: 1px solid var(--color-border);
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+  }
+  .create-group-field:focus { border-color: rgba(43,119,231,0.72); }
+  .create-group-chip {
+    @apply flex items-center gap-1.5 pl-3 pr-2 py-1 rounded-full text-sm cursor-pointer;
+    background: rgba(43,119,231,0.18);
+    border: 1px solid rgba(43,119,231,0.32);
+    color: #fff;
+  }
+  .create-group-chip:hover { background: rgba(43,119,231,0.28); }
+  .create-group-submit {
+    @apply w-full h-11 rounded-xl cursor-pointer font-semibold text-white;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
+  }
+  .create-group-submit:disabled { @apply opacity-60 cursor-default; }
   .chats-list { @apply overflow-hidden; }
 
   .chat-row {
@@ -381,8 +426,7 @@
     @media (min-width: 768px) { @apply flex-1 overflow-y-auto; }
   }
   .app-main-content > .contacts-page,
-  .app-main-content > .settings-page,
-  .app-main-content > .create-group-page {
+  .app-main-content > .settings-page {
     @media (min-width: 768px) { @apply flex-1; }
   }
 
@@ -475,10 +519,6 @@
       &.active { color: #b8a4ff; }
     }
     & .chats-page, & .contacts-page, & .settings-page { @apply pb-safe-nav; }
-    & .create-group-page {
-      @apply min-h-full;
-      padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-    }
   }
 	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
 	  .mobile-content:has(> .thread-page) {
@@ -499,12 +539,12 @@
    ========================================================= */
 @layer components {
 
-  .contacts-page, .settings-page, .create-group-page {
+  .contacts-page, .settings-page {
     @apply w-full box-border;
     padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(90px + env(safe-area-inset-bottom, 0px));
     @media (min-width: 768px) { @apply h-full overflow-y-auto; padding: 48px 64px; min-height: unset; }
   }
-  .contacts-header, .settings-header, .create-group-header {
+  .contacts-header, .settings-header {
     @apply flex items-center gap-[14px] mb-6;
     & h1 {
       @apply m-0 text-[22px] font-bold;
@@ -518,12 +558,12 @@
     @media (min-width: 768px) { @apply hidden; }
   }
 
-  .contacts-search-input, .group-name-input, .group-desc-input {
+  .contacts-search-input {
     @apply w-full rounded-[12px] bg-[#1e1e1e] text-white text-[15px] outline-none mb-[18px];
     padding: 12px 16px; border: 2px solid #333;
     &:focus { border-color: var(--color-accent); }
   }
-  .contacts-list, .contacts-select-list { @apply flex flex-col gap-[10px]; }
+  .contacts-list { @apply flex flex-col gap-[10px]; }
   .contact-item-row {
     @apply flex items-center justify-between rounded-[14px] cursor-pointer transition-colors duration-200 no-underline text-white;
     padding: 12px 14px; background: var(--color-panel); border: 1px solid rgba(255,255,255,0.05);

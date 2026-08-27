@@ -157,13 +157,6 @@ export const router = createBrowserRouter([
                     Component: m.SettingsPage,
                   })),
               },
-              {
-                path: REACT_ROUTES.CREATE_GROUP,
-                lazy: () =>
-                  import('../pages/CreateGroupChatPage/CreateGroupPage.js').then((m) => ({
-                    Component: m.CreateGroupPage,
-                  })),
-              },
             ],
           },
           {

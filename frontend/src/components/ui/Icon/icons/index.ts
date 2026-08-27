@@ -8,6 +8,7 @@ export { CrossIcon } from './CrossIcon';
 export { EditIcon } from './EditIcon';
 export { FileIcon } from './FileIcon';
 export { ForwardIcon } from './ForwardIcon';
+export { GroupAddIcon } from './GroupAddIcon';
 export { LanguageIcon } from './LanguageIcon';
 export { PhoneIcon } from './PhoneIcon';
 export { PinIcon } from './PinIcon';
