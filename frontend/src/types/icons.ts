@@ -9,6 +9,7 @@ export type TIconTypes =
   | 'edit'
   | 'file'
   | 'forward'
+  | 'groupAdd'
   | 'language'
   | 'phone'
   | 'pin'

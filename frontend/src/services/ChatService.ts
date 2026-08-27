@@ -48,13 +48,22 @@ export class ChatService {
     title,
     description = '',
     members = [],
+    avatarUrl = '',
   }: {
     title: string;
     description: string;
     members: string[];
+    avatarUrl?: string;
   }): Promise<ICreateGroupChatResponse> {
     const chat = await this.apiClient
-      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, {
+        title,
+        description,
+        members,
+        // Аватарка хранится строкой, поэтому уходит уменьшенной картинкой
+        // прямо в теле запроса: отдельная загрузка файла тут не нужна.
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
       .then((response) => response.data);
 
     return chat;

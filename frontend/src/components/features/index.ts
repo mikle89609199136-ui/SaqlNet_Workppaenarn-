@@ -20,3 +20,4 @@ export { PinnedMessagesView } from './PinnedMessages/PinnedMessagesView';
 export { UserProfilePanel } from './UserProfilePanel';
 export { MessagesList } from './MessagesList';
 export { SafetyCodeNotice } from './SafetyCodeNotice';
+export { CreateGroupModal } from './CreateGroupModal';
