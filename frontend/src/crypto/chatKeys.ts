@@ -75,6 +75,38 @@ function wrapInfo(epoch: number, senderFp: string, recipientFp: string): string 
   return `craneapp/e2e/v2/wrap|${epoch}|${senderFp}|${recipientFp}`;
 }
 
+/**
+ * Разбор завёрнутого ключа.
+ *
+ * Строка приходит с сервера, то есть содержать может что угодно. Приведение
+ * типа здесь ничего не проверяло бы: отсутствующее поле стало бы `undefined`
+ * и всплыло бы позже, в середине криптографической операции, — там это
+ * выглядит как «ключ не подошёл», а не как «данные не те».
+ */
+function parseWrappedKey(encryptedKey: string): IWrappedKey | null {
+  try {
+    const parsed: unknown = JSON.parse(bytesToUtf8(base64ToBytes(encryptedKey)));
+
+    if (typeof parsed !== 'object' || parsed === null) return null;
+
+    const candidate = parsed as Record<string, unknown>;
+
+    if (
+      candidate.v !== WRAP_VERSION ||
+      typeof candidate.iv !== 'string' ||
+      typeof candidate.ct !== 'string' ||
+      typeof candidate.senderId !== 'string' ||
+      typeof candidate.recipientFp !== 'string'
+    ) {
+      return null;
+    }
+
+    return candidate as unknown as IWrappedKey;
+  } catch {
+    return null;
+  }
+}
+
 export class ChatKeyManager {
   private deps: IChatKeyDeps;
 
@@ -175,10 +207,10 @@ export class ChatKeyManager {
     row: IServerChatKey,
     { fresh = false }: { fresh?: boolean } = {}
   ): Promise<IChatKey | null> {
-    try {
-      const wrapped = JSON.parse(bytesToUtf8(base64ToBytes(row.encryptedKey))) as IWrappedKey;
-      if (wrapped.v !== WRAP_VERSION || !wrapped.senderId) return null;
+    const wrapped = parseWrappedKey(row.encryptedKey);
+    if (!wrapped) return null;
 
+    try {
       const identity = await this.deps.identity();
       // Отправитель берётся из блоба, но доверия к нему не требуется: его
       // связка тянется с сервера, и подмена имени сломает общий секрет.
@@ -436,12 +468,7 @@ export class ChatKeyManager {
 
   /** Для кого завёрнута строка. Читается без расшифровки — это не тайна. */
   private recipientOf(row: IServerChatKey): string | null {
-    try {
-      const wrapped = JSON.parse(bytesToUtf8(base64ToBytes(row.encryptedKey))) as IWrappedKey;
-      return wrapped.recipientFp ?? null;
-    } catch {
-      return null;
-    }
+    return parseWrappedKey(row.encryptedKey)?.recipientFp ?? null;
   }
 
   /**

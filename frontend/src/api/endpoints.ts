@@ -45,7 +45,6 @@ export const API_ENDPOINTS = {
   MESSAGE_SEND: (chatId: string) => `/messages/${chatId}`,
   MESSAGE_BY_ID: (messageId: string) => `/messages/${messageId}`,
   MESSAGE_READ: '/messages/read',
-  MESSAGE_FORWARD: (messageId: string) => `/messages/${messageId}/forward`,
   MESSAGE_REACT: (messageId: string) => `/messages/${messageId}/reactions`,
   MESSAGE_REACTIONS: (messageId: string) => `/messages/${messageId}/reactions`,
 

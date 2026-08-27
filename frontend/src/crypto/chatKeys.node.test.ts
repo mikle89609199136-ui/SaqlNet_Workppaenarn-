@@ -131,6 +131,11 @@ async function createParticipant(server: TKeyServer, accountId: string) {
   return { identity, manager };
 }
 
+/** base64 из ASCII-строки: в окружении node нет btoa. */
+function вБазу64(текст: string): string {
+  return Buffer.from(текст, 'utf8').toString('base64');
+}
+
 /** Ключ чата в виде строки — сравнивать байты неудобно. */
 function keyText(key: Uint8Array | undefined): string {
   return key ? bytesToBase64(key) : '';
@@ -232,6 +237,28 @@ describe('раздача ключа чата', () => {
 
     expect(result.chatKey).not.toBeNull();
     expect(result.membersWithoutIdentity).toEqual(['никогда-не-входил']);
+  });
+});
+
+describe('негодная строка на сервере', () => {
+  it('should not choke on a blob it cannot read', async () => {
+    // В строке может лежать что угодно: остаток прежней схемы, чужой
+    // формат, просто мусор. Это не должно валить открытие чата.
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    server.rows.set('alice', { userId: 'alice', encryptedKey: 'ne-base64-i-ne-json', keyEpoch: 3 });
+
+    expect(await alice.manager.acceptFromServer(CHAT)).toBeNull();
+  });
+
+  it('should not accept a blob with fields missing', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    // Правильный base64 и правильный JSON, но без половины полей.
+    const огрызок = вБазу64(JSON.stringify({ v: 2, iv: 'AAAA' }));
+    server.rows.set('alice', { userId: 'alice', encryptedKey: огрызок, keyEpoch: 3 });
+
+    expect(await alice.manager.acceptFromServer(CHAT)).toBeNull();
   });
 });
 

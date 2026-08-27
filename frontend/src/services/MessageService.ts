@@ -1,7 +1,6 @@
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { resolveMediaObjectUrl } from './mediaObjectUrls';
 import { ApiClient } from '@/api/ApiClient';
-import { STORAGE_KEYS } from '@/consts';
 import { resolveChat } from '@/core/chatResolver';
 import type {
   IChatContext,
@@ -64,17 +63,6 @@ export class MessageService {
         )
       )
     );
-  }
-
-  getMeId(): string | null {
-    try {
-      const user = localStorage.getItem(STORAGE_KEYS.USER);
-      if (!user) return null;
-      const u = JSON.parse(user);
-      return u?.id;
-    } catch {
-      return null;
-    }
   }
 
   async sendMessage(

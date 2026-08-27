@@ -2,7 +2,7 @@ import type { ApiClient } from '@/api';
 import { STORAGE_KEYS } from '@/consts';
 import { resolveMembers } from '@/core/chatResolver';
 import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
-import { base64ToBytes, bytesToBase64 } from '@/crypto/encoding';
+import { base64ToBytes } from '@/crypto/encoding';
 import {
   decryptMediaBytes,
   decryptMessage,
@@ -51,6 +51,27 @@ interface IMediaInput {
   fileName?: string;
 }
 
+/**
+ * Проверка того, что пришло вместе с файлом.
+ *
+ * Метаданные приходят с сервера и попадают прямо в криптографическую
+ * операцию. Приведение типа здесь ничего не проверяет: недостающее поле
+ * всплыло бы внутри расшифровки и выглядело бы как «файл не открылся».
+ */
+function isEncryptedMediaV2(payload: unknown): payload is IEncryptedMedia {
+  if (typeof payload !== 'object' || payload === null) return false;
+
+  const candidate = payload as Record<string, unknown>;
+
+  return (
+    candidate.encrypted === true &&
+    candidate.version === MEDIA_VERSION &&
+    candidate.algorithm === MEDIA_ALGORITHM &&
+    typeof candidate.iv === 'string' &&
+    typeof candidate.ciphertext === 'string'
+  );
+}
+
 export interface IDecryptedMessage {
   text: string;
   /**
@@ -71,9 +92,6 @@ export class CryptoService {
   private identity: ILocalIdentity | null = null;
 
   private initPromise: Promise<ILocalIdentity | null> | null = null;
-
-  /** Кто из участников ещё не публиковал ключи — для подсказки в интерфейсе. */
-  private membersWithoutKeys = new Map<string, string[]>();
 
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
@@ -149,34 +167,19 @@ export class CryptoService {
     return identity;
   }
 
-  private rememberGaps(chatId: string, distribution: IKeyDistribution): IKeyDistribution {
-    if (distribution.membersWithoutIdentity.length > 0) {
-      this.membersWithoutKeys.set(chatId, distribution.membersWithoutIdentity);
-    } else {
-      this.membersWithoutKeys.delete(chatId);
-    }
-
-    return distribution;
-  }
-
-  /** Кто в этом чате пока не сможет прочитать написанное. */
-  membersWithoutEncryption(chatId: string): string[] {
-    return this.membersWithoutKeys.get(chatId) ?? [];
-  }
-
   async ensureChatKey(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
-    return this.rememberGaps(chatId, await this.chatKeys.ensure(chatId));
+    return this.chatKeys.ensure(chatId);
   }
 
   async rotateChatKey(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
-    return this.rememberGaps(chatId, await this.chatKeys.rotate(chatId));
+    return this.chatKeys.rotate(chatId);
   }
 
   async healChatKeys(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
-    return this.rememberGaps(chatId, await this.chatKeys.heal(chatId));
+    return this.chatKeys.heal(chatId);
   }
 
   async encryptMessage(chatId: string, text: string): Promise<string> {
@@ -284,12 +287,12 @@ export class CryptoService {
   }
 
   async decryptMedia(chatId: string, payload: IEncryptedMedia): Promise<Blob> {
-    if (!payload?.encrypted || payload.algorithm !== MEDIA_ALGORITHM) {
-      throw new Error('Ожидался зашифрованный файл');
-    }
-
-    if (payload.version !== MEDIA_VERSION) {
-      throw new Error('Файл сохранён в устаревшем формате');
+    if (!isEncryptedMediaV2(payload)) {
+      throw new Error(
+        payload?.encrypted && payload.version !== MEDIA_VERSION
+          ? 'Файл сохранён в устаревшем формате'
+          : 'Ожидался зашифрованный файл'
+      );
     }
 
     await this.requireIdentity();
@@ -321,7 +324,6 @@ export class CryptoService {
   /** Выход из аккаунта: память чистится, ключи на устройстве остаются. */
   forgetSession(): void {
     this.identity = null;
-    this.membersWithoutKeys.clear();
     this.chatKeys.forget();
     forgetDerivedKeys();
     forgetPeerIdentities();
@@ -361,12 +363,4 @@ export class CryptoService {
 
     throw new Error('Неподдерживаемый вид файла');
   }
-
-  /** Свой публичный ключ в base64 — для отладки и совместимости с тестами. */
-  async exportPublicKey(): Promise<string | null> {
-    const identity = this.identity ?? (await this.init());
-    return identity?.bundle ?? null;
-  }
 }
-
-export { bytesToBase64 };
