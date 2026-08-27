@@ -62,12 +62,6 @@ export class AuthService {
     }
   }
 
-  savePublicKey(publicKey) {
-    return this.apiClient
-      .post(API_ENDPOINTS.AUTH_PUBLIC_KEY, { publicKey })
-      .then((response) => response.data);
-  }
-
   resendCode() {
     return this.apiClient.post(API_ENDPOINTS.AUTH_RESEND_CODE).then((response) => response.data);
   }
