@@ -3,7 +3,7 @@ import { API_ENDPOINTS } from '@/api/endpoints';
 import { base64ToBytes, bytesToBase64, bytesToUtf8, utf8ToBytes } from './encoding';
 import { deriveWrapKey } from './envelope';
 import { fetchPeerIdentity, type ILocalIdentity, type IPublicIdentity } from './identity';
-import { readKey, removeKeysWithPrefix, writeKey } from './keyStore';
+import { listKeys, readKey, removeKeysWithPrefix, writeKey } from './keyStore';
 
 /**
  * Ключ чата и его раздача участникам.
@@ -484,6 +484,21 @@ export class ChatKeyManager {
     const accepted = await this.acceptFromServer(chatId);
 
     return accepted?.epoch === epoch ? accepted : this.local(chatId, epoch);
+  }
+
+  /**
+   * Самая ранняя эпоха, ключ которой есть на устройстве.
+   *
+   * По ней видно, что сообщение написано до нашего появления в чате: при
+   * вступлении раздаётся новая эпоха, а прежние остаются недоступны — это
+   * не поломка, а обещание, данное тем, кто переписывался до нас.
+   */
+  async earliestEpoch(chatId: string): Promise<number | null> {
+    const { accountId } = await this.deps.identity();
+    const prefix = `chatkey:${accountId}:${chatId}:`;
+    const epochs = (await listKeys(prefix)).map((key) => Number(key.slice(prefix.length)));
+
+    return epochs.length > 0 ? Math.min(...epochs) : null;
   }
 
   forget(): void {

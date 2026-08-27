@@ -2,6 +2,7 @@ import type { ApiClient } from '@/api/ApiClient';
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { base64ToBytes, bytesToBase64, bytesToBase64Url, utf8ToBytes } from './encoding';
 import { readKey, writeKey } from './keyStore';
+import { noteIdentityChange } from './securityNotices';
 
 /**
  * Личность аккаунта: две пары ключей и их отпечаток.
@@ -80,6 +81,16 @@ async function rememberPeerBundle(userId: string, bundle: string): Promise<void>
   if (known.includes(bundle)) return;
 
   await writeKey(storageKey, [...known, bundle].slice(-PEER_HISTORY_LIMIT));
+
+  // Первая связка сменой не считается: до неё мы о человеке ничего не знали.
+  const previous = known.at(-1);
+  if (!previous) return;
+
+  await noteIdentityChange(
+    userId,
+    await fingerprintOfBundle(previous),
+    await fingerprintOfBundle(bundle)
+  );
 }
 
 /** Связки, которые мы видели у этого человека раньше. */

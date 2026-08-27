@@ -10,6 +10,8 @@ export { useIsMobile } from './useIsMobile';
 export { useMessageActions } from './useMessageActions';
 export { useMessageLongPress } from './useMessageLongPress';
 export { useProfileEdit } from './useProfileEdit';
+export { useSafetyCode } from './useSafetyCode';
+export { useSecurityNotice } from './useSecurityNotice';
 export {
   disconnectRealtimeSocket,
   resetRealtimeSocketForTests,

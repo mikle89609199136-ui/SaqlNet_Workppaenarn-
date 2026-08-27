@@ -41,6 +41,7 @@ import type { IEncryptedMedia } from '@/types';
 
 export const LEGACY_MESSAGE_PLACEHOLDER = '🔒 Сообщение в устаревшем формате';
 export const KEY_UNAVAILABLE_PLACEHOLDER = '🔒 Ключ шифрования недоступен';
+export const BEFORE_JOIN_PLACEHOLDER = '🔒 Сообщение написано до вашего появления в чате';
 export const MEDIA_VERSION = 2;
 
 const MEDIA_ALGORITHM = 'AES-GCM';
@@ -238,7 +239,14 @@ export class CryptoService {
       const identity = await this.requireIdentity();
       const chatKey = await this.chatKeys.forEpoch(chatId, envelope.epoch);
 
-      if (!chatKey) return { text: KEY_UNAVAILABLE_PLACEHOLDER };
+      if (!chatKey) {
+        // Ключа этой эпохи нет и не будет: она старше самой ранней из наших.
+        // Это не поломка, а обещание, данное тем, кто переписывался до нас.
+        const earliest = await this.chatKeys.earliestEpoch(chatId);
+        const beforeUs = earliest !== null && envelope.epoch < earliest;
+
+        return { text: beforeUs ? BEFORE_JOIN_PLACEHOLDER : KEY_UNAVAILABLE_PLACEHOLDER };
+      }
 
       const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
 

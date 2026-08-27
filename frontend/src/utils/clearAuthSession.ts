@@ -1,5 +1,6 @@
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { forgetEncryptionStates } from '@/crypto/encryptionStatus';
+import { forgetSecurityNotices } from '@/crypto/securityNotices';
 import { clearMediaObjectUrls } from '@/services/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
 import { clearAllDrafts } from '@/store/chatDrafts';
@@ -24,5 +25,6 @@ export function clearAuthSession() {
   // их «завершить все сеансы».
   services.cryptoService.forgetSession();
   forgetEncryptionStates();
+  forgetSecurityNotices();
   clearProfile();
 }

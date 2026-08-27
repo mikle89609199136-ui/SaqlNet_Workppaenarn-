@@ -1,4 +1,4 @@
-import { useCall, useProfileEdit } from '@/hooks';
+import { useCall, useProfileEdit, useSafetyCode } from '@/hooks';
 import type { IProfileState } from '@/pages';
 import { userProfileQuery } from '@/queries/users/userProfileQuery';
 import { useProfileStore } from '@/store';
@@ -78,6 +78,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const canCall = !!profileState.chat?.id;
 
   const copyText = (val: string) => val && navigator?.clipboard?.writeText(val).catch(() => {});
+
+  // Код безопасности сверяют голосом или при встрече: совпал — значит между
+  // вами никто не встал. Ключ собеседника выдаёт сервер, и это единственная
+  // проверка, которая от сервера не зависит.
+  const safetyCode = useSafetyCode(isOwnProfile ? null : profileUser?.id);
 
   const startCall = (type: TCallKind) => () => {
     if (canCall && profileState.chat) {
@@ -228,6 +233,21 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
                 <span>{t('bio', 'О себе')}</span>
                 <strong>{profileUser?.bio || t('profileBioEmpty', 'Информация не указана')}</strong>
               </div>
+              {safetyCode && (
+                <button
+                  className="user-profile-copy-row user-profile-safety-row"
+                  onClick={() => copyText(safetyCode)}
+                  title={t(
+                    'safetyCodeTitle',
+                    'Сверьте этот код с собеседником другим способом — голосом или при встрече'
+                  )}
+                  type="button"
+                >
+                  <span>{t('safetyCode', 'Код безопасности')}</span>
+                  <strong className="user-profile-safety-code">{safetyCode}</strong>
+                  <Icon name="copy" />
+                </button>
+              )}
             </div>
           )}
 
