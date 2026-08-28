@@ -100,7 +100,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     {
       handleClick: onClose,
       disabled: false,
-      name: 'checkCircle', // was message-circle, should check
+      name: 'chat',
       title: t('chat', 'Чат'),
     },
     {
