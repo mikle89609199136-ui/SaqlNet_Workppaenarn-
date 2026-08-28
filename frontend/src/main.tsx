@@ -5,7 +5,6 @@ import { registerChatResolver } from './queries/chat/chatResolverBridge';
 import { startCryptoAutoInit } from './services/serviceContainer';
 
 // Global Scripts
-import './apple-emoji.js';
 import './configs/i18n.js';
 
 // Styles
