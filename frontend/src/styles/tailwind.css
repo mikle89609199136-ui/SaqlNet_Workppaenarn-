@@ -234,20 +234,6 @@
   /* Цвет аватарки пока задаётся типом чата. По киту он должен выводиться
      из идентификатора, чтобы список читался цветовыми пятнами, — это
      сделает компонент Avatar (#347). */
-  .chat-avatar { @apply relative w-12 h-12 rounded-pill flex items-center justify-center font-bold bg-av-1; color: var(--color-n-0); }
-  .chat-avatar.is-online::after {
-    content: "";
-    position: absolute;
-    right: 1px;
-    bottom: 1px;
-    width: 12px;
-    height: 12px;
-    border-radius: var(--radius-pill);
-    background: var(--color-ok);
-    /* Обводка цветом подложки: без неё точка сливается с аватаркой. */
-    border: 2px solid var(--color-sheet);
-  }
-  .chat-avatar-group, .chat-avatar-channel { @apply bg-av-4; }
   .chat-main { @apply min-w-0 flex flex-col justify-center gap-1.5; }
   .chat-topline, .chat-subline { @apply min-w-0 flex items-center justify-between gap-3; }
   .chat-title, .chat-subline span { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
@@ -270,7 +256,7 @@
   }
 
   .chat-row-skeleton { @apply pointer-events-none; }
-  .chat-row-skeleton .chat-avatar, .skeleton-line {
+  .skeleton-block, .skeleton-line {
     background: linear-gradient(90deg, var(--color-sheet-2), var(--color-line), var(--color-sheet-2));
     background-size: 240% 100%;
     animation: skeleton-pulse 1.3s ease-in-out infinite;
@@ -551,11 +537,6 @@
     &:hover { background: var(--color-sheet-2); }
   }
   .contact-left { @apply flex items-center gap-3; }
-  .contact-avatar-circle {
-    @apply w-11 h-11 rounded-full flex items-center justify-center font-bold text-white overflow-hidden;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
-    & img { @apply w-full h-full object-cover; }
-  }
   .contact-details { @apply flex flex-col; }
   .contact-name-title { @apply font-semibold text-[15px]; }
   .contact-username-sub { @apply text-xs; color: var(--color-muted); }
@@ -565,12 +546,6 @@
     @apply flex items-center gap-4 rounded-[20px] mb-6 w-full box-border;
     padding: 20px; background: var(--color-panel); border: 1px solid var(--color-line-soft);
     @media (min-width: 768px) { @apply gap-6 rounded-[24px] mb-8; padding: 28px 32px; }
-  }
-  .settings-avatar-wrap {
-    @apply w-[72px] h-[72px] rounded-full flex items-center justify-center text-[28px] text-white overflow-hidden shrink-0;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
-    & img { @apply w-full h-full object-cover; }
-    @media (min-width: 768px) { @apply w-[88px] h-[88px] text-[36px]; }
   }
   .settings-profile-info {
     @apply min-w-0 flex-1;
@@ -630,12 +605,6 @@
     padding: 16px 24px; border-bottom: 1px solid var(--color-sheet-2);
     &:hover { background: var(--color-sheet-2); }
   }
-  .member-avatar {
-    @apply w-11 h-11 rounded-full overflow-hidden mr-4 shrink-0;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    & img { @apply w-full h-full object-cover; }
-  }
   .avatar-placeholder { @apply w-full h-full flex items-center justify-center text-[1.2rem] font-bold text-white; }
   .member-details { @apply flex-1 flex flex-col gap-1 overflow-hidden; }
   .member-name { @apply font-medium text-base text-white whitespace-nowrap overflow-hidden text-ellipsis; }
@@ -675,11 +644,6 @@
     @apply p-10 rounded-[24px] text-center;
     background: var(--color-panel); border: 1px solid var(--color-line);
     width: min(90%,360px); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  }
-  .incoming-call-avatar {
-    @apply w-[100px] h-[100px] rounded-full mx-auto mb-5 flex items-center justify-center text-[36px] text-white overflow-hidden;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
-    & img { @apply w-full h-full object-cover; }
   }
   .incoming-call-card h2 { @apply text-xl font-bold mb-1; }
   .incoming-call-card p  { @apply text-sm; color: var(--color-ink-2); }
@@ -746,25 +710,6 @@
     @apply w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[30px] leading-none no-underline;
     background: var(--color-line-soft);
     padding-bottom: 3px;
-  }
-  .thread-avatar {
-    @apply relative w-11 h-11 rounded-full flex items-center justify-center bg-[var(--color-brand-fill)] text-white font-extrabold;
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-    & img { width: 100%; height: 100%; display: block; border-radius: inherit; }
-  }
-  .thread-avatar.is-online::after {
-    content: "";
-    position: absolute;
-    right: 1px;
-    bottom: 1px;
-    width: 12px;
-    height: 12px;
-    border-radius: 999px;
-    background: var(--color-brand);
-    border: 2px solid var(--color-ground);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand) 30%, transparent);
   }
   .thread-title-wrap {
     @apply min-w-0;
@@ -1078,14 +1023,6 @@
   }
   .user-profile-hero {
     @apply flex flex-col items-center;
-  }
-  .user-profile-avatar {
-    @apply mx-auto mb-4 overflow-hidden flex items-center justify-center;
-    width: 112px;
-    height: 112px;
-    border-radius: 999px;
-    background: var(--color-line);
-    & img { width: 100%; height: 100%; object-fit: cover; }
   }
   .user-profile-card h2 { @apply m-0 text-[24px] leading-tight font-extrabold; }
   .user-profile-username { @apply mt-1 mb-0 text-[14px]; color: var(--color-ink-2); }

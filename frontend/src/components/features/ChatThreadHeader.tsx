@@ -8,7 +8,7 @@ import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { Icon, Identicon } from '../ui';
+import { Avatar, Icon } from '../ui';
 import { useTypingStore } from '@/store/typing';
 
 /**
@@ -148,17 +148,16 @@ export const ChatThreadHeader = ({
           >
             <button
               aria-label={chat.title}
-              className={cn('thread-avatar', isPeerOnline && 'is-online')}
+              className={"cursor-pointer"}
               tabIndex={-1}
               type="button"
             >
-              {chat.avatarUrl ? (
-                <img alt="" src={chat.avatarUrl} />
-              ) : chat?.type === 'private' && chat?.peerId ? (
-                <Identicon size={50} userId={chat.peerId} />
-              ) : (
-                chat.title.slice(0, 1).toUpperCase()
-              )}
+              <Avatar
+                id={chat.type === 'private' ? chat.peerId : null}
+                name={chat.title}
+                online={isPeerOnline}
+                src={chat.avatarUrl}
+              />
             </button>
 
             <div className="thread-title-wrap">

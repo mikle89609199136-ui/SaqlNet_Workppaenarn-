@@ -5,6 +5,7 @@ import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
 import { useToasts } from '../../hooks/useToasts';
 import { services } from '../../services/serviceContainer';
 import '../../styles/SettingsControls.css';
+import { Avatar } from '@/components/ui';
 import { meQuery } from '@/queries/users/meQuery';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 import { userKeys } from '@/queries/keys';
@@ -273,15 +274,12 @@ function AccountSettings({
   onOpenTwoFA,
   onOpenSessions,
 }) {
-  const initials = (user.firstName || user.username || 'U').slice(0, 1).toUpperCase();
   return (
     <>
       <section className="settings-account-overview">
         <h1>Аккаунт</h1>
         <div className="settings-account-summary settings-overview-profile">
-          <div className="settings-account-avatar">
-            {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
-          </div>
+          <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
           <div className="settings-account-identity">
             <strong>
               {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
@@ -551,7 +549,6 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
     lastName: user.lastName || '',
     bio: user.bio || '',
   });
-  const initials = (user.firstName || user.username || 'U').slice(0, 1).toUpperCase();
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -579,9 +576,7 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
         <p>Обновите имя и информацию, которую видят другие пользователи.</p>
       </header>
       <div className="settings-profile-editor-identity">
-        <div className="settings-account-avatar">
-          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
-        </div>
+        <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
         <div>
           <strong>
             {[user.firstName, user.lastName].filter(Boolean).join(' ') ||

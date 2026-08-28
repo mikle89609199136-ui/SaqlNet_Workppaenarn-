@@ -8,7 +8,7 @@ import { getChatSubtitle } from '@/utils';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
 
 interface Props {
   profileState: IProfileState;
@@ -145,16 +145,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
       ) : (
         <div className="user-profile-scroll">
           <div className="user-profile-hero">
-            <div className="user-profile-avatar">
-              {avatarUrl ? (
-                <img alt="" src={avatarUrl} />
-              ) : (
-                <Identicon
-                  userId={profileUser?.id || profileState.chat?.peerId || displayName}
-                  size={112}
-                />
-              )}
-            </div>
+            <Avatar
+              className="mx-auto mb-4"
+              id={profileUser?.id || profileState.chat?.peerId}
+              name={displayName}
+              size="xl"
+              src={avatarUrl}
+            />
             <h2>{displayName}</h2>
             <p
               className={`user-profile-status ${profileState.chat?.peerIsOnline ? 'is-online' : ''}`}

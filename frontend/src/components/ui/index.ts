@@ -1,3 +1,4 @@
+export { Avatar } from './Avatar';
 export { Button, buttonStyles } from './Button';
 export { Spinner } from './Spinner';
 
@@ -9,7 +10,6 @@ export { ComposerForm } from './ComposerForm';
 export { ComposerRow } from './ComposerRow';
 export { ComposerWrapper } from './ComposerWrapper';
 export { Icon } from './Icon/Icon';
-export { Identicon } from './Identicon';
 export { MessageCheckbox } from './MessageCheckbox';
 export { Modal } from './Modal';
 export { RouteLoadingFallback } from './RouteLoadingFallback';

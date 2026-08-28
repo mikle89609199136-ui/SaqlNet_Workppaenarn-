@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Identicon } from '../../components/ui/Identicon.js';
+import { Avatar } from '../../components/ui/Avatar';
 import { useToasts } from '../../hooks/useToasts.js';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer.js';
@@ -109,13 +109,7 @@ export function ContactsPage() {
           return (
             <div key={user.id} className="contact-item-row" onClick={() => startChat(user.id)}>
               <div className="contact-left">
-                <div className="contact-avatar-circle">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="" />
-                  ) : (
-                    <Identicon userId={user.id} size={44} />
-                  )}
-                </div>
+                <Avatar id={user.id} name={user.firstName || user.username} src={user.avatarUrl} />
                 <div className="contact-details">
                   <span className="contact-name-title">{user.firstName || 'Пользователь'}</span>
                   <span className="contact-username-sub">@{user.username}</span>

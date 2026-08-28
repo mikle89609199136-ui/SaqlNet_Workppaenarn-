@@ -7,7 +7,7 @@ import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon, Modal } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
 
 interface Props {
   messages: TMessagesList;
@@ -114,14 +114,7 @@ export const ForwardChatMessagesModal = ({
                     data-chatid={chat.id}
                     className="w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-panel px-6 py-3"
                   >
-                    <div className="chat-avatar shrink-0">
-                      {chat.avatarUrl && <img src={chat.avatarUrl} alt="" />}
-                      {!chat.avatarUrl && chat.peerId ? (
-                        <Identicon userId={chat.peerId} size={48} />
-                      ) : (
-                        title.slice(0, 1).toUpperCase()
-                      )}
-                    </div>
+                    <Avatar id={chat.peerId} name={title} src={chat.avatarUrl} />
 
                     <div className="flex flex-col gap-y-1 w-full">
                       <div className="text-left w-full">{title}</div>

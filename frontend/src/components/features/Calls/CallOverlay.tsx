@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/ui';
 import { config } from '@/configs/app';
 import { useCall } from '@/hooks';
 import { useCallStore } from '@/store';
@@ -16,17 +17,16 @@ export function CallOverlay() {
   }, [activeCall?.roomId]);
 
   if (incomingCall) {
-    const avatarChar = (incomingCall.fromName || '?').charAt(0).toUpperCase();
     return (
       <div className="incoming-call-overlay">
         <div className="incoming-call-card">
-          <div className="incoming-call-avatar">
-            {incomingCall.fromAvatar ? (
-              <img src={incomingCall.fromAvatar} alt="" />
-            ) : (
-              <span>{avatarChar}</span>
-            )}
-          </div>
+          <Avatar
+            className="mx-auto mb-5"
+            id={incomingCall.from}
+            name={incomingCall.fromName}
+            size="xl"
+            src={incomingCall.fromAvatar}
+          />
           <h2>{incomingCall.fromName || 'Неизвестный'}</h2>
           <p>{incomingCall.kind === 'audio' ? 'Аудиозвонок...' : 'Видеозвонок...'}</p>
           <div className="incoming-call-actions">

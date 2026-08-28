@@ -1,11 +1,11 @@
 import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
 import { useTypingStore } from '@/store/typing';
 import { ROUTES } from '@/consts';
-import { cn, getLastMessageText } from '@/utils';
+import { getLastMessageText } from '@/utils';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Identicon } from './Identicon';
+import { Avatar } from './Avatar';
 import type { IChatDto } from '@/types';
 
 interface Props {
@@ -34,16 +34,7 @@ export function ChatListItem({ chat }: Props) {
 
   return (
     <Link className="chat-row" to={ROUTES.CHAT_BY_ID(chat.id)} aria-label={title}>
-      <div
-        className={cn(
-          'chat-avatar',
-          `chat-avatar-${chat.type || 'private'}`,
-          isPeerOnline && 'is-online'
-        )}
-        style={peerId ? { background: 'none', padding: 0 } : {}}
-      >
-        {peerId ? <Identicon userId={peerId} size={48} /> : title.slice(0, 1).toUpperCase()}
-      </div>
+      <Avatar id={peerId} name={title} online={isPeerOnline} src={chat.avatarUrl} />
       <div className="chat-main">
         <div className="chat-topline">
           <span className="chat-title">{title}</span>
