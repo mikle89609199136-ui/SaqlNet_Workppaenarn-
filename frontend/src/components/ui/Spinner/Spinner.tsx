@@ -22,7 +22,10 @@ interface Props {
   tone?: keyof typeof tones;
   /* Без подписи спиннер скрыт от скринридера: внутри кнопки о загрузке
      сообщает её aria-busy, и второе объявление только мешает. Сам по себе
-     спиннер — единственное, что есть на экране, и подпись обязательна. */
+     спиннер — единственное, что есть на экране, и подпись обязательна.
+     Она уходит текстом внутрь, а не в aria-label: role=status объявляет
+     содержимое области, и пустая область с одним лишь именем читается
+     не всеми дикторами. */
   label?: string;
   className?: string;
 }
@@ -31,7 +34,6 @@ export const Spinner = ({ size = 'md', tone = 'brand', label, className }: Props
   return (
     <span
       role={label ? 'status' : undefined}
-      aria-label={label}
       aria-hidden={label ? undefined : true}
       className={cn(
         'inline-block shrink-0 animate-spin rounded-pill motion-reduce:animate-none',
@@ -39,6 +41,8 @@ export const Spinner = ({ size = 'md', tone = 'brand', label, className }: Props
         tones[tone],
         className
       )}
-    />
+    >
+      {label && <span className="sr-only">{label}</span>}
+    </span>
   );
 };

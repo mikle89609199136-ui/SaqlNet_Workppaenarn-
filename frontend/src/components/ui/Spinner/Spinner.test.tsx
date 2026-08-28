@@ -13,7 +13,19 @@ describe('спиннер', () => {
   it('should announce itself when a label is given', () => {
     render(<Spinner label="Загрузка чатов" />);
 
-    expect(screen.getByRole('status', { name: 'Загрузка чатов' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Загрузка чатов');
+  });
+
+  it('should carry the label as text, not as an attribute', () => {
+    /* role=status объявляет содержимое области. Пустая область с одним
+       лишь aria-label читается не всеми дикторами, поэтому подпись обязана
+       быть текстом — скрытым визуально, но настоящим. */
+    render(<Spinner label="Загрузка чатов" />);
+
+    const текст = screen.getByText('Загрузка чатов');
+
+    expect(текст).toHaveClass('sr-only');
+    expect(screen.getByRole('status')).not.toHaveAttribute('aria-label');
   });
 
   it('should not be announced twice inside a button', () => {
