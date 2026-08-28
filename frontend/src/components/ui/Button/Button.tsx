@@ -1,6 +1,6 @@
 import { Spinner } from '@/components/ui/Spinner';
 import { cn } from '@/utils';
-import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type MouseEvent } from 'react';
 
 const sizes = {
   sm: 'text-caption px-3 py-1.5 rounded-control gap-1.5',
@@ -29,11 +29,35 @@ const variants = {
   danger: 'bg-transparent border-danger text-danger hover:bg-danger/10',
 } as const;
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface StyleProps {
   variant?: keyof typeof variants;
   size?: keyof typeof sizes;
-  loading?: boolean;
   iconOnly?: boolean;
+  className?: string;
+}
+
+/* Вынесено наружу ради того, что кнопкой не является: «Перейти в чат» —
+   это ссылка, у неё свои правила навигации, и подменять её кнопкой с
+   обработчиком нельзя. Пусть <Link> берёт оформление отсюда. */
+export const buttonStyles = ({
+  variant = 'primary',
+  size = 'md',
+  iconOnly = false,
+  className,
+}: StyleProps = {}) =>
+  cn(
+    'inline-flex items-center justify-center font-semibold transition-colors duration-fast cursor-pointer',
+    'border',
+    'disabled:opacity-42 disabled:cursor-not-allowed',
+    'aria-disabled:opacity-42 aria-disabled:cursor-not-allowed',
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+    iconOnly ? iconOnlySizes[size] : sizes[size],
+    variants[variant],
+    className
+  );
+
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement>, StyleProps {
+  loading?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
@@ -45,27 +69,40 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
     disabled,
     className,
     children,
+    onClick,
     ...rest
   },
   ref
 ) {
-  const isDisabled = disabled || loading;
+  if (import.meta.env.DEV && iconOnly && !rest['aria-label'] && !rest['aria-labelledby']) {
+    console.warn('Button: кнопка-иконка без aria-label остаётся безымянной для скринридера.');
+  }
+
+  /* Во время загрузки кнопка гасится через aria-disabled, а не через
+     disabled. Нативный disabled сбрасывает фокус на body и выкидывает
+     кнопку из обхода табом — то есть человек, нажавший Enter, теряет
+     место, а aria-busy некому объявить: фокуса на кнопке уже нет.
+     Проверено в браузере. Нажатие вместо этого глушится обработчиком —
+     он ловит и мышь, и Enter, и неявную отправку формы. */
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (loading) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    onClick?.(event);
+  };
 
   return (
     <button
       ref={ref}
       type="button"
-      disabled={isDisabled}
+      disabled={disabled}
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
-      className={cn(
-        'inline-flex items-center justify-center font-semibold transition-colors duration-fast cursor-pointer',
-        'border',
-        'disabled:opacity-42 disabled:cursor-not-allowed',
-        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
-        iconOnly ? iconOnlySizes[size] : sizes[size],
-        variants[variant],
-        className
-      )}
+      onClick={handleClick}
+      className={buttonStyles({ variant, size, iconOnly, className })}
       {...rest}
     >
       {loading && <Spinner size="text" tone="current" />}
