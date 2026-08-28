@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Аудит сообщений CraneApp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+  <style>
+    /* минимальный сброс — в артефакте он был снаружи */
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    h1, h2, h3, p, pre, ol, ul { margin: 0; }
+  </style>
+<style>
+  :root {
+    --ground: #eef1f5;
+    --surface: #ffffff;
+    --surface-sunk: #e5e9ef;
+    --ink: #101720;
+    --ink-soft: #3d4859;
+    --muted: #6b7688;
+    --line: #d3d9e2;
+    --line-soft: #e3e8ee;
+    --accent: #0d6e78;
+    --accent-soft: #d8ebed;
+    --crit: #a82540;
+    --crit-soft: #f6dde2;
+    --warn: #8a5a05;
+    --warn-soft: #f6e9d2;
+    --calm: #4a5567;
+    --calm-soft: #e2e6ec;
+
+    --f-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --f-body: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-mono: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+
+    --measure: 68ch;
+    --pad: clamp(1.15rem, 4vw, 3.25rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1319;
+      --surface: #161d26;
+      --surface-sunk: #1d2530;
+      --ink: #e8edf3;
+      --ink-soft: #b3becd;
+      --muted: #7f8b9c;
+      --line: #2b3542;
+      --line-soft: #222b36;
+      --accent: #4fb3bd;
+      --accent-soft: #16333a;
+      --crit: #ef8098;
+      --crit-soft: #381f27;
+      --warn: #e0a94f;
+      --warn-soft: #33281440;
+      --calm: #93a0b3;
+      --calm-soft: #232c38;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0e1319;
+    --surface: #161d26;
+    --surface-sunk: #1d2530;
+    --ink: #e8edf3;
+    --ink-soft: #b3becd;
+    --muted: #7f8b9c;
+    --line: #2b3542;
+    --line-soft: #222b36;
+    --accent: #4fb3bd;
+    --accent-soft: #16333a;
+    --crit: #ef8098;
+    --crit-soft: #381f27;
+    --warn: #e0a94f;
+    --warn-soft: #33281440;
+    --calm: #93a0b3;
+    --calm-soft: #232c38;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  /* ── шапка ───────────────────────────────── */
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: clamp(2rem, 5.5vw, 3.15rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0;
+    max-width: var(--measure);
+    font-size: clamp(1rem, 2vw, 1.14rem);
+    color: var(--ink-soft);
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 2rem;
+    font-family: var(--f-mono);
+    font-size: 0.76rem;
+    color: var(--muted);
+  }
+
+  /* ── счётчики ─────────────────────────────── */
+
+  .tally {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .tally div {
+    background: var(--surface);
+    padding: 1.1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .tally b {
+    font-family: var(--f-mono);
+    font-size: 1.85rem;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tally span {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  .t-crit b { color: var(--crit); }
+  .t-warn b { color: var(--warn); }
+  .t-acc  b { color: var(--accent); }
+
+  /* ── разделы ──────────────────────────────── */
+
+  section { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  h2 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: clamp(1.4rem, 3vw, 1.85rem);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    margin: 0;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--line);
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 1.02rem;
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+  .lede { color: var(--ink-soft); }
+
+  code {
+    font-family: var(--f-mono);
+    font-size: 0.855em;
+    background: var(--surface-sunk);
+    padding: 0.12em 0.36em;
+    border-radius: 2px;
+    word-break: break-word;
+  }
+
+  /* ── таблица контракта ────────────────────── */
+
+  .scroll { overflow-x: auto; border: 1px solid var(--line); }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 620px;
+    background: var(--surface);
+    font-size: 0.87rem;
+  }
+
+  th {
+    text-align: left;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  td:first-child { font-family: var(--f-mono); font-size: 0.8rem; white-space: nowrap; }
+
+  .yes { color: var(--accent); font-weight: 600; }
+  .no  { color: var(--crit); font-weight: 600; }
+
+  /* ── находки ──────────────────────────────── */
+
+  .findings { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+
+  article {
+    background: var(--surface);
+    padding: 1.35rem clamp(1rem, 2.5vw, 1.6rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.55rem 0.9rem;
+  }
+
+  .sev {
+    font-family: var(--f-mono);
+    font-size: 0.63rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.22em 0.55em;
+    white-space: nowrap;
+  }
+
+  .s-crit { color: var(--crit); background: var(--crit-soft); }
+  .s-warn { color: var(--warn); background: var(--warn-soft); }
+  .s-calm { color: var(--calm); background: var(--calm-soft); }
+
+  .loc {
+    font-family: var(--f-mono);
+    font-size: 0.73rem;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  article p { font-size: 0.94rem; color: var(--ink-soft); }
+
+  pre {
+    margin: 0;
+    padding: 0.85rem 1rem;
+    background: var(--surface-sunk);
+    overflow-x: auto;
+    font-family: var(--f-mono);
+    font-size: 0.79rem;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+
+  pre .cm { color: var(--muted); }
+  pre .hi { color: var(--crit); font-weight: 600; }
+
+  .why {
+    font-size: 0.88rem;
+    color: var(--ink);
+    border-left: 2px solid var(--accent);
+    padding-left: 0.85rem;
+  }
+
+  .why b { font-weight: 600; }
+
+  /* ── список пропущенного ──────────────────── */
+
+  .gaps { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .gaps > div { background: var(--surface); padding: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .gaps h3 { font-size: 0.97rem; }
+  .gaps p { font-size: 0.87rem; color: var(--ink-soft); }
+  .tag { font-family: var(--f-mono); font-size: 0.7rem; color: var(--accent); }
+
+  /* ── порядок работ ────────────────────────── */
+
+  ol.plan { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); counter-reset: step; }
+  ol.plan li { background: var(--surface); padding: 1.1rem clamp(1rem, 2.5vw, 1.5rem); display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; align-items: baseline; counter-increment: step; }
+  ol.plan li::before {
+    content: counter(step);
+    font-family: var(--f-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  ol.plan strong { font-weight: 600; }
+  ol.plan p { grid-column: 2; font-size: 0.88rem; color: var(--ink-soft); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.5rem;
+    font-size: 0.83rem;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  @media (max-width: 560px) {
+    .loc { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">CraneApp · фронтенд · 25 августа 2026</p>
+    <h1>Аудит сообщений</h1>
+    <p class="standfirst">Разбор всего пути сообщения — от HTTP-контракта бэкенда до отрисовки в чате. Звонки не рассматривались. Проверены слои API, сервис, кеш, состояние, WebSocket и UI.</p>
+    <div class="meta-row">
+      <span>160 модулей · 1 тестовый файл</span>
+      <span>11 дефектов</span>
+      <span>2 готовых API без интерфейса</span>
+    </div>
+  </header>
+
+  <div class="tally">
+    <div class="t-crit"><b>4</b><span>ломают поведение, видны пользователю</span></div>
+    <div class="t-warn"><b>5</b><span>работают вхолостую или подвисают</span></div>
+    <div class="t-acc"><b>2</b><span>мёртвый код и вечный кеш</span></div>
+    <div><b>2</b><span>эндпоинта бэка не используются</span></div>
+  </div>
+
+  <section>
+    <h2>Что умеет бэкенд и что берёт фронт</h2>
+    <p class="lede">Слева — маршруты, объявленные в <code>backend-v2/internal/chat/handler.go</code>. Справа — то, что описано в <code>frontend/src/api/endpoints.ts</code>.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Маршрут</th><th>Назначение</th><th>Фронт</th><th>Примечание</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>GET /messages/{chatId}</td><td>История чата</td><td class="yes">есть</td><td>с limit и offset, подгрузка работает</td></tr>
+          <tr><td>POST /messages/{chatId}</td><td>Отправка</td><td class="yes">есть</td><td>одно вложение за раз</td></tr>
+          <tr><td>PUT /messages/{id}</td><td>Редактирование</td><td class="yes">есть</td><td>единственное место, где чинится кеш</td></tr>
+          <tr><td>DELETE /messages/{id}</td><td>Удаление</td><td class="yes">есть</td><td>только «для всех»</td></tr>
+          <tr><td>POST /messages/{id}/forward</td><td>Пересылка</td><td class="yes">есть</td><td>по одному сообщению, без подписи</td></tr>
+          <tr><td>GET · POST /messages/{id}/reactions</td><td>Реакции</td><td class="yes">есть</td><td>не переживают выход из чата</td></tr>
+          <tr><td>POST /messages/read</td><td>Отметка о прочтении</td><td class="yes">есть</td><td>результат нигде не отображается</td></tr>
+          <tr><td>GET /messages/search</td><td>Поиск по сообщениям</td><td class="no">нет</td><td>готов на сервере, интерфейса не существует</td></tr>
+          <tr><td>GET /messages/favorites</td><td>Избранное</td><td class="no">нет</td><td>то же самое</td></tr>
+          <tr><td>POST · DELETE /messages/{id}/favorite</td><td>В избранное</td><td class="no">нет</td><td>то же самое</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Дефекты</h2>
+    <p class="lede">Каждый проверен по коду. Указано место, поведение и почему это не поймали компилятор или тесты.</p>
+
+    <div class="findings">
+
+      <article>
+        <div class="head">
+          <span class="sev s-crit">ломает</span>
+          <h3>Открепление не убирает сообщение из кеша</h3>
+          <span class="loc">MessageService.ts:455</span>
+        </div>
+        <pre><span class="cm">// сигнатура принимает идентификатор сообщения</span>
+removePinnedMessageFromCache(messageId: string) {
+  ... messages.filter((message) => message.id !== messageId)
+}
+
+<span class="cm">// а вызывают её с идентификатором чата</span>
+async unpinMessage(chatId: string, messageId: string) {
+  await this.apiClient.delete(...);
+  this.removePinnedMessageFromCache(<span class="hi">chatId</span>);
+}</pre>
+        <p>Идентификатор чата никогда не совпадёт с идентификатором сообщения, поэтому фильтр не удаляет ничего. На сервере сообщение откреплено, в кеше остаётся — при повторном открытии чата оно снова в закреплённых.</p>
+        <p class="why"><b>Почему не поймали:</b> оба параметра — <code>string</code>. Для TypeScript вызов корректен. Тестов на сервис, кроме четырёх на пересылку, нет.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-crit">ломает</span>
+          <h3>Первое сообщение в списке не помечается прочитанным</h3>
+          <span class="loc">store/chat.ts:102</span>
+        </div>
+        <pre>const messageIndex = messages.findIndex((m) => m.id === messageId);
+
+<span class="hi">if (!messageIndex) return;</span>  <span class="cm">// findIndex вернул 0 — это валидный индекс</span></pre>
+        <p><code>findIndex</code> возвращает <code>-1</code>, когда не нашёл, и <code>0</code> для первого элемента. Проверка <code>!messageIndex</code> отсекает ноль и пропускает минус единицу — то есть ведёт себя ровно наоборот: первое сообщение молча пропускается, а ненайденное записывается в <code>messages[-1]</code>.</p>
+        <p class="why"><b>Правильная проверка:</b> <code>if (messageIndex === -1) return;</code></p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-crit">ломает</span>
+          <h3>Реакции исчезают после выхода из чата</h3>
+          <span class="loc">useMessageActions.ts:123</span>
+        </div>
+        <p>Ответ сервера кладётся в стор через <code>updateMessage</code>, но не в кеш сервиса. А <code>getMessages</code> при повторном открытии чата отдаёт именно кеш — с прежними реакциями. Метод <code>updateMessageInCache</code> в проекте есть и вызывается ровно в одном месте: при редактировании сообщения.</p>
+        <p class="why"><b>Корень:</b> два независимых хранилища одних и тех же данных — <code>Map</code> внутри сервиса и стор Zustand. Синхронизировать их вручную приходится в каждом обработчике, и в большинстве об этом забыли.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-crit">ломает</span>
+          <h3>Реакция собеседника не появляется без перезагрузки</h3>
+          <span class="loc">consts/wsEvents.ts:29</span>
+        </div>
+        <p>Сервер отправляет <code>reaction_updated</code> (<code>service.go:1746</code>). На фронте событие объявлено в константах и типизировано в <code>wsEvents.types.ts</code> — но ни один компонент на него не подписан. Поиск по <code>src/</code> даёт только эти два объявления.</p>
+        <p class="why"><b>Итого:</b> реакции в реальном времени не работают ни в одну сторону — свои теряются из-за кеша, чужие не приходят вовсе.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-warn">вхолостую</span>
+          <h3>Отметка о прочтении никуда не выводится</h3>
+          <span class="loc">store/chat.ts:105 · message.types.ts:30</span>
+        </div>
+        <pre>const readMessage = { ...message, <span class="hi">isRead: true, status: 'read'</span> };</pre>
+        <p>Полей <code>isRead</code> и <code>status</code> нет в интерфейсе <code>IMessageDto</code>, и ни один компонент их не читает. Галочек прочтения в интерфейсе тоже нет — поиск по <code>MessageBubble</code> и <code>MessagesList</code> пуст.</p>
+        <p class="why"><b>Что это значит:</b> цепочка «запрос на сервер → событие → обновление стора» отрабатывает полностью и заканчивается ничем. Пользователь не может узнать, прочитано ли его сообщение.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-warn">подвисает</span>
+          <h3>Подгрузка истории ломается навсегда после ошибки или смены чата</h3>
+          <span class="loc">ChatThreadPage.tsx:139</span>
+        </div>
+        <pre>setIsLoadingMore(true);
+const older = await getMessages({ chatId, offset: nextOffset });
+
+if (chatIdRef.current !== requestChatId) {
+  <span class="hi">return;</span>  <span class="cm">// setIsLoadingMore(false) не вызовется</span>
+}</pre>
+        <p>Ранний выход не сбрасывает флаг, а <code>try/catch</code> вокруг запроса нет вообще. Достаточно переключить чат во время загрузки или поймать сетевую ошибку — и <code>isLoadingMore</code> остаётся <code>true</code>, а вместе с ним прокрутка вверх перестаёт что-либо подгружать до перемонтирования страницы.</p>
+        <p class="why"><b>При латентности стенда 1,2–1,9 с</b> окно для такого переключения — больше секунды на каждую подгрузку.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-warn">вхолостую</span>
+          <h3>Реакция не ставится молча</h3>
+          <span class="loc">useMessageActions.ts:118</span>
+        </div>
+        <pre>if (message.reactions.find((r) => r.myReaction) && !currentUser?.isPremium)
+  return;  <span class="cm">// ни тоста, ни блокировки кнопки</span></pre>
+        <p>Пользователь без премиума, уже поставивший одну реакцию, нажимает на эмодзи — не происходит ничего. Ни подсказки, ни визуального отличия недоступных кнопок.</p>
+        <p class="why"><b>Смежное:</b> ограничение живёт только на клиенте. Серверная часть этого правила — задача #145 и её подзадачи, там же три PR в общей ветке.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-warn">подвисает</span>
+          <h3>Кеш закреплённых не обновляется при закреплении</h3>
+          <span class="loc">MessageService.ts:419 · 444</span>
+        </div>
+        <p><code>listPins</code> возвращает кеш, если он есть, без всякой проверки свежести. При этом <code>pinMessage</code> кеш не трогает — новое закреплённое появится в списке только потому, что <code>ChatThreadPage</code> отдельно вызывает <code>addPinnedMessageToCache</code> в обработчике WebSocket-события. Прямой путь «нажал закрепить → увидел в списке» держится на этом обходном пути.</p>
+        <p class="why"><b>Рядом:</b> <code>updatePinnedMessageInCache</code> не вызывается нигде — мёртвый код.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-warn">вхолостую</span>
+          <h3>Отправка без оптимистичного отображения</h3>
+          <span class="loc">useComposerSendMessage.ts:85</span>
+        </div>
+        <p>Сообщение появляется в ленте только после ответа сервера — на стенде это 1,2–1,9 секунды тишины после нажатия. Статусов «отправляется» и «не отправлено» нет, повторной отправки при ошибке нет: текст остаётся в поле ввода, а ошибка уходит в общий <code>setError</code>.</p>
+        <p class="why"><b>Справедливости ради:</b> сама обработка сделана аккуратно — <code>try/catch/finally</code>, защита от двойной отправки, дедупликация через <code>appendUniqueMessage</code>. Не хватает именно обратной связи.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-calm">долг</span>
+          <h3>Кеш сообщений живёт вечно</h3>
+          <span class="loc">MessageService.ts:51</span>
+        </div>
+        <pre>const cached = this.messages.get(chatId);
+if (cached && offset === 0) return cached;  <span class="cm">// без срока и без инвалидации</span></pre>
+        <p>Единственный способ увидеть свежую историю — перезагрузить вкладку. Именно этот механизм породил задачу #174: пересылка добавляла в пустой кеш одну запись, и та принималась за всю историю чата. Тогда починили симптом; сам механизм остался.</p>
+        <p class="why"><b>Кандидат на замену:</b> TanStack Query — кеш, инвалидация и дедупликация запросов вместо ручного <code>Map</code>. Это обсуждалось и вынесено в #225.</p>
+      </article>
+
+      <article>
+        <div class="head">
+          <span class="sev s-calm">долг</span>
+          <h3>Расхождение имён в E2E-payload</h3>
+          <span class="loc">CryptoService.ts:299 · 352</span>
+        </div>
+        <pre>encryptDM:  <span class="hi">recipientPubKeyB64</span>: recipientPubKeyB64
+decryptDM:  payload.<span class="hi">recipientPublicKey</span> || senderPubKeyB64</pre>
+        <p>Пишется одно поле, читается другое, поэтому в ветке расшифровки всегда срабатывает запасной вариант — текущий ключ собеседника с сервера. Пока собеседник ключ не менял, значения совпадают и ошибка невидима. После смены ключа собственные отправленные сообщения перестают читаться, хотя нужный ключ лежит в том же payload.</p>
+        <p class="why"><b>Почему не поймали:</b> <code>JSON.parse</code> возвращает <code>any</code>, результат приводится к <code>IE2EPayload</code>, где поле объявлено необязательным. Лишнее поле не проверяется, отсутствующее — тоже. Относится к задаче #192.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Чего нет</h2>
+    <p class="lede">Первые две позиции — готовые серверные маршруты без единой строки на фронте. Остальное заведено в задачи, но не начато.</p>
+    <div class="gaps">
+      <div>
+        <span class="tag">сервер готов</span>
+        <h3>Поиск по сообщениям</h3>
+        <p><code>GET /messages/search?q=</code> отвечает и ищет по всем чатам пользователя. На фронте нет ни эндпоинта в <code>endpoints.ts</code>, ни метода в сервисе, ни интерфейса.</p>
+      </div>
+      <div>
+        <span class="tag">сервер готов</span>
+        <h3>Избранные сообщения</h3>
+        <p>Три маршрута — список, добавить, убрать. Упоминаний <code>favorite</code> во фронтенде нет вообще.</p>
+      </div>
+      <div>
+        <span class="tag">задача #93</span>
+        <h3>Интерфейс пересылки</h3>
+        <p>Метод <code>forwardMessage</code> шлёт одно сообщение за запрос. Нельзя выбрать несколько и нельзя добавить сопроводительный текст.</p>
+      </div>
+      <div>
+        <span class="tag">задача #171</span>
+        <h3>Несколько вложений</h3>
+        <p>Композер держит ровно один <code>pendingAttachment</code>. Отправить два файла одним сообщением нельзя.</p>
+      </div>
+      <div>
+        <span class="tag">задача #108</span>
+        <h3>Разделение вложений и пересылки</h3>
+        <p>Поле <code>metadata</code> хранит одновременно данные медиафайла и информацию о пересылке. На фронте это отражено объединением двух несовместимых типов через <code>?</code>.</p>
+      </div>
+      <div>
+        <span class="tag">задача #228</span>
+        <h3>Превью звонка после удаления</h3>
+        <p>Ветка <code>type === 'call'</code> живёт в <code>decryptChatPreview.ts</code>. Похоже, при удалении список чатов обновляется локально мимо этой функции — искать стоит там.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Порядок работ</h2>
+    <p class="lede">Сверху — то, что дёшево починить и что видно пользователю сразу.</p>
+    <ol class="plan">
+      <li><strong>Три однострочника</strong>
+        <p>Аргумент в <code>unpinMessage</code>, проверка индекса в <code>markAsRead</code>, имя поля в <code>CryptoService</code>. Каждая правка — одна строка, каждая закрывает видимый дефект.</p>
+      </li>
+      <li><strong>Реакции целиком</strong>
+        <p>Подписка на <code>reaction_updated</code> плюс запись в кеш сервиса. Без обоих кусков реакции не работают ни для отправителя, ни для получателя.</p>
+      </li>
+      <li><strong>Флаг загрузки и обработка ошибок в подгрузке</strong>
+        <p><code>try/finally</code> вокруг запроса в <code>loadMoreMessages</code>. Одна из тех поломок, что не воспроизводятся на быстрой сети и стабильны на медленной.</p>
+      </li>
+      <li><strong>Галочки прочтения</strong>
+        <p>Добавить <code>isRead</code> и <code>status</code> в <code>IMessageDto</code> и вывести в <code>MessageBubble</code>. Вся серверная часть уже работает — не хватает последнего шага.</p>
+      </li>
+      <li><strong>Единое хранилище истории</strong>
+        <p>Задача #225. Пока данные лежат в двух местах, каждый новый обработчик будет забывать про одно из них — три дефекта выше именно об этом.</p>
+      </li>
+      <li><strong>Поиск и избранное</strong>
+        <p>Серверная часть готова, работа чисто фронтовая. Хорошие кандидаты в самостоятельные задачи для второго разработчика.</p>
+      </li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Проверено по коду ветки <code>master</code> на коммите <code>be44a9e</code>. Каждый дефект подтверждён чтением исходников; вживую воспроизводился только дефект расшифровки — по логам дев-сервера.</p>
+    <p>Звонки, авторизация и групповые права в этот аудит не входили.</p>
+  </footer>
+
+</div>
+</body>
+</html>

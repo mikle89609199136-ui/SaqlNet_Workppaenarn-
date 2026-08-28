@@ -1,0 +1,271 @@
+{
+  "core": {
+    "gray": {
+      "50":  { "value": "#FFFFFF", "type": "color" },
+      "100": { "value": "#F4F6F9", "type": "color" },
+      "200": { "value": "#EDF0F5", "type": "color" },
+      "250": { "value": "#EAEEF3", "type": "color" },
+      "300": { "value": "#DFE4EC", "type": "color" },
+      "400": { "value": "#8B96A5", "type": "color" },
+      "500": { "value": "#6C7889", "type": "color" },
+      "600": { "value": "#5A6675", "type": "color" },
+      "700": { "value": "#98A3B4", "type": "color" },
+      "800": { "value": "#DDE3EC", "type": "color" },
+      "850": { "value": "#2C3543", "type": "color" },
+      "900": { "value": "#232A35", "type": "color" },
+      "950": { "value": "#1B212A", "type": "color" },
+      "1000":{ "value": "#14181F", "type": "color" },
+      "ink": { "value": "#1B2029", "type": "color" }
+    },
+
+    "status": {
+      "okLight":     { "value": "#2E8B57", "type": "color" },
+      "okDark":      { "value": "#4FBF6B", "type": "color" },
+      "dangerLight": { "value": "#C0392B", "type": "color" },
+      "dangerDark":  { "value": "#FF6B6B", "type": "color" },
+      "callAccept":  { "value": "#2E9E5B", "type": "color" },
+      "callReject":  { "value": "#D4453C", "type": "color" }
+    },
+
+    "avatar": {
+      "1": { "value": "#4E7BB8", "type": "color" },
+      "2": { "value": "#B8674E", "type": "color" },
+      "3": { "value": "#8E7BAF", "type": "color" },
+      "4": { "value": "#5B8C7B", "type": "color" },
+      "5": { "value": "#A5714E", "type": "color" },
+      "6": { "value": "#7A6E9E", "type": "color" }
+    },
+
+    "radius": {
+      "sm":   { "value": "6",   "type": "borderRadius" },
+      "md":   { "value": "10",  "type": "borderRadius" },
+      "lg":   { "value": "14",  "type": "borderRadius" },
+      "xl":   { "value": "20",  "type": "borderRadius" },
+      "pill": { "value": "999", "type": "borderRadius" }
+    },
+
+    "space": {
+      "1": { "value": "4",  "type": "spacing" },
+      "2": { "value": "8",  "type": "spacing" },
+      "3": { "value": "12", "type": "spacing" },
+      "4": { "value": "16", "type": "spacing" },
+      "5": { "value": "24", "type": "spacing" },
+      "6": { "value": "32", "type": "spacing" },
+      "7": { "value": "48", "type": "spacing" },
+      "8": { "value": "64", "type": "spacing" }
+    },
+
+    "font": {
+      "sans":    { "value": "Golos Text",    "type": "fontFamilies" },
+      "display": { "value": "Unbounded",     "type": "fontFamilies" },
+      "mono":    { "value": "JetBrains Mono","type": "fontFamilies" }
+    },
+
+    "weight": {
+      "regular":  { "value": "Regular",  "type": "fontWeights" },
+      "medium":   { "value": "Medium",   "type": "fontWeights" },
+      "semibold": { "value": "SemiBold", "type": "fontWeights" }
+    },
+
+    "size": {
+      "micro":   { "value": "11", "type": "fontSizes" },
+      "caption": { "value": "13", "type": "fontSizes" },
+      "body":    { "value": "15", "type": "fontSizes" },
+      "title":   { "value": "17", "type": "fontSizes" },
+      "section": { "value": "20", "type": "fontSizes" },
+      "display": { "value": "28", "type": "fontSizes" }
+    },
+
+    "lineHeight": {
+      "ui":   { "value": "135%", "type": "lineHeights" },
+      "text": { "value": "150%", "type": "lineHeights" }
+    },
+
+    "duration": {
+      "fast":  { "value": "120ms", "type": "other" },
+      "panel": { "value": "200ms", "type": "other" },
+      "modal": { "value": "260ms", "type": "other" }
+    }
+  },
+
+  "theme/light": {
+    "bg":        { "value": "{core.gray.100}", "type": "color", "description": "Фон приложения" },
+    "surface":   { "value": "{core.gray.50}",  "type": "color", "description": "Панель, карточка, меню" },
+    "surface2":  { "value": "{core.gray.200}", "type": "color", "description": "Приподнятая поверхность, hover" },
+    "line":      { "value": "{core.gray.300}", "type": "color", "description": "Граница" },
+    "lineSoft":  { "value": "{core.gray.250}", "type": "color", "description": "Разделитель внутри блока" },
+    "text":      { "value": "{core.gray.ink}", "type": "color", "description": "Основной текст, контраст 14,9:1" },
+    "textMuted": { "value": "{core.gray.600}", "type": "color", "description": "Второстепенный, 6,1:1" },
+    "textFaint": { "value": "{core.gray.400}", "type": "color", "description": "Время, подписи" },
+    "bubbleIn":  { "value": "{core.gray.50}",  "type": "color", "description": "Пузырь собеседника" },
+    "ok":        { "value": "{core.status.okLight}",     "type": "color" },
+    "danger":    { "value": "{core.status.dangerLight}", "type": "color" }
+  },
+
+  "theme/dark": {
+    "bg":        { "value": "{core.gray.1000}", "type": "color", "description": "Фон приложения" },
+    "surface":   { "value": "{core.gray.950}",  "type": "color", "description": "Панель, карточка, меню" },
+    "surface2":  { "value": "{core.gray.900}",  "type": "color", "description": "Приподнятая поверхность, hover" },
+    "line":      { "value": "{core.gray.850}",  "type": "color", "description": "Граница" },
+    "lineSoft":  { "value": "{core.gray.900}",  "type": "color", "description": "Разделитель внутри блока" },
+    "text":      { "value": "{core.gray.800}",  "type": "color", "description": "Основной текст, контраст 13,7:1" },
+    "textMuted": { "value": "{core.gray.700}",  "type": "color", "description": "Второстепенный, 7,0:1" },
+    "textFaint": { "value": "{core.gray.500}",  "type": "color", "description": "Время, подписи" },
+    "bubbleIn":  { "value": "#1F2731",          "type": "color", "description": "Пузырь собеседника" },
+    "ok":        { "value": "{core.status.okDark}",     "type": "color" },
+    "danger":    { "value": "{core.status.dangerDark}", "type": "color" }
+  },
+
+  "accent/violet": {
+    "lo":            { "value": "#7C4DD8", "type": "color", "description": "Текст и линии на светлом фоне" },
+    "hi":            { "value": "#B48CEC", "type": "color", "description": "Текст и линии на тёмном фоне" },
+    "fill":          { "value": "#7C4DD8", "type": "color", "description": "Заливка кнопок и меток" },
+    "onFill":        { "value": "#FFFFFF", "type": "color", "description": "Текст поверх заливки" },
+    "bubbleLight":   { "value": "#F0EAFB", "type": "color", "description": "Свой пузырь, светлая тема" },
+    "bubbleDark":    { "value": "#292234", "type": "color", "description": "Свой пузырь, тёмная тема" },
+    "bubbleInkLight":{ "value": "#3D2A63", "type": "color" },
+    "bubbleInkDark": { "value": "#E9E2F5", "type": "color" }
+  },
+
+  "accent/plum": {
+    "lo":            { "value": "#8E3E86", "type": "color" },
+    "hi":            { "value": "#D392CB", "type": "color" },
+    "fill":          { "value": "#8E3E86", "type": "color" },
+    "onFill":        { "value": "#FFFFFF", "type": "color" },
+    "bubbleLight":   { "value": "#F8EAF6", "type": "color" },
+    "bubbleDark":    { "value": "#2F2433", "type": "color" },
+    "bubbleInkLight":{ "value": "#4E1B49", "type": "color" },
+    "bubbleInkDark": { "value": "#F0DEEE", "type": "color" }
+  },
+
+  "accent/orchid": {
+    "lo":            { "value": "#C2459B", "type": "color" },
+    "hi":            { "value": "#EC8CC8", "type": "color" },
+    "fill":          { "value": "#C2459B", "type": "color" },
+    "onFill":        { "value": "#FFFFFF", "type": "color" },
+    "bubbleLight":   { "value": "#FCE9F5", "type": "color" },
+    "bubbleDark":    { "value": "#322431", "type": "color" },
+    "bubbleInkLight":{ "value": "#66194A", "type": "color" },
+    "bubbleInkDark": { "value": "#F5DFEE", "type": "color" }
+  },
+
+  "accent/indigo": {
+    "lo":            { "value": "#4C5FD0", "type": "color" },
+    "hi":            { "value": "#9BAAF2", "type": "color" },
+    "fill":          { "value": "#4C5FD0", "type": "color" },
+    "onFill":        { "value": "#FFFFFF", "type": "color" },
+    "bubbleLight":   { "value": "#E9ECFC", "type": "color" },
+    "bubbleDark":    { "value": "#232839", "type": "color" },
+    "bubbleInkLight":{ "value": "#23306E", "type": "color" },
+    "bubbleInkDark": { "value": "#DFE4F7", "type": "color" }
+  },
+
+  "accent/amber": {
+    "lo":            { "value": "#A9690C", "type": "color" },
+    "hi":            { "value": "#F2A93B", "type": "color" },
+    "fill":          { "value": "#F2A93B", "type": "color" },
+    "onFill":        { "value": "#1A1203", "type": "color", "description": "Единственный набор с тёмным текстом на заливке" },
+    "bubbleLight":   { "value": "#FBF0DC", "type": "color" },
+    "bubbleDark":    { "value": "#33291A", "type": "color" },
+    "bubbleInkLight":{ "value": "#5A4318", "type": "color" },
+    "bubbleInkDark": { "value": "#F0E6D6", "type": "color" }
+  },
+
+  "accent/teal": {
+    "lo":            { "value": "#17806E", "type": "color" },
+    "hi":            { "value": "#5FD3BE", "type": "color" },
+    "fill":          { "value": "#17806E", "type": "color" },
+    "onFill":        { "value": "#FFFFFF", "type": "color" },
+    "bubbleLight":   { "value": "#E3F5F1", "type": "color" },
+    "bubbleDark":    { "value": "#1E2E2C", "type": "color" },
+    "bubbleInkLight":{ "value": "#0D4A3F", "type": "color" },
+    "bubbleInkDark": { "value": "#D6EFE9", "type": "color" }
+  },
+
+  "type": {
+    "display":    { "value": { "fontFamily": "{core.font.display}", "fontWeight": "{core.weight.semibold}", "fontSize": "{core.size.display}", "lineHeight": "{core.lineHeight.ui}", "letterSpacing": "-2%" }, "type": "typography", "description": "Заголовок экрана" },
+    "section":    { "value": { "fontFamily": "{core.font.sans}", "fontWeight": "{core.weight.semibold}", "fontSize": "{core.size.section}", "lineHeight": "{core.lineHeight.ui}" }, "type": "typography", "description": "Название раздела" },
+    "title":      { "value": { "fontFamily": "{core.font.sans}", "fontWeight": "{core.weight.semibold}", "fontSize": "{core.size.title}", "lineHeight": "{core.lineHeight.ui}" }, "type": "typography", "description": "Имя собеседника в шапке" },
+    "body":       { "value": { "fontFamily": "{core.font.sans}", "fontWeight": "{core.weight.regular}", "fontSize": "{core.size.body}", "lineHeight": "{core.lineHeight.text}" }, "type": "typography", "description": "Текст сообщения" },
+    "caption":    { "value": { "fontFamily": "{core.font.sans}", "fontWeight": "{core.weight.regular}", "fontSize": "{core.size.caption}", "lineHeight": "{core.lineHeight.ui}" }, "type": "typography", "description": "Превью, подписи" },
+    "micro":      { "value": { "fontFamily": "{core.font.mono}", "fontWeight": "{core.weight.regular}", "fontSize": "{core.size.micro}", "lineHeight": "{core.lineHeight.ui}" }, "type": "typography", "description": "Время, счётчики, коды" }
+  },
+
+  "$themes": [
+    {
+      "id": "light-violet",
+      "name": "Светлая · Фиолетовый",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/violet": "enabled" }
+    },
+    {
+      "id": "dark-violet",
+      "name": "Тёмная · Фиолетовый",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/violet": "enabled" }
+    },
+    {
+      "id": "light-plum",
+      "name": "Светлая · Сливовый",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/plum": "enabled" }
+    },
+    {
+      "id": "dark-plum",
+      "name": "Тёмная · Сливовый",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/plum": "enabled" }
+    },
+    {
+      "id": "light-orchid",
+      "name": "Светлая · Орхидея",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/orchid": "enabled" }
+    },
+    {
+      "id": "dark-orchid",
+      "name": "Тёмная · Орхидея",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/orchid": "enabled" }
+    },
+    {
+      "id": "light-indigo",
+      "name": "Светлая · Индиго",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/indigo": "enabled" }
+    },
+    {
+      "id": "dark-indigo",
+      "name": "Тёмная · Индиго",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/indigo": "enabled" }
+    },
+    {
+      "id": "light-amber",
+      "name": "Светлая · Янтарь",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/amber": "enabled" }
+    },
+    {
+      "id": "dark-amber",
+      "name": "Тёмная · Янтарь",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/amber": "enabled" }
+    },
+    {
+      "id": "light-teal",
+      "name": "Светлая · Бирюза",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/light": "enabled", "accent/teal": "enabled" }
+    },
+    {
+      "id": "dark-teal",
+      "name": "Тёмная · Бирюза",
+      "selectedTokenSets": { "core": "source", "type": "enabled", "theme/dark": "enabled", "accent/teal": "enabled" }
+    }
+  ],
+
+  "$metadata": {
+    "tokenSetOrder": [
+      "core",
+      "type",
+      "theme/light",
+      "theme/dark",
+      "accent/violet",
+      "accent/plum",
+      "accent/orchid",
+      "accent/indigo",
+      "accent/amber",
+      "accent/teal"
+    ]
+  }
+}
