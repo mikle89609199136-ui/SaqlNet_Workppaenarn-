@@ -1,3 +1,6 @@
+export { Button } from './Button';
+export { Spinner } from './Spinner';
+
 export { AttachmentControl } from './AttachmentControl';
 export { AttachmentPreview } from './AttachmentPreview';
 export { ChatListItem } from './ChatListItem';

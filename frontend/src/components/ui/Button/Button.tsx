@@ -1,4 +1,4 @@
-import { Spinner } from '@/design-system/components/Spinner';
+import { Spinner } from '@/components/ui/Spinner';
 import { cn } from '@/utils';
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 
