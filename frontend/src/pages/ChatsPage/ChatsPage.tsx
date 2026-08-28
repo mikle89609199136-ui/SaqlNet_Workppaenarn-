@@ -88,7 +88,7 @@ export function ChatsPage() {
           title={t('newGroup', 'Новая группа')}
           type="button"
         >
-          <Icon name="userPlus" />
+          <Icon name="groupAdd" />
         </button>
       </section>
 

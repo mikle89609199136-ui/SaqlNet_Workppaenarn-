@@ -18,7 +18,7 @@ const navItems: INavItem[] = [
     key: 'channels',
     label: 'Каналы',
     path: ROUTES.CHANNELS,
-    icon: 'megaphone',
+    icon: 'channel',
   },
   {
     key: 'communities',

@@ -1,7 +1,7 @@
 export type TIconTypes =
   | 'burger'
   | 'camera'
-  | 'megaphone'
+  | 'channel'
   | 'chat'
   | 'checkCircle'
   | 'copy'
@@ -9,7 +9,7 @@ export type TIconTypes =
   | 'edit'
   | 'file'
   | 'forward'
-  | 'userPlus'
+  | 'groupAdd'
   | 'language'
   | 'phone'
   | 'pin'

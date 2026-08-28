@@ -1,6 +1,6 @@
 import type { TIconTypes } from '@/types';
 import { cn } from '@/utils';
-import { Camera, CheckCircle, Copy, File, Forward, Globe, Menu, MessageCircle, Pencil, Phone, Pin, Plus, Reply, Search, Settings, Trash2, Users, Video, Volume2, X, type LucideIcon, type LucideProps } from 'lucide-react';
+import { Camera, CheckCircle, Copy, File, Forward, Globe, Megaphone, Menu, MessageCircle, Pencil, Phone, Pin, Reply, Search, Settings, Trash2, UserPlus, Users, Video, X, type LucideIcon, type LucideProps } from 'lucide-react';
 
 const sizes = { sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
 
@@ -12,7 +12,7 @@ interface Props extends Omit<LucideProps, 'size' | 'ref'> {
 const iconsConfig: Record<TIconTypes, LucideIcon> = {
   burger: Menu,
   camera: Camera,
-  megaphone: Volume2,
+  channel: Megaphone,
   chat: MessageCircle,
   checkCircle: CheckCircle,
   copy: Copy,
@@ -20,7 +20,7 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   edit: Pencil,
   file: File,
   forward: Forward,
-  userPlus: Plus,
+  groupAdd: UserPlus,
   language: Globe,
   phone: Phone,
   pin: Pin,
