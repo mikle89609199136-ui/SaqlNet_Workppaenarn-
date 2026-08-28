@@ -109,7 +109,7 @@ export function ContactsPage() {
           return (
             <div key={user.id} className="contact-item-row" onClick={() => startChat(user.id)}>
               <div className="contact-left">
-                <Avatar id={user.id} name={user.firstName || user.username} src={user.avatarUrl} />
+                <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
                 <div className="contact-details">
                   <span className="contact-name-title">{user.firstName || 'Пользователь'}</span>
                   <span className="contact-username-sub">@{user.username}</span>

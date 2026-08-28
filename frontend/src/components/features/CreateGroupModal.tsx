@@ -243,7 +243,7 @@ export function CreateGroupModal({ onClose }: Props) {
                     onClick={() => toggle(user)}
                     type="button"
                   >
-                    <Avatar id={user.id} name={name} src={user.avatarUrl} />
+                    <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />
 
                     <span className="min-w-0 flex flex-col">
                       <strong className="truncate">{name}</strong>

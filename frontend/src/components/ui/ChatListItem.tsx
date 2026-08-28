@@ -34,7 +34,7 @@ export function ChatListItem({ chat }: Props) {
 
   return (
     <Link className="chat-row" to={ROUTES.CHAT_BY_ID(chat.id)} aria-label={title}>
-      <Avatar id={peerId} name={title} online={isPeerOnline} src={chat.avatarUrl} />
+      <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
       <div className="chat-main">
         <div className="chat-topline">
           <span className="chat-title">{title}</span>

@@ -24,7 +24,7 @@ export function CallOverlay() {
             className="mx-auto mb-5"
             id={incomingCall.from}
             name={incomingCall.fromName}
-            size="xl"
+            size="2xl"
             src={incomingCall.fromAvatar}
           />
           <h2>{incomingCall.fromName || 'Неизвестный'}</h2>

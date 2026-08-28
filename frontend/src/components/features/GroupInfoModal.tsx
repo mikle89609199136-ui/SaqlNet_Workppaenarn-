@@ -123,7 +123,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border border-t-none border-[rgba(255,255,255,0.05)]">
         <div className="flex w-full items-center gap-x-2">
           <div className="flex w-full gap-x-2">
-            <Avatar name={chat?.title} src={chat?.avatarUrl} />
+            <Avatar name={chat?.title} size="lg" src={chat?.avatarUrl} />
             <div className="flex flex-col w-full">
               {!isEditMode ? (
                 <h2>{chat?.title}</h2>
@@ -198,6 +198,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
                     className="mr-4"
                     id={memberId}
                     name={member.username}
+                    size="lg"
                     src={avatarUrl}
                   />
                   <div className="member-details">

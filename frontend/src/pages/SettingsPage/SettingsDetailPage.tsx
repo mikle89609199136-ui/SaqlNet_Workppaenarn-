@@ -279,7 +279,7 @@ function AccountSettings({
       <section className="settings-account-overview">
         <h1>Аккаунт</h1>
         <div className="settings-account-summary settings-overview-profile">
-          <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
+          <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
           <div className="settings-account-identity">
             <strong>
               {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
@@ -576,7 +576,7 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
         <p>Обновите имя и информацию, которую видят другие пользователи.</p>
       </header>
       <div className="settings-profile-editor-identity">
-        <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
+        <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
         <div>
           <strong>
             {[user.firstName, user.lastName].filter(Boolean).join(' ') ||

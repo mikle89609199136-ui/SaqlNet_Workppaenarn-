@@ -156,6 +156,7 @@ export const ChatThreadHeader = ({
                 id={chat.type === 'private' ? chat.peerId : null}
                 name={chat.title}
                 online={isPeerOnline}
+                size="lg"
                 src={chat.avatarUrl}
               />
             </button>

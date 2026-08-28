@@ -149,7 +149,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
               className="mx-auto mb-4"
               id={profileUser?.id || profileState.chat?.peerId}
               name={displayName}
-              size="xl"
+              size="2xl"
               src={avatarUrl}
             />
             <h2>{displayName}</h2>

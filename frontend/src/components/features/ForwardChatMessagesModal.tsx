@@ -114,7 +114,7 @@ export const ForwardChatMessagesModal = ({
                     data-chatid={chat.id}
                     className="w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-panel px-6 py-3"
                   >
-                    <Avatar id={chat.peerId} name={title} src={chat.avatarUrl} />
+                    <Avatar id={chat.peerId} name={title} size="lg" src={chat.avatarUrl} />
 
                     <div className="flex flex-col gap-y-1 w-full">
                       <div className="text-left w-full">{title}</div>
