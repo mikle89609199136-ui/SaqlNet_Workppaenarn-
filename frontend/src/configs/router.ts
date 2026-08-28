@@ -9,6 +9,7 @@ import { RootLayout } from '../components/layouts/RootLayout.js';
 import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
 import { REACT_ROUTES } from '../consts/routes';
 import { clearAuthSession } from '../utils/clearAuthSession.js';
+import { Components } from '@/pages/Components/Components.js';
 
 async function requireSession({ request }: { request: Request }) {
   const token = useProfileStore.getState().token;
@@ -84,6 +85,10 @@ const chatLoader = async ({ params }: { params: Params }) => {
 };
 
 export const router = createBrowserRouter([
+  {
+    Component: Components,
+    path: "components"
+  },
   {
     Component: RootLayout,
     children: [
