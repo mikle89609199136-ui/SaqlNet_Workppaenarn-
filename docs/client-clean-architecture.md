@@ -1,25 +1,33 @@
 # Client Clean Architecture
 
+> **Это описание устаревшего клиента.** Он лежит в `legacy/mobile-client/`,
+> ничем не собирается и не раздаётся: edge-сервер отдаёт только сборку Vite
+> из `dist/` (`FRONTEND_DIR`, см. `backend-v2/cmd/edge/main.go`). Каталог
+> оставлен как справочный материал до тех пор, пока из него не будет
+> вынесено всё нужное.
+>
+> Актуальный клиент — `frontend/`, про него `frontend-data-architecture.md`.
+
 The mobile web client is split into layers that keep UI, business logic, domain
 models, and external dependencies independent.
 
 ## Layers
 
-- `client/mobile/core` contains framework-neutral primitives such as
+- `legacy/mobile-client/core` contains framework-neutral primitives such as
   `EventBus` and `Component`.
-- `client/mobile/domain` contains entities and validators. These modules do not
+- `legacy/mobile-client/domain` contains entities and validators. These modules do not
   import UI, browser APIs, or HTTP clients.
-- `client/mobile/application` contains services and use cases. Services depend
+- `legacy/mobile-client/application` contains services and use cases. Services depend
   on abstractions passed into constructors, mainly the API client.
-- `client/mobile/infrastructure` contains concrete browser/API adapters:
+- `legacy/mobile-client/infrastructure` contains concrete browser/API adapters:
   `ApiClient`, storage adapters, and `WebSocketClient`.
-- `client/mobile/presentation` is the target location for UI components that use
+- `legacy/mobile-client/presentation` is the target location for UI components that use
   the core component base class.
-- `client/mobile/shared` contains constants and small pure utilities.
+- `legacy/mobile-client/shared` contains constants and small pure utilities.
 
 ## Compatibility
 
-Existing modules in `client/mobile/services/api` are retained as compatibility
+Existing modules in `legacy/mobile-client/services/api` are retained as compatibility
 adapters. They delegate to `application/services/serviceContainer.js`, so old
 imports can keep working while new code imports services or use cases directly.
 
