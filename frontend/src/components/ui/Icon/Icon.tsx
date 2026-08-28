@@ -1,13 +1,10 @@
-import type { SVGProps } from 'react';
-
 import type { TIconTypes } from '@/types';
 import { cn } from '@/utils';
-import { Camera, CheckCircle, Copy, File, Forward, Globe, Menu, MessageCircle, Pencil, Phone, Pin, Plus, Reply, Search, Settings, Trash2, Users, Video, Volume2, X, type LucideIcon } from 'lucide-react';
+import { Camera, CheckCircle, Copy, File, Forward, Globe, Menu, MessageCircle, Pencil, Phone, Pin, Plus, Reply, Search, Settings, Trash2, Users, Video, Volume2, X, type LucideIcon, type LucideProps } from 'lucide-react';
 
 const sizes = { sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
 
-
-interface Props extends SVGProps<SVGSVGElement> {
+interface Props extends Omit<LucideProps, 'size' | 'ref'> {
   name: TIconTypes;
   size?: keyof typeof sizes;
 }
