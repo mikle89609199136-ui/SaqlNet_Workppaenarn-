@@ -515,7 +515,6 @@
     & .rail-tab {
       @apply flex-1 h-[60px] border-0 bg-transparent flex flex-col items-center justify-center text-[10px] font-medium gap-1 cursor-pointer;
       color: rgba(255,255,255,0.45);
-      & svg { @apply w-5 h-5; }
       &.active { color: #b8a4ff; }
     }
     & .chats-page, & .contacts-page, & .settings-page { @apply pb-safe-nav; }
@@ -771,7 +770,7 @@
     border: 0;
     padding: 0;
     cursor: pointer;
-    & img, & svg { width: 100%; height: 100%; display: block; border-radius: inherit; }
+    & img { width: 100%; height: 100%; display: block; border-radius: inherit; }
   }
   .thread-avatar.is-online::after {
     content: "";
@@ -841,7 +840,6 @@
     height: 42px;
     background: rgba(255,255,255,0.14);
     color: rgba(255,255,255,0.94);
-    & svg { width: 24px; height: 24px; }
   }
   .message-call-copy {
     @apply min-w-0 flex flex-col gap-0.5;
@@ -1000,7 +998,6 @@
     }
     & button + button { margin-top: 2px; }
     & button:hover { background: rgba(255,255,255,0.09); color: #fff; }
-    & button svg { width: 18px; height: 18px; fill: currentColor; opacity: 0.88; }
     & button.is-danger { color: #ff7777; }
     & button.is-danger:hover { background: rgba(255,75,75,0.12); color: #ff8d8d; }
   }
@@ -1099,7 +1096,7 @@
     height: 112px;
     border-radius: 999px;
     background: rgba(255,255,255,0.08);
-    & img, & svg { width: 100%; height: 100%; object-fit: cover; }
+    & img { width: 100%; height: 100%; object-fit: cover; }
   }
   .user-profile-card h2 { @apply m-0 text-[24px] leading-tight font-extrabold; }
   .user-profile-username { @apply mt-1 mb-0 text-[14px]; color: rgba(255,255,255,0.58); }
@@ -1122,7 +1119,6 @@
     text-align: center;
     overflow-wrap: anywhere;
     transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
-    & svg { width: 26px; height: 26px; fill: currentColor; }
     &:hover { background: rgba(42,171,238,0.12); border-color: rgba(42,171,238,0.28); }
     &:active { transform: translateY(1px); }
     &:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -1175,10 +1171,7 @@
       position: absolute;
       right: 16px;
       top: 50%;
-      width: 21px;
-      height: 21px;
       transform: translateY(-50%);
-      fill: #2AABEE;
       opacity: 0.9;
     }
     &:hover { background: rgba(42,171,238,0.08); }

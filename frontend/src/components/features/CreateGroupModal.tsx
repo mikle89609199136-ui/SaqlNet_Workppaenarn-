@@ -200,7 +200,7 @@ export function CreateGroupModal({ onClose }: Props) {
               <li key={member.id}>
                 <button className="create-group-chip" onClick={() => toggle(member)} type="button">
                   <span>{member.firstName || member.username}</span>
-                  <Icon className="size-3.5" name="cross" />
+                  <Icon name="cross" size="sm" />
                 </button>
               </li>
             ))}

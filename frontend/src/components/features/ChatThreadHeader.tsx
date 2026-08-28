@@ -175,7 +175,7 @@ export const ChatThreadHeader = ({
                 title={t('audioCall', 'Аудиозвонок')}
                 type="button"
               >
-                <Icon name="phone" className="thread-call-icon stroke-transparent fill-current" />
+                <Icon name="phone" />
               </button>
 
               <button
@@ -184,10 +184,7 @@ export const ChatThreadHeader = ({
                 title={t('videoCall', 'Видео')}
                 type="button"
               >
-                <Icon
-                  name="video"
-                  className="thread-call-icon thread-call-icon-video stroke-transparent fill-current"
-                />
+                <Icon name="video" />
               </button>
             </div>
 

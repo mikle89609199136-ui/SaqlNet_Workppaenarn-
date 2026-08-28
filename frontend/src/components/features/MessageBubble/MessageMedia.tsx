@@ -54,7 +54,7 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
   if (actualType === 'file') {
     return (
       <a className="message-media-file flex gap-x-1" download href={mediaUrl}>
-        <Icon name="file" className="size-9" />
+        <Icon name="file" size="xl" />
         <div className="flex flex-col">
           <span className="text-sm">{mediaEncryption.fileName}</span>
           <span className="text-xs text-[rgba(255,255,255,0.58)]">

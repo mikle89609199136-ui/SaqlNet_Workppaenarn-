@@ -1,59 +1,38 @@
-import type { SVGProps } from 'react';
-
 import type { TIconTypes } from '@/types';
-import {
-  BurgerIcon,
-  CameraIcon,
-  ChannelIcon,
-  ChatIcon,
-  CheckCircleIcon,
-  CopyIcon,
-  CrossIcon,
-  EditIcon,
-  FileIcon,
-  ForwardIcon,
-  GroupAddIcon,
-  LanguageIcon,
-  PhoneIcon,
-  PinIcon,
-  ReplyIcon,
-  SearchIcon,
-  SettingsIcon,
-  TrashIcon,
-  UsersIcon,
-  VideoIcon,
-} from './icons';
+import { cn } from '@/utils';
+import { Camera, CheckCircle, Copy, File, Forward, Globe, Megaphone, Menu, MessageCircle, Pencil, Phone, Pin, Reply, Search, Settings, Trash2, UserPlus, Users, Video, X, type LucideIcon, type LucideProps } from 'lucide-react';
 
-export type TIconProps = SVGProps<SVGSVGElement>;
+const sizes = { sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
 
-interface Props extends SVGProps<SVGSVGElement> {
+interface Props extends Omit<LucideProps, 'size' | 'ref'> {
   name: TIconTypes;
+  size?: keyof typeof sizes;
 }
 
-const iconsConfig: Record<TIconTypes, any> = {
-  burger: BurgerIcon,
-  camera: CameraIcon,
-  channel: ChannelIcon,
-  chat: ChatIcon,
-  checkCircle: CheckCircleIcon,
-  copy: CopyIcon,
-  cross: CrossIcon,
-  edit: EditIcon,
-  file: FileIcon,
-  forward: ForwardIcon,
-  groupAdd: GroupAddIcon,
-  language: LanguageIcon,
-  phone: PhoneIcon,
-  pin: PinIcon,
-  reply: ReplyIcon,
-  search: SearchIcon,
-  settings: SettingsIcon,
-  trash: TrashIcon,
-  users: UsersIcon,
-  video: VideoIcon,
+const iconsConfig: Record<TIconTypes, LucideIcon> = {
+  burger: Menu,
+  camera: Camera,
+  channel: Megaphone,
+  chat: MessageCircle,
+  checkCircle: CheckCircle,
+  copy: Copy,
+  cross: X,
+  edit: Pencil,
+  file: File,
+  forward: Forward,
+  groupAdd: UserPlus,
+  language: Globe,
+  phone: Phone,
+  pin: Pin,
+  reply: Reply,
+  search: Search,
+  settings: Settings,
+  trash: Trash2,
+  users: Users,
+  video: Video,
 };
 
-export const Icon = ({ name, ...props }: Props) => {
+export const Icon = ({ name, size = "md", className, ...props }: Props) => {
   const SVGIcon = iconsConfig[name];
-  return <SVGIcon {...props} />;
+  return <SVGIcon {...props} className={cn(sizes[size], "stroke-[1.75px]", className)} />;
 };

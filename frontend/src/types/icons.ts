@@ -18,4 +18,4 @@ export type TIconTypes =
   | 'settings'
   | 'trash'
   | 'users'
-  | 'video';
+  | 'video'
