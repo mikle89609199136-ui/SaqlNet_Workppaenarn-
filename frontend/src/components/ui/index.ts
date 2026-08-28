@@ -1,5 +1,7 @@
 export { Avatar } from './Avatar';
+export { Badge } from './Badge';
 export { Button, buttonStyles } from './Button';
+export { Chip } from './Chip';
 export { Spinner } from './Spinner';
 
 export { AttachmentControl } from './AttachmentControl';

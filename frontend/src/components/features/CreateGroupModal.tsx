@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon, Modal } from '../ui';
 import { Avatar } from '../ui/Avatar';
+import { Chip } from '../ui/Chip';
 import { suggestedMembers } from './suggestedMembers';
 
 interface Props {
@@ -198,10 +199,12 @@ export function CreateGroupModal({ onClose }: Props) {
           <ul className="flex flex-wrap gap-2 px-6">
             {selected.map((member) => (
               <li key={member.id}>
-                <button className="create-group-chip" onClick={() => toggle(member)} type="button">
-                  <span>{member.firstName || member.username}</span>
-                  <Icon name="cross" size="sm" />
-                </button>
+                <Chip
+                  onRemove={() => toggle(member)}
+                  removeLabel={t('removeMember', 'Убрать участника')}
+                >
+                  {member.firstName || member.username}
+                </Chip>
               </li>
             ))}
           </ul>

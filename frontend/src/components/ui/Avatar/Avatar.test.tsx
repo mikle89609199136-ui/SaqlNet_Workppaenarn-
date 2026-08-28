@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Avatar } from './Avatar';
 
-const круг = (c: HTMLElement) => c.querySelector('span > span') as HTMLElement;
+const circle = (c: HTMLElement) => c.querySelector('span > span') as HTMLElement;
 
 describe('аватарка', () => {
   it('should show the photo when there is one', () => {
@@ -15,7 +15,7 @@ describe('аватарка', () => {
   it('should fall back to the first letter of the name', () => {
     const { container } = render(<Avatar id="u-anna" name="анна" />);
 
-    expect(круг(container)).toHaveTextContent('А');
+    expect(circle(container)).toHaveTextContent('А');
   });
 
   it('should draw a grid when asked and there is an id', () => {
@@ -30,27 +30,27 @@ describe('аватарка', () => {
     const { container } = render(<Avatar name="Рабочий чат" shape="grid" />);
 
     expect(container.querySelector('svg')).not.toBeInTheDocument();
-    expect(круг(container)).toHaveTextContent('Р');
+    expect(circle(container)).toHaveTextContent('Р');
   });
 
   it('should give the same person the same colour every time', () => {
-    const первый = render(<Avatar id="u-boris" name="Борис" />);
-    const второй = render(<Avatar id="u-boris" name="Борис" />);
+    const first = render(<Avatar id="u-boris" name="Борис" />);
+    const second = render(<Avatar id="u-boris" name="Борис" />);
 
-    expect(круг(первый.container).className).toBe(круг(второй.container).className);
+    expect(circle(first.container).className).toBe(circle(second.container).className);
   });
 
   it('should tell people apart when their names start alike', () => {
-    const анна = render(<Avatar id="u-anna" name="Анна" />);
-    const антон = render(<Avatar id="u-anton" name="Антон" />);
+    const anna = render(<Avatar id="u-anna" name="Анна" />);
+    const anton = render(<Avatar id="u-anton" name="Антон" />);
 
-    expect(круг(анна.container).className).not.toBe(круг(антон.container).className);
+    expect(circle(anna.container).className).not.toBe(circle(anton.container).className);
   });
 
   it('should not fall apart on an empty name', () => {
     const { container } = render(<Avatar />);
 
-    expect(круг(container)).toHaveTextContent('?');
+    expect(circle(container)).toHaveTextContent('?');
   });
 
   it('should stay decorative for assistive technology', () => {
@@ -58,8 +58,8 @@ describe('аватарка', () => {
        а «А на синем круге» ему сообщать незачем. */
     const { container } = render(<Avatar id="u-anna" name="Анна" online />);
 
-    container.querySelectorAll('span > span').forEach((узел) => {
-      expect(узел).toHaveAttribute('aria-hidden', 'true');
+    container.querySelectorAll('span > span').forEach((node) => {
+      expect(node).toHaveAttribute('aria-hidden', 'true');
     });
   });
 });

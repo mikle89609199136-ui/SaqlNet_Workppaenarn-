@@ -208,12 +208,6 @@
     &::placeholder { @apply text-ink-3; }
     &:focus { border-color: var(--color-brand); box-shadow: 0 0 0 3px var(--color-brand-soft); }
   }
-  .create-group-chip {
-    @apply flex items-center gap-1.5 pl-3 pr-2 py-1 rounded-pill text-caption cursor-pointer bg-sheet-2 text-ink;
-    border: 1px solid var(--color-line);
-    transition: border-color var(--transition-duration-fast) ease-out;
-    &:hover { border-color: var(--color-ink-3); }
-  }
   /* Кнопка временная: цвета из кита, но компонент Button пишется
      отдельно (#340). Тогда правило уедет. */
   .create-group-submit {
@@ -242,7 +236,6 @@
   .chat-subline { @apply text-caption text-ink-3; }
   /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
   .chat-draft-label { color: var(--color-danger); }
-  .chat-unread { @apply min-w-[24px] h-[22px] py-0 px-[7px] rounded-pill inline-flex items-center justify-center bg-brand-fill text-on-brand text-micro; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
   .chats-state { @apply py-[52px] px-6 text-center; }
   .chats-state-icon { @apply w-[54px] h-[54px] mt-0 mx-auto mb-4 rounded-bubble flex items-center justify-center text-[28px] font-extrabold bg-sheet-2 text-warn; }
