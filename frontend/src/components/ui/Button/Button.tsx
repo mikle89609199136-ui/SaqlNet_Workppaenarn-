@@ -3,7 +3,7 @@ import { cn } from '@/utils';
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 
 const sizes = {
-  sm: 'text-micro px-3 py-1.5 rounded-control gap-1.5',
+  sm: 'text-caption px-3 py-1.5 rounded-control gap-1.5',
   md: 'text-body px-4.5 py-2.5 rounded-field gap-2',
   lg: 'text-title px-6 py-3.5 rounded-field gap-2',
 } as const;
@@ -14,11 +14,19 @@ const iconOnlySizes = {
   lg: 'p-3.5 rounded-field',
 } as const;
 
+/* Рамка есть у каждого варианта: её ширина объявлена в общей части, а
+   цвет — здесь, у всех четырёх. Без рамки кнопка на два пикселя ниже, и
+   в подвале окна «Удалить» и «Отмена» встают разной высоты.
+
+   Цвет обязан задаваться именно тут, а не общим border-transparent с
+   перекрытием в варианте: обе утилиты пишут border-color, и побеждает
+   та, что стоит позже в собранном CSS, а не в атрибуте. Прозрачная
+   рамка у secondary — ровно этот случай, пойман измерением. */
 const variants = {
-  primary: 'bg-brand-fill text-on-brand hover:brightness-110',
-  secondary: 'bg-sheet-2 text-ink border border-line hover:border-ink-3',
-  ghost: 'bg-transparent text-ink-2 hover:bg-sheet-2',
-  danger: 'bg-transparent border border-danger text-danger hover:bg-danger/10',
+  primary: 'bg-brand-fill text-on-brand border-transparent hover:bg-brand-fill-hover',
+  secondary: 'bg-sheet-2 text-ink border-line hover:border-ink-3',
+  ghost: 'bg-transparent text-ink-2 border-transparent hover:bg-sheet-2 hover:text-ink',
+  danger: 'bg-transparent border-danger text-danger hover:bg-danger/10',
 } as const;
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -50,7 +58,8 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex items-center justify-center font-medium transition-colors duration-fast cursor-pointer',
+        'inline-flex items-center justify-center font-semibold transition-colors duration-fast cursor-pointer',
+        'border',
         'disabled:opacity-42 disabled:cursor-not-allowed',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
         iconOnly ? iconOnlySizes[size] : sizes[size],
@@ -60,7 +69,9 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       {...rest}
     >
       {loading && <Spinner size="text" tone="current" />}
-      {children}
+      {/* Кнопка-иконка на время загрузки показывает только спиннер: иначе
+          он встаёт рядом со значком, и она расползается прямо под курсором. */}
+      {iconOnly && loading ? null : children}
     </button>
   );
 });

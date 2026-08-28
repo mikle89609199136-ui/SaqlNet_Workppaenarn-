@@ -76,4 +76,21 @@ describe('кнопка', () => {
 
     expect(отправили).toHaveBeenCalledTimes(1);
   });
+
+  it('should show only the spinner when an icon button is loading', () => {
+    render(
+      <Button iconOnly loading aria-label="Отправить">
+        <span data-testid="значок">✈</span>
+      </Button>
+    );
+
+    expect(screen.queryByTestId('значок')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отправить' })).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('should keep showing its children when a normal button is loading', () => {
+    render(<Button loading>Сохранить</Button>);
+
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+  });
 });

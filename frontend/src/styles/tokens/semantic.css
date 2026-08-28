@@ -36,6 +36,10 @@
      теме тёмный, на тёмной светлый (подменяется в themes.css). */
   --color-brand: var(--brand-lo);
   --color-brand-fill: var(--brand-fill); /* заливка кнопок и меток */
+  /* Наведение на заливку. Отдельным токеном, а не фильтром яркости в
+     компоненте: filter не участвует в transition-colors, и наведение
+     получалось скачком. Цвет — участвует. */
+  --color-brand-fill-hover: color-mix(in srgb, var(--brand-fill) 86%, white);
   --color-on-brand: var(--on-brand); /* текст поверх заливки */
   --color-brand-soft: var(--brand-soft); /* подложка, кольцо фокуса */
 
