@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { Button } from './Button';
+import { Button, buttonStyles } from './Button';
 
 describe('кнопка', () => {
   it('should pass the click through', async () => {
@@ -92,5 +92,65 @@ describe('кнопка', () => {
     render(<Button loading>Сохранить</Button>);
 
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+  });
+
+  it('should stay focusable while loading', async () => {
+    /* Нативный disabled сбрасывает фокус на body и убирает кнопку из
+       обхода табом: нажавший Enter теряет место, а aria-busy объявить
+       некому. Поэтому во время загрузки — aria-disabled. */
+    const { rerender } = render(<Button>Отправить</Button>);
+    const кнопка = screen.getByRole('button', { name: 'Отправить' });
+    кнопка.focus();
+
+    rerender(<Button loading>Отправить</Button>);
+
+    expect(кнопка).toHaveFocus();
+    expect(кнопка).not.toBeDisabled();
+    expect(кнопка).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('should not submit a form while loading', async () => {
+    const отправили = vi.fn((e: React.FormEvent) => e.preventDefault());
+    const user = userEvent.setup();
+
+    render(
+      <form onSubmit={отправили}>
+        <Button type="submit" loading>
+          Сохранить
+        </Button>
+      </form>
+    );
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(отправили).not.toHaveBeenCalled();
+  });
+
+  it('should hand its styles to anything that is not a button', () => {
+    render(
+      <a href="/chats" className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
+        Перейти в чат
+      </a>
+    );
+
+    const ссылка = screen.getByRole('link', { name: 'Перейти в чат' });
+
+    expect(ссылка).toHaveClass('bg-sheet-2', 'text-caption');
+  });
+
+  it('should keep the font size of every size', () => {
+    /* tailwind-merge считал text-caption цветом и выбрасывал его как
+       проигравший спор с text-ink. Размер шрифта у кнопки пропадал
+       молча — до появления этой проверки. */
+    render(
+      <>
+        <Button size="sm">Мелкая</Button>
+        <Button size="md">Обычная</Button>
+        <Button size="lg">Крупная</Button>
+      </>
+    );
+
+    expect(screen.getByRole('button', { name: 'Мелкая' })).toHaveClass('text-caption');
+    expect(screen.getByRole('button', { name: 'Обычная' })).toHaveClass('text-body');
+    expect(screen.getByRole('button', { name: 'Крупная' })).toHaveClass('text-title');
   });
 });

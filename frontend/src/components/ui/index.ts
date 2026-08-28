@@ -1,4 +1,4 @@
-export { Button } from './Button';
+export { Button, buttonStyles } from './Button';
 export { Spinner } from './Spinner';
 
 export { AttachmentControl } from './AttachmentControl';
