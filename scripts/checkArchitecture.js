@@ -11,7 +11,6 @@ const syntaxRoots = [
   'client/mobile/infrastructure',
   'client/mobile/shared',
   'client/mobile/presentation',
-  'server/services/message-service',
 ];
 
 const sizeLimits = [
@@ -43,25 +42,30 @@ const sourceExtensions = new Set([
   '.yml',
   '.yaml',
 ]);
+
 const sourceRoots = [
   'client',
-  'database',
   'docs',
   'infrastructure',
-  'public',
+  'frontend/public',
+  'frontend/src',
   'scripts',
   'server',
 ];
 const largeSourceAllowlist = new Set([
   // Cohesive UI/runtime entrypoints; covered by build and dedicated tests.
-  'client/mobile/react/components/media-editor/PhotoEditorModal.jsx',
-  'client/mobile/react/pages/ChatPage/ChatThreadPage.jsx',
-  'client/mobile/react/styles/tailwind.css',
+  'frontend/src/components/components/media-editor/PhotoEditorModal.tsx',
+  'frontend/src/pages/ChatPage/ChatThreadPage.tsx',
+  'frontend/src/styles/tailwind.css',
   'client/mobile/screens/chats/chats.html',
   'client/mobile/screens/chats/chats_v5.js',
   'client/mobile/styles/chats_v5.css',
-  'public/call.js',
+  'frontend/public/call.js',
 ]);
+
+// path.relative() на Windows возвращает обратные слэши, а списки путей выше
+// записаны через прямые. Без нормализации сравнение не совпадает никогда.
+const toPosix = (p) => p.split(path.sep).join('/');
 
 let failed = false;
 
@@ -73,7 +77,7 @@ for (const file of listJavaScriptFiles(syntaxRoots)) {
 
   if (result.status !== 0) {
     failed = true;
-    console.error(`Syntax check failed: ${path.relative(ROOT, file)}`);
+    console.error(`Syntax check failed: ${toPosix(path.relative(ROOT, file))}`);
     if (result.stderr) console.error(result.stderr.trim());
     if (result.stdout) console.error(result.stdout.trim());
   }
@@ -87,7 +91,9 @@ for (const limit of sizeLimits) {
   const lines = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/).length;
   if (lines > limit.maxLines) {
     failed = true;
-    console.error(`Monolith limit exceeded: ${limit.file} has ${lines} lines, limit is ${limit.maxLines}`);
+    console.error(
+      `Monolith limit exceeded: ${limit.file} has ${lines} lines, limit is ${limit.maxLines}`
+    );
   }
 }
 
@@ -96,13 +102,13 @@ for (const file of listJavaScriptFiles(microserviceRoots)) {
   if (lines > MICROSERVICE_MAX_LINES) {
     failed = true;
     console.error(
-      `Microservice file too large: ${path.relative(ROOT, file)} has ${lines} lines, limit is ${MICROSERVICE_MAX_LINES}`
+      `Microservice file too large: ${toPosix(path.relative(ROOT, file))} has ${lines} lines, limit is ${MICROSERVICE_MAX_LINES}`
     );
   }
 }
 
 for (const file of listSourceFiles(sourceRoots)) {
-  const relativeFile = path.relative(ROOT, file);
+  const relativeFile = toPosix(path.relative(ROOT, file));
   if (largeSourceAllowlist.has(relativeFile)) continue;
 
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/).length;

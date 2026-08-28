@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -20,6 +19,22 @@ import (
 
 	httpSwagger "github.com/swaggo/http-swagger"
 )
+
+type rateLimitConfig struct {
+	authRate    float64
+	authBurst   int
+	globalRate  float64
+	globalBurst int
+}
+
+func loadRateLimitConfig() rateLimitConfig {
+	return rateLimitConfig{
+		authRate:    config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
+		authBurst:   config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
+		globalRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
+		globalBurst: config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
+	}
+}
 
 // tokenBucket is a simple per-IP rate limiter.
 type tokenBucket struct {
@@ -85,18 +100,9 @@ func min(a, b float64) float64 {
 	return b
 }
 
-func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := strings.SplitN(fwd, ",", 2)
-		return strings.TrimSpace(parts[0])
-	}
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
-}
-
-func rateLimitMiddleware(authLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
+func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := trustedProxies.clientIP(r)
 		// Stricter limit for auth endpoints (login/register brute-force).
 		if strings.HasPrefix(r.URL.Path, "/api/v2/auth/") {
 			if !authLimiter.Allow(ip) {
@@ -114,6 +120,11 @@ func rateLimitMiddleware(authLimiter, globalLimiter *tokenBucket, next http.Hand
 
 func main() {
 	_ = config.Required("ALLOWED_ORIGINS")
+
+	trustedProxies, err := parseTrustedProxies(config.Value("TRUSTED_PROXIES", ""))
+	if err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 
 	authURL, err := url.Parse(config.Value("AUTH_URL", "http://127.0.0.1:8081"))
 	if err != nil {
@@ -237,10 +248,11 @@ func main() {
 		fs.ServeHTTP(w, r)
 	})
 
-	// Auth: 5 req/s burst 10 per IP. Global: 50 req/s burst 100 per IP.
-	authLimiter := newTokenBucket(5, 10)
-	globalLimiter := newTokenBucket(50, 100)
-	limitedMux := rateLimitMiddleware(authLimiter, globalLimiter, mux)
+	// Rate limits use safe defaults and can be overridden through environment variables.
+	limits := loadRateLimitConfig()
+	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
+	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
+	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, globalLimiter, mux)
 
 	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
