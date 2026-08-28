@@ -97,8 +97,8 @@
 
   body {
     margin: 0;
-    background: var(--color-bg);
-    color: #ffffff;
+    background: var(--color-ground);
+    color: var(--color-ink);
     font-family: var(--font-sans);
   }
 

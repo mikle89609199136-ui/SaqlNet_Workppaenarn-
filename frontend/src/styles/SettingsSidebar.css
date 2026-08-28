@@ -96,9 +96,9 @@
 }
 
 .settings-menu-item.active {
-  background: rgba(72, 0, 108, 0.34);
+  background: color-mix(in srgb, var(--color-brand) 30%, transparent);
   color: var(--text-primary);
-  box-shadow: inset 0 1px rgba(189, 79, 255, 0.16), inset 0 -1px rgba(189, 79, 255, 0.16);
+  box-shadow: inset 0 1px var(--color-brand-soft), inset 0 -1px var(--color-brand-soft);
 }
 
 .settings-menu-item .menu-icon {
@@ -142,7 +142,7 @@
   min-height: 100vh;
   overflow: hidden;
   border-right: 1px solid var(--border-color);
-  background: rgba(12, 12, 15, 0.82);
+  background: var(--color-sheet);
 
   /* Добавляем мягкий выезд слева */
   animation: settingsSidebarIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
