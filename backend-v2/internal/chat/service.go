@@ -2297,7 +2297,6 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		if err != nil {
 			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
 		} else {
-			log.Printf("WS Payload:%s", string(payload))
 			s.ws.BroadcastToChat(chatID, payload, "")
 		}
 	}
