@@ -28,7 +28,7 @@
     --color-sheet: var(--n-950);
     --color-sheet-2: var(--n-900);
 
-    --color-line: var(--n-850);
+    --color-line: var(--n-500);
     --color-line-soft: var(--n-900);
 
     --color-ink: var(--n-800);
@@ -52,7 +52,7 @@
   --color-sheet: var(--n-950);
   --color-sheet-2: var(--n-900);
 
-  --color-line: var(--n-850);
+  --color-line: var(--n-500);
   --color-line-soft: var(--n-900);
 
   --color-ink: var(--n-800);
