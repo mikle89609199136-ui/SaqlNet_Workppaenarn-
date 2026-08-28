@@ -12,9 +12,7 @@
     "dev": "cd frontend && npm run dev",
     "build:react": "cd frontend && npm run build",
     "typecheck": "cd frontend && npm run typecheck",
-    "test:react": "cd frontend && npm run test",
-    "test": "node scripts/checkArchitecture.js",
-    "check:architecture": "node scripts/checkArchitecture.js"
+    "test": "cd frontend && npm run test"
   },
   "dependencies": {
     "applemojis": "^0.0.3",

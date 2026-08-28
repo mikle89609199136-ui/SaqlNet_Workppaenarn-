@@ -24,4 +24,4 @@
 ## Operational scripts
 
 `scripts/` contains: `start.sh`, `smoke-test.sh`, `load-test.sh`,
-`migrate-and-verify.sh`, `seedDatabase.js`, `checkArchitecture.js`.
+`migrate-and-verify.sh`, `seedDatabase.js`.
