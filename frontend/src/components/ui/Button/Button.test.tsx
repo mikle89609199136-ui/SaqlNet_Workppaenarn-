@@ -5,49 +5,49 @@ import { Button, buttonStyles } from './Button';
 
 describe('кнопка', () => {
   it('should pass the click through', async () => {
-    const нажали = vi.fn();
+    const onClick = vi.fn();
     const user = userEvent.setup();
 
-    render(<Button onClick={нажали}>Отправить</Button>);
+    render(<Button onClick={onClick}>Отправить</Button>);
     await user.click(screen.getByRole('button', { name: 'Отправить' }));
 
-    expect(нажали).toHaveBeenCalledTimes(1);
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('should not pass the click through when disabled', async () => {
-    const нажали = vi.fn();
+    const onClick = vi.fn();
     const user = userEvent.setup();
 
     render(
-      <Button disabled onClick={нажали}>
+      <Button disabled onClick={onClick}>
         Отправить
       </Button>
     );
     await user.click(screen.getByRole('button', { name: 'Отправить' }));
 
-    expect(нажали).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it('should not pass the click through while loading', async () => {
     // Про этот случай забывают чаще всего, а стоит он дорого: пока идёт
-    // запрос, кнопка выглядит обычной, и второе нажатие отправляет форму
+    // запрос, button выглядит обычной, и второе нажатие отправляет форму
     // повторно.
-    const нажали = vi.fn();
+    const onClick = vi.fn();
     const user = userEvent.setup();
 
     render(
-      <Button loading onClick={нажали}>
+      <Button loading onClick={onClick}>
         Отправить
       </Button>
     );
     await user.click(screen.getByRole('button', { name: 'Отправить' }));
 
-    expect(нажали).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it('should keep its accessible name while loading', () => {
-    // Текст обязан остаться: без него кнопка прыгает по ширине, а читалка
-    // называет её просто «кнопка».
+    // Текст обязан остаться: без него button прыгает по ширине, а читалка
+    // называет её просто «button».
     render(<Button loading>Отправить</Button>);
 
     expect(screen.getByRole('button', { name: 'Отправить' })).toHaveAttribute('aria-busy', 'true');
@@ -62,19 +62,19 @@ describe('кнопка', () => {
   });
 
   it('should stay submittable inside a form', async () => {
-    // type по умолчанию button, чтобы кнопка случайно не отправляла форму.
+    // type по умолчанию button, чтобы button случайно не отправляла форму.
     // Но когда это нужно, вызывающий должен иметь возможность сказать.
-    const отправили = vi.fn((event: React.FormEvent) => event.preventDefault());
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
     const user = userEvent.setup();
 
     render(
-      <form onSubmit={отправили}>
+      <form onSubmit={onSubmit}>
         <Button type="submit">Войти</Button>
       </form>
     );
     await user.click(screen.getByRole('button', { name: 'Войти' }));
 
-    expect(отправили).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it('should show only the spinner when an icon button is loading', () => {
@@ -99,22 +99,22 @@ describe('кнопка', () => {
        обхода табом: нажавший Enter теряет место, а aria-busy объявить
        некому. Поэтому во время загрузки — aria-disabled. */
     const { rerender } = render(<Button>Отправить</Button>);
-    const кнопка = screen.getByRole('button', { name: 'Отправить' });
-    кнопка.focus();
+    const button = screen.getByRole('button', { name: 'Отправить' });
+    button.focus();
 
     rerender(<Button loading>Отправить</Button>);
 
-    expect(кнопка).toHaveFocus();
-    expect(кнопка).not.toBeDisabled();
-    expect(кнопка).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('should not submit a form while loading', async () => {
-    const отправили = vi.fn((e: React.FormEvent) => e.preventDefault());
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
     const user = userEvent.setup();
 
     render(
-      <form onSubmit={отправили}>
+      <form onSubmit={onSubmit}>
         <Button type="submit" loading>
           Сохранить
         </Button>
@@ -122,7 +122,7 @@ describe('кнопка', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 
-    expect(отправили).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('should hand its styles to anything that is not a button', () => {
@@ -132,9 +132,9 @@ describe('кнопка', () => {
       </a>
     );
 
-    const ссылка = screen.getByRole('link', { name: 'Перейти в чат' });
+    const link = screen.getByRole('link', { name: 'Перейти в чат' });
 
-    expect(ссылка).toHaveClass('bg-sheet-2', 'text-caption');
+    expect(link).toHaveClass('bg-sheet-2', 'text-caption');
   });
 
   it('should keep the font size of every size', () => {

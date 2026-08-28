@@ -22,9 +22,9 @@ describe('спиннер', () => {
        быть текстом — скрытым визуально, но настоящим. */
     render(<Spinner label="Загрузка чатов" />);
 
-    const текст = screen.getByText('Загрузка чатов');
+    const text = screen.getByText('Загрузка чатов');
 
-    expect(текст).toHaveClass('sr-only');
+    expect(text).toHaveClass('sr-only');
     expect(screen.getByRole('status')).not.toHaveAttribute('aria-label');
   });
 

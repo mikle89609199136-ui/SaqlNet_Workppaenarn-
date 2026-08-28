@@ -6,6 +6,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Avatar } from './Avatar';
+import { Badge } from './Badge';
 import type { IChatDto } from '@/types';
 
 interface Props {
@@ -52,7 +53,14 @@ export function ChatListItem({ chat }: Props) {
           ) : (
             <span>{lastMessage}</span>
           )}
-          {chat.unreadCount > 0 && <strong className="chat-unread">{chat.unreadCount}</strong>}
+          {chat.unreadCount > 0 && (
+            <Badge
+              label={`${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`}
+              tone={chat.mutedUntil ? 'quiet' : 'brand'}
+            >
+              {chat.unreadCount}
+            </Badge>
+          )}
         </div>
       </div>
     </Link>
