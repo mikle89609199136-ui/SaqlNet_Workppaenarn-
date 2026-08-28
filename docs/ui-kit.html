@@ -6,7 +6,7 @@
 <title>UI-кит CraneApp</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600&display=swap">
 
 <style>
   /* ===================================================================
@@ -37,8 +37,8 @@
     --r-4: 20px;
     --r-pill: 999px;
 
-    --sans: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --display: 'Unbounded', 'Golos Text', system-ui, sans-serif;
+    --sans: 'Geologica', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --display: 'Geologica', system-ui, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
     /* какой из двух вариантов акцента брать — переопределяется темой */
@@ -313,7 +313,7 @@
   }
   .fontdemo-line { font-size: 26px; line-height: 1.3; }
   .is-outfit { font-family: 'Outfit', monospace; }
-  .is-golos  { font-family: 'Golos Text', monospace; }
+  .is-golos  { font-family: 'Geologica', monospace; }
   .flag {
     display: inline-block;
     font-family: var(--mono);
@@ -548,7 +548,7 @@
   .old .comp { margin-top: auto; background: rgba(20,20,20,.65); border: 1px solid rgba(255,255,255,.08); border-radius: 28px; padding: 9px 14px; color: #a1a1aa; font-size: 12px; }
 
   /* стало — тёмная тема на токенах, свой пузырь и выбранный чат следуют за акцентом */
-  .new { background: #14181F; font-family: 'Golos Text', system-ui, sans-serif; }
+  .new { background: #14181F; font-family: 'Geologica', system-ui, sans-serif; }
   .new .list { background: #1B212A; border-right: 1px solid #2C3543; padding: 10px 8px; }
   .new .item { display: flex; gap: 9px; align-items: center; padding: 8px 8px; border-radius: 10px; }
   .new .item.sel { background: #232A35; box-shadow: inset 2px 0 0 var(--accent-hi); }
@@ -1065,17 +1065,18 @@
         <div class="fontdemo-line is-outfit" style="margin-top:10px">Настройки аккаунта <span class="flag flag-bad">запасной шрифт</span></div>
       </div>
       <div class="fontdemo-row">
-        <div class="fontdemo-label">Предлагаю — Golos Text</div>
+        <div class="fontdemo-label">Предлагаю — Geologica</div>
         <div class="fontdemo-line is-golos">Settings <span class="flag flag-good">свой шрифт</span></div>
         <div class="fontdemo-line is-golos" style="margin-top:10px">Настройки аккаунта <span class="flag flag-good">свой шрифт</span></div>
       </div>
     </div>
 
     <div class="note">
-      <p><strong>Почему именно Golos Text.</strong> Его рисовали для русского текста, а не добавляли
-      кириллицу следом — поэтому «щ», «ж», «д» и «ъ» не выглядят пришитыми к латинскому шрифту.
-      Он спокойный: в мессенджере шрифт не должен обращать на себя внимание, его читают часами.
-      Лежит в Google Fonts, ставится одной строкой.</p>
+      <p><strong>Почему Geologica.</strong> Выбор дизайнера, проверенный замером: кириллицу отдаёт
+      полностью, включая «ё», «й», «ъ» и «щ» — именно этого не хватало Outfit. Абзац в 15px
+      ложится в ту же высоту, что и раньше, поэтому вёрстка от замены не поедет.
+      Девять начертаний позволяют обойтись одним семейством и на текст, и на заголовки:
+      каждый лишний шрифт — это ещё один файл на загрузку.</p>
     </div>
 
     <h3>Три начертания, у каждого своя работа</h3>
@@ -1083,14 +1084,14 @@
       <table>
         <tr><th>Шрифт</th><th>Где</th><th>Почему</th></tr>
         <tr>
-          <td style="font-family:var(--sans);font-weight:600">Golos Text</td>
+          <td style="font-family:var(--sans);font-weight:600">Geologica</td>
           <td>весь интерфейс и сами сообщения</td>
           <td>полная кириллица, читается в мелком размере</td>
         </tr>
         <tr>
-          <td style="font-family:var(--display)">Unbounded</td>
-          <td>вход, пустые экраны, название приложения</td>
-          <td>характер там, где текста мало. Осторожно и редко</td>
+          <td style="font-family:var(--display);font-weight:700">Geologica 700</td>
+          <td>заголовки экранов, вход, пустые экраны</td>
+          <td>то же семейство, только тяжелее — второй шрифт не нужен</td>
         </tr>
         <tr>
           <td style="font-family:var(--mono)">JetBrains Mono</td>
@@ -1994,7 +1995,7 @@
 
     <ol class="steps">
       <li>
-        <div><b>Шрифт</b><span>Подключить Golos Text, убрать протёкший системный из настроек. Одна правка, меняет каждый экран. Полчаса.</span></div>
+        <div><b>Шрифт</b><span>Подключить Geologica, убрать протёкший системный из настроек. Одна правка, меняет каждый экран. Полчаса.</span></div>
       </li>
       <li>
         <div><b>Токены</b><span>Три слоя: нейтральные, акцентные наборы, темы. Старые имена оставляю псевдонимами, чтобы ничего не сломалось разом.</span></div>
@@ -2015,7 +2016,7 @@
 
     <div class="note">
       <p><strong>Что здесь спорно.</strong> Какой именно фиолетовый — решать вам с дизайнером,
-      переключатель для этого и сделан. Unbounded для крупных заголовков — вкусовое, легко убрать.
+      переключатель для этого и сделан. Заголовки тем же семейством.
       Насколько светлым делать тёмный фон — тоже разговор: я взял <code>#14181F</code>, можно ещё
       светлее. Всё остальное — шкалы, состояния, набор компонентов — от выбора цвета не зависит.</p>
     </div>
