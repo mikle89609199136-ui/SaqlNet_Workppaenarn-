@@ -7,16 +7,24 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/pkg/migrate"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // ==================================================================================================================
@@ -955,4 +963,181 @@ func TestHandler_ToggleReaction_TransactionErrorRollback(t *testing.T) {
 
 	// Verify all expectations (no commit was expected)
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestToggleReaction_Concurrent verifies that concurrent ToggleReaction calls
+// with different emojis for the same user and message result in exactly one
+// database record. This ensures advisory locks and transactions properly
+// serialise operations.
+func TestToggleReaction_Concurrent(t *testing.T) {
+	// Add timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// ============================================================
+	// BLOCK 1. START POSTGRESQL CONTAINER USING MODULE
+	// ============================================================
+
+	postgresContainer, err := postgres.Run(ctx,
+		"postgres:15-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	require.NoError(t, err)
+
+	// Automatic container cleanup after test
+	testcontainers.CleanupContainer(t, postgresContainer)
+
+	// ============================================================
+	// BLOCK 2. OBTAIN CONNECTION PARAMETERS
+	// ============================================================
+
+	// Get connection string (already with correct host for your OS)
+	dsn, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+	t.Logf("DSN: %s", dsn)
+
+	t.Logf("Registered drivers: %v", sql.Drivers())
+
+	db, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Check connection with timeout
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer pingCancel()
+
+	err = db.PingContext(pingCtx)
+	require.NoError(t, err)
+	t.Log("✅ Database ping successful")
+
+	// ============================================================
+	// BLOCK 3. APPLY MIGRATIONS WITH DYNAMIC PATH
+	// ============================================================
+
+	// Compute the absolute path to the migrations folder using runtime.Caller.
+	// The test file is located in app/internal/chat/... and migrations are in app/migrations.
+	// So we need to go up two levels: internal/chat -> internal -> app, then into migrations.
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current file path")
+	}
+	migrationsDir := filepath.Join(filepath.Dir(filename), "..", "..", "migrations")
+
+	err = migrate.ApplyMigrations(ctx, db, migrationsDir, "toggle-emoji-test")
+	require.NoError(t, err, "failed to apply migrations")
+
+	// ============================================================
+	// BLOCK 4. SEED TEST DATA
+	// ============================================================
+
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+	messageID := "550e8400-e29b-41d4-a716-446655440003"
+	chatID := "550e8400-e29b-41d4-a716-446655440001"
+
+	// 1. Create a test user (no email field in auth.users)
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO auth.users (id, username, password_hash, first_name, last_name) 
+     VALUES ($1, $2, $3, $4, $5)`,
+		userID, "testuser", "hashed_password", "Test", "User")
+	require.NoError(t, err)
+	t.Log("✅ Test user created")
+
+	// 2. Create a test chat
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO chats.chats (id, type, title, owner_id) 
+     VALUES ($1, $2, $3, $4)`,
+		chatID, "private", "test-chat", userID)
+	require.NoError(t, err)
+	t.Log("✅ Test chat created")
+
+	// 3. Add user to chat members
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO chats.members (user_id, chat_id) VALUES ($1, $2)`,
+		userID, chatID)
+	require.NoError(t, err)
+	t.Log("✅ Test member inserted")
+
+	// 4. Insert a test message
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO messages.messages (id, chat_id, content, sender_id, type) 
+     VALUES ($1, $2, $3, $4, 'text')`,
+		messageID, chatID, "test message", userID)
+	require.NoError(t, err)
+	t.Log("✅ Test message inserted")
+
+	// ============================================================
+	// BLOCK 5. CREATE SERVICE WITH REAL DB CONNECTION
+	// ============================================================
+
+	service := &Service{
+		db: db,
+		ws: nil,
+	}
+
+	// ============================================================
+	// BLOCK 6. RUN CONCURRENT ToggleReaction CALLS
+	// ============================================================
+
+	emoji1 := "👍"
+	emoji2 := "❤️"
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	var status1, status2 ReactionStatus
+	var err1, err2 error
+
+	go func() {
+		defer wg.Done()
+		t.Log("Starting ToggleReaction goroutine #1")
+		status1, _, _, err1 = service.ToggleReaction(ctx, userID, messageID, emoji1)
+		t.Logf("ToggleReaction #1 finished with status: %s, error: %v", status1, err1)
+	}()
+
+	go func() {
+		defer wg.Done()
+		t.Log("Starting ToggleReaction goroutine #2")
+		status2, _, _, err2 = service.ToggleReaction(ctx, userID, messageID, emoji2)
+		t.Logf("ToggleReaction #2 finished with status: %s, error: %v", status2, err2)
+	}()
+
+	wg.Wait()
+
+	// ============================================================
+	// BLOCK 7. VERIFY RESULTS
+	// ============================================================
+
+	// Verify both operations succeeded (one added, one replaced)
+	assert.NoError(t, err1)
+	assert.NoError(t, err2)
+
+	// Verify statuses are correct
+	assert.Contains(t, []ReactionStatus{StatusAdded, StatusReplaced}, status1)
+	assert.Contains(t, []ReactionStatus{StatusAdded, StatusReplaced}, status2)
+	assert.NotEqual(t, status1, status2, "One should be 'added' and the other 'replaced'")
+
+	// Count reactions for the user and message
+	var count int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
+		messageID, userID,
+	).Scan(&count)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, count,
+		"Expected exactly one reaction for the user on the message, got %d", count)
+
+	// Get the final emoji
+	var emoji string
+	err = db.QueryRowContext(ctx,
+		`SELECT emoji FROM messages.reactions WHERE message_id = $1 AND user_id = $2`,
+		messageID, userID,
+	).Scan(&emoji)
+	require.NoError(t, err)
+	t.Logf("final emoji after concurrent test: %s", emoji)
+	assert.Contains(t, []string{"👍", "❤️"}, emoji,
+		"final emoji must be among the input emojis")
 }
