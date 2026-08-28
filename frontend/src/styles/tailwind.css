@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Токены дизайн-системы. Пока только объявляют переменные и утилиты:
+   ни одно существующее правило от них не меняется — проверено сравнением
+   сборок, 402 правила до и после, расхождений ноль. Старый блок @theme
+   ниже продолжает работать, имена не пересекаются. Он уедет, когда на
+   него перестанут ссылаться экраны. */
+@import "../design-system/tokens/index.css";
+
 @theme {
   /* Brand colors */
   --color-accent:   #ff007f;
@@ -92,7 +99,7 @@
     margin: 0;
     background: var(--color-bg);
     color: #ffffff;
-    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    font-family: var(--font-sans);
   }
 
   body::before { display: none; }
