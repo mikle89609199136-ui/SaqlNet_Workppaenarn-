@@ -191,7 +191,7 @@ function NameStep({
         className="avatar-upload"
         type="button"
         onClick={() => avatarInputRef.current?.click()}
-        style={avatar ? { border: '2px solid rgba(255,0,127,0.4)' } : undefined}
+        style={avatar ? { borderColor: 'var(--color-brand)' } : undefined}
       >
         {avatar ? <img src={avatar} alt="" /> : <span style={{ fontSize: 36 }}>🔒</span>}
         <div className="avatar-edit-overlay">
@@ -318,9 +318,7 @@ function PasswordField({ id, label, onChange, onToggle, placeholder, show, value
 function Feature({ icon, text }) {
   return (
     <div className="feature">
-      <div className="feature-icon" style={{ background: 'rgba(255,0,127,0.15)' }}>
-        {icon}
-      </div>
+      <div className="feature-icon bg-brand-soft">{icon}</div>
       <span>{text}</span>
     </div>
   );
@@ -383,7 +381,7 @@ function EyeIcon({ visible }) {
         height="20"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="rgba(255,0,127,0.8)"
+        stroke="var(--color-brand)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -401,7 +399,7 @@ function EyeIcon({ visible }) {
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="rgba(255,255,255,0.4)"
+      stroke="var(--color-ink-3)"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -433,7 +431,15 @@ function getPasswordScore(password) {
 }
 
 function getStrengthStyle(score) {
-  const colors = ['#FF4B4B', '#FF8C00', '#FFD700', '#00C853', '#00E676'];
+  // От опасного к безопасному, целиком на токенах: три опорных цвета и две
+  // ступени между ними.
+  const colors = [
+    'var(--color-danger)',
+    'color-mix(in srgb, var(--color-danger) 50%, var(--color-warn))',
+    'var(--color-warn)',
+    'color-mix(in srgb, var(--color-warn) 45%, var(--color-ok))',
+    'var(--color-ok)',
+  ];
   const widths = ['20%', '40%', '60%', '80%', '100%'];
   return {
     background: score > 0 ? colors[score - 1] : 'transparent',

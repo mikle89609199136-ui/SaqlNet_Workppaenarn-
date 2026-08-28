@@ -40,6 +40,7 @@
     --color-bubble-out-ink: var(--bubble-out-ink-dark);
 
     --color-ok: var(--ok-dark);
+    --color-warn: var(--warn-dark);
     --color-danger: var(--danger-dark);
 
     --color-brand: var(--brand-hi);
@@ -63,6 +64,7 @@
   --color-bubble-out-ink: var(--bubble-out-ink-dark);
 
   --color-ok: var(--ok-dark);
+  --color-warn: var(--warn-dark);
   --color-danger: var(--danger-dark);
 
   --color-brand: var(--brand-hi);
