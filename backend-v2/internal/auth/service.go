@@ -59,6 +59,9 @@ func NewService(db *sql.DB, crypto CryptoClient) *Service {
 
 func (s *Service) Register(ctx context.Context, username, password, firstName, lastName, language string) (User, string, error) {
 	username = strings.ToLower(strings.TrimSpace(username))
+	if err := ValidatePassword(password); err != nil {
+		return User{}, "", err
+	}
 	hash, err := s.crypto.HashPassword(ctx, password)
 	if err != nil {
 		return User{}, "", err
@@ -280,6 +283,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if !valid {
 		return ErrWrongPassword
 	}
+	if err := ValidatePassword(newPassword); err != nil {
+		return err
+	}
 	newHash, err := s.crypto.HashPassword(ctx, newPassword)
 	if err != nil {
 		return err
@@ -297,6 +303,9 @@ func (s *Service) TwoFAStatus(ctx context.Context, userID string) (bool, error) 
 
 // TwoFAEnable enables 2FA with a secondary password.
 func (s *Service) TwoFAEnable(ctx context.Context, userID, password string) error {
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
 	hash, err := s.crypto.HashPassword(ctx, password)
 	if err != nil {
 		return err
