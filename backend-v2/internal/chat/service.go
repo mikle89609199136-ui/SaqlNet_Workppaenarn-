@@ -2088,7 +2088,7 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	return result, rows.Err()
 }
 
-// isMemberWithQuerier executes the aggregation query using any Querier
+// isMemberWithQuerier executes the query using any Querier
 // (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
 	var exists bool
@@ -2238,7 +2238,6 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 			emoji, messageID, userID,
 		)
 		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:update reaction failed: %v", err)
 			return "", "", nil, fmt.Errorf("update reaction: %w", err)
 		}
 
