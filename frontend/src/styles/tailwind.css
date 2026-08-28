@@ -139,7 +139,7 @@
   .login-field label { @apply block mb-1.5 text-ink-2 text-caption; }
   .login-field input {
     @apply w-full p-3.5 border border-line rounded-field outline-none text-ink text-body bg-ground;
-    transition: border-color var(--duration-fast) ease-out, box-shadow var(--duration-fast) ease-out;
+    transition: border-color var(--transition-duration-fast) ease-out, box-shadow var(--transition-duration-fast) ease-out;
     &::placeholder { @apply text-ink-3; }
     &:focus { @apply border-brand; box-shadow: 0 0 0 3px var(--color-brand-soft); }
   }
@@ -147,7 +147,7 @@
   .login-password-wrap input { @apply pr-12; }
   .login-eye {
     @apply absolute top-1/2 right-2.5 w-9 h-9 -translate-y-1/2 inline-flex items-center justify-center border-0 bg-transparent cursor-pointer text-ink-3;
-    transition: color var(--duration-fast) ease-out;
+    transition: color var(--transition-duration-fast) ease-out;
     &:hover { @apply text-ink-2; }
   }
   /* Кнопка временная: сплошная заливка и цвет текста взяты из кита, но
@@ -155,7 +155,7 @@
      правило уедет, а разметка перейдёт на него. */
   .login-submit {
     @apply w-full min-h-12 border-0 rounded-field bg-brand-fill text-on-brand text-body font-semibold cursor-pointer;
-    transition: filter var(--duration-fast) ease-out;
+    transition: filter var(--transition-duration-fast) ease-out;
     &:hover:not(:disabled) { filter: brightness(1.08); }
   }
   .login-submit:disabled { @apply opacity-[0.42] cursor-not-allowed; }
@@ -180,14 +180,14 @@
   .chats-new-group {
     @apply shrink-0 w-11 h-11 rounded-field flex items-center justify-center cursor-pointer bg-sheet-2 text-ink-2;
     border: 1px solid var(--color-line);
-    transition: background-color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+    transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
     &:hover { @apply text-ink; border-color: var(--color-ink-3); }
     &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   }
   .chats-search {
     @apply min-w-0 h-11 px-3.5 rounded-field flex items-center gap-2.5 no-underline cursor-pointer select-none bg-sheet-2 text-ink-3;
     border: 1px solid var(--color-line);
-    transition: background-color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+    transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
     &:hover { @apply text-ink-2; border-color: var(--color-ink-3); }
     &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   }
@@ -197,28 +197,28 @@
   .create-group-avatar {
     @apply w-16 h-16 rounded-bubble flex items-center justify-center cursor-pointer overflow-hidden bg-brand-soft text-ink-2;
     border: 1px dashed var(--color-line);
-    transition: border-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+    transition: border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
     & img { @apply w-full h-full object-cover; }
     &:hover { border-color: var(--color-brand); @apply text-ink; }
   }
   .create-group-field {
     @apply w-full h-11 px-3 rounded-field outline-none bg-ground text-ink;
     border: 1px solid var(--color-line);
-    transition: border-color var(--duration-fast) ease-out, box-shadow var(--duration-fast) ease-out;
+    transition: border-color var(--transition-duration-fast) ease-out, box-shadow var(--transition-duration-fast) ease-out;
     &::placeholder { @apply text-ink-3; }
     &:focus { border-color: var(--color-brand); box-shadow: 0 0 0 3px var(--color-brand-soft); }
   }
   .create-group-chip {
     @apply flex items-center gap-1.5 pl-3 pr-2 py-1 rounded-pill text-caption cursor-pointer bg-sheet-2 text-ink;
     border: 1px solid var(--color-line);
-    transition: border-color var(--duration-fast) ease-out;
+    transition: border-color var(--transition-duration-fast) ease-out;
     &:hover { border-color: var(--color-ink-3); }
   }
   /* Кнопка временная: цвета из кита, но компонент Button пишется
      отдельно (#340). Тогда правило уедет. */
   .create-group-submit {
     @apply w-full h-11 rounded-field cursor-pointer font-semibold bg-brand-fill text-on-brand;
-    transition: filter var(--duration-fast) ease-out;
+    transition: filter var(--transition-duration-fast) ease-out;
     &:hover:not(:disabled) { filter: brightness(1.08); }
     &:disabled { @apply opacity-[0.42] cursor-default; }
   }
@@ -227,7 +227,7 @@
   .chat-row {
     @apply min-h-[72px] p-3 grid gap-3 text-inherit no-underline;
     grid-template-columns: 48px minmax(0,1fr);
-    transition: background-color var(--duration-fast) ease-out;
+    transition: background-color var(--transition-duration-fast) ease-out;
     & + .chat-row { @apply border-t; border-color: var(--color-line-soft); }
     &:hover { @apply bg-sheet-2; }
   }
@@ -265,7 +265,7 @@
   /* Кнопка временная, см. #340. */
   .chats-retry {
     @apply min-h-[42px] mt-[18px] py-0 px-[18px] border-0 rounded-field font-semibold cursor-pointer bg-brand-fill text-on-brand;
-    transition: filter var(--duration-fast) ease-out;
+    transition: filter var(--transition-duration-fast) ease-out;
     &:hover { filter: brightness(1.08); }
   }
 
@@ -418,7 +418,7 @@
         font-size: 12px; font-weight: 500; white-space: nowrap;
         box-shadow: var(--elev-2);
         pointer-events: none; opacity: 0;
-        transition: opacity var(--duration-fast) ease-out, transform var(--duration-fast) ease-out;
+        transition: opacity var(--transition-duration-fast) ease-out, transform var(--transition-duration-fast) ease-out;
         z-index: 99999;
       }
       &:hover::after { opacity: 1; transform: translateY(-50%) translateX(0); }
@@ -427,14 +427,14 @@
   .rail-burger {
     @media (min-width: 768px) {
       @apply w-11 h-11 rounded-field bg-transparent border-none text-ink-2 flex items-center justify-center cursor-pointer mb-4 relative;
-      transition: background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
       &:hover { @apply text-ink bg-sheet-2; }
     }
   }
   .rail-tab {
     @media (min-width: 768px) {
       @apply w-[46px] h-[46px] rounded-field border border-transparent bg-transparent flex items-center justify-center cursor-pointer relative text-ink-2;
-      transition: background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out;
+      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
       & span { @apply hidden; }
       &:hover { @apply text-ink bg-sheet-2; }
       &.active {
@@ -447,7 +447,7 @@
   .rail-help {
     @media (min-width: 768px) {
       @apply w-11 h-11 rounded-field bg-transparent border-none flex items-center justify-center cursor-pointer relative text-ink-2;
-      transition: background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
       &:hover { @apply text-ink bg-sheet-2; }
     }
   }
@@ -801,7 +801,7 @@
     max-width: min(76%,560px); padding: 9px 11px 7px;
     border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 5px;
     box-shadow: var(--elev-1);
-    transition: box-shadow var(--duration-fast) ease-out, filter var(--duration-fast) ease-out;
+    transition: box-shadow var(--transition-duration-fast) ease-out, filter var(--transition-duration-fast) ease-out;
     &.is-mine {
       @apply self-end bg-bubble-out text-bubble-out-ink;
       margin-right: 10px;
@@ -1320,7 +1320,7 @@
 
   .avatar-upload {
     @apply w-[100px] h-[100px] rounded-pill flex flex-col items-center justify-center cursor-pointer mb-6 overflow-hidden relative bg-brand-soft;
-    border: 2px dashed var(--color-line); transition: border-color var(--duration-fast) ease-out, transform 0.15s;
+    border: 2px dashed var(--color-line); transition: border-color var(--transition-duration-fast) ease-out, transform 0.15s;
     &:hover { border-color: var(--color-brand); }
     &:active { transform: scale(0.95); }
     & img { @apply w-full h-full object-cover rounded-pill; }
@@ -1335,7 +1335,7 @@
     & input {
       @apply w-full rounded-bubble text-ink text-base outline-none bg-ground;
       padding: 16px 18px; border: 1px solid var(--color-line);
-      transition: border-color var(--duration-fast) ease-out, box-shadow var(--duration-fast) ease-out;
+      transition: border-color var(--transition-duration-fast) ease-out, box-shadow var(--transition-duration-fast) ease-out;
       -webkit-appearance: none;
       &:focus { border-color: var(--color-brand); box-shadow: 0 0 0 3px var(--color-brand-soft); }
       &::placeholder { @apply text-ink-3; }
@@ -1344,7 +1344,7 @@
   .eye-btn {
     @apply absolute right-3.5 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer p-1 text-ink-3;
     width: auto; margin: 0; font-size: 0;
-    transition: color var(--duration-fast) ease-out;
+    transition: color var(--transition-duration-fast) ease-out;
     &:hover, &:active { @apply text-ink-2; }
   }
   /* Кнопки временные: цвета из кита, но компоненты Button пишутся
@@ -1353,7 +1353,7 @@
   .btn-primary {
     @apply w-full max-w-[340px] rounded-field border-none bg-brand-fill text-on-brand text-base font-semibold cursor-pointer;
     padding: 17px; letter-spacing: -0.01em;
-    transition: filter var(--duration-fast) ease-out, transform 0.15s;
+    transition: filter var(--transition-duration-fast) ease-out, transform 0.15s;
     -webkit-appearance: none;
     &:hover:not(:disabled) { filter: brightness(1.08); }
     &:active { transform: scale(0.97); }
@@ -1362,7 +1362,7 @@
   .btn-back {
     @apply absolute left-4 w-10 h-10 rounded-pill border-none cursor-pointer flex items-center justify-center bg-sheet-2 text-ink-2;
     top: calc(env(safe-area-inset-top, 0px) + 16px);
-    transition: background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+    transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
     &:hover { @apply text-ink; }
     @media (min-width: 768px) { top: 24px; left: 24px; }
   }
