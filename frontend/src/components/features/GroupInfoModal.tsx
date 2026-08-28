@@ -1,4 +1,4 @@
-import { Identicon, Modal } from '@/components/ui';
+import { Avatar, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';
@@ -123,13 +123,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border border-t-none border-[rgba(255,255,255,0.05)]">
         <div className="flex w-full items-center gap-x-2">
           <div className="flex w-full gap-x-2">
-            <div className="thread-avatar size-12 cursor-default">
-              {chat?.avatarUrl ? (
-                <img alt="" src={chat.avatarUrl} />
-              ) : (
-                chat?.title.slice(0, 1).toUpperCase()
-              )}
-            </div>
+            <Avatar name={chat?.title} size="lg" src={chat?.avatarUrl} />
             <div className="flex flex-col w-full">
               {!isEditMode ? (
                 <h2>{chat?.title}</h2>
@@ -200,13 +194,13 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
               const avatarUrl = member.avatarUrl;
               return (
                 <li key={memberId} className="member-item">
-                  <div className="member-avatar">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="avatar" />
-                    ) : (
-                      <Identicon userId={memberId} size={44} />
-                    )}
-                  </div>
+                  <Avatar
+                    className="mr-4"
+                    id={memberId}
+                    name={member.username}
+                    size="lg"
+                    src={avatarUrl}
+                  />
                   <div className="member-details">
                     <span className="member-name">{member.username}</span>
                     <span className={`member-role role-${member.role}`}>{member.role}</span>

@@ -43,12 +43,6 @@
   background: var(--color-sheet);
 }
 
-.settings-overview-profile .settings-account-avatar {
-  width: 58px;
-  height: 58px;
-  background: var(--color-ink);
-  color: var(--color-line);
-}
 
 .settings-edit-profile {
   margin-left: auto;
@@ -96,7 +90,6 @@
   background: var(--color-sheet);
 }
 
-.settings-profile-editor-identity .settings-account-avatar { width: 62px; height: 62px; }
 .settings-profile-editor-identity > div:nth-child(2) { display: grid; gap: 3px; }
 .settings-profile-editor-identity span { color: var(--text-secondary); font-size: 14px; }
 .settings-profile-editor-identity > button {
@@ -287,24 +280,7 @@
   color: var(--text-secondary);
 }
 
-.settings-account-avatar {
-  display: grid;
-  width: 58px;
-  height: 58px;
-  overflow: hidden;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--rd-accent-grad, linear-gradient(135deg, var(--color-brand-fill), var(--color-brand-fill)));
-  color: white;
-  font-size: 23px;
-  font-weight: 700;
-}
 
-.settings-account-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
 
 .settings-form {
   display: grid;

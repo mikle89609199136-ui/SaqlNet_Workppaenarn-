@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon, Modal } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
 import { suggestedMembers } from './suggestedMembers';
 
 interface Props {
@@ -243,13 +243,7 @@ export function CreateGroupModal({ onClose }: Props) {
                     onClick={() => toggle(user)}
                     type="button"
                   >
-                    <div className="chat-avatar shrink-0">
-                      {user.avatarUrl ? (
-                        <img alt="" src={user.avatarUrl} />
-                      ) : (
-                        <Identicon size={48} userId={user.id} />
-                      )}
-                    </div>
+                    <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />
 
                     <span className="min-w-0 flex flex-col">
                       <strong className="truncate">{name}</strong>
