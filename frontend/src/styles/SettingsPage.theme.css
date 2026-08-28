@@ -30,7 +30,7 @@
 /* Стрелка «назад» на подстраницах настроек. */
 .back-arrow-btn {
   color: var(--color-ink-2);
-  transition: background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+  transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
 }
 
 .back-arrow-btn:hover {

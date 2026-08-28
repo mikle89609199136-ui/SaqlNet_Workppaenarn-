@@ -25,7 +25,7 @@
   border-radius: var(--radius-pill);
   padding: 2px;
   box-sizing: border-box;
-  transition: background-color var(--duration-panel) ease-out;
+  transition: background-color var(--transition-duration-panel) ease-out;
   cursor: pointer;
   position: relative;
 }
@@ -44,7 +44,7 @@
   height: 20px;
   background: var(--color-n-0);
   border-radius: var(--radius-pill);
-  transition: transform var(--duration-panel) cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform var(--transition-duration-panel) cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: var(--elev-1);
 }
 
