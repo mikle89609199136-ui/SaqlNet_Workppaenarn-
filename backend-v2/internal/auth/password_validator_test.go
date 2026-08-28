@@ -70,6 +70,35 @@ func TestValidatePassword(t *testing.T) {
 			wantReason: PasswordDigitRequired,
 		},
 		{
+			name:       "literal 123 is too short",
+			password:   "123",
+			wantReason: PasswordTooShort,
+		},
+		{
+			name:       "literal password is too short",
+			password:   "password",
+			wantReason: PasswordTooShort,
+		},
+		{
+			name:       "literal password123 requires special character",
+			password:   "password123",
+			wantReason: PasswordSpecialRequired,
+		},
+		{
+			name:       "literal Password! is too short",
+			password:   "Password!",
+			wantReason: PasswordTooShort,
+		},
+		{
+			name:       "literal Pass123! is too short",
+			password:   "Pass123!",
+			wantReason: PasswordTooShort,
+		},
+		{
+			name:     "literal Password123! is valid",
+			password: "Password123!",
+		},
+		{
 			name:     "unicode characters count as code points",
 			password: strings.Repeat("я", minPasswordLength-2) + "1!",
 		},
