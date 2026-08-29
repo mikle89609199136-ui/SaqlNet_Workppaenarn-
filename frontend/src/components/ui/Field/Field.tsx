@@ -40,14 +40,19 @@ export function useField({ id, hint, error, describedBy = [] }: FieldOptions) {
 export function FieldLabel({
   children,
   htmlFor,
+  id,
   required,
 }: {
   children: ReactNode;
   htmlFor: string;
+  /* Нужен там, где элемент управления — кнопка: её имя складывается из
+     содержимого, поэтому подпись приходится привязывать через
+     aria-labelledby, а не полагаться на htmlFor. */
+  id?: string;
   required?: boolean;
 }) {
   return (
-    <label className="text-caption font-medium text-ink-2" htmlFor={htmlFor}>
+    <label className="text-caption font-medium text-ink-2" htmlFor={htmlFor} id={id}>
       {children}
       {/* Звёздочка — только для глаз: об обязательности диктору сообщает
           сам атрибут required, и повторять её словом «звёздочка» ни к чему. */}
