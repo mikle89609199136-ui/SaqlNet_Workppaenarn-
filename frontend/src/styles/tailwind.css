@@ -59,6 +59,11 @@
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 
+/* Бег полосы, когда доля неизвестна. Отрезок уходит за левый край и
+   выходит за правый: так видно, что работа идёт, и не обещано, сколько
+   осталось. Значения из кита — 38% ширины и полтора шага в секунду. */
+@keyframes progress-crawl { from { margin-left: -38%; } to { margin-left: 100%; } }
+
 /* Перелив скелетона. Значения из кита: полотно вдвое шире блока, чтобы
    блик успел пройти насквозь, и линейное движение — с ускорением видно,
    что он «дышит», а не едет. */
