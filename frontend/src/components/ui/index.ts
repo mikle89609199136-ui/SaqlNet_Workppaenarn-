@@ -12,7 +12,7 @@ export { ComposerContextBanner } from './ComposerContextBanner';
 export { ComposerForm } from './ComposerForm';
 export { ComposerRow } from './ComposerRow';
 export { ComposerWrapper } from './ComposerWrapper';
-export { Icon } from './Icon/Icon';
+export { Icon } from './Icon';
 export { Input } from './Input';
 export { MessageCheckbox } from './MessageCheckbox';
 export { Modal } from './Modal';

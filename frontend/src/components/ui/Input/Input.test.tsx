@@ -1,3 +1,4 @@
+import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -76,5 +77,70 @@ describe('поле', () => {
 
     expect(screen.getByRole('textbox', { name: 'Одно' })).toHaveAccessibleDescription('Первая');
     expect(screen.getByRole('textbox', { name: 'Другое' })).toHaveAccessibleDescription('Вторая');
+  });
+
+  it('should announce the error the moment it appears', () => {
+    /* aria-invalid диктор прочитает, только если фокус вернётся на поле.
+       При проверке по отправке формы человек уже ушёл дальше — без живой
+       области он об ошибке не узнает вовсе. */
+    const { rerender } = render(<Input label="Юзернейм" />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    rerender(<Input error="Занят" label="Юзернейм" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Занят');
+  });
+
+  it('should not shout a plain hint', () => {
+    render(<Input hint="До 50 знаков" label="Название" />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('should hand its element over through a ref', () => {
+    /* Без этого поле не сфокусировать снаружи — а это нужно всякий раз,
+       когда форма открывается и курсор ставят в первое поле. */
+    const ref = createRef<HTMLInputElement>();
+
+    render(<Input label="Имя" ref={ref} />);
+    ref.current?.focus();
+
+    expect(ref.current).toBeInstanceOf(HTMLInputElement);
+    expect(screen.getByRole('textbox', { name: 'Имя' })).toHaveFocus();
+  });
+
+  it('should work uncontrolled', async () => {
+    const user = userEvent.setup();
+
+    render(<Input defaultValue="Анна" label="Имя" />);
+
+    const field = screen.getByRole('textbox', { name: 'Имя' });
+
+    await user.type(field, ' и Борис');
+
+    expect(field).toHaveValue('Анна и Борис');
+  });
+
+  it('should put the caller className on the outside, not on the field', () => {
+    /* Иначе не задать полю ширину в строке: флекс-элементом оказывается
+       обёртка, а класс садится на поле внутри неё. */
+    const { container } = render(<Input className="w-40" label="Имя" />);
+
+    expect(container.firstChild).toHaveClass('w-40');
+    expect(screen.getByRole('textbox', { name: 'Имя' })).not.toHaveClass('w-40');
+  });
+
+  it('should hold whatever is put in the right slot', () => {
+    render(<Input addon={<button type="button">Очистить</button>} label="Поиск" />);
+
+    expect(screen.getByRole('button', { name: 'Очистить' })).toBeInTheDocument();
+  });
+
+  it('should mark a required field for the eye as well as the reader', () => {
+    const { container } = render(<Input label="Название" required />);
+
+    expect(screen.getByRole('textbox', { name: 'Название' })).toBeRequired();
+    expect(container.querySelector('label [aria-hidden="true"]')).toHaveTextContent('*');
   });
 });

@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui/Icon/Icon';
+import { Icon } from '@/components/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { cn } from '@/utils';
 import { useEffect, useRef, useState } from 'react';

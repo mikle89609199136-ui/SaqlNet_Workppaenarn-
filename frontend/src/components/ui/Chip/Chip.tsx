@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui/Icon/Icon';
+import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/utils';
 import type { ReactNode } from 'react';
 
