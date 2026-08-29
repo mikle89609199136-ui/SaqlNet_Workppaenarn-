@@ -3,7 +3,7 @@ import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble } from './MessageBubble/MessageBubble';
-import { ThreadSkeleton } from '../ui/Skeletons/ThreadSkeleton';
+import { MessageBubbleSkeleton } from './MessageBubble/MessageBubbleSkeleton';
 import { ThreadState } from '../ui/ThreadState';
 
 interface Props {
@@ -32,7 +32,7 @@ export const MessagesList = memo(
 
     return (
       <section className="thread-messages styled-scrollbar" aria-busy={isLoading} ref={messagesRef}>
-        {isLoading && <ThreadSkeleton />}
+        {isLoading && <MessageBubbleSkeleton />}
         {!isLoading && error && messages.length === 0 && (
           <ThreadState message={error} title={t('loadingError', 'Ошибка загрузки')} />
         )}
