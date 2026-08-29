@@ -1,4 +1,4 @@
-import { FieldCaption, useField } from '@/components/ui/Field';
+import { ChoiceField, useField } from '@/components/ui/Field';
 import { cn } from '@/utils';
 import { forwardRef, type InputHTMLAttributes } from 'react';
 
@@ -6,62 +6,54 @@ interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label?: string;
   hint?: string;
   error?: string;
+  /* Вид ошибки без своей подписи: текст ошибки у группы один на всех,
+     а покраснеть обязан каждый кружок. */
+  invalid?: boolean;
   className?: string;
 }
 
+/* Одиночный переключатель. Взаимоисключение держится на общем name, и
+   раздаёт его RadioGroup — им и пользуются на экранах. Отдельно этот
+   компонент нужен там, где разметку группы приходится собирать руками. */
 export const Radio = forwardRef<HTMLInputElement, Props>(function Radio(
-  { label, hint, error, className, id, required, disabled, ...rest },
+  { label, hint, error, invalid, className, id, required, disabled, ...rest },
   ref
 ) {
   const { fieldId, captionId, caption, isError, controlProps } = useField({ id, hint, error });
+  const showsError = isError || Boolean(invalid);
 
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <label
-        className={cn(
-          'flex items-center gap-3 w-fit',
-          disabled ? 'cursor-not-allowed opacity-42' : 'cursor-pointer group'
-        )}
-        htmlFor={fieldId}
-      >
-        <div className="relative flex items-center justify-center">
-          <input
-            type="radio"
-            className="peer sr-only"
-            ref={ref}
-            disabled={disabled}
-            required={required}
-            {...controlProps}
-            {...rest}
-          />
-          <div
-            className={cn(
-              'w-5 h-5 flex-shrink-0 border-[1.5px] rounded-full transition-colors duration-fast flex items-center justify-center',
-              'bg-ground border-line',
-              'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2',
-              'peer-checked:border-brand',
-              'after:content-[""] after:w-2.5 after:h-2.5 after:rounded-full after:bg-brand after:scale-0 peer-checked:after:scale-100 after:transition-transform after:duration-fast'
-            )}
-          />
-        </div>
-
-        {label && (
-          <span className="text-body font-medium text-ink-2 select-none">
-            {label}
-            {required && (
-              <span aria-hidden="true" className="text-danger">
-                {' *'}
-              </span>
-            )}
-          </span>
-        )}
-      </label>
-
-      {caption && (
-        <FieldCaption id={captionId} isError={isError}>
-          {caption}
-        </FieldCaption>
-      )}
-    </div>
+    <ChoiceField
+      caption={caption}
+      captionId={captionId}
+      className={className}
+      fieldId={fieldId}
+      isError={isError}
+      label={label}
+      required={required}
+    >
+      <span className="flex">
+        <input
+          className="peer sr-only"
+          disabled={disabled}
+          ref={ref}
+          required={required}
+          type="radio"
+          {...controlProps}
+          {...rest}
+        />
+        <span
+          className={cn(
+            'flex size-5 shrink-0 items-center justify-center rounded-pill border-[1.5px] transition-colors duration-fast',
+            'bg-ground',
+            showsError ? 'border-danger' : 'border-line hover:border-ink-3',
+            'peer-checked:border-brand-fill',
+            'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2',
+            'after:size-2.5 after:scale-0 after:rounded-pill after:bg-brand-fill after:transition-transform after:duration-fast',
+            'peer-checked:after:scale-100'
+          )}
+        />
+      </span>
+    </ChoiceField>
   );
 });

@@ -3,7 +3,7 @@ export { Badge } from './Badge';
 export { Button, buttonStyles } from './Button';
 export { Checkbox } from './Checkbox';
 export { Chip } from './Chip';
-export { Radio } from './Radio';
+export { Radio, RadioGroup } from './Radio';
 export { Select } from './Select';
 export { Skeleton } from './Skeleton';
 export { Switch } from './Switch';
