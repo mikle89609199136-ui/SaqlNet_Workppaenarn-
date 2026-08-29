@@ -2,13 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { FieldCaption, FieldLabel, useField } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/utils';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { SelectMenu } from './SelectMenu';
 
 export interface SelectOption {
@@ -31,7 +25,7 @@ interface Props {
   className?: string;
 }
 
-export const Select =({
+export const Select = ({
   options,
   value,
   onChange,
@@ -60,7 +54,7 @@ export const Select =({
     if (disabled) return;
     let targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
     if (options[targetIndex]?.disabled) {
-      const firstEnabled = options.findIndex(o => !o.disabled);
+      const firstEnabled = options.findIndex((o) => !o.disabled);
       if (firstEnabled >= 0) targetIndex = firstEnabled;
     }
     setActiveIndex(targetIndex);
@@ -137,8 +131,8 @@ export const Select =({
       case 'ArrowUp': {
         event.preventDefault();
         if (!open) return openMenu();
-        const вниз = event.key === 'ArrowDown';
-        moveActive(activeIndex + (вниз ? 1 : -1), вниз ? 1 : -1);
+        const down = event.key === 'ArrowDown';
+        moveActive(activeIndex + (down ? 1 : -1), down ? 1 : -1);
         return;
       }
       case 'Enter': {
@@ -280,4 +274,4 @@ export const Select =({
       )}
     </div>
   );
-}
+};
