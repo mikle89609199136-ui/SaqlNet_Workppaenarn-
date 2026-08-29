@@ -26,74 +26,74 @@ describe('черновики чатов', () => {
   it('should notify the chat list after the typing settles', () => {
     // Список чатов показывает пометку о черновике. Обновлять его на каждый
     // символ незачем: строка мигала бы всё время, пока человек печатает.
-    const слышал: string[] = [];
-    subscribeToDraft('chat-1', () => слышал.push(readDraft('chat-1')));
+    const heard: string[] = [];
+    subscribeToDraft('chat-1', () => heard.push(readDraft('chat-1')));
 
     writeDraft('chat-1', 'п');
     writeDraft('chat-1', 'пр');
     writeDraft('chat-1', 'при');
 
-    expect(слышал).toEqual([]);
+    expect(heard).toEqual([]);
 
     vi.advanceTimersByTime(600);
 
-    expect(слышал).toEqual(['при']);
+    expect(heard).toEqual(['при']);
   });
 
   it('should notify only the subscribers of that chat', () => {
-    let первый = 0;
-    let второй = 0;
+    let first = 0;
+    let second = 0;
     subscribeToDraft('chat-1', () => {
-      первый += 1;
+      first += 1;
     });
     subscribeToDraft('chat-2', () => {
-      второй += 1;
+      second += 1;
     });
 
     writeDraft('chat-1', 'текст');
     vi.advanceTimersByTime(600);
 
-    expect(первый).toBe(1);
-    expect(второй).toBe(0);
+    expect(first).toBe(1);
+    expect(second).toBe(0);
   });
 
   it('should announce clearing immediately', () => {
     // После отправки пометка обязана исчезнуть сразу, иначе в списке
     // останется черновик, которого уже нет.
-    const слышал: string[] = [];
+    const heard: string[] = [];
     writeDraft('chat-1', 'готово к отправке');
     vi.advanceTimersByTime(600);
 
-    subscribeToDraft('chat-1', () => слышал.push(readDraft('chat-1')));
+    subscribeToDraft('chat-1', () => heard.push(readDraft('chat-1')));
     clearDraft('chat-1');
 
-    expect(слышал).toEqual(['']);
+    expect(heard).toEqual(['']);
     expect(readDraft('chat-1')).toBe('');
   });
 
   it('should not announce a pending change after the draft was cleared', () => {
     // Иначе отложенное уведомление вернуло бы пометку через полсекунды.
-    const слышал: string[] = [];
-    subscribeToDraft('chat-1', () => слышал.push(readDraft('chat-1')));
+    const heard: string[] = [];
+    subscribeToDraft('chat-1', () => heard.push(readDraft('chat-1')));
 
     writeDraft('chat-1', 'написал');
     clearDraft('chat-1');
     vi.advanceTimersByTime(600);
 
-    expect(слышал).toEqual(['']);
+    expect(heard).toEqual(['']);
   });
 
   it('should stop notifying after unsubscribe', () => {
-    let вызовов = 0;
-    const отписаться = subscribeToDraft('chat-1', () => {
-      вызовов += 1;
+    let calls = 0;
+    const unsubscribe = subscribeToDraft('chat-1', () => {
+      calls += 1;
     });
 
-    отписаться();
+    unsubscribe();
     writeDraft('chat-1', 'текст');
     vi.advanceTimersByTime(600);
 
-    expect(вызовов).toBe(0);
+    expect(calls).toBe(0);
   });
 
   it('should forget everything when the session ends', () => {

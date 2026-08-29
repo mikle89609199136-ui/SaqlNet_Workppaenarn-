@@ -92,26 +92,26 @@ describe('подделка сообщения участником группы'
     // единственное, что отличает подделку.
     const alice = await loadOrCreateIdentity('alice');
     const mallory = await loadOrCreateIdentity('mallory');
-    const общийКлюч = chatKey();
+    const sharedKey = chatKey();
 
-    const подделка = await encryptMessage(общийКлюч, CHAT, EPOCH, 'alice', 'я согласен', {
+    const forged = await encryptMessage(sharedKey, CHAT, EPOCH, 'alice', 'я согласен', {
       fingerprint: mallory.fingerprint,
-      sign: (данные) => signParts(mallory.ecdsaPrivate, данные),
+      sign: (data) => signParts(mallory.ecdsaPrivate, data),
     });
 
-    const конверт = parseEnvelope(подделка)!;
-    const проверяемое = {
+    const envelope = parseEnvelope(forged)!;
+    const checkedParts = {
       chatId: CHAT,
-      epoch: конверт.epoch,
+      epoch: envelope.epoch,
       senderId: 'alice',
-      iv: конверт.iv,
-      data: конверт.data,
+      iv: envelope.iv,
+      data: envelope.data,
     };
 
     // Ключом Алисы — не сходится: писала не она.
-    expect(await verifyParts(alice.ecdsa, проверяемое, конверт.sig!)).toBe(false);
+    expect(await verifyParts(alice.ecdsa, checkedParts, envelope.sig!)).toBe(false);
     // Ключом Мэллори сходится, но проверяют по ключу того, чьё имя стоит.
-    expect(await verifyParts(mallory.ecdsa, проверяемое, конверт.sig!)).toBe(true);
+    expect(await verifyParts(mallory.ecdsa, checkedParts, envelope.sig!)).toBe(true);
   });
 
   it('should sign what it sends', async () => {
@@ -119,11 +119,11 @@ describe('подделка сообщения участником группы'
 
     const payload = await encryptMessage(chatKey(), CHAT, EPOCH, 'alice', 'привет', {
       fingerprint: alice.fingerprint,
-      sign: (данные) => signParts(alice.ecdsaPrivate, данные),
+      sign: (data) => signParts(alice.ecdsaPrivate, data),
     });
-    const конверт = parseEnvelope(payload)!;
+    const envelope = parseEnvelope(payload)!;
 
-    expect(конверт.kid).toBe(alice.fingerprint);
+    expect(envelope.kid).toBe(alice.fingerprint);
     expect(
       await verifyParts(
         alice.ecdsa,
@@ -131,10 +131,10 @@ describe('подделка сообщения участником группы'
           chatId: CHAT,
           epoch: EPOCH,
           senderId: 'alice',
-          iv: конверт.iv,
-          data: конверт.data,
+          iv: envelope.iv,
+          data: envelope.data,
         },
-        конверт.sig!
+        envelope.sig!
       )
     ).toBe(true);
   });

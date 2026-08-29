@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toast } from './Toast';
 
-const ЖИЗНЬ = 3000;
-const УХОД = 160;
+const LIFETIME_MS = 3000;
+const EXIT_MS = 160;
 
 const make = (type: 'success' | 'error' | 'info' | 'warning' = 'success') => ({
   id: 'toast-1',
@@ -41,8 +41,8 @@ describe('уведомление', () => {
     render(<Toast onHide={onHide} toast={make()} />);
     /* Двумя шагами: между истечением срока и уходом React должен успеть
        перерисовать уведомление, иначе второй таймер просто не заводится. */
-    act(() => vi.advanceTimersByTime(ЖИЗНЬ));
-    act(() => vi.advanceTimersByTime(УХОД));
+    act(() => vi.advanceTimersByTime(LIFETIME_MS));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
 
     expect(onHide).toHaveBeenCalledWith('toast-1');
   });
@@ -52,7 +52,7 @@ describe('уведомление', () => {
 
     render(<Toast onHide={onHide} toast={make()} />);
     fireEvent.mouseEnter(screen.getByRole('status'));
-    act(() => vi.advanceTimersByTime(ЖИЗНЬ * 5));
+    act(() => vi.advanceTimersByTime(LIFETIME_MS * 5));
 
     expect(onHide).not.toHaveBeenCalled();
   });
@@ -73,7 +73,7 @@ describe('уведомление', () => {
     expect(onHide).not.toHaveBeenCalled();
 
     act(() => vi.advanceTimersByTime(100));
-    act(() => vi.advanceTimersByTime(УХОД));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(onHide).toHaveBeenCalledWith('toast-1');
   });
 

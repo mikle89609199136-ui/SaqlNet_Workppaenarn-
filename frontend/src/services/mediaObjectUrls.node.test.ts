@@ -56,23 +56,23 @@ describe('реестр расшифрованного медиа', () => {
   it('should release the oldest files when the budget is exceeded', async () => {
     // Бюджет ограничен: без него реестр сам стал бы утечкой, только
     // упорядоченной.
-    const мегабайт = 1024 * 1024;
+    const megabyte = 1024 * 1024;
 
-    const первый = await resolveMediaObjectUrl('/media/a', async () => blobOf(200 * мегабайт));
-    await resolveMediaObjectUrl('/media/b', async () => blobOf(200 * мегабайт));
+    const first = await resolveMediaObjectUrl('/media/a', async () => blobOf(200 * megabyte));
+    await resolveMediaObjectUrl('/media/b', async () => blobOf(200 * megabyte));
 
-    expect(revoked).toContain(первый);
+    expect(revoked).toContain(first);
   });
 
   it('should keep a file that was requested recently', async () => {
-    const мегабайт = 1024 * 1024;
+    const megabyte = 1024 * 1024;
 
-    const первый = await resolveMediaObjectUrl('/media/a', async () => blobOf(120 * мегабайт));
+    const first = await resolveMediaObjectUrl('/media/a', async () => blobOf(120 * megabyte));
     // Повторное обращение делает файл свежим.
-    await resolveMediaObjectUrl('/media/a', async () => blobOf(120 * мегабайт));
-    await resolveMediaObjectUrl('/media/b', async () => blobOf(120 * мегабайт));
+    await resolveMediaObjectUrl('/media/a', async () => blobOf(120 * megabyte));
+    await resolveMediaObjectUrl('/media/b', async () => blobOf(120 * megabyte));
 
-    expect(revoked).not.toContain(первый);
+    expect(revoked).not.toContain(first);
   });
 
   it('should release everything when the session ends', async () => {
