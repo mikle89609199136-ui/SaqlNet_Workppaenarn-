@@ -20,7 +20,7 @@ export function useField({ id, hint, error, describedBy = [] }: FieldOptions) {
   const fieldId = id ?? ownId;
   const captionId = `${fieldId}-caption`;
   const caption = error ?? hint;
-  const описания = [caption ? captionId : null, ...describedBy].filter(Boolean);
+  const descriptions = [caption ? captionId : null, ...describedBy].filter(Boolean);
 
   return {
     fieldId,
@@ -31,10 +31,22 @@ export function useField({ id, hint, error, describedBy = [] }: FieldOptions) {
        руками, а без них подпись и ошибка для диктора не существуют. */
     controlProps: {
       id: fieldId,
-      'aria-describedby': описания.length ? описания.join(' ') : undefined,
+      'aria-describedby': descriptions.length ? descriptions.join(' ') : undefined,
       'aria-invalid': error ? (true as const) : undefined,
     },
   };
+}
+
+/* Звёздочка — только для глаз: об обязательности диктору сообщает сам
+   атрибут required, и повторять её словом «звёздочка» ни к чему.
+   Отдельным выводом, потому что подпись бывает и не от FieldLabel: у
+   флажка и переключателя она стоит справа, внутри общего label. */
+export function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="text-danger">
+      {' *'}
+    </span>
+  );
 }
 
 export function FieldLabel({
@@ -54,14 +66,60 @@ export function FieldLabel({
   return (
     <label className="text-caption font-medium text-ink-2" htmlFor={htmlFor} id={id}>
       {children}
-      {/* Звёздочка — только для глаз: об обязательности диктору сообщает
-          сам атрибут required, и повторять её словом «звёздочка» ни к чему. */}
-      {required && (
-        <span aria-hidden="true" className="text-danger">
-          {' *'}
-        </span>
-      )}
+      {required && <RequiredMark />}
     </label>
+  );
+}
+
+/* Обвязка флажка и переключателя: подпись справа от квадрата или круга,
+   подпись снизу — под обоими. У этих двух она общая целиком, поэтому
+   лежит здесь, а не копией в каждом: иначе любая правка вида делается
+   дважды и на второй раз забывается.
+
+   children — сам элемент управления вместе со скрытым input. */
+export function ChoiceField({
+  caption,
+  captionId,
+  children,
+  className,
+  fieldId,
+  isError,
+  label,
+  required,
+}: {
+  caption?: string;
+  captionId: string;
+  children: ReactNode;
+  className?: string;
+  fieldId: string;
+  isError?: boolean;
+  label?: string;
+  required?: boolean;
+}) {
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      {/* Отключённость читается с самого input, а не с пропа: тогда она
+          работает и когда элемент выключен снаружи — например, всей
+          формой через fieldset disabled. */}
+      <label
+        className="flex w-fit cursor-pointer items-center gap-3 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-42"
+        htmlFor={fieldId}
+      >
+        {children}
+        {label && (
+          <span className="text-body font-medium text-ink-2 select-none">
+            {label}
+            {required && <RequiredMark />}
+          </span>
+        )}
+      </label>
+
+      {caption && (
+        <FieldCaption id={captionId} isError={isError}>
+          {caption}
+        </FieldCaption>
+      )}
+    </div>
   );
 }
 
