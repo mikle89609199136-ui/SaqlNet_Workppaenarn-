@@ -9,6 +9,8 @@ export type TIconTypes =
   | 'cross'
   | 'info'
   | 'edit'
+  | 'eye'
+  | 'eyeOff'
   | 'file'
   | 'forward'
   | 'groupAdd'
