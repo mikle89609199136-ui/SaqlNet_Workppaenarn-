@@ -13,6 +13,11 @@ interface Props {
   menuRef: RefObject<HTMLUListElement | null>;
   anchorRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+  /* На него ссылается aria-controls кнопки. Без него ссылка висит в
+     пустоту: диктор не находит список, которым кнопка управляет. */
+  id: string;
+  /* Списку нужно имя, иначе он объявляется просто «список». */
+  labelledBy?: string;
 }
 
 interface Rect {
@@ -22,7 +27,7 @@ interface Rect {
   width: number;
 }
 
-export const SelectMenu = ({ menuRef, anchorRef, onClose, children }: PropsWithChildren<Props>) => {
+export const SelectMenu = ({ menuRef, anchorRef, onClose, id, labelledBy, children }: PropsWithChildren<Props>) => {
   const [rect, setRect] = useState<Rect | null>(null);
 
   const updatePosition = useCallback(() => {
@@ -71,6 +76,8 @@ export const SelectMenu = ({ menuRef, anchorRef, onClose, children }: PropsWithC
 
   return createPortal(
     <ul
+      aria-labelledby={labelledBy}
+      id={id}
       ref={menuRef}
       role="listbox"
       className={cn(

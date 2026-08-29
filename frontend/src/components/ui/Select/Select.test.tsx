@@ -126,4 +126,75 @@ describe('выпадающий список', () => {
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
+
+  it('should actually control the list it claims to control', () => {
+    /* aria-controls ссылался на id, которого у списка не было вовсе —
+       диктор не находил список, которым управляет кнопка. */
+    render(<Select label="Язык" onChange={vi.fn()} options={языки} value="ru" />);
+
+    const кнопка = screen.getByRole('combobox');
+    const id = кнопка.getAttribute('aria-controls');
+
+    expect(id).toBeTruthy();
+    expect(document.getElementById(id!)).toBeNull();
+  });
+
+  it('should give the open list a name', async () => {
+    const user = userEvent.setup();
+
+    render(<Список />);
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByRole('listbox', { name: 'Язык' })).toBeInTheDocument();
+    expect(document.getElementById(screen.getByRole('combobox').getAttribute('aria-controls')!))
+      .toBe(screen.getByRole('listbox'));
+  });
+
+  it('should reach the first enabled option on Home', async () => {
+    /* Раньше направление поиска выводилось из того, куда двинулись, и
+       Home срывался, когда первый пункт отключён: поиск уходил за край. */
+    const user = userEvent.setup();
+    const сОтключённым = [
+      { value: 'x', label: 'Недоступен', disabled: true },
+      { value: 'ru', label: 'Русский' },
+      { value: 'en', label: 'English' },
+    ];
+
+    render(<Select label="Язык" onChange={vi.fn()} options={сОтключённым} value="en" />);
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('{Home}');
+
+    expect(screen.getByRole('combobox').getAttribute('aria-activedescendant')).toMatch(/-1$/);
+  });
+
+  it('should reach the last enabled option on End', async () => {
+    const user = userEvent.setup();
+    const сОтключённым = [
+      { value: 'ru', label: 'Русский' },
+      { value: 'en', label: 'English' },
+      { value: 'x', label: 'Недоступен', disabled: true },
+    ];
+
+    render(<Select label="Язык" onChange={vi.fn()} options={сОтключённым} value="ru" />);
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('{End}');
+
+    expect(screen.getByRole('combobox').getAttribute('aria-activedescendant')).toMatch(/-1$/);
+  });
+
+  it('should step over a disabled option with the arrows', async () => {
+    const user = userEvent.setup();
+    const сДырой = [
+      { value: 'ru', label: 'Русский' },
+      { value: 'x', label: 'Недоступен', disabled: true },
+      { value: 'en', label: 'English' },
+    ];
+    const onChange = vi.fn();
+
+    render(<Select label="Язык" onChange={onChange} options={сДырой} value="ru" />);
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(onChange).toHaveBeenCalledWith('en');
+  });
 });

@@ -21,6 +21,11 @@ export interface IChatDto {
   avatarUrl: string;
   peerPublicKey?: string;
   peerId?: string;
+  /* Сервер их шлёт (chat/service.go, ChatDTO), а тип о них не знал:
+     обращения к chat.peerIsOnline были в четырёх местах и все считались
+     ошибкой типов. Работало только потому, что проверка не запускалась. */
+  peerIsOnline?: boolean;
+  peerLastSeen?: string;
   ownerId: string;
   role: TChatRole;
   isPinned: boolean;

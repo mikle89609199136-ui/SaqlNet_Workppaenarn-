@@ -53,11 +53,11 @@ export function ChatListItem({ chat }: Props) {
           ) : (
             <span>{lastMessage}</span>
           )}
+          {/* Приглушённый оттенок ждёт своего часа: состояние звука живёт
+              на участнике и в списке чатов не приходит вовсе — #387.
+              Пока метка всегда акцентная. */}
           {chat.unreadCount > 0 && (
-            <Badge
-              label={`${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`}
-              tone={chat.mutedUntil ? 'quiet' : 'brand'}
-            >
+            <Badge label={`${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`}>
               {chat.unreadCount}
             </Badge>
           )}

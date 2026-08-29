@@ -95,19 +95,24 @@ export const Select =({
     }
   });
 
+  /* Направление поиска задаётся явно, а не выводится из того, куда
+     двинулись. Раньше оно вычислялось сравнением с текущим пунктом, и
+     Home с End срывались, когда крайний пункт отключён: поиск уходил за
+     край списка вместо того, чтобы шагнуть внутрь. */
   const moveActive = useCallback(
-    (nextIndex: number) => {
-      const step = nextIndex > activeIndex ? 1 : -1;
-      let index = Math.max(0, Math.min(nextIndex, options.length - 1));
+    (from: number, step: 1 | -1) => {
+      let index = Math.max(0, Math.min(from, options.length - 1));
+
       while (index >= 0 && index < options.length) {
         if (!options[index]?.disabled) {
           setActiveIndex(index);
           return;
         }
+
         index += step;
       }
     },
-    [activeIndex, options]
+    [options]
   );
 
   const commit = useCallback(
@@ -132,7 +137,8 @@ export const Select =({
       case 'ArrowUp': {
         event.preventDefault();
         if (!open) return openMenu();
-        moveActive(activeIndex + (event.key === 'ArrowDown' ? 1 : -1));
+        const вниз = event.key === 'ArrowDown';
+        moveActive(activeIndex + (вниз ? 1 : -1), вниз ? 1 : -1);
         return;
       }
       case 'Enter': {
@@ -150,13 +156,13 @@ export const Select =({
       case 'Home': {
         if (!open) return;
         event.preventDefault();
-        moveActive(0);
+        moveActive(0, 1);
         return;
       }
       case 'End': {
         if (!open) return;
         event.preventDefault();
-        moveActive(options.length - 1);
+        moveActive(options.length - 1, -1);
         return;
       }
       case 'Tab': {
@@ -178,7 +184,6 @@ export const Select =({
 
       <Button
         ref={triggerRef}
-        id={ownId}
         disabled={disabled}
         /* Роль по шаблону «select-only combobox»: кнопка, открывающая
            список, объявляется combobox — иначе диктор скажет «кнопка», а
@@ -225,7 +230,13 @@ export const Select =({
       </Button>
 
       {open && (
-        <SelectMenu menuRef={menuRef} anchorRef={triggerRef} onClose={closeMenu}>
+        <SelectMenu
+          anchorRef={triggerRef}
+          id={listboxId}
+          labelledBy={label ? labelId : undefined}
+          menuRef={menuRef}
+          onClose={closeMenu}
+        >
           {options.map((option, index) => {
             const isSelected = option.value === value;
             const isActive = index === activeIndex;
