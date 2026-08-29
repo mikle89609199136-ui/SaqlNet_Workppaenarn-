@@ -440,11 +440,15 @@
   .field {
     font-family: inherit;
     font-size: 15px;
+    /* Интерлиньяж и отступ те же, что у кнопки: поле и кнопка часто
+       стоят в одной строке — строка поиска, — и обязаны совпадать по
+       высоте. С 11px и line-height: normal поле было выше на пиксель. */
+    line-height: 1.5;
     color: var(--ink);
     background: var(--ground);
     border: 1px solid var(--line);
     border-radius: var(--r-2);
-    padding: 11px 14px;
+    padding: 10px 14px;
     min-width: 220px;
     transition: border-color 120ms ease-out;
   }
