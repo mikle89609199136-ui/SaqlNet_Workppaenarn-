@@ -1,7 +1,8 @@
+import { FieldCaption, FieldLabel, useField } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { cn } from '@/utils';
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 
 /* Отступы подобраны так, чтобы поле и кнопка того же размера выходили
    одной высоты: они постоянно стоят в одной строке — поиск, форма с
@@ -68,26 +69,15 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
   },
   ref
 ) {
-  const ownId = useId();
-  const fieldId = id ?? ownId;
-  const captionId = `${fieldId}-caption`;
-  const caption = error ?? hint;
+  const { fieldId, captionId, caption, isError, controlProps } = useField({ id, hint, error });
   const s = sizes[size];
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <label className="text-caption font-medium text-ink-2" htmlFor={fieldId}>
+        <FieldLabel htmlFor={fieldId} required={required}>
           {label}
-          {/* Звёздочка — только для глаз: об обязательности диктору
-              сообщает сам атрибут required, и повторять её словом
-              «звёздочка» ни к чему. */}
-          {required && (
-            <span aria-hidden="true" className="text-danger">
-              {' *'}
-            </span>
-          )}
-        </label>
+        </FieldLabel>
       )}
 
       <div className="relative flex items-center">
@@ -101,8 +91,6 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
         )}
 
         <input
-          aria-describedby={caption ? captionId : undefined}
-          aria-invalid={error ? true : undefined}
           className={cn(
             'w-full border bg-ground text-ink transition-colors duration-fast',
             'placeholder:text-ink-3',
@@ -111,7 +99,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
                это должно быть при любом способе фокуса, не только с
                клавиатуры. */
             'focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand-soft',
-            error ? 'border-danger' : 'border-line hover:border-ink-3',
+            isError ? 'border-danger' : 'border-line hover:border-ink-3',
             'disabled:cursor-not-allowed disabled:opacity-42',
             /* Только для чтения — не ошибка и не запрет: поле живое, из
                него можно копировать, поэтому гасим лишь фон. */
@@ -122,10 +110,10 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
             inputClassName
           )}
           disabled={disabled}
-          id={fieldId}
           readOnly={readOnly}
           ref={ref}
           required={required}
+          {...controlProps}
           {...rest}
         />
 
@@ -135,17 +123,9 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
       </div>
 
       {caption && (
-        <p
-          className={cn('text-caption', error ? 'text-danger' : 'text-ink-3')}
-          id={captionId}
-          /* Ошибка объявляется, когда появляется. Без этого диктор
-             прочитает её, только если фокус вернётся на поле, — а при
-             проверке по отправке формы человек уже ушёл дальше и об
-             ошибке не узнает вовсе. */
-          role={error ? 'alert' : undefined}
-        >
+        <FieldCaption id={captionId} isError={isError}>
           {caption}
-        </p>
+        </FieldCaption>
       )}
     </div>
   );
