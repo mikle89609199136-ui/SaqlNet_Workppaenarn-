@@ -5,31 +5,31 @@ import { translateText } from './translatorApi';
  * Ответ переводчика приходит вложенными массивами: data[0][0][0] — сам перевод,
  * data[2] — язык, который сервис определил в исходном тексте.
  */
-function ответ(перевод: string, исходныйЯзык = 'en') {
-  return JSON.stringify([[[перевод, '', '', '']], null, исходныйЯзык]);
+function response(translation: string, sourceLang = 'en') {
+  return JSON.stringify([[[translation, '', '', '']], null, sourceLang]);
 }
 
-let запросов: string[] = [];
+let requests: string[] = [];
 
-class ПоддельныйXHR {
+class FakeXHR {
   status = 200;
   responseText = '';
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
 
-  open(_метод: string, url: string) {
-    запросов.push(url);
+  open(_method: string, url: string) {
+    requests.push(url);
   }
 
   send() {
-    this.responseText = ответ('translated');
+    this.responseText = response('translated');
     this.onload?.();
   }
 }
 
 beforeEach(() => {
-  запросов = [];
-  vi.stubGlobal('XMLHttpRequest', ПоддельныйXHR);
+  requests = [];
+  vi.stubGlobal('XMLHttpRequest', FakeXHR);
   localStorage.setItem('craneapp_settings', JSON.stringify({ language: 'ru' }));
 });
 
@@ -46,14 +46,14 @@ describe('перевод сообщения', () => {
     await translateText('секретное сообщение');
     await translateText('секретное сообщение');
 
-    expect(запросов).toHaveLength(2);
+    expect(requests).toHaveLength(2);
   });
 
   it('should return the translation and the detected language', async () => {
-    const итог = await translateText('hello');
+    const result = await translateText('hello');
 
-    expect(итог.translatedText).toBe('translated');
-    expect(итог.detectedSourceLang).toBe('en');
-    expect(итог.targetLanguage).toBe('ru');
+    expect(result.translatedText).toBe('translated');
+    expect(result.detectedSourceLang).toBe('en');
+    expect(result.targetLanguage).toBe('ru');
   });
 });

@@ -23,10 +23,10 @@ describe('поле', () => {
   it('should mark itself invalid and read the error out', () => {
     render(<Input error="Юзернейм короче трёх знаков" label="Юзернейм" />);
 
-    const поле = screen.getByRole('textbox', { name: 'Юзернейм' });
+    const field = screen.getByRole('textbox', { name: 'Юзернейм' });
 
-    expect(поле).toHaveAttribute('aria-invalid', 'true');
-    expect(поле).toHaveAccessibleDescription('Юзернейм короче трёх знаков');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription('Юзернейм короче трёх знаков');
   });
 
   it('should show the error instead of the hint, not both', () => {
@@ -59,10 +59,10 @@ describe('поле', () => {
     /* Только для чтения — не запрет: поле остаётся живым и в обходе табом. */
     render(<Input label="Юзернейм" readOnly value="@anna" />);
 
-    const поле = screen.getByRole('textbox', { name: 'Юзернейм' });
+    const field = screen.getByRole('textbox', { name: 'Юзернейм' });
 
-    expect(поле).toHaveAttribute('readonly');
-    expect(поле).not.toBeDisabled();
+    expect(field).toHaveAttribute('readonly');
+    expect(field).not.toBeDisabled();
   });
 
   it('should keep one caption per field when several are on screen', () => {

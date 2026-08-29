@@ -37,7 +37,7 @@ describe('многострочное поле', () => {
   it('should count in a controlled field too', async () => {
     const user = userEvent.setup();
 
-    function Форма() {
+    function Form() {
       const [text, setText] = useState('Привет');
       return (
         <Textarea
@@ -49,7 +49,7 @@ describe('многострочное поле', () => {
       );
     }
 
-    render(<Форма />);
+    render(<Form />);
 
     expect(screen.getByText('6 / 255')).toBeInTheDocument();
 
@@ -79,9 +79,9 @@ describe('многострочное поле', () => {
   it('should mark itself invalid and announce the error', () => {
     render(<Textarea error="Слишком длинно" label="Описание" />);
 
-    const поле = screen.getByRole('textbox', { name: 'Описание' });
+    const field = screen.getByRole('textbox', { name: 'Описание' });
 
-    expect(поле).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('alert')).toHaveTextContent('Слишком длинно');
   });
 

@@ -20,13 +20,13 @@ describe('переключатель', () => {
 
     render(<Switch label="Звук" />);
 
-    const переключатель = screen.getByRole('switch', { name: 'Звук' });
+    const toggle = screen.getByRole('switch', { name: 'Звук' });
 
-    expect(переключатель).not.toBeChecked();
+    expect(toggle).not.toBeChecked();
 
-    await user.click(переключатель);
+    await user.click(toggle);
 
-    expect(переключатель).toBeChecked();
+    expect(toggle).toBeChecked();
   });
 
   it('should toggle when the label is clicked', async () => {
@@ -65,12 +65,12 @@ describe('переключатель', () => {
   it('should work controlled', async () => {
     const user = userEvent.setup();
 
-    function Настройка() {
+    function Setting() {
       const [on, setOn] = useState(false);
       return <Switch checked={on} label="Звук" onChange={(event) => setOn(event.target.checked)} />;
     }
 
-    render(<Настройка />);
+    render(<Setting />);
     await user.click(screen.getByRole('switch', { name: 'Звук' }));
 
     expect(screen.getByRole('switch', { name: 'Звук' })).toBeChecked();
