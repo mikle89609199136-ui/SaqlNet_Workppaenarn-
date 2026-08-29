@@ -43,7 +43,7 @@ export function RegisterPage() {
 
   function continueFromName() {
     if (!firstName.trim()) {
-      showToast('error', t('enterName', 'Введите имя'), '⚠️');
+      showToast('error', t('enterName', 'Введите имя'));
       return;
     }
 
@@ -55,19 +55,19 @@ export function RegisterPage() {
     const cleanFirstName = firstName.trim();
 
     if (cleanUsername.length < 3) {
-      showToast('error', t('usernameMinError', 'Юзернейм: минимум 3 символа'), '⚠️');
+      showToast('error', t('usernameMinError', 'Юзернейм: минимум 3 символа'));
       return;
     }
     if (!USERNAME_PATTERN.test(cleanUsername)) {
-      showToast('error', t('usernameFormatError', 'Только буквы, цифры и _'), '⚠️');
+      showToast('error', t('usernameFormatError', 'Только буквы, цифры и _'));
       return;
     }
     if (password.length < 6) {
-      showToast('error', t('passwordMinError', 'Пароль минимум 6 символов'), '⚠️');
+      showToast('error', t('passwordMinError', 'Пароль минимум 6 символов'));
       return;
     }
     if (password !== passwordRepeat) {
-      showToast('error', t('passwordsMismatch', 'Пароли не совпадают'), '⚠️');
+      showToast('error', t('passwordsMismatch', 'Пароли не совпадают'));
       return;
     }
 
@@ -82,12 +82,12 @@ export function RegisterPage() {
       });
       saveAuthSession({ language, token: data.token, user: data.user });
       await uploadAvatar({ avatar, token: data.token }).catch(() => {});
-      showToast('success', t('welcomeDone', 'Добро пожаловать!'), '🎉');
+      showToast('success', t('welcomeDone', 'Добро пожаловать!'));
       window.setTimeout(() => {
         window.location.href = ROUTES.CHATS;
       }, 600);
     } catch (error) {
-      showToast('error', error.message, '❌');
+      showToast('error', error.message);
       setIsSubmitting(false);
     }
   }

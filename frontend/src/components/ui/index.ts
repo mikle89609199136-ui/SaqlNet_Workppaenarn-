@@ -18,4 +18,4 @@ export { RouteLoadingFallback } from './RouteLoadingFallback';
 export { ChatsSkeleton } from './Skeletons/ChatSkeleton';
 export { ThreadSkeleton } from './Skeletons/ThreadSkeleton';
 export { ThreadState } from './ThreadState';
-export { ToastStack } from './ToastStack';
+export { Toast, ToastStack } from './Toast';

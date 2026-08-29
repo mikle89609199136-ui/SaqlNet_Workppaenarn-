@@ -52,6 +52,13 @@
 /* =========================================================
    @keyframes
    ========================================================= */
+/* Полоса времени до закрытия уведомления. Считает не она — считает
+   таймер в компоненте, — но останавливаются они вместе: под курсором и
+   тому и другому ставится пауза. */
+@keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
+
 @keyframes skeleton-pulse {
   0%   { background-position: 100% 0; }
   100% { background-position: -100% 0; }

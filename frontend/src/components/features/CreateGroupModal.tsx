@@ -100,17 +100,17 @@ export function CreateGroupModal({ onClose }: Props) {
     try {
       setAvatarUrl(await downscaleImage(file));
     } catch {
-      showToast('error', t('avatarReadError', 'Не удалось прочитать изображение'), '❌');
+      showToast('error', t('avatarReadError', 'Не удалось прочитать изображение'));
     }
   };
 
   const create = async () => {
     if (!title.trim()) {
-      showToast('error', t('groupTitleRequired', 'Введите название группы'), '⚠️');
+      showToast('error', t('groupTitleRequired', 'Введите название группы'));
       return;
     }
     if (selected.length === 0) {
-      showToast('error', t('groupMembersRequired', 'Выберите хотя бы одного участника'), '⚠️');
+      showToast('error', t('groupMembersRequired', 'Выберите хотя бы одного участника'));
       return;
     }
 
@@ -134,9 +134,7 @@ export function CreateGroupModal({ onClose }: Props) {
       // Окно не закрывается: введённое не должно пропасть из-за отказа.
       showToast(
         'error',
-        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так'),
-        '❌'
-      );
+        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так'));
       setCreating(false);
     }
   };
