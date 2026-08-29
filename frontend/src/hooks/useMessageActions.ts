@@ -73,13 +73,13 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       );
 
       if (detectedSourceLang && detectedSourceLang === targetLanguage) {
-        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'), 'ℹ️');
+        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'));
         return;
       }
 
       setTranslations((prev) => ({ ...prev, [message.id]: translatedText }));
     } catch (err) {
-      showToast('error', t('translateError', 'Не удалось перевести сообщение'), '❌');
+      showToast('error', t('translateError', 'Не удалось перевести сообщение'));
     } finally {
       setTranslatingIds((prev) => {
         const next = new Set(prev);
@@ -158,13 +158,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messageUnpinMemberError',
             'Не удалось открепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
-        );
+          ));
         return;
       }
 
-      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'), '❌');
+      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
     }
   };
 
@@ -190,13 +188,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messagePinMemberError',
             'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
-        );
+          ));
         return;
       }
 
-      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'), '❌');
+      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'));
     }
   };
 

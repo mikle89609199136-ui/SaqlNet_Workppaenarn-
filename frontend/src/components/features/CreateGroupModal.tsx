@@ -10,7 +10,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon, Modal } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
+import { Chip } from '../ui/Chip';
 import { suggestedMembers } from './suggestedMembers';
 
 interface Props {
@@ -99,17 +100,17 @@ export function CreateGroupModal({ onClose }: Props) {
     try {
       setAvatarUrl(await downscaleImage(file));
     } catch {
-      showToast('error', t('avatarReadError', 'Не удалось прочитать изображение'), '❌');
+      showToast('error', t('avatarReadError', 'Не удалось прочитать изображение'));
     }
   };
 
   const create = async () => {
     if (!title.trim()) {
-      showToast('error', t('groupTitleRequired', 'Введите название группы'), '⚠️');
+      showToast('error', t('groupTitleRequired', 'Введите название группы'));
       return;
     }
     if (selected.length === 0) {
-      showToast('error', t('groupMembersRequired', 'Выберите хотя бы одного участника'), '⚠️');
+      showToast('error', t('groupMembersRequired', 'Выберите хотя бы одного участника'));
       return;
     }
 
@@ -133,9 +134,7 @@ export function CreateGroupModal({ onClose }: Props) {
       // Окно не закрывается: введённое не должно пропасть из-за отказа.
       showToast(
         'error',
-        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так'),
-        '❌'
-      );
+        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так'));
       setCreating(false);
     }
   };
@@ -198,10 +197,12 @@ export function CreateGroupModal({ onClose }: Props) {
           <ul className="flex flex-wrap gap-2 px-6">
             {selected.map((member) => (
               <li key={member.id}>
-                <button className="create-group-chip" onClick={() => toggle(member)} type="button">
-                  <span>{member.firstName || member.username}</span>
-                  <Icon name="cross" size="sm" />
-                </button>
+                <Chip
+                  onRemove={() => toggle(member)}
+                  removeLabel={t('removeMember', 'Убрать участника')}
+                >
+                  {member.firstName || member.username}
+                </Chip>
               </li>
             ))}
           </ul>
@@ -243,13 +244,7 @@ export function CreateGroupModal({ onClose }: Props) {
                     onClick={() => toggle(user)}
                     type="button"
                   >
-                    <div className="chat-avatar shrink-0">
-                      {user.avatarUrl ? (
-                        <img alt="" src={user.avatarUrl} />
-                      ) : (
-                        <Identicon size={48} userId={user.id} />
-                      )}
-                    </div>
+                    <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />
 
                     <span className="min-w-0 flex flex-col">
                       <strong className="truncate">{name}</strong>

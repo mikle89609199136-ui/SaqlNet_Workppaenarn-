@@ -51,8 +51,8 @@ export function useComposerShortcuts(
       // Пустое поле читается из самого элемента: текста в состоянии React
       // больше нет, и это к лучшему — раньше слушатель клавиш
       // переустанавливался на каждый набранный символ.
-      const пусто = !draftRef.current?.value.trim();
-      if (event.key !== 'ArrowUp' || !пусто || editingMessage || replyToMessage) return;
+      const isEmpty = !draftRef.current?.value.trim();
+      if (event.key !== 'ArrowUp' || !isEmpty || editingMessage || replyToMessage) return;
       const lastOwnMessage = [...messages].reverse().find((m) => m.senderId === user?.id);
       if (!lastOwnMessage) return;
 

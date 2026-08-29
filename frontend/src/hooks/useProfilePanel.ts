@@ -30,7 +30,12 @@ export function useProfilePanel({
 
   useEffect(() => {
     if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return;
-    onProfileStateChange({ ...profileModal, chat, messages });
+    // Лента нужна панели только чтобы отобрать общие медиа, и только пока
+    // панель открыта. Закрытой отдавать её незачем: ссылка осталась бы в
+    // состоянии ChatsPage, которая при переходе между чатами не
+    // размонтируется, и держала бы расшифрованные сообщения чата, из
+    // которого профиль когда-то открывали.
+    onProfileStateChange({ ...profileModal, chat, messages: profileModal.isOpen ? messages : [] });
   }, [chat, messages, onProfileStateChange, profileMode, profileModal]);
 
   useEffect(() => {
