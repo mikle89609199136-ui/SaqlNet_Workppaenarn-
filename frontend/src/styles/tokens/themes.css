@@ -26,14 +26,14 @@
   :root:not([data-theme='light']) {
     --color-ground: var(--n-1000);
     --color-sheet: var(--n-950);
-    --color-sheet-2: var(--n-900);
+    --color-sheet-2: var(--n-850);
 
     --color-line: var(--n-500);
-    --color-line-soft: var(--n-900);
+    --color-line-soft: var(--n-800);
 
-    --color-ink: var(--n-800);
-    --color-ink-2: var(--n-700);
-    --color-ink-3: var(--n-500);
+    --color-ink: var(--n-100);
+    --color-ink-2: var(--n-400);
+    --color-ink-3: var(--n-450);
 
     --color-bubble-in: var(--n-bubble-in-dark);
     --color-bubble-out: var(--bubble-out-dark);
@@ -53,14 +53,14 @@
 :root[data-theme='dark'] {
   --color-ground: var(--n-1000);
   --color-sheet: var(--n-950);
-  --color-sheet-2: var(--n-900);
+  --color-sheet-2: var(--n-850);
 
   --color-line: var(--n-500);
-  --color-line-soft: var(--n-900);
+  --color-line-soft: var(--n-800);
 
-  --color-ink: var(--n-800);
-  --color-ink-2: var(--n-700);
-  --color-ink-3: var(--n-500);
+  --color-ink: var(--n-100);
+  --color-ink-2: var(--n-400);
+  --color-ink-3: var(--n-450);
 
   --color-bubble-in: var(--n-bubble-in-dark);
   --color-bubble-out: var(--bubble-out-dark);

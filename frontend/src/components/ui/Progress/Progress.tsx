@@ -22,7 +22,10 @@ export function Progress({ className, label, value }: Props) {
       aria-valuemax={100}
       aria-valuemin={0}
       aria-valuenow={percent}
-      className={cn('h-1.5 w-full overflow-hidden rounded-pill bg-sheet-2', className)}
+      /* Дорожка — мягкий разделитель: он ровно для того и заведён, чтобы
+         обозначать место, не перетягивая внимание. 1,41:1 к фону на
+         светлой теме и 1,72:1 на тёмной. */
+      className={cn('h-1.5 w-full overflow-hidden rounded-pill bg-line-soft', className)}
       role="progressbar"
     >
       <div
