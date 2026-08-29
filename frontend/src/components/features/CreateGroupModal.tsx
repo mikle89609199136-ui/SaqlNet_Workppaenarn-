@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon, Modal } from '../ui';
+import { Icon, Input, Modal, Textarea } from '../ui';
 import { Avatar } from '../ui/Avatar';
 import { Chip } from '../ui/Chip';
 import { suggestedMembers } from './suggestedMembers';
@@ -174,20 +174,23 @@ export function CreateGroupModal({ onClose }: Props) {
           />
 
           <div className="flex flex-col gap-y-2 w-full min-w-0">
-            <input
-              className="create-group-field"
+            <Input
+              aria-label={t('groupTitlePlaceholder', 'Название группы')}
               maxLength={TITLE_LIMIT}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={t('groupTitlePlaceholder', 'Название группы')}
-              type="text"
+              required
               value={title}
             />
-            <input
-              className="create-group-field"
+            {/* Описание было однострочным полем на 255 знаков: текст
+                уезжал за край, и о пределе человек узнавал, упёршись
+                в него. */}
+            <Textarea
+              aria-label={t('groupDescPlaceholder', 'Описание (необязательно)')}
               maxLength={DESCRIPTION_LIMIT}
               onChange={(event) => setDescription(event.target.value)}
               placeholder={t('groupDescPlaceholder', 'Описание (необязательно)')}
-              type="text"
+              rows={2}
               value={description}
             />
           </div>
