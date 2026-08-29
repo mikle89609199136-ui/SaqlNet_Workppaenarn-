@@ -44,6 +44,9 @@
     --color-danger: var(--danger-dark);
 
     --color-brand: var(--brand-hi);
+
+    --color-skeleton: var(--n-900);
+    --color-skeleton-sweep: var(--n-850);
   }
 }
 
@@ -68,4 +71,7 @@
   --color-danger: var(--danger-dark);
 
   --color-brand: var(--brand-hi);
+
+  --color-skeleton: var(--n-900);
+  --color-skeleton-sweep: var(--n-850);
 }

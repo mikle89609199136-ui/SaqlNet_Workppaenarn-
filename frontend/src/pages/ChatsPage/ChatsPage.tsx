@@ -4,7 +4,7 @@ import {
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { ChatListItem, ChatsSkeleton, Icon } from '@/components/ui';
+import { ChatListItem, ChatListItemSkeleton, Icon } from '@/components/ui';
 import { useIsMobile } from '@/hooks';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
@@ -93,7 +93,7 @@ export function ChatsPage() {
       </section>
 
       <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
-        {isLoading ? <ChatsSkeleton /> : null}
+        {isLoading ? <ChatListItemSkeleton /> : null}
         {!isLoading && error && (
           <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}

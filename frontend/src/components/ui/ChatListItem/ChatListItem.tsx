@@ -5,8 +5,8 @@ import { getLastMessageText } from '@/utils';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Avatar } from './Avatar';
-import { Badge } from './Badge';
+import { Avatar } from '../Avatar';
+import { Badge } from '../Badge';
 import type { IChatDto } from '@/types';
 
 interface Props {

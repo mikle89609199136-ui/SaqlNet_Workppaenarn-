@@ -59,9 +59,12 @@
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 
-@keyframes skeleton-pulse {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+/* Перелив скелетона. Значения из кита: полотно вдвое шире блока, чтобы
+   блик успел пройти насквозь, и линейное движение — с ускорением видно,
+   что он «дышит», а не едет. */
+@keyframes skeleton-sheen {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
 }
 @keyframes pulse-green {
   0%   { transform: scale(0.9); opacity: 0.5; }
@@ -255,15 +258,6 @@
     &:hover { filter: brightness(1.08); }
   }
 
-  .chat-row-skeleton { @apply pointer-events-none; }
-  .skeleton-block, .skeleton-line {
-    background: linear-gradient(90deg, var(--color-sheet-2), var(--color-line), var(--color-sheet-2));
-    background-size: 240% 100%;
-    animation: skeleton-pulse 1.3s ease-in-out infinite;
-  }
-  .skeleton-line { @apply h-3 rounded-control; }
-  .skeleton-title { width: 48%; }
-  .skeleton-subtitle { width: 74%; }
 }
 
 /* =========================================================
@@ -1206,9 +1200,6 @@
       z-index: 1201;
     }
   }
-  .thread-skeleton { @apply flex flex-col gap-[10px]; }
-  .skeleton-message { width: 220px; }
-  .skeleton-message-short { width: 150px; }
 }
 
 /* =========================================================
