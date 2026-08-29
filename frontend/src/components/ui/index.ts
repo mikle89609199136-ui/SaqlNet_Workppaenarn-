@@ -2,7 +2,9 @@ export { Avatar } from './Avatar';
 export { Badge } from './Badge';
 export { Button, buttonStyles } from './Button';
 export { Chip } from './Chip';
+export { Select } from './Select';
 export { Skeleton } from './Skeleton';
+export { Switch } from './Switch';
 export { Textarea } from './Textarea';
 export { Spinner } from './Spinner';
 

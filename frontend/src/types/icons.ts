@@ -3,6 +3,8 @@ export type TIconTypes =
   | 'camera'
   | 'channel'
   | 'chat'
+  | 'check'
+  | 'chevronDown'
   | 'checkCircle'
   | 'warning'
   | 'copy'

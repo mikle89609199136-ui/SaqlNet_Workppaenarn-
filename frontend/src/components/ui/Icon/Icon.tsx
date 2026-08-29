@@ -1,6 +1,6 @@
 import type { TIconTypes } from '@/types';
 import { cn } from '@/utils';
-import { AlertTriangle, Camera, CheckCircle, Copy, Eye, EyeOff, File, Forward, Globe, Info, Megaphone, Menu, MessageCircle, Pencil, Phone, Pin, Reply, Search, Settings, Trash2, UserPlus, Users, Video, X, type LucideIcon, type LucideProps } from 'lucide-react';
+import { AlertTriangle, Camera, Check, CheckCircle, ChevronDown, Copy, Eye, EyeOff, File, Forward, Globe, Info, Megaphone, Menu, MessageCircle, Pencil, Phone, Pin, Reply, Search, Settings, Trash2, UserPlus, Users, Video, X, type LucideIcon, type LucideProps } from 'lucide-react';
 
 const sizes = { sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
 
@@ -14,6 +14,8 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   camera: Camera,
   channel: Megaphone,
   chat: MessageCircle,
+  check: Check,
+  chevronDown: ChevronDown,
   checkCircle: CheckCircle,
   copy: Copy,
   cross: X,
