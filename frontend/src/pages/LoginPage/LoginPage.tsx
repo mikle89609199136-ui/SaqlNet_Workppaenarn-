@@ -23,7 +23,7 @@ export function LoginPage() {
     const cleanUsername = username.trim();
 
     if (!cleanUsername || !password) {
-      showToast('error', t('loginRequired', 'Введите юзернейм и пароль'), '⚠️');
+      showToast('error', t('loginRequired', 'Введите юзернейм и пароль'));
       return;
     }
 
@@ -59,12 +59,12 @@ export function LoginPage() {
 
       const settings = await fetchUserSettings(data.token);
       saveAuthSession({ settings, token: data.token, user: data.user });
-      showToast('success', t('loginDone', 'Вход выполнен!'), '✓');
+      showToast('success', t('loginDone', 'Вход выполнен!'));
       window.setTimeout(() => {
         window.location.href = ROUTES.CHATS;
       }, 500);
     } catch (error) {
-      showToast('error', error.message, '❌');
+      showToast('error', error.message);
       setIsSubmitting(false);
     }
   }

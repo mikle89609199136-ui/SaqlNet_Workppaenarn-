@@ -52,13 +52,13 @@ export function ContactsPage() {
       if (data.chatId) {
         // Без этого созданный чат появлялся в списке только после перезагрузки.
         await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-        showToast('success', 'Чат создан!', '✓');
+        showToast('success', 'Чат создан!');
         navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       } else {
         throw new Error(data.error || 'Не удалось создать чат');
       }
     } catch (err) {
-      showToast('error', err.message, '❌');
+      showToast('error', err.message);
     }
   }
 
