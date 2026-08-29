@@ -2,7 +2,14 @@
 
 Практическое руководство: что делать по шагам и что делать, когда что-то пошло не так.
 
-Правила и требования — в `02-git-workflow-v2.md`.
+Правила и требования — в `CLAUDE.md` в корне репозитория.
+
+## Ветки
+
+- **`dev`** — рабочая ветка. Отсюда берут начало все ветки задач, сюда же уходят их Pull Request.
+- **`master`** — только готовый проверенный код. Напрямую в него не работают: он получает изменения отдельным PR из `dev`, когда работа готова (см. `02-task-development-workflow.md`).
+
+Дефолтная ветка репозитория на GitHub — `master`, и это ловушка: `gh pr create` без `--base dev` откроет Pull Request не в ту ветку, а веб-интерфейс предложит `master` первым. Указывайте базу явно каждый раз.
 
 ---
 
@@ -11,6 +18,7 @@
 ```bash
 git clone https://github.com/mikle89609199136-ui/CraneApp.git
 cd CraneApp
+git switch dev               # клон открывается на master
 npm install                  # инструменты репозитория
 cd frontend && npm ci        # зависимости клиента
 cd ..
@@ -43,10 +51,10 @@ git config core.autocrlf input       # только Windows: в репозито
 
 ### 2.2 Создать ветку
 
-**Всегда от свежего `master`.** Ветки от веток не создаются.
+**Всегда от свежего `dev`.** Ветки от веток не создаются.
 
 ```bash
-git switch master
+git switch dev
 git pull
 git switch -c fix/174-forward-attachments
 git push -u origin fix/174-forward-attachments
@@ -84,26 +92,26 @@ Scope — область кода: `auth` `chat` `msg` `media` `call` `user` `ui
 
 Добавляйте файлы точечно, а не `git add .` — меньше шансов захватить лишнее.
 
-### 2.4 Синхронизироваться с `master`
+### 2.4 Синхронизироваться с `dev`
 
 Раз в день, чтобы ветка не отстала:
 
 ```bash
 git fetch origin
-git rebase origin/master
+git rebase origin/dev
 git push --force-with-lease
 ```
 
 `--force-with-lease`, а не `--force`: он не затрёт чужие коммиты, если кто-то успел запушить в вашу ветку.
 
-Если в ветке работает кто-то ещё — вместо rebase делайте `git merge origin/master`, чтобы не переписывать историю под коллегой.
+Если в ветке работает кто-то ещё — вместо rebase делайте `git merge origin/dev`, чтобы не переписывать историю под коллегой.
 
 ### 2.5 Открыть Pull Request
 
-Целевая ветка — всегда `master`.
+Целевая ветка — всегда `dev`.
 
 ```bash
-gh pr create --base master --title "fix(msg): keep attachments on forward (#174)"
+gh pr create --base dev --title "fix(msg): keep attachments on forward (#174)"
 ```
 
 Название совпадает с основным коммитом. Заполните шаблон, `Closes #174` обязателен — без него задача не закроется.
@@ -126,7 +134,7 @@ git commit -m "fix(msg): handle forward without attachments (#174)"
 
 **Мержит автор PR после одобрения.** Ревьюер только ставит `approve` — решение о моменте merge за автором: он знает, всё ли готово, и он же на месте, если после merge что-то сломается.
 
-Способ — **Squash and merge**. Коммиты ветки схлопываются в один, история `master` читается по задачам.
+Способ — **Squash and merge**. Коммиты ветки схлопываются в один, история `dev` читается по задачам.
 
 **Проверьте итоговое сообщение перед merge.** GitHub подставляет туда либо заголовок PR, либо склейку всех коммитов — второе часто выходит мусорным. Формат должен остаться прежним:
 
@@ -137,7 +145,7 @@ fix(msg): keep attachments on forward (#174)
 После merge:
 
 ```bash
-git switch master
+git switch dev
 git pull
 git branch -d fix/174-forward-attachments
 git fetch --prune
@@ -158,11 +166,11 @@ git fetch --prune
 └── #143 Выход из группы
 ```
 
-Каждая подзадача ветвится от `master` и мержится в `master` самостоятельно.
+Каждая подзадача ветвится от `dev` и мержится в `dev` самостоятельно.
 
 Почему не интеграционные ветки:
 
-- они копят отставание — открытые PR отставали от `master` на 47–75 коммитов, и merge превращался в разбор конфликтов;
+- они копят отставание — открытые PR отставали от рабочей ветки на 47–75 коммитов, и merge превращался в разбор конфликтов;
 - удаление смерженной базовой ветки **автоматически закрывает** все направленные в неё Pull Request. Это уже происходило: три PR пришлось восстанавливать.
 
 ---
@@ -194,11 +202,11 @@ git show --summary HEAD | grep -c "^ rename"   # должно совпасть �
 
 ## 5. Частые ситуации
 
-**Закоммитил в `master` вместо ветки** (не запушено):
+**Закоммитил в `dev` вместо ветки** (не запушено):
 
 ```bash
 git branch fix/174-forward-attachments
-git reset --hard origin/master
+git reset --hard origin/dev
 git switch fix/174-forward-attachments
 ```
 
@@ -233,7 +241,7 @@ Untracked-файлы обычный stash не берёт — нужен `git st
 
 **Потерял коммиты:** `git reflog`, найти SHA, `git reset --hard <sha>`. Работает примерно 90 дней.
 
-**Откатить чужой коммит в `master`:** не переписывать историю, а сделать `git revert <sha>` в новой ветке и открыть PR.
+**Откатить чужой коммит в `dev`:** не переписывать историю, а сделать `git revert <sha>` в новой ветке и открыть PR.
 
 **Хук отклонил коммит:** прочитайте сообщение. Обычно — неизвестный тип, scope не из списка, нет `(#N)`, заглавная буква или точка в конце. `--no-verify` тут не решение: та же проверка есть в CI.
 
@@ -265,14 +273,14 @@ gh pr list --state open --json headRefName,baseRefName
 
 ## 7. Чего не делать
 
-- Не пушить в `master` напрямую.
+- Не пушить в `dev` и `master` напрямую.
 - Не использовать `git push --force` — только `--force-with-lease` и только в своей ветке.
 - Не обходить хуки через `--no-verify`, кроме коммитов-перемещений.
 - Не мержить свой PR без одобрения.
 - Не складывать несколько задач в одну ветку.
 - Не держать ветку дольше нескольких дней.
 - Не коммитить `.env`, секреты, `node_modules/`, `dist/`.
-- Не переписывать историю `master` — только revert-коммиты.
+- Не переписывать историю `dev` и `master` — только revert-коммиты.
 
 ---
 
@@ -280,7 +288,7 @@ gh pr list --state open --json headRefName,baseRefName
 
 ```bash
 # начать
-git switch master && git pull
+git switch dev && git pull
 git switch -c fix/174-forward-attachments
 git push -u origin fix/174-forward-attachments
 
@@ -290,21 +298,21 @@ git commit -m "fix(msg): keep attachments on forward (#174)"
 git push
 
 # синхронизировать
-git fetch origin && git rebase origin/master
+git fetch origin && git rebase origin/dev
 git push --force-with-lease
 
 # PR
-gh pr create --base master --title "fix(msg): ... (#174)"
+gh pr create --base dev --title "fix(msg): ... (#174)"
 
 # после merge
-git switch master && git pull
+git switch dev && git pull
 git branch -d fix/174-forward-attachments
 git fetch --prune
 
 # посмотреть состояние
 git status
 git log --oneline -10
-git log --oneline origin/master..HEAD    # мои коммиты сверх master
+git log --oneline origin/dev..HEAD       # мои коммиты сверх dev
 gh pr status
 ```
 
@@ -312,6 +320,6 @@ gh pr status
 
 ## 9. Текущее ограничение
 
-Ветка `master` не защищена: прямой push, merge без одобрения и force-push технически возможны. Правила выше держатся на договорённости.
+Ветки `dev` и `master` не защищены: прямой push, merge без одобрения и force-push технически возможны. Правила выше держатся на договорённости.
 
 Включить защиту нельзя — для приватных репозиториев она доступна только на платных планах GitHub. По той же причине не работает `.github/CODEOWNERS`: ревьюеры по нему не назначаются.
