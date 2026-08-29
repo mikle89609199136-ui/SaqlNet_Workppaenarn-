@@ -18,8 +18,8 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
   const captionId = `${fieldId}-caption`;
   const caption = error ?? hint;
 
-  const trackSize = size === 'sm' ? 'w-8 h-4' : 'w-11 h-6';
-  const thumbSize = size === 'sm' ? 'h-3 w-3 peer-checked:translate-x-4' : 'h-5 w-5 peer-checked:translate-x-5';
+  const trackSize = size === 'sm' ? 'w-8 h-5' : 'w-11 h-[26px]';
+  const thumbSize = size === 'sm' ? 'h-[14px] w-[14px] peer-checked:translate-x-3' : 'h-5 w-5 peer-checked:translate-x-[18px]';
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
@@ -28,13 +28,11 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
           'flex items-center gap-3 w-fit',
           disabled ? 'cursor-not-allowed opacity-42' : 'cursor-pointer group'
         )}
-        htmlFor={fieldId}
       >
         <div className="relative flex">
           <input
             type="checkbox"
             className="peer sr-only"
-            id={fieldId}
             ref={ref}
             disabled={disabled}
             aria-describedby={caption ? captionId : undefined}
@@ -44,15 +42,17 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
           />
           <div
             className={cn(
-              'rounded-full transition-colors duration-fast bg-sheet-3',
+              'rounded-full transition-colors duration-fast border',
+              'bg-sheet-2 border-line',
               'peer-focus-visible:ring-3 peer-focus-visible:ring-brand-soft',
-              'peer-checked:bg-brand',
+              'peer-checked:bg-brand peer-checked:border-brand',
               trackSize
             )}
           />
           <div
             className={cn(
-              'absolute top-0.5 left-0.5 bg-white rounded-full transition-transform duration-fast shadow-sm',
+              'absolute top-[3px] left-[3px] rounded-full transition-all duration-fast',
+              'bg-ink-3 peer-checked:bg-white',
               thumbSize
             )}
           />

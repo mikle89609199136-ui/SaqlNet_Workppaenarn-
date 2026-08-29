@@ -23,3 +23,5 @@ export type TIconTypes =
   | 'trash'
   | 'users'
   | 'video'
+  | 'check'
+  | 'chevronDown'
