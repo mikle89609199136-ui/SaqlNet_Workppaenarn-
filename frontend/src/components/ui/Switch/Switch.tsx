@@ -44,7 +44,7 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
             className={cn(
               'rounded-full transition-colors duration-fast border',
               'bg-sheet-2 border-line',
-              'peer-focus-visible:ring-3 peer-focus-visible:ring-brand-soft',
+              'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2',
               'peer-checked:bg-brand peer-checked:border-brand',
               trackSize
             )}
