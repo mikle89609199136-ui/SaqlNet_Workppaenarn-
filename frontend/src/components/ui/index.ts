@@ -4,6 +4,7 @@ export { Button, buttonStyles } from './Button';
 export { Chip } from './Chip';
 export { Skeleton } from './Skeleton';
 export { Spinner } from './Spinner';
+export { Switch } from './Switch';
 
 export { AttachmentControl } from './AttachmentControl';
 export { AttachmentPreview } from './AttachmentPreview';
