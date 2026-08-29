@@ -184,7 +184,6 @@ export const Select =({
 
       <Button
         ref={triggerRef}
-        id={ownId}
         disabled={disabled}
         /* Роль по шаблону «select-only combobox»: кнопка, открывающая
            список, объявляется combobox — иначе диктор скажет «кнопка», а
