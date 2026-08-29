@@ -3,50 +3,92 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SegmentedControl } from './SegmentedControl';
 
-describe('SegmentedControl', () => {
-  const options = [
-    { label: 'Все', value: 'all' },
-    { label: 'Личные', value: 'personal' },
-    { label: 'Работа', value: 'work', disabled: true },
-  ];
+const OPTIONS = [
+  { label: 'Все', value: 'all' },
+  { label: 'Личные', value: 'personal' },
+  { label: 'Работа', value: 'work', disabled: true },
+];
 
-  it('renders options correctly', () => {
-    render(<SegmentedControl value="all" onChange={() => {}} options={options} />);
-    
-    expect(screen.getByRole('button', { name: 'Все' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Личные' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Работа' })).toBeInTheDocument();
+describe('переключение разделов', () => {
+  it('should show every option', () => {
+    render(<SegmentedControl onChange={vi.fn()} options={OPTIONS} value="all" />);
+
+    for (const option of OPTIONS) {
+      expect(screen.getByRole('button', { name: option.label })).toBeInTheDocument();
+    }
   });
 
-  it('marks active option with aria-pressed', () => {
-    render(<SegmentedControl value="personal" onChange={() => {}} options={options} />);
-    
-    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'false');
+  it('should mark the chosen one', () => {
+    render(<SegmentedControl onChange={vi.fn()} options={OPTIONS} value="personal" />);
+
     expect(screen.getByRole('button', { name: 'Личные' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('calls onChange when clicked', async () => {
+  it('should tell the chosen one apart by state, not by class', () => {
+    /* Состояние живёт в data-*, иначе оно расползается по именам классов
+       и разные экраны начинают называть его по-разному. */
+    render(<SegmentedControl onChange={vi.fn()} options={OPTIONS} value="personal" />);
+
+    expect(screen.getByRole('button', { name: 'Личные' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('data-state', 'inactive');
+  });
+
+  it('should report the option that was pressed', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
 
-    render(<SegmentedControl value="all" onChange={onChange} options={options} />);
-    
+    render(<SegmentedControl onChange={onChange} options={OPTIONS} value="all" />);
     await user.click(screen.getByRole('button', { name: 'Личные' }));
-    
+
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith('personal');
   });
 
-  it('does not call onChange when disabled option is clicked', async () => {
+  it('should ignore a switched-off option', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
 
-    render(<SegmentedControl value="all" onChange={onChange} options={options} />);
-    
-    const disabledBtn = screen.getByRole('button', { name: 'Работа' });
-    expect(disabledBtn).toBeDisabled();
-    
-    await user.click(disabledBtn);
+    render(<SegmentedControl onChange={onChange} options={OPTIONS} value="all" />);
+
+    const disabled = screen.getByRole('button', { name: 'Работа' });
+
+    expect(disabled).toBeDisabled();
+
+    await user.click(disabled);
+
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('should be walkable from the keyboard', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(<SegmentedControl onChange={onChange} options={OPTIONS} value="all" />);
+    await user.tab();
+    await user.tab();
+
+    expect(screen.getByRole('button', { name: 'Личные' })).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+
+    expect(onChange).toHaveBeenCalledWith('personal');
+  });
+
+  it('should hold the width when the choice moves', () => {
+    /* Выбранный сегмент становится жирнее, а жирный текст шире: без
+       заранее занятого места полоса дёргается при каждом переключении.
+       Место держит невидимая копия подписи. */
+    const { rerender } = render(
+      <SegmentedControl onChange={vi.fn()} options={OPTIONS} value="all" />
+    );
+
+    const widthBefore = screen.getByRole('button', { name: 'Все' }).getBoundingClientRect().width;
+
+    rerender(<SegmentedControl onChange={vi.fn()} options={OPTIONS} value="personal" />);
+
+    expect(screen.getByRole('button', { name: 'Все' }).getBoundingClientRect().width).toBe(
+      widthBefore
+    );
   });
 });

@@ -1,9 +1,15 @@
 import { cn } from '@/utils';
 import { useId, type ReactNode, type ReactElement, cloneElement, isValidElement } from 'react';
 
+/* Подсказка описывает соседа, поэтому ей нужен элемент, которому можно
+   проставить aria-describedby — то есть принимающий атрибуты. */
+interface Describable {
+  'aria-describedby'?: string;
+}
+
 export interface TooltipProps {
   content: ReactNode;
-  children: ReactElement;
+  children: ReactElement<Describable>;
   className?: string;
   position?: 'top' | 'bottom' | 'left' | 'right';
 }
@@ -12,7 +18,7 @@ export function Tooltip({ content, children, className, position = 'top' }: Tool
   const id = useId();
 
   const trigger = isValidElement(children)
-    ? cloneElement(children as ReactElement<any>, { 'aria-describedby': id })
+    ? cloneElement(children, { 'aria-describedby': id })
     : children;
 
   return (
