@@ -642,6 +642,11 @@
   .cb { border-radius: var(--r-1); }
   .rd { border-radius: var(--r-pill); }
   .cb-on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-size: 12px; font-weight: 700; }
+  /* Отмечена часть: заголовок выбора нескольких сообщений при трёх
+     отмеченных из двенадцати. Без него он выглядит снятым, и нажатие
+     отмечает всё вместо снятия. */
+  .cb-mixed { background: var(--accent-fill); border-color: var(--accent-fill); }
+  .cb-mixed::after { content: ''; width: 10px; height: 2px; border-radius: var(--r-pill); background: var(--on-accent); }
   .rd-on { border-color: var(--accent-fill); }
   .rd-on::after { content: ''; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--accent-fill); }
   label.opt { display: inline-flex; align-items: center; gap: 9px; font-size: 14.5px; cursor: pointer; }
@@ -1451,6 +1456,7 @@
       <div class="caption">Выбор</div>
       <div class="row" style="gap:22px">
         <label class="opt"><span class="cb cb-on"><i data-lucide="check" class="ic-svg" style="width:13px;height:13px"></i></span> Удалить у всех</label>
+        <label class="opt"><span class="cb cb-mixed"></span> Выбрано 3 из 12</label>
         <label class="opt"><span class="cb"></span> Уведомлять</label>
         <label class="opt"><span class="rd rd-on"></span> Светлая</label>
         <label class="opt"><span class="rd"></span> Тёмная</label>
