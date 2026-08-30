@@ -12,7 +12,7 @@ type PinsData struct {
 type TAttachment struct {
 	MediaURL       string `json:"mediaUrl" validate:"required"`
 	ContentType    string `json:"contentType" validate:"required"`
-	FileName       string `json:"fileName"`
+	FileName       string `json:"fileName,required" validate:"required"`
 	FileSize       int64  `json:"fileSize" validate:"required,gt=0"`
 	MediaEncrypted bool   `json:"mediaEncrypted" validate:"eq=true"`
 }
@@ -41,24 +41,35 @@ type ResForwardMessage struct {
 }
 
 type TMessageForwardMetadata struct {
-	Forwarded     bool            `json:"forwarded"`
-	ForwardedFrom *TForwardedFrom `json:"forwardedFrom,omitempty" validate:"omitemptyrequired_if=Forwarded true"`
+	Forwarded     bool            `json:"forwarded" validate:"eq=true"`
+	ForwardedFrom *TForwardedFrom `json:"forwardedFrom" validate:"required"`
 }
 
-type TMessages struct {
-	MessageID  string         `json:"messageId" validate:"required,uuid"`
-	SenderID   string         `json:"senderId" validate:"required,uuid"`
-	Content    string         `json:"content" validate:"omitempty,base64,max=65535"`
-	Attachments []TAttachment `json:"attachments,omitempty" validate:"omitempty,max=10,dive"`
 
-	Type     string                   `json:"type" validate:"required"`
-	ReplyTo  *string                  `json:"replyTo,omitempty" validate:"omitempty,uuid"`
-	Metadata *TMessageForwardMetadata `json:"metadata,omitempty"`
+type TE2EContent struct {
+	E2E                bool   `json:"e2e" validate:"eq=true"`
+	IV                 string `json:"iv" validate:"required"`
+	Data               string `json:"data" validate:"required"`
+	SenderPublicKey    string `json:"senderPublicKey" validate:"required,max=1024"`
+	SenderKeyFp        string `json:"senderKeyFp" validate:"required"`
+	RecipientPubKeyB64 string `json:"recipientPubKeyB64" validate:"required,base64,max=65535"`
+	RecipientKeyFp     string `json:"recipientKeyFp" validate:"required"`
+}
+
+
+type TMessages struct {
+	MessageID   string                   `json:"messageId" validate:"required,uuid"`
+	SenderID    string                   `json:"senderId" validate:"required,uuid"`
+	Content     *TE2EContent             `json:"content,omitempty" validate:"omitempty"`
+	Attachments []TAttachment            `json:"attachments,omitempty" validate:"omitempty,max=10,dive"`
+	Type        string                   `json:"type" validate:"required"`
+	ReplyTo     *string                  `json:"replyTo,omitempty" validate:"omitempty,uuid"`
+	Metadata    *TMessageForwardMetadata `json:"metadata,omitempty"`
 }
 
 type ForwardMessageInput struct {
-	ChatID       string      `json:"chatId" validate:"required,uuid"`
-	TargetChatID string      `json:"targetChatId" validate:"required,uuid"`
-	Messages     []TMessages `json:"messages" validate:"required,gt=0,max=100,dive"`
-	Caption      string      `json:"caption" validate:"omitempty,base64,max=65535"`
+	ChatID       string            `json:"chatId" validate:"required,uuid"`
+	TargetChatID string            `json:"targetChatId" validate:"required,uuid"`
+	Messages     []TMessages       `json:"messages" validate:"required,gt=0,max=100,dive"`
+	Caption      *TE2EContent      `json:"caption,omitempty" validate:"omitempty"`
 }
