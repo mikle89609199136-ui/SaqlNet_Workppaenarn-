@@ -23,7 +23,7 @@ export const AudioPlayer = ({ src }: AudioPlayerProps) => {
 
   return (
     <div
-      className="flex w-full min-w-60 flex-col gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
+      className="flex w-full flex-col gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
       onClick={(e) => e.currentTarget.focus()}
       tabIndex={0}
     >
