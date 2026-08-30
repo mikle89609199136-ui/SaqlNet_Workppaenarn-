@@ -1,5 +1,6 @@
 import { Icon } from '@/components/ui';
-import { AudioPlayer, VideoPlayer } from '@/components/features';
+import { AudioPlayer } from '../AudioPlayer';
+import { VideoPlayer } from '../VideoPlayer';
 import type { IMessageDto } from '@/types';
 import { formatFileSize } from '@/utils';
 import { type Dispatch, type SetStateAction } from 'react';
