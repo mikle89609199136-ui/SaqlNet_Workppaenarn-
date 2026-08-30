@@ -659,6 +659,38 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Path == "/api/v2/messages/bulk-forward" && r.Method == http.MethodPost {
+		var input ForwardMessageInput
+		if !decode(w, r, &input) {
+			return
+		}
+  
+		if err := validate.Struct(input); err != nil {
+			if _, ok := err.(validator.ValidationErrors); ok {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_input", err.Error())
+				return
+			}
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "validation failed")
+			return
+		}
+
+		msg, err := h.service.ForwardMessages(r.Context(), current.ID, input.ChatID, input.TargetChatID, input.Caption, input.Messages)
+		if errors.Is(err, ErrNotFound) {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", err.Error())
+			return
+		}
+		if errors.Is(err, ErrForbidden) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+			return
+		}
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{"messages": msg})
+		return
+	}
+
 	targetID, suffix := parseMessagePath(r.URL.Path)
 
 	switch {
