@@ -1,81 +1,104 @@
-import { Button, Slider } from '@/components/ui';
+import { Button, Slider, Spinner } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useMedia } from '@/hooks/useMedia';
-import { useState, useRef, type ChangeEvent, type RefObject } from 'react';
+import { useVideo, type VideoSource } from '@/hooks/useVideo';
+import { type RefObject } from 'react';
+import { cn } from '@/utils';
+
+export type { VideoSource };
 
 interface VideoPlayerProps {
   src: string;
+  sources?: VideoSource[];
 }
 
-const QUALITY_OPTIONS = [
-  { label: 'Auto', value: 'auto' },
-  { label: '1080p', value: '1080p' },
-  { label: '720p', value: '720p' },
-  { label: '480p', value: '480p' },
-];
-
-export const VideoPlayer = ({ src }: VideoPlayerProps) => {
-  const wrapperRef = useRef<HTMLElement>(null);
+export const VideoPlayer = ({ src, sources }: VideoPlayerProps) => {
   const isMobile = useIsMobile();
+
   const {
     mediaRef,
+    wrapperRef,
     isPlaying,
     currentTime,
     duration,
     volume,
     isMuted,
     isFullscreen,
+    isBuffering,
+    isIdle,
     seekIndicator,
+    activeSrc,
+    quality,
+    qualityOpen,
+    setQualityOpen,
+    hasSources,
     togglePlay,
+    toggleMute,
+    toggleFullscreen,
+    resetIdle,
     handleLoadedMetadata,
     handleEnded,
     handleSliderChange,
     handleSliderPointerDown,
     handleSliderPointerUp,
-    changeVolume,
-    toggleMute,
-    toggleFullscreen,
+    handleVolumeChange,
+    handleVideoClick,
+    handleVideoTouchEnd,
+    handleQualityChange,
+    handleCanPlay,
+    handleWaiting,
+    handlePlaying,
     formatTime,
-  } = useMedia(wrapperRef);
+  } = useVideo(undefined, { src, sources, isMobile });
 
-  const [quality, setQuality] = useState('auto');
-  const [qualityOpen, setQualityOpen] = useState(false);
-
-  const handleVolumeChange = (e: ChangeEvent<HTMLInputElement>) => {
-    changeVolume(Number(e.target.value));
-  };
-
-  const handleVideoClick = () => {
-    if (isMobile) {
-      if (!isFullscreen) {
-        toggleFullscreen();
-        if (!isPlaying) togglePlay();
-      } else {
-        togglePlay();
-      }
-    } else {
-      togglePlay();
-    }
-  };
+  const controlsClass = cn(
+    "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity flex flex-col gap-3",
+    isMobile && !isFullscreen
+      ? "hidden"
+      : isFullscreen
+        ? (isIdle ? "opacity-0 pointer-events-none" : "opacity-100")
+        : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 group-focus-within/container:opacity-100"
+  );
 
   return (
     <div
-      className="flex w-full flex-col gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
-      onClick={(e) => e.currentTarget.focus()}
-      tabIndex={0}
+      className={cn(
+        "flex w-full flex-col group/container",
+        isFullscreen ? "h-screen bg-black" : "gap-2 rounded-xl",
+        isFullscreen && isIdle && "cursor-none"
+      )}
+      role="region"
+      aria-label="Video Player"
+      onPointerMove={resetIdle}
+      onPointerDown={(e) => {
+        if (e.target !== mediaRef.current) resetIdle();
+      }}
+      onKeyDown={resetIdle}
     >
-      <div className="bg-ink relative w-full overflow-hidden rounded-xl group" ref={wrapperRef as RefObject<HTMLDivElement>}>
+      <div className={cn("bg-ink relative w-full overflow-hidden group", isFullscreen ? "h-full" : "rounded-xl h-full")} ref={wrapperRef as RefObject<HTMLDivElement>}>
         <video
-          className="block w-full"
+          autoPlay
+          muted
+          playsInline
+          loop
+          className={cn("block w-full h-full cursor-pointer", isFullscreen ? "object-cover" : "object-contain")}
           onClick={handleVideoClick}
+          onTouchEnd={handleVideoTouchEnd}
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
+          onWaiting={handleWaiting}
+          onPlaying={handlePlaying}
+          onCanPlay={handleCanPlay}
           ref={mediaRef as RefObject<HTMLVideoElement>}
-          src={src}
+          src={activeSrc}
         />
 
-        {/* Seek Indicator Overlay */}
+        {isBuffering && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <Spinner className="w-10 h-10 text-white" />
+          </div>
+        )}
+
         {isFullscreen && seekIndicator && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
             <div className="bg-black/60 backdrop-blur-md text-white rounded-full w-16 h-16 flex flex-col items-center justify-center animate-pulse">
@@ -94,9 +117,8 @@ export const VideoPlayer = ({ src }: VideoPlayerProps) => {
           </div>
         )}
 
-        {/* Top Right Controls (Fullscreen only) */}
-        {isFullscreen && (
-          <div className="absolute top-4 right-4 z-20">
+        {isFullscreen && hasSources && (
+          <div className={cn("absolute top-4 right-4 z-20 transition-opacity", isIdle && "opacity-0 pointer-events-none")}>
             <div className="relative">
               <Button
                 className="bg-black/40 hover:bg-black/60 text-white border-transparent backdrop-blur-md"
@@ -104,19 +126,16 @@ export const VideoPlayer = ({ src }: VideoPlayerProps) => {
                 size="sm"
                 variant="secondary"
               >
-                {QUALITY_OPTIONS.find((o) => o.value === quality)?.label}
+                {quality}
                 <Icon name="chevronDown" className="w-4 h-4 ml-1" />
               </Button>
               {qualityOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-sheet shadow-[var(--elev-3)] rounded-field border border-line z-50 overflow-hidden min-w-30 flex flex-col">
-                  {QUALITY_OPTIONS.map((opt) => (
+                  {sources!.map((opt) => (
                     <Button
-                      key={opt.value}
+                      key={opt.url}
                       className="w-full justify-start rounded-none px-3 py-2 text-sm text-ink hover:bg-sheet-2 border-transparent"
-                      onClick={() => {
-                        setQuality(opt.value);
-                        setQualityOpen(false);
-                      }}
+                      onClick={() => handleQualityChange(opt.url, opt.label)}
                       variant="ghost"
                     >
                       {opt.label}
@@ -128,9 +147,8 @@ export const VideoPlayer = ({ src }: VideoPlayerProps) => {
           </div>
         )}
 
-        {/* Bottom Controls Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col gap-3">
-          {isFullscreen && !isMobile && (
+        <div className={controlsClass}>
+          {isFullscreen && (
             <Slider
               className="w-full"
               max={duration || 100}
@@ -145,69 +163,56 @@ export const VideoPlayer = ({ src }: VideoPlayerProps) => {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              <Button
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+                className="shrink-0 rounded-full bg-white/20 hover:bg-white/30 text-white border-transparent"
+                iconOnly
+                onClick={togglePlay}
+                size="sm"
+              >
+                {isPlaying ? (
+                  <Icon name="pause" className="fill-current w-4 h-4" />
+                ) : (
+                  <Icon name="play" className="fill-current w-4 h-4 ml-0.5" />
+                )}
+              </Button>
+
               {!isMobile && (
-                <>
+                <div className="flex items-center gap-2 group/vol">
                   <Button
-                    aria-label={isPlaying ? 'Pause' : 'Play'}
-                    className="shrink-0 rounded-full bg-white/20 hover:bg-white/30 text-white border-transparent"
+                    aria-label="Mute"
+                    className="shrink-0 text-white hover:text-white hover:bg-transparent active:bg-transparent border-transparent"
                     iconOnly
-                    onClick={togglePlay}
+                    onClick={toggleMute}
                     size="sm"
+                    variant="ghost"
                   >
-                    {isPlaying ? (
-                      <Icon name="pause" className="fill-current w-4 h-4" />
+                    {isMuted || volume === 0 ? (
+                      <Icon name="volumeMute" className="w-5 h-5" />
                     ) : (
-                      <Icon name="play" className="fill-current w-4 h-4 ml-0.5" />
+                      <Icon name="volume" className="w-5 h-5" />
                     )}
                   </Button>
-
-                  <div className="flex items-center gap-2 group/vol">
-                    <Button
-                      aria-label="Mute"
-                      className="shrink-0 text-white hover:text-white hover:bg-transparent active:bg-transparent border-transparent"
-                      iconOnly
-                      onClick={toggleMute}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      {isMuted || volume === 0 ? (
-                        <Icon name="volumeMute" className="w-5 h-5" />
-                      ) : (
-                        <Icon name="volume" className="w-5 h-5" />
-                      )}
-                    </Button>
-                    <div className="w-0 overflow-hidden group-hover/vol:w-20 focus-within:w-20 transition-all duration-300">
-                      <Slider
-                        max={1}
-                        min={0}
-                        onChange={handleVolumeChange}
-                        step={0.05}
-                        value={isMuted ? 0 : volume}
-                      />
-                    </div>
+                  <div className="w-0 overflow-hidden group-hover/vol:w-20 focus-within:w-20 transition-all duration-300">
+                    <Slider
+                      max={1}
+                      min={0}
+                      onChange={handleVolumeChange}
+                      step={0.05}
+                      value={isMuted ? 0 : volume}
+                    />
                   </div>
+                </div>
+              )}
 
-                  {isFullscreen && (
-                    <span className="text-sm text-white tabular-nums shrink-0">
-                      {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
-                  )}
-                </>
+              {(!isMobile || isFullscreen) && (
+                <span className="text-sm text-white tabular-nums shrink-0">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
               )}
             </div>
 
             <div className="flex items-center gap-3">
-              {isMobile && !isFullscreen && (
-                <Button
-                  className="bg-black/40 hover:bg-black/60 text-white border-transparent backdrop-blur-md"
-                  onClick={() => toggleFullscreen()}
-                  size="sm"
-                  variant="secondary"
-                >
-                  Quality: {QUALITY_OPTIONS.find((o) => o.value === quality)?.label}
-                </Button>
-              )}
-              
               <Button
                 aria-label="Fullscreen"
                 className="shrink-0 text-white hover:text-white hover:bg-transparent active:bg-transparent border-transparent"
