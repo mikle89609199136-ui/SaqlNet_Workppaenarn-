@@ -25,3 +25,10 @@ export type TIconTypes =
   | 'trash'
   | 'users'
   | 'video'
+  | 'play'
+  | 'pause'
+  | 'volume'
+  | 'volumeMute'
+  | 'maximize'
+  | 'fastForward'
+  | 'rewind';
