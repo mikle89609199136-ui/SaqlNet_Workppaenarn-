@@ -4,6 +4,7 @@ export { Banner } from './Banner';
 export { Button, buttonStyles } from './Button';
 export { Checkbox } from './Checkbox';
 export { Chip } from './Chip';
+export { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from './ContextMenu';
 export { Progress } from './Progress';
 export { Radio, RadioGroup } from './Radio';
 export { SegmentedControl } from './SegmentedControl';
