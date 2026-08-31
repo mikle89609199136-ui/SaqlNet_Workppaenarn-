@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ToastStack } from '@/components/ui';
 import { DEFAULT_SETTINGS_SECTION, ROUTES, type TSettingsSection } from '@/consts/routes';
-import { SettingsDetailPage } from '@/pages/SettingsPage/SettingsDetailPage';
+import { AboutSection } from '@/pages/SettingsPage/sections/AboutSection';
+import { AccountSection } from '@/pages/SettingsPage/sections/AccountSection';
+import { AppearanceSection } from '@/pages/SettingsPage/sections/AppearanceSection';
+import { LanguageSection } from '@/pages/SettingsPage/sections/LanguageSection';
+import { NotificationsSection } from '@/pages/SettingsPage/sections/NotificationsSection';
+import { PrivacySection } from '@/pages/SettingsPage/sections/PrivacySection';
 import { userKeys } from '@/queries/keys';
 import { useProfileStore } from '@/store/profile';
 import type { ISettingsDto, IUserDto } from '@/types';
@@ -28,6 +34,17 @@ interface IRenderSettingsOptions {
   searchQuery?: string;
   queryClient?: QueryClient;
 }
+
+/* Разделы поднимаются сами, без раскладки: меню и строка поиска — её
+   работа, и тесту раздела они только мешали бы совпадениями по тексту. */
+const SECTION_ELEMENTS: Record<TSettingsSection, ReactElement> = {
+  account: <AccountSection />,
+  notifications: <NotificationsSection />,
+  appearance: <AppearanceSection />,
+  privacy: <PrivacySection />,
+  language: <LanguageSection />,
+  about: <AboutSection />,
+};
 
 export { createTestQueryClient };
 
@@ -94,8 +111,8 @@ export function renderSettings({
         HydrateFallback: () => <div>Загрузка…</div>,
         element: <Outlet context={{ searchQuery }} />,
         children: [
-          { path: ':section', element: <SettingsDetailPage /> },
-          { path: ':section/:subsection', element: <SettingsDetailPage /> },
+          { path: section, element: SECTION_ELEMENTS[section] },
+          { path: `${section}/:subsection`, element: SECTION_ELEMENTS[section] },
         ],
       },
     ],

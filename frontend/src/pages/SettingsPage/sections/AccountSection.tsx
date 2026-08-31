@@ -1,110 +1,53 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
-import { useToasts } from '../../hooks/useToasts';
-import { services } from '../../services/serviceContainer';
-import '../../styles/SettingsControls.css';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ui';
-import { meQuery } from '@/queries/users/meQuery';
-import { settingsQuery } from '@/queries/users/settingsQuery';
+import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
+import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { useToasts } from '@/hooks/useToasts';
 import { userKeys } from '@/queries/keys';
-import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
+import { meQuery } from '@/queries/users/meQuery';
+import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store';
-import type { IPrivacyDto, ISettingsDto } from '@/types';
-import { ChoiceRow, Field, SettingsSection, ToggleRow } from './SettingsControls';
-import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from '@/consts';
-import {
-  DEFAULT_SETTINGS_SECTION,
-  ROUTES,
-  isAccountSubsection,
-  isSettingsSection,
-  type TAccountSubsection,
-} from '@/consts/routes';
-import { useTranslation } from 'react-i18next';
+import { Field } from '../SettingsControls';
 
-interface OutletContext {
-  searchQuery: string;
-}
-
-export function SettingsDetailPage() {
-  const { t } = useTranslation();
+/**
+ * Раздел «Аккаунт»: обзор и подстраницы.
+ *
+ * Подстраница выбирается адресом (/settings/account/password), а не
+ * состоянием — поэтому здесь только разбор параметра и переходы.
+ *
+ * Разметка и формы перенесены из прежней общей страницы без изменений:
+ * их переписывание — отдельная работа (#473), и смешивать её с переездом
+ * значило бы получить диff, в котором не видно ни того, ни другого.
+ */
+export function AccountSection() {
   const navigate = useNavigate();
-  const { searchQuery } = useOutletContext<OutletContext>();
-  const params = useParams<{ section: string; subsection: string }>();
-
-  /* Раздел и подстраница берутся из адреса. Неизвестное имя — не ошибка
-     и не пустой экран: показываем первый раздел, как и при заходе на
-     /settings без указания. */
-  const activeTab = isSettingsSection(params.section) ? params.section : DEFAULT_SETTINGS_SECTION;
-  const accountView = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
-
-  const openAccountView = (view: TAccountSubsection | 'overview') =>
-    navigate(
-      view === 'overview'
-        ? ROUTES.SETTINGS_SECTION('account')
-        : ROUTES.SETTINGS_SUBSECTION('account', view)
-    );
-  const { showToast } = useToasts();
   const queryClient = useQueryClient();
-  const updateSettings = useUpdateSettings();
-  const updatePrivacy = useUpdatePrivacy();
-  // Профиль загрузчик защищённой ветки уже положил в кеш, поэтому открытие
-  // настроек не спрашивает его заново (#223). Настройки он не тянет — их
-  // запрашивает эта страница.
-  const { data: user = {}, isPending: isUserPending } = useQuery(meQuery());
-  const { data: settingsPayload, isPending: isSettingsPending } = useQuery(settingsQuery());
-  const loading = isUserPending || isSettingsPending;
+  const { showToast } = useToasts();
+  const params = useParams<{ subsection: string }>();
+  const { data: user = {}, isPending } = useQuery(meQuery());
 
-  const privacy = settingsPayload?.privacy ?? {};
-  // Настройки живут в кеше запросов и больше нигде. Умолчания подставляются
-  // здесь, а не при записи: сервер вправе не прислать поле, которого у
-  // пользователя ещё нет.
-  const settings = { ...DEFAULT_PROFILE_SETTINGS, ...(settingsPayload?.settings ?? {}) };
-  // Статус двухфакторной и список сессий сервер пока не отдаёт — запросы
-  // закомментированы. Раньше эти значения молча брались из несуществующих
-  // элементов Promise.all, и страница показывала «выключено» и «сессий
-  // нет» независимо от того, как обстоят дела на самом деле.
+  const view = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
+
+  // Статус двухфакторной и список сеансов сервер не отдаёт — показывать
+  // выдуманное нельзя, поэтому здесь пусто до #478.
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
   const [sessions] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const query = searchQuery.trim().toLocaleLowerCase();
-  const visible = useMemo(() => {
-    if (!query) return true;
-    const labels = {
-      account: 'аккаунт профиль пароль безопасность сессии устройства выход',
-      notifications: 'уведомления звуки сообщения звонки',
-      appearance: 'внешний вид тема светлая темная',
-      privacy: 'конфиденциальность приватность последняя активность сообщения группы',
-      language: 'язык русский english',
-      about: 'приложение версия экспорт данные',
-    };
-    return labels[activeTab]?.includes(query);
-  }, [activeTab, query]);
-
-  /* Показ значения и откат при ошибке живут в самой мутации, здесь
-     остаётся только сообщение: слой данных про интерфейс не знает. */
-  function saveSettings(patch: Partial<ISettingsDto>) {
-    updateSettings.mutate(patch, {
-      onSuccess: () => showToast('success', t('settingsSaved', 'Настройки сохранены')),
-      onError: () => showToast('error', 'Не удалось сохранить настройки'),
-    });
-  }
-
-  function savePrivacy(patch: Partial<IPrivacyDto>) {
-    updatePrivacy.mutate(patch, {
-      onSuccess: () => showToast('success', 'Настройки приватности сохранены'),
-      onError: () => showToast('error', 'Не удалось сохранить настройки приватности'),
-    });
-  }
+  const openView = (next: TAccountSubsection | 'overview') =>
+    navigate(
+      next === 'overview'
+        ? ROUTES.SETTINGS_SECTION('account')
+        : ROUTES.SETTINGS_SUBSECTION('account', next)
+    );
 
   /**
    * Профиль изменил сам пользователь — обновляем оба его представления.
    *
    * Профиль задублирован кешем и стором, и стор читают 65 мест: расселение
-   * этой пары — отдельная работа (#241), а не попутная правка. Здесь он
-   * остаётся как есть.
+   * этой пары — отдельная работа (#241), а не попутная правка.
    */
   function handleUserChange(next: any) {
     queryClient.setQueryData(userKeys.me(), next);
@@ -121,146 +64,74 @@ export function SettingsDetailPage() {
     if (all) await services.cryptoService.wipeDevice().catch(() => {});
 
     disconnectRealtimeSocket();
-    // Наследие прежней схемы: страница больше сюда не пишет, но у давнего
-    // пользователя ключ остался, и чужие настройки не должны пережить выход.
-    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     navigate('/login');
   }
 
-  if (loading) return <div className="settings-detail-state">Загрузка…</div>;
-  if (!visible) return <div className="settings-detail-state">Ничего не найдено</div>;
+  if (isPending) return <div className="settings-detail-state">Загрузка…</div>;
+
+  if (view === 'profile') {
+    return (
+      <ProfileSettings
+        onBack={() => openView('overview')}
+        onUserChange={handleUserChange}
+        saving={saving}
+        setSaving={setSaving}
+        showToast={showToast}
+        user={user}
+      />
+    );
+  }
+
+  if (view === 'password') {
+    return (
+      <PasswordSettings
+        onBack={() => openView('overview')}
+        saving={saving}
+        setSaving={setSaving}
+        showToast={showToast}
+      />
+    );
+  }
+
+  if (view === 'email') {
+    return <EmailSettings onBack={() => openView('overview')} showToast={showToast} user={user} />;
+  }
+
+  if (view === 'twoFA') {
+    return (
+      <TwoFASettings
+        enabled={twoFAEnabled}
+        onBack={() => openView('overview')}
+        onEnabledChange={setTwoFAEnabled}
+        saving={saving}
+        setSaving={setSaving}
+        showToast={showToast}
+      />
+    );
+  }
+
+  if (view === 'sessions') {
+    return (
+      <SessionsSettings
+        onBack={() => openView('overview')}
+        onLogoutAll={() => logout(true)}
+        sessions={sessions}
+      />
+    );
+  }
 
   return (
-    <main className="settings-detail-page">
-      {activeTab === 'account' && accountView === 'profile' && (
-        <ProfileSettings
-          user={user}
-          saving={saving}
-          setSaving={setSaving}
-          onUserChange={handleUserChange}
-          onBack={() => openAccountView('overview')}
-          showToast={showToast}
-        />
-      )}
-      {activeTab === 'account' && accountView === 'password' && (
-        <PasswordSettings
-          saving={saving}
-          setSaving={setSaving}
-          onBack={() => openAccountView('overview')}
-          showToast={showToast}
-        />
-      )}
-      {activeTab === 'account' && accountView === 'email' && (
-        <EmailSettings
-          user={user}
-          onBack={() => openAccountView('overview')}
-          showToast={showToast}
-        />
-      )}
-      {activeTab === 'account' && accountView === 'twoFA' && (
-        <TwoFASettings
-          enabled={twoFAEnabled}
-          saving={saving}
-          setSaving={setSaving}
-          onEnabledChange={setTwoFAEnabled}
-          onBack={() => openAccountView('overview')}
-          showToast={showToast}
-        />
-      )}
-      {activeTab === 'account' && accountView === 'sessions' && (
-        <SessionsSettings
-          sessions={sessions}
-          onLogoutAll={() => logout(true)}
-          onBack={() => openAccountView('overview')}
-        />
-      )}
-      {activeTab === 'account' && accountView === 'overview' && (
-        <AccountSettings
-          user={user}
-          sessions={sessions}
-          twoFAEnabled={twoFAEnabled}
-          onLogout={logout}
-          onEditProfile={() => openAccountView('profile')}
-          onOpenEmail={() => openAccountView('email')}
-          onOpenPassword={() => openAccountView('password')}
-          onOpenTwoFA={() => openAccountView('twoFA')}
-          onOpenSessions={() => openAccountView('sessions')}
-        />
-      )}
-      {activeTab === 'notifications' && (
-        <SettingsSection
-          title="Уведомления и звуки"
-          description="Настройте поведение уведомлений на этом устройстве."
-        >
-          <ToggleRow
-            label="Уведомления"
-            value={settings.notifications}
-            onChange={(value) => saveSettings({ notifications: value })}
-          />
-          <ToggleRow
-            label="Звуки сообщений"
-            value={settings.sounds}
-            onChange={(value) => saveSettings({ sounds: value })}
-          />
-        </SettingsSection>
-      )}
-      {activeTab === 'appearance' && (
-        <SettingsSection title="Внешний вид" description="Выберите тему интерфейса.">
-          <ChoiceRow
-            label="Тема"
-            value={settings.theme}
-            options={[
-              { value: 'dark', label: 'Тёмная' },
-              { value: 'light', label: 'Светлая' },
-            ]}
-            onChange={(value: ISettingsDto['theme']) => saveSettings({ theme: value })}
-          />
-        </SettingsSection>
-      )}
-      {activeTab === 'privacy' && (
-        <SettingsSection
-          title="Конфиденциальность"
-          description="Управляйте тем, кто видит ваши данные."
-        >
-          <ChoiceRow
-            label="Последняя активность"
-            value={privacy.lastSeen || 'all'}
-            options={[
-              { value: 'all', label: 'Все' },
-              { value: 'contacts', label: 'Контакты' },
-              { value: 'nobody', label: 'Никто' },
-            ]}
-            onChange={(value) => savePrivacy({ lastSeen: value })}
-          />
-          <ToggleRow
-            label="Сообщения от незнакомых"
-            value={privacy.messagesFromStrangers !== false}
-            onChange={(value) => savePrivacy({ messagesFromStrangers: value })}
-          />
-        </SettingsSection>
-      )}
-      {activeTab === 'language' && (
-        <SettingsSection title="Язык" description="Язык интерфейса CraneApp.">
-          <ChoiceRow
-            label="Язык приложения"
-            value={settings.language}
-            options={[
-              { value: 'ru', label: 'Русский' },
-              { value: 'en', label: 'English' },
-            ]}
-            onChange={(value: string) => saveSettings({ language: value })}
-          />
-        </SettingsSection>
-      )}
-      {activeTab === 'about' && (
-        <SettingsSection title="О приложении" description="CraneApp Messenger">
-          <div className="settings-about-version">Версия 2</div>
-          <button className="settings-secondary-button" onClick={() => downloadExport(showToast)}>
-            Экспортировать мои данные
-          </button>
-        </SettingsSection>
-      )}
-    </main>
+    <AccountSettings
+      onEditProfile={() => openView('profile')}
+      onLogout={logout}
+      onOpenEmail={() => openView('email')}
+      onOpenPassword={() => openView('password')}
+      onOpenSessions={() => openView('sessions')}
+      onOpenTwoFA={() => openView('twoFA')}
+      sessions={sessions}
+      twoFAEnabled={twoFAEnabled}
+      user={user}
+    />
   );
 }
 
@@ -632,22 +503,6 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
       </form>
     </section>
   );
-}
-
-async function downloadExport(showToast) {
-  try {
-    const data = await services.userService.exportData();
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'craneapp-data.json';
-    link.click();
-    URL.revokeObjectURL(url);
-  } catch (_) {
-    showToast('error', 'Не удалось экспортировать данные');
-  }
 }
 
 function formatDate(value) {

@@ -3,6 +3,7 @@ import { queryClient } from '@/queries/queryClient';
 import { meQuery } from '@/queries/users/meQuery';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 import { useProfileStore } from '@/store';
+import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard.js';
 import { AppLayout } from '../components/layouts/AppLayout.js';
@@ -12,7 +13,8 @@ import {
   DEFAULT_SETTINGS_SECTION,
   REACT_ROUTES,
   ROUTES,
-  isSettingsSection,
+  SETTINGS_SECTIONS,
+  type TSettingsSection,
 } from '../consts/routes';
 import { clearAuthSession } from '../utils/clearAuthSession.js';
 
@@ -102,12 +104,50 @@ const chatLoader = async ({ params }: { params: Params }) => {
  * хуже тихого перенаправления. Настройки открывают из меню, а не по внешним
  * ссылкам, поэтому терять тут нечего.
  */
-const settingsSectionLoader = ({ params }: { params: Params }) => {
-  if (!isSettingsSection(params.section)) {
-    return redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION));
-  }
-  return null;
+/**
+ * Разделы настроек — по маршруту на каждый.
+ *
+ * Список один и тот же и для меню, и для маршрутов: раздела, которого нет
+ * в `SETTINGS_SECTIONS`, не существует и для адреса. Тип `Record` не даст
+ * добавить раздел в список и забыть про его экран.
+ *
+ * Импорты записаны по одному, а не собраны выражением: сборщику нужно
+ * видеть каждый путь, иначе разделы не разъедутся по отдельным частям.
+ */
+const SECTION_COMPONENTS: Record<TSettingsSection, () => Promise<{ Component: ComponentType }>> = {
+  account: () =>
+    import('../pages/SettingsPage/sections/AccountSection.js').then((m) => ({
+      Component: m.AccountSection,
+    })),
+  notifications: () =>
+    import('../pages/SettingsPage/sections/NotificationsSection.js').then((m) => ({
+      Component: m.NotificationsSection,
+    })),
+  appearance: () =>
+    import('../pages/SettingsPage/sections/AppearanceSection.js').then((m) => ({
+      Component: m.AppearanceSection,
+    })),
+  privacy: () =>
+    import('../pages/SettingsPage/sections/PrivacySection.js').then((m) => ({
+      Component: m.PrivacySection,
+    })),
+  language: () =>
+    import('../pages/SettingsPage/sections/LanguageSection.js').then((m) => ({
+      Component: m.LanguageSection,
+    })),
+  about: () =>
+    import('../pages/SettingsPage/sections/AboutSection.js').then((m) => ({
+      Component: m.AboutSection,
+    })),
 };
+
+/* Подстраницы есть пока только у аккаунта, и разбирает их он сам. */
+const settingsSectionRoutes = SETTINGS_SECTIONS.flatMap((section) => {
+  const lazy = SECTION_COMPONENTS[section];
+  const route = { path: section, lazy };
+
+  return section === 'account' ? [route, { path: `${section}/:subsection`, lazy }] : [route];
+});
 
 export const router = createBrowserRouter([
   {
@@ -189,21 +229,18 @@ export const router = createBrowserRouter([
                     index: true,
                     loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
                   },
+                  ...settingsSectionRoutes,
+                  /* Раздел, которого нет в списке, — не ошибка и не пустой
+                     экран: показываем первый, как и при заходе без раздела.
+
+                     Пустой Component обязателен, хотя маршрут ничего не
+                     рисует: без него роутер предупреждает о совпавшем
+                     маршруте без элемента — до редиректа он этого ещё не
+                     знает. */
                   {
-                    path: REACT_ROUTES.SETTINGS_SECTION,
-                    loader: settingsSectionLoader,
-                    lazy: () =>
-                      import('../pages/SettingsPage/SettingsDetailPage.js').then((m) => ({
-                        Component: m.SettingsDetailPage,
-                      })),
-                  },
-                  {
-                    path: REACT_ROUTES.SETTINGS_SUBSECTION,
-                    loader: settingsSectionLoader,
-                    lazy: () =>
-                      import('../pages/SettingsPage/SettingsDetailPage.js').then((m) => ({
-                        Component: m.SettingsDetailPage,
-                      })),
+                    path: '*',
+                    loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
+                    Component: () => null,
                   },
                 ],
               },
@@ -212,6 +249,7 @@ export const router = createBrowserRouter([
           {
             path: '*',
             loader: () => redirect(REACT_ROUTES.HOME),
+            Component: () => null,
           },
         ],
       },
