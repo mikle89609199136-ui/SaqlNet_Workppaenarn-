@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,18 +23,42 @@ import (
 )
 
 type rateLimitConfig struct {
-	authRate    float64
-	authBurst   int
-	globalRate  float64
-	globalBurst int
+	loginRegister bucketConfig
+	password2FA   bucketConfig
+	otherAuth     bucketConfig
+	messageWrite  bucketConfig
+	messageRead   bucketConfig
+	mediaUpload   bucketConfig
+	otherAPI      bucketConfig
+	websocket     bucketConfig
+	global        bucketConfig
+}
+
+type bucketConfig struct {
+	rate  float64
+	burst int
 }
 
 func loadRateLimitConfig() rateLimitConfig {
 	return rateLimitConfig{
-		authRate:    config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
-		authBurst:   config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
-		globalRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
-		globalBurst: config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
+		loginRegister: loadBucketConfig("LOGIN_REGISTER", 10.0/60.0, 5),
+		password2FA:   loadBucketConfig("PASSWORD_2FA", 10.0/60.0, 5),
+		otherAuth:     loadBucketConfig("OTHER_AUTH", 30.0/60.0, 10),
+		messageWrite:  loadBucketConfig("MESSAGE_WRITE", 5, 20),
+		messageRead:   loadBucketConfig("MESSAGE_READ", 20, 40),
+		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", 10.0/60.0, 10),
+		otherAPI:      loadBucketConfig("OTHER_API", 20, 40),
+		websocket:     loadBucketConfig("WEBSOCKET", 10.0/60.0, 20),
+		global:        loadBucketConfig("GLOBAL", 50, 100),
+	}
+}
+
+func loadBucketConfig(name string, defaultRate float64, defaultBurst int) bucketConfig {
+	prefix := "EDGE_RATE_LIMIT_" + name
+
+	return bucketConfig{
+		rate:  config.PositiveFloat64(prefix+"_RPS", defaultRate),
+		burst: config.PositiveInt(prefix+"_BURST", defaultBurst),
 	}
 }
 
@@ -49,6 +75,11 @@ type bucket struct {
 	lastRefil time.Time
 }
 
+type limiterSet struct {
+	groups map[routeGroup]*tokenBucket
+	global *tokenBucket
+}
+
 func newTokenBucket(rate, capacity float64) *tokenBucket {
 	tb := &tokenBucket{
 		buckets:  make(map[string]*bucket),
@@ -59,23 +90,107 @@ func newTokenBucket(rate, capacity float64) *tokenBucket {
 	return tb
 }
 
+func newLimiterSet(cfg rateLimitConfig) *limiterSet {
+	return &limiterSet{
+		groups: map[routeGroup]*tokenBucket{
+			routeGroupLoginRegister: newTokenBucket(cfg.loginRegister.rate, float64(cfg.loginRegister.burst)),
+			routeGroupPassword2FA:   newTokenBucket(cfg.password2FA.rate, float64(cfg.password2FA.burst)),
+			routeGroupOtherAuth:     newTokenBucket(cfg.otherAuth.rate, float64(cfg.otherAuth.burst)),
+			routeGroupMessageWrite:  newTokenBucket(cfg.messageWrite.rate, float64(cfg.messageWrite.burst)),
+			routeGroupMessageRead:   newTokenBucket(cfg.messageRead.rate, float64(cfg.messageRead.burst)),
+			routeGroupMediaUpload:   newTokenBucket(cfg.mediaUpload.rate, float64(cfg.mediaUpload.burst)),
+			routeGroupOtherAPI:      newTokenBucket(cfg.otherAPI.rate, float64(cfg.otherAPI.burst)),
+			routeGroupWebSocket:     newTokenBucket(cfg.websocket.rate, float64(cfg.websocket.burst)),
+		},
+		global: newTokenBucket(cfg.global.rate, float64(cfg.global.burst)),
+	}
+}
+
 func (tb *tokenBucket) Allow(ip string) bool {
+	return tb.allowAt(ip, time.Now())
+}
+
+func (tb *tokenBucket) allowAt(ip string, now time.Time) bool {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
-	now := time.Now()
-	b, ok := tb.buckets[ip]
-	if !ok {
-		b = &bucket{tokens: tb.capacity, lastRefil: now}
-		tb.buckets[ip] = b
-	}
-	elapsed := now.Sub(b.lastRefil).Seconds()
-	b.tokens = min(tb.capacity, b.tokens+elapsed*tb.rate)
-	b.lastRefil = now
+	b := tb.refillBucketLocked(ip, now)
 	if b.tokens < 1 {
 		return false
 	}
 	b.tokens--
 	return true
+}
+
+func (ls *limiterSet) AllowRequest(ip string, group routeGroup) (bool, time.Duration) {
+	if group == routeGroupNone {
+		if ls.global.Allow(ip) {
+			return true, 0
+		}
+
+		return false, retryAfter(0, ls.global.rate)
+	}
+
+	groupLimiter, exists := ls.groups[group]
+	// недостижимо: newLimiterSet заводит корзину для каждой группы, гарантируется в тесте TestNewLimiterSetHasBucketForEveryRouteGroup
+	if !exists {
+		return false, time.Second
+	}
+
+	groupLimiter.mu.Lock()
+	defer groupLimiter.mu.Unlock()
+
+	ls.global.mu.Lock()
+	defer ls.global.mu.Unlock()
+
+	now := time.Now()
+	groupBucket := groupLimiter.refillBucketLocked(ip, now)
+	globalBucket := ls.global.refillBucketLocked(ip, now)
+
+	if groupBucket.tokens < 1 || globalBucket.tokens < 1 {
+		groupWait := retryAfter(groupBucket.tokens, groupLimiter.rate)
+		globalWait := retryAfter(globalBucket.tokens, ls.global.rate)
+
+		if globalWait > groupWait {
+			return false, globalWait
+		}
+
+		return false, groupWait
+	}
+
+	groupBucket.tokens--
+	globalBucket.tokens--
+
+	return true, 0
+}
+
+func (tb *tokenBucket) refillBucketLocked(ip string, now time.Time) *bucket {
+	b, exists := tb.buckets[ip]
+	if !exists {
+		b = &bucket{
+			tokens:    tb.capacity,
+			lastRefil: now,
+		}
+		tb.buckets[ip] = b
+	}
+	elapsed := now.Sub(b.lastRefil).Seconds()
+	b.tokens = min(tb.capacity, b.tokens+elapsed*tb.rate)
+	b.lastRefil = now
+
+	return b
+}
+
+func retryAfter(tokens, rate float64) time.Duration {
+	if tokens >= 1 {
+		return 0
+	}
+	// бывает только у тестовых корзин с замороженным пополнением; защищаемся от деления на ноль
+	if rate <= 0 {
+		return time.Second
+	}
+
+	missingTokens := 1 - tokens
+	waitSeconds := missingTokens / rate
+	return time.Duration(waitSeconds * float64(time.Second))
 }
 
 func (tb *tokenBucket) cleanup() {
@@ -93,27 +208,26 @@ func (tb *tokenBucket) cleanup() {
 	}
 }
 
-func min(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
+func rateLimitMiddleware(trustedProxies trustedProxySet, limiters *limiterSet, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := trustedProxies.clientIP(r)
-		// Stricter limit for auth endpoints (login/register brute-force).
-		if strings.HasPrefix(r.URL.Path, "/api/v2/auth/") {
-			if !authLimiter.Allow(ip) {
-				httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests — slow down")
-				return
-			}
+		if isRateLimitExempt(r.Method, r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
 		}
-		if !globalLimiter.Allow(ip) {
+		ip := trustedProxies.clientIP(r)
+		group := classifyRoute(r.Method, r.URL.Path)
+		allowed, wait := limiters.AllowRequest(ip, group)
+		if !allowed {
+			retryAfterSeconds := int(math.Ceil(wait.Seconds()))
+			if retryAfterSeconds < 1 {
+				retryAfterSeconds = 1
+			}
+
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
 			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests")
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -248,11 +362,10 @@ func main() {
 		fs.ServeHTTP(w, r)
 	})
 
-	// Rate limits use safe defaults and can be overridden through environment variables.
 	limits := loadRateLimitConfig()
-	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
-	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
-	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, globalLimiter, mux)
+	limiters := newLimiterSet(limits)
+
+	limitedMux := rateLimitMiddleware(trustedProxies, limiters, mux)
 
 	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
