@@ -2672,3 +2672,61 @@ func AssertCanModerate(actorRole, targetRole string) error {
 	}
 	return nil
 }
+
+type onlineMembersInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+// GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
+// (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
+func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
+	// 1. Валидация входных данных
+	input := onlineMembersInput{ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	// 2. Чат должен существовать; заодно читаем его тип для проверки ниже.
+	var chatType string
+	err := s.db.QueryRowContext(ctx, "SELECT type FROM chats.chats WHERE id = $1", chatID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Только участник чата может видеть online-участников.
+	if _, err := s.memberRole(ctx, userID, chatID); err != nil {
+		return nil, err
+	}
+
+	// 4. Online-участники доступны только для групповых чатов.
+	if chatType != "group" {
+		return nil, ErrInvalidChatType
+	}
+
+	// 5. Участники чата читаются из PostgreSQL — только их UUID передаём
+	// в store, чтобы не раскрывать presence посторонних пользователей.
+	rows, err := s.db.QueryContext(ctx, "SELECT user_id::text FROM chats.members WHERE chat_id = $1", chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	memberIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		memberIDs = append(memberIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 6. Online определяется по presence.Store; порядок совпадает с выборкой из БД.
+	return s.presence.OnlineUsers(ctx, memberIDs)
+}
