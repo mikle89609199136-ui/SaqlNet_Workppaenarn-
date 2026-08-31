@@ -11,18 +11,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
+var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
+
 var (
-	ErrNotFound       = errors.New("user not found")
-	ErrSelfBlock      = errors.New("cannot block yourself")
-	ErrAlreadyBlocked = errors.New("user already blocked")
-	ErrInvalidInput   = errors.New("invalid input")
-	ErrWrongPasscode  = errors.New("wrong passcode")
-	ErrNoPasscodeSet  = errors.New("no passcode set")
+	ErrNotFound              = errors.New("user not found")
+	ErrSelfBlock             = errors.New("cannot block yourself")
+	ErrAlreadyBlocked        = errors.New("user already blocked")
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidUsernameFormat = errors.New("wrong username format")
+	ErrWrongPasscode         = errors.New("wrong passcode")
+	ErrNoPasscodeSet         = errors.New("no passcode set")
 )
 
 type Profile struct {
@@ -177,13 +181,37 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 	return users, rows.Err()
 }
 
+// IsUsernameAvailable checks whether the given username is available for registration.
+// It performs the following validations:
+//   - Trims leading/trailing spaces.
+//   - Ensures the username is not empty.
+//   - Validates the username against the allowed pattern (^[a-zA-Z0-9_]{3,32}$).
+//   - Queries the database case‑insensitively to check for existing users.
+//
+// Returns:
+//   - (true, nil)  if the username is syntactically valid and does not exist in DB.
+//   - (false, nil) if the username is valid but already exists.
+//   - (false, ErrInvalidInput) if the username is empty or does not match the pattern.
+//   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
+	// Trim whitespace and check for empty input
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return false, ErrInvalidInput
 	}
+
+	// Validate username against the allowed pattern
+	if !usernamePattern.MatchString(username) {
+		return false, ErrInvalidInput
+	}
+
+	// Case‑insensitive existence check in the database
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`, username).Scan(&exists)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
+		username).Scan(&exists)
+
+	// Available if no existing record is found
 	return !exists, err
 }
 
