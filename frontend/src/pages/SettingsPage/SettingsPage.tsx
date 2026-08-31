@@ -47,9 +47,19 @@ export function SettingsPage() {
         <SettingsSidebar t={t} />
       </div>
 
-      <main className="settings-detail-page min-w-0 flex-1 overflow-y-auto">
-        {matchesQuery ? <Outlet /> : <div className="settings-detail-state">Ничего не найдено</div>}
-      </main>
+      {/* Два уровня, а не один: внешний занимает свободное место и
+          прокручивается, внутренний держит ширину колонки текста. Слить их
+          нельзя — flex-1 на том же элементе перебивает width, и содержимое
+          растягивается до края экрана. */}
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <main className="settings-detail-page">
+          {matchesQuery ? (
+            <Outlet />
+          ) : (
+            <div className="settings-detail-state">Ничего не найдено</div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
