@@ -1,6 +1,7 @@
 import { chatQuery, messagesQuery } from '@/queries/chat/threadQueries';
 import { queryClient } from '@/queries/queryClient';
 import { meQuery } from '@/queries/users/meQuery';
+import { settingsQuery } from '@/queries/users/settingsQuery';
 import { useProfileStore } from '@/store';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard.js';
@@ -32,6 +33,11 @@ async function requireSession({ request }: { request: Request }) {
     // вернула бы прежние имя и аватар.
     const user = await queryClient.fetchQuery(meQuery());
     useProfileStore.getState().setUser(user);
+
+    // Тема и язык применяются ко всему приложению, поэтому настройки нужны
+    // не только на своей странице. Неудача здесь сессию не рушит: без них
+    // интерфейс работает на том, что записано в проекции.
+    void queryClient.fetchQuery(settingsQuery()).catch(() => {});
   } catch (error: any) {
     if (error?.name === 'AbortError') throw error;
 
