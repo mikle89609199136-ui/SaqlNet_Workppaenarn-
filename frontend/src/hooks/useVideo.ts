@@ -1,92 +1,69 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useFullscreen } from './useFullscreen';
+import { useIdle } from './useIdle';
+import { useVideoQuality, type VideoSource } from './useVideoQuality';
 
-export interface VideoSource {
-  label: string;
-  url: string;
-}
+export type { VideoSource };
 
 interface UseVideoOptions {
-  src: string;
+  src?: string;
   sources?: VideoSource[];
   isMobile?: boolean;
 }
 
-export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, options?: UseVideoOptions) => {
+export const useVideo = (
+  externalWrapperRef?: RefObject<HTMLElement | null>,
+  options?: UseVideoOptions
+) => {
   const internalWrapperRef = useRef<HTMLElement>(null);
   const wrapperRef = externalWrapperRef ?? internalWrapperRef;
   const mediaRef = useRef<HTMLVideoElement>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [isIdle, setIsIdle] = useState(false);
 
-  const hasSources = options?.sources && options.sources.length > 1;
-  const initialLabel = hasSources ? options.sources![0].label : 'Auto';
-  const [activeSrc, setActiveSrc] = useState(hasSources ? options.sources![0].url : options?.src ?? '');
-  const [quality, setQuality] = useState(initialLabel);
-  const [qualityOpen, setQualityOpen] = useState(false);
-
-  const idleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isIntersectingRef = useRef(false);
 
-  // Sync src prop
-  useEffect(() => {
-    if (!hasSources && options?.src) {
-      setActiveSrc(options.src);
-    }
-  }, [options?.src, hasSources]);
+  // --- Полноэкранный режим ---
+  const { isFullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
 
-  // --- Play/Pause ---
+  // --- Автоматическое скрытие UI при бездействии в полноэкранном режиме ---
+  const { isIdle, resetIdle, setIsIdle } = useIdle({
+    enabled: isFullscreen,
+    timeoutMs: 2000,
+  });
 
+  // --- Качество и источники видео ---
+  const { activeSrc, quality, qualityOpen, hasSources, setQualityOpen, handleQualityChange } =
+    useVideoQuality({
+      src: options?.src,
+      sources: options?.sources,
+      mediaRef,
+      onQualityChanging: () => setIsBuffering(true),
+    });
+
+  // --- Воспроизведение и пауза ---
   const togglePlay = useCallback(() => {
     if (!mediaRef.current) return;
     if (mediaRef.current.paused) {
       if (mediaRef.current.ended || mediaRef.current.currentTime >= mediaRef.current.duration) {
         mediaRef.current.currentTime = 0;
       }
-      mediaRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      mediaRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     } else {
       mediaRef.current.pause();
       setIsPlaying(false);
     }
   }, []);
 
-  // Sync isPlaying with native events (covers autoPlay, IntersectionObserver triggers, etc.)
-  useEffect(() => {
-    const media = mediaRef.current;
-    if (!media) return;
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    media.addEventListener('play', onPlay);
-    media.addEventListener('pause', onPause);
-
-    // Sync initial state — autoplay may have already fired before this effect
-    if (!media.paused) setIsPlaying(true);
-
-    return () => {
-      media.removeEventListener('play', onPlay);
-      media.removeEventListener('pause', onPause);
-    };
-  }, []);
-
-  // --- Metadata ---
-
-  const handleLoadedMetadata = useCallback(() => {
-    if (mediaRef.current) {
-      setDuration(mediaRef.current.duration);
-    }
-  }, []);
-
-  const handleEnded = useCallback(() => {
-    setIsPlaying(false);
-  }, []);
-
-  // --- Time tracking (rAF loop) ---
-
+  // --- Синхронизация времени (rAF обеспечивает плавность хода ползунка) ---
   const isDraggingRef = useRef(false);
   const rafRef = useRef<number | undefined>(undefined);
 
@@ -110,8 +87,48 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
     };
   }, [isPlaying]);
 
-  // --- Slider ---
+  // Синхронизация isPlaying с нативными событиями медиа
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media) return;
 
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+
+    media.addEventListener('play', onPlay);
+    media.addEventListener('pause', onPause);
+
+    if (!media.paused) setIsPlaying(true);
+    if (media.currentTime) setCurrentTime(media.currentTime);
+    media.volume = volume;
+    media.muted = isMuted;
+
+    return () => {
+      media.removeEventListener('play', onPlay);
+      media.removeEventListener('pause', onPause);
+    };
+  }, []);
+
+  // Синхронизация громкости и mute при их изменении
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    media.volume = volume;
+    media.muted = isMuted;
+  }, [volume, isMuted]);
+
+  // --- Метаданные ---
+  const handleLoadedMetadata = useCallback(() => {
+    if (mediaRef.current) {
+      setDuration(mediaRef.current.duration);
+    }
+  }, []);
+
+  const handleEnded = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  // --- Ползунок прогресса ---
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
     setCurrentTime(val);
@@ -128,8 +145,7 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
     isDraggingRef.current = false;
   }, []);
 
-  // --- Seek indicator ---
-
+  // --- Индикатор перемотки (+5с / -5с) ---
   const [seekIndicator, setSeekIndicator] = useState<'forward' | 'backward' | null>(null);
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -139,84 +155,47 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
     seekTimeoutRef.current = setTimeout(() => setSeekIndicator(null), 600);
   }, []);
 
-  // --- Volume ---
+  useEffect(() => {
+    return () => {
+      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    };
+  }, []);
 
-  const changeVolume = useCallback((newVolume: number) => {
-    if (!mediaRef.current) return;
-    const clamped = Math.max(0, Math.min(1, newVolume));
-    mediaRef.current.volume = clamped;
-    setVolume(clamped);
-    if (clamped > 0 && isMuted) {
-      setIsMuted(false);
-      mediaRef.current.muted = false;
-    }
-  }, [isMuted]);
+  // --- Громкость и звук ---
+  const changeVolume = useCallback(
+    (newVolume: number) => {
+      const clamped = Math.max(0, Math.min(1, newVolume));
+      if (mediaRef.current) {
+        mediaRef.current.volume = clamped;
+        if (clamped > 0 && isMuted) {
+          mediaRef.current.muted = false;
+        }
+      }
+      setVolume(clamped);
+      if (clamped > 0 && isMuted) {
+        setIsMuted(false);
+      }
+    },
+    [isMuted]
+  );
 
   const toggleMute = useCallback(() => {
-    if (!mediaRef.current) return;
     const newMuted = !isMuted;
-    mediaRef.current.muted = newMuted;
+    if (mediaRef.current) {
+      mediaRef.current.muted = newMuted;
+    }
     setIsMuted(newMuted);
     if (!newMuted && volume === 0) changeVolume(1);
   }, [isMuted, volume, changeVolume]);
 
-  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    changeVolume(Number(e.target.value));
-  }, [changeVolume]);
+  const handleVolumeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      changeVolume(Number(e.target.value));
+    },
+    [changeVolume]
+  );
 
-  // --- Fullscreen ---
-
-  const toggleFullscreen = useCallback(() => {
-    const el = wrapperRef?.current || mediaRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    } else {
-      el.requestFullscreen().catch(() => {});
-    }
-  }, [wrapperRef]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      const el = wrapperRef?.current || mediaRef.current;
-      setIsFullscreen(!!document.fullscreenElement && document.fullscreenElement === el);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [wrapperRef]);
-
-  // --- Idle (auto-hide UI in fullscreen) ---
-
-  const isFullscreenRef = useRef(isFullscreen);
-  isFullscreenRef.current = isFullscreen;
-
-  const resetIdle = useCallback(() => {
-    setIsIdle(false);
-    if (idleTimeout.current) clearTimeout(idleTimeout.current);
-    if (isFullscreenRef.current) {
-      idleTimeout.current = setTimeout(() => setIsIdle(true), 2000);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isFullscreen) {
-      resetIdle();
-      const handleActivity = () => resetIdle();
-      window.addEventListener('mousemove', handleActivity);
-      window.addEventListener('keydown', handleActivity);
-      return () => {
-        window.removeEventListener('mousemove', handleActivity);
-        window.removeEventListener('keydown', handleActivity);
-        if (idleTimeout.current) clearTimeout(idleTimeout.current);
-      };
-    } else {
-      setIsIdle(false);
-      if (idleTimeout.current) clearTimeout(idleTimeout.current);
-    }
-  }, [isFullscreen, resetIdle]);
-
-  // --- Autoplay on viewport intersection ---
-
+  // --- Автовоспроизведение в области видимости ---
   useEffect(() => {
     const el = wrapperRef?.current;
     if (!el) return;
@@ -252,95 +231,41 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
   const handleWaiting = useCallback(() => setIsBuffering(true), []);
   const handlePlaying = useCallback(() => setIsBuffering(false), []);
 
-  // --- Auto-fullscreen on landscape (mobile) ---
+  // --- Обработчики кликов и тапов ---
+  const handleVideoClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (options?.isMobile) return;
 
-  useEffect(() => {
-    if (!options?.isMobile) return;
-
-    const mq = window.matchMedia('(orientation: landscape)');
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      if (e.matches && !isFullscreen) {
-        toggleFullscreen();
-      } else if (!e.matches && isFullscreen) {
-        toggleFullscreen();
-      }
-    };
-
-    if (mq.addEventListener) {
-      mq.addEventListener('change', handler);
-    } else {
-      // @ts-ignore — older Safari
-      mq.addListener(handler);
-    }
-    return () => {
-      if (mq.removeEventListener) {
-        mq.removeEventListener('change', handler);
-      } else {
-        // @ts-ignore
-        mq.removeListener(handler);
-      }
-    };
-  }, [options?.isMobile, isFullscreen, toggleFullscreen]);
-
-  // --- Click/Touch handlers ---
-
-  // Desktop: click toggles play or resets idle
-  const handleVideoClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    // On mobile, touch handler takes over — ignore click to avoid double-fire
-    if (options?.isMobile) return;
-
-    if (isFullscreen && isIdle) {
-      resetIdle();
-    } else {
-      togglePlay();
-    }
-  }, [options?.isMobile, isFullscreen, isIdle, resetIdle, togglePlay]);
-
-  // Mobile: touchEnd for instant response (no 300ms click delay)
-  const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!options?.isMobile) return;
-    e.preventDefault(); // prevent subsequent click
-    e.stopPropagation();
-
-    if (!isFullscreen) {
-      toggleFullscreen();
-    } else {
-      // Toggle UI visibility
-      if (isIdle) {
+      if (isFullscreen && isIdle) {
         resetIdle();
       } else {
-        setIsIdle(true);
-        if (idleTimeout.current) clearTimeout(idleTimeout.current);
+        togglePlay();
       }
-    }
-  }, [options?.isMobile, isFullscreen, isIdle, resetIdle, toggleFullscreen]);
+    },
+    [options?.isMobile, isFullscreen, isIdle, resetIdle, togglePlay]
+  );
 
-  // --- Quality switch ---
+  const handleVideoTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (!options?.isMobile) return;
+      e.preventDefault();
+      e.stopPropagation();
 
-  const handleQualityChange = useCallback((url: string, label: string) => {
-    if (mediaRef.current) {
-      const time = mediaRef.current.currentTime;
-      const wasPlaying = !mediaRef.current.paused;
-
-      setActiveSrc(url);
-      setQuality(label);
-      setQualityOpen(false);
-      setIsBuffering(true);
-
-      const onLoaded = () => {
-        if (mediaRef.current) {
-          mediaRef.current.currentTime = time;
-          if (wasPlaying) mediaRef.current.play().catch(() => {});
+      if (!isFullscreen) {
+        toggleFullscreen();
+      } else {
+        if (isIdle) {
+          resetIdle();
+        } else {
+          setIsIdle(true);
         }
-        mediaRef.current?.removeEventListener('loadeddata', onLoaded);
-      };
-      mediaRef.current.addEventListener('loadeddata', onLoaded);
-    }
-  }, []);
+      }
+    },
+    [options?.isMobile, isFullscreen, isIdle, resetIdle, setIsIdle, toggleFullscreen]
+  );
 
-  // --- Keyboard shortcuts (fullscreen only) ---
-
+  // --- Горячие клавиши (только в полноэкранном режиме) ---
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -360,17 +285,20 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
           break;
         case 'ArrowRight':
           e.preventDefault();
-          mediaRef.current.currentTime = Math.min(mediaRef.current.duration, mediaRef.current.currentTime + 5);
+          mediaRef.current.currentTime = Math.min(
+            mediaRef.current.duration,
+            mediaRef.current.currentTime + 5
+          );
           setCurrentTime(mediaRef.current.currentTime);
           triggerSeekIndicator('forward');
           break;
         case 'ArrowUp':
           e.preventDefault();
-          changeVolume(volume + 0.1);
+          changeVolume(Math.round((volume + 0.1) * 10) / 10);
           break;
         case 'ArrowDown':
           e.preventDefault();
-          changeVolume(volume - 0.1);
+          changeVolume(Math.round((volume - 0.1) * 10) / 10);
           break;
         case 'KeyM':
           e.preventDefault();
@@ -383,8 +311,7 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
     return () => window.removeEventListener('keydown', handleKey);
   }, [isFullscreen, togglePlay, changeVolume, volume, toggleMute, triggerSeekIndicator]);
 
-  // --- Format ---
-
+  // --- Форматирование времени ---
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return '0:00';
     const m = Math.floor(seconds / 60);
@@ -395,7 +322,6 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
   return {
     mediaRef,
     wrapperRef,
-    // Playback state
     isPlaying,
     currentTime,
     duration,
@@ -405,19 +331,16 @@ export const useVideo = (externalWrapperRef?: RefObject<HTMLElement | null>, opt
     isBuffering,
     isIdle,
     seekIndicator,
-    // Source / quality
     activeSrc,
     quality,
     qualityOpen,
     setQualityOpen,
     hasSources,
-    // Actions
     togglePlay,
     toggleMute,
     toggleFullscreen,
     changeVolume,
     resetIdle,
-    // Handlers (pass directly to JSX)
     handleLoadedMetadata,
     handleEnded,
     handleSliderChange,

@@ -6,16 +6,24 @@ import { AudioPlayer } from './AudioPlayer';
 describe('AudioPlayer', () => {
   beforeEach(() => {
     Object.defineProperty(window.HTMLMediaElement.prototype, 'paused', {
-      get() { return this._paused ?? true; },
-      set(v) { this._paused = v; },
+      get() {
+        return this._paused ?? true;
+      },
+      set(v) {
+        this._paused = v;
+      },
       configurable: true,
     });
-    window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(function (this: HTMLMediaElement) {
+    window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(function (
+      this: HTMLMediaElement
+    ) {
       (this as any)._paused = false;
       this.dispatchEvent(new Event('play'));
       return Promise.resolve();
     });
-    window.HTMLMediaElement.prototype.pause = vi.fn().mockImplementation(function (this: HTMLMediaElement) {
+    window.HTMLMediaElement.prototype.pause = vi.fn().mockImplementation(function (
+      this: HTMLMediaElement
+    ) {
       (this as any)._paused = true;
       this.dispatchEvent(new Event('pause'));
     });

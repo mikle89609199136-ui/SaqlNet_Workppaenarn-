@@ -3,24 +3,34 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { VideoPlayer } from './VideoPlayer';
 
-// Mock IntersectionObserver
-class MockIntersectionObserver implements IntersectionObserver {
-  readonly root: Element | null = null;
-  readonly rootMargin: string = '';
-  readonly thresholds: ReadonlyArray<number> = [];
-  disconnect = vi.fn();
-  observe = vi.fn();
-  takeRecords = vi.fn();
-  unobserve = vi.fn();
-}
+// Мок IntersectionObserver
+const mockIntersectionObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+window.IntersectionObserver = mockIntersectionObserver;
 
+// Мок matchMedia
+window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+}));
+
+// Хелперы для симуляции полноэкранного режима
 const simulateFullscreen = (el: HTMLElement) => {
   Object.defineProperty(document, 'fullscreenElement', {
     value: el,
     writable: true,
     configurable: true,
   });
-  fireEvent(document, new Event('fullscreenchange'));
+  document.dispatchEvent(new Event('fullscreenchange'));
 };
 
 const exitFullscreen = () => {
@@ -29,35 +39,32 @@ const exitFullscreen = () => {
     writable: true,
     configurable: true,
   });
-  fireEvent(document, new Event('fullscreenchange'));
+  document.dispatchEvent(new Event('fullscreenchange'));
 };
 
 describe('VideoPlayer', () => {
-  let requestFullscreenMock: ReturnType<typeof vi.spyOn>;
+  let requestFullscreenMock: any;
 
   beforeEach(() => {
-    Object.defineProperty(window, 'IntersectionObserver', {
-      writable: true,
-      configurable: true,
-      value: MockIntersectionObserver,
-    });
-    Object.defineProperty(global, 'IntersectionObserver', {
-      writable: true,
-      configurable: true,
-      value: MockIntersectionObserver,
-    });
-
     Object.defineProperty(window.HTMLMediaElement.prototype, 'paused', {
-      get() { return this._paused ?? true; },
-      set(v) { this._paused = v; },
+      get() {
+        return this._paused ?? true;
+      },
+      set(v) {
+        this._paused = v;
+      },
       configurable: true,
     });
-    window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(function (this: HTMLMediaElement) {
+    window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(function (
+      this: HTMLMediaElement
+    ) {
       (this as any)._paused = false;
       this.dispatchEvent(new Event('play'));
       return Promise.resolve();
     });
-    window.HTMLMediaElement.prototype.pause = vi.fn().mockImplementation(function (this: HTMLMediaElement) {
+    window.HTMLMediaElement.prototype.pause = vi.fn().mockImplementation(function (
+      this: HTMLMediaElement
+    ) {
       (this as any)._paused = true;
       this.dispatchEvent(new Event('pause'));
     });
@@ -72,13 +79,13 @@ describe('VideoPlayer', () => {
     });
   });
 
-  // --- Rendering ---
+  // --- Рендеринг ---
 
   it('1. renders video element and basic controls', () => {
     render(<VideoPlayer src="test.mp4" />);
     expect(document.querySelector('video')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /fullscreen/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /воспроизвести/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /экран/i })).toBeInTheDocument();
   });
 
   it('2. renders with autoPlay, muted, loop, playsInline attributes', () => {
@@ -89,26 +96,26 @@ describe('VideoPlayer', () => {
     expect(video.muted).toBe(true);
   });
 
-  // --- Playback ---
+  // --- Воспроизведение ---
 
   it('3. toggles play state on play button click', async () => {
     const user = userEvent.setup();
     render(<VideoPlayer src="test.mp4" />);
 
-    await user.click(screen.getByRole('button', { name: /play/i }));
-    expect(screen.getByRole('button', { name: /pause/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /воспроизвести/i }));
+    expect(screen.getByRole('button', { name: /приостановить/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /pause/i }));
-    expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /приостановить/i }));
+    expect(screen.getByRole('button', { name: /воспроизвести/i })).toBeInTheDocument();
   });
 
   it('4. resets play state on ended', async () => {
     const user = userEvent.setup();
     render(<VideoPlayer src="test.mp4" />);
 
-    await user.click(screen.getByRole('button', { name: /play/i }));
+    await user.click(screen.getByRole('button', { name: /воспроизвести/i }));
     fireEvent.ended(document.querySelector('video')!);
-    expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /воспроизвести/i })).toBeInTheDocument();
   });
 
   it('5. toggles play when clicking the video on desktop', async () => {
@@ -116,23 +123,22 @@ describe('VideoPlayer', () => {
     const video = document.querySelector('video')!;
 
     fireEvent.click(video);
-    expect(screen.getByRole('button', { name: /pause/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /приостановить/i })).toBeInTheDocument();
 
     fireEvent.click(video);
-    expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /воспроизвести/i })).toBeInTheDocument();
   });
 
-  // --- Volume & Mute ---
+  // --- Громкость и звук ---
 
   it('6. starts muted (autoplay policy) and toggles mute', async () => {
     const user = userEvent.setup();
     render(<VideoPlayer src="test.mp4" />);
     const video = document.querySelector('video')!;
 
-    // Starts muted
     expect(video.muted).toBe(true);
 
-    const muteBtn = screen.getByRole('button', { name: /mute/i });
+    const muteBtn = screen.getByRole('button', { name: /звук/i });
     await user.click(muteBtn);
     expect(video.muted).toBe(false);
 
@@ -149,29 +155,35 @@ describe('VideoPlayer', () => {
     expect(video.volume).toBe(0.5);
   });
 
-  // --- Fullscreen ---
+  // --- Полноэкранный режим ---
 
   it('8. requests fullscreen when maximize button is clicked', async () => {
     const user = userEvent.setup();
     render(<VideoPlayer src="test.mp4" />);
 
-    await user.click(screen.getByRole('button', { name: /fullscreen/i }));
+    await user.click(screen.getByRole('button', { name: /экран/i }));
     expect(requestFullscreenMock).toHaveBeenCalled();
   });
 
   it('9. reveals time slider and quality in fullscreen', () => {
-    render(<VideoPlayer src="test.mp4" sources={[{ label: 'Auto', url: 'test.mp4' }, { label: '1080p', url: 'test_1080.mp4' }]} />);
+    render(
+      <VideoPlayer
+        src="test.mp4"
+        sources={[
+          { label: 'Авто', url: 'test.mp4' },
+          { label: '1080p', url: 'test_1080.mp4' },
+        ]}
+      />
+    );
     const videoWrapper = document.querySelector('.bg-ink');
 
     simulateFullscreen(videoWrapper as HTMLElement);
 
-    // Time slider should now be visible (2 sliders: time + volume)
     expect(screen.getAllByRole('slider')).toHaveLength(2);
-    // Quality button should be visible
-    expect(screen.getByText('Auto')).toBeInTheDocument();
+    expect(screen.getByText('Авто')).toBeInTheDocument();
   });
 
-  // --- Keyboard shortcuts ---
+  // --- Горячие клавиши ---
 
   it('10. keyboard shortcuts work strictly in fullscreen mode', () => {
     render(<VideoPlayer src="test.mp4" />);
@@ -179,15 +191,12 @@ describe('VideoPlayer', () => {
     Object.defineProperty(video, 'currentTime', { value: 10, writable: true, configurable: true });
     Object.defineProperty(video, 'duration', { value: 60, writable: true, configurable: true });
 
-    // Not fullscreen — Space should NOT toggle play
     fireEvent.keyDown(window, { code: 'Space' });
     expect(video.paused).toBe(true);
 
-    // Enter fullscreen
     const videoWrapper = document.querySelector('.bg-ink');
     simulateFullscreen(videoWrapper as HTMLElement);
 
-    // Now Space should toggle
     fireEvent.keyDown(window, { code: 'Space' });
     expect(video.paused).toBe(false);
   });
@@ -202,13 +211,12 @@ describe('VideoPlayer', () => {
     simulateFullscreen(videoWrapper as HTMLElement);
 
     fireEvent.keyDown(window, { code: 'ArrowRight' });
-    expect(screen.getByText('+5s')).toBeInTheDocument();
+    expect(screen.getByText('+5с')).toBeInTheDocument();
   });
 
-  // --- Controls visibility ---
+  // --- Видимость элементов управления ---
 
   it('12. hides controls on mobile when not in fullscreen', () => {
-    // Desktop mock — controls visible on hover (not hidden class)
     render(<VideoPlayer src="test.mp4" />);
     const controls = document.querySelector('.bg-gradient-to-t');
     expect(controls?.className).not.toContain('hidden');
@@ -219,18 +227,25 @@ describe('VideoPlayer', () => {
     const wrapper = document.querySelector('.bg-ink');
     simulateFullscreen(wrapper as HTMLElement);
 
-    // No quality menu without sources
-    expect(screen.queryByText('Auto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Авто')).not.toBeInTheDocument();
 
     exitFullscreen();
-    rerender(<VideoPlayer src="test.mp4" sources={[{ label: 'Auto', url: 'a.mp4' }, { label: '720p', url: 'b.mp4' }]} />);
+    rerender(
+      <VideoPlayer
+        src="test.mp4"
+        sources={[
+          { label: 'Авто', url: 'a.mp4' },
+          { label: '720p', url: 'b.mp4' },
+        ]}
+      />
+    );
     const updatedWrapper = document.querySelector('.bg-ink');
     simulateFullscreen(updatedWrapper as HTMLElement);
 
-    expect(screen.getByText('Auto')).toBeInTheDocument();
+    expect(screen.getByText('Авто')).toBeInTheDocument();
   });
 
-  // --- Buffering ---
+  // --- Буферизация ---
 
   it('14. shows spinner on waiting event, hides on playing', () => {
     render(<VideoPlayer src="test.mp4" />);
