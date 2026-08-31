@@ -5,6 +5,7 @@ import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
 import { useToasts } from '../../hooks/useToasts';
 import { services } from '../../services/serviceContainer';
 import '../../styles/SettingsControls.css';
+import { Avatar } from '@/components/ui';
 import { meQuery } from '@/queries/users/meQuery';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 import { userKeys } from '@/queries/keys';
@@ -77,9 +78,9 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
     localStorage.setItem('craneapp_settings', JSON.stringify(next));
     try {
       await services.userService.updateSettings(next);
-      showToast('success', t('settingsSaved', 'Настройки сохранены'), '✓');
+      showToast('success', t('settingsSaved', 'Настройки сохранены'));
     } catch (_) {
-      showToast('error', 'Не удалось сохранить настройки', '⚠️');
+      showToast('error', 'Не удалось сохранить настройки');
     }
   }
 
@@ -99,15 +100,21 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
     }));
     try {
       await services.userService.updatePrivacy(next);
-      showToast('success', 'Настройки приватности сохранены', '✓');
+      showToast('success', 'Настройки приватности сохранены');
     } catch (_) {
-      showToast('error', 'Не удалось сохранить настройки приватности', '⚠️');
+      showToast('error', 'Не удалось сохранить настройки приватности');
     }
   }
 
   async function logout(all = false) {
     if (all) await services.authService.logoutAll().catch(() => {});
     else await services.authService.logout().catch(() => {});
+
+    // Завершение всех сеансов стирает и ключи шифрования: это тот самый
+    // случай, ради которого кнопку нажимают — чужой или потерянный
+    // компьютер. Обычный выход ключи оставляет.
+    if (all) await services.cryptoService.wipeDevice().catch(() => {});
+
     disconnectRealtimeSocket();
     localStorage.removeItem('craneapp_settings');
     navigate('/login');
@@ -267,15 +274,12 @@ function AccountSettings({
   onOpenTwoFA,
   onOpenSessions,
 }) {
-  const initials = (user.firstName || user.username || 'U').slice(0, 1).toUpperCase();
   return (
     <>
       <section className="settings-account-overview">
         <h1>Аккаунт</h1>
         <div className="settings-account-summary settings-overview-profile">
-          <div className="settings-account-avatar">
-            {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
-          </div>
+          <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
           <div className="settings-account-identity">
             <strong>
               {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
@@ -335,7 +339,7 @@ function EmailSettings({ user, onBack, showToast }) {
 
   async function saveEmail(event) {
     event.preventDefault();
-    showToast('info', 'Изменение электронной почты пока недоступно', 'ℹ️');
+    showToast('info', 'Изменение электронной почты пока недоступно');
   }
 
   return (
@@ -373,15 +377,15 @@ function PasswordSettings({ saving, setSaving, onBack, showToast }) {
   async function changePassword(event) {
     event.preventDefault();
     if (newPassword.length < 10)
-      return showToast('error', 'Новый пароль должен содержать минимум 10 символов', '⚠️');
-    if (newPassword !== confirmation) return showToast('error', 'Пароли не совпадают', '⚠️');
+      return showToast('error', 'Новый пароль должен содержать минимум 10 символов');
+    if (newPassword !== confirmation) return showToast('error', 'Пароли не совпадают');
     setSaving(true);
     try {
       await services.authService.changePassword(currentPassword, newPassword);
-      showToast('success', 'Пароль изменён', '✓');
+      showToast('success', 'Пароль изменён');
       onBack();
     } catch (_) {
-      showToast('error', 'Не удалось изменить пароль', '⚠️');
+      showToast('error', 'Не удалось изменить пароль');
     } finally {
       setSaving(false);
     }
@@ -429,15 +433,15 @@ function TwoFASettings({ enabled, saving, setSaving, onEnabledChange, onBack, sh
   async function submit(event) {
     event.preventDefault();
     if (password.length < 6)
-      return showToast('error', 'Введите пароль 2FA — минимум 6 символов', '⚠️');
+      return showToast('error', 'Введите пароль 2FA — минимум 6 символов');
     setSaving(true);
     try {
       await services.authService.setTwoFA(!enabled, password);
       onEnabledChange(!enabled);
-      showToast('success', enabled ? '2FA отключена' : '2FA включена', '✓');
+      showToast('success', enabled ? '2FA отключена' : '2FA включена');
       onBack();
     } catch (_) {
-      showToast('error', 'Не удалось изменить настройки 2FA', '⚠️');
+      showToast('error', 'Не удалось изменить настройки 2FA');
     } finally {
       setSaving(false);
     }
@@ -545,7 +549,6 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
     lastName: user.lastName || '',
     bio: user.bio || '',
   });
-  const initials = (user.firstName || user.username || 'U').slice(0, 1).toUpperCase();
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -554,10 +557,10 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
       const updated = await services.userService.updateMe(profile);
       onUserChange(updated);
       localStorage.setItem('craneapp_user_data', JSON.stringify(updated));
-      showToast('success', 'Профиль обновлён', '✓');
+      showToast('success', 'Профиль обновлён');
       onBack();
     } catch (_) {
-      showToast('error', 'Не удалось обновить профиль', '⚠️');
+      showToast('error', 'Не удалось обновить профиль');
     } finally {
       setSaving(false);
     }
@@ -573,9 +576,7 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
         <p>Обновите имя и информацию, которую видят другие пользователи.</p>
       </header>
       <div className="settings-profile-editor-identity">
-        <div className="settings-account-avatar">
-          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
-        </div>
+        <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
         <div>
           <strong>
             {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
@@ -635,7 +636,7 @@ async function downloadExport(showToast) {
     link.click();
     URL.revokeObjectURL(url);
   } catch (_) {
-    showToast('error', 'Не удалось экспортировать данные', '⚠️');
+    showToast('error', 'Не удалось экспортировать данные');
   }
 }
 

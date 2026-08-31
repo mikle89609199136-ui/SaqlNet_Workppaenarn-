@@ -1,15 +1,30 @@
-import { useCall } from '@/hooks';
+import { useCall, useConnectionStatus } from '@/hooks';
+import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/pages';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { cn, getChatSubtitle } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { Icon, Identicon } from '../ui';
+import { Avatar, Icon } from '../ui';
+import { useTypingStore } from '@/store/typing';
+
+/**
+ * Что сказать вместо «был(а) недавно», пока связи нет.
+ *
+ * Состояние связи важнее всего остального: если сообщения не ходят, знать
+ * о собеседнике, что он «онлайн», человеку незачем — эти сведения тех же
+ * секунд, что и молчащий чат.
+ */
+function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | null {
+  if (status === 'connected') return null;
+
+  return status === 'offline' ? t('noNetwork', 'Нет сети') : t('connecting', 'Соединяемся…');
+}
 
 interface Props {
-  typingUserId?: string | null;
   setIsGroupInfoOpen?: Dispatch<SetStateAction<boolean>>;
   profileModal?: IProfileModal;
   setProfileModal?: Dispatch<SetStateAction<IProfileModal>>;
@@ -18,7 +33,6 @@ interface Props {
 }
 
 export const ChatThreadHeader = ({
-  typingUserId,
   setIsGroupInfoOpen,
   profileModal,
   setProfileModal,
@@ -27,16 +41,19 @@ export const ChatThreadHeader = ({
 }: Props) => {
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
+  const connection = useConnectionStatus();
   // Заголовок читает чат из кеша запросов — того же, что наполняет страница.
   const { data: chat } = useQuery(chatQuery(chatId));
   const { initiateCall } = useCall();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
+  const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
 
   if (!chat) return;
 
-  const subtitle = getChatSubtitle(chat, typingUserId, t);
+  const noticeSubtitle = connectionSubtitle(connection, t);
+  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
 
   const handleCallClick = () => {
@@ -131,22 +148,22 @@ export const ChatThreadHeader = ({
           >
             <button
               aria-label={chat.title}
-              className={cn('thread-avatar', isPeerOnline && 'is-online')}
+              className={"cursor-pointer"}
               tabIndex={-1}
               type="button"
             >
-              {chat.avatarUrl ? (
-                <img alt="" src={chat.avatarUrl} />
-              ) : chat?.type === 'private' && chat?.peerId ? (
-                <Identicon size={50} userId={chat.peerId} />
-              ) : (
-                chat.title.slice(0, 1).toUpperCase()
-              )}
+              <Avatar
+                id={chat.type === 'private' ? chat.peerId : null}
+                name={chat.title}
+                online={isPeerOnline}
+                size="lg"
+                src={chat.avatarUrl}
+              />
             </button>
 
             <div className="thread-title-wrap">
               <h1>{chat.title}</h1>
-              <p>{subtitle}</p>
+              <p className={cn(noticeSubtitle && 'thread-subtitle-notice')}>{subtitle}</p>
             </div>
           </div>
 
@@ -158,7 +175,7 @@ export const ChatThreadHeader = ({
                 title={t('audioCall', 'Аудиозвонок')}
                 type="button"
               >
-                <Icon name="phone" className="thread-call-icon stroke-transparent fill-current" />
+                <Icon name="phone" />
               </button>
 
               <button
@@ -167,10 +184,7 @@ export const ChatThreadHeader = ({
                 title={t('videoCall', 'Видео')}
                 type="button"
               >
-                <Icon
-                  name="video"
-                  className="thread-call-icon thread-call-icon-video stroke-transparent fill-current"
-                />
+                <Icon name="video" />
               </button>
             </div>
 

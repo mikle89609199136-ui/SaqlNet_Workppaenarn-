@@ -9,6 +9,7 @@ import { RealtimeEvents } from '@/realtime/RealtimeEvents';
 import { useProfileStore } from '@/store/profile';
 import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
+import { stubCrypto } from './stubCrypto';
 import { testI18n } from './i18n';
 
 interface IRenderChatThreadOptions {
@@ -21,6 +22,8 @@ interface IRenderChatThreadOptions {
   pins?: IPinnedDto[];
   /** Кто открыл чат. Без пользователя в сторе лента сообщений не рисуется. */
   currentUser?: IUserDto;
+  /** Чат, в котором ключ шифрования не готов: отправлять нечем. */
+  keyUnavailable?: boolean;
   /**
    * Общий клиент запросов. В приложении он один на всю вкладку, поэтому
    * сценарии с переходом между чатами обязаны использовать один и тот же —
@@ -59,9 +62,15 @@ export function renderChatThread({
   messages,
   pins = [],
   currentUser = makeUser({ id: 'user-1' }),
+  keyUnavailable = false,
   queryClient = createTestQueryClient(),
 }: IRenderChatThreadOptions): RenderResult {
   useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
+
+  // Настоящий WebCrypto под jsdom работает не везде, а страница готовит
+  // ключ чата при открытии. Криптография проверяется в node-тестах; здесь
+  // важно лишь, что на провод уходит не открытый текст.
+  stubCrypto({ keyUnavailable });
 
   // Шифрование спрашивает данные чата у кеша запросов — того же, в котором
   // живёт экран. В приложении эту связь ставит точка входа.

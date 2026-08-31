@@ -1,7 +1,7 @@
 # Где живут данные во фронтенде
 
 Документ описывает `frontend/src` — React-клиент. Мобильный клиент
-(`client/mobile`) устроен иначе, про него — `client-clean-architecture.md`.
+(`legacy/mobile-client`) устроен иначе, про него — `client-clean-architecture.md`.
 
 ## Правило
 

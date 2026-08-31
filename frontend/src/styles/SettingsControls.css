@@ -1,3 +1,9 @@
+/* Управление в строках настроек.
+
+   Временное: выпадающий список уедет в Select (#343), переключатель —
+   в Switch (#346), поля — в Input (#341). Здесь только приведено к
+   токенам, чтобы сейчас не выбивалось из остальных экранов. */
+
 .settings-choice {
   position: relative;
   width: min(220px, 50%);
@@ -13,7 +19,7 @@
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 10px 13px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-sheet-2);
   color: var(--text-primary);
   cursor: pointer;
   list-style: none;
@@ -38,8 +44,8 @@
 }
 
 .settings-choice[open] summary {
-  border-color: rgba(255, 45, 139, 0.55);
-  box-shadow: 0 0 0 3px rgba(255, 45, 139, 0.12);
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-brand-soft);
 }
 
 .settings-choice-menu {
@@ -54,8 +60,8 @@
   padding: 6px;
   border: 1px solid var(--border-color);
   border-radius: 13px;
-  background: rgba(30, 30, 34, 0.98);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
+  background: var(--color-sheet-2);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 0.42);
   backdrop-filter: blur(18px);
 }
 
@@ -75,14 +81,14 @@
 
 .settings-choice-menu button:hover,
 .settings-choice-menu button.active {
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--color-sheet-2);
 }
 
 .settings-choice-check {
-  color: #ff3b98;
+  color: var(--color-brand-fill);
   font-weight: 800;
 }
 
 [data-theme="light"] .settings-choice-menu {
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--color-ink);
 }

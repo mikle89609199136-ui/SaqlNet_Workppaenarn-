@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from '@/api/endpoints';
+import { resolveMediaObjectUrl } from './mediaObjectUrls';
 import { ApiClient } from '@/api/ApiClient';
-import { STORAGE_KEYS } from '@/consts';
 import { resolveChat } from '@/core/chatResolver';
 import type {
   IChatContext,
@@ -11,6 +11,7 @@ import type {
   IMediaItem,
   IMessageDto,
   IMessageResponse,
+  IUploadResponse,
   IMessagesResponse,
   IPinnedDto,
   IPinnedListResponse,
@@ -21,7 +22,7 @@ import type {
   TMessageType,
 } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
-import type { CryptoService } from './CryptoService';
+import type { CryptoService, IDecryptedMessage } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
@@ -62,17 +63,6 @@ export class MessageService {
         )
       )
     );
-  }
-
-  getMeId(): string | null {
-    try {
-      const user = localStorage.getItem(STORAGE_KEYS.USER);
-      if (!user) return null;
-      const u = JSON.parse(user);
-      return u?.id;
-    } catch {
-      return null;
-    }
   }
 
   async sendMessage(
@@ -119,8 +109,8 @@ export class MessageService {
     }
 
     const chatContext = await this.getChatContext(chatId, 'media encryption');
-    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media, chatContext);
-    const uploadResponse = await this.apiClient.post(API_ENDPOINTS.MEDIA_UPLOAD, {
+    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media);
+    const uploadResponse = await this.apiClient.post<IUploadResponse>(API_ENDPOINTS.MEDIA_UPLOAD, {
       file: encryptedMedia,
       type: mediaType,
       purpose: 'message',
@@ -151,12 +141,19 @@ export class MessageService {
     );
 
     const messageObj = response.data?.message ?? response.data;
+    const uploadedUrl = uploadResponse.data?.url;
+    // Тот же реестр, что и при показе: когда лента перезапросится, для
+    // этого файла вернётся уже готовый адрес, а не вторая копия.
+    const canRegister =
+      Boolean(uploadedUrl) &&
+      typeof URL !== 'undefined' &&
+      typeof URL.createObjectURL === 'function';
     const localUrl =
-      typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-        ? URL.createObjectURL(
-            await this.cryptoService.decryptMedia(chatId, encryptedMedia, chatContext)
+      canRegister && uploadedUrl
+        ? await resolveMediaObjectUrl(uploadedUrl, () =>
+            this.cryptoService.decryptMedia(chatId, encryptedMedia)
           )
-        : uploadResponse.data?.url;
+        : uploadedUrl;
     const message = {
       ...messageObj,
       content: trimmedCaption,
@@ -175,13 +172,16 @@ export class MessageService {
   ) {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
     let content = item.content;
+    let senderVerified: boolean | undefined;
 
     if (content) {
-      content = await this.decryptContent(chatId, content, context, item.senderId);
+      const decrypted = await this.decryptContent(chatId, content, context, item.senderId);
+      content = decrypted.text;
+      senderVerified = decrypted.senderVerified;
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, item, context);
-    return { ...item, content, ...mediaPatch };
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
+    return { ...item, content, senderVerified, ...mediaPatch };
   }
 
   async processPinnedMessageForDisplay(
@@ -193,10 +193,11 @@ export class MessageService {
 
     let content = message.message.content;
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.message.senderId);
+      content = (await this.decryptContent(chatId, content, context, message.message.senderId))
+        .text;
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message, context);
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message);
 
     return {
       ...message,
@@ -213,33 +214,36 @@ export class MessageService {
 
     let content = message.content;
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.senderId);
+      content = (await this.decryptContent(chatId, content, context, message.senderId)).text;
     }
 
     return { ...message, content };
   }
 
+  /**
+   * Тип чата — всё, что шифрованию нужно знать о чате.
+   *
+   * Ключей здесь больше нет: они не привязаны к собеседнику, а живут у
+   * самого чата. Осталась одна развилка — каналы не шифруются.
+   */
   async getChatContext(chatId: string, purpose: string): Promise<IChatContext> {
     try {
       const chat = await resolveChat(chatId);
-
-      return {
-        ...(chat || {}),
-        type: chat?.type || 'private',
-        peerPublicKey: chat?.peerPublicKey || null,
-      };
+      return { type: chat?.type || 'private' };
     } catch (e) {
-      console.warn(`Failed to fetch chat info for ${purpose} context`, e);
-      return { type: 'private', peerPublicKey: null };
+      console.warn(`Не удалось получить чат для ${purpose}`, e);
+      return { type: 'private' };
     }
   }
 
+  private isEncrypted(chatContext: IChatContext): boolean {
+    return chatContext.type !== 'channel';
+  }
+
   async encryptContent(chatId: string, content: string, chatContext: IChatContext) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.encryptGroup(chatId, content);
-    }
-    return this.cryptoService.encryptDM(content, chatContext.peerPublicKey!);
+    if (!content || !this.isEncrypted(chatContext)) return content;
+
+    return this.cryptoService.encryptMessage(chatId, content);
   }
 
   async decryptContent(
@@ -247,18 +251,13 @@ export class MessageService {
     content: string,
     chatContext: IChatContext,
     senderId: string | null = null
-  ) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.decryptGroup(chatId, content);
-    }
-    const isOwnMessage = senderId && senderId === this.getMeId();
-    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey!, {
-      preferEmbeddedSenderKey: !isOwnMessage,
-    });
+  ): Promise<IDecryptedMessage> {
+    if (!content || !this.isEncrypted(chatContext)) return { text: content };
+
+    return this.cryptoService.decryptMessage(chatId, content, senderId ?? '');
   }
 
-  async resolveMediaForDisplay(chatId: string, item: IMessageDto, chatContext: IChatContext) {
+  async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
     if (!metadata || !('mediaUrl' in metadata)) {
@@ -279,12 +278,15 @@ export class MessageService {
     }
 
     try {
-      const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-      const encryptedPayload = response.data;
-      const blob = await this.cryptoService.decryptMedia(chatId, encryptedPayload, chatContext);
+      // Адрес берётся из реестра: тот же файл в ленте, в закреплённых и
+      // после каждого перезапроса истории получает один и тот же адрес,
+      // а не новую копию в памяти.
       const objectUrl =
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-          ? URL.createObjectURL(blob)
+          ? await resolveMediaObjectUrl(mediaUrl, async () => {
+              const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
+              return this.cryptoService.decryptMedia(chatId, response.data);
+            })
           : mediaUrl;
 
       return {
@@ -353,25 +355,35 @@ export class MessageService {
     return { ...response.data, readIds: messageIds };
   }
 
-  async forwardMessage(messageId: string, targetChatId: string) {
-    const response = await this.apiClient.post<IMessageResponse>(
-      API_ENDPOINTS.MESSAGE_FORWARD(messageId),
-      { targetChatId }
-    );
+  /**
+   * Пересылка.
+   *
+   * Делается на клиенте: у каждого чата свой ключ, и серверная пересылка,
+   * копирующая шифртекст как есть, дала бы в целевом чате сообщение,
+   * которое не расшифруется никогда. Поэтому текст берётся уже
+   * расшифрованным — из ленты, откуда его и выбрали, — и шифруется
+   * заново ключом целевого чата.
+   *
+   * Пометки «переслано» пока не будет: маршрут отправки не принимает
+   * признак пересылки. Задача заведена бэкенду.
+   */
+  async forwardMessage(message: IMessageDto, targetChatId: string) {
+    const content = message.content ?? '';
 
-    const processedMessage = await this.processMessageForDisplay(
-      targetChatId,
-      response.data.message
-    );
-    const message = sortMessagesChronologically<IMessageDto>(
-      await Promise.all(
-        [processedMessage].map(async (item: IMessageDto) => {
-          return this.processMessageForDisplay(targetChatId, item);
-        })
-      )
-    )[0];
+    if (content.startsWith('🔒')) {
+      throw new Error('Нельзя переслать сообщение, которое не удалось расшифровать');
+    }
 
-    return message;
+    const media = (message as IMessageDto & { mediaUrl?: string | null }).mediaUrl;
+
+    if (MEDIA_MESSAGE_TYPES.has(message.type) && media) {
+      // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
+      const blob = await fetch(media).then((response) => response.blob());
+
+      return this.sendMediaMessage(targetChatId, blob, message.type as TMediaMessageType, content);
+    }
+
+    return this.sendMessage(targetChatId, content, message.type);
   }
 
   async listReactions(messageId: string) {

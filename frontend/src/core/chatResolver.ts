@@ -1,4 +1,4 @@
-import type { IChatDto } from '@/types';
+import type { IChatDto, IMemberDto } from '@/types';
 
 /**
  * Кто умеет доставать чат.
@@ -29,4 +29,28 @@ export function resolveChat(chatId: string): Promise<IChatDto> {
   }
 
   return resolver(chatId);
+}
+
+/**
+ * Кто умеет доставать участников чата.
+ *
+ * Шифрование заворачивает ключ чата отдельно для каждого участника, а
+ * список участников живёт в кеше запросов. Зависимость перевёрнута по той
+ * же причине, что и для самого чата: слой сервисов не должен знать про
+ * слой запросов.
+ */
+export type TMembersResolver = (chatId: string) => Promise<IMemberDto[]>;
+
+let membersResolver: TMembersResolver | null = null;
+
+export function setMembersResolver(next: TMembersResolver | null): void {
+  membersResolver = next;
+}
+
+export function resolveMembers(chatId: string): Promise<IMemberDto[]> {
+  if (!membersResolver) {
+    return Promise.reject(new Error('Источник участников чата не зарегистрирован'));
+  }
+
+  return membersResolver(chatId);
 }

@@ -1,9 +1,10 @@
 import {
+  CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { ChatListItem, ChatsSkeleton } from '@/components/ui';
+import { ChatListItem, ChatListItemSkeleton, Icon } from '@/components/ui';
 import { useIsMobile } from '@/hooks';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +32,7 @@ export function ChatsPage() {
     messages: [],
   });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
+  const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
   const { t } = useTranslation();
 
   function startResize(kind: string, event: PointerEvent) {
@@ -64,6 +66,10 @@ export function ChatsPage() {
     window.addEventListener('pointerup', handleUp);
   }
 
+  const createGroupModal = isCreateGroupOpen ? (
+    <CreateGroupModal onClose={() => setCreateGroupOpen(false)} />
+  ) : null;
+
   const listContent = (
     <>
       <section className="chats-toolbar">
@@ -74,10 +80,20 @@ export function ChatsPage() {
         >
           <span className="chats-search-placeholder">{t('search', 'Поиск чатов и людей...')}</span>
         </Link>
+
+        <button
+          aria-label={t('newGroup', 'Новая группа')}
+          className="chats-new-group"
+          onClick={() => setCreateGroupOpen(true)}
+          title={t('newGroup', 'Новая группа')}
+          type="button"
+        >
+          <Icon name="groupAdd" />
+        </button>
       </section>
 
       <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
-        {isLoading ? <ChatsSkeleton /> : null}
+        {isLoading ? <ChatListItemSkeleton /> : null}
         {!isLoading && error && (
           <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}
@@ -99,11 +115,20 @@ export function ChatsPage() {
         />
       );
     }
-    return <main className="chats-page">{listContent}</main>;
+    return (
+      <>
+        {createGroupModal}
+        <main className="chats-page">{listContent}</main>
+      </>
+    );
   }
 
   return (
     <div className={`chat-workspace ${profileState.isOpen ? 'has-profile' : ''}`}>
+      {/* Окно рисуется вне колонки списка: у той backdrop-filter, а он
+          делает position: fixed относительным ей, и окно оказывалось
+          прижатым к узкой колонке вместо экрана. */}
+      {createGroupModal}
       <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
         <main className="chats-page">{listContent}</main>
       </div>

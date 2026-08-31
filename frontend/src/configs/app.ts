@@ -38,8 +38,8 @@ export const config = {
 
   // UI Configuration
   messagesPerPage: 50,
-  maxReconnectAttempts: 5,
   reconnectDelay: 1000,
+  maxReconnectDelay: 30000,
 
   // Feature Flags
   features: {

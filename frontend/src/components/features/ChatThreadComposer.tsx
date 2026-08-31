@@ -2,19 +2,24 @@ import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
+  useEncryptionState,
   useTypingIndicator,
 } from '@/hooks';
-import { WebSocketClient } from '@/services';
-import { useChatUiStore } from '@/store';
+import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
+import type { IEncryptionState } from '@/crypto/encryptionStatus';
+import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/utils';
 import {
+  useEffect,
   useRef,
+  useState,
   type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
 } from 'react';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   AttachmentControl,
@@ -24,9 +29,25 @@ import {
   ComposerRow,
 } from '../ui';
 
+/** Что написано в поле ввода, пока сообщение не набрано. */
+function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
+  if (encryption.status === 'preparing') {
+    return t('encryptionPreparing', 'Готовим шифрование...');
+  }
+
+  if (encryption.status === 'unavailable') {
+    return t('encryptionUnavailable', 'Шифрование недоступно');
+  }
+
+  if (encryption.unreachable.length > 0) {
+    return t('peerNeedsUpdate', 'Собеседник прочтёт после обновления приложения');
+  }
+
+  return t('messagePlaceholder', 'Сообщение...');
+}
+
 interface Props {
   selectionMode: boolean;
-  socket: WebSocketClient;
   pendingAttachment: IPendingAttachment | null;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
@@ -46,10 +67,27 @@ export const ChatThreadComposer = ({
 }: Props) => {
   const { t } = useTranslation();
 
-  const draft = useChatUiStore((state) => state.draft);
-  const setDraft = useChatUiStore((state) => state.setDraft);
+  const { chatId = '' } = useParams<{ chatId: string }>();
+
+  // Пока ключ чата не готов, отправлять нечем: сообщение ушло бы открытым
+  // текстом или не ушло вовсе, и человеку лучше узнать об этом до того,
+  // как он его наберёт.
+  const encryption = useEncryptionState(chatId);
+
+  // Текст живёт в самом поле, а не в состоянии React: иначе каждый символ
+  // перерисовывал бы композер со всеми его частями. Здесь хранится
+  // единственное, от чего зависит вид, — есть ли что отправлять.
+  const [hasText, setHasText] = useState(() => readDraft(chatId).length > 0);
 
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  // Возврат в чат: поле заполняется тем, что осталось недописанным.
+  useEffect(() => {
+    const saved = readDraft(chatId);
+
+    if (draftRef.current) draftRef.current.value = saved;
+    setHasText(saved.length > 0);
+  }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();
   const { cancelComposerMode } = useComposerShortcuts(draftRef, formRef);
@@ -61,13 +99,23 @@ export const ChatThreadComposer = ({
   const { handleSubmit, isSending } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
+    draftRef,
     pendingAttachment,
     selectionMode,
     setPendingAttachment,
   });
 
   function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    setDraft(event.target.value);
+    const text = event.target.value;
+
+    // Пустое поле — не черновик: пометка в списке чатов должна пропасть
+    // сразу, а не через полсекунды после стирания последнего символа.
+    if (text) writeDraft(chatId, text);
+    else clearDraft(chatId);
+
+    // Перерисовка только на переходе «пусто ↔ есть текст»: остальные
+    // символы состояние не трогают.
+    setHasText(text.trim().length > 0);
     sendTyping();
   }
 
@@ -86,18 +134,18 @@ export const ChatThreadComposer = ({
           ref={draftRef}
           aria-label={t('message', 'Сообщение')}
           className="thread-composer-input"
+          disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
-          placeholder={t('messagePlaceholder', 'Сообщение...')}
-          value={draft}
+          placeholder={composerPlaceholder(encryption, t)}
         />
 
         <div className="thread-composer-submit-wrap">
           <button
             className={cn(
               'thread-composer-action-btn thread-send-btn',
-              (draft.trim() || pendingAttachment) && 'is-visible'
+              (hasText || pendingAttachment) && 'is-visible'
             )}
-            disabled={(!draft.trim() && !pendingAttachment) || isSending}
+            disabled={(!hasText && !pendingAttachment) || isSending}
             type="submit"
           >
             {isSending ? (
@@ -123,7 +171,7 @@ export const ChatThreadComposer = ({
             aria-label={t('voiceMessage', 'Голосовое сообщение')}
             className={cn(
               'thread-composer-action-btn thread-mic-btn',
-              !draft.trim() && !pendingAttachment && 'is-visible'
+              !hasText && !pendingAttachment && 'is-visible'
             )}
             type="button"
           >

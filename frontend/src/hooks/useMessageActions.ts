@@ -4,7 +4,9 @@ import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
+import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,7 +31,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setError = useChatUiStore((state) => state.setError);
   const editingMessage = useChatUiStore((state) => state.editingMessage);
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
-  const setDraft = useChatUiStore((state) => state.setDraft);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
@@ -52,6 +53,19 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       return;
     }
 
+    // Перевод отправляет расшифрованный текст в Google. Обещать сквозное
+    // шифрование и молча делать это — обман, поэтому спрашиваем. Один раз
+    // на аккаунт: вопрос на каждое сообщение приучил бы жать «да» не читая.
+    if (!hasTranslatorConsent()) {
+      const agreed = window.confirm(
+        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
+      );
+
+      if (!agreed) return;
+
+      rememberTranslatorConsent();
+    }
+
     setTranslatingIds((prev) => new Set(prev).add(message.id));
     try {
       const { translatedText, targetLanguage, detectedSourceLang } = await translateText(
@@ -59,13 +73,13 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       );
 
       if (detectedSourceLang && detectedSourceLang === targetLanguage) {
-        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'), 'ℹ️');
+        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'));
         return;
       }
 
       setTranslations((prev) => ({ ...prev, [message.id]: translatedText }));
     } catch (err) {
-      showToast('error', t('translateError', 'Не удалось перевести сообщение'), '❌');
+      showToast('error', t('translateError', 'Не удалось перевести сообщение'));
     } finally {
       setTranslatingIds((prev) => {
         const next = new Set(prev);
@@ -97,7 +111,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         dropThreadMessage(queryClient, chatId, message.id);
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
-          setDraft('');
+          setComposerText(draftRef?.current ?? null, '');
         }
         if (replyToMessage?.id === message.id) {
           setReplyToMessage(null);
@@ -144,13 +158,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messageUnpinMemberError',
             'Не удалось открепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
-        );
+          ));
         return;
       }
 
-      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'), '❌');
+      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
     }
   };
 
@@ -176,13 +188,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messagePinMemberError',
             'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
-        );
+          ));
         return;
       }
 
-      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'), '❌');
+      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'));
     }
   };
 
@@ -222,9 +232,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const startEdit = (message: IMessageDto) => {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setDraft(message.content || '');
-    if (!draftRef || !draftRef.current) return;
-    draftRef.current.focus();
+    setComposerText(draftRef?.current ?? null, message.content || '');
+    draftRef?.current?.focus();
   };
 
   const closeMessageActions = () => {

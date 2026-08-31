@@ -69,10 +69,12 @@ function redirectHome() {
 const chatLoader = async ({ params }: { params: Params }) => {
   const { chatId = '' } = params;
   try {
-    await Promise.all([
-      queryClient.ensureQueryData(chatQuery(chatId)),
-      queryClient.ensureInfiniteQueryData(messagesQuery(chatId)),
-    ]);
+    // Историю запрашиваем сразу, но не ждём: пока она идёт, на её месте
+    // рисуется скелет, а шапка и поле ввода уже на экране. Ожидание обоих
+    // ответов означало белый экран на всё время самого медленного.
+    void queryClient.prefetchInfiniteQuery(messagesQuery(chatId));
+
+    await queryClient.ensureQueryData(chatQuery(chatId));
     return null;
   } catch (error: any) {
     throw new Response(error.message || 'Не удалось загрузить чат', {
@@ -153,13 +155,6 @@ export const router = createBrowserRouter([
                 lazy: () =>
                   import('../pages/SettingsPage/SettingsPage.js').then((m) => ({
                     Component: m.SettingsPage,
-                  })),
-              },
-              {
-                path: REACT_ROUTES.CREATE_GROUP,
-                lazy: () =>
-                  import('../pages/CreateGroupChatPage/CreateGroupPage.js').then((m) => ({
-                    Component: m.CreateGroupPage,
                   })),
               },
             ],

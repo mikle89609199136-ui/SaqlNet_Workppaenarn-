@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { Icon } from '@/components/ui';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../consts/routes.js';
@@ -43,7 +44,7 @@ export function RegisterPage() {
 
   function continueFromName() {
     if (!firstName.trim()) {
-      showToast('error', t('enterName', 'Введите имя'), '⚠️');
+      showToast('error', t('enterName', 'Введите имя'));
       return;
     }
 
@@ -55,19 +56,19 @@ export function RegisterPage() {
     const cleanFirstName = firstName.trim();
 
     if (cleanUsername.length < 3) {
-      showToast('error', t('usernameMinError', 'Юзернейм: минимум 3 символа'), '⚠️');
+      showToast('error', t('usernameMinError', 'Юзернейм: минимум 3 символа'));
       return;
     }
     if (!USERNAME_PATTERN.test(cleanUsername)) {
-      showToast('error', t('usernameFormatError', 'Только буквы, цифры и _'), '⚠️');
+      showToast('error', t('usernameFormatError', 'Только буквы, цифры и _'));
       return;
     }
     if (password.length < 6) {
-      showToast('error', t('passwordMinError', 'Пароль минимум 6 символов'), '⚠️');
+      showToast('error', t('passwordMinError', 'Пароль минимум 6 символов'));
       return;
     }
     if (password !== passwordRepeat) {
-      showToast('error', t('passwordsMismatch', 'Пароли не совпадают'), '⚠️');
+      showToast('error', t('passwordsMismatch', 'Пароли не совпадают'));
       return;
     }
 
@@ -82,12 +83,12 @@ export function RegisterPage() {
       });
       saveAuthSession({ language, token: data.token, user: data.user });
       await uploadAvatar({ avatar, token: data.token }).catch(() => {});
-      showToast('success', t('welcomeDone', 'Добро пожаловать!'), '🎉');
+      showToast('success', t('welcomeDone', 'Добро пожаловать!'));
       window.setTimeout(() => {
         window.location.href = ROUTES.CHATS;
       }, 600);
     } catch (error) {
-      showToast('error', error.message, '❌');
+      showToast('error', error.message);
       setIsSubmitting(false);
     }
   }
@@ -191,7 +192,7 @@ function NameStep({
         className="avatar-upload"
         type="button"
         onClick={() => avatarInputRef.current?.click()}
-        style={avatar ? { border: '2px solid rgba(255,0,127,0.4)' } : undefined}
+        style={avatar ? { borderColor: 'var(--color-brand)' } : undefined}
       >
         {avatar ? <img src={avatar} alt="" /> : <span style={{ fontSize: 36 }}>🔒</span>}
         <div className="avatar-edit-overlay">
@@ -308,7 +309,7 @@ function PasswordField({ id, label, onChange, onToggle, placeholder, show, value
           style={{ paddingRight: 44 }}
         />
         <button className="eye-btn" type="button" onClick={onToggle}>
-          <EyeIcon visible={show} />
+          <Icon name={show ? 'eyeOff' : 'eye'} size="md" />
         </button>
       </div>
     </div>
@@ -318,9 +319,7 @@ function PasswordField({ id, label, onChange, onToggle, placeholder, show, value
 function Feature({ icon, text }) {
   return (
     <div className="feature">
-      <div className="feature-icon" style={{ background: 'rgba(255,0,127,0.15)' }}>
-        {icon}
-      </div>
+      <div className="feature-icon bg-brand-soft">{icon}</div>
       <span>{text}</span>
     </div>
   );
@@ -375,44 +374,6 @@ function CameraIcon() {
   );
 }
 
-function EyeIcon({ visible }) {
-  if (visible) {
-    return (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="rgba(255,0,127,0.8)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-        <line x1="1" y1="1" x2="23" y2="23" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="rgba(255,255,255,0.4)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 function FragmentLine({ index, line }) {
   return (
     <>
@@ -433,7 +394,15 @@ function getPasswordScore(password) {
 }
 
 function getStrengthStyle(score) {
-  const colors = ['#FF4B4B', '#FF8C00', '#FFD700', '#00C853', '#00E676'];
+  // От опасного к безопасному, целиком на токенах: три опорных цвета и две
+  // ступени между ними.
+  const colors = [
+    'var(--color-danger)',
+    'color-mix(in srgb, var(--color-danger) 50%, var(--color-warn))',
+    'var(--color-warn)',
+    'color-mix(in srgb, var(--color-warn) 45%, var(--color-ok))',
+    'var(--color-ok)',
+  ];
   const widths = ['20%', '40%', '60%', '80%', '100%'];
   return {
     background: score > 0 ? colors[score - 1] : 'transparent',

@@ -1,4 +1,4 @@
-import { useCall, useProfileEdit } from '@/hooks';
+import { useCall, useProfileEdit, useSafetyCode } from '@/hooks';
 import type { IProfileState } from '@/pages';
 import { userProfileQuery } from '@/queries/users/userProfileQuery';
 import { useProfileStore } from '@/store';
@@ -8,7 +8,7 @@ import { getChatSubtitle } from '@/utils';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
 
 interface Props {
   profileState: IProfileState;
@@ -79,6 +79,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
 
   const copyText = (val: string) => val && navigator?.clipboard?.writeText(val).catch(() => {});
 
+  // Код безопасности сверяют голосом или при встрече: совпал — значит между
+  // вами никто не встал. Ключ собеседника выдаёт сервер, и это единственная
+  // проверка, которая от сервера не зависит.
+  const safetyCode = useSafetyCode(isOwnProfile ? null : profileUser?.id);
+
   const startCall = (type: TCallKind) => () => {
     if (canCall && profileState.chat) {
       initiateCall(
@@ -95,7 +100,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     {
       handleClick: onClose,
       disabled: false,
-      name: 'checkCircle', // was message-circle, should check
+      name: 'chat',
       title: t('chat', 'Чат'),
     },
     {
@@ -140,16 +145,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
       ) : (
         <div className="user-profile-scroll">
           <div className="user-profile-hero">
-            <div className="user-profile-avatar">
-              {avatarUrl ? (
-                <img alt="" src={avatarUrl} />
-              ) : (
-                <Identicon
-                  userId={profileUser?.id || profileState.chat?.peerId || displayName}
-                  size={112}
-                />
-              )}
-            </div>
+            <Avatar
+              className="mx-auto mb-4"
+              id={profileUser?.id || profileState.chat?.peerId}
+              name={displayName}
+              size="2xl"
+              src={avatarUrl}
+            />
             <h2>{displayName}</h2>
             <p
               className={`user-profile-status ${profileState.chat?.peerIsOnline ? 'is-online' : ''}`}
@@ -228,6 +230,21 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
                 <span>{t('bio', 'О себе')}</span>
                 <strong>{profileUser?.bio || t('profileBioEmpty', 'Информация не указана')}</strong>
               </div>
+              {safetyCode && (
+                <button
+                  className="user-profile-copy-row user-profile-safety-row"
+                  onClick={() => copyText(safetyCode)}
+                  title={t(
+                    'safetyCodeTitle',
+                    'Сверьте этот код с собеседником другим способом — голосом или при встрече'
+                  )}
+                  type="button"
+                >
+                  <span>{t('safetyCode', 'Код безопасности')}</span>
+                  <strong className="user-profile-safety-code">{safetyCode}</strong>
+                  <Icon name="copy" />
+                </button>
+              )}
             </div>
           )}
 
