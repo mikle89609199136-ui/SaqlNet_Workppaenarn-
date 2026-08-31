@@ -85,6 +85,13 @@
      --color-sheet-2, и мерцать будет нечему. */
   --color-skeleton: var(--n-100);
   --color-skeleton-sweep: var(--n-200);
+
+  /* --- Затемнение / Медиа (видео, фото, оверлеи) ------------- */
+  --color-scrim: var(--scrim);
+  --color-scrim-subtle: var(--scrim-subtle);
+  --color-scrim-control: var(--scrim-control);
+  --color-scrim-control-hover: var(--scrim-control-hover);
+  --color-on-scrim: var(--n-0); /* текст и иконки поверх медиа */
 }
 
 /* Сам перелив — обычной переменной, не утилитой: это рецепт, а не цвет,

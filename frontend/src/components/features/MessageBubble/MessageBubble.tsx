@@ -47,6 +47,9 @@ export const MessageBubble = memo(
 
     const replyText = repliedMessage?.content?.trim() || message.replyToContent?.trim() || '';
     const replyImage = repliedMessage?.mediaUrl || message.replyToMediaUrl || null;
+    
+    const actualType = message.mediaType || message.type;
+    const isAudio = actualType === 'audio' || actualType === 'voice';
 
     return (
       <article
@@ -55,7 +58,7 @@ export const MessageBubble = memo(
         {...longPressHandlers}
       >
         <div
-          className={`message-bubble ${mine ? 'is-mine' : ''} ${hasMessageMedia(message) ? 'has-media' : ''} ${isActionTarget ? 'is-action-target' : ''} ${isSelected ? 'is-selected bg-accent' : ''}`}
+          className={cn("message-bubble", mine && 'is-mine', hasMessageMedia(message) && 'has-media', isAudio && 'has-audio w-full', isActionTarget && 'is-action-target', isSelected && 'is-selected bg-accent')}
         >
           {!mine && message.senderStatusEmoji && (
             <div className="message-sender">

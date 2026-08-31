@@ -25,3 +25,5 @@ export {
 } from './useRealtimeSocket';
 export { useToasts } from './useToasts';
 export { useTypingIndicator } from './useTypingIndicator';
+export { useAudio } from './useAudio';
+export { useVideo } from './useVideo';
