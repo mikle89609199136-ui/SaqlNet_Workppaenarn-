@@ -1,15 +1,17 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { testI18n } from '@/test/harness/i18n';
 import { VideoPlayer } from './VideoPlayer';
 
-// Мок IntersectionObserver
-const mockIntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
-window.IntersectionObserver = mockIntersectionObserver;
+// Мок IntersectionObserver с использованием класса
+class MockIntersectionObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+window.IntersectionObserver = MockIntersectionObserver as any;
 
 // Мок matchMedia
 window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -30,7 +32,7 @@ const simulateFullscreen = (el: HTMLElement) => {
     writable: true,
     configurable: true,
   });
-  document.dispatchEvent(new Event('fullscreenchange'));
+  fireEvent(document, new Event('fullscreenchange'));
 };
 
 const exitFullscreen = () => {
@@ -39,7 +41,15 @@ const exitFullscreen = () => {
     writable: true,
     configurable: true,
   });
-  document.dispatchEvent(new Event('fullscreenchange'));
+  fireEvent(document, new Event('fullscreenchange'));
+};
+
+const renderPlayer = (props: React.ComponentProps<typeof VideoPlayer>) => {
+  return render(
+    <I18nextProvider i18n={testI18n}>
+      <VideoPlayer {...props} />
+    </I18nextProvider>
+  );
 };
 
 describe('VideoPlayer', () => {
@@ -82,14 +92,14 @@ describe('VideoPlayer', () => {
   // --- Рендеринг ---
 
   it('1. renders video element and basic controls', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     expect(document.querySelector('video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /воспроизвести/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /экран/i })).toBeInTheDocument();
   });
 
   it('2. renders with autoPlay, muted, loop, playsInline attributes', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
     expect(video).toHaveAttribute('autoplay');
     expect(video).toHaveAttribute('loop');
@@ -100,7 +110,7 @@ describe('VideoPlayer', () => {
 
   it('3. toggles play state on play button click', async () => {
     const user = userEvent.setup();
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
 
     await user.click(screen.getByRole('button', { name: /воспроизвести/i }));
     expect(screen.getByRole('button', { name: /приостановить/i })).toBeInTheDocument();
@@ -111,7 +121,7 @@ describe('VideoPlayer', () => {
 
   it('4. resets play state on ended', async () => {
     const user = userEvent.setup();
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
 
     await user.click(screen.getByRole('button', { name: /воспроизвести/i }));
     fireEvent.ended(document.querySelector('video')!);
@@ -119,7 +129,7 @@ describe('VideoPlayer', () => {
   });
 
   it('5. toggles play when clicking the video on desktop', async () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
 
     fireEvent.click(video);
@@ -133,7 +143,7 @@ describe('VideoPlayer', () => {
 
   it('6. starts muted (autoplay policy) and toggles mute', async () => {
     const user = userEvent.setup();
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
 
     expect(video.muted).toBe(true);
@@ -147,7 +157,7 @@ describe('VideoPlayer', () => {
   });
 
   it('7. changes volume via slider', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
     const volumeSlider = screen.getAllByRole('slider')[0];
 
@@ -159,22 +169,20 @@ describe('VideoPlayer', () => {
 
   it('8. requests fullscreen when maximize button is clicked', async () => {
     const user = userEvent.setup();
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
 
     await user.click(screen.getByRole('button', { name: /экран/i }));
     expect(requestFullscreenMock).toHaveBeenCalled();
   });
 
   it('9. reveals time slider and quality in fullscreen', () => {
-    render(
-      <VideoPlayer
-        src="test.mp4"
-        sources={[
-          { label: 'Авто', url: 'test.mp4' },
-          { label: '1080p', url: 'test_1080.mp4' },
-        ]}
-      />
-    );
+    renderPlayer({
+      src: 'test.mp4',
+      sources: [
+        { label: 'Авто', url: 'test.mp4' },
+        { label: '1080p', url: 'test_1080.mp4' },
+      ],
+    });
     const videoWrapper = document.querySelector('.bg-ink');
 
     simulateFullscreen(videoWrapper as HTMLElement);
@@ -186,7 +194,7 @@ describe('VideoPlayer', () => {
   // --- Горячие клавиши ---
 
   it('10. keyboard shortcuts work strictly in fullscreen mode', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
     Object.defineProperty(video, 'currentTime', { value: 10, writable: true, configurable: true });
     Object.defineProperty(video, 'duration', { value: 60, writable: true, configurable: true });
@@ -202,7 +210,7 @@ describe('VideoPlayer', () => {
   });
 
   it('11. seek indicator appears when seeking in fullscreen with arrows', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
     Object.defineProperty(video, 'currentTime', { value: 10, writable: true, configurable: true });
     Object.defineProperty(video, 'duration', { value: 60, writable: true, configurable: true });
@@ -217,13 +225,13 @@ describe('VideoPlayer', () => {
   // --- Видимость элементов управления ---
 
   it('12. hides controls on mobile when not in fullscreen', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const controls = document.querySelector('.bg-gradient-to-t');
     expect(controls?.className).not.toContain('hidden');
   });
 
   it('13. quality menu only renders when sources has >1 items', () => {
-    const { rerender } = render(<VideoPlayer src="test.mp4" />);
+    const { rerender } = renderPlayer({ src: 'test.mp4' });
     const wrapper = document.querySelector('.bg-ink');
     simulateFullscreen(wrapper as HTMLElement);
 
@@ -231,13 +239,15 @@ describe('VideoPlayer', () => {
 
     exitFullscreen();
     rerender(
-      <VideoPlayer
-        src="test.mp4"
-        sources={[
-          { label: 'Авто', url: 'a.mp4' },
-          { label: '720p', url: 'b.mp4' },
-        ]}
-      />
+      <I18nextProvider i18n={testI18n}>
+        <VideoPlayer
+          src="test.mp4"
+          sources={[
+            { label: 'Авто', url: 'a.mp4' },
+            { label: '720p', url: 'b.mp4' },
+          ]}
+        />
+      </I18nextProvider>
     );
     const updatedWrapper = document.querySelector('.bg-ink');
     simulateFullscreen(updatedWrapper as HTMLElement);
@@ -248,7 +258,7 @@ describe('VideoPlayer', () => {
   // --- Буферизация ---
 
   it('14. shows spinner on waiting event, hides on playing', () => {
-    render(<VideoPlayer src="test.mp4" />);
+    renderPlayer({ src: 'test.mp4' });
     const video = document.querySelector('video')!;
 
     fireEvent.waiting(video);

@@ -2,12 +2,14 @@ import { Button, Slider } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { useAudio } from '@/hooks/useAudio';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {
   src: string;
 }
 
 export const AudioPlayer = ({ src }: AudioPlayerProps) => {
+  const { t } = useTranslation();
   const isMobile = useIsMobile();
   const {
     mediaRef,
@@ -29,7 +31,7 @@ export const AudioPlayer = ({ src }: AudioPlayerProps) => {
 
   return (
     <div
-      className="flex w-full flex-col gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
+      className="flex w-full flex-col gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-bubble"
       onClick={(e) => e.currentTarget.focus()}
       tabIndex={0}
     >
@@ -39,10 +41,12 @@ export const AudioPlayer = ({ src }: AudioPlayerProps) => {
         ref={mediaRef}
         src={src}
       />
-      <div className="bg-sheet-2 flex items-center gap-3 rounded-xl p-3">
+      <div className="bg-sheet-2 flex items-center gap-3 rounded-bubble p-3">
         <Button
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          className="shrink-0 rounded-full"
+          aria-label={
+            isPlaying ? t('media.pause', 'Приостановить') : t('media.play', 'Воспроизвести')
+          }
+          className="shrink-0 rounded-pill"
           iconOnly
           onClick={togglePlay}
           variant="primary"
@@ -67,7 +71,9 @@ export const AudioPlayer = ({ src }: AudioPlayerProps) => {
         {!isMobile && (
           <div className="relative group/vol shrink-0">
             <Button
-              aria-label={isMuted ? 'Unmute' : 'Mute'}
+              aria-label={
+                isMuted ? t('media.unmute', 'Включить звук') : t('media.mute', 'Выключить звук')
+              }
               className="shrink-0"
               iconOnly
               onClick={toggleMute}

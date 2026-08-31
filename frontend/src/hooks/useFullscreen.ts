@@ -55,7 +55,7 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
         doc.mozFullScreenElement ||
         doc.msFullscreenElement;
 
-      setIsFullscreen(Boolean(fsEl && (fsEl === el || el?.contains(fsEl))));
+      setIsFullscreen(Boolean(fsEl && (fsEl === el || el?.contains(fsEl) || fsEl?.contains(el))));
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
