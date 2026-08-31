@@ -19,6 +19,11 @@ export const useIdle = ({ enabled = true, timeoutMs = 2000 }: UseIdleOptions = {
     }
   }, [timeoutMs]);
 
+  const hideControls = useCallback(() => {
+    if (idleTimeout.current) clearTimeout(idleTimeout.current);
+    setIsIdle(true);
+  }, []);
+
   useEffect(() => {
     if (enabled) {
       resetIdle();
@@ -39,6 +44,6 @@ export const useIdle = ({ enabled = true, timeoutMs = 2000 }: UseIdleOptions = {
   return {
     isIdle,
     resetIdle,
-    setIsIdle,
+    hideControls,
   };
 };

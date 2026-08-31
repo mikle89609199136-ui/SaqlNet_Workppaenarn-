@@ -46,4 +46,16 @@ describe('useIdle', () => {
 
     expect(result.current.isIdle).toBe(false);
   });
+
+  it('4. скрывает элементы управления немедленно при hideControls', () => {
+    const { result } = renderHook(() => useIdle({ enabled: true, timeoutMs: 2000 }));
+
+    expect(result.current.isIdle).toBe(false);
+
+    act(() => {
+      result.current.hideControls();
+    });
+
+    expect(result.current.isIdle).toBe(true);
+  });
 });

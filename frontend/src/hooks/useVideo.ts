@@ -27,12 +27,13 @@ export const useVideo = (
   const [isBuffering, setIsBuffering] = useState(false);
 
   const isIntersectingRef = useRef(false);
+  const userPausedRef = useRef(false);
 
   // --- Полноэкранный режим ---
   const { isFullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
 
   // --- Автоматическое скрытие UI при бездействии в полноэкранном режиме ---
-  const { isIdle, resetIdle, setIsIdle } = useIdle({
+  const { isIdle, resetIdle, hideControls } = useIdle({
     enabled: isFullscreen,
     timeoutMs: 2000,
   });
@@ -50,6 +51,7 @@ export const useVideo = (
   const togglePlay = useCallback(() => {
     if (!mediaRef.current) return;
     if (mediaRef.current.paused) {
+      userPausedRef.current = false;
       if (mediaRef.current.ended || mediaRef.current.currentTime >= mediaRef.current.duration) {
         mediaRef.current.currentTime = 0;
       }
@@ -58,6 +60,7 @@ export const useVideo = (
         .then(() => setIsPlaying(true))
         .catch(() => setIsPlaying(false));
     } else {
+      userPausedRef.current = true;
       mediaRef.current.pause();
       setIsPlaying(false);
     }
@@ -125,6 +128,7 @@ export const useVideo = (
   }, []);
 
   const handleEnded = useCallback(() => {
+    userPausedRef.current = false;
     setIsPlaying(false);
   }, []);
 
@@ -180,12 +184,14 @@ export const useVideo = (
   );
 
   const toggleMute = useCallback(() => {
-    const newMuted = !isMuted;
-    if (mediaRef.current) {
-      mediaRef.current.muted = newMuted;
+    if (isMuted) {
+      if (mediaRef.current) mediaRef.current.muted = false;
+      setIsMuted(false);
+      if (volume === 0) changeVolume(1);
+    } else {
+      if (mediaRef.current) mediaRef.current.muted = true;
+      setIsMuted(true);
     }
-    setIsMuted(newMuted);
-    if (!newMuted && volume === 0) changeVolume(1);
   }, [isMuted, volume, changeVolume]);
 
   const handleVolumeChange = useCallback(
@@ -205,7 +211,7 @@ export const useVideo = (
         const [entry] = entries;
         isIntersectingRef.current = entry.isIntersecting;
         if (entry.isIntersecting) {
-          if (mediaRef.current && mediaRef.current.paused) {
+          if (!userPausedRef.current && mediaRef.current && mediaRef.current.paused) {
             mediaRef.current.play().catch(() => {});
           }
         } else {
@@ -223,7 +229,12 @@ export const useVideo = (
 
   const handleCanPlay = useCallback(() => {
     setIsBuffering(false);
-    if (isIntersectingRef.current && mediaRef.current && mediaRef.current.paused) {
+    if (
+      !userPausedRef.current &&
+      isIntersectingRef.current &&
+      mediaRef.current &&
+      mediaRef.current.paused
+    ) {
       mediaRef.current.play().catch(() => {});
     }
   }, []);
@@ -258,11 +269,11 @@ export const useVideo = (
         if (isIdle) {
           resetIdle();
         } else {
-          setIsIdle(true);
+          hideControls();
         }
       }
     },
-    [options?.isMobile, isFullscreen, isIdle, resetIdle, setIsIdle, toggleFullscreen]
+    [options?.isMobile, isFullscreen, isIdle, resetIdle, hideControls, toggleFullscreen]
   );
 
   // --- Горячие клавиши (только в полноэкранном режиме) ---
@@ -312,12 +323,12 @@ export const useVideo = (
   }, [isFullscreen, togglePlay, changeVolume, volume, toggleMute, triggerSeekIndicator]);
 
   // --- Форматирование времени ---
-  const formatTime = (seconds: number) => {
+  const formatTime = useCallback((seconds: number) => {
     if (isNaN(seconds)) return '0:00';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+  }, []);
 
   return {
     mediaRef,
@@ -341,6 +352,7 @@ export const useVideo = (
     toggleFullscreen,
     changeVolume,
     resetIdle,
+    hideControls,
     handleLoadedMetadata,
     handleEnded,
     handleSliderChange,

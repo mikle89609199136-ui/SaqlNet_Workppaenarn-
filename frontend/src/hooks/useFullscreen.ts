@@ -1,5 +1,36 @@
 import { useCallback, useEffect, useState, type RefObject } from 'react';
 
+interface FullscreenDocument extends Document {
+  webkitFullscreenElement?: Element | null;
+  mozFullScreenElement?: Element | null;
+  msFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+  mozCancelFullScreen?: () => Promise<void> | void;
+  msExitFullscreen?: () => Promise<void> | void;
+}
+
+interface FullscreenHTMLElement extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+  mozRequestFullScreen?: () => Promise<void> | void;
+  msRequestFullscreen?: () => Promise<void> | void;
+}
+
+interface HTMLVideoElementWithWebkit extends HTMLVideoElement {
+  webkitEnterFullscreen?: () => void;
+  webkitSupportsFullscreen?: boolean;
+}
+
+const getFullscreenElement = (): Element | null => {
+  const doc = document as FullscreenDocument;
+  return (
+    doc.fullscreenElement ??
+    doc.webkitFullscreenElement ??
+    doc.mozFullScreenElement ??
+    doc.msFullscreenElement ??
+    null
+  );
+};
+
 export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -7,17 +38,14 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
     const el = targetRef?.current;
     if (!el) return;
 
-    const doc = document as any;
-    const isCurrentlyFs = Boolean(
-      document.fullscreenElement ||
-      doc.webkitFullscreenElement ||
-      doc.mozFullScreenElement ||
-      doc.msFullscreenElement
-    );
+    const doc = document as FullscreenDocument;
+    const fsEl = getFullscreenElement();
+    const isOurFs = Boolean(fsEl && (fsEl === el || el.contains(fsEl) || fsEl.contains(el)));
 
-    if (isCurrentlyFs) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
+    if (isOurFs) {
+      // Сворачиваем только если полноэкранный режим занят именно нашим элементом
+      if (doc.exitFullscreen) {
+        doc.exitFullscreen().catch(() => {});
       } else if (doc.webkitExitFullscreen) {
         doc.webkitExitFullscreen();
       } else if (doc.mozCancelFullScreen) {
@@ -26,7 +54,8 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
         doc.msExitFullscreen();
       }
     } else {
-      const element = el as any;
+      // Разворачиваем наш элемент (даже если был открыт чужой элемент)
+      const element = el as FullscreenHTMLElement;
       if (element.requestFullscreen) {
         element.requestFullscreen().catch(() => {});
       } else if (element.webkitRequestFullscreen) {
@@ -37,8 +66,10 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
         element.msRequestFullscreen();
       } else {
         // iOS Safari на iPhone: полноэкранный режим поддерживается напрямую на <video>
-        const video = (el.tagName === 'VIDEO' ? el : el.querySelector('video')) as any;
-        if (video && video.webkitEnterFullscreen) {
+        const video = (
+          el.tagName === 'VIDEO' ? el : el.querySelector('video')
+        ) as HTMLVideoElementWithWebkit | null;
+        if (video?.webkitEnterFullscreen) {
           video.webkitEnterFullscreen();
         }
       }
@@ -48,14 +79,10 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
   useEffect(() => {
     const handleFullscreenChange = () => {
       const el = targetRef?.current;
-      const doc = document as any;
-      const fsEl =
-        document.fullscreenElement ||
-        doc.webkitFullscreenElement ||
-        doc.mozFullScreenElement ||
-        doc.msFullscreenElement;
-
-      setIsFullscreen(Boolean(fsEl && (fsEl === el || el?.contains(fsEl) || fsEl?.contains(el))));
+      const fsEl = getFullscreenElement();
+      setIsFullscreen(
+        Boolean(fsEl && el && (fsEl === el || el.contains(fsEl) || fsEl.contains(el)))
+      );
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -67,7 +94,7 @@ export const useFullscreen = (targetRef?: RefObject<HTMLElement | null>) => {
     const el = targetRef?.current;
     const video = (
       el?.tagName === 'VIDEO' ? el : el?.querySelector('video')
-    ) as HTMLVideoElement | null;
+    ) as HTMLVideoElementWithWebkit | null;
     const onBegin = () => setIsFullscreen(true);
     const onEnd = () => setIsFullscreen(false);
 

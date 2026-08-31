@@ -8,12 +8,15 @@ export const useAudio = () => {
 
   const togglePlay = useCallback(() => {
     if (!mediaRef.current) return;
-    
+
     if (mediaRef.current.paused) {
       if (mediaRef.current.ended || mediaRef.current.currentTime >= mediaRef.current.duration) {
         mediaRef.current.currentTime = 0;
       }
-      mediaRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      mediaRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     } else {
       mediaRef.current.pause();
       setIsPlaying(false);
@@ -85,38 +88,50 @@ export const useAudio = () => {
     isDraggingRef.current = false;
   }, []);
 
-  const formatTime = (seconds: number) => {
+  const formatTime = useCallback((seconds: number) => {
     if (isNaN(seconds)) return '0:00';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+  }, []);
 
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
-  const changeVolume = useCallback((newVolume: number) => {
-    if (!mediaRef.current) return;
-    const clamped = Math.max(0, Math.min(1, newVolume));
-    mediaRef.current.volume = clamped;
-    setVolume(clamped);
-    if (clamped > 0 && isMuted) {
-      setIsMuted(false);
-      mediaRef.current.muted = false;
-    }
-  }, [isMuted]);
+  const changeVolume = useCallback(
+    (newVolume: number) => {
+      const clamped = Math.max(0, Math.min(1, newVolume));
+      if (mediaRef.current) {
+        mediaRef.current.volume = clamped;
+        if (clamped > 0 && isMuted) {
+          mediaRef.current.muted = false;
+        }
+      }
+      setVolume(clamped);
+      if (clamped > 0 && isMuted) {
+        setIsMuted(false);
+      }
+    },
+    [isMuted]
+  );
 
   const toggleMute = useCallback(() => {
-    if (!mediaRef.current) return;
-    const newMuted = !isMuted;
-    mediaRef.current.muted = newMuted;
-    setIsMuted(newMuted);
-    if (!newMuted && volume === 0) changeVolume(1);
+    if (isMuted) {
+      if (mediaRef.current) mediaRef.current.muted = false;
+      setIsMuted(false);
+      if (volume === 0) changeVolume(1);
+    } else {
+      if (mediaRef.current) mediaRef.current.muted = true;
+      setIsMuted(true);
+    }
   }, [isMuted, volume, changeVolume]);
 
-  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    changeVolume(Number(e.target.value));
-  }, [changeVolume]);
+  const handleVolumeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      changeVolume(Number(e.target.value));
+    },
+    [changeVolume]
+  );
 
   return {
     mediaRef,
