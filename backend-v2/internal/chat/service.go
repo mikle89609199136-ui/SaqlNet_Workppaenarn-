@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -104,6 +105,8 @@ type Message struct {
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
+	presence presence.Store
 }
 
 type realtimeServer interface {
@@ -173,8 +176,8 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName 
 	return fileName, sizeBytes, nil
 }
 
-func NewService(db *sql.DB, ws realtimeServer) *Service {
-	return &Service{db: db, ws: ws}
+func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
+	return &Service{db: db, ws: ws, presence: presence}
 }
 
 func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {

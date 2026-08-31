@@ -14,7 +14,10 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/presence"
+
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -27,7 +30,14 @@ func main() {
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto)
-	handler := chat.NewHandler(chat.NewService(pool, wsServer))
+	redisURL := config.Value("REDIS_URL", "redis://127.0.0.1:6379")
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	redisClient := redis.NewClient(opt)
+	presenceStore := presence.NewRedisStore(redisClient)
+	handler := chat.NewHandler(chat.NewService(pool, wsServer, presenceStore))
 
 	// In production NATS is required. In other environments it is optional
 	// but outbox events will accumulate until NATS becomes available.

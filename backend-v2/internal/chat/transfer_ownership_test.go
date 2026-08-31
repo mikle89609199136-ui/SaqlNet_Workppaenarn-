@@ -47,7 +47,7 @@ func TestTransferOwnership_Success_ownerTransfers(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -78,7 +78,7 @@ func TestTransferOwnership_OwnershipConflict(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferOtherOwnerID)
@@ -98,7 +98,7 @@ func TestTransferOwnership_ChatNotFound(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(transferOwnerIDQuery).
@@ -121,7 +121,7 @@ func TestTransferOwnership_TargetNotMember(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -144,7 +144,7 @@ func TestTransferOwnership_SelfTransfer(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, transferActorID)
 	require.ErrorIs(t, err, chat.ErrInvalidInput)
@@ -159,7 +159,7 @@ func TestTransferOwnership_InvalidUUID(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, "not-a-uuid")
 	require.ErrorIs(t, err, chat.ErrInvalidInput)
@@ -175,7 +175,7 @@ func TestTransferOwnership_RollbackOnUpdateError(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -200,7 +200,7 @@ func TestTransferOwnership_ChatDeletedMidTx(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -224,7 +224,7 @@ func TestTransferOwnership_TargetLeftMidTx(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -251,7 +251,7 @@ func TestTransferOwnership_ActorMembershipLostMidTx(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)

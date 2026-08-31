@@ -67,7 +67,7 @@ func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 // newAuthedRequest создаёт запрос с контекстом пользователя-актора.
@@ -149,7 +149,7 @@ func TestHandler_AddMember(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := NewService(db, nil)
+	svc := NewService(db, nil, nil)
 	h := NewHandler(svc)
 
 	tests := []struct {
