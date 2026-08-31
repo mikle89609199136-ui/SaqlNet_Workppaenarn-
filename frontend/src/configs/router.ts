@@ -7,7 +7,12 @@ import { AuthGuard } from '../components/guards/AuthGuard.js';
 import { AppLayout } from '../components/layouts/AppLayout.js';
 import { RootLayout } from '../components/layouts/RootLayout.js';
 import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
-import { REACT_ROUTES } from '../consts/routes';
+import {
+  DEFAULT_SETTINGS_SECTION,
+  REACT_ROUTES,
+  ROUTES,
+  isSettingsSection,
+} from '../consts/routes';
 import { clearAuthSession } from '../utils/clearAuthSession.js';
 
 async function requireSession({ request }: { request: Request }) {
@@ -83,6 +88,21 @@ const chatLoader = async ({ params }: { params: Params }) => {
   }
 };
 
+/**
+ * Раздел настроек из адреса.
+ *
+ * Незнакомое имя раздела уводит на первый, а не показывает его содержимое
+ * под чужим адресом: расхождение между строкой адреса и тем, что на экране,
+ * хуже тихого перенаправления. Настройки открывают из меню, а не по внешним
+ * ссылкам, поэтому терять тут нечего.
+ */
+const settingsSectionLoader = ({ params }: { params: Params }) => {
+  if (!isSettingsSection(params.section)) {
+    return redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION));
+  }
+  return null;
+};
+
 export const router = createBrowserRouter([
   {
     Component: RootLayout,
@@ -156,6 +176,30 @@ export const router = createBrowserRouter([
                   import('../pages/SettingsPage/SettingsPage.js').then((m) => ({
                     Component: m.SettingsPage,
                   })),
+                children: [
+                  /* Без раздела в адресе показывать нечего: отправляем на
+                     первый, чтобы у открытого экрана всегда был свой адрес. */
+                  {
+                    index: true,
+                    loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
+                  },
+                  {
+                    path: REACT_ROUTES.SETTINGS_SECTION,
+                    loader: settingsSectionLoader,
+                    lazy: () =>
+                      import('../pages/SettingsPage/SettingsDetailPage.js').then((m) => ({
+                        Component: m.SettingsDetailPage,
+                      })),
+                  },
+                  {
+                    path: REACT_ROUTES.SETTINGS_SUBSECTION,
+                    loader: settingsSectionLoader,
+                    lazy: () =>
+                      import('../pages/SettingsPage/SettingsDetailPage.js').then((m) => ({
+                        Component: m.SettingsDetailPage,
+                      })),
+                  },
+                ],
               },
             ],
           },

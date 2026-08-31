@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
 import { useToasts } from '../../hooks/useToasts';
 import { services } from '../../services/serviceContainer';
@@ -12,16 +12,37 @@ import { userKeys } from '@/queries/keys';
 import { useLanguageStore, useProfileStore, useThemeStore, type TThemeType } from '@/store';
 import { ChoiceRow, Field, SettingsSection, ToggleRow } from './SettingsControls';
 import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
+import {
+  DEFAULT_SETTINGS_SECTION,
+  ROUTES,
+  isAccountSubsection,
+  isSettingsSection,
+  type TAccountSubsection,
+} from '@/consts/routes';
 import { useTranslation } from 'react-i18next';
 
-interface Props {
-  activeTab: string;
+interface OutletContext {
   searchQuery: string;
 }
 
-export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
+export function SettingsDetailPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { searchQuery } = useOutletContext<OutletContext>();
+  const params = useParams<{ section: string; subsection: string }>();
+
+  /* Раздел и подстраница берутся из адреса. Неизвестное имя — не ошибка
+     и не пустой экран: показываем первый раздел, как и при заходе на
+     /settings без указания. */
+  const activeTab = isSettingsSection(params.section) ? params.section : DEFAULT_SETTINGS_SECTION;
+  const accountView = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
+
+  const openAccountView = (view: TAccountSubsection | 'overview') =>
+    navigate(
+      view === 'overview'
+        ? ROUTES.SETTINGS_SECTION('account')
+        : ROUTES.SETTINGS_SUBSECTION('account', view)
+    );
   const { showToast } = useToasts();
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
@@ -42,13 +63,8 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
   const [sessions] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [accountView, setAccountView] = useState('overview');
   const settings = useProfileStore((state) => state.settings);
   const setSettings = useProfileStore((state) => state.setSettings);
-
-  useEffect(() => {
-    setAccountView('overview');
-  }, [activeTab]);
 
   // Настройки дублируются в сторе: их читают экраны за пределами этой
   // страницы. Запись идёт через стор, а не в localStorage напрямую —
@@ -131,7 +147,7 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
           saving={saving}
           setSaving={setSaving}
           onUserChange={handleUserChange}
-          onBack={() => setAccountView('overview')}
+          onBack={() => openAccountView('overview')}
           showToast={showToast}
         />
       )}
@@ -139,14 +155,14 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
         <PasswordSettings
           saving={saving}
           setSaving={setSaving}
-          onBack={() => setAccountView('overview')}
+          onBack={() => openAccountView('overview')}
           showToast={showToast}
         />
       )}
       {activeTab === 'account' && accountView === 'email' && (
         <EmailSettings
           user={user}
-          onBack={() => setAccountView('overview')}
+          onBack={() => openAccountView('overview')}
           showToast={showToast}
         />
       )}
@@ -156,7 +172,7 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
           saving={saving}
           setSaving={setSaving}
           onEnabledChange={setTwoFAEnabled}
-          onBack={() => setAccountView('overview')}
+          onBack={() => openAccountView('overview')}
           showToast={showToast}
         />
       )}
@@ -164,7 +180,7 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
         <SessionsSettings
           sessions={sessions}
           onLogoutAll={() => logout(true)}
-          onBack={() => setAccountView('overview')}
+          onBack={() => openAccountView('overview')}
         />
       )}
       {activeTab === 'account' && accountView === 'overview' && (
@@ -173,11 +189,11 @@ export function SettingsDetailPage({ activeTab, searchQuery }: Props) {
           sessions={sessions}
           twoFAEnabled={twoFAEnabled}
           onLogout={logout}
-          onEditProfile={() => setAccountView('profile')}
-          onOpenEmail={() => setAccountView('email')}
-          onOpenPassword={() => setAccountView('password')}
-          onOpenTwoFA={() => setAccountView('twoFA')}
-          onOpenSessions={() => setAccountView('sessions')}
+          onEditProfile={() => openAccountView('profile')}
+          onOpenEmail={() => openAccountView('email')}
+          onOpenPassword={() => openAccountView('password')}
+          onOpenTwoFA={() => openAccountView('twoFA')}
+          onOpenSessions={() => openAccountView('sessions')}
         />
       )}
       {activeTab === 'notifications' && (
@@ -279,7 +295,12 @@ function AccountSettings({
       <section className="settings-account-overview">
         <h1>Аккаунт</h1>
         <div className="settings-account-summary settings-overview-profile">
-          <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
+          <Avatar
+            id={user.id}
+            name={user.firstName || user.username}
+            size="xl"
+            src={user.avatarUrl}
+          />
           <div className="settings-account-identity">
             <strong>
               {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
@@ -432,8 +453,7 @@ function TwoFASettings({ enabled, saving, setSaving, onEnabledChange, onBack, sh
   const [password, setPassword] = useState('');
   async function submit(event) {
     event.preventDefault();
-    if (password.length < 6)
-      return showToast('error', 'Введите пароль 2FA — минимум 6 символов');
+    if (password.length < 6) return showToast('error', 'Введите пароль 2FA — минимум 6 символов');
     setSaving(true);
     try {
       await services.authService.setTwoFA(!enabled, password);
@@ -576,7 +596,12 @@ function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showTo
         <p>Обновите имя и информацию, которую видят другие пользователи.</p>
       </header>
       <div className="settings-profile-editor-identity">
-        <Avatar id={user.id} name={user.firstName || user.username} size="xl" src={user.avatarUrl} />
+        <Avatar
+          id={user.id}
+          name={user.firstName || user.username}
+          size="xl"
+          src={user.avatarUrl}
+        />
         <div>
           <strong>
             {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
