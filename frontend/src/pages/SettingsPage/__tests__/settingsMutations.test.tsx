@@ -79,14 +79,11 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
 
-    await userEvent.click(await screen.findByText('Все', { selector: 'summary span' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Никто' }));
+    await userEvent.click(await screen.findByRole('radio', { name: 'Никто' }));
 
     expect(
       await screen.findByText('Не удалось сохранить настройки приватности')
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByText('Все', { selector: 'summary span' })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Все' })).toBeChecked());
   });
 });

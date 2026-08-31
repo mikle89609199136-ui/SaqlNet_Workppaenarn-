@@ -19,9 +19,7 @@ describe('оснастка настроек', () => {
   it('показывает значение из кеша, не обращаясь к серверу', async () => {
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'nobody' } });
 
-    // Значение выбранного варианта показано в свёрнутом виде — в списке оно
-    // встречается ещё раз, поэтому проверяется именно подпись.
-    expect(await screen.findByText('Никто', { selector: 'summary span' })).toBeInTheDocument();
+    expect(await screen.findByRole('radio', { name: 'Никто' })).toBeChecked();
   });
 
   it('открывает подстраницу аккаунта по адресу', async () => {

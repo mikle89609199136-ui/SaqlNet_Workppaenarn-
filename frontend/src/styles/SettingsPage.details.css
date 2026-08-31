@@ -226,34 +226,13 @@
   color: var(--text-secondary);
 }
 
-.settings-detail-section {
-  margin-bottom: 28px;
-}
-
-.settings-detail-section > header {
-  margin-bottom: 12px;
-}
-
-.settings-detail-section h1 {
-  margin: 0 0 4px;
-  font-size: 21px;
-}
-
-.settings-detail-section p,
+/* Заголовок раздела и карточка переехали в разметку SettingsSection —
+   утилитами. Здесь остаётся только .settings-muted: его используют
+   подстраницы аккаунта, они переезжают в #473. */
 .settings-muted {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
-}
-
-.settings-detail-card {
-  display: grid;
-  gap: 16px;
-  padding: 20px;
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  background: var(--bg-card);
-  box-shadow: 0 8px 24px var(--shadow-color);
 }
 
 .settings-account-summary {
@@ -352,12 +331,6 @@
   gap: 10px;
 }
 
-.settings-control-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
 
 .settings-session-list {
   display: grid;

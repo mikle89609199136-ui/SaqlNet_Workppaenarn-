@@ -20,6 +20,12 @@ interface Props {
   error?: string;
   required?: boolean;
   disabled?: boolean;
+  /**
+   * Как расставить варианты. Вертикально по умолчанию: длинные подписи в
+   * строку не помещаются, а взгляд по столбцу идёт быстрее. Горизонтально —
+   * для двух-трёх коротких значений, когда весь выбор виден разом.
+   */
+  orientation?: 'vertical' | 'horizontal';
   className?: string;
 }
 
@@ -35,6 +41,7 @@ export function RadioGroup({
   name,
   onChange,
   options,
+  orientation = 'vertical',
   required,
   value,
 }: Props) {
@@ -55,19 +62,29 @@ export function RadioGroup({
         </legend>
       )}
 
-      {options.map((option) => (
-        <Radio
-          checked={isControlled ? value === option.value : undefined}
-          disabled={option.disabled}
-          invalid={isError}
-          key={option.value}
-          label={option.label}
-          name={name}
-          onChange={() => onChange?.(option.value)}
-          required={required}
-          value={option.value}
-        />
-      ))}
+      {/* Варианты лежат в своей обёртке, а не прямо в fieldset: legend
+          участвует в раскладке родителя не так, как обычный элемент, и в
+          строку вместе с вариантами его ставить нельзя. */}
+      <div
+        className={cn(
+          'flex gap-2.5',
+          orientation === 'horizontal' ? 'flex-row flex-wrap gap-x-6' : 'flex-col'
+        )}
+      >
+        {options.map((option) => (
+          <Radio
+            checked={isControlled ? value === option.value : undefined}
+            disabled={option.disabled}
+            invalid={isError}
+            key={option.value}
+            label={option.label}
+            name={name}
+            onChange={() => onChange?.(option.value)}
+            required={required}
+            value={option.value}
+          />
+        ))}
+      </div>
 
       {caption && (
         <FieldCaption id={captionId} isError={isError}>

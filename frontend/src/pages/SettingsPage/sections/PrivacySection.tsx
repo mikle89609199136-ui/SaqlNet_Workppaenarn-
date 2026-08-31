@@ -1,12 +1,22 @@
+import { RadioGroup, Switch } from '@/components/ui';
 import type { TLastSeenVisibility } from '@/types';
-import { ChoiceRow, SettingsSection, ToggleRow } from '../SettingsControls';
+import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useSettingsData } from './useSettingsData';
 
+/* Три варианта показаны сразу, а не спрятаны в список: выбор из трёх
+   читается одним взглядом, и лишнее нажатие ради этого не нужно. */
 const LAST_SEEN_OPTIONS = [
   { value: 'all', label: 'Все' },
   { value: 'contacts', label: 'Контакты' },
   { value: 'nobody', label: 'Никто' },
 ];
+
+/* Сервер значение не проверяет: `{"lastSeen": 123}` сохранится и вернёт
+   200 (#439). Поэтому допустимость решает клиент — наверх уходит только
+   то, что есть в списке. */
+function isLastSeenVisibility(value: string): value is TLastSeenVisibility {
+  return LAST_SEEN_OPTIONS.some((option) => option.value === value);
+}
 
 export function PrivacySection() {
   const { privacy, savePrivacy } = useSettingsData();
@@ -16,19 +26,32 @@ export function PrivacySection() {
       description="Управляйте тем, кто видит ваши данные."
       title="Конфиденциальность"
     >
-      <ChoiceRow
+      {/* Подпись группы рисует она сама — это legend внутри fieldset.
+          Подменять его подписью ряда значило бы разорвать связь для
+          диктора, поэтому здесь группа стоит без обёртки. */}
+      <RadioGroup
+        /* Подпись группы приводится к виду подписи ряда: рядом стоит
+           «Сообщения от незнакомых», и два названия настроек не должны
+           выглядеть по-разному. Компонент рисует legend как подпись поля,
+           поэтому вид задаётся здесь, а не внутри него. */
+        className="[&>legend]:text-body [&>legend]:mb-2 [&>legend]:text-ink"
         label="Последняя активность"
-        onChange={(value: TLastSeenVisibility) => savePrivacy({ lastSeen: value })}
+        name="lastSeen"
+        onChange={(value) => isLastSeenVisibility(value) && savePrivacy({ lastSeen: value })}
         options={LAST_SEEN_OPTIONS}
-        value={privacy.lastSeen || 'all'}
+        orientation="horizontal"
+        value={privacy.lastSeen ?? 'all'}
       />
+
       {/* Умолчание — «разрешено»: отсутствие настройки не должно выглядеть
-          как запрет, которого пользователь не ставил. */}
-      <ToggleRow
-        label="Сообщения от незнакомых"
-        onChange={(value: boolean) => savePrivacy({ messagesFromStrangers: value })}
-        value={privacy.messagesFromStrangers !== false}
-      />
+          как запрет, которого человек не ставил. */}
+      <SettingsRow controlId="setting-strangers" label="Сообщения от незнакомых">
+        <Switch
+          checked={privacy.messagesFromStrangers !== false}
+          id="setting-strangers"
+          onChange={(event) => savePrivacy({ messagesFromStrangers: event.target.checked })}
+        />
+      </SettingsRow>
     </SettingsSection>
   );
 }
