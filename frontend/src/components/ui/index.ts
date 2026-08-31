@@ -1,4 +1,4 @@
-export { Avatar } from './Avatar';
+export { Avatar, AvatarShapeProvider, useAvatarShape, type TAvatarShape } from './Avatar';
 export { Badge } from './Badge';
 export { Banner } from './Banner';
 export { Button, buttonStyles } from './Button';

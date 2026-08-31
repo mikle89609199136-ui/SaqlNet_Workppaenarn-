@@ -12,6 +12,12 @@ export interface SelectOption {
 }
 
 interface Props {
+  /**
+   * Идентификатор кнопки, открывающей список. Нужен, когда подпись стоит
+   * вне компонента и связывается с ним через `htmlFor` — например в ряду
+   * настройки, где подпись слева, а список справа.
+   */
+  id?: string;
   options: SelectOption[];
   value: string | null;
   onChange: (value: string) => void;
@@ -26,6 +32,7 @@ interface Props {
 }
 
 export const Select = ({
+  id,
   options,
   value,
   onChange,
@@ -38,7 +45,13 @@ export const Select = ({
   required,
   className,
 }: Props) => {
-  const { fieldId: ownId, captionId, caption, isError, controlProps } = useField({ hint, error });
+  const {
+    fieldId: ownId,
+    captionId,
+    caption,
+    isError,
+    controlProps,
+  } = useField({ id, hint, error });
   const listboxId = `${ownId}-listbox`;
   const labelId = `${ownId}-label`;
 

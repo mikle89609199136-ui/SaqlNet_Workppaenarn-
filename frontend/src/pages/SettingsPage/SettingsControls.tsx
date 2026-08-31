@@ -1,9 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-/* Стили элементов управления подключаются здесь же, рядом с ними: раньше
-   их тянула общая страница настроек, и с её исчезновением списки выбора
-   остались без оформления вовсе. Уйдут вместе с ChoiceRow, когда разделы
-   «Внешний вид» и «Язык» переедут на Select (#481). */
-import '../../styles/SettingsControls.css';
+import type { ReactNode } from 'react';
 
 /**
  * Общие части разделов настроек.
@@ -91,51 +86,5 @@ export function Field({ label, multiline = false, onChange, type = 'text', value
         {...props}
       />
     </label>
-  );
-}
-
-export function ChoiceRow({ label, value, options, onChange }) {
-  const detailsRef = useRef(null);
-  const selected = options.find((option) => option.value === value) || options[0];
-
-  useEffect(() => {
-    function closeOnOutsideClick(event) {
-      if (!detailsRef.current?.contains(event.target)) {
-        detailsRef.current?.removeAttribute('open');
-      }
-    }
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
-  }, []);
-
-  function selectOption(nextValue) {
-    onChange(nextValue);
-    detailsRef.current?.removeAttribute('open');
-  }
-
-  return (
-    <SettingsRow label={label}>
-      <details className="settings-choice" ref={detailsRef}>
-        <summary>
-          <span>{selected?.label}</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </summary>
-        <div className="settings-choice-menu">
-          {options.map((option) => (
-            <button
-              type="button"
-              key={option.value}
-              className={option.value === value ? 'active' : ''}
-              onClick={() => selectOption(option.value)}
-            >
-              <span className="settings-choice-check">{option.value === value ? '✓' : ''}</span>
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </details>
-    </SettingsRow>
   );
 }
