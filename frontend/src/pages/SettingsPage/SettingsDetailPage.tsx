@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { disconnectRealtimeSocket } from '../../hooks/useRealtimeSocket';
 import { useToasts } from '../../hooks/useToasts';
@@ -9,9 +9,11 @@ import { Avatar } from '@/components/ui';
 import { meQuery } from '@/queries/users/meQuery';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 import { userKeys } from '@/queries/keys';
-import { useLanguageStore, useProfileStore, useThemeStore, type TThemeType } from '@/store';
+import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
+import { useProfileStore } from '@/store';
+import type { IPrivacyDto, ISettingsDto } from '@/types';
 import { ChoiceRow, Field, SettingsSection, ToggleRow } from './SettingsControls';
-import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
+import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from '@/consts';
 import {
   DEFAULT_SETTINGS_SECTION,
   ROUTES,
@@ -44,18 +46,21 @@ export function SettingsDetailPage() {
         : ROUTES.SETTINGS_SUBSECTION('account', view)
     );
   const { showToast } = useToasts();
-  const theme = useThemeStore((state) => state.theme);
-  const setTheme = useThemeStore((state) => state.setTheme);
-  const language = useLanguageStore((state) => state.language);
-  const setLanguage = useLanguageStore((state) => state.setLanguage);
   const queryClient = useQueryClient();
-  // Те же запросы, что наполняет загрузчик защищённой ветки: открытие
-  // настроек больше не обращается к серверу повторно (#223).
+  const updateSettings = useUpdateSettings();
+  const updatePrivacy = useUpdatePrivacy();
+  // Профиль загрузчик защищённой ветки уже положил в кеш, поэтому открытие
+  // настроек не спрашивает его заново (#223). Настройки он не тянет — их
+  // запрашивает эта страница.
   const { data: user = {}, isPending: isUserPending } = useQuery(meQuery());
   const { data: settingsPayload, isPending: isSettingsPending } = useQuery(settingsQuery());
   const loading = isUserPending || isSettingsPending;
 
   const privacy = settingsPayload?.privacy ?? {};
+  // Настройки живут в кеше запросов и больше нигде. Умолчания подставляются
+  // здесь, а не при записи: сервер вправе не прислать поле, которого у
+  // пользователя ещё нет.
+  const settings = { ...DEFAULT_PROFILE_SETTINGS, ...(settingsPayload?.settings ?? {}) };
   // Статус двухфакторной и список сессий сервер пока не отдаёт — запросы
   // закомментированы. Раньше эти значения молча брались из несуществующих
   // элементов Promise.all, и страница показывала «выключено» и «сессий
@@ -63,16 +68,6 @@ export function SettingsDetailPage() {
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
   const [sessions] = useState([]);
   const [saving, setSaving] = useState(false);
-  const settings = useProfileStore((state) => state.settings);
-  const setSettings = useProfileStore((state) => state.setSettings);
-
-  // Настройки дублируются в сторе: их читают экраны за пределами этой
-  // страницы. Запись идёт через стор, а не в localStorage напрямую —
-  // иначе источников правды о пользователе становится три.
-  useEffect(() => {
-    if (!settingsPayload) return;
-    setSettings({ ...DEFAULT_PROFILE_SETTINGS, ...(settingsPayload.settings || {}) });
-  }, [settingsPayload, setSettings]);
 
   const query = searchQuery.trim().toLocaleLowerCase();
   const visible = useMemo(() => {
@@ -88,38 +83,32 @@ export function SettingsDetailPage() {
     return labels[activeTab]?.includes(query);
   }, [activeTab, query]);
 
-  async function saveSettings(patch) {
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    localStorage.setItem('craneapp_settings', JSON.stringify(next));
-    try {
-      await services.userService.updateSettings(next);
-      showToast('success', t('settingsSaved', 'Настройки сохранены'));
-    } catch (_) {
-      showToast('error', 'Не удалось сохранить настройки');
-    }
+  /* Показ значения и откат при ошибке живут в самой мутации, здесь
+     остаётся только сообщение: слой данных про интерфейс не знает. */
+  function saveSettings(patch: Partial<ISettingsDto>) {
+    updateSettings.mutate(patch, {
+      onSuccess: () => showToast('success', t('settingsSaved', 'Настройки сохранены')),
+      onError: () => showToast('error', 'Не удалось сохранить настройки'),
+    });
   }
 
-  /** Профиль изменил сам пользователь — обновляем оба его представления. */
+  function savePrivacy(patch: Partial<IPrivacyDto>) {
+    updatePrivacy.mutate(patch, {
+      onSuccess: () => showToast('success', 'Настройки приватности сохранены'),
+      onError: () => showToast('error', 'Не удалось сохранить настройки приватности'),
+    });
+  }
+
+  /**
+   * Профиль изменил сам пользователь — обновляем оба его представления.
+   *
+   * Профиль задублирован кешем и стором, и стор читают 65 мест: расселение
+   * этой пары — отдельная работа (#241), а не попутная правка. Здесь он
+   * остаётся как есть.
+   */
   function handleUserChange(next: any) {
     queryClient.setQueryData(userKeys.me(), next);
     useProfileStore.getState().setUser(next);
-  }
-
-  async function savePrivacy(patch) {
-    const next = { ...privacy, ...patch };
-    // Переключатель обязан отозваться сразу, поэтому новое значение
-    // кладётся в кеш до ответа сервера.
-    queryClient.setQueryData(userKeys.settings(), (current: any) => ({
-      ...current,
-      privacy: next,
-    }));
-    try {
-      await services.userService.updatePrivacy(next);
-      showToast('success', 'Настройки приватности сохранены');
-    } catch (_) {
-      showToast('error', 'Не удалось сохранить настройки приватности');
-    }
   }
 
   async function logout(all = false) {
@@ -132,7 +121,9 @@ export function SettingsDetailPage() {
     if (all) await services.cryptoService.wipeDevice().catch(() => {});
 
     disconnectRealtimeSocket();
-    localStorage.removeItem('craneapp_settings');
+    // Наследие прежней схемы: страница больше сюда не пишет, но у давнего
+    // пользователя ключ остался, и чужие настройки не должны пережить выход.
+    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     navigate('/login');
   }
 
@@ -217,15 +208,12 @@ export function SettingsDetailPage() {
         <SettingsSection title="Внешний вид" description="Выберите тему интерфейса.">
           <ChoiceRow
             label="Тема"
-            value={theme}
+            value={settings.theme}
             options={[
               { value: 'dark', label: 'Тёмная' },
               { value: 'light', label: 'Светлая' },
             ]}
-            onChange={(value: { value: TThemeType; label: string }) => {
-              setTheme(value.value);
-              saveSettings({ theme: value.value });
-            }}
+            onChange={(value: ISettingsDto['theme']) => saveSettings({ theme: value })}
           />
         </SettingsSection>
       )}
@@ -255,15 +243,12 @@ export function SettingsDetailPage() {
         <SettingsSection title="Язык" description="Язык интерфейса CraneApp.">
           <ChoiceRow
             label="Язык приложения"
-            value={language}
+            value={settings.language}
             options={[
               { value: 'ru', label: 'Русский' },
               { value: 'en', label: 'English' },
             ]}
-            onChange={(value: { value: 'ru' | 'en'; label: string }) => {
-              setLanguage(value.value);
-              saveSettings({ language: value.value });
-            }}
+            onChange={(value: string) => saveSettings({ language: value })}
           />
         </SettingsSection>
       )}

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
+import { ToastStack } from '@/components/ui';
 import { DEFAULT_SETTINGS_SECTION, ROUTES, type TSettingsSection } from '@/consts/routes';
 import { SettingsDetailPage } from '@/pages/SettingsPage/SettingsDetailPage';
 import { userKeys } from '@/queries/keys';
@@ -104,6 +105,10 @@ export function renderSettings({
   return render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
+        {/* В приложении стек тостов стоит в корневом макете. Без него
+            сообщение об ошибке сохранения некому показать, и тест не смог бы
+            проверить то, что видит человек. */}
+        <ToastStack />
         <RouterProvider router={router} />
       </I18nextProvider>
     </QueryClientProvider>
