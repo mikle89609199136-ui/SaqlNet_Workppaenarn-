@@ -3,44 +3,15 @@ import { useProfileStore } from '@/store/profile';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { services } from '@/services/serviceContainer';
 
-export async function registerUser({
-  firstName,
-  language,
-  password,
-  username,
-}: {
-  firstName: string;
-  language: string;
-  password: string;
-  username: string;
-}) {
-  return services.authService.register({
-    firstName,
-    language,
-    lastName: '',
-    password,
-    username,
-  });
-}
-
-export async function loginUser({
-  clientIP = '',
-  password,
-  twoFAPassword,
-  username,
-}: {
-  clientIP: string;
-  password: string;
-  twoFAPassword: string;
-  username: string;
-}) {
-  return services.authService.login({
-    password,
-    username,
-  });
-}
-
-export async function fetchUserSettings() {
+/**
+ * Настройки для только что вошедшего.
+ *
+ * Отдельно от общего запроса настроек: там ошибка должна быть видна, а
+ * здесь нет. Человек только что ввёл верный пароль — не пускать его в
+ * приложение из-за неотвеченного запроса оформления неправильно, поэтому
+ * при неудаче берутся значения по умолчанию.
+ */
+export async function fetchUserSettings(): Promise<ISettingsDto> {
   try {
     const data = await services.userService.getSettings();
     return data.settings || DEFAULT_PROFILE_SETTINGS;
@@ -54,17 +25,27 @@ export function uploadAvatar(avatar: string) {
   return services.userService.updateAvatar(avatar);
 }
 
+/**
+ * Разложить подтверждённый вход по местам.
+ *
+ * Событие в конце — не украшение: по нему `serviceContainer` поднимает
+ * ключи шифрования для нового пользователя. Без него человек войдёт, но
+ * переписка останется нечитаемой.
+ *
+ * Настройки необязательны: при регистрации их ещё неоткуда взять, у
+ * нового аккаунта они и так пустые.
+ */
 export function saveAuthSession({
   settings,
   token,
   user,
 }: {
-  settings: ISettingsDto;
+  settings?: ISettingsDto;
   token: string;
   user: IUserDto;
 }) {
   useProfileStore.getState().setToken(token);
   useProfileStore.getState().setUser(user);
-  useProfileStore.getState().setSettings(settings);
+  if (settings) useProfileStore.getState().setSettings(settings);
   window.dispatchEvent(new CustomEvent('craneapp:auth-session-saved'));
 }

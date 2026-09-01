@@ -36,11 +36,5 @@ export const profileFormSchema = z.object({
   bio: z.string().trim().max(160, 'Не больше 160 символов'),
 });
 
-/* Второй пароль сервер принимает от шести знаков (auth/handler.go:231). */
-export const twoFAFormSchema = z.object({
-  password: z.string().min(6, 'Не менее 6 символов'),
-});
-
 export type TPasswordForm = z.infer<typeof passwordFormSchema>;
 export type TProfileForm = z.infer<typeof profileFormSchema>;
-export type TTwoFAForm = z.infer<typeof twoFAFormSchema>;

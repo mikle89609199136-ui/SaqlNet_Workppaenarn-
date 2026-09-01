@@ -39,6 +39,7 @@ export type {
   TReactionsList,
 } from './message.types';
 export type {
+  IAuthResponse,
   IChatResponse,
   IChatsResponse,
   ICreateGroupChatResponse,
