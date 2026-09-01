@@ -115,6 +115,11 @@ export function renderSettings({
           { path: `${section}/:subsection`, element: SECTION_ELEMENTS[section] },
         ],
       },
+      // Выход из аккаунта уводит на вход. Без этого маршрута переход
+      // упирается в «No route matches URL», react-router рисует свою
+      // заглушку с ошибкой, и прогон валится на неожиданном console.warn —
+      // причём не всегда, а как успеет: локально тест проскакивал, в CI нет.
+      { path: ROUTES.LOGIN, element: <div>Вход</div> },
     ],
     { initialEntries: [path] }
   );

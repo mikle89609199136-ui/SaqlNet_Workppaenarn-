@@ -44,6 +44,8 @@ describe('выход из аккаунта', () => {
     await waitFor(() =>
       expect(queryClient.getQueryData(chatKeys.messages('chat-1'))).toBeUndefined()
     );
+    // И уводит на вход: остаться в настройках без аккаунта нельзя.
+    expect(await screen.findByText('Вход')).toBeInTheDocument();
 
     logout.mockRestore();
   });
