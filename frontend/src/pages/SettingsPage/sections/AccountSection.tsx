@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar } from '@/components/ui';
+import { Avatar, ConfirmDialog } from '@/components/ui';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { useToasts } from '@/hooks/useToasts';
@@ -35,6 +35,10 @@ export function AccountSection() {
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
   const [sessions] = useState([]);
   const [saving, setSaving] = useState(false);
+  /* Какое действие ждёт подтверждения. Оба уводят из аккаунта, но одно из
+     них вдобавок стирает ключи, поэтому спрашиваются они по-разному. */
+  const [asked, setAsked] = useState<'logout' | 'logoutAll' | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   const openView = (next: TAccountSubsection | 'overview') =>
     navigate(
@@ -55,83 +59,139 @@ export function AccountSection() {
   }
 
   async function logout(all = false) {
-    if (all) await services.authService.logoutAll().catch(() => {});
-    else await services.authService.logout().catch(() => {});
+    setLeaving(true);
+    try {
+      if (all) await services.authService.logoutAll().catch(() => {});
+      else await services.authService.logout().catch(() => {});
 
-    // Завершение всех сеансов стирает и ключи шифрования: это тот самый
-    // случай, ради которого кнопку нажимают — чужой или потерянный
-    // компьютер. Обычный выход ключи оставляет.
-    if (all) await services.cryptoService.wipeDevice().catch(() => {});
+      // Завершение всех сеансов стирает и ключи шифрования: это тот самый
+      // случай, ради которого кнопку нажимают — чужой или потерянный
+      // компьютер. Обычный выход ключи оставляет.
+      if (all) await services.cryptoService.wipeDevice().catch(() => {});
 
-    disconnectRealtimeSocket();
-    navigate('/login');
+      disconnectRealtimeSocket();
+
+      /* Запрет из docs/frontend-data-architecture.md: без этого после
+         входа другим пользователем в той же вкладке в памяти остаются
+         чужие сообщения — расшифрованные. */
+      queryClient.clear();
+
+      navigate('/login');
+    } finally {
+      setLeaving(false);
+      setAsked(null);
+    }
   }
 
   if (isPending) return <div className="settings-detail-state">Загрузка…</div>;
 
-  if (view === 'profile') {
+  /* Подстраница выбирается функцией, а не ранними возвратами из раздела:
+     окно подтверждения общее, и при выходе по return его бы просто не
+     оказалось в разметке. */
+  function renderView() {
+    if (view === 'profile') {
+      return (
+        <ProfileSettings
+          onBack={() => openView('overview')}
+          onUserChange={handleUserChange}
+          saving={saving}
+          setSaving={setSaving}
+          showToast={showToast}
+          user={user}
+        />
+      );
+    }
+
+    if (view === 'password') {
+      return (
+        <PasswordSettings
+          onBack={() => openView('overview')}
+          saving={saving}
+          setSaving={setSaving}
+          showToast={showToast}
+        />
+      );
+    }
+
+    if (view === 'email') {
+      return (
+        <EmailSettings onBack={() => openView('overview')} showToast={showToast} user={user} />
+      );
+    }
+
+    if (view === 'twoFA') {
+      return (
+        <TwoFASettings
+          enabled={twoFAEnabled}
+          onBack={() => openView('overview')}
+          onEnabledChange={setTwoFAEnabled}
+          saving={saving}
+          setSaving={setSaving}
+          showToast={showToast}
+        />
+      );
+    }
+
+    if (view === 'sessions') {
+      return (
+        <SessionsSettings
+          onBack={() => openView('overview')}
+          onLogoutAll={() => setAsked('logoutAll')}
+          sessions={sessions}
+        />
+      );
+    }
+
     return (
-      <ProfileSettings
-        onBack={() => openView('overview')}
-        onUserChange={handleUserChange}
-        saving={saving}
-        setSaving={setSaving}
-        showToast={showToast}
+      <AccountSettings
+        onEditProfile={() => openView('profile')}
+        onLogout={() => setAsked('logout')}
+        onOpenEmail={() => openView('email')}
+        onOpenPassword={() => openView('password')}
+        onOpenSessions={() => openView('sessions')}
+        onOpenTwoFA={() => openView('twoFA')}
+        sessions={sessions}
+        twoFAEnabled={twoFAEnabled}
         user={user}
       />
     );
   }
 
-  if (view === 'password') {
-    return (
-      <PasswordSettings
-        onBack={() => openView('overview')}
-        saving={saving}
-        setSaving={setSaving}
-        showToast={showToast}
-      />
-    );
-  }
+  const confirmations = {
+    logout: {
+      title: 'Выйти из аккаунта?',
+      confirmLabel: 'Выйти',
+      danger: false,
+      text: 'Переписка останется на этом устройстве и откроется после следующего входа.',
+    },
+    logoutAll: {
+      title: 'Завершить все сеансы?',
+      confirmLabel: 'Завершить сеансы',
+      danger: true,
+      text: 'Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Прошлая переписка здесь больше не откроется — восстановить её нечем.',
+    },
+  } as const;
 
-  if (view === 'email') {
-    return <EmailSettings onBack={() => openView('overview')} showToast={showToast} user={user} />;
-  }
-
-  if (view === 'twoFA') {
-    return (
-      <TwoFASettings
-        enabled={twoFAEnabled}
-        onBack={() => openView('overview')}
-        onEnabledChange={setTwoFAEnabled}
-        saving={saving}
-        setSaving={setSaving}
-        showToast={showToast}
-      />
-    );
-  }
-
-  if (view === 'sessions') {
-    return (
-      <SessionsSettings
-        onBack={() => openView('overview')}
-        onLogoutAll={() => logout(true)}
-        sessions={sessions}
-      />
-    );
-  }
+  const confirmation = asked ? confirmations[asked] : null;
 
   return (
-    <AccountSettings
-      onEditProfile={() => openView('profile')}
-      onLogout={logout}
-      onOpenEmail={() => openView('email')}
-      onOpenPassword={() => openView('password')}
-      onOpenSessions={() => openView('sessions')}
-      onOpenTwoFA={() => openView('twoFA')}
-      sessions={sessions}
-      twoFAEnabled={twoFAEnabled}
-      user={user}
-    />
+    <>
+      {renderView()}
+
+      {confirmation && (
+        <ConfirmDialog
+          confirmLabel={confirmation.confirmLabel}
+          confirming={leaving}
+          danger={confirmation.danger}
+          onCancel={() => setAsked(null)}
+          onConfirm={() => void logout(asked === 'logoutAll')}
+          open
+          title={confirmation.title}
+        >
+          {confirmation.text}
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 

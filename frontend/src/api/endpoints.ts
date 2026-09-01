@@ -4,6 +4,8 @@ export const API_ENDPOINTS = {
   AUTH_REGISTER: '/auth/register',
   AUTH_LOGIN: '/auth/login',
   AUTH_LOGOUT: '/auth/logout',
+  AUTH_LOGOUT_ALL: '/auth/logout-all',
+  AUTH_SESSIONS: '/auth/sessions',
   AUTH_RESEND_CODE: '/auth/resend-code',
   AUTH_VALIDATE: '/auth/validate',
   AUTH_PUBLIC_KEY: '/auth/public-key',

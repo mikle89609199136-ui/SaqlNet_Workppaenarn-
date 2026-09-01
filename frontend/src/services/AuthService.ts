@@ -62,6 +62,21 @@ export class AuthService {
     }
   }
 
+  /**
+   * Выход на всех устройствах: сервер отзывает все токены пользователя.
+   *
+   * Метода здесь не было вовсе, а раздел «Активные сеансы» его вызывал —
+   * нажатие на «Завершить все сеансы» падало с TypeError, ничего не
+   * завершая. Адрес существует давно: POST /api/v2/auth/logout-all.
+   */
+  async logoutAll() {
+    try {
+      await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT_ALL);
+    } finally {
+      this.authStorage.clearProfile();
+    }
+  }
+
   resendCode() {
     return this.apiClient.post(API_ENDPOINTS.AUTH_RESEND_CODE).then((response) => response.data);
   }
