@@ -2144,10 +2144,10 @@ func (s *Service) isMemberOfChats(ctx context.Context, userID string, chatIDS []
 	return ok, err
 }
 
-func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages, caption *TE2EContent, targetChatID, userID string) ([]ResForwardMessage, error) {
+func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages, caption string, targetChatID, userID string) ([]ResForwardMessage, error) {
 	totalLength := len(messages)
 
-	hasCaption := caption != nil
+	hasCaption := caption != ""
 
 	if hasCaption {
 		totalLength++
@@ -2180,9 +2180,14 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 
 	// Caption — отдельное первое сообщение.
 	if hasCaption {
+		captionJSON, err := sanitizeForwardMessagesContent(caption)
+
+		if err != nil {
+			return nil, err
+		}
+
 		messageIDS[0] = uuid.NewString()
-		captionJSON, _ := json.Marshal(caption)
-		content[0] = string(captionJSON)
+		content[0] = captionJSON
 		metadata[0] = `{}`
 		messageType[0] = "text"
 		startIDX = 1
@@ -2193,9 +2198,12 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 		id := uuid.NewString()
 		idx := startIDX + i
 
-		if m.Content != nil {
-			captionJSON, _ := json.Marshal(m.Content)
-			content[idx] = string(captionJSON)
+		if m.Content != "" {
+			contentJSON, err := sanitizeForwardMessagesContent(m.Content)
+			if err != nil {
+				return nil, err
+			}
+			content[idx] = contentJSON
 		}
 
 		messageIDS[idx] = id
@@ -2331,7 +2339,7 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 }
 
 // ForwardMessage copies a message into a target chat.
-func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetChatID string, caption *TE2EContent, messages []TMessages) ([]ResForwardMessage, error) {
+func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetChatID string, caption string, messages []TMessages) ([]ResForwardMessage, error) {
 
 	if ok, err := s.isMemberOfChats(ctx, userID, []string{chatID, targetChatID}); err != nil || !ok {
 		if err != nil {

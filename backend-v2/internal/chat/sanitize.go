@@ -12,6 +12,13 @@ func sanitizeMessageContent(content string) string {
 	return html.EscapeString(content)
 }
 
+func sanitizeForwardMessagesContent(content string) (string, error) {
+	if isEncryptedMessagePayload(content) {
+		return content, nil
+	}
+	return "", ErrForbidden
+}
+
 func isEncryptedMessagePayload(content string) bool {
 	var payload struct {
 		E2E  bool   `json:"e2e"`

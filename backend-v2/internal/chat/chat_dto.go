@@ -45,7 +45,6 @@ type TMessageForwardMetadata struct {
 	ForwardedFrom *TForwardedFrom `json:"forwardedFrom" validate:"required"`
 }
 
-
 type TE2EContent struct {
 	E2E                bool   `json:"e2e" validate:"eq=true"`
 	IV                 string `json:"iv" validate:"required"`
@@ -56,11 +55,10 @@ type TE2EContent struct {
 	RecipientKeyFp     string `json:"recipientKeyFp" validate:"required"`
 }
 
-
 type TMessages struct {
 	MessageID   string                   `json:"messageId" validate:"required,uuid"`
 	SenderID    string                   `json:"senderId" validate:"required,uuid"`
-	Content     *TE2EContent             `json:"content,omitempty" validate:"omitempty"`
+	Content     string                   `json:"content,omitempty" validate:"omitempty"`
 	Attachments []TAttachment            `json:"attachments,omitempty" validate:"omitempty,max=10,dive"`
 	Type        string                   `json:"type" validate:"required"`
 	ReplyTo     *string                  `json:"replyTo,omitempty" validate:"omitempty,uuid"`
@@ -68,8 +66,8 @@ type TMessages struct {
 }
 
 type ForwardMessageInput struct {
-	ChatID       string            `json:"chatId" validate:"required,uuid"`
-	TargetChatID string            `json:"targetChatId" validate:"required,uuid"`
-	Messages     []TMessages       `json:"messages" validate:"required,gt=0,max=100,dive"`
-	Caption      *TE2EContent      `json:"caption,omitempty" validate:"omitempty"`
+	ChatID       string      `json:"chatId" validate:"required,uuid"`
+	TargetChatID string      `json:"targetChatId" validate:"required,uuid"`
+	Messages     []TMessages `json:"messages" validate:"required,gt=0,max=100,dive"`
+	Caption      string      `json:"caption,omitempty" validate:"omitempty"`
 }

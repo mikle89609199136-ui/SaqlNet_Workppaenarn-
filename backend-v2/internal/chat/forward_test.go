@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"testing"
-	"time"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-playground/validator/v10"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
 var attachments = []TAttachment{
@@ -22,15 +22,7 @@ var attachments = []TAttachment{
 	},
 }
 
-var content = TE2EContent{
-	E2E:                true,
-	IV:                 "ouj2En7vvLmWbfB3",
-	Data:               "HJD8hQrvRUTNBBBh76jgN0Ai4WcFNCm8w5E=",
-	SenderPublicKey:    "sender-public-key",
-	SenderKeyFp:        "sender-fp",
-	RecipientPubKeyB64: "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==",
-	RecipientKeyFp:     "recipient-fp",
-}
+var content = "{\"e2e\":true,\"iv\":\"8VZfjQjsdoW7yEo9\",\"data\":\"hhBWdrsJCapQc2vCMvVibuFoPxSoZ7VxH5RBQ59HzZMqQXkLJQt1lWm3wJs=\",\"senderPublicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvnpKVuUY+B/tnZ9u0nNv1UgU7vHeaAPy+GANNzfuW1m3egUUicySXvh8X8JltIiEHZEpnH4hRtHL7v6oYN7EYw==\",\"senderKeyFp\":\"k1TMi5XAgksq\",\"recipientPubKeyB64\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==\",\"recipientKeyFp\":\"0fPZysq2/uVl\"}"
 
 var message = TMessages{
 	MessageID: "00000000-0000-0000-0000-000000000003",
@@ -58,8 +50,9 @@ const (
 )
 
 var contents = []string{
-	`{"e2e":true,"iv":"ouj2En7vvLmWbfB3","data":"HJD8hQrvRUTNBBBh76jgN0Ai4WcFNCm8w5E=","senderPublicKey":"sender-public-key","senderKeyFp":"sender-fp","recipientPubKeyB64":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==","recipientKeyFp":"recipient-fp"}`,
-	`{"e2e":true,"iv":"ouj2En7vvLmWbfB3","data":"HJD8hQrvRUTNBBBh76jgN0Ai4WcFNCm8w5E=","senderPublicKey":"sender-public-key","senderKeyFp":"sender-fp","recipientPubKeyB64":"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==","recipientKeyFp":"recipient-fp"}`,
+	"{\"e2e\":true,\"iv\":\"8VZfjQjsdoW7yEo9\",\"data\":\"hhBWdrsJCapQc2vCMvVibuFoPxSoZ7VxH5RBQ59HzZMqQXkLJQt1lWm3wJs=\",\"senderPublicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvnpKVuUY+B/tnZ9u0nNv1UgU7vHeaAPy+GANNzfuW1m3egUUicySXvh8X8JltIiEHZEpnH4hRtHL7v6oYN7EYw==\",\"senderKeyFp\":\"k1TMi5XAgksq\",\"recipientPubKeyB64\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==\",\"recipientKeyFp\":\"0fPZysq2/uVl\"}",
+	"{\"e2e\":true,\"iv\":\"8VZfjQjsdoW7yEo9\",\"data\":\"hhBWdrsJCapQc2vCMvVibuFoPxSoZ7VxH5RBQ59HzZMqQXkLJQt1lWm3wJs=\",\"senderPublicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvnpKVuUY+B/tnZ9u0nNv1UgU7vHeaAPy+GANNzfuW1m3egUUicySXvh8X8JltIiEHZEpnH4hRtHL7v6oYN7EYw==\",\"senderKeyFp\":\"k1TMi5XAgksq\",\"recipientPubKeyB64\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==\",\"recipientKeyFp\":\"0fPZysq2/uVl\"}",
+	"{\"e2e\":true,\"iv\":\"8VZfjQjsdoW7yEo9\",\"data\":\"hhBWdrsJCapQc2vCMvVibuFoPxSoZ7VxH5RBQ59HzZMqQXkLJQt1lWm3wJs=\",\"senderPublicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvnpKVuUY+B/tnZ9u0nNv1UgU7vHeaAPy+GANNzfuW1m3egUUicySXvh8X8JltIiEHZEpnH4hRtHL7v6oYN7EYw==\",\"senderKeyFp\":\"k1TMi5XAgksq\",\"recipientPubKeyB64\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==\",\"recipientKeyFp\":\"0fPZysq2/uVl\"}",
 }
 
 var metadata = []string{
@@ -125,7 +118,7 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 
 	messageDATA := message
 
-	messageDATA.Content = &content
+	messageDATA.Content = content
 	messageDATA.Attachments = attachments
 
 	tests := []struct {
@@ -169,16 +162,8 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 					{
 						MessageID: "",
 						SenderID:  "",
-						Content: &TE2EContent{
-							E2E:                true,
-							IV:                 "ouj2En7vvLmWbfB3",
-							Data:               "HJD8hQrvRUTNBBBh76jgN0Ai4WcFNCm8w5E=",
-							SenderPublicKey:    "eefee",
-							SenderKeyFp:        "44",
-							RecipientPubKeyB64: "reewwed",
-							RecipientKeyFp:     "99",
-						},
-						Type: "text",
+						Content:   "",
+						Type:      "text",
 						Metadata: &TMessageForwardMetadata{
 							Forwarded: false,
 							ForwardedFrom: &TForwardedFrom{
@@ -194,7 +179,6 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 			wantErrors: []validationError{
 				{field: "MessageID", tag: "required"},
 				{field: "SenderID", tag: "required"},
-				{field: "RecipientPubKeyB64", tag: "base64"},
 				{field: "Forwarded", tag: "eq"},
 				{field: "MessageID", tag: "uuid"},
 				{field: "SenderID", tag: "required"},
@@ -209,15 +193,7 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 					{
 						MessageID: "550e8400-e29b-41d4-a716-446655440003",
 						SenderID:  "550e8400-e29b-41d4-a716-446655440004",
-						Content: &TE2EContent{
-							E2E:                true,
-							IV:                 "ouj2En7vvLmWbfB3",
-							Data:               "HJD8hQrvRUTNBBBh76jgN0Ai4WcFNCm8w5E=",
-							SenderPublicKey:    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvnpKVuUY+B/tnZ9u0nNv1UgU7vHeaAPy+GANNzfuW1m3egUUicySXvh8X8JltIiEHZEpnH4hRtHL7v6oYN7EYw==",
-							SenderKeyFp:        "k1TMi5XAgksq",
-							RecipientPubKeyB64: "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdmezG7acc3DWs/gggQmRgr3VpOmBOyD16C51wKoMSs+fGArmZz3HLFtm585Q6rRBTOd9F9sw/KkFWDpQ7JoC6A==",
-							RecipientKeyFp:     "0fPZysq2/uVl",
-						},
+						Content:   content,
 						Attachments: []TAttachment{
 							{
 								MediaURL:       "",
@@ -278,9 +254,6 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 }
 
 func InsertSqlMok(t *testing.T, mock sqlmock.Sqlmock) {
-	contentJSON, err := json.Marshal(content)
-	require.NoError(t, err)
-	contents = append([]string{string(contentJSON)}, contents...)
 	mock.ExpectExec("INSERT INTO messages.messages").WithArgs(sqlmock.AnyArg(), targetChatID, userID, pq.Array(contents), pq.Array(metadata), pq.Array(messageType)).WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
@@ -388,7 +361,7 @@ func SelectFromMessages(mock sqlmock.Sqlmock, err bool) {
 
 func TestSendForwardMessages(t *testing.T) {
 	messageDATA := message
-	messageDATA.Content = &content
+	messageDATA.Content = content
 	messageDATA.Attachments = attachments
 
 	messageDATA2 := messageDATA
@@ -399,7 +372,7 @@ func TestSendForwardMessages(t *testing.T) {
 		messageDATA2,
 	}
 
-	var caption *TE2EContent = &content
+	var caption = content
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -421,10 +394,8 @@ func TestSendForwardMessages(t *testing.T) {
 	require.Len(t, result, 3)
 
 	// Caption добавлен первым
-	ContentJSON, err := json.Marshal(caption)
-	require.NoError(t, err)
 
-	require.Equal(t, string(ContentJSON), result[0].Content)
+	require.Equal(t, caption, result[0].Content)
 	// Первое forwarded-сообщение с attachments
 	require.Len(t, result[1].Attachments, 1)
 	// Второе forwarded-сообщение без attachments
@@ -460,17 +431,17 @@ func TestSendForwardMessages(t *testing.T) {
 func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
 	messageDATA := message
 	messageDATA.Attachments = attachments
-	messageDATA.Content = &content
+	messageDATA.Content = content
 	messageDATA2 := messageDATA
 	messageDATA2.Attachments = nil
-	messageDATA2.Content = &content
+	messageDATA2.Content = content
 
 	messages := []TMessages{
 		messageDATA,
 		messageDATA2,
 	}
 
-	var caption *TE2EContent = &content
+	var caption = content
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -491,5 +462,3 @@ func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
-
-
