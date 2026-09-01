@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation } from 'react-router-dom';
 import { DEFAULT_SETTINGS_SECTION, isSettingsSection } from '@/consts/routes';
-/* Свод стилей разделов. Уходит вместе с последним переписанным разделом:
-   меню, поиск и раскладка уже на утилитах, содержимое — ещё нет. */
-import '../../styles/SettingsPage.css';
 import { FixedSearchBar } from './FixedSearchBar.js';
 import { SettingsSidebar } from './SettingsSidebar.js';
 
@@ -52,11 +49,16 @@ export function SettingsPage() {
           нельзя — flex-1 на том же элементе перебивает width, и содержимое
           растягивается до края экрана. */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <main className="settings-detail-page">
+        {/* Колонка текста: на широком экране прижата влево с отступом, на
+            узком занимает ширину за вычетом полей. Прежний ручной порог
+            760px сведён к md — восемь пикселей разницы на границе. */}
+        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-16 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px]">
           {matchesQuery ? (
             <Outlet />
           ) : (
-            <div className="settings-detail-state">Ничего не найдено</div>
+            <div className="text-body grid min-h-[60vh] place-items-center text-ink-2">
+              Ничего не найдено
+            </div>
           )}
         </main>
       </div>

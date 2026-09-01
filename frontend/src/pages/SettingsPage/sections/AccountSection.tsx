@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Banner, Button, ConfirmDialog, Input, Textarea } from '@/components/ui';
+import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -93,7 +93,7 @@ export function AccountSection() {
     }
   }
 
-  if (isPending) return <div className="settings-detail-state">Загрузка…</div>;
+  if (isPending) return <div className="text-body py-16 text-center text-ink-2">Загрузка…</div>;
 
   /* Подстраница выбирается функцией, а не ранними возвратами из раздела:
      окно подтверждения общее, и при выходе по return его бы просто не
@@ -195,6 +195,35 @@ export function AccountSection() {
   );
 }
 
+/**
+ * Строка обзора: подпись слева, текущее значение и стрелка справа.
+ *
+ * Выделена, потому что таких строк шесть и все ведут на подстраницу.
+ * Значение здесь — не украшение: по нему видно, привязана ли почта и
+ * включена ли защита, не заходя внутрь.
+ */
+function OverviewRow({ label, value, onClick }: OverviewRowProps) {
+  return (
+    <button
+      className="text-body flex min-h-[52px] w-full items-center justify-between gap-4 px-5 py-3 text-left text-ink transition-colors duration-fast hover:bg-sheet-2 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="flex shrink-0 items-center gap-2 text-ink-2">
+        {value}
+        <Icon className="text-ink-3" name="chevronRight" size="sm" />
+      </span>
+    </button>
+  );
+}
+
+interface OverviewRowProps {
+  label: string;
+  value?: ReactNode;
+  onClick: () => void;
+}
+
 function AccountSettings({
   user,
   sessionsCount,
@@ -206,70 +235,64 @@ function AccountSettings({
   onOpenTwoFA,
   onOpenSessions,
 }) {
+  const name =
+    [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Пользователь';
+
   return (
-    <>
-      <section className="settings-account-overview">
-        <h1>Аккаунт</h1>
-        <div className="settings-account-summary settings-overview-profile">
-          <Avatar
-            id={user.id}
-            name={user.firstName || user.username}
-            size="xl"
-            src={user.avatarUrl}
-          />
-          <div className="settings-account-identity">
-            <strong>
-              {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
-                user.username ||
-                'Пользователь'}
-            </strong>
-            <span>{user.online ? 'в сети' : `@${user.username || 'user'}`}</span>
-          </div>
-          <button type="button" className="settings-edit-profile" onClick={onEditProfile}>
-            Изменить профиль
-          </button>
+    <section>
+      <h1 className="mb-5 text-[27px] leading-tight font-semibold text-ink">Аккаунт</h1>
+
+      <div className="mb-7 flex items-center gap-4 rounded-bubble border border-line bg-sheet p-4">
+        <Avatar
+          id={user.id}
+          name={user.firstName || user.username}
+          size="xl"
+          src={user.avatarUrl}
+        />
+        <div className="min-w-0">
+          <strong className="text-body block truncate text-ink">{name}</strong>
+          <span className="text-caption text-ink-2">
+            {user.online ? 'в сети' : `@${user.username || 'user'}`}
+          </span>
         </div>
-        <h2>Настройки аккаунта</h2>
-        <div className="settings-overview-group">
-          <button type="button" onClick={onOpenEmail}>
-            <span>Электронная почта</span>
-            <span>
-              {user.email || 'не привязана'}
-              <b>›</b>
-            </span>
-          </button>
-          <button type="button" onClick={onOpenPassword}>
-            <span>Пароль</span>
-            <span>
-              •••••••••• <b>›</b>
-            </span>
-          </button>
-          <button type="button" onClick={onOpenTwoFA}>
-            <span>Двухфакторная аутентификация</span>
-            {/* Пока ответ не пришёл — прочерк, а не «отключена»: в разделе
-                безопасности выдуманное значение хуже отсутствия ответа. */}
-            <span>
-              {twoFAEnabled === undefined ? '—' : twoFAEnabled ? 'включена' : 'отключена'}
-              <b>›</b>
-            </span>
-          </button>
-        </div>
-        <h2>Действия</h2>
-        <div className="settings-overview-group">
-          <button type="button" onClick={onOpenSessions}>
-            <span>Активные сеансы</span>
-            <span>
-              {sessionsCount ?? '—'}
-              <b>›</b>
-            </span>
-          </button>
-          <button type="button" onClick={() => onLogout(false)}>
-            <span>Выйти из аккаунта</span>
-            <span className="settings-overview-danger">Выйти</span>
-          </button>
-        </div>
-      </section>
-    </>
+        <Button className="ml-auto" onClick={onEditProfile} variant="secondary">
+          Изменить профиль
+        </Button>
+      </div>
+
+      <h2 className="text-caption mb-3 font-semibold text-ink-2">Настройки аккаунта</h2>
+      {/* Строки разделены линией внутри блока — line-soft, а не line:
+          она делит содержимое, а не очерчивает элемент управления (#374). */}
+      <div className="mb-7 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+        <OverviewRow
+          label="Электронная почта"
+          onClick={onOpenEmail}
+          value={user.email || 'не привязана'}
+        />
+        <OverviewRow label="Пароль" onClick={onOpenPassword} value="••••••••••" />
+        {/* Пока ответ не пришёл — прочерк, а не «отключена»: в разделе
+            безопасности выдуманное значение хуже отсутствия ответа. */}
+        <OverviewRow
+          label="Двухфакторная аутентификация"
+          onClick={onOpenTwoFA}
+          value={twoFAEnabled === undefined ? '—' : twoFAEnabled ? 'включена' : 'отключена'}
+        />
+      </div>
+
+      <h2 className="text-caption mb-3 font-semibold text-ink-2">Действия</h2>
+      <div className="divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+        <OverviewRow
+          label="Активные сеансы"
+          onClick={onOpenSessions}
+          value={sessionsCount ?? '—'}
+        />
+        <OverviewRow
+          label="Выйти из аккаунта"
+          onClick={() => onLogout(false)}
+          value={<span className="text-danger">Выйти</span>}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -476,47 +499,60 @@ function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
         </Banner>
       )}
 
-      <div className="settings-sessions-card">
+      <div className="mt-4 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
         {loading ? (
-          <div className="settings-sessions-empty">Загрузка…</div>
+          <div className="text-body p-5 text-center text-ink-2">Загрузка…</div>
         ) : sessions.length > 0 ? (
           sessions.map((session, index) => (
-            <div className="settings-session-row" key={session.id}>
-              <span className="settings-session-device">
-                {session.deviceType === 'mobile' ? '▯' : '▱'}
-              </span>
-              <div>
-                <strong>{session.deviceName || 'Устройство'}</strong>
-                <span>
-                  {session.deviceType || 'unknown'} · {formatDate(session.lastActive)}
+            <div className="flex items-center gap-3 p-4" key={session.id}>
+              <Icon
+                className="shrink-0 text-ink-3"
+                name={session.deviceType === 'mobile' ? 'phone' : 'monitor'}
+                size="md"
+              />
+              <div className="min-w-0">
+                <strong className="text-body block truncate text-ink">
+                  {session.deviceName || 'Устройство'}
+                </strong>
+                <span className="text-caption text-ink-2">
+                  {session.deviceType || 'неизвестно'} · {formatDate(session.lastActive)}
                 </span>
               </div>
-              {index === 0 && <b>Текущий</b>}
+              {index === 0 && (
+                <b className="text-caption ml-auto shrink-0 font-medium text-ok">Текущий</b>
+              )}
             </div>
           ))
         ) : (
-          <div className="settings-sessions-empty">
+          <div className="text-body p-5 text-center text-ink-2">
             {error ? 'Список недоступен' : 'Список пуст'}
           </div>
         )}
       </div>
-      <button type="button" className="settings-terminate-sessions" onClick={onLogoutAll}>
+      <Button className="mt-4" onClick={onLogoutAll} variant="danger">
         Завершить все сеансы
-      </button>
+      </Button>
     </AccountSubpage>
   );
 }
 
 function AccountSubpage({ title, description, onBack, children }) {
   return (
-    <section className="settings-profile-editor settings-account-subpage">
-      <button type="button" className="settings-detail-back" onClick={onBack}>
-        ‹ <span>Назад</span>
+    <section>
+      <button
+        className="text-caption -ml-2 mb-3 flex items-center gap-1 rounded-control px-2 py-1 text-ink-2 transition-colors duration-fast hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+        onClick={onBack}
+        type="button"
+      >
+        <Icon name="chevronRight" size="sm" className="rotate-180" />
+        Назад
       </button>
-      <header className="settings-profile-editor-header">
-        <h1>{title}</h1>
-        <p>{description}</p>
+
+      <header className="mb-4">
+        <h1 className="mb-1 text-[21px] leading-tight font-semibold text-ink">{title}</h1>
+        {description && <p className="text-caption text-ink-2">{description}</p>}
       </header>
+
       {children}
     </section>
   );
