@@ -43,9 +43,11 @@ describe('сохранение настроек', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
 
-    expect(await screen.findByRole('button', { name: 'Светлая' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Светлая' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
     );
   });
 

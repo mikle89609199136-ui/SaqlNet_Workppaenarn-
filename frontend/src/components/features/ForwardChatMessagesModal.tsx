@@ -67,7 +67,11 @@ export const ForwardChatMessagesModal = ({
   };
 
   return (
-    <Modal className="max-w-4/5 md:max-w-1/5" onClose={onClose}>
+    <Modal
+      className="w-4/5 max-w-none bg-sheet md:w-100"
+      label="Переслать сообщения"
+      onClose={onClose}
+    >
       <header className="flex justify-between px-6">
         <h2 className="text-xl w-full text-left">{t('forward', 'Переслать...')}</h2>
 

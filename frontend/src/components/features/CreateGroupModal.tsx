@@ -134,13 +134,18 @@ export function CreateGroupModal({ onClose }: Props) {
       // Окно не закрывается: введённое не должно пропасть из-за отказа.
       showToast(
         'error',
-        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так'));
+        t('createChat.creationError', 'Не удалось создать групповой чат, что-то пошло не так')
+      );
       setCreating(false);
     }
   };
 
   return (
-    <Modal className="max-w-[92vw] md:max-w-[620px] md:h-[min(720px,88vh)]" onClose={onClose}>
+    <Modal
+      className="w-[min(92vw,620px)] max-w-none bg-sheet md:h-[min(720px,88vh)]"
+      label="Новая группа"
+      onClose={onClose}
+    >
       <header className="flex justify-between px-6">
         <h2 className="text-xl w-full text-left">{t('newGroup', 'Новая группа')}</h2>
 
