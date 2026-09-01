@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,6 +33,7 @@ import { useProfileStore } from '@/store';
  * значило бы получить диff, в котором не видно ни того, ни другого.
  */
 export function AccountSection() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToasts();
@@ -144,6 +146,7 @@ export function AccountSection() {
 
     return (
       <AccountSettings
+        t={t}
         onEditProfile={() => openView('profile')}
         onLogout={() => setAsked('logout')}
         onOpenEmail={() => openView('email')}
@@ -225,6 +228,7 @@ interface OverviewRowProps {
 }
 
 function AccountSettings({
+  t,
   user,
   sessionsCount,
   twoFAEnabled,
@@ -240,7 +244,9 @@ function AccountSettings({
 
   return (
     <section>
-      <h1 className="mb-5 text-[27px] leading-tight font-semibold text-ink">Аккаунт</h1>
+      <h1 className="mb-5 text-[27px] leading-tight font-semibold text-ink">
+        {t('settings.account.title', 'Аккаунт')}
+      </h1>
 
       <div className="mb-7 flex items-center gap-4 rounded-bubble border border-line bg-sheet p-4">
         <Avatar
@@ -256,40 +262,54 @@ function AccountSettings({
           </span>
         </div>
         <Button className="ml-auto" onClick={onEditProfile} variant="secondary">
-          Изменить профиль
+          {t('settings.account.editProfile', 'Изменить профиль')}
         </Button>
       </div>
 
-      <h2 className="text-caption mb-3 font-semibold text-ink-2">Настройки аккаунта</h2>
+      <h2 className="text-caption mb-3 font-semibold text-ink-2">
+        {t('settings.account.groupSettings', 'Настройки аккаунта')}
+      </h2>
       {/* Строки разделены линией внутри блока — line-soft, а не line:
           она делит содержимое, а не очерчивает элемент управления (#374). */}
       <div className="mb-7 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
-          label="Электронная почта"
+          label={t('settings.account.email', 'Электронная почта')}
           onClick={onOpenEmail}
-          value={user.email || 'не привязана'}
+          value={user.email || t('settings.account.emailEmpty', 'не привязана')}
         />
-        <OverviewRow label="Пароль" onClick={onOpenPassword} value="••••••••••" />
+        <OverviewRow
+          label={t('settings.account.password', 'Пароль')}
+          onClick={onOpenPassword}
+          value="••••••••••"
+        />
         {/* Пока ответ не пришёл — прочерк, а не «отключена»: в разделе
             безопасности выдуманное значение хуже отсутствия ответа. */}
         <OverviewRow
-          label="Двухфакторная аутентификация"
+          label={t('settings.account.twoFA', 'Двухфакторная аутентификация')}
           onClick={onOpenTwoFA}
-          value={twoFAEnabled === undefined ? '—' : twoFAEnabled ? 'включена' : 'отключена'}
+          value={
+            twoFAEnabled === undefined
+              ? '—'
+              : twoFAEnabled
+                ? t('settings.account.twoFAOn', 'включена')
+                : t('settings.account.twoFAOff', 'отключена')
+          }
         />
       </div>
 
-      <h2 className="text-caption mb-3 font-semibold text-ink-2">Действия</h2>
+      <h2 className="text-caption mb-3 font-semibold text-ink-2">
+        {t('settings.account.groupActions', 'Действия')}
+      </h2>
       <div className="divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
-          label="Активные сеансы"
+          label={t('settings.account.sessions', 'Активные сеансы')}
           onClick={onOpenSessions}
           value={sessionsCount ?? '—'}
         />
         <OverviewRow
-          label="Выйти из аккаунта"
+          label={t('settings.account.logout', 'Выйти из аккаунта')}
           onClick={() => onLogout(false)}
-          value={<span className="text-danger">Выйти</span>}
+          value={<span className="text-danger">{t('settings.account.logoutAction', 'Выйти')}</span>}
         />
       </div>
     </section>
@@ -297,11 +317,15 @@ function AccountSettings({
 }
 
 function EmailSettings({ user, onBack }) {
+  const { t } = useTranslation();
   return (
     <AccountSubpage
-      description="Адрес для уведомлений и восстановления доступа."
+      description={t(
+        'settings.email.description',
+        'Адрес для уведомлений и восстановления доступа.'
+      )}
       onBack={onBack}
-      title="Электронная почта"
+      title={t('settings.account.email', 'Электронная почта')}
     >
       {/* Форма здесь была, но сервер почту не принимает: PUT /users/me
           знает только firstName, lastName, bio и avatarUrl. Поле с кнопкой
@@ -320,6 +344,7 @@ function EmailSettings({ user, onBack }) {
 }
 
 function PasswordSettings({ onBack, showToast }) {
+  const { t } = useTranslation();
   const {
     register,
     handleSubmit,
@@ -352,39 +377,39 @@ function PasswordSettings({ onBack, showToast }) {
 
   return (
     <AccountSubpage
-      title="Изменить пароль"
-      description="Используйте не менее 10 символов."
+      title={t('settings.password.title', 'Изменить пароль')}
+      description={t('settings.password.description', 'Используйте не менее 10 символов.')}
       onBack={onBack}
     >
       <form className="grid gap-4" onSubmit={handleSubmit(submit)}>
         <Input
           autoComplete="current-password"
           error={errors.currentPassword?.message}
-          label="Текущий пароль"
+          label={t('settings.password.current', 'Текущий пароль')}
           type="password"
           {...register('currentPassword')}
         />
         <Input
           autoComplete="new-password"
           error={errors.newPassword?.message}
-          label="Новый пароль"
+          label={t('settings.password.new', 'Новый пароль')}
           type="password"
           {...register('newPassword')}
         />
         <Input
           autoComplete="new-password"
           error={errors.confirmation?.message}
-          label="Повторите новый пароль"
+          label={t('settings.password.repeat', 'Повторите новый пароль')}
           type="password"
           {...register('confirmation')}
         />
 
         <div className="mt-2 flex justify-end gap-2">
           <Button onClick={onBack} type="button" variant="ghost">
-            Отмена
+            {t('cancel', 'Отмена')}
           </Button>
           <Button loading={isSubmitting} type="submit">
-            Изменить пароль
+            {t('settings.password.action', 'Изменить пароль')}
           </Button>
         </div>
       </form>
@@ -393,6 +418,7 @@ function PasswordSettings({ onBack, showToast }) {
 }
 
 function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast }) {
+  const { t } = useTranslation();
   const {
     register,
     handleSubmit,
@@ -426,9 +452,12 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
 
   return (
     <AccountSubpage
-      description="Дополнительный пароль, который спрашивают при входе."
+      description={t(
+        'settings.twoFA.description',
+        'Дополнительный пароль, который спрашивают при входе.'
+      )}
       onBack={onBack}
-      title="Двухфакторная аутентификация"
+      title={t('settings.account.twoFA', 'Двухфакторная аутентификация')}
     >
       {/* Пока ответ не пришёл, состояние неизвестно — и говорится именно
           это. Написать «отключена» значило бы успокоить человека, который
@@ -447,15 +476,19 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
         <Input
           autoComplete="off"
           error={errors.password?.message}
-          hint={enabled ? 'Введите второй пароль, чтобы отключить защиту' : undefined}
-          label="Второй пароль"
+          hint={
+            enabled
+              ? t('settings.twoFA.hint', 'Введите второй пароль, чтобы отключить защиту')
+              : undefined
+          }
+          label={t('settings.twoFA.password', 'Второй пароль')}
           type="password"
           {...register('password')}
         />
 
         <div className="mt-2 flex justify-end gap-2">
           <Button onClick={onBack} type="button" variant="ghost">
-            Отмена
+            {t('cancel', 'Отмена')}
           </Button>
           <Button
             disabled={enabled === undefined}
@@ -463,7 +496,9 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
             type="submit"
             variant={enabled ? 'danger' : 'primary'}
           >
-            {enabled ? 'Отключить' : 'Включить'}
+            {enabled
+              ? t('settings.twoFA.disable', 'Отключить')
+              : t('settings.twoFA.enable', 'Включить')}
           </Button>
         </div>
       </form>
@@ -472,10 +507,14 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
 }
 
 function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
+  const { t } = useTranslation();
   return (
     <AccountSubpage
-      title="Активные сеансы"
-      description="Устройства, на которых выполнен вход в аккаунт."
+      title={t('settings.account.sessions', 'Активные сеансы')}
+      description={t(
+        'settings.sessions.description',
+        'Устройства, на которых выполнен вход в аккаунт.'
+      )}
       onBack={onBack}
     >
       {/* Ошибку видно как ошибку: «сеансов нет» здесь читается как «никто
@@ -530,13 +569,14 @@ function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
         )}
       </div>
       <Button className="mt-4" onClick={onLogoutAll} variant="danger">
-        Завершить все сеансы
+        {t('settings.sessions.terminate', 'Завершить все сеансы')}
       </Button>
     </AccountSubpage>
   );
 }
 
 function AccountSubpage({ title, description, onBack, children }) {
+  const { t } = useTranslation();
   return (
     <section>
       <button
@@ -545,7 +585,7 @@ function AccountSubpage({ title, description, onBack, children }) {
         type="button"
       >
         <Icon name="chevronRight" size="sm" className="rotate-180" />
-        Назад
+        {t('back', 'Назад')}
       </button>
 
       <header className="mb-4">
@@ -559,6 +599,7 @@ function AccountSubpage({ title, description, onBack, children }) {
 }
 
 function ProfileSettings({ user, onUserChange, onBack, showToast }) {
+  const { t } = useTranslation();
   const {
     register,
     handleSubmit,
@@ -589,9 +630,12 @@ function ProfileSettings({ user, onUserChange, onBack, showToast }) {
 
   return (
     <AccountSubpage
-      description="Обновите имя и информацию, которую видят другие пользователи."
+      description={t(
+        'settings.profile.description',
+        'Обновите имя и информацию, которую видят другие пользователи.'
+      )}
       onBack={onBack}
-      title="Изменить профиль"
+      title={t('settings.profile.title', 'Изменить профиль')}
     >
       <div className="mb-6 flex items-center gap-4 rounded-bubble border border-line bg-sheet p-4">
         <Avatar
@@ -613,33 +657,41 @@ function ProfileSettings({ user, onUserChange, onBack, showToast }) {
         <Button
           className="ml-auto"
           disabled
-          title="Загрузка фото пока недоступна"
+          title={t('settings.profile.photoDisabled', 'Загрузка фото пока недоступна')}
           variant="secondary"
         >
-          Изменить фото
+          {t('settings.profile.changePhoto', 'Изменить фото')}
         </Button>
       </div>
 
       <form className="grid gap-4" onSubmit={handleSubmit(submit)}>
-        <Input error={errors.firstName?.message} label="Имя" {...register('firstName')} />
-        <Input error={errors.lastName?.message} label="Фамилия" {...register('lastName')} />
+        <Input
+          error={errors.firstName?.message}
+          label={t('settings.profile.firstName', 'Имя')}
+          {...register('firstName')}
+        />
+        <Input
+          error={errors.lastName?.message}
+          label={t('settings.profile.lastName', 'Фамилия')}
+          {...register('lastName')}
+        />
         <Textarea
           error={errors.bio?.message}
           /* Счётчик стоит там же, где обычно подсказка: предел виден до
              того, как в него упрёшься. */
           hint={`${bio.length} / 160`}
-          label="О себе"
+          label={t('settings.profile.bio', 'О себе')}
           rows={3}
           {...register('bio')}
         />
 
         <div className="mt-2 flex justify-end gap-2">
           <Button onClick={onBack} type="button" variant="ghost">
-            Отмена
+            {t('cancel', 'Отмена')}
           </Button>
           {/* Нечего сохранять — незачем и предлагать. */}
           <Button disabled={!isDirty} loading={isSubmitting} type="submit">
-            Сохранить
+            {t('save', 'Сохранить')}
           </Button>
         </div>
       </form>

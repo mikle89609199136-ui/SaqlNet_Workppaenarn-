@@ -4,16 +4,18 @@ import type { TIconTypes } from '@/types';
 import { SettingsMenuItem } from './SettingsMenuItem';
 
 /* Порядок пунктов задаётся списком разделов, значок и подпись — здесь.
+   Ключи меню отдельные от заголовков разделов: в меню «Уведомления», а
+   заголовком — «Уведомления и звуки», и подписи должны быть короче.
    Список один на меню и на проверку адреса: раздела, которого в нём нет,
    не существует и для маршрута. */
 const SECTION_VIEW: Record<TSettingsSection, { icon: TIconTypes; fallback: string; key: string }> =
   {
-    account: { icon: 'user', fallback: 'Аккаунт', key: 'settings.account' },
-    notifications: { icon: 'bell', fallback: 'Уведомления', key: 'settings.notifications' },
-    appearance: { icon: 'palette', fallback: 'Внешний вид', key: 'settings.appearance' },
-    privacy: { icon: 'lock', fallback: 'Конфиденциальность', key: 'settings.privacy' },
-    language: { icon: 'language', fallback: 'Язык', key: 'settings.language' },
-    about: { icon: 'info', fallback: 'О приложении', key: 'settings.about' },
+    account: { icon: 'user', fallback: 'Аккаунт', key: 'settings.menu.account' },
+    notifications: { icon: 'bell', fallback: 'Уведомления', key: 'settings.menu.notifications' },
+    appearance: { icon: 'palette', fallback: 'Внешний вид', key: 'settings.menu.appearance' },
+    privacy: { icon: 'lock', fallback: 'Конфиденциальность', key: 'settings.menu.privacy' },
+    language: { icon: 'language', fallback: 'Язык', key: 'settings.menu.language' },
+    about: { icon: 'info', fallback: 'О приложении', key: 'settings.menu.about' },
   };
 
 interface Props {
@@ -24,7 +26,9 @@ export function SettingsSidebar({ t }: Props) {
   return (
     <aside className="flex min-h-0 flex-1 flex-col pb-4">
       <div className="flex items-center gap-2.5 px-8 pt-2 pb-5">
-        <h2 className="text-body font-bold text-ink">Настройки</h2>
+        <h2 className="text-body font-bold text-ink">
+          {t ? t('settings.menu.title', 'Настройки') : 'Настройки'}
+        </h2>
       </div>
 
       {/* На узком экране меню ложится в строку и прокручивается вбок:

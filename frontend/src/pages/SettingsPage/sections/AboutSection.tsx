@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, ConfirmDialog } from '@/components/ui';
 import { APP_VERSION } from '@/consts';
+import { useTranslation } from 'react-i18next';
 import { useToasts } from '@/hooks/useToasts';
 import { services } from '@/services/serviceContainer';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 
 export function AboutSection() {
+  const { t } = useTranslation();
   const { showToast } = useToasts();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
@@ -52,8 +54,11 @@ export function AboutSection() {
   }
 
   return (
-    <SettingsSection description="CraneApp Messenger" title="О приложении">
-      <SettingsRow label="Версия">
+    <SettingsSection
+      description={t('settings.about.description', 'CraneApp Messenger')}
+      title={t('settings.about.title', 'О приложении')}
+    >
+      <SettingsRow label={t('settings.about.version', 'Версия')}>
         <span className="text-body text-ink-2">{APP_VERSION}</span>
       </SettingsRow>
 
@@ -62,42 +67,53 @@ export function AboutSection() {
           настройки и перечень чатов без сообщений. Сказать об этом честно
           дешевле, чем разбирать потом, почему файл «пустой». */}
       <Banner tone="info">
-        В файл попадут профиль, настройки и список чатов. Сообщений в нём нет: они зашифрованы
-        ключами этого устройства и на сервере не хранятся в читаемом виде.
+        {t(
+          'settings.about.exportBanner',
+          'В файл попадут профиль, настройки и список чатов. Сообщений в нём нет: они зашифрованы ключами этого устройства и на сервере не хранятся в читаемом виде.'
+        )}
       </Banner>
 
-      <SettingsRow description="Файл JSON со сведениями об учётной записи" label="Выгрузить данные">
+      <SettingsRow
+        description={t('settings.about.exportHint', 'Файл JSON со сведениями об учётной записи')}
+        label={t('settings.about.export', 'Выгрузить данные')}
+      >
         <Button loading={exporting} onClick={downloadExport} variant="secondary">
-          Выгрузить
+          {t('settings.about.exportAction', 'Выгрузить')}
         </Button>
       </SettingsRow>
 
       <Banner icon="key" tone="warn">
-        Ключи шифрования хранятся только здесь и восстановлению не подлежат. После удаления прошлые
-        сообщения на этом устройстве прочитать будет нечем — ни вам, ни поддержке.
+        {t(
+          'settings.about.wipeBanner',
+          'Ключи шифрования хранятся только здесь и восстановлению не подлежат. После удаления прошлые сообщения на этом устройстве прочитать будет нечем — ни вам, ни поддержке.'
+        )}
       </Banner>
 
       <SettingsRow
-        description="Прошлая переписка на этом устройстве перестанет открываться"
-        label="Удалить ключи с устройства"
+        description={t(
+          'settings.about.wipeHint',
+          'Прошлая переписка на этом устройстве перестанет открываться'
+        )}
+        label={t('settings.about.wipe', 'Удалить ключи с устройства')}
       >
         <Button onClick={() => setWipeAsked(true)} variant="danger">
-          Удалить
+          {t('settings.about.wipeAction', 'Удалить')}
         </Button>
       </SettingsRow>
 
       <ConfirmDialog
-        confirmLabel="Удалить ключи"
+        confirmLabel={t('settings.about.wipeConfirm', 'Удалить ключи')}
         confirming={wiping}
         danger
         onCancel={() => setWipeAsked(false)}
         onConfirm={wipeDevice}
         open={wipeAsked}
-        title="Удалить ключи с этого устройства?"
+        title={t('settings.about.wipeTitle', 'Удалить ключи с этого устройства?')}
       >
-        Вся переписка, полученная на этом устройстве, перестанет открываться. Восстановить её нечем:
-        ключи не покидают устройство и копии у сервера нет. Новые сообщения будут приходить после
-        повторного входа.
+        {t(
+          'settings.about.wipeConfirmText',
+          'Вся переписка, полученная на этом устройстве, перестанет открываться. Восстановить её нечем: ключи не покидают устройство и копии у сервера нет. Новые сообщения будут приходить после повторного входа.'
+        )}
       </ConfirmDialog>
     </SettingsSection>
   );

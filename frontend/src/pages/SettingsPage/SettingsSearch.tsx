@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@/components/ui';
 import { searchSettings } from './settingsIndex';
@@ -16,6 +17,7 @@ import { searchSettings } from './settingsIndex';
  * ведёт по адресу: разделы получили собственные адреса в #476.
  */
 export function SettingsSearch() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -57,14 +59,14 @@ export function SettingsSearch() {
       <label className="flex h-9 items-center gap-2 rounded-field border border-line bg-ground px-3 text-ink-2 focus-within:border-brand">
         <Icon aria-hidden="true" className="shrink-0" name="search" size="sm" />
         <input
-          aria-label="Поиск по настройкам"
+          aria-label={t('settings.search.label', 'Поиск по настройкам')}
           className="text-caption min-w-0 flex-1 border-0 bg-transparent text-ink outline-none placeholder:text-ink-3"
           onChange={(event) => {
             setQuery(event.target.value);
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Поиск по настройкам…"
+          placeholder={t('settings.search.placeholder', 'Поиск по настройкам…')}
           ref={inputRef}
           type="text"
           value={query}
@@ -76,7 +78,9 @@ export function SettingsSearch() {
            теряя из виду, где находится. */
         <div className="absolute inset-x-5 top-full z-20 -mt-2 overflow-hidden rounded-bubble border border-line bg-sheet shadow-[var(--elev-3)]">
           {results.length === 0 ? (
-            <p className="text-caption p-4 text-center text-ink-2">Ничего не нашлось</p>
+            <p className="text-caption p-4 text-center text-ink-2">
+              {t('settings.search.empty', 'Ничего не нашлось')}
+            </p>
           ) : (
             <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
               {results.map((entry, index) => (

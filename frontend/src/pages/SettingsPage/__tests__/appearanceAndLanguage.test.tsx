@@ -25,9 +25,28 @@ describe('внешний вид и язык', () => {
     renderSettings({ section: 'language', settings: { language: 'ru' } });
 
     await userEvent.click(await screen.findByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: 'Deutsch' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'English' }));
 
-    await waitFor(() => expect(sent).toEqual({ language: 'de' }));
+    await waitFor(() => expect(sent).toEqual({ language: 'en' }));
+  });
+
+  it('не даёт выбрать язык, которого ещё нет', async () => {
+    renderSettings({ section: 'language', settings: { language: 'ru' } });
+
+    await userEvent.click(await screen.findByRole('combobox'));
+
+    // Переведён только английский. Предложить язык и показать после этого
+    // русский интерфейс — хуже, чем честно сказать, что его пока нет.
+    // У пункта списка нет атрибута disabled — недоступность объявляется
+    // через aria-disabled, её и читает диктор.
+    expect(await screen.findByRole('option', { name: 'Deutsch' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('option', { name: 'English' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
   });
 
   it('показывает язык, сохранённый на сервере', async () => {
