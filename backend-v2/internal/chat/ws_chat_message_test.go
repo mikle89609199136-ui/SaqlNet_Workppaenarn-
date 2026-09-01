@@ -5,6 +5,7 @@ import (
 	"craneapp/backend-v2/internal/chat"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -57,13 +58,76 @@ func TestHandleChatMessage_MutedMember(t *testing.T) {
 		"content": "ws-muted-bypass",
 	})
 	require.True(t, svc.called)
+	requireChatMessageError(t, client, chatUUID, "member_muted")
+}
+
+// TestHandleChatMessage_NotMember проверяет, что не-участник чата получает
+// chat_message_error с кодом access_denied (Service.SendMessage → ErrForbidden).
+func TestHandleChatMessage_NotMember(t *testing.T) {
+	svc := &mockMessageSender{err: chat.ErrForbidden}
+	ws, client := newTestWSWithSender(t, nil, svc)
+
+	ws.HandleChatMessage(client, map[string]any{
+		"chatId":  chatUUID,
+		"content": "forbidden",
+	})
+
+	require.True(t, svc.called)
+	requireChatMessageError(t, client, chatUUID, "access_denied")
+}
+
+// TestHandleChatMessage_InternalError проверяет, что непредвиденная ошибка
+// SendMessage маппится в chat_message_error с кодом internal_error.
+func TestHandleChatMessage_InternalError(t *testing.T) {
+	svc := &mockMessageSender{err: errors.New("db down")}
+	ws, client := newTestWSWithSender(t, nil, svc)
+
+	ws.HandleChatMessage(client, map[string]any{
+		"chatId":  chatUUID,
+		"content": "boom",
+	})
+
+	require.True(t, svc.called)
+	requireChatMessageError(t, client, chatUUID, "internal_error")
+}
+
+// TestHandleChatMessage_Success проверяет контракт вызова Service.SendMessage
+// из WS: replyTo и metadata всегда nil, messageType по умолчанию "text",
+// при успехе отправителю не уходит chat_message_error.
+func TestHandleChatMessage_Success(t *testing.T) {
+	svc := &mockMessageSender{}
+	ws, client := newTestWSWithSender(t, nil, svc)
+
+	ws.HandleChatMessage(client, map[string]any{
+		"chatId":  chatUUID,
+		"content": "  hello  ",
+	})
+
+	require.True(t, svc.called)
+	require.Equal(t, senderUUID, svc.userID)
+	require.Equal(t, chatUUID, svc.chatID)
+	require.Equal(t, "  hello  ", svc.content) // sanitize внутри SendMessage, в мок попадает как есть
+	require.Equal(t, "text", svc.msgType)      // дефолт при отсутствии messageType
+	require.Nil(t, svc.replyTo)
+	require.Nil(t, svc.metadata)
+	select {
+	case frame := <-client.Send:
+		t.Fatalf("не ожидали исходящий фрейм, получили: %s", frame)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// requireChatMessageError читает из client.Send фрейм chat_message_error
+// и проверяет его type, code и chatId.
+func requireChatMessageError(t *testing.T, client *chat.Client, wantChatID, wantCode string) {
+	t.Helper()
 	select {
 	case frame := <-client.Send:
 		var got map[string]any
 		require.NoError(t, json.Unmarshal(frame, &got))
 		require.Equal(t, "chat_message_error", got["type"])
-		require.Equal(t, "member_muted", got["code"])
-		require.Equal(t, chatUUID, got["chatId"])
+		require.Equal(t, wantCode, got["code"])
+		require.Equal(t, wantChatID, got["chatId"])
 	case <-time.After(time.Second):
 		t.Fatal("ожидали фрейм chat_message_error отправителю")
 	}
