@@ -135,7 +135,9 @@
 }
 .settings-profile-editor-actions button { border: 0; border-radius: 999px; padding: 10px 24px; cursor: pointer; font: inherit; font-weight: 600; }
 .settings-profile-cancel { background: var(--color-sheet-2); color: var(--text-primary); }
-.settings-profile-save { background: linear-gradient(135deg, var(--color-brand-fill), var(--color-brand)); color: var(--color-ink); }
+/* Текст поверх фирменной заливки — on-brand, а не ink: ink меняется вместе
+   с темой и в светлой даёт тёмную надпись на фиолетовой кнопке. */
+.settings-profile-save { background: linear-gradient(135deg, var(--color-brand-fill), var(--color-brand)); color: var(--color-on-brand); }
 .settings-profile-save:disabled { cursor: not-allowed; opacity: 0.5; }
 .settings-email-hint { margin: -6px 0 0; color: var(--text-secondary); font-size: 12px; }
 
@@ -176,10 +178,12 @@
 .settings-sessions-empty { padding: 24px; color: var(--text-secondary); text-align: center; }
 .settings-terminate-sessions { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent); border-radius: 999px; padding: 11px 20px; background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); cursor: pointer; font: inherit; font-weight: 600; }
 
-[data-theme="light"] .settings-profile-editor-identity,
-[data-theme="light"] .settings-profile-editor-form,
-[data-theme="light"] .settings-security-status,
-[data-theme="light"] .settings-sessions-card { background: var(--color-ink); border-color: rgb(0 0 0 / 0.1); }
+/* Здесь был блок [data-theme="light"], красивший эти четыре карточки в
+   var(--color-ink) — то есть цветом текста. В светлой теме это давало
+   тёмную карточку со светлыми полями внутри. Ошибка не проявлялась,
+   пока светлая тема была недостижима: data-theme="dark" стоял в разметке
+   намертво. Правило не нужно вовсе — базовый фон этих карточек уже
+   var(--color-sheet), и он меняется вместе с темой сам. */
 
 .settings-overview-group {
   overflow: hidden;

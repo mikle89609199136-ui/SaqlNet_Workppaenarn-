@@ -55,7 +55,15 @@ export type {
   ISuccessResponse,
   IUploadResponse,
 } from './response.types';
-export type { ISearchUserDto, ISettingsDto, IUserDto, TSearchUsersList } from './user.types';
+export type {
+  IPrivacyDto,
+  ISearchUserDto,
+  ISettingsDto,
+  ISettingsPayloadDto,
+  IUserDto,
+  TLastSeenVisibility,
+  TSearchUsersList,
+} from './user.types';
 export type {
   ICallAnswerEvent,
   ICallCenceledEvent,
