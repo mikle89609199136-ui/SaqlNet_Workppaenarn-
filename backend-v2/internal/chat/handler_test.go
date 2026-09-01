@@ -604,3 +604,165 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestHandler_List(t *testing.T) {
+	// ----------------------------------------------------------------------
+	// Test setup: create a mock database with regexp query matcher.
+	// ----------------------------------------------------------------------
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// Instantiate the service with the mock DB and a nil realtime server
+	svc := NewService(db, nil)
+	h := NewHandler(svc)
+
+	// Fixed user ID used throughout all test cases.
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+
+	// Columns returned by the service's scanChats function.
+	// The query selects exactly 23 columns; we define them here to
+	// build a consistent mock result set, even when empty.
+	cols := []string{
+		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
+		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
+		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+	}
+
+	// ----------------------------------------------------------------------
+	// Test cases: cover valid boolean values, missing parameter,
+	// invalid non‑boolean string, and HTTP method rejection.
+	// Each case defines a setupMock function that configures the expected
+	// database interactions (or none, if the request should be rejected early).
+	// ----------------------------------------------------------------------
+	tests := []struct {
+		name          string
+		method        string
+		archivedParam string // empty = parameter not present in query
+		setupMock     func()
+		wantStatus    int
+		wantErrorCode string // expected error code in JSON response (only for failures)
+	}{
+		{
+			// When the archived parameter is omitted, the handler should
+			// pass false to the service (default). The mock expects a query
+			// with arguments (userID, false) and returns an empty result set.
+			name:          "success_no_archived",
+			method:        http.MethodGet,
+			archivedParam: "",
+			setupMock: func() {
+				mock.ExpectQuery(`SELECT .+ FROM chats.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			// Explicit true value – the handler parses it correctly and
+			// passes true to the service. The mock verifies the second
+			// argument is true.
+			name:          "success_archived_true",
+			method:        http.MethodGet,
+			archivedParam: "true",
+			setupMock: func() {
+				mock.ExpectQuery(`SELECT .+ FROM chats.chats c .+`).
+					WithArgs(userID, true).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			// Explicit false value – the handler passes false.
+			// This is functionally the same as omitting the parameter,
+			// but we test it to ensure the parser handles "false" correctly.
+			name:          "success_archived_false",
+			method:        http.MethodGet,
+			archivedParam: "false",
+			setupMock: func() {
+				mock.ExpectQuery(`SELECT .+ FROM chats.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			// Invalid value – the handler must reject it with 400 Bad Request
+			// and an error code "invalid_parameter". No database call should
+			// be made, so setupMock is empty.
+			name:          "invalid_archived_not_bool",
+			method:        http.MethodGet,
+			archivedParam: "not-a-bool",
+			setupMock:     func() {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_parameter",
+		},
+		{
+			// Non‑GET method – the handler's method check returns 405
+			// Method Not Allowed with code "method_not_allowed".
+			// No database call expected.
+			name:          "method_not_allowed",
+			method:        http.MethodPost,
+			archivedParam: "",
+			setupMock:     func() {},
+			wantStatus:    http.StatusMethodNotAllowed,
+			wantErrorCode: "method_not_allowed",
+		},
+	}
+
+	// ----------------------------------------------------------------------
+	// Execute each test case.
+	// ----------------------------------------------------------------------
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up the mock expectations for this specific case.
+			tt.setupMock()
+
+			// Build the request URL. If archivedParam is non‑empty, add it
+			// as a query parameter.
+			path := "/api/v2/chats"
+			if tt.archivedParam != "" {
+				path += "?archived=" + tt.archivedParam
+			}
+			req := httptest.NewRequest(tt.method, path, nil)
+
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Request-ID", "test-request-id")
+
+			user := authctx.User{ID: userID, Username: "testuser"}
+
+			// add user into context
+			ctx := authctx.WithUser(req.Context(), user)
+			req = req.WithContext(ctx)
+
+			// Record the response.
+			rr := httptest.NewRecorder()
+			h.List(rr, req)
+
+			// Validate the HTTP status code.
+			if rr.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d, body: %s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+
+			// For error cases, verify that the JSON response contains
+			// the expected error code.
+			if tt.wantErrorCode != "" {
+				var resp map[string]any
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatal(err)
+				}
+				if got, ok := resp["code"].(string); !ok || got != tt.wantErrorCode {
+					t.Errorf("error code = %v, want %q", resp["code"], tt.wantErrorCode)
+				}
+			}
+
+			// Ensure all mock expectations (query calls, arguments)
+			// were met. This catches any unexpected database interactions.
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("mock expectations not met: %v", err)
+			}
+		})
+	}
+}

@@ -33,20 +33,53 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+// List handles GET /api/v2/chats. It returns the list of chats for the authenticated user.
+// The optional query parameter "archived" must be a boolean (true/false).
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	// Enforce HTTP method – only GET is allowed.
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	// Retrieve the authenticated user from the request context.
+	// MustUser panics if the user is not present, which is fine because
+	// the route is protected by the authenticated middleware.
 	current := authctx.MustUser(r)
-	chats, err := h.service.List(r.Context(), current.ID, r.URL.Query().Get("archived") == "true")
+
+	// Read the "archived" query parameter as a string.
+	archivedStr := r.URL.Query().Get("archived")
+	archived := false // default to false when the parameter is absent
+
+	// If the parameter is provided, validate that it is a proper boolean literal.
+	if archivedStr != "" {
+		var err error
+		// strconv.ParseBool accepts "true", "false", "1", "0", "t", "f", "T", "F".
+		// This matches the OpenAPI "boolean" type and rejects any other value.
+		archived, err = strconv.ParseBool(archivedStr)
+		if err != nil {
+			// Return 400 Bad Request with a clear error message.
+			// This ensures the client knows the value is invalid, rather than
+			// silently defaulting to false.
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_parameter", "archived must be a boolean (true/false)")
+			return
+		}
+	}
+
+	// Call the service layer with the correctly parsed boolean.
+	chats, err := h.service.List(r.Context(), current.ID, archived)
 	if err != nil {
+		// Internal server error – the service may fail due to database issues.
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
+
+	// Ensure we always return a JSON array, even when the list is empty.
 	if chats == nil {
 		chats = []Chat{}
 	}
+
+	// Respond with 200 OK and the chats list.
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
 }
 
