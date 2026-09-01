@@ -72,19 +72,3 @@ export function SettingsRow({ label, description, controlId, children }: RowProp
     </div>
   );
 }
-
-export function Field({ label, multiline = false, onChange, type = 'text', value, ...props }) {
-  const Tag = multiline ? 'textarea' : 'input';
-  return (
-    <label className="settings-field">
-      <span>{label}</span>
-      <Tag
-        type={multiline ? undefined : type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={multiline ? 3 : undefined}
-        {...props}
-      />
-    </label>
-  );
-}

@@ -1,7 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Banner, ConfirmDialog } from '@/components/ui';
+import { Avatar, Banner, Button, ConfirmDialog, Input, Textarea } from '@/components/ui';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import {
+  passwordFormSchema,
+  profileFormSchema,
+  twoFAFormSchema,
+  type TPasswordForm,
+  type TProfileForm,
+  type TTwoFAForm,
+} from '../accountSchemas';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { useToasts } from '@/hooks/useToasts';
@@ -10,7 +20,6 @@ import { meQuery } from '@/queries/users/meQuery';
 import { sessionsQuery, twoFAStatusQuery } from '@/queries/users/securityQueries';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store';
-import { Field } from '../SettingsControls';
 
 /**
  * Раздел «Аккаунт»: обзор и подстраницы.
@@ -36,7 +45,6 @@ export function AccountSection() {
      независимо от действительности (#478). */
   const twoFA = useQuery(twoFAStatusQuery());
   const sessions = useQuery(sessionsQuery());
-  const [saving, setSaving] = useState(false);
   /* Какое действие ждёт подтверждения. Оба уводят из аккаунта, но одно из
      них вдобавок стирает ключи, поэтому спрашиваются они по-разному. */
   const [asked, setAsked] = useState<'logout' | 'logoutAll' | null>(null);
@@ -96,8 +104,6 @@ export function AccountSection() {
         <ProfileSettings
           onBack={() => openView('overview')}
           onUserChange={handleUserChange}
-          saving={saving}
-          setSaving={setSaving}
           showToast={showToast}
           user={user}
         />
@@ -105,20 +111,11 @@ export function AccountSection() {
     }
 
     if (view === 'password') {
-      return (
-        <PasswordSettings
-          onBack={() => openView('overview')}
-          saving={saving}
-          setSaving={setSaving}
-          showToast={showToast}
-        />
-      );
+      return <PasswordSettings onBack={() => openView('overview')} showToast={showToast} />;
     }
 
     if (view === 'email') {
-      return (
-        <EmailSettings onBack={() => openView('overview')} showToast={showToast} user={user} />
-      );
+      return <EmailSettings onBack={() => openView('overview')} user={user} />;
     }
 
     if (view === 'twoFA') {
@@ -128,8 +125,6 @@ export function AccountSection() {
           loading={twoFA.isPending}
           onBack={() => openView('overview')}
           onEnabledChange={() => void twoFA.refetch()}
-          saving={saving}
-          setSaving={setSaving}
           showToast={showToast}
         />
       );
@@ -278,60 +273,57 @@ function AccountSettings({
   );
 }
 
-function EmailSettings({ user, onBack, showToast }) {
-  const [email, setEmail] = useState(user.email || '');
-
-  async function saveEmail(event) {
-    event.preventDefault();
-    showToast('info', 'Изменение электронной почты пока недоступно');
-  }
-
+function EmailSettings({ user, onBack }) {
   return (
     <AccountSubpage
-      title="Электронная почта"
-      description="Укажите адрес для уведомлений и восстановления доступа."
+      description="Адрес для уведомлений и восстановления доступа."
       onBack={onBack}
+      title="Электронная почта"
     >
-      <form className="settings-profile-editor-form" onSubmit={saveEmail}>
-        <div className="settings-profile-fields">
-          <Field
-            label="Электронная почта"
-            type="email"
-            value={email}
-            required
-            autoComplete="email"
-            placeholder="name@example.com"
-            onChange={setEmail}
-          />
-          <p className="settings-email-hint">
-            После изменения адрес может потребоваться подтвердить.
-          </p>
-        </div>
-        <EditorActions saving={false} onCancel={onBack} label="Сохранить почту" />
-      </form>
+      {/* Форма здесь была, но сервер почту не принимает: PUT /users/me
+          знает только firstName, lastName, bio и avatarUrl. Поле с кнопкой
+          «Сохранить» обещало то, чего не происходит, — теперь сказано
+          прямо. */}
+      <Banner icon="info" tone="info">
+        Привязка почты пока не работает: сервер её не сохраняет. Восстановить доступ по адресу
+        нельзя — пароль держите под рукой.
+      </Banner>
+
+      <p className="text-body mt-4 text-ink-2">
+        Текущий адрес: <span className="text-ink">{user.email || 'не привязан'}</span>
+      </p>
     </AccountSubpage>
   );
 }
 
-function PasswordSettings({ saving, setSaving, onBack, showToast }) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
+function PasswordSettings({ onBack, showToast }) {
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<TPasswordForm>({
+    resolver: zodResolver(passwordFormSchema),
+    defaultValues: { currentPassword: '', newPassword: '', confirmation: '' },
+    // Ругаться на человека, пока он печатает, незачем: правила проверяются,
+    // когда поле покинули, и дальше — на каждый ввод, чтобы исправленная
+    // ошибка сразу исчезала.
+    mode: 'onTouched',
+  });
 
-  async function changePassword(event) {
-    event.preventDefault();
-    if (newPassword.length < 10)
-      return showToast('error', 'Новый пароль должен содержать минимум 10 символов');
-    if (newPassword !== confirmation) return showToast('error', 'Пароли не совпадают');
-    setSaving(true);
+  async function submit(values: TPasswordForm) {
     try {
-      await services.authService.changePassword(currentPassword, newPassword);
+      await services.authService.changePassword(values.currentPassword, values.newPassword);
       showToast('success', 'Пароль изменён');
       onBack();
-    } catch (_) {
+    } catch (error) {
+      /* Неверный текущий пароль — ошибка поля, а не всей формы: тост
+         исчезнет, а подпись под полем останется и скажет, что править. */
+      if ((error as { data?: { code?: string } })?.data?.code === 'wrong_password') {
+        setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
+        return;
+      }
       showToast('error', 'Не удалось изменить пароль');
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -341,100 +333,116 @@ function PasswordSettings({ saving, setSaving, onBack, showToast }) {
       description="Используйте не менее 10 символов."
       onBack={onBack}
     >
-      <form className="settings-profile-editor-form" onSubmit={changePassword}>
-        <div className="settings-profile-fields">
-          <Field
-            label="Текущий пароль"
-            type="password"
-            value={currentPassword}
-            required
-            onChange={setCurrentPassword}
-          />
-          <Field
-            label="Новый пароль"
-            type="password"
-            value={newPassword}
-            required
-            minLength={10}
-            onChange={setNewPassword}
-          />
-          <Field
-            label="Повторите новый пароль"
-            type="password"
-            value={confirmation}
-            required
-            onChange={setConfirmation}
-          />
+      <form className="grid gap-4" onSubmit={handleSubmit(submit)}>
+        <Input
+          autoComplete="current-password"
+          error={errors.currentPassword?.message}
+          label="Текущий пароль"
+          type="password"
+          {...register('currentPassword')}
+        />
+        <Input
+          autoComplete="new-password"
+          error={errors.newPassword?.message}
+          label="Новый пароль"
+          type="password"
+          {...register('newPassword')}
+        />
+        <Input
+          autoComplete="new-password"
+          error={errors.confirmation?.message}
+          label="Повторите новый пароль"
+          type="password"
+          {...register('confirmation')}
+        />
+
+        <div className="mt-2 flex justify-end gap-2">
+          <Button onClick={onBack} type="button" variant="ghost">
+            Отмена
+          </Button>
+          <Button loading={isSubmitting} type="submit">
+            Изменить пароль
+          </Button>
         </div>
-        <EditorActions saving={saving} onCancel={onBack} label="Изменить пароль" />
       </form>
     </AccountSubpage>
   );
 }
 
-function TwoFASettings({
-  enabled,
-  loading,
-  saving,
-  setSaving,
-  onEnabledChange,
-  onBack,
-  showToast,
-}) {
-  const [password, setPassword] = useState('');
-  async function submit(event) {
-    event.preventDefault();
-    if (password.length < 6) return showToast('error', 'Введите пароль 2FA — минимум 6 символов');
-    setSaving(true);
+function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast }) {
+  const {
+    register,
+    handleSubmit,
+    setError,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<TTwoFAForm>({
+    resolver: zodResolver(twoFAFormSchema),
+    defaultValues: { password: '' },
+    mode: 'onTouched',
+  });
+
+  async function submit(values: TTwoFAForm) {
     try {
-      await services.authService.setTwoFA(!enabled, password);
-      onEnabledChange(!enabled);
-      showToast('success', enabled ? '2FA отключена' : '2FA включена');
+      await services.authService.setTwoFA(!enabled, values.password);
+      onEnabledChange();
+      showToast('success', enabled ? 'Вторая ступень отключена' : 'Вторая ступень включена');
       onBack();
-    } catch (_) {
-      showToast('error', 'Не удалось изменить настройки 2FA');
-    } finally {
-      setSaving(false);
+    } catch (error) {
+      const code = (error as { data?: { code?: string } })?.data?.code;
+      /* Отключение проверяет пароль на сервере — и неверный это ошибка
+         поля, а не всей формы. */
+      if (code === 'wrong_password' || code === 'invalid_2fa') {
+        setError('password', { message: 'Неверный пароль' }, { shouldFocus: true });
+        return;
+      }
+      reset();
+      showToast('error', 'Не удалось изменить настройки');
     }
   }
+
   return (
     <AccountSubpage
-      title="Двухфакторная аутентификация"
-      description="Дополнительная защита при входе в аккаунт."
+      description="Дополнительный пароль, который спрашивают при входе."
       onBack={onBack}
+      title="Двухфакторная аутентификация"
     >
       {/* Пока ответ не пришёл, состояние неизвестно — и говорится именно
           это. Написать «отключена» значило бы успокоить человека, который
           пришёл проверить, защищён ли его аккаунт. */}
-      <div className={`settings-security-status ${enabled ? 'is-enabled' : ''}`}>
-        <span>
-          {loading
-            ? 'Проверяем состояние защиты…'
-            : enabled === undefined
-              ? 'Состояние защиты неизвестно'
-              : enabled
-                ? 'Защита включена'
-                : 'Защита отключена'}
-        </span>
-        <b>{enabled === undefined ? '—' : enabled ? 'Включена' : 'Отключена'}</b>
-      </div>
-      <form className="settings-profile-editor-form" onSubmit={submit}>
-        <div className="settings-profile-fields">
-          <Field
-            label="Пароль 2FA"
-            type="password"
-            value={password}
-            required
-            minLength={6}
-            onChange={setPassword}
-          />
-        </div>
-        <EditorActions
-          saving={saving}
-          onCancel={onBack}
-          label={enabled ? 'Отключить 2FA' : 'Включить 2FA'}
-          danger={enabled}
+      <Banner icon="shield" tone={enabled ? 'success' : 'info'}>
+        {loading
+          ? 'Проверяем состояние защиты…'
+          : enabled === undefined
+            ? 'Состояние защиты неизвестно: сервер не ответил.'
+            : enabled
+              ? 'Защита включена: при входе спросят второй пароль.'
+              : 'Защита отключена: для входа достаточно основного пароля.'}
+      </Banner>
+
+      <form className="mt-4 grid gap-4" onSubmit={handleSubmit(submit)}>
+        <Input
+          autoComplete="off"
+          error={errors.password?.message}
+          hint={enabled ? 'Введите второй пароль, чтобы отключить защиту' : undefined}
+          label="Второй пароль"
+          type="password"
+          {...register('password')}
         />
+
+        <div className="mt-2 flex justify-end gap-2">
+          <Button onClick={onBack} type="button" variant="ghost">
+            Отмена
+          </Button>
+          <Button
+            disabled={enabled === undefined}
+            loading={isSubmitting}
+            type="submit"
+            variant={enabled ? 'danger' : 'primary'}
+          >
+            {enabled ? 'Отключить' : 'Включить'}
+          </Button>
+        </div>
       </form>
     </AccountSubpage>
   );
@@ -514,105 +522,92 @@ function AccountSubpage({ title, description, onBack, children }) {
   );
 }
 
-function EditorActions({ saving, onCancel, label, danger = false }) {
-  return (
-    <div className="settings-profile-editor-actions">
-      <button type="button" className="settings-profile-cancel" onClick={onCancel}>
-        Отмена
-      </button>
-      <button
-        className={danger ? 'settings-editor-danger' : 'settings-profile-save'}
-        disabled={saving}
-      >
-        {saving ? 'Сохранение…' : label}
-      </button>
-    </div>
-  );
-}
-
-function ProfileSettings({ user, saving, setSaving, onUserChange, onBack, showToast }) {
-  const [profile, setProfile] = useState({
-    firstName: user.firstName || '',
-    lastName: user.lastName || '',
-    bio: user.bio || '',
+function ProfileSettings({ user, onUserChange, onBack, showToast }) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<TProfileForm>({
+    resolver: zodResolver(profileFormSchema),
+    defaultValues: {
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      bio: user.bio || '',
+    },
+    mode: 'onTouched',
   });
 
-  async function saveProfile(event) {
-    event.preventDefault();
-    setSaving(true);
+  const bio = watch('bio') ?? '';
+
+  async function submit(values: TProfileForm) {
     try {
-      const updated = await services.userService.updateMe(profile);
+      const updated = await services.userService.updateMe(values);
       onUserChange(updated);
-      localStorage.setItem('craneapp_user_data', JSON.stringify(updated));
       showToast('success', 'Профиль обновлён');
       onBack();
     } catch (_) {
       showToast('error', 'Не удалось обновить профиль');
-    } finally {
-      setSaving(false);
     }
   }
 
   return (
-    <section className="settings-profile-editor">
-      <button type="button" className="settings-detail-back" onClick={onBack}>
-        ‹ <span>Назад</span>
-      </button>
-      <header className="settings-profile-editor-header">
-        <h1>Изменить профиль</h1>
-        <p>Обновите имя и информацию, которую видят другие пользователи.</p>
-      </header>
-      <div className="settings-profile-editor-identity">
+    <AccountSubpage
+      description="Обновите имя и информацию, которую видят другие пользователи."
+      onBack={onBack}
+      title="Изменить профиль"
+    >
+      <div className="mb-6 flex items-center gap-4 rounded-bubble border border-line bg-sheet p-4">
         <Avatar
           id={user.id}
           name={user.firstName || user.username}
           size="xl"
           src={user.avatarUrl}
         />
-        <div>
-          <strong>
+        <div className="min-w-0">
+          <strong className="text-body block truncate text-ink">
             {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
               user.username ||
               'Пользователь'}
           </strong>
-          <span>@{user.username || 'user'}</span>
+          <span className="text-caption text-ink-2">@{user.username || 'user'}</span>
         </div>
-        <button type="button" disabled title="Загрузка аватара пока недоступна">
+        {/* Загрузка фото делается в #485: сервер принимает ссылку, а файл
+            нужно сперва отправить в медиа-сервис. */}
+        <Button
+          className="ml-auto"
+          disabled
+          title="Загрузка фото пока недоступна"
+          variant="secondary"
+        >
           Изменить фото
-        </button>
+        </Button>
       </div>
-      <form className="settings-profile-editor-form" onSubmit={saveProfile}>
-        <div className="settings-profile-fields">
-          <Field
-            label="Имя"
-            value={profile.firstName}
-            required
-            onChange={(value) => setProfile({ ...profile, firstName: value })}
-          />
-          <Field
-            label="Фамилия"
-            value={profile.lastName}
-            onChange={(value) => setProfile({ ...profile, lastName: value })}
-          />
-          <Field
-            label="О себе"
-            value={profile.bio}
-            multiline
-            maxLength={160}
-            onChange={(value) => setProfile({ ...profile, bio: value })}
-          />
-          <span className="settings-profile-bio-counter">{profile.bio.length}/160</span>
-        </div>
-        <div className="settings-profile-editor-actions">
-          <button type="button" className="settings-profile-cancel" onClick={onBack}>
+
+      <form className="grid gap-4" onSubmit={handleSubmit(submit)}>
+        <Input error={errors.firstName?.message} label="Имя" {...register('firstName')} />
+        <Input error={errors.lastName?.message} label="Фамилия" {...register('lastName')} />
+        <Textarea
+          error={errors.bio?.message}
+          /* Счётчик стоит там же, где обычно подсказка: предел виден до
+             того, как в него упрёшься. */
+          hint={`${bio.length} / 160`}
+          label="О себе"
+          rows={3}
+          {...register('bio')}
+        />
+
+        <div className="mt-2 flex justify-end gap-2">
+          <Button onClick={onBack} type="button" variant="ghost">
             Отмена
-          </button>
-          <button className="settings-profile-save" disabled={saving || !profile.firstName.trim()}>
-            {saving ? 'Сохранение…' : 'Сохранить'}
-          </button>
+          </Button>
+          {/* Нечего сохранять — незачем и предлагать. */}
+          <Button disabled={!isDirty} loading={isSubmitting} type="submit">
+            Сохранить
+          </Button>
         </div>
       </form>
-    </section>
+    </AccountSubpage>
   );
 }
 

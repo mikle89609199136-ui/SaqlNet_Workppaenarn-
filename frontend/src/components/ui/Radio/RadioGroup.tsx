@@ -1,6 +1,7 @@
 import { FieldCaption, RequiredMark, useField } from '@/components/ui/Field';
 import { Radio } from '@/components/ui/Radio/Radio';
 import { cn } from '@/utils';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 
 interface Option {
   value: string;
@@ -32,20 +33,33 @@ interface Props {
 /* Группа переключателей. Заведена отдельно, потому что поодиночке они
    бессмысленны: без общего name два переключателя отмечаются оба разом
    и ни один нельзя снять — снятие у радио браузером не предусмотрено. */
-export function RadioGroup({
-  className,
-  disabled,
-  error,
-  hint,
-  label,
-  name,
-  onChange,
-  options,
-  orientation = 'vertical',
-  required,
-  value,
-}: Props) {
+/**
+ * Группа переключателей.
+ *
+ * `ref` указывает на первый переключатель, а не на `fieldset`: снаружи его
+ * просят, чтобы увести фокус к группе с ошибкой, а `fieldset` фокус не
+ * принимает. От первого переключателя браузер сам водит стрелками по
+ * остальным.
+ */
+export const RadioGroup = forwardRef<HTMLInputElement, Props>(function RadioGroup(
+  {
+    className,
+    disabled,
+    error,
+    hint,
+    label,
+    name,
+    onChange,
+    options,
+    orientation = 'vertical',
+    required,
+    value,
+  },
+  ref
+) {
   const { captionId, caption, isError, controlProps } = useField({ hint, error });
+  const groupRef = useRef<HTMLDivElement>(null);
+  useImperativeHandle(ref, () => groupRef.current?.querySelector('input') as HTMLInputElement, []);
   const isControlled = value !== undefined;
 
   return (
@@ -70,6 +84,7 @@ export function RadioGroup({
           'flex gap-2.5',
           orientation === 'horizontal' ? 'flex-row flex-wrap gap-x-6' : 'flex-col'
         )}
+        ref={groupRef}
       >
         {options.map((option) => (
           <Radio
@@ -93,4 +108,4 @@ export function RadioGroup({
       )}
     </fieldset>
   );
-}
+});
