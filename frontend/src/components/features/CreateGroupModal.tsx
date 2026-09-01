@@ -142,7 +142,11 @@ export function CreateGroupModal({ onClose }: Props) {
 
   return (
     <Modal
-      className="w-[min(92vw,620px)] max-w-none bg-sheet md:h-[min(720px,88vh)]"
+      /* Высота по содержимому, а не фиксированная: при пустом поиске окно
+         в 720px наполовину состояло из пустоты, а кнопка висела посреди
+         неё. Ограничение сверху оставлено — список людей прокручивается
+         внутри, а не растит окно за край экрана. */
+      className="flex w-[min(92vw,620px)] max-w-none flex-col gap-y-4 bg-sheet py-4 md:max-h-[min(720px,88vh)]"
       label="Новая группа"
       onClose={onClose}
     >
@@ -151,7 +155,8 @@ export function CreateGroupModal({ onClose }: Props) {
 
         <button
           aria-label={t('close', 'Закрыть')}
-          className="cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)] shrink-0"
+          /* Был синий #2b77e7 — цвет не из палитры проекта. */
+          className="shrink-0 cursor-pointer text-ink-3 transition-colors hover:text-ink"
           onClick={onClose}
           type="button"
         >
@@ -159,7 +164,7 @@ export function CreateGroupModal({ onClose }: Props) {
         </button>
       </header>
 
-      <div className="flex flex-col gap-y-4 overflow-hidden mb-auto">
+      <div className="flex min-h-0 flex-col gap-y-4 overflow-hidden">
         <div className="flex gap-x-4 px-6">
           <button
             aria-label={t('groupAvatar', 'Аватар группы')}
@@ -270,7 +275,7 @@ export function CreateGroupModal({ onClose }: Props) {
         </ul>
       </div>
 
-      <footer className="px-6 pb-4">
+      <footer className="px-6">
         <button
           className="create-group-submit"
           disabled={isCreating}
