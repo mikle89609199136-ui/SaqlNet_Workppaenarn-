@@ -31,14 +31,17 @@ export function useSettingsData() {
   function saveSettings(patch: Partial<ISettingsDto>) {
     updateSettings.mutate(patch, {
       onSuccess: () => showToast('success', t('settingsSaved', 'Настройки сохранены')),
-      onError: () => showToast('error', 'Не удалось сохранить настройки'),
+      onError: () =>
+        showToast('error', t('toast.settingsFailed', 'Не удалось сохранить настройки')),
     });
   }
 
   function savePrivacy(patch: Partial<IPrivacyDto>) {
     updatePrivacy.mutate(patch, {
-      onSuccess: () => showToast('success', 'Настройки приватности сохранены'),
-      onError: () => showToast('error', 'Не удалось сохранить настройки приватности'),
+      onSuccess: () =>
+        showToast('success', t('toast.privacySaved', 'Настройки приватности сохранены')),
+      onError: () =>
+        showToast('error', t('toast.privacyFailed', 'Не удалось сохранить настройки приватности')),
     });
   }
 

@@ -24,7 +24,6 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark', language: 'ru' } });
 
-    await userEvent.click(await screen.findByText('Тёмная', { selector: 'summary span' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
 
     await waitFor(() => expect(sent).toEqual({ theme: 'light' }));
@@ -42,10 +41,14 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark' } });
 
-    await userEvent.click(await screen.findByText('Тёмная', { selector: 'summary span' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
 
-    expect(await screen.findByText('Светлая', { selector: 'summary span' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Светлая' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+    );
   });
 
   it('возвращает прежнее значение, когда сервер ответил ошибкой', async () => {
@@ -60,12 +63,11 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark' } });
 
-    await userEvent.click(await screen.findByText('Тёмная', { selector: 'summary span' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
 
     expect(await screen.findByText('Не удалось сохранить настройки')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText('Тёмная', { selector: 'summary span' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Тёмная' })).toHaveAttribute('aria-pressed', 'true')
     );
   });
 
@@ -79,14 +81,11 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
 
-    await userEvent.click(await screen.findByText('Все', { selector: 'summary span' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Никто' }));
+    await userEvent.click(await screen.findByRole('radio', { name: 'Никто' }));
 
     expect(
       await screen.findByText('Не удалось сохранить настройки приватности')
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByText('Все', { selector: 'summary span' })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Все' })).toBeChecked());
   });
 });

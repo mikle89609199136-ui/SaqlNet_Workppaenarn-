@@ -15,6 +15,9 @@ export interface ISettingsDto {
   theme: 'dark' | 'light';
   notifications: boolean;
   sounds: boolean;
+  /* Чем заменять фотографию, когда её нет: буквой или сеткой от
+     идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
+  avatarShape: 'letter' | 'grid';
 }
 
 /** Кто видит время последнего входа. */

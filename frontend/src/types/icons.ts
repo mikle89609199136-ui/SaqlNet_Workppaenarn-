@@ -6,6 +6,7 @@ export type TIconTypes =
   | 'chat'
   | 'check'
   | 'chevronDown'
+  | 'chevronRight'
   | 'checkCircle'
   | 'warning'
   | 'copy'

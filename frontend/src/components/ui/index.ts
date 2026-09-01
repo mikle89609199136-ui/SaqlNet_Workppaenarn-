@@ -1,4 +1,4 @@
-export { Avatar } from './Avatar';
+export { Avatar, AvatarShapeProvider, useAvatarShape, type TAvatarShape } from './Avatar';
 export { Badge } from './Badge';
 export { Banner } from './Banner';
 export { Button, buttonStyles } from './Button';
@@ -26,7 +26,7 @@ export { ComposerWrapper } from './ComposerWrapper';
 export { Icon } from './Icon';
 export { Input } from './Input';
 export { MessageCheckbox } from './MessageCheckbox';
-export { Modal } from './Modal';
+export { ConfirmDialog, Modal } from './Modal';
 export { RouteLoadingFallback } from './RouteLoadingFallback';
 export { ThreadState } from './ThreadState';
 export { Toast, ToastStack } from './Toast';
