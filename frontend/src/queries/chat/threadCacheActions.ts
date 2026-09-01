@@ -114,6 +114,7 @@ export function putPinnedMessage(
   queryClient.setQueryData<IPinnedDto[]>(chatKeys.pins(chatId), (current) =>
     current ? [...current.filter((item) => item.id !== pinned.id), pinned] : [pinned]
   );
+  patchThreadMessage(queryClient, chatId, pinned.messageId, { isPinned: true });
 }
 
 export function dropPinnedMessage(
@@ -124,6 +125,7 @@ export function dropPinnedMessage(
   queryClient.setQueryData<IPinnedDto[]>(chatKeys.pins(chatId), (current) =>
     current ? current.filter((item) => item.messageId !== messageId) : current
   );
+  patchThreadMessage(queryClient, chatId, messageId, { isPinned: false });
 }
 
 /** Полный сброс данных чата — например, когда сменились ключи шифрования. */

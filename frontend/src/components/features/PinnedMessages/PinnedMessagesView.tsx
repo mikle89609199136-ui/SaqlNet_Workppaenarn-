@@ -1,11 +1,11 @@
 import { ChatThreadHeader } from '../ChatThreadHeader';
 import { MessageActionsPopover } from '../Modals/MessageActionsPopover';
-import { ComposerWrapper } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { MessagesList } from '../MessagesList';
 import { useMessageActions } from '@/hooks';
 import { type IActionMenu } from '@/store';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
-import { type Dispatch, type SetStateAction } from 'react';
+import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -38,7 +38,20 @@ export const PinnedMessagesView = ({
     setIsForwardModalOpen,
   });
 
+  // Закрывать страницу закреплений, когда закреплений не осталось
+  useEffect(() => {
+    if (!isLoading && pinnedMessages.length === 0) {
+      onClose();
+    }
+  }, [isLoading, pinnedMessages.length, onClose]);
+
   const handleUnpinAllMessages = () => {
+    if (!pinnedMessages.length) return;
+    const confirmed = window.confirm(
+      t('unpinAllConfirm', 'Вы уверены, что хотите открепить все сообщения?')
+    );
+    if (!confirmed) return;
+
     for (const pinned of pinnedMessages) {
       handleUnpinMessage(pinned.message);
     }
@@ -69,25 +82,6 @@ export const PinnedMessagesView = ({
             onSelection={onSelection}
             setIsForwardModalOpen={setIsForwardModalOpen}
           />
-          {openedImage && (
-            <div
-              aria-label={t('imageViewer', 'Просмотр изображения')}
-              aria-modal="true"
-              className="image-viewer"
-              onClick={() => setOpenedImage(null)}
-              role="dialog"
-            >
-              <button
-                aria-label={t('close', 'Закрыть')}
-                className="image-viewer-close"
-                onClick={() => setOpenedImage(null)}
-                type="button"
-              >
-                ×
-              </button>
-              <img alt="" onClick={(event) => event.stopPropagation()} src={openedImage} />
-            </div>
-          )}
         </>
       )}
 
@@ -111,15 +105,19 @@ export const PinnedMessagesView = ({
         </div>
       )}
 
-      <ComposerWrapper>
-        <button
-          type="button"
-          onClick={handleUnpinAllMessages}
-          className="flex items-center gap-x-1 w-full px-3 bg-transparent text-[rgba(255,255,255,0.85)] font-normal hover:backdrop-blur-md rounded-4xl justify-center"
-        >
-          <span>{t('unpinAll', 'Открепить всё')}</span>
-        </button>
-      </ComposerWrapper>
+      {pinnedMessages.length > 0 && (
+        <div className="p-3 bg-panel border-t border-line flex shrink-0">
+          <Button
+            type="button"
+            variant="danger"
+            size="md"
+            onClick={handleUnpinAllMessages}
+            className="w-full"
+          >
+            {t('unpinAll', 'Открепить всё')}
+          </Button>
+        </div>
+      )}
     </main>
   );
 };
