@@ -362,7 +362,7 @@ function PasswordSettings({ onBack, showToast }) {
   async function submit(values: TPasswordForm) {
     try {
       await services.authService.changePassword(values.currentPassword, values.newPassword);
-      showToast('success', 'Пароль изменён');
+      showToast('success', t('toast.passwordChanged', 'Пароль изменён'));
       onBack();
     } catch (error) {
       /* Неверный текущий пароль — ошибка поля, а не всей формы: тост
@@ -371,7 +371,7 @@ function PasswordSettings({ onBack, showToast }) {
         setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
         return;
       }
-      showToast('error', 'Не удалось изменить пароль');
+      showToast('error', t('toast.passwordChangeFailed', 'Не удалось изменить пароль'));
     }
   }
 
@@ -435,7 +435,12 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
     try {
       await services.authService.setTwoFA(!enabled, values.password);
       onEnabledChange();
-      showToast('success', enabled ? 'Вторая ступень отключена' : 'Вторая ступень включена');
+      showToast(
+        'success',
+        enabled
+          ? t('toast.twoFADisabled', 'Вторая ступень отключена')
+          : t('toast.twoFAEnabled', 'Вторая ступень включена')
+      );
       onBack();
     } catch (error) {
       const code = (error as { data?: { code?: string } })?.data?.code;
@@ -446,7 +451,7 @@ function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast })
         return;
       }
       reset();
-      showToast('error', 'Не удалось изменить настройки');
+      showToast('error', t('toast.twoFAFailed', 'Не удалось изменить настройки'));
     }
   }
 
@@ -621,10 +626,10 @@ function ProfileSettings({ user, onUserChange, onBack, showToast }) {
     try {
       const updated = await services.userService.updateMe(values);
       onUserChange(updated);
-      showToast('success', 'Профиль обновлён');
+      showToast('success', t('toast.profileUpdated', 'Профиль обновлён'));
       onBack();
     } catch (_) {
-      showToast('error', 'Не удалось обновить профиль');
+      showToast('error', t('profileSaveError', 'Не удалось сохранить профиль'));
     }
   }
 

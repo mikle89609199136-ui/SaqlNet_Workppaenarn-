@@ -49,7 +49,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   }, [chat]);
 
   useEffect(() => {
-    if (membersError) showToast('error', 'Ошибка загрузки участников');
+    if (membersError) showToast('error', t('error', 'Ошибка загрузки участников'));
   }, [membersError, showToast]);
 
   if (!chat) return null;
@@ -73,7 +73,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       // только в состоянии модалки и пропадало при переоткрытии.
       await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
-      showToast('error', err.message || 'Ошибка выполнения действия');
+      showToast('error', err.message || t('toast.actionFailed', 'Ошибка выполнения действия'));
     }
   }
 
@@ -108,7 +108,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       navigate('/chats');
     } catch (err: any) {
-      showToast('error', err.message || 'Не удалось удалить чат, попробуйте ещё раз');
+      showToast(
+        'error',
+        err.message || t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+      );
     }
   };
 

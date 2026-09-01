@@ -28,7 +28,7 @@ export function AboutSection() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (_) {
-      showToast('error', 'Не удалось выгрузить данные');
+      showToast('error', t('toast.exportFailed', 'Не удалось выгрузить данные'));
     } finally {
       setExporting(false);
     }
@@ -45,9 +45,9 @@ export function AboutSection() {
       queryClient.clear();
 
       setWipeAsked(false);
-      showToast('success', 'Ключи удалены с этого устройства');
+      showToast('success', t('toast.keysDeleted', 'Ключи удалены с этого устройства'));
     } catch (_) {
-      showToast('error', 'Не удалось удалить ключи');
+      showToast('error', t('toast.keysDeleteFailed', 'Не удалось удалить ключи'));
     } finally {
       setWiping(false);
     }
