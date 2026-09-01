@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, ConfirmDialog } from '@/components/ui';
+import { Avatar, Banner, ConfirmDialog } from '@/components/ui';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { useToasts } from '@/hooks/useToasts';
 import { userKeys } from '@/queries/keys';
 import { meQuery } from '@/queries/users/meQuery';
+import { sessionsQuery, twoFAStatusQuery } from '@/queries/users/securityQueries';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store';
 import { Field } from '../SettingsControls';
@@ -30,10 +31,11 @@ export function AccountSection() {
 
   const view = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
 
-  // Статус двухфакторной и список сеансов сервер не отдаёт — показывать
-  // выдуманное нельзя, поэтому здесь пусто до #478.
-  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
-  const [sessions] = useState([]);
+  /* Статус второй ступени и список устройств спрашиваются у сервера.
+     Прежде они брались из useState — «отключена» и «сеансов нет»
+     независимо от действительности (#478). */
+  const twoFA = useQuery(twoFAStatusQuery());
+  const sessions = useQuery(sessionsQuery());
   const [saving, setSaving] = useState(false);
   /* Какое действие ждёт подтверждения. Оба уводят из аккаунта, но одно из
      них вдобавок стирает ключи, поэтому спрашиваются они по-разному. */
@@ -122,9 +124,10 @@ export function AccountSection() {
     if (view === 'twoFA') {
       return (
         <TwoFASettings
-          enabled={twoFAEnabled}
+          enabled={twoFA.data}
+          loading={twoFA.isPending}
           onBack={() => openView('overview')}
-          onEnabledChange={setTwoFAEnabled}
+          onEnabledChange={() => void twoFA.refetch()}
           saving={saving}
           setSaving={setSaving}
           showToast={showToast}
@@ -135,9 +138,11 @@ export function AccountSection() {
     if (view === 'sessions') {
       return (
         <SessionsSettings
+          error={sessions.isError}
+          loading={sessions.isPending}
           onBack={() => openView('overview')}
           onLogoutAll={() => setAsked('logoutAll')}
-          sessions={sessions}
+          sessions={sessions.data ?? []}
         />
       );
     }
@@ -150,8 +155,8 @@ export function AccountSection() {
         onOpenPassword={() => openView('password')}
         onOpenSessions={() => openView('sessions')}
         onOpenTwoFA={() => openView('twoFA')}
-        sessions={sessions}
-        twoFAEnabled={twoFAEnabled}
+        sessionsCount={sessions.data?.length}
+        twoFAEnabled={twoFA.data}
         user={user}
       />
     );
@@ -197,7 +202,7 @@ export function AccountSection() {
 
 function AccountSettings({
   user,
-  sessions,
+  sessionsCount,
   twoFAEnabled,
   onLogout,
   onEditProfile,
@@ -246,8 +251,10 @@ function AccountSettings({
           </button>
           <button type="button" onClick={onOpenTwoFA}>
             <span>Двухфакторная аутентификация</span>
+            {/* Пока ответ не пришёл — прочерк, а не «отключена»: в разделе
+                безопасности выдуманное значение хуже отсутствия ответа. */}
             <span>
-              {twoFAEnabled ? 'включена' : 'отключена'}
+              {twoFAEnabled === undefined ? '—' : twoFAEnabled ? 'включена' : 'отключена'}
               <b>›</b>
             </span>
           </button>
@@ -257,7 +264,7 @@ function AccountSettings({
           <button type="button" onClick={onOpenSessions}>
             <span>Активные сеансы</span>
             <span>
-              {sessions.length}
+              {sessionsCount ?? '—'}
               <b>›</b>
             </span>
           </button>
@@ -365,7 +372,15 @@ function PasswordSettings({ saving, setSaving, onBack, showToast }) {
   );
 }
 
-function TwoFASettings({ enabled, saving, setSaving, onEnabledChange, onBack, showToast }) {
+function TwoFASettings({
+  enabled,
+  loading,
+  saving,
+  setSaving,
+  onEnabledChange,
+  onBack,
+  showToast,
+}) {
   const [password, setPassword] = useState('');
   async function submit(event) {
     event.preventDefault();
@@ -388,9 +403,20 @@ function TwoFASettings({ enabled, saving, setSaving, onEnabledChange, onBack, sh
       description="Дополнительная защита при входе в аккаунт."
       onBack={onBack}
     >
+      {/* Пока ответ не пришёл, состояние неизвестно — и говорится именно
+          это. Написать «отключена» значило бы успокоить человека, который
+          пришёл проверить, защищён ли его аккаунт. */}
       <div className={`settings-security-status ${enabled ? 'is-enabled' : ''}`}>
-        <span>{enabled ? 'Защита включена' : 'Защита отключена'}</span>
-        <b>{enabled ? 'Включена' : 'Отключена'}</b>
+        <span>
+          {loading
+            ? 'Проверяем состояние защиты…'
+            : enabled === undefined
+              ? 'Состояние защиты неизвестно'
+              : enabled
+                ? 'Защита включена'
+                : 'Защита отключена'}
+        </span>
+        <b>{enabled === undefined ? '—' : enabled ? 'Включена' : 'Отключена'}</b>
       </div>
       <form className="settings-profile-editor-form" onSubmit={submit}>
         <div className="settings-profile-fields">
@@ -414,15 +440,38 @@ function TwoFASettings({ enabled, saving, setSaving, onEnabledChange, onBack, sh
   );
 }
 
-function SessionsSettings({ sessions, onLogoutAll, onBack }) {
+function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
   return (
     <AccountSubpage
       title="Активные сеансы"
       description="Устройства, на которых выполнен вход в аккаунт."
       onBack={onBack}
     >
+      {/* Ошибку видно как ошибку: «сеансов нет» здесь читается как «никто
+          чужой не входил», и подменять этим неполученный ответ нельзя. */}
+      {error && (
+        <Banner tone="danger">
+          Не удалось получить список устройств. Это не значит, что их нет, — попробуйте обновить
+          страницу.
+        </Banner>
+      )}
+
+      {/* Список пуст не потому, что входов не было: сервер сеансы не
+          записывает вовсе — в auth.sessions нет ни одной вставки, только
+          чтение и отзыв. Пока это так, «активных сеансов нет» читалось бы
+          как «никто чужой не входил», а это не проверено ничем. */}
+      {!loading && !error && sessions.length === 0 && (
+        <Banner icon="shield" tone="warn">
+          Учёт устройств на сервере пока не ведётся, поэтому список всегда пуст. Это не значит, что
+          входов с других устройств не было. Завершить все сеансы кнопкой ниже при этом можно — она
+          отзывает выданные ранее ключи входа.
+        </Banner>
+      )}
+
       <div className="settings-sessions-card">
-        {sessions.length > 0 ? (
+        {loading ? (
+          <div className="settings-sessions-empty">Загрузка…</div>
+        ) : sessions.length > 0 ? (
           sessions.map((session, index) => (
             <div className="settings-session-row" key={session.id}>
               <span className="settings-session-device">
@@ -438,7 +487,9 @@ function SessionsSettings({ sessions, onLogoutAll, onBack }) {
             </div>
           ))
         ) : (
-          <div className="settings-sessions-empty">Активных сеансов в списке нет</div>
+          <div className="settings-sessions-empty">
+            {error ? 'Список недоступен' : 'Список пуст'}
+          </div>
         )}
       </div>
       <button type="button" className="settings-terminate-sessions" onClick={onLogoutAll}>

@@ -23,4 +23,6 @@ export const userKeys = {
   me: () => [...userKeys.all, 'me'] as const,
   profile: (userId: string) => [...userKeys.all, 'profile', userId] as const,
   settings: () => [...userKeys.all, 'settings'] as const,
+  sessions: () => [...userKeys.all, 'sessions'] as const,
+  twoFA: () => [...userKeys.all, '2fa'] as const,
 };

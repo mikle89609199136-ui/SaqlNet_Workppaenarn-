@@ -77,6 +77,45 @@ export class AuthService {
     }
   }
 
+  /**
+   * Смена пароля.
+   *
+   * Метода здесь не было, а форма его вызывала: смена пароля падала на
+   * TypeError и показывала «Не удалось изменить пароль» при любом вводе.
+   */
+  changePassword(currentPassword: string, newPassword: string) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_CHANGE_PASSWORD, { currentPassword, newPassword })
+      .then((response) => response.data);
+  }
+
+  /** Включена ли вторая ступень входа. */
+  getTwoFAStatus() {
+    return this.apiClient
+      .get(API_ENDPOINTS.AUTH_2FA_STATUS)
+      .then((response) => Boolean(response.data?.enabled));
+  }
+
+  /**
+   * Включение и отключение второй ступени.
+   *
+   * Это не приложение-аутентификатор, а дополнительный пароль: сервер
+   * принимает его и при включении, и при отключении — во втором случае
+   * чтобы убедиться, что отключает владелец.
+   */
+  setTwoFA(enabled: boolean, password: string) {
+    const endpoint = enabled ? API_ENDPOINTS.AUTH_2FA_ENABLE : API_ENDPOINTS.AUTH_2FA_DISABLE;
+
+    return this.apiClient.post(endpoint, { password }).then((response) => response.data);
+  }
+
+  /** Устройства, на которых выполнен вход. */
+  getSessions() {
+    return this.apiClient
+      .get(API_ENDPOINTS.AUTH_SESSIONS)
+      .then((response) => response.data?.sessions ?? []);
+  }
+
   resendCode() {
     return this.apiClient.post(API_ENDPOINTS.AUTH_RESEND_CODE).then((response) => response.data);
   }
