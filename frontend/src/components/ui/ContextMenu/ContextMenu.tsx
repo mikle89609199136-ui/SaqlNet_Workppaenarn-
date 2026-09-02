@@ -25,11 +25,7 @@ export interface ContextMenuSeparatorProps extends HTMLAttributes<HTMLDivElement
 
 export const ContextMenuSeparator = ({ className, ...props }: ContextMenuSeparatorProps) => {
   return (
-    <div
-      role="separator"
-      className={cn('h-px bg-line-soft my-1.5 mx-1', className)}
-      {...props}
-    />
+    <div role="separator" className={cn('h-px bg-divider my-1.5 mx-1', className)} {...props} />
   );
 };
 
@@ -42,15 +38,7 @@ export interface ContextMenuItemProps extends ButtonHTMLAttributes<HTMLButtonEle
 
 export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProps>(
   function ContextMenuItem(
-    {
-      icon,
-      variant = 'default',
-      disabled,
-      className,
-      children,
-      onClick,
-      ...props
-    },
+    { icon, variant = 'default', disabled, className, children, onClick, ...props },
     ref
   ) {
     return (
@@ -71,7 +59,11 @@ export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProp
         )}
         {...props}
       >
-        {icon && <span className="size-4 shrink-0 flex items-center justify-center [&>svg]:size-4">{icon}</span>}
+        {icon && (
+          <span className="size-4 shrink-0 flex items-center justify-center [&>svg]:size-4">
+            {icon}
+          </span>
+        )}
         <span className="flex-1 truncate text-left">{children}</span>
       </Button>
     );
@@ -197,9 +189,7 @@ const ContextMenuRoot = ({
     if (!menuRef.current) return;
 
     const items = Array.from(
-      menuRef.current.querySelectorAll<HTMLButtonElement>(
-        'button[role="menuitem"]:not([disabled])'
-      )
+      menuRef.current.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])')
     );
     const activeIndex = items.findIndex((item) => item === document.activeElement);
 
@@ -277,7 +267,9 @@ export const ContextMenu = Object.assign(ContextMenuRoot, {
 });
 
 export function useContextMenu() {
-  const [contextMenu, setContextMenu] = useState<{ open: boolean; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ open: boolean; x: number; y: number } | null>(
+    null
+  );
 
   const handleContextMenu = useCallback((e: ReactMouseEvent | MouseEvent) => {
     e.preventDefault();

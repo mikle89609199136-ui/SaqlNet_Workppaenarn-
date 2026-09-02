@@ -174,7 +174,7 @@
     @apply min-h-[72px] p-3 grid gap-3 text-inherit no-underline;
     grid-template-columns: 48px minmax(0,1fr);
     transition: background-color var(--transition-duration-fast) ease-out;
-    & + .chat-row { @apply border-t; border-color: var(--color-line-soft); }
+    & + .chat-row { @apply border-t; border-color: var(--color-divider); }
     &:hover { @apply bg-sheet-2; }
   }
   /* Цвет аватарки пока задаётся типом чата. По киту он должен выводиться
