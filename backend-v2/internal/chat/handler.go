@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -88,7 +87,7 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 // On validation errors, it returns 400 Bad Request with a descriptive error code.
 // On internal errors, it returns 500 Internal Server Error.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
-	// Enforce HTTP method – only POST is allowed.
+	// Only POST is allowed.
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r)
 		return
@@ -111,7 +110,14 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ------------------------------------------------------------------
-	// Validation: enforce the database column limit for "title".
+	// Trim whitespace from all string fields before validation.
+	// ------------------------------------------------------------------
+	input.Title = strings.TrimSpace(input.Title)
+	input.Description = strings.TrimSpace(input.Description)
+	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
+
+	// ------------------------------------------------------------------
+	// Validation: enforce the database column limit for "title". Count runes.
 	// ------------------------------------------------------------------
 	const maxTitleLen = 128
 
@@ -137,7 +143,6 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	// Any other unexpected error (database connection failure, constraint violation,
 	// etc.) is treated as an internal server error.
 	if err != nil {
-		log.Printf("Error from service:%v", err)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "group creation failed")
 		return
 	}
@@ -148,7 +153,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	// ------------------------------------------------------------------
 	httpx.JSON(w, http.StatusCreated, map[string]any{
 		"chatId": chatID,
-		"title":  strings.TrimSpace(input.Title),
+		"title":  input.Title,
 	})
 }
 
