@@ -569,8 +569,11 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 //   - error: ErrInvalidInput if title is empty or members list is empty,
 //     database errors otherwise.
 func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, avatarURL string, members []string) (string, error) {
-	// Trim whitespace from title
+	// NOTE: title, description, and avatarURL are already trimmed by the handler.
+	// We keep defensive trimming for safety, but it's not strictly necessary.
 	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+	avatarURL = strings.TrimSpace(avatarURL)
 
 	// Validate input: title must be non-empty and at least one member (besides owner) must be provided.
 	if title == "" || len(members) == 0 {
