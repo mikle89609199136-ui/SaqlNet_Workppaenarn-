@@ -17,7 +17,7 @@ x-secure: &secure [{ bearerAuth: [] }]
   get: { tags: [Chats], summary: List chat members, operationId: listChatMembers, security: *secure, responses: { '200': { description: Members } } }
   post: { tags: [Chats], summary: Add a chat member, operationId: addChatMember, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Member added } } }
 /chats/{chatId}/members-online:
-  get: { tags: [Chats], summary: List online members, operationId: listOnlineChatMembers, security: *secure, parameters: [*chatId], responses: { '200': { description: Online user IDs } } }
+  get: { tags: [Chats], summary: List online members of a group chat, operationId: listOnlineChatMembers, security: *secure, parameters: [*chatId], responses: { '200': { description: Online member UUIDs, content: { application/json: { schema: { type: object, required: [members], properties: { members: { type: array, items: { type: string, format: uuid } } } } } } }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } } }
 /chats/{chatId}/bans:
   get: { tags: [Chats], summary: List chat bans, operationId: listChatBans, security: *secure, parameters: [*chatId], responses: { '200': { description: Bans }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' } } }
 /chats/{chatId}/members/{userId}:

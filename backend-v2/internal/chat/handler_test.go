@@ -2,7 +2,9 @@ package chat
 
 import (
 	"bytes"
+	"context"
 	"craneapp/backend-v2/internal/platform/authctx"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -55,8 +57,10 @@ const (
 	banTargetRoleQuery = `
 		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`
-	banSelectQuery = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
-	banInsertQuery = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
+	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
+	onlineMemberIDsQuery = `SELECT user_id::text FROM chats.members WHERE chat_id = $1`
 )
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
@@ -603,4 +607,116 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 
 	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestHandler_GetOnlineMembers проверяет маппинг ошибок GetOnlineMembers
+// в HTTP-статусы и JSON-коды: по одному кейсу на каждый sentinel сервиса.
+func TestHandler_GetOnlineMembers(t *testing.T) {
+	onlineStore := presence.NewMemoryStore(time.Now)
+	if err := onlineStore.Connect(context.Background(), handlerActorID, handlerTargetID); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		chatID      string
+		store       presence.Store
+		setupMock   func(sqlmock.Sqlmock)
+		wantStatus  int
+		wantCode    string
+		wantMembers []string
+	}{
+		{
+			name:       "InvalidInput",
+			chatID:     "not-a-uuid",
+			setupMock:  func(sqlmock.Sqlmock) {},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "validation_failed",
+		},
+		{
+			name:   "ChatNotFound",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}))
+			},
+			wantStatus: http.StatusNotFound,
+			wantCode:   "chat_not_found",
+		},
+		{
+			name:   "NotMember",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}))
+			},
+			wantStatus: http.StatusForbidden,
+			wantCode:   "access_denied",
+		},
+		{
+			name:   "InvalidChatType",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("private"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_chat_type",
+		},
+		{
+			name:   "OK",
+			chatID: handlerChatID,
+			store:  onlineStore,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+				m.ExpectQuery(onlineMemberIDsQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
+						AddRow(handlerActorID).AddRow(handlerTargetID))
+			},
+			wantStatus:  http.StatusOK,
+			wantMembers: []string{handlerActorID},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+
+			tt.setupMock(mock)
+
+			h := NewHandler(NewService(db, nil, tt.store))
+			req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+tt.chatID+"/members-online", nil, handlerActorID)
+			req.SetPathValue("chatID", tt.chatID)
+
+			rr := httptest.NewRecorder()
+			h.GetOnlineMembers(rr, req)
+
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			if tt.wantMembers != nil {
+				var body struct {
+					Members []string `json:"members"`
+				}
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+				require.Equal(t, tt.wantMembers, body.Members)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
