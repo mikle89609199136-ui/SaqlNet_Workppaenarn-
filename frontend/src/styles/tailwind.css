@@ -174,7 +174,7 @@
     @apply min-h-[72px] p-3 grid gap-3 text-inherit no-underline;
     grid-template-columns: 48px minmax(0,1fr);
     transition: background-color var(--transition-duration-fast) ease-out;
-    & + .chat-row { @apply border-t; border-color: var(--color-line-soft); }
+    & + .chat-row { @apply border-t; border-color: var(--color-divider); }
     &:hover { @apply bg-sheet-2; }
   }
   /* Цвет аватарки пока задаётся типом чата. По киту он должен выводиться
@@ -242,7 +242,9 @@
   }
   .app-sidebar-pane {
     @media (min-width: 768px) {
-      @apply w-[360px] min-w-[320px] border-r border-line flex flex-col overflow-hidden h-full bg-sheet;
+      /* Мягкий по той же причине, что рельс и ресайзер: край колонки во
+         всю высоту экрана. */
+      @apply w-[360px] min-w-[320px] border-r border-line-soft flex flex-col overflow-hidden h-full bg-sheet;
     }
   }
   .app-chat-pane {
@@ -256,7 +258,10 @@
   }
   .app-pane-resizer {
     @media (min-width: 768px) {
-      @apply relative shrink-0 w-[1px] cursor-col-resize bg-line;
+      /* В покое — мягкий: опознаётся он не цветом, а курсором
+         col-resize, зоной захвата в 11px ниже и подсветкой брендовым
+         при наведении. */
+      @apply relative shrink-0 w-[1px] cursor-col-resize bg-line-soft;
     }
   }
   .app-pane-resizer::after {
@@ -327,7 +332,11 @@
   .nav-rail {
     @media (min-width: 768px) {
       @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100] shrink-0 bg-sheet;
-      border-right: 1px solid var(--color-line);
+      /* Мягкий цвет, а не --color-line: линия идёт во всю высоту экрана,
+         и на такой площади предельный контраст режет глаз. Требование
+         1.4.11 сюда не относится — это не элемент управления, а край
+         колонки. */
+      border-right: 1px solid var(--color-line-soft);
     }
   }
   /* Всплывающая подсказка у кнопок рельса. Раньше это правило было

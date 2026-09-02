@@ -82,7 +82,7 @@ export function SettingsSearch() {
               {t('settings.search.empty', 'Ничего не нашлось')}
             </p>
           ) : (
-            <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
+            <ul className="max-h-80 divide-y divide-divider overflow-y-auto">
               {results.map((entry, index) => (
                 <li key={`${entry.path}-${entry.title}`}>
                   <button
