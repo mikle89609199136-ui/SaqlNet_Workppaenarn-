@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeChat, makeMessage, makePin, makeUser } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { chatKeys } from '@/queries/keys';
+import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store/profile';
 import { PinnedMessagesView } from './PinnedMessagesView';
 
@@ -82,12 +83,10 @@ describe('PinnedMessagesView', () => {
     expect(screen.getByRole('button', { name: 'Открепить всё' })).toBeInTheDocument();
   });
 
-  it('should ask for confirmation before unpinning all messages', () => {
+  it('should show confirm dialog when clicking unpin all and cancel without unpinning', () => {
     const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
     const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
     const setPinnedMessagesOpen = vi.fn();
-
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     renderView({
       pinnedMessages: [pin1, pin2],
@@ -96,8 +95,35 @@ describe('PinnedMessagesView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Открепить всё' }));
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Открепить все сообщения?')).toBeInTheDocument();
+    expect(
+      screen.getByText('Закрепления пропадут у всех участников чата.')
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(setPinnedMessagesOpen).not.toHaveBeenCalled();
+  });
+
+  it('should unpin all messages when confirmed in dialog', async () => {
+    const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
+    const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
+    const setPinnedMessagesOpen = vi.fn();
+    vi.spyOn(services.messageService, 'unpinMessage').mockResolvedValue({} as any);
+
+    renderView({
+      pinnedMessages: [pin1, pin2],
+      setPinnedMessagesOpen,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открепить всё' }));
+
+    const unpinButtons = screen.getAllByRole('button', { name: 'Открепить всё' });
+    const confirmButton = unpinButtons[unpinButtons.length - 1];
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(setPinnedMessagesOpen).toHaveBeenCalledWith(false);
+    });
   });
 
   it('should close image viewer when clicking backdrop', () => {

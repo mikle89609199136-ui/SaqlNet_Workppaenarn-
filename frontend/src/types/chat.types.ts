@@ -11,6 +11,12 @@ export interface ILastMessageDto {
   senderId: string;
   senderName: string;
   reactions: TReactionsList;
+  /**
+   * Почему сообщение не прочиталось: ключа нет, оно старше нашего
+   * появления в чате или в устаревшем формате. Подпись по этой причине
+   * подставляет интерфейс — сервису язык неизвестен.
+   */
+  undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
 }
 
 export interface IChatDto {

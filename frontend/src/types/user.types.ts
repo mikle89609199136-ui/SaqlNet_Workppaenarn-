@@ -15,6 +15,26 @@ export interface ISettingsDto {
   theme: 'dark' | 'light';
   notifications: boolean;
   sounds: boolean;
+  /* Чем заменять фотографию, когда её нет: буквой или сеткой от
+     идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
+  avatarShape: 'letter' | 'grid';
+}
+
+/** Кто видит время последнего входа. */
+export type TLastSeenVisibility = 'all' | 'contacts' | 'nobody';
+
+export interface IPrivacyDto {
+  lastSeen: TLastSeenVisibility;
+  messagesFromStrangers: boolean;
+}
+
+/**
+ * Ответ на запрос настроек: сервер отдаёт настройки и приватность вместе,
+ * потому что хранит их в одной строке — двумя колонками jsonb.
+ */
+export interface ISettingsPayloadDto {
+  settings: Partial<ISettingsDto>;
+  privacy: Partial<IPrivacyDto>;
 }
 
 export interface ISearchUserDto {

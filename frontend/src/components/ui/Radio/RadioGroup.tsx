@@ -1,6 +1,7 @@
 import { FieldCaption, RequiredMark, useField } from '@/components/ui/Field';
 import { Radio } from '@/components/ui/Radio/Radio';
 import { cn } from '@/utils';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 
 interface Option {
   value: string;
@@ -20,25 +21,45 @@ interface Props {
   error?: string;
   required?: boolean;
   disabled?: boolean;
+  /**
+   * Как расставить варианты. Вертикально по умолчанию: длинные подписи в
+   * строку не помещаются, а взгляд по столбцу идёт быстрее. Горизонтально —
+   * для двух-трёх коротких значений, когда весь выбор виден разом.
+   */
+  orientation?: 'vertical' | 'horizontal';
   className?: string;
 }
 
 /* Группа переключателей. Заведена отдельно, потому что поодиночке они
    бессмысленны: без общего name два переключателя отмечаются оба разом
    и ни один нельзя снять — снятие у радио браузером не предусмотрено. */
-export function RadioGroup({
-  className,
-  disabled,
-  error,
-  hint,
-  label,
-  name,
-  onChange,
-  options,
-  required,
-  value,
-}: Props) {
+/**
+ * Группа переключателей.
+ *
+ * `ref` указывает на первый переключатель, а не на `fieldset`: снаружи его
+ * просят, чтобы увести фокус к группе с ошибкой, а `fieldset` фокус не
+ * принимает. От первого переключателя браузер сам водит стрелками по
+ * остальным.
+ */
+export const RadioGroup = forwardRef<HTMLInputElement, Props>(function RadioGroup(
+  {
+    className,
+    disabled,
+    error,
+    hint,
+    label,
+    name,
+    onChange,
+    options,
+    orientation = 'vertical',
+    required,
+    value,
+  },
+  ref
+) {
   const { captionId, caption, isError, controlProps } = useField({ hint, error });
+  const groupRef = useRef<HTMLDivElement>(null);
+  useImperativeHandle(ref, () => groupRef.current?.querySelector('input') as HTMLInputElement, []);
   const isControlled = value !== undefined;
 
   return (
@@ -55,19 +76,30 @@ export function RadioGroup({
         </legend>
       )}
 
-      {options.map((option) => (
-        <Radio
-          checked={isControlled ? value === option.value : undefined}
-          disabled={option.disabled}
-          invalid={isError}
-          key={option.value}
-          label={option.label}
-          name={name}
-          onChange={() => onChange?.(option.value)}
-          required={required}
-          value={option.value}
-        />
-      ))}
+      {/* Варианты лежат в своей обёртке, а не прямо в fieldset: legend
+          участвует в раскладке родителя не так, как обычный элемент, и в
+          строку вместе с вариантами его ставить нельзя. */}
+      <div
+        className={cn(
+          'flex gap-2.5',
+          orientation === 'horizontal' ? 'flex-row flex-wrap gap-x-6' : 'flex-col'
+        )}
+        ref={groupRef}
+      >
+        {options.map((option) => (
+          <Radio
+            checked={isControlled ? value === option.value : undefined}
+            disabled={option.disabled}
+            invalid={isError}
+            key={option.value}
+            label={option.label}
+            name={name}
+            onChange={() => onChange?.(option.value)}
+            required={required}
+            value={option.value}
+          />
+        ))}
+      </div>
 
       {caption && (
         <FieldCaption id={captionId} isError={isError}>
@@ -76,4 +108,4 @@ export function RadioGroup({
       )}
     </fieldset>
   );
-}
+});

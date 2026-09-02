@@ -1,12 +1,14 @@
 import { ChatThreadHeader } from '../ChatThreadHeader';
 import { MessageActionsPopover } from '../Modals/MessageActionsPopover';
-import { Button } from '@/components/ui';
+import { Button, ConfirmDialog } from '@/components/ui';
 import { MessagesList } from '../MessagesList';
-import { useMessageActions } from '@/hooks';
+import { useToasts } from '@/hooks';
+import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/store';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
-import { useEffect, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router-dom';
 
 interface Props {
   pinnedMessages: TPinnedList;
@@ -34,9 +36,10 @@ export const PinnedMessagesView = ({
   setPinnedMessagesOpen,
 }: Props) => {
   const { t } = useTranslation();
-  const { handleUnpinMessage } = useMessageActions({
-    setIsForwardModalOpen,
-  });
+  const { chatId = '' } = useParams<{ chatId: string }>();
+  const { showToast } = useToasts();
+  const [isUnpinAllOpen, setIsUnpinAllOpen] = useState(false);
+  const [isUnpinning, setIsUnpinning] = useState(false);
 
   // Закрывать страницу закреплений, когда закреплений не осталось
   useEffect(() => {
@@ -45,17 +48,27 @@ export const PinnedMessagesView = ({
     }
   }, [isLoading, pinnedMessages.length, onClose]);
 
-  const handleUnpinAllMessages = () => {
+  const handleUnpinAllMessages = async () => {
     if (!pinnedMessages.length) return;
-    const confirmed = window.confirm(
-      t('unpinAllConfirm', 'Вы уверены, что хотите открепить все сообщения?')
-    );
-    if (!confirmed) return;
+    setIsUnpinning(true);
+    try {
+      const results = await Promise.allSettled(
+        pinnedMessages.map((pinned) =>
+          services.messageService.unpinMessage(chatId, pinned.messageId)
+        )
+      );
 
-    for (const pinned of pinnedMessages) {
-      handleUnpinMessage(pinned.message);
+      const rejected = results.filter((result) => result.status === 'rejected');
+      if (rejected.length > 0) {
+        showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
+      }
+      setIsUnpinAllOpen(false);
+      setPinnedMessagesOpen(false);
+    } catch {
+      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
+    } finally {
+      setIsUnpinning(false);
     }
-    setPinnedMessagesOpen(false);
   };
 
   const selectedActionMessage = actionMenu
@@ -111,13 +124,25 @@ export const PinnedMessagesView = ({
             type="button"
             variant="danger"
             size="md"
-            onClick={handleUnpinAllMessages}
+            onClick={() => setIsUnpinAllOpen(true)}
             className="w-full"
           >
             {t('unpinAll', 'Открепить всё')}
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={isUnpinAllOpen}
+        title={t('unpinAllConfirmTitle', 'Открепить все сообщения?')}
+        confirmLabel={t('unpinAll', 'Открепить всё')}
+        danger
+        confirming={isUnpinning}
+        onConfirm={handleUnpinAllMessages}
+        onCancel={() => setIsUnpinAllOpen(false)}
+      >
+        {t('unpinAllConfirm', 'Закрепления пропадут у всех участников чата.')}
+      </ConfirmDialog>
     </main>
   );
 };

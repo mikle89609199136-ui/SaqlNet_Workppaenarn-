@@ -48,7 +48,7 @@ export const MessageBubble = memo(
 
     const replyText = repliedMessage?.content?.trim() || message.replyToContent?.trim() || '';
     const replyImage = repliedMessage?.mediaUrl || message.replyToMediaUrl || null;
-    
+
     const actualType = message.mediaType || message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
 
@@ -60,7 +60,7 @@ export const MessageBubble = memo(
       >
         <div
           className={cn(
-            "message-bubble",
+            'message-bubble',
             mine && 'is-mine',
             hasMessageMedia(message) && 'has-media',
             isAudio && 'has-audio w-full',
@@ -100,6 +100,12 @@ export const MessageBubble = memo(
 
           {message.type === 'call' ? (
             <CallMessageContent message={message} />
+          ) : message.undecryptable ? (
+            /* Подпись к нечитаемому сообщению собирается здесь: причину
+               назвал слой шифрования, а язык знает интерфейс. */
+            <p className="message-content opacity-70">
+              🔒 {t(`undecryptable.${message.undecryptable}`, message.content)}
+            </p>
           ) : (
             <MessageContentRenderer content={translations[message.id] || message.content} />
           )}

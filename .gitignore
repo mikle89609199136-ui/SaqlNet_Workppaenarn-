@@ -65,3 +65,6 @@ AGENTS.md
 .serena
 .agents
 .kimi-code
+
+# Local dev accounts (passwords, never commit)
+dev-accounts.local.md

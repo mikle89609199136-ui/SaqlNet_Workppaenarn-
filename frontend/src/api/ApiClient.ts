@@ -122,15 +122,17 @@ export class ApiClient {
         : await response.text();
 
     if (!response.ok) {
-      if (response.status === 401) {
+      const payloadObj = (payload && typeof payload === 'object' ? payload : {}) as {
+        code?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (response.status === 401 && !isUserFacingAuthError(payloadObj.code)) {
         // Слушатель живёт в AuthGuard. Вне браузера событию некуда идти,
         // но и падать из-за этого запрос не должен.
         globalThis.dispatchEvent?.(new CustomEvent('craneapp:unauthorized'));
       }
-      const payloadObj = (payload && typeof payload === 'object' ? payload : {}) as {
-        error?: string;
-        message?: string;
-      };
       const message =
         payloadObj?.error ||
         payloadObj?.message ||
@@ -148,4 +150,17 @@ export class ApiClient {
       headers: response.headers,
     };
   }
+}
+
+/**
+ * Ошибки со статусом 401, которые говорят не о сессии, а о том, что
+ * человек ввёл неверный пароль.
+ *
+ * Раньше любой 401 считался протухшей сессией и выбрасывал на страницу
+ * входа. Из-за этого ошибка «неверный текущий пароль» при его смене
+ * выкидывала из аккаунта вместе с введённым: сессия была цела, а человек
+ * оказывался на форме входа и не понимал почему.
+ */
+function isUserFacingAuthError(code: string | undefined): boolean {
+  return code === 'wrong_password' || code === 'invalid_2fa' || code === 'invalid_credentials';
 }

@@ -1,17 +1,11 @@
 import { cn } from '@/utils';
+import { useAvatarShape, type TAvatarShape } from './avatarShape';
 
 /* Цвета перечислены готовыми именами классов, а не собираются из кусков:
    Tailwind ищет их в исходниках подстрокой и не выпустит то, чего не
    увидел. Из-за этого до сих пор существовали только av-1 и av-4 —
    единственные, что были написаны целиком. */
-const tones = [
-  'bg-av-1',
-  'bg-av-2',
-  'bg-av-3',
-  'bg-av-4',
-  'bg-av-5',
-  'bg-av-6',
-] as const;
+const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6'] as const;
 
 /* Кит рисовался под списки и знал три ступени: 28 / 40 / 56. В
    приложении нашлись ещё две, и обе не случайные.
@@ -110,21 +104,17 @@ interface Props {
   size?: keyof typeof sizes;
   /* Чем заменять фотографию. Сетку можно нарисовать только от id,
      поэтому у групп и каналов буква остаётся в любом случае.
-     Переключатель в настройках — #375, пока всегда буква. */
-  shape?: 'letter' | 'grid';
+     Без пропа вид берётся из настроек оформления (#375). */
+  shape?: TAvatarShape;
   online?: boolean;
   className?: string;
 }
 
-export const Avatar = ({
-  id,
-  name,
-  src,
-  size = 'md',
-  shape = 'letter',
-  online = false,
-  className,
-}: Props) => {
+export const Avatar = ({ id, name, src, size = 'md', shape, online = false, className }: Props) => {
+  /* Проп важнее настройки: он ставится там, где вид выбран замыслом
+     экрана, а не человеком в настройках. */
+  const preferredShape = useAvatarShape();
+  const resolvedShape = shape ?? preferredShape;
   const { box, dot, grid } = sizes[size];
   const bytes = hashBytes(id || name || 'anon');
   const tone = tones[bytes[0] % tones.length];
@@ -144,7 +134,7 @@ export const Avatar = ({
       >
         {src ? (
           <img alt="" src={src} className="size-full object-cover" />
-        ) : shape === 'grid' && id ? (
+        ) : resolvedShape === 'grid' && id ? (
           <GridMark bytes={bytes} box={grid} />
         ) : (
           letter
@@ -154,10 +144,7 @@ export const Avatar = ({
       {online && (
         <span
           aria-hidden="true"
-          className={cn(
-            'absolute right-0 bottom-0 rounded-pill border-2 border-sheet bg-ok',
-            dot
-          )}
+          className={cn('absolute right-0 bottom-0 rounded-pill border-2 border-sheet bg-ok', dot)}
         />
       )}
     </span>
