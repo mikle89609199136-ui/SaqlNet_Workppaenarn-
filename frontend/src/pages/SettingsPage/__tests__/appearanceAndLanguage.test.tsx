@@ -30,29 +30,32 @@ describe('внешний вид и язык', () => {
     await waitFor(() => expect(sent).toEqual({ language: 'en' }));
   });
 
-  it('не даёт выбрать язык, которого ещё нет', async () => {
+  it('предлагает только переведённые языки', async () => {
     renderSettings({ section: 'language', settings: { language: 'ru' } });
 
     await userEvent.click(await screen.findByRole('combobox'));
 
-    // Переведён только английский. Предложить язык и показать после этого
-    // русский интерфейс — хуже, чем честно сказать, что его пока нет.
-    // У пункта списка нет атрибута disabled — недоступность объявляется
-    // через aria-disabled, её и читает диктор.
-    expect(await screen.findByRole('option', { name: 'Deutsch' })).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
-    expect(screen.getByRole('option', { name: 'English' })).not.toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
+    // Список — это то, на что интерфейс переведён. Раньше здесь висело
+    // десять пунктов, из них восемь недоступных: человек читал их как
+    // обещание, а получал заглушки.
+    expect(await screen.findByRole('option', { name: 'Русский' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'English' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
   });
 
   it('показывает язык, сохранённый на сервере', async () => {
+    renderSettings({ section: 'language', settings: { language: 'en' } });
+
+    expect(await screen.findByRole('combobox')).toHaveTextContent('English');
+  });
+
+  it('незнакомый язык с сервера показывает как русский', async () => {
+    // У заведённых раньше в настройках мог остаться «tr»: выбор был из
+    // десяти, а словарей два. Интерфейс у них всё равно русский — это и
+    // показываем, вместо пустого поля.
     renderSettings({ section: 'language', settings: { language: 'tr' } });
 
-    expect(await screen.findByRole('combobox')).toHaveTextContent('Türkçe');
+    expect(await screen.findByRole('combobox')).toHaveTextContent('Русский');
   });
 
   it('меняет вид аватарки вместе с выбором', async () => {
