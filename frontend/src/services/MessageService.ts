@@ -1,8 +1,7 @@
 import { API_ENDPOINTS } from '@/api/endpoints';
+import { resolveMediaObjectUrl } from './mediaObjectUrls';
 import { ApiClient } from '@/api/ApiClient';
-import { STORAGE_KEYS, WS_EVENTS } from '@/consts';
-import { eventBus } from '@/core/EventBus';
-import { getRawChat } from '@/core/chatCache';
+import { resolveChat } from '@/core/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,
@@ -12,19 +11,18 @@ import type {
   IMediaItem,
   IMessageDto,
   IMessageResponse,
+  IUploadResponse,
   IMessagesResponse,
   IPinnedDto,
   IPinnedListResponse,
-  IPinnedMessageDto,
   IReactionsResponse,
   ISuccessResponse,
   TMediaMessageType,
   TMessagesList,
   TMessageType,
-  TPinnedList,
 } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
-import type { CryptoService } from './CryptoService';
+import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
@@ -32,14 +30,9 @@ const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не
 export class MessageService {
   private apiClient: ApiClient;
   private cryptoService: CryptoService;
-  private messages: Map<string, TMessagesList>;
-  private pinnedMessages: Map<string, TPinnedList>;
-
   constructor(apiClient: ApiClient, cryptoService: CryptoService) {
     this.apiClient = apiClient;
     this.cryptoService = cryptoService;
-    this.messages = new Map();
-    this.pinnedMessages = new Map();
   }
 
   /**
@@ -72,54 +65,6 @@ export class MessageService {
     );
   }
 
-  async getMessages(
-    chatId: string,
-    offset: number = 0,
-    limit: number = 50
-  ): Promise<TMessagesList> {
-    const cached = this.messages.get(chatId);
-    if (cached && offset === 0) {
-      return cached;
-    }
-
-    const response = await this.apiClient.get<IMessagesResponse>(API_ENDPOINTS.MESSAGES(chatId), {
-      limit,
-      offset,
-    });
-
-    const chatContext = await this.getChatContext(chatId, 'decryption');
-    const messages = response.data.messages
-      ? sortMessagesChronologically<IMessageDto>(
-          await Promise.all(
-            response.data.messages.map(async (item: IMessageDto) => {
-              return this.processMessageForDisplay(chatId, item, chatContext);
-            })
-          )
-        )
-      : [];
-
-    if (offset === 0) {
-      this.messages.set(chatId, messages);
-    }
-
-    if (offset > 0 && cached) {
-      this.messages.set(chatId, sortMessagesChronologically<IMessageDto>([...cached, ...messages]));
-    }
-
-    return messages;
-  }
-
-  getMeId(): string | null {
-    try {
-      const user = localStorage.getItem(STORAGE_KEYS.USER);
-      if (!user) return null;
-      const u = JSON.parse(user);
-      return u?.id;
-    } catch {
-      return null;
-    }
-  }
-
   async sendMessage(
     chatId: string,
     content: string,
@@ -149,9 +94,6 @@ export class MessageService {
     const messageObj = response.data.message;
     const message: IMessageDto = { ...messageObj, content: content.trim() };
 
-    this.addMessageToCache(chatId, message);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.SENT, { message, chatId, type: WS_EVENTS.MESSAGE.NEW });
-
     return message;
   }
 
@@ -167,8 +109,8 @@ export class MessageService {
     }
 
     const chatContext = await this.getChatContext(chatId, 'media encryption');
-    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media, chatContext);
-    const uploadResponse = await this.apiClient.post(API_ENDPOINTS.MEDIA_UPLOAD, {
+    const encryptedMedia = await this.cryptoService.encryptMedia(chatId, media);
+    const uploadResponse = await this.apiClient.post<IUploadResponse>(API_ENDPOINTS.MEDIA_UPLOAD, {
       file: encryptedMedia,
       type: mediaType,
       purpose: 'message',
@@ -199,12 +141,19 @@ export class MessageService {
     );
 
     const messageObj = response.data?.message ?? response.data;
+    const uploadedUrl = uploadResponse.data?.url;
+    // Тот же реестр, что и при показе: когда лента перезапросится, для
+    // этого файла вернётся уже готовый адрес, а не вторая копия.
+    const canRegister =
+      Boolean(uploadedUrl) &&
+      typeof URL !== 'undefined' &&
+      typeof URL.createObjectURL === 'function';
     const localUrl =
-      typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-        ? URL.createObjectURL(
-            await this.cryptoService.decryptMedia(chatId, encryptedMedia, chatContext)
+      canRegister && uploadedUrl
+        ? await resolveMediaObjectUrl(uploadedUrl, () =>
+            this.cryptoService.decryptMedia(chatId, encryptedMedia)
           )
-        : uploadResponse.data?.url;
+        : uploadedUrl;
     const message = {
       ...messageObj,
       content: trimmedCaption,
@@ -213,7 +162,6 @@ export class MessageService {
       mediaEncryption,
     };
 
-    this.addMessageToCache(chatId, message);
     return message;
   }
 
@@ -224,13 +172,20 @@ export class MessageService {
   ) {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
     let content = item.content;
+    let senderVerified: boolean | undefined;
+    /* Причина, по которой сообщение не прочиталось, едет вместе с ним:
+       подпись подставит тот, кто рисует, — он знает язык. */
+    let undecryptable: TUndecryptableReason | undefined;
 
     if (content) {
-      content = await this.decryptContent(chatId, content, context, item.senderId);
+      const decrypted = await this.decryptContent(chatId, content, context, item.senderId);
+      content = decrypted.text;
+      senderVerified = decrypted.senderVerified;
+      undecryptable = decrypted.undecryptable;
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, item, context);
-    return { ...item, content, ...mediaPatch };
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
+    return { ...item, content, senderVerified, undecryptable, ...mediaPatch };
   }
 
   async processPinnedMessageForDisplay(
@@ -242,10 +197,11 @@ export class MessageService {
 
     let content = message.message.content;
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.message.senderId);
+      content = (await this.decryptContent(chatId, content, context, message.message.senderId))
+        .text;
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message, context);
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, message.message);
 
     return {
       ...message,
@@ -261,34 +217,41 @@ export class MessageService {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
 
     let content = message.content;
+    let undecryptable: TUndecryptableReason | undefined;
+
     if (content) {
-      content = await this.decryptContent(chatId, content, context, message.senderId);
+      const decrypted = await this.decryptContent(chatId, content, context, message.senderId);
+      content = decrypted.text;
+      undecryptable = decrypted.undecryptable;
     }
 
-    return { ...message, content };
+    return { ...message, content, undecryptable };
   }
 
+  /**
+   * Тип чата — всё, что шифрованию нужно знать о чате.
+   *
+   * Ключей здесь больше нет: они не привязаны к собеседнику, а живут у
+   * самого чата. Осталась одна развилка — каналы не шифруются.
+   */
   async getChatContext(chatId: string, purpose: string): Promise<IChatContext> {
     try {
-      const chat = await getRawChat(this.apiClient, chatId);
-
-      return {
-        ...(chat || {}),
-        type: chat?.type || 'private',
-        peerPublicKey: chat?.peerPublicKey || null,
-      };
+      const chat = await resolveChat(chatId);
+      return { type: chat?.type || 'private' };
     } catch (e) {
-      console.warn(`Failed to fetch chat info for ${purpose} context`, e);
-      return { type: 'private', peerPublicKey: null };
+      console.warn(`Не удалось получить чат для ${purpose}`, e);
+      return { type: 'private' };
     }
+  }
+
+  private isEncrypted(chatContext: IChatContext): boolean {
+    return chatContext.type !== 'channel';
   }
 
   async encryptContent(chatId: string, content: string, chatContext: IChatContext) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.encryptGroup(chatId, content);
-    }
-    return this.cryptoService.encryptDM(content, chatContext.peerPublicKey!);
+    if (!content || !this.isEncrypted(chatContext)) return content;
+
+    return this.cryptoService.encryptMessage(chatId, content);
   }
 
   async decryptContent(
@@ -296,18 +259,13 @@ export class MessageService {
     content: string,
     chatContext: IChatContext,
     senderId: string | null = null
-  ) {
-    if (!content) return content;
-    if (chatContext.type === 'group') {
-      return this.cryptoService.decryptGroup(chatId, content);
-    }
-    const isOwnMessage = senderId && senderId === this.getMeId();
-    return this.cryptoService.decryptDM(content, chatContext.peerPublicKey!, {
-      preferEmbeddedSenderKey: !isOwnMessage,
-    });
+  ): Promise<IDecryptedMessage> {
+    if (!content || !this.isEncrypted(chatContext)) return { text: content };
+
+    return this.cryptoService.decryptMessage(chatId, content, senderId ?? '');
   }
 
-  async resolveMediaForDisplay(chatId: string, item: IMessageDto, chatContext: IChatContext) {
+  async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
     if (!metadata || !('mediaUrl' in metadata)) {
@@ -328,12 +286,15 @@ export class MessageService {
     }
 
     try {
-      const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-      const encryptedPayload = response.data;
-      const blob = await this.cryptoService.decryptMedia(chatId, encryptedPayload, chatContext);
+      // Адрес берётся из реестра: тот же файл в ленте, в закреплённых и
+      // после каждого перезапроса истории получает один и тот же адрес,
+      // а не новую копию в памяти.
       const objectUrl =
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-          ? URL.createObjectURL(blob)
+          ? await resolveMediaObjectUrl(mediaUrl, async () => {
+              const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
+              return this.cryptoService.decryptMedia(chatId, response.data);
+            })
           : mediaUrl;
 
       return {
@@ -375,30 +336,14 @@ export class MessageService {
     });
     // Как в sendMessage: на сервер уходит шифртекст, в интерфейс — исходный текст.
     const message: IMessageDto = { ...response.data, content: trimmedContent };
-    this.updatePinnedMessageInCache(messageId, message);
-    this.updateMessageInCache(messageId, message);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.EDITED, {
-      chatId: chatId,
-      messageId,
-      type: WS_EVENTS.MESSAGE.EDITED,
-      updatedAt: new Date(),
-      content: message.content,
-    });
 
     return message;
   }
 
-  async deleteMessage(chatId: string, messageId: string) {
+  async deleteMessage(messageId: string) {
     const response = await this.apiClient.delete<IDeleteMessageResponse>(
       API_ENDPOINTS.MESSAGE_BY_ID(messageId)
     );
-    this.removeMessageFromCache(messageId);
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.DELETED, {
-      messageId: messageId,
-      previousMessage: response.data.lastMessage,
-      chatId: chatId,
-      type: WS_EVENTS.MESSAGE.DELETED,
-    });
     return response.data;
   }
 
@@ -415,31 +360,40 @@ export class MessageService {
       messageIds,
     });
 
-    eventBus.emit(WS_EVENTS.MESSAGE.LOCAL.READ, { chatId });
     return { ...response.data, readIds: messageIds };
   }
 
-  async forwardMessage(messageId: string, targetChatId: string) {
-    const response = await this.apiClient.post<IMessageResponse>(
-      API_ENDPOINTS.MESSAGE_FORWARD(messageId),
-      { targetChatId }
-    );
+  /**
+   * Пересылка.
+   *
+   * Делается на клиенте: у каждого чата свой ключ, и серверная пересылка,
+   * копирующая шифртекст как есть, дала бы в целевом чате сообщение,
+   * которое не расшифруется никогда. Поэтому текст берётся уже
+   * расшифрованным — из ленты, откуда его и выбрали, — и шифруется
+   * заново ключом целевого чата.
+   *
+   * Пометки «переслано» пока не будет: маршрут отправки не принимает
+   * признак пересылки. Задача заведена бэкенду.
+   */
+  async forwardMessage(message: IMessageDto, targetChatId: string) {
+    const content = message.content ?? '';
 
-    const processedMessage = await this.processMessageForDisplay(
-      targetChatId,
-      response.data.message
-    );
-    const message = sortMessagesChronologically<IMessageDto>(
-      await Promise.all(
-        [processedMessage].map(async (item: IMessageDto) => {
-          return this.processMessageForDisplay(targetChatId, item);
-        })
-      )
-    )[0];
+    /* Признак надёжнее прежней проверки по ведущему замку: подпись
+       переводится, а причина — нет. */
+    if ((message as IMessageDto & { undecryptable?: TUndecryptableReason }).undecryptable) {
+      throw new Error('Нельзя переслать сообщение, которое не удалось расшифровать');
+    }
 
-    this.addMessageToCache(targetChatId, message);
+    const media = (message as IMessageDto & { mediaUrl?: string | null }).mediaUrl;
 
-    return message;
+    if (MEDIA_MESSAGE_TYPES.has(message.type) && media) {
+      // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
+      const blob = await fetch(media).then((response) => response.blob());
+
+      return this.sendMediaMessage(targetChatId, blob, message.type as TMediaMessageType, content);
+    }
+
+    return this.sendMessage(targetChatId, content, message.type);
   }
 
   async listReactions(messageId: string) {
@@ -449,30 +403,20 @@ export class MessageService {
   }
 
   async listPins(chatId: string) {
-    const cached = this.pinnedMessages.get(chatId);
-    if (cached) {
-      return cached;
-    }
-
-    const response = await this.apiClient
+    const pins = await this.apiClient
       .get<IPinnedListResponse>(API_ENDPOINTS.CHAT_PINS(chatId))
       .then((response) => response.data?.pins ?? []);
 
     const chatContext = await this.getChatContext(chatId, 'decryption');
 
-    const messages = sortMessagesChronologically<IPinnedDto>(
+    return sortMessagesChronologically<IPinnedDto>(
       await Promise.all(
-        response.map(async (item: IPinnedDto) => {
-          return {
-            ...item,
-            message: await this.processMessageForDisplay(chatId, item.message, chatContext),
-          };
-        })
+        pins.map(async (item: IPinnedDto) => ({
+          ...item,
+          message: await this.processMessageForDisplay(chatId, item.message, chatContext),
+        }))
       )
     );
-
-    this.pinnedMessages.set(chatId, messages);
-    return messages;
   }
 
   async pinMessage(chatId: string, messageId: string) {
@@ -486,7 +430,6 @@ export class MessageService {
   async unpinMessage(chatId: string, messageId: string) {
     const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId));
 
-    this.removePinnedMessageFromCache(messageId);
     return response.data;
   }
 
@@ -494,87 +437,5 @@ export class MessageService {
     return this.apiClient
       .post<IEmojisResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
       .then((response) => response.data);
-  }
-
-  updateMessageInCache(messageId: string, patch: Partial<Omit<IMessageDto, 'id'>>) {
-    this.messages.forEach((messages, chatId) => {
-      this.messages.set(
-        chatId,
-        messages.map((message) => (message.id === messageId ? { ...message, ...patch } : message))
-      );
-    });
-  }
-
-  updatePinnedMessageInCache(messageId: string, patch: Partial<Omit<IPinnedMessageDto, 'id'>>) {
-    this.pinnedMessages.forEach((pinnedMessages, chatId) => {
-      this.pinnedMessages.set(
-        chatId,
-        pinnedMessages.map((pinned) =>
-          pinned.messageId === messageId
-            ? { ...pinned, message: { ...pinned.message, ...patch } }
-            : pinned
-        )
-      );
-    });
-  }
-
-  addPinnedMessageToCache(chatId: string, message: IPinnedDto) {
-    if (!this.pinnedMessages.has(chatId)) {
-      this.pinnedMessages.set(chatId, []);
-    }
-    this.pinnedMessages.set(
-      chatId,
-      sortMessagesChronologically<IPinnedDto>([...this.getOrCreatePinnedMessages(chatId), message])
-    );
-  }
-
-  removePinnedMessageFromCache(messageId: string) {
-    this.pinnedMessages.forEach((messages, chatId) => {
-      this.pinnedMessages.set(
-        chatId,
-        // Сравнивать нужно с messageId: поле id принадлежит самому
-        // закреплению, а не сообщению, и с ним совпадений не будет.
-        messages.filter((pinned) => pinned.messageId !== messageId)
-      );
-    });
-  }
-
-  addMessageToCache(chatId: string, message: IMessageDto) {
-    // Дополняем только ту историю, которая уже загружена с сервера.
-    // Иначе getMessages примет запись из одного сообщения за полную историю
-    // чата и не станет запрашивать остальное: чат откроется почти пустым.
-    // Сюда попадают пересылка, отправка и любое входящее событие по чужим чатам,
-    // поэтому создавать запись здесь нельзя.
-    if (!this.messages.has(chatId)) {
-      return;
-    }
-
-    this.messages.set(
-      chatId,
-      sortMessagesChronologically<IMessageDto>([...this.getOrCreateMessages(chatId), message])
-    );
-  }
-
-  removeMessageFromCache(messageId: string) {
-    this.messages.forEach((messages, chatId) => {
-      this.messages.set(
-        chatId,
-        messages.filter((message) => message.id !== messageId)
-      );
-    });
-  }
-
-  private getOrCreateMessages(chatId: string): TMessagesList {
-    if (!this.messages.has(chatId)) {
-      this.messages.set(chatId, []);
-    }
-    return this.messages.get(chatId)!;
-  }
-
-  private getOrCreatePinnedMessages(chatId: string): TPinnedList {
-    if (!this.pinnedMessages.has(chatId)) {
-      this.pinnedMessages.set(chatId, []);
-    }
-    return this.pinnedMessages.get(chatId)!;
   }
 }

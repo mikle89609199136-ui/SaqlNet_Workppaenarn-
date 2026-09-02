@@ -42,8 +42,13 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.CHAT.UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 
-  [WS_EVENTS.CHAT.ADD_MEMBER]: ({ chatId }) =>
+  [WS_EVENTS.CHAT.MEMBER_ADDED]: ({ chatId }) =>
     chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_REMOVED]: ({ chatId }) =>
+    chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: ({ chatId }) => (chatId ? [chatKeys.members(chatId)] : []),
 };
 
 /**
@@ -55,7 +60,9 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
 export const IGNORED_EVENTS: string[] = [
   // Эфемерное состояние: живёт три секунды и не кешируется.
   WS_EVENTS.USER.TYPING,
-  // Служебные события транспорта.
+  // Служебные события транспорта. Восстановление связи таблице не
+  // подчиняется: там не инвалидация, а догрузка пропущенного —
+  // см. resyncAfterReconnect.
   WS_EVENTS.SOCKET.CONNECTED,
   WS_EVENTS.SOCKET.DISCONNECTED,
   WS_EVENTS.SOCKET.ERROR,
@@ -74,14 +81,6 @@ export const IGNORED_EVENTS: string[] = [
   WS_EVENTS.CALL.OFFER,
   WS_EVENTS.CALL.ANSWER,
   WS_EVENTS.CALL.ICE,
-  // Локальные события: их слушает только список чатов и они уйдут
-  // вместе с его переездом на запросы.
-  WS_EVENTS.MESSAGE.LOCAL.SENT,
-  WS_EVENTS.MESSAGE.LOCAL.EDITED,
-  WS_EVENTS.MESSAGE.LOCAL.DELETED,
-  WS_EVENTS.MESSAGE.LOCAL.READ,
-  WS_EVENTS.MESSAGE.LOCAL.PIN,
-  WS_EVENTS.MESSAGE.LOCAL.UNPIN,
 ];
 
 export function resolveInvalidations(eventType: string, payload: IEventPayload): QueryKey[] {

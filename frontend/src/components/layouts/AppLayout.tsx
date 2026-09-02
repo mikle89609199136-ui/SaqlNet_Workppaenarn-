@@ -30,7 +30,7 @@ const navItems: INavItem[] = [
     key: 'meetings',
     label: 'Встречи',
     path: ROUTES.MEETINGS,
-    icon: 'camera',
+    icon: 'video',
   },
 ];
 

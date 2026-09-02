@@ -1,5 +1,4 @@
 import { API_ENDPOINTS, ApiClient } from '@/api';
-import { getRawChat, invalidateChat } from '@/core';
 import type {
   IChatDto,
   IChatResponse,
@@ -14,52 +13,23 @@ import type {
 
 export class ChatService {
   private apiClient: ApiClient;
-  private membersRequests = new Map<string, Promise<TMembersList>>();
-  private chatsRequest: Promise<IChatDto[]> | null = null;
-
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
 
+  // Свежестью списка распоряжается слой запросов: собственный кеш здесь
+  // сбрасывался только при ошибке, и успешный ответ жил до перезагрузки
+  // вкладки — созданный чат в списке не появлялся.
   async getChats() {
-    if (this.chatsRequest) {
-      return this.chatsRequest;
-    }
-
-    const request = this.apiClient
-      .get<IChatsResponse>(API_ENDPOINTS.CHATS)
-      .then((response) => response.data.chats)
-      .catch((err) => {
-        this.chatsRequest = null;
-        throw err;
-      });
-
-    this.chatsRequest = request;
-    return request;
+    const response = await this.apiClient.get<IChatsResponse>(API_ENDPOINTS.CHATS);
+    return response.data.chats;
   }
 
-  private patchChatsCache(updater: (chats: IChatDto[]) => IChatDto[]) {
-    if (!this.chatsRequest) return; // кэша ещё нет — следующий getChats() сходит за свежими данными сам
-    this.chatsRequest = this.chatsRequest.then(updater);
-  }
-
-  patchChat(chatId: string, patch: Partial<IChatDto>) {
-    this.patchChatsCache((chats) =>
-      chats.map((chat) => (chat.id === chatId ? { ...chat, ...patch } : chat))
-    );
-  }
-
-  addChatToCache(chat: IChatDto) {
-    this.patchChatsCache((chats) => [chat, ...chats]);
-  }
-
-  removeChatFromCache(chatId: string) {
-    this.patchChatsCache((chats) => chats.filter((chat) => chat.id !== chatId));
-  }
-
-  async getChat(chatId: string) {
-    const raw = await getRawChat(this.apiClient, chatId);
-    return raw;
+  // Запрос без собственного кеша: это функция загрузки для chat-запроса,
+  // и кеширование — его забота.
+  async getChat(chatId: string): Promise<IChatDto> {
+    const response = await this.apiClient.get<IChatResponse>(API_ENDPOINTS.CHAT_BY_ID(chatId));
+    return response.data.chat;
   }
 
   async createChat(type: TChatType, participants: string[], title = '') {
@@ -78,40 +48,43 @@ export class ChatService {
     title,
     description = '',
     members = [],
+    avatarUrl = '',
   }: {
     title: string;
     description: string;
     members: string[];
+    avatarUrl?: string;
   }): Promise<ICreateGroupChatResponse> {
     const chat = await this.apiClient
-      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, {
+        title,
+        description,
+        members,
+        // Аватарка хранится строкой, поэтому уходит уменьшенной картинкой
+        // прямо в теле запроса: отдельная загрузка файла тут не нужна.
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
       .then((response) => response.data);
 
     return chat;
   }
 
   async searchUsers(query: string) {
-    return this.apiClient
-      .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
-      .then((response) => response.data.users);
+    return (
+      this.apiClient
+        .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
+        // Когда никто не нашёлся, сервер присылает null вместо пустого списка,
+        // а вызывающий код рисует результат перебором.
+        .then((response) => response.data.users ?? [])
+    );
   }
 
+  // Свежесть списка — забота слоя запросов: раньше промис оставался в
+  // сервисе навсегда, и смена роли не была видна даже после переоткрытия.
   async getMembers(chatId: string): Promise<TMembersList> {
-    const cached = this.membersRequests.get(chatId);
-    if (cached) {
-      return cached;
-    }
-
-    const request = this.apiClient
+    return this.apiClient
       .get<IMembersListResponse>(API_ENDPOINTS.CHAT_MEMBERS(chatId))
-      .then((response) => response.data.members)
-      .catch((err) => {
-        this.membersRequests.delete(chatId); // не кэшируем ошибку — следующий вызов попробует заново
-        throw err;
-      });
-
-    this.membersRequests.set(chatId, request);
-    return request;
+      .then((response) => response.data.members ?? []);
   }
 
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
@@ -132,35 +105,32 @@ export class ChatService {
       Omit<IChatDto, 'id' | 'peerId' | 'peerPublicKey' | 'ownerId' | 'createdAt' | 'type'>
     >
   ): Promise<IChatDto> {
-    const response = await this.apiClient.put<IChatResponse>(
+    // Сервер принимает частичное изменение чата методом PATCH: с PUT
+    // переименование группы отвечало 405.
+    const response = await this.apiClient.patch<IChatResponse>(
       API_ENDPOINTS.CHAT_BY_ID(chatId),
       data
     );
-    invalidateChat(chatId);
     return response.data.chat;
   }
 
   async deleteChat<T>(chatId: string): Promise<T> {
     const response = await this.apiClient.delete<T>(API_ENDPOINTS.CHAT_BY_ID(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 
   async muteChat(chatId: string, duration: number) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
-    invalidateChat(chatId);
     return response.data;
   }
 
   async pinChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 
   async archiveChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 }

@@ -1,11 +1,13 @@
-import { Identicon, Modal } from '@/components/ui';
+import { Avatar, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
+import { membersQuery } from '@/queries/chat/membersQuery';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { chatKeys } from '@/queries/keys';
-import { useChatsStore, useProfileStore } from '@/store';
+import { clearDraft } from '@/store/chatDrafts';
+import { useProfileStore } from '@/store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IMemberDto, TChatRole, TMembersList } from '@/types';
+import type { TChatRole } from '@/types';
 import { cn } from '@/utils';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,22 +25,22 @@ const dangerBtn =
 
 export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { showToast } = useToasts();
-  const [members, setMembers] = useState<TMembersList>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<IMemberDto | null>(null);
   const [isEditMode, setEditMode] = useState(false);
   const [chatName, setChatName] = useState('');
-  const deleteChat = useChatsStore((state) => state.deleteChat);
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
+  const {
+    data: members = [],
+    isPending: isLoading,
+    error: membersError,
+  } = useQuery({ ...membersQuery(chatId), enabled: Boolean(chatId) && isOpen });
 
-  useEffect(() => {
-    fetchMembers();
-  }, [chat]);
+  // Права видны из той же записи об участнике, что и всё остальное.
+  const currentUser = members.find((member) => member.id === currentUserData?.id) ?? null;
 
   useEffect(() => {
     if (chat) {
@@ -46,24 +48,11 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     }
   }, [chat]);
 
-  if (!chat) return;
+  useEffect(() => {
+    if (membersError) showToast('error', t('error', 'Ошибка загрузки участников'));
+  }, [membersError, showToast]);
 
-  async function fetchMembers() {
-    setIsLoading(true);
-    try {
-      const nextMembers = await services.chatService.getMembers(chatId);
-      setMembers(nextMembers);
-      const myMember = nextMembers.find((m) => m.id === currentUserData?.id);
-
-      if (myMember) {
-        setCurrentUser(myMember);
-      }
-    } catch (err) {
-      showToast('error', 'Ошибка загрузки участников', '❌');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  if (!chat) return null;
 
   async function handleAction(
     action: string,
@@ -74,21 +63,17 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     try {
       if (action === 'change-participant-role') {
         await services.chatService.setMemberRole(chatId, userId, body?.role);
-        setMembers((members) =>
-          members.map((member) => (member.id === userId ? { ...member, role: body?.role } : member))
-        );
-        return;
-      }
-
-      if (action === 'kick-participant') {
+      } else if (action === 'kick-participant') {
         await services.chatService.removeMember(chatId, userId);
-        setMembers((members) => members.filter((member) => member.id !== userId));
-        return;
+      } else {
+        throw new Error('Unsupported group action');
       }
 
-      throw new Error('Unsupported group action');
+      // Перезапрос вместо правки списка на месте: раньше изменение жило
+      // только в состоянии модалки и пропадало при переоткрытии.
+      await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
-      showToast('error', err.message || 'Ошибка выполнения действия', '❌');
+      showToast('error', err.message || t('toast.actionFailed', 'Ошибка выполнения действия'));
     }
   }
 
@@ -116,13 +101,17 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
 
   const handleDeleteChat = async () => {
     try {
-      const result = await deleteChat(chat.id);
+      await services.chatService.deleteChat(chat.id);
 
-      if (!result.success) throw new Error('Could not delete chat, try again');
+      clearDraft(chat.id);
       queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       navigate('/chats');
     } catch (err: any) {
-      showToast('error', err.message || 'Не удалось удалить чат, попробуйте ещё раз', '❌');
+      showToast(
+        'error',
+        err.message || t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+      );
     }
   };
 
@@ -130,20 +119,14 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
 
   return (
     <Modal
-      classNameOverlay="fixed inset-0 z-[1000] flex justify-center items-center backdrop-blur-sm bg-[rgba(0,0,0,0.4)] animate-[fadeIn_0.2s_ease-out]"
-      className="w-full flex flex-col overflow-hidden md:max-h-[85vh] h-full max-h-screen md:rounded-3xl max-w-125 bg-[rgba(20,20,22,0.85)] border border-[rgba(255,255,255,0.1)] border-b-none animate-[slideUp_0.3s_cubic-bezier(0.2,0.8,0.2,1)] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:rounded-t-3xl pt-0"
+      className="flex h-full max-h-screen w-full max-w-125 flex-col overflow-hidden rounded-none bg-sheet pt-0 backdrop:bg-black/40 backdrop:backdrop-blur-sm md:max-h-[85vh] md:rounded-window"
+      label="Сведения о группе"
       onClose={onClose}
     >
       <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border border-t-none border-[rgba(255,255,255,0.05)]">
         <div className="flex w-full items-center gap-x-2">
           <div className="flex w-full gap-x-2">
-            <div className="thread-avatar size-12 cursor-default">
-              {chat?.avatarUrl ? (
-                <img alt="" src={chat.avatarUrl} />
-              ) : (
-                chat?.title.slice(0, 1).toUpperCase()
-              )}
-            </div>
+            <Avatar name={chat?.title} size="lg" src={chat?.avatarUrl} />
             <div className="flex flex-col w-full">
               {!isEditMode ? (
                 <h2>{chat?.title}</h2>
@@ -214,13 +197,13 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
               const avatarUrl = member.avatarUrl;
               return (
                 <li key={memberId} className="member-item">
-                  <div className="member-avatar">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="avatar" />
-                    ) : (
-                      <Identicon userId={memberId} size={44} />
-                    )}
-                  </div>
+                  <Avatar
+                    className="mr-4"
+                    id={memberId}
+                    name={member.username}
+                    size="lg"
+                    src={avatarUrl}
+                  />
                   <div className="member-details">
                     <span className="member-name">{member.username}</span>
                     <span className={`member-role role-${member.role}`}>{member.role}</span>

@@ -61,6 +61,20 @@ export interface IChatAddMemberEvent {
   member: IMemberDto;
 }
 
+export interface IChatMemberRemovedEvent {
+  type: string;
+  chatId: string;
+  userId: string;
+  reason?: string;
+}
+
+export interface IChatMemberRoleUpdatedEvent {
+  type: string;
+  chatId: string;
+  userId: string;
+  role: string;
+}
+
 export interface ITypingEvent {
   type: string;
   chatId: string;
@@ -181,18 +195,16 @@ export interface IWsEventMap {
   [WS_EVENTS.CALL.PEER_JOINED]: ICallPeerJoinedEvent;
   [WS_EVENTS.CALL.PEER_LEFT]: ICallPeerLeftEvent;
 
-  [WS_EVENTS.CHAT.ADD_MEMBER]: IChatAddMemberEvent;
+  [WS_EVENTS.CHAT.MEMBER_ADDED]: IChatAddMemberEvent;
+  [WS_EVENTS.CHAT.MEMBER_REMOVED]: IChatMemberRemovedEvent;
+  [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: IChatMemberRoleUpdatedEvent;
   [WS_EVENTS.CHAT.UPDATED]: IChatUpdatedEvent;
 
   [WS_EVENTS.MESSAGE.DELETED]: IMessageDeletedEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.DELETED]: IMessageDeletedEvent;
   [WS_EVENTS.MESSAGE.EDITED]: IMessageEditedEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.EDITED]: IMessageEditedEvent;
   [WS_EVENTS.MESSAGE.NEW]: IMessageNewEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.SENT]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
   [WS_EVENTS.MESSAGE.UNPINNED]: IMessageUnpinEvent;
-  [WS_EVENTS.MESSAGE.LOCAL.READ]: IMessagesReadEvent;
 
   [WS_EVENTS.OTHER.PING]: IPingEvent;
   [WS_EVENTS.OTHER.PONG]: IPongEvent;

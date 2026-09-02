@@ -1,7 +1,4 @@
 export { useProfileStore } from './profile';
 export { useCallStore } from './call';
-export { useChatStore, type IActionMenu } from './chat';
-export { useChatsStore } from './chats';
-export { useLanguageStore } from './language';
-export { useThemeStore, type TThemeType } from './theme';
+export { useChatUiStore, type IActionMenu } from './chatUi';
 export { useToastStore } from './toast';

@@ -1,11 +1,11 @@
 import { Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { pinsQuery } from '@/queries/chat/threadQueries';
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import { useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -39,7 +39,12 @@ export const MessageActionsPopover = ({
     draftRef,
     setIsForwardModalOpen,
   });
-  const { selectedMessages, selectionMode, actionMenu } = useChatStore();
+  // По селектору на поле: подписка на хранилище целиком перерисовывала бы
+  // меню и на то, что его не касается, — правку, ответ, перевод, ошибку
+  // отправки.
+  const selectedMessages = useChatUiStore((state) => state.selectedMessages);
+  const selectionMode = useChatUiStore((state) => state.selectionMode);
+  const actionMenu = useChatUiStore((state) => state.actionMenu);
   // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
@@ -48,79 +53,78 @@ export const MessageActionsPopover = ({
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
 
-  const buttons: IActionButton[] = [
-    {
-      show: !selectionMode,
-      icon: 'reply',
-      key: 'reply',
-      def: t('messageActions.reply', 'Ответить'),
-      action: () => actions.startReply(message),
-    },
-    {
-      show: true,
-      icon: 'copy',
-      key: 'copy',
-      def: t('messageActions.copy', 'Скопировать'),
-      action: () => actions.handleCopyMessage(message),
-    },
-    {
-      show: !mine && !selectionMode,
-      icon: 'language',
-      key: 'translate',
-      def: t('action.translate', 'Перевести'),
-      action: () => actions.handleTranslateMessage(message),
-    },
-    {
-      show: mine && !selectionMode,
-      icon: 'edit',
-      key: 'edit',
-      def: t('messageActions.edit', 'Изменить'),
-      action: () => actions.startEdit(message),
-    },
-    {
-      show: !isPinned && !selectionMode,
-      icon: 'pin',
-      key: 'pin',
-      def: t('messageActions.pin', 'Закрепить'),
-      action: () => actions.handlePinMessage(message),
-    },
-    {
-      show: !isPinned && selectionMode,
-      icon: 'pin',
-      key: 'pin',
-      def: t('messageActions.pinAll', 'Закрепить всё'),
-      action: () => actions.handlePinMessage(message),
-    },
-    {
-      show: isPinned && !selectionMode,
-      icon: 'pin',
-      key: 'unpin',
-      def: t('messageActions.unpin', 'Открепить'),
-      action: () => actions.handleUnpinMessage(message),
-    },
-    {
-      show: isPinned && selectionMode,
-      icon: 'pin',
-      key: 'unpin',
-      def: t('messageActions.unpinAll', 'Открепить всё'),
-      action: () => actions.handleUnpinMessage(message),
-    },
-    {
-      show: true,
-      icon: 'forward',
-      key: 'forward',
-      def: t('messageActions.forward', 'Переслать'),
-      action: () => actions.handleForward(message),
-    },
-    {
-      show: mine,
-      icon: 'trash',
-      key: 'delete',
-      def: t('messageActions.delete', 'Удалить'),
-      action: () => actions.handleDelete(message),
-      className: 'is-danger',
-    },
-  ];
+  // Список пересобирается только когда меняется то, от чего он зависит:
+  // само сообщение, режим выделения и признак закрепления. Иначе десяток
+  // объектов с переведёнными подписями создавался бы на каждый рендер.
+  const buttons: IActionButton[] = useMemo(
+    () => [
+      {
+        show: !selectionMode,
+        icon: 'reply',
+        key: 'reply',
+        def: t('messageActions.reply', 'Ответить'),
+        action: () => actions.startReply(message),
+      },
+      {
+        show: true,
+        icon: 'copy',
+        key: 'copy',
+        def: t('messageActions.copy', 'Скопировать'),
+        action: () => actions.handleCopyMessage(message),
+      },
+      {
+        show: !mine && !selectionMode,
+        icon: 'language',
+        key: 'translate',
+        def: t('action.translate', 'Перевести'),
+        action: () => actions.handleTranslateMessage(message),
+      },
+      {
+        show: mine && !selectionMode,
+        icon: 'edit',
+        key: 'edit',
+        def: t('messageActions.edit', 'Изменить'),
+        action: () => actions.startEdit(message),
+      },
+      // Закрепление и открепление отличаются только подписью: в режиме
+      // выделения действие применяется ко всем отмеченным, поэтому
+      // «Закрепить всё».
+      {
+        show: !isPinned,
+        icon: 'pin',
+        key: 'pin',
+        def: selectionMode
+          ? t('messageActions.pinAll', 'Закрепить всё')
+          : t('messageActions.pin', 'Закрепить'),
+        action: () => actions.handlePinMessage(message),
+      },
+      {
+        show: isPinned,
+        icon: 'pin',
+        key: 'unpin',
+        def: selectionMode
+          ? t('messageActions.unpinAll', 'Открепить всё')
+          : t('messageActions.unpin', 'Открепить'),
+        action: () => actions.handleUnpinMessage(message),
+      },
+      {
+        show: true,
+        icon: 'forward',
+        key: 'forward',
+        def: t('messageActions.forward', 'Переслать'),
+        action: () => actions.handleForward(message),
+      },
+      {
+        show: mine,
+        icon: 'trash',
+        key: 'delete',
+        def: t('messageActions.delete', 'Удалить'),
+        action: () => actions.handleDelete(message),
+        className: 'is-danger',
+      },
+    ],
+    [actions, isPinned, message, mine, selectionMode, t]
+  );
 
   return (
     <div

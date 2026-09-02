@@ -1,0 +1,2199 @@
+<!doctype html>
+<html lang="ru" data-accent="violet">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI-кит CraneApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600&display=swap">
+
+<style>
+  /* ===================================================================
+     СЛОЙ 1. Нейтральные токены. От акцента не зависят.
+     Светлый набор — база, тёмный переопределяет только значения.
+     =================================================================== */
+  :root {
+    --ink:        #1B2029;
+    --ink-2:      #5A6675;
+    --ink-3:      #8B96A5;
+    --ground:     #F4F6F9;
+    --sheet:      #FFFFFF;
+    --sheet-2:    #EDF0F5;
+    --line:       #DFE4EC;
+    --line-soft:  #EAEEF3;
+    --bubble-in:  #FFFFFF;
+
+    --ok:         #2E8B57;
+    --danger:     #C0392B;
+
+    --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.06), 0 1px 1px rgba(20, 28, 40, 0.04);
+    --shadow-2: 0 4px 12px rgba(20, 28, 40, 0.08), 0 1px 3px rgba(20, 28, 40, 0.06);
+    --shadow-3: 0 16px 40px rgba(20, 28, 40, 0.14), 0 2px 8px rgba(20, 28, 40, 0.08);
+
+    --r-1: 6px;
+    --r-2: 10px;
+    --r-3: 14px;
+    --r-4: 20px;
+    --r-pill: 999px;
+
+    --sans: 'Geologica', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --display: 'Geologica', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    /* какой из двух вариантов акцента брать — переопределяется темой */
+    --accent:     var(--accent-lo);
+    --bubble-out: var(--bubble-out-light);
+    --bubble-out-ink: var(--bubble-out-ink-light);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink:        #DDE3EC;
+      --ink-2:      #98A3B4;
+      --ink-3:      #6C7889;
+      --ground:     #14181F;
+      --sheet:      #1B212A;
+      --sheet-2:    #232A35;
+      --line:       #2C3543;
+      --line-soft:  #232A35;
+      --bubble-in:  #1F2731;
+
+      --ok:         #4FBF6B;
+      --danger:     #FF6B6B;
+
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+      --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.36);
+      --shadow-3: 0 20px 50px rgba(0, 0, 0, 0.48);
+
+      --accent:     var(--accent-hi);
+      --bubble-out: var(--bubble-out-dark);
+      --bubble-out-ink: var(--bubble-out-ink-dark);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink:        #DDE3EC;
+    --ink-2:      #98A3B4;
+    --ink-3:      #6C7889;
+    --ground:     #14181F;
+    --sheet:      #1B212A;
+    --sheet-2:    #232A35;
+    --line:       #2C3543;
+    --line-soft:  #232A35;
+    --bubble-in:  #1F2731;
+
+    --ok:         #4FBF6B;
+    --danger:     #FF6B6B;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.36);
+    --shadow-3: 0 20px 50px rgba(0, 0, 0, 0.48);
+
+    --accent:     var(--accent-hi);
+    --bubble-out: var(--bubble-out-dark);
+    --bubble-out-ink: var(--bubble-out-ink-dark);
+  }
+
+  /* ===================================================================
+     СЛОЙ 2. Акцент. Меняется целиком одним атрибутом на <html>.
+     Пять значений в наборе:
+       accent-lo   — тёмный вариант, для текста и линий на светлом фоне
+       accent-hi   — светлый вариант, для текста и линий на тёмном
+       accent-fill — заливка кнопок и меток
+       on-accent   — что писать поверх заливки
+       bubble-out  — свой пузырь, оттенок того же цвета
+     =================================================================== */
+  [data-accent="violet"] {
+    --accent-lo: #7C4DD8;
+    --accent-hi: #B48CEC;
+    --accent-fill: #7C4DD8;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(124, 77, 216, 0.11);
+    --bubble-out-light: #F0EAFB;
+    --bubble-out-dark:  #292234;
+    --bubble-out-ink-light: #3D2A63;
+    --bubble-out-ink-dark:  #E9E2F5;
+  }
+  [data-accent="orchid"] {
+    --accent-lo: #C2459B;
+    --accent-hi: #EC8CC8;
+    --accent-fill: #C2459B;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(194, 69, 155, 0.11);
+    --bubble-out-light: #FCE9F5;
+    --bubble-out-dark:  #322431;
+    --bubble-out-ink-light: #66194A;
+    --bubble-out-ink-dark:  #F5DFEE;
+  }
+  [data-accent="indigo"] {
+    --accent-lo: #4C5FD0;
+    --accent-hi: #9BAAF2;
+    --accent-fill: #4C5FD0;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(76, 95, 208, 0.11);
+    --bubble-out-light: #E9ECFC;
+    --bubble-out-dark:  #232839;
+    --bubble-out-ink-light: #23306E;
+    --bubble-out-ink-dark:  #DFE4F7;
+  }
+  [data-accent="plum"] {
+    --accent-lo: #8E3E86;
+    --accent-hi: #D392CB;
+    --accent-fill: #8E3E86;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(142, 62, 134, 0.11);
+    --bubble-out-light: #F8EAF6;
+    --bubble-out-dark:  #2F2433;
+    --bubble-out-ink-light: #4E1B49;
+    --bubble-out-ink-dark:  #F0DEEE;
+  }
+  [data-accent="amber"] {
+    --accent-lo: #A9690C;
+    --accent-hi: #F2A93B;
+    --accent-fill: #F2A93B;
+    --on-accent: #1A1203;
+    --accent-soft: rgba(169, 105, 12, 0.12);
+    --bubble-out-light: #FBF0DC;
+    --bubble-out-dark:  #33291A;
+    --bubble-out-ink-light: #5A4318;
+    --bubble-out-ink-dark:  #F0E6D6;
+  }
+  [data-accent="teal"] {
+    --accent-lo: #17806E;
+    --accent-hi: #5FD3BE;
+    --accent-fill: #17806E;
+    --on-accent: #FFFFFF;
+    --accent-soft: rgba(23, 128, 110, 0.11);
+    --bubble-out-light: #E3F5F1;
+    --bubble-out-dark:  #1E2E2C;
+    --bubble-out-ink-light: #0D4A3F;
+    --bubble-out-ink-dark:  #D6EFE9;
+  }
+
+  /* ===================================================================
+     Сброс и страница
+     =================================================================== */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--sheet-2);
+    padding: 1px 5px;
+    border-radius: var(--r-1);
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  header.top { padding: 88px 0 48px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  /* --- Переключатель акцента --- */
+  .accentbar {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--sheet);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 0;
+    backdrop-filter: blur(8px);
+  }
+  .accentbar .wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .accentbar-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .accents { display: flex; gap: 8px; flex-wrap: wrap; }
+  .accent-pick {
+    font-family: inherit; font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 13px 6px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--ground);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: border-color 120ms ease-out, color 120ms ease-out;
+  }
+  .accent-pick:hover { color: var(--ink); border-color: var(--ink-3); }
+  .accent-pick[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+  .accent-pick .dot { width: 15px; height: 15px; border-radius: var(--r-pill); flex-shrink: 0; }
+
+  section { padding: 72px 0; border-bottom: 1px solid var(--line-soft); }
+  section:last-of-type { border-bottom: 0; }
+
+  h2 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: -0.015em;
+    margin: 0 0 12px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 40px 0 16px;
+    color: var(--ink);
+  }
+  .sub { color: var(--ink-2); max-width: 68ch; margin: 0 0 36px; }
+  p { max-width: 68ch; }
+
+  /* --- Находки --- */
+  .findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 32px; }
+  .finding {
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    padding: 22px;
+    box-shadow: var(--shadow-1);
+  }
+  .finding .metric {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .finding p { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
+  .finding strong { color: var(--ink); font-weight: 600; }
+
+  /* --- Демонстрация шрифта --- */
+  .fontdemo {
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+  }
+  .fontdemo-row { padding: 24px 26px; border-bottom: 1px solid var(--line-soft); }
+  .fontdemo-row:last-child { border-bottom: 0; }
+  .fontdemo-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+  }
+  .fontdemo-line { font-size: 26px; line-height: 1.3; }
+  .is-outfit { font-family: 'Outfit', monospace; }
+  .is-golos  { font-family: 'Geologica', monospace; }
+  .flag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: var(--r-1);
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .flag-bad  { background: rgba(192, 57, 43, 0.12); color: var(--danger); }
+  .flag-good { background: rgba(46, 139, 87, 0.13); color: var(--ok); }
+
+  /* --- Типографическая шкала --- */
+  .scale-row {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 24px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .scale-row:last-child { border-bottom: 0; }
+  .scale-meta { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  /* --- Палитра --- */
+  .palettes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-top: 28px; }
+  .palette {
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+  }
+  .palette-head {
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .swatches { display: grid; grid-template-columns: 1fr 1fr; }
+  .sw { padding: 14px 16px; min-height: 62px; display: flex; flex-direction: column; justify-content: center; }
+  .sw-name { font-size: 12.5px; font-weight: 500; }
+  .sw-hex { font-family: var(--mono); font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+  .p-dark { background: #14181F; color: #DDE3EC; }
+  .p-dark .palette-head { border-bottom: 1px solid #2C3543; }
+  .p-light { background: #F4F6F9; color: #1B2029; }
+  .p-light .palette-head { border-bottom: 1px solid #DFE4EC; }
+
+  /* --- Наборы акцентов --- */
+  .accent-table { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 28px; }
+  .accent-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+    background: var(--sheet);
+    box-shadow: var(--shadow-1);
+  }
+  .accent-card .strip { height: 56px; display: flex; }
+  .accent-card .strip i { flex: 1; }
+  .accent-card .body { padding: 14px 16px; }
+  .accent-card .nm { font-weight: 600; font-size: 14.5px; }
+  .accent-card .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  .accent-card .why { font-size: 13px; color: var(--ink-2); margin-top: 8px; line-height: 1.45; }
+
+  /* --- Шкалы --- */
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .bar { display: grid; grid-template-columns: 64px 1fr; gap: 16px; align-items: center; }
+  .bar-fill { height: 14px; border-radius: var(--r-1); background: var(--accent-fill); opacity: 0.85; }
+  .radii { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+  .radius-chip {
+    width: 92px; height: 92px;
+    border: 2px solid var(--accent-fill);
+    background: var(--accent-soft);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  }
+
+  /* --- Компоненты --- */
+  .demo {
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    padding: 28px;
+    box-shadow: var(--shadow-1);
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .row + .row { margin-top: 18px; }
+  .caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 26px 0 12px;
+  }
+  .caption:first-child { margin-top: 0; }
+
+  .btn {
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.5;
+    font-weight: 600;
+    border-radius: var(--r-2);
+    padding: 10px 18px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+  }
+  .btn-primary { background: var(--accent-fill); color: var(--on-accent); }
+  .btn-primary:hover { background: color-mix(in srgb, var(--accent-fill) 86%, white); }
+  .btn-secondary { background: var(--sheet-2); color: var(--ink); border-color: var(--line); }
+  .btn-secondary:hover { border-color: var(--ink-3); }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-ghost:hover { background: var(--sheet-2); color: var(--ink); }
+  .btn-danger { background: transparent; color: var(--danger); border-color: currentColor; }
+  .btn:disabled { opacity: 0.42; cursor: not-allowed; }
+  .btn-sm { font-size: 13px; line-height: 1.35; padding: 6px 12px; border-radius: var(--r-1); }
+  .btn-lg { font-size: 17px; line-height: 1.35; padding: 14px 24px; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .field {
+    font-family: inherit;
+    font-size: 15px;
+    /* Интерлиньяж и отступ те же, что у кнопки: поле и кнопка часто
+       стоят в одной строке — строка поиска, — и обязаны совпадать по
+       высоте. С 11px и line-height: normal поле было выше на пиксель. */
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    padding: 10px 14px;
+    min-width: 220px;
+    transition: border-color 120ms ease-out;
+  }
+  .field::placeholder { color: var(--ink-3); }
+  .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .field-error { border-color: var(--danger); }
+  .hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
+  .hint-error { color: var(--danger); }
+
+  .av {
+    border-radius: var(--r-pill);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 600; color: var(--on-accent);
+    background: var(--accent-fill);
+    flex-shrink: 0;
+  }
+  .av-28 { width: 28px; height: 28px; font-size: 12px; }
+  .av-40 { width: 40px; height: 40px; font-size: 15px; }
+  /* Строка списка в два ряда — имя и превью сообщения. Сорок в ней
+     мелковато; это исходный размер аватарки в списке чатов. */
+  .av-48 { width: 48px; height: 48px; font-size: 17px; }
+  .av-56 { width: 56px; height: 56px; font-size: 20px; }
+  /* «Герой» — карточка профиля, входящий звонок, шапка настроек.
+     В приложении там стояли 100, 112, 72 и 88, каждое своё. */
+  .av-96 { width: 96px; height: 96px; font-size: 28px; }
+  .av-cool { background: #4E7BB8; color: #F2F6FB; }
+  .av-warm { background: #B8674E; color: #FBF3F0; }
+  .av-wrap { position: relative; display: inline-block; }
+  .av-dot {
+    position: absolute; right: -1px; bottom: -1px;
+    width: 12px; height: 12px; border-radius: var(--r-pill);
+    background: var(--ok); border: 2px solid var(--sheet);
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 11.5px; font-weight: 500;
+    padding: 3px 9px; border-radius: var(--r-pill);
+    background: var(--accent-fill); color: var(--on-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .badge-quiet { background: var(--sheet-2); color: var(--ink-2); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13.5px; font-weight: 500;
+    padding: 5px 6px 5px 5px; border-radius: var(--r-pill);
+    background: var(--sheet-2); color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .chip .x { color: var(--ink-3); font-size: 15px; line-height: 1; padding: 0 5px; cursor: pointer; }
+
+  .sw-toggle {
+    width: 44px; height: 26px; border-radius: var(--r-pill);
+    background: var(--sheet-2); border: 1px solid var(--line);
+    position: relative; cursor: pointer; transition: background-color 140ms ease-out;
+    display: inline-block;
+  }
+  .sw-toggle i {
+    position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: var(--r-pill);
+    background: var(--ink-3); transition: transform 140ms ease-out, background-color 140ms ease-out;
+  }
+  .sw-on { background: var(--accent-fill); border-color: var(--accent-fill); }
+  .sw-on i { transform: translateX(18px); background: var(--on-accent); }
+
+  .skel {
+    background: linear-gradient(90deg, var(--sheet-2) 25%, var(--line) 50%, var(--sheet-2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+    border-radius: var(--r-1);
+  }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .skel { animation: none; }
+    * { transition-duration: 0.01ms !important; }
+  }
+
+  .toast {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--sheet-2); border: 1px solid var(--line);
+    border-radius: var(--r-2); padding: 12px 16px;
+    box-shadow: var(--shadow-2); font-size: 14px;
+    max-width: 420px;
+  }
+  .toast .mark { font-size: 16px; }
+  .toast-danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+
+  /* --- Экран: было / стало --- */
+  .compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-top: 28px; }
+  .screen { border-radius: var(--r-3); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow-2); }
+  .screen-tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 10px 16px; color: var(--ink-3); background: var(--sheet-2); border-bottom: 1px solid var(--line);
+  }
+  .screen-body { display: grid; grid-template-columns: 168px 1fr; min-height: 340px; }
+
+  /* было — цвета зафиксированы, это снимок нынешнего состояния */
+  .old { background: #050505; font-family: 'Outfit', system-ui, sans-serif; }
+  .old .list { background: rgba(20,20,20,.65); border-right: 1px solid rgba(255,255,255,.08); padding: 10px 8px; }
+  .old .item { display: flex; gap: 9px; align-items: center; padding: 8px 6px; }
+  .old .item .a { width: 30px; height: 30px; border-radius: 50%; background: #21B573; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .old .nm { color: #fff; font-size: 12.5px; font-weight: 700; }
+  .old .pv { color: #a1a1aa; font-size: 11px; }
+  .old .thread { padding: 14px; display: flex; flex-direction: column; }
+  .old .bub { background: rgba(20,20,20,.65); border: 1px solid rgba(255,255,255,.08); color: #fff; font-size: 12.5px; padding: 8px 11px; border-radius: 8px; max-width: 78%; }
+  .old .bub.me { align-self: flex-end; }
+  .old .comp { margin-top: auto; background: rgba(20,20,20,.65); border: 1px solid rgba(255,255,255,.08); border-radius: 28px; padding: 9px 14px; color: #a1a1aa; font-size: 12px; }
+
+  /* стало — тёмная тема на токенах, свой пузырь и выбранный чат следуют за акцентом */
+  .new { background: #14181F; font-family: 'Geologica', system-ui, sans-serif; }
+  .new .list { background: #1B212A; border-right: 1px solid #2C3543; padding: 10px 8px; }
+  .new .item { display: flex; gap: 9px; align-items: center; padding: 8px 8px; border-radius: 10px; }
+  .new .item.sel { background: #232A35; box-shadow: inset 2px 0 0 var(--accent-hi); }
+  .new .item .a { width: 30px; height: 30px; border-radius: 999px; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+  .new .nm { color: #DDE3EC; font-size: 12.5px; font-weight: 600; }
+  .new .pv { color: #6C7889; font-size: 11px; }
+  .new .thread { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .new .bub { font-size: 12.5px; padding: 8px 12px; max-width: 78%; line-height: 1.45; }
+  .new .bub.them { background: #1F2731; color: #DDE3EC; border-radius: 14px 14px 14px 4px; align-self: flex-start; }
+  .new .bub.me { background: var(--bubble-out-dark); color: var(--bubble-out-ink-dark); border-radius: 14px 14px 4px 14px; align-self: flex-end; }
+  .new .comp { margin-top: auto; background: #1B212A; border: 1px solid #2C3543; border-radius: 14px; padding: 9px 14px; color: #6C7889; font-size: 12px; }
+  .new .tm { font-size: 9.5px; color: #6C7889; font-family: 'JetBrains Mono', monospace; margin-left: 8px; }
+
+  /* --- План --- */
+  .steps { list-style: none; padding: 0; margin: 28px 0 0; counter-reset: s; }
+  .steps li {
+    counter-increment: s;
+    display: grid; grid-template-columns: 40px 1fr; gap: 18px;
+    padding: 18px 0; border-bottom: 1px solid var(--line-soft);
+  }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before {
+    content: counter(s);
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: var(--accent); border: 1px solid var(--line); border-radius: var(--r-1);
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  }
+  .steps b { display: block; font-size: 15.5px; margin-bottom: 4px; }
+  .steps span { color: var(--ink-2); font-size: 14.5px; }
+
+  .note {
+    border-left: 3px solid var(--accent-fill);
+    background: var(--accent-soft);
+    padding: 16px 20px;
+    border-radius: 0 var(--r-2) var(--r-2) 0;
+    margin: 28px 0 0;
+  }
+  .note p { margin: 0; font-size: 14.5px; }
+
+  pre.code {
+    background: var(--sheet-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    margin: 20px 0 0;
+  }
+  pre.code code { background: none; padding: 0; font-size: inherit; }
+
+  /* --- Загрузка --- */
+  .spinner {
+    border-radius: var(--r-pill);
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  .spinner-16 { width: 16px; height: 16px; }
+  .spinner-24 { width: 24px; height: 24px; border-width: 2.5px; }
+  .spinner-40 { width: 40px; height: 40px; border-width: 3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* display обязателен: на инline-элементе высота не применяется и полоса схлопывается */
+  .progress { display: block; height: 6px; background: var(--sheet-2); border-radius: var(--r-pill); overflow: hidden; width: 260px; }
+  .progress i { display: block; height: 100%; background: var(--accent-fill); border-radius: var(--r-pill); }
+  .progress-indet i { width: 38%; animation: crawl 1.2s ease-in-out infinite; }
+  @keyframes crawl { from { margin-left: -38%; } to { margin-left: 100%; } }
+
+  .skel-row { display: flex; gap: 12px; align-items: center; padding: 9px 0; }
+
+  /* --- Управление --- */
+  .cb, .rd {
+    width: 20px; height: 20px; flex-shrink: 0;
+    border: 1.5px solid var(--line); background: var(--ground);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .cb { border-radius: var(--r-1); }
+  .rd { border-radius: var(--r-pill); }
+  .cb-on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-size: 12px; font-weight: 700; }
+  /* Отмечена часть: заголовок выбора нескольких сообщений при трёх
+     отмеченных из двенадцати. Без него он выглядит снятым, и нажатие
+     отмечает всё вместо снятия. */
+  .cb-mixed { background: var(--accent-fill); border-color: var(--accent-fill); }
+  .cb-mixed::after { content: ''; width: 10px; height: 2px; border-radius: var(--r-pill); background: var(--on-accent); }
+  .rd-on { border-color: var(--accent-fill); }
+  .rd-on::after { content: ''; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--accent-fill); }
+  label.opt { display: inline-flex; align-items: center; gap: 9px; font-size: 14.5px; cursor: pointer; }
+  select.field { font-family: inherit; }
+  textarea.field { font-family: inherit; min-height: 78px; resize: vertical; width: 100%; max-width: 420px; }
+
+  .slider { width: 280px; height: 4px; background: var(--sheet-2); border-radius: var(--r-pill); position: relative; }
+  .slider i { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent-fill); border-radius: var(--r-pill); }
+  .slider b { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: var(--r-pill); background: var(--accent-fill); transform: translate(-50%, -50%); box-shadow: var(--shadow-1); }
+
+  .seg { display: inline-flex; background: var(--sheet-2); border-radius: var(--r-2); padding: 3px; gap: 3px; }
+  .seg button {
+    font-family: inherit; font-size: 13.5px; font-weight: 500;
+    border: 0; background: transparent; color: var(--ink-2);
+    padding: 6px 14px; border-radius: var(--r-1); cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); box-shadow: var(--shadow-1); }
+
+  .tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    font-family: inherit; font-size: 14.5px; font-weight: 500;
+    border: 0; background: none; color: var(--ink-2);
+    padding: 10px 0; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent-fill); }
+
+  /* --- Наложения --- */
+  .menu {
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: var(--r-2); box-shadow: var(--shadow-3);
+    padding: 6px; min-width: 216px;
+  }
+  .menu button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    font-family: inherit; font-size: 14px; color: var(--ink);
+    background: none; border: 0; padding: 8px 10px;
+    border-radius: var(--r-1); cursor: pointer; text-align: left;
+  }
+  .menu button:hover { background: var(--sheet-2); }
+  .menu .sep { height: 1px; background: var(--line-soft); margin: 6px 4px; }
+  .menu .del { color: var(--danger); }
+
+  .dialog {
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: var(--r-4); box-shadow: var(--shadow-3);
+    padding: 24px; max-width: 400px;
+  }
+  .dialog h4 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+  .dialog p { margin: 0 0 18px; font-size: 14.5px; color: var(--ink-2); }
+
+  .tip {
+    background: var(--ink); color: var(--ground);
+    font-size: 12.5px; padding: 6px 11px;
+    border-radius: var(--r-1); display: inline-block;
+  }
+
+  /* --- Состояния экрана --- */
+  .state { text-align: center; padding: 44px 24px; border: 1px dashed var(--line); border-radius: var(--r-3); }
+  .state .ic { font-size: 30px; margin-bottom: 12px; }
+  .state h4 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .state p { margin: 0 auto 16px; font-size: 14px; color: var(--ink-2); max-width: 40ch; }
+
+  .banner {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 13px 16px; border-radius: var(--r-2);
+    font-size: 14px; border: 1px solid; line-height: 1.5;
+  }
+  .banner-info   { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent-fill) 34%, transparent); }
+  .banner-warn   { background: rgba(224, 154, 46, 0.10); border-color: rgba(224, 154, 46, 0.42); }
+  .banner-danger { background: rgba(192, 57, 43, 0.09); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+  /* --- Мессенджерные детали --- */
+  .stage {
+    background: var(--ground); border: 1px solid var(--line);
+    border-radius: var(--r-3); padding: 20px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .b { max-width: 74%; font-size: 14.5px; padding: 9px 13px; line-height: 1.45; }
+  .b-in  { background: var(--bubble-in); border-radius: 14px 14px 14px 4px; align-self: flex-start; box-shadow: var(--shadow-1); }
+  .b-out { background: var(--bubble-out); color: var(--bubble-out-ink); border-radius: 14px 14px 4px 14px; align-self: flex-end; }
+
+  .datesep, .unread { display: flex; align-items: center; gap: 12px; font-size: 12px; margin: 4px 0; }
+  .datesep { color: var(--ink-3); }
+  .datesep::before, .datesep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .unread { color: var(--accent); font-weight: 600; }
+  .unread::before, .unread::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+  .typing {
+    display: inline-flex; gap: 4px; align-items: center; align-self: flex-start;
+    background: var(--bubble-in); padding: 12px 15px;
+    border-radius: 14px 14px 14px 4px; box-shadow: var(--shadow-1);
+  }
+  .typing i { width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--ink-3); animation: pip 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: 0.18s; }
+  .typing i:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes pip { 0%, 60%, 100% { opacity: 0.28; } 30% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .typing i, .spinner, .progress-indet i { animation: none; }
+  }
+
+  .ticks { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-left: 7px; }
+  .ticks-read { color: var(--accent); }
+
+  .quote { border-left: 2px solid var(--accent); padding-left: 9px; margin-bottom: 6px; font-size: 13px; }
+  .quote b { display: block; color: var(--accent); font-weight: 600; font-size: 12.5px; }
+  .quote span { color: var(--ink-2); }
+
+  .fwd { font-size: 12.5px; color: var(--ink-3); margin-bottom: 5px; }
+  .fwd b { color: var(--ink-2); font-weight: 600; }
+
+  .sysmsg {
+    align-self: center; font-size: 12.5px; color: var(--ink-2);
+    background: var(--sheet-2); padding: 6px 14px;
+    border-radius: var(--r-pill); text-align: center; max-width: 82%;
+  }
+
+  .fab {
+    width: 42px; height: 42px; border-radius: var(--r-pill);
+    background: var(--sheet); border: 1px solid var(--line);
+    box-shadow: var(--shadow-2); display: inline-flex;
+    align-items: center; justify-content: center;
+    position: relative; color: var(--ink-2); cursor: pointer;
+  }
+  .fab .cnt { position: absolute; top: -7px; right: -6px; }
+
+  .att {
+    display: flex; gap: 11px; align-items: center; align-self: flex-start;
+    background: var(--bubble-in); border-radius: 14px;
+    padding: 10px 13px; box-shadow: var(--shadow-1); min-width: 260px;
+  }
+  .att .th {
+    width: 40px; height: 40px; border-radius: var(--r-1);
+    background: var(--sheet-2); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
+  }
+  .att .nm { font-size: 13.5px; font-weight: 500; }
+  .att .sz { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+  .safety {
+    font-family: var(--mono); font-size: 15px;
+    letter-spacing: 0.08em; line-height: 1.95;
+    background: var(--sheet-2); border: 1px solid var(--line);
+    padding: 14px 16px; border-radius: var(--r-2);
+    max-width: 330px; font-variant-numeric: tabular-nums;
+  }
+
+  /* --- Строка чата --- */
+  .chatlist { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-3); padding: 6px; }
+  .crow { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: var(--r-2); cursor: pointer; }
+  .crow:hover { background: var(--sheet-2); }
+  .crow-sel { background: var(--sheet-2); box-shadow: inset 2px 0 0 var(--accent); }
+  .crow-body { flex: 1; min-width: 0; }
+  .crow-top { display: flex; align-items: baseline; gap: 8px; }
+  .crow-name { font-weight: 600; font-size: 14.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow-time { font-family: var(--mono); font-size: 11px; color: var(--ink-3); flex-shrink: 0; }
+  .crow-bottom { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .crow-prev { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow-prev b { color: var(--ink-2); font-weight: 500; }
+  .crow-draft { color: var(--danger); font-weight: 500; }
+  .crow-typing { color: var(--accent); }
+  .crow-marks { display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--ink-3); }
+  .crow-marks .ic-svg { width: 15px; height: 15px; }
+  .badge-mute { background: var(--ink-3); color: var(--sheet); }
+  .kind { color: var(--ink-3); }
+  .kind .ic-svg { width: 14px; height: 14px; vertical-align: -2px; }
+
+  /* --- Звонки --- */
+  .callcard {
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: var(--r-4); box-shadow: var(--shadow-3);
+    padding: 28px 24px; text-align: center; width: 268px;
+  }
+  .call-ava { position: relative; display: inline-block; }
+  .call-ava::after {
+    content: ''; position: absolute; inset: -8px;
+    border-radius: var(--r-pill); border: 2px solid var(--accent);
+    opacity: 0; animation: ring 1.8s ease-out infinite;
+  }
+  @keyframes ring { 0% { opacity: 0.7; transform: scale(0.94); } 100% { opacity: 0; transform: scale(1.14); } }
+  .call-name { font-size: 19px; font-weight: 600; margin: 16px 0 4px; }
+  .call-sub { font-size: 13.5px; color: var(--ink-2); margin: 0 0 24px; }
+  .call-actions { display: flex; justify-content: center; gap: 20px; }
+  .call-btn {
+    width: 52px; height: 52px; border-radius: var(--r-pill); border: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #FFFFFF; cursor: pointer;
+  }
+  .call-btn .ic-svg { width: 22px; height: 22px; }
+  .call-accept { background: #2E9E5B; }
+  .call-reject { background: #D4453C; }
+  .call-mute { background: var(--sheet-2); color: var(--ink-2); }
+
+  .callbar {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: var(--r-3); padding: 10px 12px;
+    box-shadow: var(--shadow-2); max-width: 340px;
+  }
+  .callbar .who { flex: 1; min-width: 0; }
+  .callbar .who b { display: block; font-size: 14px; font-weight: 600; }
+  .callbar .who span { font-family: var(--mono); font-size: 11.5px; color: var(--ok); font-variant-numeric: tabular-nums; }
+  .callbar .mini { width: 34px; height: 34px; border-radius: var(--r-pill); border: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .callbar .mini .ic-svg { width: 17px; height: 17px; }
+
+  .callmsg { display: inline-flex; align-items: center; gap: 9px; }
+  .callmsg .ic-svg { width: 15px; height: 15px; }
+  .callmsg-missed { color: var(--danger); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .call-ava::after { animation: none; opacity: 0; }
+  }
+
+  /* --- Прокрутка ---
+     Ползунок тонкий, скруглённый и с полями по краям: рамка прозрачная,
+     а background-clip не даёт её закрасить — иначе полоса прилипает к краю.
+     На наведение слегка подкрашивается акцентом.
+     Порядок правил важен: с Chrome 121 указание scrollbar-width или
+     scrollbar-color отключает ::-webkit-scrollbar на этом же элементе,
+     поэтому стандартные свойства уходят под @supports — там их подхватит
+     только Firefox, где webkit-псевдоэлементов нет. */
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Отдельно: место под полосу резервируется всегда. Нужно там, где список
+     растёт по ходу дела (чаты, лента) — иначе содержимое дёргается вбок в тот
+     момент, когда прокрутка появляется. Коротким меню это только вредит. */
+  .scroll-stable { scrollbar-gutter: stable; }
+  .scroll-y::-webkit-scrollbar { width: 11px; height: 11px; }
+  .scroll-y::-webkit-scrollbar-track { background: transparent; }
+  .scroll-y::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--ink-3) 40%, transparent);
+    border-radius: var(--r-pill);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    transition: background-color 140ms ease-out;
+  }
+  .scroll-y::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--accent) 55%, var(--ink-3));
+  }
+  .scroll-y::-webkit-scrollbar-thumb:active {
+    background-color: var(--accent);
+  }
+  .scroll-y::-webkit-scrollbar-corner { background: transparent; }
+
+  @supports not selector(::-webkit-scrollbar) {
+    .scroll-y {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--ink-3) 55%, transparent) transparent;
+    }
+  }
+
+  .scrolldemo {
+    height: 168px; max-width: 300px;
+    background: var(--ground); border: 1px solid var(--line);
+    border-radius: var(--r-2); padding: 6px;
+  }
+  .scrolldemo div { padding: 9px 11px; font-size: 14.5px; border-radius: var(--r-1); }
+  .scrolldemo div:hover { background: var(--sheet-2); }
+
+  /* --- Иконки --- */
+  /* Один размер и одна толщина на всё приложение. Цвет — от родителя. */
+  .ic-svg { width: 20px; height: 20px; stroke-width: 1.75; flex-shrink: 0; }
+  .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 4px; }
+  .icon-cell {
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    padding: 16px 8px; border-radius: var(--r-2); color: var(--ink-2);
+    text-align: center;
+  }
+  .icon-cell:hover { background: var(--sheet-2); color: var(--ink); }
+  .icon-cell span { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); word-break: break-all; }
+  .icon-cell .ic-svg { width: 22px; height: 22px; }
+
+  .icon-sizes { display: flex; align-items: flex-end; gap: 26px; }
+  .icon-sizes figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .icon-sizes figcaption { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+  /* --- Выпадающий список --- */
+  .select { position: relative; display: inline-block; min-width: 232px; }
+  .select-trigger {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    font-family: inherit; font-size: 15px; color: var(--ink);
+    background: var(--ground); border: 1px solid var(--line);
+    border-radius: var(--r-2); padding: 11px 13px;
+    cursor: pointer; text-align: left;
+    transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+  }
+  .select-trigger:hover { border-color: var(--ink-3); }
+  .select-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .select-trigger:disabled { opacity: 0.42; cursor: not-allowed; }
+  .select-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .select-placeholder .select-value { color: var(--ink-3); }
+  .select-chev {
+    flex-shrink: 0; font-size: 10px; opacity: 0.55; line-height: 1;
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .select[data-open] .select-trigger { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .select[data-open] .select-chev { transform: rotate(180deg); }
+  .select-error .select-trigger { border-color: var(--danger); }
+
+  .select-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+    margin: 0; padding: 6px; list-style: none;
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: var(--r-2); box-shadow: var(--shadow-3);
+    max-height: 244px;
+    animation: dropIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .select-menu[hidden] { display: none; }
+  @keyframes dropIn { from { opacity: 0; transform: translateY(-5px); } }
+
+  .select-menu li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border-radius: var(--r-1);
+    font-size: 14.5px; cursor: pointer;
+  }
+  .select-menu li:hover, .select-menu li[data-active] { background: var(--sheet-2); }
+  .select-menu li[aria-selected="true"] { font-weight: 600; }
+  .select-check { margin-left: auto; color: var(--accent); font-weight: 700; }
+  .select-menu .group {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3);
+    padding: 9px 11px 5px; cursor: default;
+  }
+  .select-menu .group:hover { background: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .select-menu { animation: none; }
+  }
+
+  footer { padding: 56px 0 88px; color: var(--ink-3); font-size: 13.5px; }
+
+  .tablewrap { overflow-x: auto; margin-top: 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 520px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line-soft); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">Предложение · 28 августа 2026</p>
+    <h1>UI-кит CraneApp</h1>
+    <p class="lede">
+      Разбор того, что делает интерфейс неаккуратным, и система, которая это чинит:
+      шрифт с кириллицей, палитра помягче, шкалы отступов и радиусов, набор компонентов.
+      Акцентный цвет вынесен отдельным слоем — его можно менять целиком, не трогая всё остальное.
+    </p>
+  </div>
+</header>
+
+<div class="accentbar">
+  <div class="wrap">
+    <span class="accentbar-label">Акцент</span>
+    <div class="accents" id="accents">
+      <button class="accent-pick" data-set="violet" aria-pressed="true"><span class="dot" style="background:#7C4DD8"></span>Фиолетовый</button>
+      <button class="accent-pick" data-set="plum" aria-pressed="false"><span class="dot" style="background:#8E3E86"></span>Сливовый</button>
+      <button class="accent-pick" data-set="orchid" aria-pressed="false"><span class="dot" style="background:#C2459B"></span>Орхидея</button>
+      <button class="accent-pick" data-set="indigo" aria-pressed="false"><span class="dot" style="background:#4C5FD0"></span>Индиго</button>
+      <button class="accent-pick" data-set="amber" aria-pressed="false"><span class="dot" style="background:#F2A93B"></span>Янтарь</button>
+      <button class="accent-pick" data-set="teal" aria-pressed="false"><span class="dot" style="background:#17806E"></span>Бирюза</button>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Что не так сейчас</h2>
+    <p class="sub">
+      Это не вкусовщина, а измеримые вещи. Каждую я проверил в живом приложении.
+    </p>
+
+    <div class="findings">
+      <div class="finding">
+        <span class="metric">0 из 100</span>
+        <p><strong>Кириллица идёт мимо нашего шрифта.</strong> В <code>Outfit</code> её просто нет.
+        Весь русский текст рисуется системным шрифтом — своим на каждой машине.
+        А в строке «Алиса @alice» на экране одновременно два разных шрифта.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">20,4 : 1</span>
+        <p><strong>Контраст на пределе шкалы.</strong> Чистый белый по <code>#050505</code>.
+        Максимум, который вообще бывает — 21:1. Читать такой текст часами тяжело,
+        отсюда ощущение резкости.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">2 системы</span>
+        <p><strong>Настройки и чаты выглядят как разные приложения.</strong>
+        В настройках фиолетовый акцент и карточки, в чатах — зелёные аватарки
+        и синие кнопки. Фирменного цвета в чатах нет вообще.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">5 радиусов</span>
+        <p><strong>Скругления случайные:</strong> 12, 17, 28, 50%, 999 пикселей на одном экране.
+        Семнадцать — это не решение, это опечатка, которая прижилась.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">60 цветов</span>
+        <p><strong>Мимо токенов.</strong> В компонентах вшиты 30 hex-значений и 30 <code>rgba</code>,
+        которых нет ни в одной палитре: <code>#2b77e7</code>, <code>#FFD700</code>, <code>#ff4b3e</code>.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">14 кнопок</span>
+        <p><strong>Единой кнопки нет.</strong> Вместо неё четырнадцать разных классов.
+        В папке общих компонентов лежат не кнопки и поля, а куски чата.</p>
+      </div>
+      <div class="finding">
+        <span class="metric">3 источника</span>
+        <p><strong>Гайдлайн не совпадает с кодом.</strong> В <code>docs/ui-guidelines.md</code>
+        розовый <code>#E91E8C</code> и системный шрифт. В коде — <code>#ff007f</code> и Outfit.
+        На экране — ни того, ни другого. Три источника правды, все расходятся.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Шрифт</h2>
+    <p class="sub">
+      Это первое, что стоит починить: правка одной строки меняет вид каждого экрана.
+      Ниже — как оно выглядит на самом деле. Обе строки написаны одинаково,
+      разница только в том, какой шрифт задан.
+    </p>
+
+    <div class="fontdemo">
+      <div class="fontdemo-row">
+        <div class="fontdemo-label">Сейчас — Outfit</div>
+        <div class="fontdemo-line is-outfit">Settings <span class="flag flag-good">свой шрифт</span></div>
+        <div class="fontdemo-line is-outfit" style="margin-top:10px">Настройки аккаунта <span class="flag flag-bad">запасной шрифт</span></div>
+      </div>
+      <div class="fontdemo-row">
+        <div class="fontdemo-label">Предлагаю — Geologica</div>
+        <div class="fontdemo-line is-golos">Settings <span class="flag flag-good">свой шрифт</span></div>
+        <div class="fontdemo-line is-golos" style="margin-top:10px">Настройки аккаунта <span class="flag flag-good">свой шрифт</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Почему Geologica.</strong> Выбор дизайнера, проверенный замером: кириллицу отдаёт
+      полностью, включая «ё», «й», «ъ» и «щ» — именно этого не хватало Outfit. Абзац в 15px
+      ложится в ту же высоту, что и раньше, поэтому вёрстка от замены не поедет.
+      Девять начертаний позволяют обойтись одним семейством и на текст, и на заголовки:
+      каждый лишний шрифт — это ещё один файл на загрузку.</p>
+    </div>
+
+    <h3>Три начертания, у каждого своя работа</h3>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Шрифт</th><th>Где</th><th>Почему</th></tr>
+        <tr>
+          <td style="font-family:var(--sans);font-weight:600">Geologica</td>
+          <td>весь интерфейс и сами сообщения</td>
+          <td>полная кириллица, читается в мелком размере</td>
+        </tr>
+        <tr>
+          <td style="font-family:var(--display);font-weight:700">Geologica 700</td>
+          <td>заголовки экранов, вход, пустые экраны</td>
+          <td>то же семейство, только тяжелее — второй шрифт не нужен</td>
+        </tr>
+        <tr>
+          <td style="font-family:var(--mono)">JetBrains Mono</td>
+          <td>код безопасности, отпечаток ключа, время</td>
+          <td>знаки одной ширины — цифры не пляшут при обновлении</td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>Размеры</h3>
+    <div class="scale-row"><div class="scale-meta">28 / 600</div><div style="font-family:var(--display);font-size:28px;line-height:1.15">Заголовок экрана</div></div>
+    <div class="scale-row"><div class="scale-meta">20 / 600</div><div style="font-size:20px;font-weight:600">Название раздела</div></div>
+    <div class="scale-row"><div class="scale-meta">17 / 600</div><div style="font-size:17px;font-weight:600">Имя собеседника в шапке</div></div>
+    <div class="scale-row"><div class="scale-meta">15 / 400</div><div style="font-size:15px">Текст сообщения — основной размер, на нём живёт всё приложение</div></div>
+    <div class="scale-row"><div class="scale-meta">13 / 400</div><div style="font-size:13px;color:var(--ink-2)">Превью последнего сообщения, подписи</div></div>
+    <div class="scale-row"><div class="scale-meta">11 / mono</div><div style="font-size:11px;font-family:var(--mono);color:var(--ink-3)">14:02 · доставлено</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Фон и текст</h2>
+    <p class="sub">
+      Это отдельный слой, от акцента он не зависит. Фон перестаёт быть чёрным,
+      текст — чисто белым: контраст падает с 20,4 до 13,7. Запас над нормой всё ещё
+      больше двух раз, а глазам заметно легче. Границы, наоборот, становятся видимыми —
+      сейчас они <code>rgba(255,255,255,.08)</code>, то есть почти не различимы, и поэтому
+      экран читается одной плоской плитой без слоёв.
+    </p>
+
+    <div class="palettes">
+      <div class="palette p-dark">
+        <div class="palette-head">Тёмная <span class="sw-hex">по умолчанию</span></div>
+        <div class="swatches">
+          <div class="sw" style="background:#14181F"><span class="sw-name">Фон</span><span class="sw-hex">#14181F</span></div>
+          <div class="sw" style="background:#1B212A"><span class="sw-name">Панель</span><span class="sw-hex">#1B212A</span></div>
+          <div class="sw" style="background:#232A35"><span class="sw-name">Карточка</span><span class="sw-hex">#232A35</span></div>
+          <div class="sw" style="background:#2C3543"><span class="sw-name">Граница</span><span class="sw-hex">#2C3543</span></div>
+          <div class="sw" style="background:#14181F;color:#DDE3EC"><span class="sw-name">Текст · 13,7:1</span><span class="sw-hex">#DDE3EC</span></div>
+          <div class="sw" style="background:#14181F;color:#98A3B4"><span class="sw-name">Тусклый · 7,0:1</span><span class="sw-hex">#98A3B4</span></div>
+          <div class="sw" style="background:#1F2731;color:#DDE3EC"><span class="sw-name">Чужой пузырь</span><span class="sw-hex">#1F2731</span></div>
+          <div class="sw" style="background:#14181F;color:#4FBF6B"><span class="sw-name">В сети</span><span class="sw-hex">#4FBF6B</span></div>
+        </div>
+      </div>
+
+      <div class="palette p-light">
+        <div class="palette-head">Светлая <span class="sw-hex">токены готовы сразу</span></div>
+        <div class="swatches">
+          <div class="sw" style="background:#F4F6F9"><span class="sw-name">Фон</span><span class="sw-hex">#F4F6F9</span></div>
+          <div class="sw" style="background:#FFFFFF"><span class="sw-name">Панель</span><span class="sw-hex">#FFFFFF</span></div>
+          <div class="sw" style="background:#EDF0F5"><span class="sw-name">Карточка</span><span class="sw-hex">#EDF0F5</span></div>
+          <div class="sw" style="background:#DFE4EC"><span class="sw-name">Граница</span><span class="sw-hex">#DFE4EC</span></div>
+          <div class="sw" style="background:#F4F6F9;color:#1B2029"><span class="sw-name">Текст · 14,9:1</span><span class="sw-hex">#1B2029</span></div>
+          <div class="sw" style="background:#F4F6F9;color:#5A6675"><span class="sw-name">Тусклый · 6,1:1</span><span class="sw-hex">#5A6675</span></div>
+          <div class="sw" style="background:#FFFFFF;color:#1B2029"><span class="sw-name">Чужой пузырь</span><span class="sw-hex">#FFFFFF</span></div>
+          <div class="sw" style="background:#F4F6F9;color:#2E8B57"><span class="sw-name">В сети</span><span class="sw-hex">#2E8B57</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Акцент — отдельный слой</h2>
+    <p class="sub">
+      Раз цвета в будущем будут меняться, акцент нельзя размазывать по системе.
+      Он собран в набор из пяти значений и меняется одним атрибутом на корне документа.
+      Переключатель наверху страницы делает ровно это — всё, что ниже, следует за ним,
+      включая макет экрана.
+    </p>
+
+    <pre class="code"><code>&lt;html data-accent="violet"&gt;
+
+[data-accent="violet"] {
+  --accent-lo:   #7C4DD8;   /* текст и линии на светлом фоне */
+  --accent-hi:   #B48CEC;   /* текст и линии на тёмном      */
+  --accent-fill: #7C4DD8;   /* заливка кнопок и меток       */
+  --on-accent:   #FFFFFF;   /* что писать поверх заливки    */
+  --bubble-out:  #292234;   /* свой пузырь, оттенок того же */
+}</code></pre>
+
+    <p style="margin-top:26px">
+      Почему пять, а не один: цвет, читаемый как текст на тёмном фоне, слишком светлый
+      для заливки под белыми буквами, и наоборот. Поэтому в наборе оба варианта, а тема
+      сама берёт нужный. Плюс <code>--on-accent</code>: у янтаря поверх заливки идёт
+      тёмный текст, у остальных — белый. Это часть набора, а не отдельное правило.
+    </p>
+
+    <h3>Готовые наборы</h3>
+    <div class="accent-table">
+      <div class="accent-card">
+        <div class="strip"><i style="background:#B48CEC"></i><i style="background:#7C4DD8"></i><i style="background:#292234"></i></div>
+        <div class="body">
+          <div class="nm">Фиолетовый</div>
+          <div class="meta">#7C4DD8 · #B48CEC</div>
+          <div class="why">Предлагаю по умолчанию. Та же семья, что сейчас, но без неона — узнаётся, а не давит.</div>
+        </div>
+      </div>
+      <div class="accent-card">
+        <div class="strip"><i style="background:#D392CB"></i><i style="background:#8E3E86"></i><i style="background:#2F2433"></i></div>
+        <div class="body">
+          <div class="nm">Сливовый</div>
+          <div class="meta">#8E3E86 · #D392CB</div>
+          <div class="why">Глубже и приглушённее. Меньше «технологичности», больше спокойствия.</div>
+        </div>
+      </div>
+      <div class="accent-card">
+        <div class="strip"><i style="background:#EC8CC8"></i><i style="background:#C2459B"></i><i style="background:#322431"></i></div>
+        <div class="body">
+          <div class="nm">Орхидея</div>
+          <div class="meta">#C2459B · #EC8CC8</div>
+          <div class="why">Ближе всего к нынешнему розовому, но насыщенность снята — от него не устаёшь.</div>
+        </div>
+      </div>
+      <div class="accent-card">
+        <div class="strip"><i style="background:#9BAAF2"></i><i style="background:#4C5FD0"></i><i style="background:#232839"></i></div>
+        <div class="body">
+          <div class="nm">Индиго</div>
+          <div class="meta">#4C5FD0 · #9BAAF2</div>
+          <div class="why">Сдвиг в синеву. Привычнее для мессенджера, но и заметно безличнее.</div>
+        </div>
+      </div>
+      <div class="accent-card">
+        <div class="strip"><i style="background:#F2A93B"></i><i style="background:#A9690C"></i><i style="background:#33291A"></i></div>
+        <div class="body">
+          <div class="nm">Янтарь</div>
+          <div class="meta">#F2A93B · #A9690C</div>
+          <div class="why">Тёплый, редкий среди мессенджеров. Единственный набор с тёмным текстом на заливке.</div>
+        </div>
+      </div>
+      <div class="accent-card">
+        <div class="strip"><i style="background:#5FD3BE"></i><i style="background:#17806E"></i><i style="background:#1E2E2C"></i></div>
+        <div class="body">
+          <div class="nm">Бирюза</div>
+          <div class="meta">#17806E · #5FD3BE</div>
+          <div class="why">Здесь скорее как доказательство, что подмена работает на любом цвете.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Что это даёт на будущее.</strong> Смена цвета оформления — это добавить набор
+      из пяти строк и записать атрибут. Ни один компонент при этом не переписывается.
+      Отсюда же почти бесплатно получается персональный акцент у пользователя,
+      если такое захотим.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Иконки</h2>
+    <p class="sub">
+      Эмодзи для интерфейса не годятся: на Windows, маке и андроиде они рисуются
+      по-разному, размер не подчиняется тексту, цвет не наследуется. Предлагаю
+      <strong>Lucide</strong> — и это не смена стиля, а узаконивание того, что уже есть.
+    </p>
+
+    <div class="note">
+      <p><strong>Мы уже на Lucide, просто вручную.</strong> Иконка <code>PinIcon</code> в проекте —
+      это буквально файл из Lucide, скопированный в наш репозиторий. Таких копий 21.
+      При переносе руками разъехалось то, что задача #233 и описывает:</p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Что</th><th>Сейчас в 21 файле</th><th>Станет</th></tr>
+        <tr><td>Размер</td><td>22px у восемнадцати, 24px у <code>Cross</code> и <code>Search</code></td><td>один, задаётся обёрткой</td></tr>
+        <tr><td>Толщина линии</td><td>2 у тринадцати, 1.8 у пяти, <strong>1 у <code>Video</code></strong></td><td>одна на всё</td></tr>
+        <tr><td>Сколько доступно</td><td>21 штука, «плюса» среди них нет</td><td>больше полутора тысяч</td></tr>
+        <tr><td>Вес в сборке</td><td>21 файл в репозитории</td><td>только те, что импортированы</td></tr>
+      </table>
+    </div>
+
+    <h3>Один размер, одна толщина</h3>
+    <p style="margin:0 0 18px">
+      Размер и толщина задаются один раз в нашей обёртке <code>&lt;Icon /&gt;</code>, а не в каждом файле.
+      Цвет иконка берёт от родителя, поэтому в кнопке она белая, в меню серая, в опасном
+      действии красная — сама по себе.
+    </p>
+    <div class="icon-sizes">
+      <figure><i data-lucide="message-circle" class="ic-svg" style="width:16px;height:16px"></i><figcaption>16 · в тексте</figcaption></figure>
+      <figure><i data-lucide="message-circle" class="ic-svg"></i><figcaption>20 · обычная</figcaption></figure>
+      <figure><i data-lucide="message-circle" class="ic-svg" style="width:24px;height:24px"></i><figcaption>24 · в шапке</figcaption></figure>
+      <figure><i data-lucide="message-circle" class="ic-svg" style="width:32px;height:32px"></i><figcaption>32 · в пустом экране</figcaption></figure>
+    </div>
+
+    <h3>Набор под наши экраны</h3>
+    <div class="demo" style="padding:14px">
+      <div class="icon-grid">
+        <div class="icon-cell"><i data-lucide="message-circle" class="ic-svg"></i><span>message-circle</span></div>
+        <div class="icon-cell"><i data-lucide="send" class="ic-svg"></i><span>send</span></div>
+        <div class="icon-cell"><i data-lucide="search" class="ic-svg"></i><span>search</span></div>
+        <div class="icon-cell"><i data-lucide="users" class="ic-svg"></i><span>users</span></div>
+        <div class="icon-cell"><i data-lucide="user-plus" class="ic-svg"></i><span>user-plus</span></div>
+        <div class="icon-cell"><i data-lucide="phone" class="ic-svg"></i><span>phone</span></div>
+        <div class="icon-cell"><i data-lucide="video" class="ic-svg"></i><span>video</span></div>
+        <div class="icon-cell"><i data-lucide="paperclip" class="ic-svg"></i><span>paperclip</span></div>
+        <div class="icon-cell"><i data-lucide="mic" class="ic-svg"></i><span>mic</span></div>
+        <div class="icon-cell"><i data-lucide="smile" class="ic-svg"></i><span>smile</span></div>
+        <div class="icon-cell"><i data-lucide="image" class="ic-svg"></i><span>image</span></div>
+        <div class="icon-cell"><i data-lucide="file" class="ic-svg"></i><span>file</span></div>
+        <div class="icon-cell"><i data-lucide="pin" class="ic-svg"></i><span>pin</span></div>
+        <div class="icon-cell"><i data-lucide="reply" class="ic-svg"></i><span>reply</span></div>
+        <div class="icon-cell"><i data-lucide="forward" class="ic-svg"></i><span>forward</span></div>
+        <div class="icon-cell"><i data-lucide="pencil" class="ic-svg"></i><span>pencil</span></div>
+        <div class="icon-cell"><i data-lucide="trash-2" class="ic-svg"></i><span>trash-2</span></div>
+        <div class="icon-cell"><i data-lucide="copy" class="ic-svg"></i><span>copy</span></div>
+        <div class="icon-cell"><i data-lucide="folder" class="ic-svg"></i><span>folder</span></div>
+        <div class="icon-cell"><i data-lucide="archive" class="ic-svg"></i><span>archive</span></div>
+        <div class="icon-cell"><i data-lucide="bell" class="ic-svg"></i><span>bell</span></div>
+        <div class="icon-cell"><i data-lucide="bell-off" class="ic-svg"></i><span>bell-off</span></div>
+        <div class="icon-cell"><i data-lucide="lock" class="ic-svg"></i><span>lock</span></div>
+        <div class="icon-cell"><i data-lucide="shield-check" class="ic-svg"></i><span>shield-check</span></div>
+        <div class="icon-cell"><i data-lucide="key-round" class="ic-svg"></i><span>key-round</span></div>
+        <div class="icon-cell"><i data-lucide="triangle-alert" class="ic-svg"></i><span>triangle-alert</span></div>
+        <div class="icon-cell"><i data-lucide="check" class="ic-svg"></i><span>check</span></div>
+        <div class="icon-cell"><i data-lucide="check-check" class="ic-svg"></i><span>check-check</span></div>
+        <div class="icon-cell"><i data-lucide="x" class="ic-svg"></i><span>x</span></div>
+        <div class="icon-cell"><i data-lucide="plus" class="ic-svg"></i><span>plus</span></div>
+        <div class="icon-cell"><i data-lucide="settings" class="ic-svg"></i><span>settings</span></div>
+        <div class="icon-cell"><i data-lucide="ellipsis-vertical" class="ic-svg"></i><span>ellipsis-vertical</span></div>
+        <div class="icon-cell"><i data-lucide="chevron-down" class="ic-svg"></i><span>chevron-down</span></div>
+        <div class="icon-cell"><i data-lucide="arrow-down" class="ic-svg"></i><span>arrow-down</span></div>
+        <div class="icon-cell"><i data-lucide="play" class="ic-svg"></i><span>play</span></div>
+        <div class="icon-cell"><i data-lucide="pause" class="ic-svg"></i><span>pause</span></div>
+        <div class="icon-cell"><i data-lucide="volume-2" class="ic-svg"></i><span>volume-2</span></div>
+        <div class="icon-cell"><i data-lucide="camera" class="ic-svg"></i><span>camera</span></div>
+        <div class="icon-cell"><i data-lucide="log-out" class="ic-svg"></i><span>log-out</span></div>
+        <div class="icon-cell"><i data-lucide="globe" class="ic-svg"></i><span>globe</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Как подключаем.</strong> Ставим <code>lucide-react</code> и оставляем нашу обёртку
+      <code>&lt;Icon name="pin" /&gt;</code> как есть — тогда ни один вызов на экранах не меняется,
+      меняется только начинка обёртки, а 21 файл из репозитория уезжает. В сборку попадают
+      только те иконки, что реально импортированы. Заодно закрывается #233 и перестают
+      появляться задачи вида «нужной иконки нет».</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Шкалы</h2>
+    <p class="sub">Отступы кратны четырём, радиусов ровно пять, у каждого своё назначение. Всё, что вне шкалы, — ошибка, а не исключение.</p>
+
+    <h3>Отступы</h3>
+    <div class="bars">
+      <div class="bar"><span class="scale-meta">4</span><div class="bar-fill" style="width:4px"></div></div>
+      <div class="bar"><span class="scale-meta">8</span><div class="bar-fill" style="width:8px"></div></div>
+      <div class="bar"><span class="scale-meta">12</span><div class="bar-fill" style="width:12px"></div></div>
+      <div class="bar"><span class="scale-meta">16</span><div class="bar-fill" style="width:16px"></div></div>
+      <div class="bar"><span class="scale-meta">24</span><div class="bar-fill" style="width:24px"></div></div>
+      <div class="bar"><span class="scale-meta">32</span><div class="bar-fill" style="width:32px"></div></div>
+      <div class="bar"><span class="scale-meta">48</span><div class="bar-fill" style="width:48px"></div></div>
+      <div class="bar"><span class="scale-meta">64</span><div class="bar-fill" style="width:64px"></div></div>
+    </div>
+
+    <h3>Радиусы</h3>
+    <div class="radii">
+      <div class="radius-chip" style="border-radius:6px">6 · мелкое</div>
+      <div class="radius-chip" style="border-radius:10px">10 · поля, кнопки</div>
+      <div class="radius-chip" style="border-radius:14px">14 · пузыри, панели</div>
+      <div class="radius-chip" style="border-radius:20px">20 · окна</div>
+      <div class="radius-chip" style="border-radius:999px">999 · аватар, чип</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Компоненты</h2>
+    <p class="sub">
+      То, чего в проекте нет и что придётся написать. Здесь они во всех состояниях —
+      именно этого сейчас негде посмотреть. Цвет берут из текущего набора акцента.
+    </p>
+
+    <div class="demo">
+      <div class="caption">Кнопки — вид</div>
+      <div class="row">
+        <button class="btn btn-primary">Создать группу</button>
+        <button class="btn btn-secondary">Отмена</button>
+        <button class="btn btn-ghost">Пропустить</button>
+        <button class="btn btn-danger">Удалить чат</button>
+      </div>
+
+      <div class="caption">Кнопки — размер и состояние</div>
+      <div class="row">
+        <button class="btn btn-primary btn-sm">Мелкая</button>
+        <button class="btn btn-primary">Обычная</button>
+        <button class="btn btn-primary btn-lg">Крупная</button>
+        <button class="btn btn-primary" disabled>Недоступна</button>
+        <button class="btn btn-secondary" disabled>Недоступна</button>
+      </div>
+
+      <div class="caption">Поля</div>
+      <div class="row" style="align-items:flex-start">
+        <div>
+          <input class="field" placeholder="Название группы">
+          <div class="hint">До 50 знаков</div>
+        </div>
+        <div>
+          <input class="field field-error" value="ал">
+          <div class="hint hint-error">Юзернейм короче трёх знаков</div>
+        </div>
+        <div>
+          <input class="field" value="Заполнено" readonly>
+          <div class="hint">Только чтение</div>
+        </div>
+      </div>
+
+      <div class="caption">Аватар</div>
+      <div class="row">
+        <span class="av av-28">М</span>
+        <span class="av av-40 av-cool">А</span>
+        <span class="av-wrap"><span class="av av-56 av-warm">Б</span><span class="av-dot"></span></span>
+        <span class="av av-40">Ш</span>
+        <span class="av av-48 av-cool">Д</span>
+        <span class="av av-96 av-warm">К</span>
+      </div>
+
+      <div class="caption">Метки и чипы</div>
+      <div class="row">
+        <span class="badge">12</span>
+        <span class="badge">99+</span>
+        <span class="badge badge-quiet">черновик</span>
+        <span class="chip">Борис <span class="x">×</span></span>
+        <span class="chip">Максим <span class="x">×</span></span>
+      </div>
+
+      <div class="caption">Переключатель</div>
+      <div class="row">
+        <span class="sw-toggle"><i></i></span>
+        <span class="sw-toggle sw-on"><i></i></span>
+      </div>
+
+      <div class="caption">Уведомления</div>
+      <div class="row" style="flex-direction:column;align-items:flex-start">
+        <div class="toast"><i data-lucide="check-check" class="ic-svg" style="color:var(--ok)"></i> Группа создана</div>
+        <div class="toast toast-danger"><i data-lucide="x" class="ic-svg" style="color:var(--danger)"></i> Не удалось создать групповой чат</div>
+      </div>
+
+      <div class="caption">Выбор</div>
+      <div class="row" style="gap:22px">
+        <label class="opt"><span class="cb cb-on"><i data-lucide="check" class="ic-svg" style="width:13px;height:13px"></i></span> Удалить у всех</label>
+        <label class="opt"><span class="cb cb-mixed"></span> Выбрано 3 из 12</label>
+        <label class="opt"><span class="cb"></span> Уведомлять</label>
+        <label class="opt"><span class="rd rd-on"></span> Светлая</label>
+        <label class="opt"><span class="rd"></span> Тёмная</label>
+      </div>
+
+      <div class="caption">Выпадающий список — свой, не системный</div>
+      <div class="row" style="align-items:flex-start;gap:16px">
+        <div class="select" data-select>
+          <button class="select-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="select-value">Русский</span>
+            <i data-lucide="chevron-down" class="ic-svg select-chev" style="width:16px;height:16px"></i>
+          </button>
+          <ul class="select-menu scroll-y" role="listbox" hidden>
+            <li role="option" aria-selected="true">Русский</li>
+            <li role="option" aria-selected="false">English</li>
+            <li role="option" aria-selected="false">Deutsch</li>
+            <li role="option" aria-selected="false">Français</li>
+            <li role="option" aria-selected="false">Español</li>
+            <li role="option" aria-selected="false">Italiano</li>
+            <li role="option" aria-selected="false">Português</li>
+            <li role="option" aria-selected="false">Polski</li>
+            <li role="option" aria-selected="false">Українська</li>
+            <li role="option" aria-selected="false">Türkçe</li>
+          </ul>
+        </div>
+
+        <div class="select select-placeholder" data-select>
+          <button class="select-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="select-value">Кто видит активность</span>
+            <i data-lucide="chevron-down" class="ic-svg select-chev" style="width:16px;height:16px"></i>
+          </button>
+          <ul class="select-menu scroll-y" role="listbox" hidden>
+            <li class="group">Показывать</li>
+            <li role="option" aria-selected="false">Всем</li>
+            <li role="option" aria-selected="false">Только контактам</li>
+            <li role="option" aria-selected="false">Никому</li>
+          </ul>
+        </div>
+
+        <div class="select select-error" data-select style="min-width:180px">
+          <button class="select-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="select-value">Не выбрано</span>
+            <i data-lucide="chevron-down" class="ic-svg select-chev" style="width:16px;height:16px"></i>
+          </button>
+          <ul class="select-menu scroll-y" role="listbox" hidden>
+            <li role="option" aria-selected="false">1 минута</li>
+            <li role="option" aria-selected="false">15 минут</li>
+            <li role="option" aria-selected="false">1 час</li>
+          </ul>
+        </div>
+
+        <div class="select" style="min-width:150px">
+          <button class="select-trigger" disabled>
+            <span class="select-value">Недоступно</span>
+            <i data-lucide="chevron-down" class="ic-svg select-chev" style="width:16px;height:16px"></i>
+          </button>
+        </div>
+      </div>
+      <p style="font-size:13.5px;color:var(--ink-2);margin:14px 0 0">
+        Открывается по клику, стрелками и Enter. Закрывается по Esc, Tab и клику снаружи.
+        Длинный список прокручивается внутри себя — десять языков из задачи #162 помещаются.
+      </p>
+
+      <div class="caption">Прокрутка — общая для списков, ленты и меню</div>
+      <div class="row" style="align-items:flex-start;gap:20px">
+        <div class="scrolldemo scroll-y scroll-stable">
+          <div>Борис</div><div>Максим</div><div>Алиса</div><div>Шаболды</div>
+          <div>Рабочий чат</div><div>Поход</div><div>Встреча</div><div>Соседи</div>
+          <div>Родня</div><div>Отпуск</div><div>Проект «Кран»</div><div>Барахолка</div>
+        </div>
+        <p style="font-size:13.5px;color:var(--ink-2);margin:0;max-width:40ch">
+          Ползунок тонкий, скруглённый и с полями по краям — не прилипает к стенке.
+          При наведении подкрашивается акцентом, при перетаскивании становится полностью акцентным.
+          Наведите на список, чтобы увидеть.
+          <br><br>
+          Здесь же <code>overscroll-behavior: contain</code>: докрутив список до конца,
+          вы не утащите следом всю страницу. В выпадающем меню это особенно заметно.
+          <br><br>
+          Отдельным классом — резерв места под полосу. Он нужен там, где список растёт
+          на ходу: в чатах и в ленте, иначе в момент появления прокрутки всё содержимое
+          дёргается влево. Коротким меню его не ставим.
+        </p>
+      </div>
+
+      <div class="note">
+        <p><strong>Что не так с нынешней.</strong> Класс <code>.styled-scrollbar</code> в проекте —
+        это две строки, и в них вшит <code>#0d0e13</code>: почти чёрный ползунок. На тёмной панели
+        его не видно, а в светлой теме он станет чёрной палкой. Скруглений и полей нет,
+        состояний наведения нет. Применён он всего в четырёх местах — в выпадающих меню
+        прокрутка вообще системная.</p>
+      </div>
+
+      <div class="caption">Многострочное поле</div>
+      <div class="row">
+        <textarea class="field" placeholder="Описание группы">Собираемся по субботам</textarea>
+      </div>
+
+      <div class="caption">Ползунок</div>
+      <div class="row">
+        <span class="slider"><i style="width:38%"></i><b style="left:38%"></b></span>
+        <span class="scale-meta">01:12 / 03:08</span>
+      </div>
+
+      <div class="caption">Переключение разделов</div>
+      <div class="row">
+        <span class="seg">
+          <button aria-pressed="true">Все</button>
+          <button aria-pressed="false">Личные</button>
+          <button aria-pressed="false">Работа</button>
+        </span>
+      </div>
+      <div class="row">
+        <span class="tabs" style="width:100%;max-width:420px">
+          <button aria-selected="true">Участники</button>
+          <button aria-selected="false">Медиа</button>
+          <button aria-selected="false">Забаненные</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Загрузка</h2>
+    <p class="sub">
+      Задача #165 просит «скелетоны и лоадеры на все элементы» и отдельно оговаривает:
+      преимущественно скелетоны. Разница по делу такая — скелетон показывают, когда известна
+      форма будущего содержимого, крутилку — когда не известна, а полосу — когда известен прогресс.
+    </p>
+
+    <div class="demo">
+      <div class="caption">Крутилка — когда форма ответа неизвестна</div>
+      <div class="row" style="gap:20px">
+        <span class="spinner spinner-16"></span>
+        <span class="spinner spinner-24"></span>
+        <span class="spinner spinner-40"></span>
+        <button class="btn btn-primary" disabled style="display:inline-flex;align-items:center;gap:9px">
+          <span class="spinner spinner-16" style="border-top-color:currentColor"></span> Создание...
+        </button>
+      </div>
+
+      <div class="caption">Полоса — когда прогресс известен</div>
+      <div class="row" style="flex-direction:column;align-items:flex-start;gap:12px">
+        <span class="progress"><i style="width:64%"></i></span>
+        <span class="progress progress-indet"><i></i></span>
+      </div>
+
+      <div class="caption">Скелетон строки чата</div>
+      <div style="max-width:320px">
+        <div class="skel-row">
+          <div class="skel" style="width:44px;height:44px;border-radius:999px"></div>
+          <div style="flex:1">
+            <div class="skel" style="height:11px;width:46%;margin-bottom:8px"></div>
+            <div class="skel" style="height:10px;width:76%"></div>
+          </div>
+        </div>
+        <div class="skel-row">
+          <div class="skel" style="width:44px;height:44px;border-radius:999px"></div>
+          <div style="flex:1">
+            <div class="skel" style="height:11px;width:62%;margin-bottom:8px"></div>
+            <div class="skel" style="height:10px;width:54%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="caption">Скелетон ленты — повторяет форму пузырей</div>
+      <div style="display:flex;flex-direction:column;gap:9px;max-width:400px">
+        <div class="skel" style="height:34px;width:58%;border-radius:14px 14px 14px 4px"></div>
+        <div class="skel" style="height:34px;width:44%;border-radius:14px 14px 4px 14px;align-self:flex-end"></div>
+        <div class="skel" style="height:52px;width:66%;border-radius:14px 14px 14px 4px"></div>
+      </div>
+
+      <div class="caption">Скелетон строки настроек</div>
+      <div style="max-width:400px">
+        <div class="skel-row"><div class="skel" style="height:12px;width:38%"></div></div>
+        <div class="skel-row"><div class="skel" style="height:12px;width:52%"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Наложения и состояния экрана</h2>
+    <p class="sub">
+      Меню действий понадобится в #166, окно подтверждения — в #173, пустые состояния —
+      в #163 и #165. Сейчас подтверждение удаления сделано через <code>window.confirm</code>,
+      то есть системным окном браузера, которое не имеет к нашему оформлению никакого отношения.
+    </p>
+
+    <div class="demo">
+      <div class="caption">Меню действий над чатом</div>
+      <div class="row" style="align-items:flex-start;gap:24px">
+        <div class="menu">
+          <button><i data-lucide="pin" class="ic-svg"></i> Закрепить</button>
+          <button><i data-lucide="folder" class="ic-svg"></i> В папку</button>
+          <button><i data-lucide="bell-off" class="ic-svg"></i> Отключить звук</button>
+          <button><i data-lucide="archive" class="ic-svg"></i> В архив</button>
+          <div class="sep"></div>
+          <button class="del"><i data-lucide="trash-2" class="ic-svg"></i> Удалить чат</button>
+        </div>
+
+        <div class="dialog">
+          <h4>Удалить сообщение?</h4>
+          <p>Его больше нельзя будет восстановить.</p>
+          <label class="opt" style="margin-bottom:18px"><span class="cb cb-on"><i data-lucide="check" class="ic-svg" style="width:13px;height:13px"></i></span> Удалить у всех участников</label>
+          <div class="row">
+            <button class="btn btn-primary">Удалить</button>
+            <button class="btn btn-secondary">Отмена</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="caption">Подсказка</div>
+      <div class="row"><span class="tip">Отправить · Enter</span></div>
+
+      <div class="caption">Плашки</div>
+      <div class="row" style="flex-direction:column;align-items:stretch;gap:12px;max-width:560px">
+        <div class="banner banner-info"><i data-lucide="shield-check" class="ic-svg"></i><span>Сообщения в этом чате защищены сквозным шифрованием.</span></div>
+        <div class="banner banner-warn"><i data-lucide="key-round" class="ic-svg"></i><span>Код безопасности Бориса изменился — возможно, он вошёл с нового устройства.</span></div>
+        <div class="banner banner-danger"><i data-lucide="triangle-alert" class="ic-svg"></i><span>Подпись не совпала. Отправитель этого сообщения не подтверждён.</span></div>
+      </div>
+
+      <div class="caption">Пусто и ошибка</div>
+      <div class="row" style="align-items:stretch;gap:16px">
+        <div class="state" style="flex:1;min-width:260px">
+          <div class="ic"><i data-lucide="message-circle" class="ic-svg" style="width:30px;height:30px"></i></div>
+          <h4>Пока никого нет</h4>
+          <p>Найдите собеседника по юзернейму, чтобы начать переписку.</p>
+          <button class="btn btn-primary btn-sm">Найти людей</button>
+        </div>
+        <div class="state" style="flex:1;min-width:260px">
+          <div class="ic"><i data-lucide="cloud-off" class="ic-svg" style="width:30px;height:30px"></i></div>
+          <h4>Не удалось загрузить чаты</h4>
+          <p>Проверьте соединение и попробуйте ещё раз.</p>
+          <button class="btn btn-secondary btn-sm">Повторить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Мессенджерные детали</h2>
+    <p class="sub">
+      Этого нет в обычных китах, а нам нужно почти всё: разделители в ленте, состояние
+      доставки, цитата ответа (#169), метка закрепления (#170), системные сообщения
+      о муте и бане (#175), вложение с прогрессом (#171). Плюс то, что уже сделано
+      в шифровании и должно жить по общим правилам — код безопасности и смена ключа.
+    </p>
+
+    <div class="stage">
+      <div class="datesep">Вчера</div>
+
+      <div class="b b-in">
+        <div class="fwd">Переслано от <b>Максима</b></div>
+        Держи ссылку на макет, посмотри до созвона
+        <span class="ticks">14:02</span>
+      </div>
+
+      <div class="b b-out">
+        <div class="quote"><b>Максим</b><span>Держи ссылку на макет...</span></div>
+        Посмотрел, вопросы есть
+        <span class="ticks ticks-read">14:05 <i data-lucide="check-check" class="ic-svg" style="width:13px;height:13px;vertical-align:-2px"></i></span>
+      </div>
+
+      <div class="att">
+        <div class="th"><i data-lucide="image" class="ic-svg"></i></div>
+        <div style="flex:1">
+          <div class="nm">maket-final.png</div>
+          <div class="sz">2,4 МБ</div>
+          <span class="progress" style="width:100%;margin-top:6px"><i style="width:72%"></i></span>
+        </div>
+      </div>
+
+      <div class="sysmsg">Алиса заглушила Бориса на 15 минут</div>
+
+      <div class="unread">Непрочитанные</div>
+
+      <div class="b b-in">
+        <i data-lucide="pin" class="ic-svg" style="width:14px;height:14px;vertical-align:-2px"></i> Созвон переносится на 16:00
+        <span class="ticks">09:41</span>
+      </div>
+
+      <div class="typing"><i></i><i></i><i></i></div>
+    </div>
+
+    <div class="row" style="margin-top:24px;align-items:flex-start;gap:28px">
+      <div>
+        <div class="caption">Код безопасности</div>
+        <div class="safety">18234 90117 44582<br>67390 21845 55026<br>73118 40297 61934</div>
+      </div>
+      <div>
+        <div class="caption">Кнопка «вниз» с непрочитанными</div>
+        <div class="row"><span class="fab"><i data-lucide="arrow-down" class="ic-svg"></i><span class="badge cnt">3</span></span></div>
+        <div class="caption">Состояние отправки</div>
+        <div class="row" style="gap:18px">
+          <span class="ticks">отправляется…</span>
+          <span class="ticks"><i data-lucide="check" class="ic-svg" style="width:13px;height:13px;vertical-align:-2px"></i> отправлено</span>
+          <span class="ticks"><i data-lucide="check-check" class="ic-svg" style="width:13px;height:13px;vertical-align:-2px"></i> доставлено</span>
+          <span class="ticks ticks-read"><i data-lucide="check-check" class="ic-svg" style="width:13px;height:13px;vertical-align:-2px"></i> прочитано</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Зачем это в ките, а не в задачах.</strong> Каждая из этих мелочей иначе будет
+      придумана заново внутри своей задачи — своим цветом, своим отступом, своим скруглением.
+      Именно так и появились нынешние четырнадцать кнопок.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Строка чата</h2>
+    <p class="sub">
+      Самый частый элемент приложения — его видят раньше всего остального.
+      У нас три вида чатов (<code>private</code>, <code>group</code>, <code>channel</code>),
+      и они должны различаться с одного взгляда, а не только по названию.
+      Плюс десяток состояний, которые сейчас нигде не собраны вместе.
+    </p>
+
+    <div class="row" style="align-items:flex-start;gap:24px">
+      <div class="chatlist" style="flex:1;min-width:320px;max-width:400px">
+        <div class="crow">
+          <span class="av-wrap"><span class="av av-40 av-cool">Б</span><span class="av-dot"></span></span>
+          <div class="crow-body">
+            <div class="crow-top"><span class="crow-name">Борис</span><span class="crow-time">14:05</span></div>
+            <div class="crow-bottom">
+              <span class="crow-prev">Да, сегодня отвечу</span>
+              <span class="crow-marks"><i data-lucide="check-check" class="ic-svg" style="color:var(--accent)"></i></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow crow-sel">
+          <span class="av av-40" style="background:#8E7BAF;color:#fff">Ш</span>
+          <div class="crow-body">
+            <div class="crow-top"><span class="crow-name">Шаболды</span><span class="crow-time">13:58</span></div>
+            <div class="crow-bottom">
+              <span class="crow-prev"><b>Максим:</b> закинул макет, гляньте</span>
+              <span class="crow-marks"><span class="badge">4</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow">
+          <span class="av av-40" style="background:#4E7BB8;color:#fff">К</span>
+          <div class="crow-body">
+            <div class="crow-top">
+              <span class="crow-name"><span class="kind"><i data-lucide="megaphone" class="ic-svg"></i></span> Новости команды</span>
+              <span class="crow-time">вчера</span>
+            </div>
+            <div class="crow-bottom">
+              <span class="crow-prev">Релиз переносится на понедельник</span>
+              <span class="crow-marks"><i data-lucide="eye" class="ic-svg"></i> 248</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow">
+          <span class="av av-40 av-warm">М</span>
+          <div class="crow-body">
+            <div class="crow-top"><span class="crow-name">Максим</span><span class="crow-time">12:30</span></div>
+            <div class="crow-bottom">
+              <span class="crow-prev crow-typing">печатает…</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow">
+          <span class="av av-40" style="background:#5B8C7B;color:#fff">П</span>
+          <div class="crow-body">
+            <div class="crow-top">
+              <span class="crow-name"><span class="kind"><i data-lucide="pin" class="ic-svg"></i></span> Поход</span>
+              <span class="crow-time">11:04</span>
+            </div>
+            <div class="crow-bottom">
+              <span class="crow-prev"><span class="crow-draft">Черновик:</span> возьму палатку</span>
+              <span class="crow-marks"><i data-lucide="bell-off" class="ic-svg"></i></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow">
+          <span class="av av-40" style="background:#A5714E;color:#fff">Р</span>
+          <div class="crow-body">
+            <div class="crow-top"><span class="crow-name">Родня</span><span class="crow-time">09:12</span></div>
+            <div class="crow-bottom">
+              <span class="crow-prev"><b>Алиса:</b> всех с праздником</span>
+              <span class="crow-marks"><span class="badge badge-mute">12</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="crow">
+          <span class="av av-40" style="background:#7A6E9E;color:#fff">Б</span>
+          <div class="crow-body">
+            <div class="crow-top"><span class="crow-name">Барахолка</span><span class="crow-time">08:40</span></div>
+            <div class="crow-bottom">
+              <span class="crow-prev">Фотография</span>
+              <span class="crow-marks"><i data-lucide="triangle-alert" class="ic-svg" style="color:var(--danger)"></i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:260px">
+        <div class="caption">Что здесь показано</div>
+        <div class="tablewrap" style="margin-top:0">
+          <table style="min-width:0">
+            <tr><td><b>Борис</b></td><td>личный, в сети, своё сообщение прочитано</td></tr>
+            <tr><td><b>Шаболды</b></td><td>группа: в превью видно автора. Открыт сейчас, 4 непрочитанных</td></tr>
+            <tr><td><b>Новости</b></td><td>канал: значок рупора и просмотры вместо галочек</td></tr>
+            <tr><td><b>Максим</b></td><td>собеседник печатает — превью подменяется</td></tr>
+            <tr><td><b>Поход</b></td><td>закреплён, звук выключен, есть черновик</td></tr>
+            <tr><td><b>Родня</b></td><td>приглушён: счётчик серый, а не акцентный</td></tr>
+            <tr><td><b>Барахолка</b></td><td>сообщение не ушло</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Почему это важно свести в одном месте.</strong> Приглушённый чат со счётчиком
+      и обычный со счётчиком отличаются одним оттенком. Черновик и обычное превью — одним словом
+      красным. Если каждое такое состояние решать внутри своей задачи, они разойдутся:
+      в одном месте приглушённый будет серым, в другом — с иконкой, в третьем — никак.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Звонки</h2>
+    <p class="sub">
+      Тут важная оговорка: <strong>сам разговор рисуем не мы</strong>. В проекте это
+      <code>&lt;iframe&gt;</code> на внешний сервис — сетка участников, кнопки микрофона и камеры
+      живут внутри него, и мы на них не влияем. Наше — то, что вокруг: карточка входящего вызова,
+      свёрнутая плашка и след в переписке. Их и показываю.
+    </p>
+
+    <div class="row" style="align-items:flex-start;gap:24px">
+      <div class="callcard">
+        <span class="call-ava"><span class="av av-56 av-cool">Б</span></span>
+        <div class="call-name">Борис</div>
+        <p class="call-sub">Входящий видеозвонок</p>
+        <div class="call-actions">
+          <button class="call-btn call-reject" aria-label="Отклонить"><i data-lucide="phone-off" class="ic-svg"></i></button>
+          <button class="call-btn call-accept" aria-label="Принять"><i data-lucide="video" class="ic-svg"></i></button>
+        </div>
+      </div>
+
+      <div class="callcard">
+        <span class="call-ava"><span class="av av-56 av-warm">М</span></span>
+        <div class="call-name">Максим</div>
+        <p class="call-sub">Звоним…</p>
+        <div class="call-actions">
+          <button class="call-btn call-mute" aria-label="Выключить микрофон"><i data-lucide="mic-off" class="ic-svg"></i></button>
+          <button class="call-btn call-reject" aria-label="Отменить"><i data-lucide="phone-off" class="ic-svg"></i></button>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:280px">
+        <div class="caption">Свёрнутая плашка — разговор идёт</div>
+        <div class="callbar">
+          <span class="av av-40 av-cool">Б</span>
+          <span class="who"><b>Борис</b><span>04:17</span></span>
+          <button class="mini call-mute" aria-label="Микрофон"><i data-lucide="mic" class="ic-svg"></i></button>
+          <button class="mini call-mute" aria-label="Развернуть"><i data-lucide="maximize-2" class="ic-svg"></i></button>
+          <button class="mini call-reject" aria-label="Завершить"><i data-lucide="phone-off" class="ic-svg"></i></button>
+        </div>
+
+        <div class="caption">След в переписке</div>
+        <div class="stage" style="gap:7px">
+          <div class="sysmsg"><span class="callmsg"><i data-lucide="phone-outgoing" class="ic-svg"></i> Исходящий звонок · 4 мин 17 с</span></div>
+          <div class="sysmsg"><span class="callmsg"><i data-lucide="phone-incoming" class="ic-svg"></i> Входящий звонок · 1 мин 02 с</span></div>
+          <div class="sysmsg"><span class="callmsg callmsg-missed"><i data-lucide="phone-missed" class="ic-svg"></i> Пропущенный звонок</span></div>
+          <div class="sysmsg"><span class="callmsg"><i data-lucide="video" class="ic-svg"></i> Групповой звонок · 3 участника</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Чего сейчас нет и стоит завести.</strong> Исходящего состояния в коде не существует:
+      нажимаешь «позвонить» — и сразу открывается фрейм, без экрана «звоним…». Позвонивший
+      не видит ни имени, ни возможности отменить, пока тот не взял трубку. Вторая карточка
+      выше — как это должно выглядеть. Следов звонков в переписке тоже нет: пропущенный
+      вызов нигде не остаётся, о нём просто не узнать.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Экран целиком</h2>
+    <p class="sub">
+      Одни и те же данные. Слева нынешние цвета и шрифт, справа предложенные.
+      Вёрстка не менялась — только токены. Правый экран следует за переключателем наверху.
+    </p>
+
+    <div class="compare">
+      <div class="screen">
+        <div class="screen-tag">Сейчас</div>
+        <div class="screen-body old">
+          <div class="list">
+            <div class="item"><span class="a">Ш</span><span><span class="nm">Шаболды</span><br><span class="pv">Ключ недоступен</span></span></div>
+            <div class="item"><span class="a">А</span><span><span class="nm">Алиса</span><br><span class="pv">Ключ недоступен</span></span></div>
+            <div class="item"><span class="a">М</span><span><span class="nm">Максим</span><br><span class="pv">аааааааа</span></span></div>
+          </div>
+          <div class="thread">
+            <div class="bub">Привет, ты уже посмотрел?</div>
+            <div class="bub me" style="margin-top:8px">Да, сегодня отвечу</div>
+            <div class="comp">Сообщение...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="screen-tag">Предложение</div>
+        <div class="screen-body new">
+          <div class="list">
+            <div class="item sel"><span class="a" style="background:#8E7BAF;color:#FFF">Ш</span><span><span class="nm">Шаболды</span><br><span class="pv">Ключ недоступен</span></span></div>
+            <div class="item"><span class="a" style="background:#4E7BB8;color:#F2F6FB">А</span><span><span class="nm">Алиса</span><br><span class="pv">Ключ недоступен</span></span></div>
+            <div class="item"><span class="a" style="background:#B8674E;color:#FBF3F0">М</span><span><span class="nm">Максим</span><br><span class="pv">аааааааа</span></span></div>
+          </div>
+          <div class="thread">
+            <div class="bub them">Привет, ты уже посмотрел?<span class="tm">14:02</span></div>
+            <div class="bub me">Да, сегодня отвечу<span class="tm">14:05</span></div>
+            <div class="comp">Сообщение...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><strong>Что поменялось, кроме цвета.</strong> Аватарки перестали быть одинаково зелёными —
+      цвет выводится из идентификатора, поэтому список читается по цветовым пятнам, а не только по буквам.
+      Аватарки намеренно не следуют за акцентом: их задача — различать людей, а не повторять
+      фирменный цвет. Выбранный чат подсвечен полосой: сейчас никак не понять, в каком ты
+      находишься. У пузырей появился срезанный угол и время в моноширинном.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Как это внедрять</h2>
+    <p class="sub">
+      Не одной большой переделкой. Каждый шаг самостоятельный и его видно.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <div><b>Шрифт</b><span>Подключить Geologica, убрать протёкший системный из настроек. Одна правка, меняет каждый экран. Полчаса.</span></div>
+      </li>
+      <li>
+        <div><b>Токены</b><span>Три слоя: нейтральные, акцентные наборы, темы. Старые имена оставляю псевдонимами, чтобы ничего не сломалось разом.</span></div>
+      </li>
+      <li>
+        <div><b>Примитивы</b><span>Button, Input, Avatar, Badge, Chip, Switch, Toast, Skeleton, Modal. С тестами на состояния.</span></div>
+      </li>
+      <li>
+        <div><b>Витрина</b><span>Страница внутри проекта со всеми компонентами во всех состояниях и переключателем акцента. Всегда показывает то, что реально в коде.</span></div>
+      </li>
+      <li>
+        <div><b>Перевод экранов</b><span>По одному, отдельными задачами. Начать с чатов — там сейчас системы меньше всего. Заодно уходят 60 вшитых цветов и 14 видов кнопок.</span></div>
+      </li>
+      <li>
+        <div><b>Переключатели тем и цвета</b><span>Отдельной задачей: сейчас выбор темы в настройках ни на что не влияет и не сохраняется. Токены к этому моменту уже готовы, останется записать атрибут и запомнить выбор.</span></div>
+      </li>
+    </ol>
+
+    <div class="note">
+      <p><strong>Что здесь спорно.</strong> Какой именно фиолетовый — решать вам с дизайнером,
+      переключатель для этого и сделан. Заголовки тем же семейством.
+      Насколько светлым делать тёмный фон — тоже разговор: я взял <code>#14181F</code>, можно ещё
+      светлее. Всё остальное — шкалы, состояния, набор компонентов — от выбора цвета не зависит.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Собрано по живому приложению: цвета, радиусы и шрифты сняты замерами с работающего стенда, а не с макетов.
+  </div>
+</footer>
+
+<script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+<script>
+  /* Иконки. В проекте вместо этого стоит пакет lucide-react и наша обёртка <Icon />,
+     здесь — браузерная сборка, чтобы страница открывалась двойным кликом. */
+  (function () {
+    if (!window.lucide) {
+      // Без сети иконок не будет — показываем это честно, а не пустыми дырами.
+      document.querySelectorAll('[data-lucide]').forEach(function (у) {
+        у.textContent = '□';
+        у.style.opacity = '0.4';
+      });
+      return;
+    }
+    window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+  })();
+
+  /* Выпадающий список. Фокус остаётся на кнопке, а текущий пункт помечается
+     aria-activedescendant — так не нужно перекидывать фокус в список. */
+  (function () {
+    var счётчик = 0;
+
+    document.querySelectorAll('[data-select]').forEach(function (корень) {
+      var кнопка = корень.querySelector('.select-trigger');
+      var список = корень.querySelector('.select-menu');
+      if (!кнопка || !список) return;
+
+      var пункты = Array.prototype.slice.call(список.querySelectorAll('[role="option"]'));
+      пункты.forEach(function (п) { п.id = 'opt-' + (++счётчик); });
+
+      var активный = пункты.findIndex(function (п) { return п.getAttribute('aria-selected') === 'true'; });
+      if (активный < 0) активный = 0;
+
+      function открыт() { return корень.hasAttribute('data-open'); }
+
+      function пометить(индекс) {
+        активный = Math.max(0, Math.min(индекс, пункты.length - 1));
+        пункты.forEach(function (п, i) {
+          if (i === активный) п.setAttribute('data-active', '');
+          else п.removeAttribute('data-active');
+        });
+        список.setAttribute('aria-activedescendant', пункты[активный].id);
+        пункты[активный].scrollIntoView({ block: 'nearest' });
+      }
+
+      function открыть() {
+        корень.setAttribute('data-open', '');
+        кнопка.setAttribute('aria-expanded', 'true');
+        список.hidden = false;
+        пометить(активный);
+      }
+
+      function закрыть(вернутьФокус) {
+        корень.removeAttribute('data-open');
+        кнопка.setAttribute('aria-expanded', 'false');
+        список.hidden = true;
+        if (вернутьФокус) кнопка.focus();
+      }
+
+      function выбрать(индекс) {
+        пункты.forEach(function (п, i) {
+          п.setAttribute('aria-selected', String(i === индекс));
+          var галочка = п.querySelector('.select-check');
+          if (i === индекс && !галочка) {
+            галочка = document.createElement('span');
+            галочка.className = 'select-check';
+            галочка.textContent = '✓';
+            п.appendChild(галочка);
+          } else if (i !== индекс && галочка) {
+            галочка.remove();
+          }
+        });
+        корень.querySelector('.select-value').textContent = пункты[индекс].childNodes[0].textContent.trim();
+        корень.classList.remove('select-placeholder', 'select-error');
+        активный = индекс;
+        закрыть(true);
+      }
+
+      // Отметить то, что выбрано изначально.
+      пункты.forEach(function (п, i) {
+        if (п.getAttribute('aria-selected') === 'true') {
+          var г = document.createElement('span');
+          г.className = 'select-check';
+          г.textContent = '✓';
+          п.appendChild(г);
+          активный = i;
+        }
+      });
+
+      кнопка.addEventListener('click', function () {
+        if (открыт()) закрыть(false); else открыть();
+      });
+
+      кнопка.addEventListener('keydown', function (с) {
+        if (с.key === 'ArrowDown' || с.key === 'ArrowUp') {
+          с.preventDefault();
+          if (!открыт()) return открыть();
+          пометить(активный + (с.key === 'ArrowDown' ? 1 : -1));
+        } else if (с.key === 'Enter' || с.key === ' ') {
+          с.preventDefault();
+          if (открыт()) выбрать(активный); else открыть();
+        } else if (с.key === 'Escape' && открыт()) {
+          закрыть(true);
+        } else if (с.key === 'Home' && открыт()) {
+          с.preventDefault(); пометить(0);
+        } else if (с.key === 'End' && открыт()) {
+          с.preventDefault(); пометить(пункты.length - 1);
+        } else if (с.key === 'Tab' && открыт()) {
+          закрыть(false);
+        }
+      });
+
+      список.addEventListener('click', function (с) {
+        var пункт = с.target.closest('[role="option"]');
+        if (пункт) выбрать(пункты.indexOf(пункт));
+      });
+
+      document.addEventListener('pointerdown', function (с) {
+        if (открыт() && !корень.contains(с.target)) закрыть(false);
+      });
+    });
+  })();
+
+  (function () {
+    var панель = document.getElementById('accents');
+    var кнопки = Array.prototype.slice.call(панель.querySelectorAll('.accent-pick'));
+
+    панель.addEventListener('click', function (событие) {
+      var кнопка = событие.target.closest('.accent-pick');
+      if (!кнопка) return;
+
+      document.documentElement.setAttribute('data-accent', кнопка.dataset.set);
+      кнопки.forEach(function (к) {
+        к.setAttribute('aria-pressed', String(к === кнопка));
+      });
+
+      // Выбор переживает перезагрузку — иначе сравнивать наборы неудобно.
+      try { localStorage.setItem('craneapp-kit-accent', кнопка.dataset.set); } catch (e) { /* приватный режим */ }
+    });
+
+    try {
+      var сохранённый = localStorage.getItem('craneapp-kit-accent');
+      var нужная = сохранённый && кнопки.filter(function (к) { return к.dataset.set === сохранённый; })[0];
+      if (нужная) нужная.click();
+    } catch (e) { /* хранилище недоступно — остаётся набор по умолчанию */ }
+  })();
+</script>
+
+</body>
+</html>

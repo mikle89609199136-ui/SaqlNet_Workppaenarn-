@@ -1,614 +1,396 @@
 import type { ApiClient } from '@/api';
 import { STORAGE_KEYS } from '@/consts';
-import type { IEncryptedMedia, IMlsStateResponse, TChatType } from '@/types';
+import { resolveMembers } from '@/core/chatResolver';
+import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
+import { base64ToBytes } from '@/crypto/encoding';
+import {
+  decryptMediaBytes,
+  decryptMessage,
+  encryptMediaBytes,
+  encryptMessage,
+  forgetDerivedKeys,
+  isLegacyContent,
+  parseEnvelope,
+} from '@/crypto/envelope';
+import {
+  fetchPeerIdentity,
+  forgetPeerIdentities,
+  knownPeerIdentities,
+  loadOrCreateIdentity,
+  PEER_BUNDLES_PREFIX,
+  publishIdentity,
+  type ILocalIdentity,
+} from '@/crypto/identity';
+import { removeKey, removeKeysWithPrefix } from '@/crypto/keyStore';
+import { signParts, verifyParts, type ISignedParts } from '@/crypto/signing';
+import type { IEncryptedMedia } from '@/types';
 
-const E2E_UNAVAILABLE_MESSAGE = '🔒 [E2E недоступно: нужен HTTPS или localhost]';
+/**
+ * Шифрование чатов.
+ *
+ * Снаружи — четыре действия: зашифровать и расшифровать текст, зашифровать
+ * и расшифровать файл. Внутри всё держится на ключе чата: он один на всех
+ * участников, заворачивается для каждого отдельно и лежит на сервере
+ * запечатанным. Сервер не может ни прочитать переписку, ни выдать себя за
+ * собеседника — развернуть ключ можно только приватной частью личности,
+ * а она никогда не покидает устройство.
+ *
+ * Личный чат и группа устроены одинаково. Каналы не шифруются вовсе, и в
+ * интерфейсе это видно: обещать защиту тысяче читателей нечестно.
+ */
 
-export interface IStoredKeys {
-  privateKey?: CryptoKey;
-  publicKey?: CryptoKey;
-  privateJwk?: JsonWebKey;
-  publicJwk?: JsonWebKey;
-}
+/*
+ * Тексты заглушек остаются здесь как запасные: показывать их должен тот,
+ * кто рисует, — он знает язык. Сервису язык неизвестен, поэтому вместе с
+ * текстом он возвращает причину (`undecryptable`), а интерфейс подставляет
+ * перевод по ней.
+ */
+export const LEGACY_MESSAGE_PLACEHOLDER = '🔒 Сообщение в устаревшем формате';
+export const KEY_UNAVAILABLE_PLACEHOLDER = '🔒 Ключ шифрования недоступен';
+export const BEFORE_JOIN_PLACEHOLDER = '🔒 Сообщение написано до вашего появления в чате';
+export const MEDIA_VERSION = 2;
 
-export interface IChatContext {
-  type?: TChatType;
-  peerPublicKey?: string | null;
-  recipientPublicKey?: string | null;
-  senderPublicKey?: string | null;
-  publicKey?: string | null;
-}
+const MEDIA_ALGORITHM = 'AES-GCM';
 
-export interface IMediaInput {
+interface IMediaInput {
   bytes: ArrayBuffer;
   mimeType: string;
   fileName?: string;
 }
 
-export interface IDecryptOptions {
-  preferEmbeddedSenderKey?: boolean;
+/**
+ * Проверка того, что пришло вместе с файлом.
+ *
+ * Метаданные приходят с сервера и попадают прямо в криптографическую
+ * операцию. Приведение типа здесь ничего не проверяет: недостающее поле
+ * всплыло бы внутри расшифровки и выглядело бы как «файл не открылся».
+ */
+function isEncryptedMediaV2(payload: unknown): payload is IEncryptedMedia {
+  if (typeof payload !== 'object' || payload === null) return false;
+
+  const candidate = payload as Record<string, unknown>;
+
+  return (
+    candidate.encrypted === true &&
+    candidate.version === MEDIA_VERSION &&
+    candidate.algorithm === MEDIA_ALGORITHM &&
+    typeof candidate.iv === 'string' &&
+    typeof candidate.ciphertext === 'string'
+  );
 }
 
-export interface IDecryptDebugInfo {
-  accountId: string | null;
-  preferEmbeddedSenderKey: boolean;
-  localPublicKeyFp: string | null;
-  payloadRecipientKeyFp: string | null;
-  payloadSenderKeyFp: string | null;
-  fallbackPeerKeyFp: string | null;
-}
+export type TUndecryptableReason = 'keyUnavailable' | 'beforeJoin' | 'legacy';
 
-export interface IE2EPayload {
-  e2e?: boolean;
-  iv?: string;
-  data?: string;
-  senderPublicKey?: string;
-  senderKeyFp?: string;
-  recipientKeyFp?: string;
-  // Имя поля совпадает с тем, что записывает encryptDM. Переименовывать нельзя:
-  // сообщения, отправленные раньше, хранят именно это имя.
-  recipientPubKeyB64?: string;
+export interface IDecryptedMessage {
+  text: string;
+  /**
+   * Почему сообщение не прочиталось. `undefined` — прочиталось.
+   *
+   * Раньше об этом говорил сам текст, и остальной код узнавал заглушку по
+   * ведущему замку: `content.startsWith('🔒')`. Стоило перевести подпись —
+   * и проверка переставала работать, а запрет пересылать нечитаемое
+   * молча исчезал.
+   */
+  undecryptable?: TUndecryptableReason;
+  /**
+   * Удалось ли подтвердить, что сообщение написал тот, кто указан.
+   *
+   * `undefined` — вопрос не стоит: своё сообщение, обычный текст или
+   * заглушка. `false` — подпись не сошлась ни с нынешней связкой
+   * отправителя, ни с прежними, либо её нет вовсе.
+   */
+  senderVerified?: boolean;
 }
 
 export class CryptoService {
   private apiClient: ApiClient;
-  private dbName = 'craneapp_crypto';
-  private dbVersion = 1;
-  private storeName = 'keys';
 
-  private privateKey: CryptoKey | null = null;
-  private publicKey: CryptoKey | null = null;
+  private chatKeys: ChatKeyManager;
 
-  private groupStates = new Map<string, any>();
-  private ready = false;
-  private initPromise: Promise<void> | null = null;
-  private publicKeyUploaded = false;
-  private accountId: string | null = null;
+  private identity: ILocalIdentity | null = null;
 
-  private dbPromise: Promise<IDBDatabase> | null = null;
+  private initPromise: Promise<ILocalIdentity | null> | null = null;
 
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
-  }
-
-  async init(): Promise<void> {
-    const accountId = this.getAccountId();
-    if (!accountId) return;
-
-    if (!this.hasWebCrypto()) return;
-
-    if (this.ready && this.accountId === accountId) {
-      return;
-    }
-
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.initPromise = this.doInit(accountId);
-
-    try {
-      await this.initPromise;
-    } finally {
-      this.initPromise = null;
-    }
-  }
-
-  async doInit(accountId: string): Promise<void> {
-    await this.initDB();
-
-    this.accountId = accountId;
-
-    const storedKeys = await this.dbGet(this.keypairKey());
-
-    if (storedKeys) {
-      await this.loadStoredKeypair(storedKeys);
-    } else {
-      await this.generateAndStoreKeys();
-    }
-
-    // Флаг выставляет сам uploadPublicKey — и только после успешного ответа.
-    await this.uploadPublicKey();
-
-    this.ready = true;
-  }
-
-  getAccountId(): string | null {
-    try {
-      const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
-      return user?.id || user?.username || null;
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  keypairKey(): string {
-    return `signal_keypair:${this.accountId}`;
-  }
-
-  groupStateKey(chatId: string): string {
-    return `mls_state:${this.accountId}:${chatId}`;
+    this.chatKeys = new ChatKeyManager({
+      apiClient,
+      identity: () => this.requireIdentity(),
+      members: async (chatId) => (await resolveMembers(chatId)).map((member) => member.id),
+    });
   }
 
   hasWebCrypto(): boolean {
     return Boolean(globalThis.crypto?.subtle);
   }
 
-  // --- IndexedDB ---
-  initDB(): Promise<IDBDatabase> {
-    if (this.dbPromise) return this.dbPromise;
-
-    this.dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.dbName, this.dbVersion);
-      req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
-        const db = (e.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName);
-        }
-      };
-      req.onsuccess = (e: Event) => resolve((e.target as IDBOpenDBRequest).result);
-      req.onerror = () => reject(req.error);
-      req.onblocked = () => {
-        console.warn('IndexedDB open blocked — another connection is holding an upgrade');
-      };
-    });
-
-    return this.dbPromise;
-  }
-
-  async dbGet<T = unknown>(key: string): Promise<T | undefined> {
-    const db = await this.initDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readonly');
-      const req = tx.objectStore(this.storeName).get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async dbSet(key: string, value: unknown): Promise<void> {
-    const db = await this.initDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const req = tx.objectStore(this.storeName).put(value, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  // --- Utils ---
-  bufToB64(buf: ArrayBuffer | Uint8Array): string {
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    }
-    return btoa(binary);
-  }
-
-  b64ToBuf(b64: string): ArrayBuffer {
-    const bin = atob(b64);
-    const buf = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    return buf.buffer;
-  }
-
-  // --- E2E Keys ---
-  async loadStoredKeypair(storedKeys: IStoredKeys): Promise<void> {
-    if (storedKeys.privateJwk && storedKeys.publicJwk) {
-      this.privateKey = await crypto.subtle.importKey(
-        'jwk',
-        storedKeys.privateJwk,
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        ['deriveKey', 'deriveBits']
-      );
-      this.publicKey = await crypto.subtle.importKey(
-        'jwk',
-        storedKeys.publicJwk,
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        []
-      );
-      return;
-    }
-
-    if (storedKeys.privateKey && storedKeys.publicKey) {
-      this.privateKey = storedKeys.privateKey;
-      this.publicKey = storedKeys.publicKey;
-    }
-  }
-
-  async generateAndStoreKeys(): Promise<void> {
-    const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, [
-      'deriveKey',
-      'deriveBits',
-    ]);
-    this.privateKey = pair.privateKey;
-    this.publicKey = pair.publicKey;
-    await this.dbSet(this.keypairKey(), {
-      privateJwk: await crypto.subtle.exportKey('jwk', pair.privateKey),
-      publicJwk: await crypto.subtle.exportKey('jwk', pair.publicKey),
-    });
-    await this.uploadPublicKey();
-  }
-
-  async uploadPublicKey(): Promise<void> {
-    if (this.publicKeyUploaded) return;
-    if (!this.publicKey || !this.hasWebCrypto()) return;
-    const pubRaw = await crypto.subtle.exportKey('spki', this.publicKey);
-    const pubB64 = this.bufToB64(pubRaw);
+  getAccountId(): string | null {
     try {
-      await this.apiClient.post('/auth/public-key', { publicKey: pubB64 });
-      // Только после успешного ответа: иначе одна сетевая ошибка оставит
-      // собеседников без ключа до перезагрузки вкладки, и все отправленные
-      // за сессию сообщения окажутся для них нечитаемыми.
-      this.publicKeyUploaded = true;
-      console.debug('🔐 Crypto: public key uploaded', {
-        accountId: this.accountId,
-        keyFp: await this.publicKeyFingerprint(pubB64),
-      });
-    } catch (e) {
-      console.error('Failed to upload public key', e);
+      const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
+      return user?.id || null;
+    } catch {
+      return null;
     }
   }
 
-  // --- Encryption/Decryption ---
-  async encryptDM(content: string, recipientPubKeyB64: string): Promise<string> {
-    if (!content) return content;
+  /**
+   * Подготовка личности.
+   *
+   * Ключи создаются один раз на аккаунт и публикуются связкой. Повторный
+   * вызов ничего не пересоздаёт: пересозданная пара означала бы, что вся
+   * прежняя переписка стала нечитаемой.
+   */
+  async init(): Promise<ILocalIdentity | null> {
+    if (this.initPromise) return this.initPromise;
 
-    // Ни один путь ниже не возвращает исходный текст: незашифрованная отправка
-    // в мессенджере с E2E хуже неотправки. Текст ошибки доходит до пользователя
-    // через setError в композере, поэтому он на русском.
+    this.initPromise = this.doInit();
+
+    try {
+      return await this.initPromise;
+    } finally {
+      this.initPromise = null;
+    }
+  }
+
+  private async doInit(): Promise<ILocalIdentity | null> {
+    const accountId = this.getAccountId();
+    if (!accountId || !this.hasWebCrypto()) return null;
+
+    if (this.identity?.accountId === accountId) return this.identity;
+
+    const identity = await loadOrCreateIdentity(accountId);
+    this.identity = identity;
+
+    // Наследие прежней схемы: одиночная пара и заглушка группового
+    // состояния. Ни то ни другое больше не читается.
+    await removeKey(`signal_keypair:${accountId}`);
+    await removeKeysWithPrefix(`mls_state:${accountId}`);
+
+    try {
+      await publishIdentity(this.apiClient, identity);
+    } catch (error) {
+      // Без публикации собеседники не смогут завернуть ключ для нас.
+      // Следующий вход попробует снова.
+      console.warn('Не удалось опубликовать ключи шифрования', error);
+    }
+
+    return identity;
+  }
+
+  private async requireIdentity(): Promise<ILocalIdentity> {
+    const identity = this.identity ?? (await this.init());
+
+    if (!identity) throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
+
+    return identity;
+  }
+
+  async ensureChatKey(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.ensure(chatId);
+  }
+
+  async rotateChatKey(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.rotate(chatId);
+  }
+
+  async healChatKeys(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.heal(chatId);
+  }
+
+  async encryptMessage(chatId: string, text: string): Promise<string> {
+    if (!text) return text;
+
     if (!this.hasWebCrypto()) {
       throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
     }
 
-    if (!recipientPubKeyB64) {
-      throw new Error('У собеседника нет ключа шифрования — сообщение не отправлено');
+    const identity = await this.requireIdentity();
+    const { chatKey } = await this.ensureChatKey(chatId);
+
+    if (!chatKey) {
+      throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
     }
 
-    // Инициализация обязательно до проверки privateKey: до неё ключ всегда null.
-    if (!this.ready) {
-      await this.init();
-    }
-
-    if (!this.privateKey) {
-      throw new Error('Ключи шифрования не готовы, попробуйте ещё раз');
-    }
-
-    // Simplistic mock of Signal/ECDH for demo purposes based on legacy
-    try {
-      const peerKey = await crypto.subtle.importKey(
-        'spki',
-        this.b64ToBuf(recipientPubKeyB64),
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        []
-      );
-
-      const sharedKey = await crypto.subtle.deriveKey(
-        { name: 'ECDH', public: peerKey },
-        this.privateKey,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt']
-      );
-
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const enc = new TextEncoder().encode(content);
-      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sharedKey, enc);
-      const senderPublicKey = await this.exportPublicKey();
-      const senderKeyFp = await this.publicKeyFingerprint(senderPublicKey);
-      const recipientKeyFp = await this.publicKeyFingerprint(recipientPubKeyB64);
-
-      return JSON.stringify({
-        e2e: true,
-        iv: this.bufToB64(iv),
-        data: this.bufToB64(ciphertext),
-        senderPublicKey,
-        senderKeyFp,
-        recipientPubKeyB64: recipientPubKeyB64,
-        recipientKeyFp,
-      });
-    } catch (e) {
-      console.warn('E2E Encrypt failed:', e);
-      throw new Error('Не удалось зашифровать сообщение');
-    }
+    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text, {
+      fingerprint: identity.fingerprint,
+      sign: (parts) => signParts(identity.ecdsaPrivate, parts),
+    });
   }
 
-  async deriveDMKey(peerPubKeyB64: string | null, usages: KeyUsage[]): Promise<CryptoKey> {
-    if (!this.hasWebCrypto()) {
-      throw new Error('WebCrypto is unavailable. Open the app via HTTPS or localhost for E2E.');
+  /**
+   * Проверка подписи.
+   *
+   * Сначала — нынешняя связка отправителя, потом прежние: человек мог
+   * сменить устройство после того, как отправил сообщение, и по нынешнему
+   * ключу его собственное сообщение выглядело бы поддельным.
+   */
+  private async isSenderConfirmed(parts: ISignedParts, signature: string): Promise<boolean> {
+    const current = await fetchPeerIdentity(this.apiClient, parts.senderId);
+    if (current && (await verifyParts(current.ecdsa, parts, signature))) return true;
+
+    for (const known of await knownPeerIdentities(parts.senderId)) {
+      if (await verifyParts(known.ecdsa, parts, signature)) return true;
     }
-    if (!this.ready) await this.init();
-    if (!peerPubKeyB64) {
-      throw new Error('Missing peer public key for E2E media encryption');
-    }
-    if (!this.privateKey) {
-      throw new Error('Missing local private key');
-    }
 
-    const peerKey = await crypto.subtle.importKey(
-      'spki',
-      this.b64ToBuf(peerPubKeyB64),
-      { name: 'ECDH', namedCurve: 'P-256' },
-      true,
-      []
-    );
-
-    return crypto.subtle.deriveKey(
-      { name: 'ECDH', public: peerKey },
-      this.privateKey,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      usages
-    );
-  }
-
-  async decryptDM(
-    payloadStr: string,
-    senderPubKeyB64: string,
-    options: IDecryptOptions = {}
-  ): Promise<string> {
-    try {
-      if (!payloadStr.startsWith('{')) return payloadStr; // not json
-      const payload: IE2EPayload = JSON.parse(payloadStr);
-      if (!payload.e2e || !payload.iv || !payload.data) return payloadStr;
-      if (!this.hasWebCrypto()) return E2E_UNAVAILABLE_MESSAGE;
-      if (!this.ready) await this.init();
-      if (!this.privateKey) return E2E_UNAVAILABLE_MESSAGE;
-      const preferEmbeddedSenderKey = options.preferEmbeddedSenderKey !== false;
-      const senderKey = preferEmbeddedSenderKey
-        ? payload.senderPublicKey || senderPubKeyB64
-        : payload.recipientPubKeyB64 || senderPubKeyB64;
-      if (!senderKey) return '🔒 [Отсутствует публичный ключ отправителя]';
-
-      const peerKey = await crypto.subtle.importKey(
-        'spki',
-        this.b64ToBuf(senderKey),
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        []
-      );
-
-      const sharedKey = await crypto.subtle.deriveKey(
-        { name: 'ECDH', public: peerKey },
-        this.privateKey,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      );
-
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: this.b64ToBuf(payload.iv) },
-        sharedKey,
-        this.b64ToBuf(payload.data)
-      );
-
-      return new TextDecoder().decode(decrypted);
-    } catch (e) {
-      const debugInfo = await this.decryptDebugInfo(payloadStr, senderPubKeyB64, options);
-      console.warn('E2E Decrypt failed:', e, debugInfo);
-
-      // Своё сообщение шифровалось для ключа собеседника, чужое — для нашего.
-      // Поэтому сверять payload.recipientKeyFp нужно с разными ключами:
-      // сравнение со своим всегда даёт расхождение на исходящих сообщениях.
-      const isOwnMessage = Boolean(
-        debugInfo.localPublicKeyFp && debugInfo.payloadSenderKeyFp === debugInfo.localPublicKeyFp
-      );
-      const expectedKeyFp = isOwnMessage ? debugInfo.fallbackPeerKeyFp : debugInfo.localPublicKeyFp;
-      const keyChanged = Boolean(
-        expectedKeyFp &&
-        debugInfo.payloadRecipientKeyFp &&
-        expectedKeyFp !== debugInfo.payloadRecipientKeyFp
-      );
-
-      if (!keyChanged) return '🔒 [Ошибка расшифровки E2E]';
-
-      return isOwnMessage
-        ? '🔒 [Ключ собеседника изменился — сообщение больше не расшифровывается]'
-        : '🔒 [Ваши ключи изменились — сообщение больше не расшифровывается]';
-    }
-  }
-
-  async exportPublicKey(): Promise<string | null> {
-    if (!this.publicKey || !this.hasWebCrypto()) return null;
-    const pubRaw = await crypto.subtle.exportKey('spki', this.publicKey);
-    return this.bufToB64(pubRaw);
-  }
-
-  async publicKeyFingerprint(publicKeyB64: string | null) {
-    if (!publicKeyB64 || !globalThis.crypto?.subtle?.digest) return null;
-    const hash = await crypto.subtle.digest('SHA-256', this.b64ToBuf(publicKeyB64));
-    return this.bufToB64(hash).slice(0, 12);
-  }
-
-  async localPublicKeyFingerprint() {
-    return this.publicKeyFingerprint(await this.exportPublicKey());
-  }
-
-  async decryptDebugInfo(
-    payloadStr: string,
-    senderPubKeyB64: string,
-    options: IDecryptOptions = {}
-  ): Promise<Promise<IDecryptDebugInfo>> {
-    let payload: IE2EPayload = {};
-    try {
-      payload = JSON.parse(payloadStr);
-    } catch (_error) {}
-
-    return {
-      accountId: this.accountId || null,
-      preferEmbeddedSenderKey: options.preferEmbeddedSenderKey !== false,
-      localPublicKeyFp: await this.localPublicKeyFingerprint(),
-      payloadRecipientKeyFp: payload.recipientKeyFp || null,
-      payloadSenderKeyFp: payload.senderKeyFp || null,
-      fallbackPeerKeyFp: await this.publicKeyFingerprint(senderPubKeyB64),
-    };
-  }
-
-  // --- MLS Groups ---
-  async syncGroupState(chatId: string): Promise<boolean> {
-    try {
-      const res = await this.apiClient.get<IMlsStateResponse>(`/chats/${chatId}/mls-state`);
-      if (res.data && res.data.state) {
-        this.groupStates.set(chatId, res.data.state);
-        await this.dbSet(this.groupStateKey(chatId), res.data.state);
-        return true;
-      }
-    } catch (e) {
-      console.warn('MLS sync failed:', e);
-    }
     return false;
   }
 
-  async encryptGroup(chatId: string, content: string): Promise<string> {
-    if (!this.ready) await this.init();
-    const state = this.groupStates.get(chatId) || (await this.dbGet(this.groupStateKey(chatId)));
-    if (!state) {
-      await this.syncGroupState(chatId);
-    }
+  async decryptMessage(
+    chatId: string,
+    content: string,
+    senderId: string
+  ): Promise<IDecryptedMessage> {
+    if (!content) return { text: content };
+    if (!this.hasWebCrypto())
+      return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
 
-    // Mock MLS encryption based on legacy script
-    return `[MLS]${btoa(encodeURIComponent(content))}`;
-  }
+    const envelope = parseEnvelope(content);
 
-  async decryptGroup(chatId: string, payload: string): Promise<string> {
-    if (!payload.startsWith('[MLS]')) return payload;
-
-    if (!this.ready) await this.init();
-    let state = this.groupStates.get(chatId) || (await this.dbGet(this.groupStateKey(chatId)));
-    if (!state) {
-      const synced = await this.syncGroupState(chatId);
-      if (!synced) return '🔒 [зашифровано MLS - Ожидание синхронизации]';
+    if (!envelope) {
+      return isLegacyContent(content)
+        ? { text: LEGACY_MESSAGE_PLACEHOLDER, undecryptable: 'legacy' }
+        : { text: content };
     }
 
     try {
-      const b64 = payload.substring(5);
-      return decodeURIComponent(atob(b64));
-    } catch (e) {
-      this.syncGroupState(chatId);
-      return '🔒 [ошибка расшифровки MLS - Синхронизация...]';
+      const identity = await this.requireIdentity();
+      const chatKey = await this.chatKeys.forEpoch(chatId, envelope.epoch);
+
+      if (!chatKey) {
+        // Ключа этой эпохи нет и не будет: она старше самой ранней из наших.
+        // Это не поломка, а обещание, данное тем, кто переписывался до нас.
+        const earliest = await this.chatKeys.earliestEpoch(chatId);
+        const beforeUs = earliest !== null && envelope.epoch < earliest;
+
+        return beforeUs
+          ? { text: BEFORE_JOIN_PLACEHOLDER, undecryptable: 'beforeJoin' }
+          : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
+      }
+
+      const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+
+      // Своё сообщение проверять не у кого и незачем.
+      if (senderId === identity.accountId) return { text };
+
+      const senderVerified = envelope.sig
+        ? await this.isSenderConfirmed(
+            { chatId, epoch: envelope.epoch, senderId, iv: envelope.iv, data: envelope.data },
+            envelope.sig
+          )
+        : false;
+
+      return { text, senderVerified };
+    } catch (error) {
+      console.warn('Не удалось расшифровать сообщение', error);
+      return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
     }
   }
 
-  async encryptMedia(
-    chatId: string,
-    dataUrlOrBlob: string | Blob,
-    chatContext: IChatContext = {}
-  ): Promise<IEncryptedMedia> {
-    const input = await this.normalizeMediaInput(dataUrlOrBlob);
-    const key = await this.getMediaKey(chatId, chatContext, ['encrypt']);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, input.bytes);
+  async encryptMedia(chatId: string, source: Blob | string): Promise<IEncryptedMedia> {
+    const input = await this.normalizeMediaInput(source);
+    await this.requireIdentity();
+
+    const { chatKey } = await this.ensureChatKey(chatId);
+    if (!chatKey) throw new Error('Ключ шифрования чата недоступен — файл не отправлен');
+
+    const { iv, ciphertext } = await encryptMediaBytes(
+      chatKey.key,
+      chatId,
+      chatKey.epoch,
+      input.bytes
+    );
 
     return {
-      version: 1,
+      version: MEDIA_VERSION,
       encrypted: true,
-      algorithm: 'AES-GCM',
-      iv: this.bufToB64(iv),
-      ciphertext: this.bufToB64(ciphertext),
+      algorithm: MEDIA_ALGORITHM,
+      iv,
+      ciphertext,
       mimeType: input.mimeType,
       sizeBytes: input.bytes.byteLength,
+      keyEpoch: chatKey.epoch,
       ...(input.fileName ? { fileName: input.fileName } : {}),
     };
   }
 
-  async decryptMedia(
-    chatId: string,
-    encryptedMedia: IEncryptedMedia,
-    chatContext: IChatContext = {}
-  ): Promise<Blob> {
-    if (!encryptedMedia || encryptedMedia.encrypted !== true || encryptedMedia.version !== 1) {
-      throw new Error('Encrypted media payload expected');
-    }
-    if (
-      encryptedMedia.algorithm !== 'AES-GCM' ||
-      !encryptedMedia.iv ||
-      !encryptedMedia.ciphertext
-    ) {
-      throw new Error('Unsupported encrypted media payload');
+  async decryptMedia(chatId: string, payload: IEncryptedMedia): Promise<Blob> {
+    if (!isEncryptedMediaV2(payload)) {
+      throw new Error(
+        payload?.encrypted && payload.version !== MEDIA_VERSION
+          ? 'Файл сохранён в устаревшем формате'
+          : 'Ожидался зашифрованный файл'
+      );
     }
 
-    const key = await this.getMediaKey(chatId, chatContext, ['decrypt']);
-    const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: this.b64ToBuf(encryptedMedia.iv) },
-      key,
-      this.b64ToBuf(encryptedMedia.ciphertext)
+    await this.requireIdentity();
+
+    const chatKey = await this.chatKeys.forEpoch(chatId, payload.keyEpoch ?? 1);
+    if (!chatKey) throw new Error('Ключ шифрования недоступен');
+
+    const plaintext = await decryptMediaBytes(
+      chatKey.key,
+      chatId,
+      chatKey.epoch,
+      payload.iv,
+      payload.ciphertext
     );
 
-    return new Blob([plaintext], {
-      type: encryptedMedia.mimeType || 'application/octet-stream',
-    });
+    return new Blob([plaintext], { type: payload.mimeType || 'application/octet-stream' });
   }
 
-  async getMediaKey(
-    chatId: string,
-    chatContext: IChatContext = {},
-    usages: KeyUsage[] = ['encrypt', 'decrypt']
-  ): Promise<CryptoKey> {
-    const chatType = chatContext.type || 'private';
-    if (chatType === 'group' || chatType === 'channel') {
-      return this.deriveGroupMediaKey(chatId, usages);
-    }
-    const peerKey =
-      chatContext.peerPublicKey ||
-      chatContext.recipientPublicKey ||
-      chatContext.senderPublicKey ||
-      chatContext.publicKey ||
-      null;
-    return this.deriveDMKey(peerKey, usages);
+  /** Отпечаток собеседника — код безопасности, который сверяют вслух. */
+  async fingerprintOf(userId: string): Promise<string | null> {
+    const identity = await this.requireIdentity();
+    if (userId === identity.accountId) return identity.fingerprint;
+
+    const peer = await fetchPeerIdentity(this.apiClient, userId);
+
+    return peer?.fingerprint ?? null;
   }
 
-  async deriveGroupMediaKey(chatId: string, usages: KeyUsage[]): Promise<CryptoKey> {
-    if (!this.ready) await this.init();
-    let state = this.groupStates.get(chatId) || (await this.dbGet(this.groupStateKey(chatId)));
-    if (!state) {
-      await this.syncGroupState(chatId);
-      state = this.groupStates.get(chatId) || (await this.dbGet(this.groupStateKey(chatId)));
-    }
-    if (!state) {
-      throw new Error('Missing group encryption state for media');
-    }
-
-    const material = JSON.stringify({
-      purpose: 'craneapp-media-v1',
-      chatId,
-      state,
-    });
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
-    return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, usages);
+  /** Выход из аккаунта: память чистится, ключи на устройстве остаются. */
+  forgetSession(): void {
+    this.identity = null;
+    this.chatKeys.forget();
+    forgetDerivedKeys();
+    forgetPeerIdentities();
   }
 
-  async normalizeMediaInput(dataUrlOrBlob: string | Blob | File): Promise<IMediaInput> {
-    if (typeof Blob !== 'undefined' && dataUrlOrBlob instanceof Blob) {
-      if (dataUrlOrBlob instanceof File) {
-        return {
-          bytes: await dataUrlOrBlob.arrayBuffer(),
-          mimeType: dataUrlOrBlob.type || 'application/octet-stream',
-          fileName: dataUrlOrBlob.name,
-        };
-      }
+  /** Завершение всех сеансов: ключи стираются с устройства. */
+  async wipeDevice(): Promise<void> {
+    const accountId = this.identity?.accountId ?? this.getAccountId();
+
+    if (accountId) {
+      await this.chatKeys.wipe(accountId);
+      await removeKey(`identity:${accountId}`);
+      await removeKeysWithPrefix(PEER_BUNDLES_PREFIX);
+    }
+
+    this.forgetSession();
+  }
+
+  async normalizeMediaInput(source: Blob | string | File): Promise<IMediaInput> {
+    if (typeof Blob !== 'undefined' && source instanceof Blob) {
       return {
-        bytes: await dataUrlOrBlob.arrayBuffer(),
-        mimeType: dataUrlOrBlob.type || 'application/octet-stream',
-        fileName: undefined,
+        bytes: await source.arrayBuffer(),
+        mimeType: source.type || 'application/octet-stream',
+        fileName: source instanceof File ? source.name : undefined,
       };
     }
 
-    if (typeof dataUrlOrBlob === 'string') {
-      const match = dataUrlOrBlob.match(/^data:([^;]+);base64,(.*)$/);
-      if (!match) {
-        throw new Error('Media must be a data URL or Blob');
-      }
+    if (typeof source === 'string') {
+      const match = source.match(/^data:([^;]+);base64,(.*)$/);
+      if (!match) throw new Error('Файл должен быть data-URL или Blob');
+
       return {
-        bytes: this.b64ToBuf(match[2]),
+        bytes: base64ToBytes(match[2]).buffer as ArrayBuffer,
         mimeType: match[1] || 'application/octet-stream',
       };
     }
 
-    throw new Error('Unsupported media input');
+    throw new Error('Неподдерживаемый вид файла');
   }
 }

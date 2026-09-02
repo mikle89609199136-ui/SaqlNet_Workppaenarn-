@@ -1,9 +1,9 @@
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble } from './MessageBubble/MessageBubble';
-import { ThreadSkeleton } from '../ui/Skeletons/ThreadSkeleton';
+import { MessageBubbleSkeleton } from './MessageBubble/MessageBubbleSkeleton';
 import { ThreadState } from '../ui/ThreadState';
 
 interface Props {
@@ -28,11 +28,11 @@ export const MessagesList = memo(
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
-    const translations = useChatStore((state) => state.translations);
+    const translations = useChatUiStore((state) => state.translations);
 
     return (
       <section className="thread-messages styled-scrollbar" aria-busy={isLoading} ref={messagesRef}>
-        {isLoading && <ThreadSkeleton />}
+        {isLoading && <MessageBubbleSkeleton />}
         {!isLoading && error && messages.length === 0 && (
           <ThreadState message={error} title={t('loadingError', 'Ошибка загрузки')} />
         )}

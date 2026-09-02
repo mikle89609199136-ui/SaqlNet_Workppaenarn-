@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
 import { chatKeys } from '../keys';
+import { flattenThread } from './threadCache';
 
 /** Размер страницы истории — тот же, что запрашивала страница чата до миграции. */
 export const MESSAGES_PAGE_SIZE = 50;
@@ -26,6 +27,12 @@ export function messagesQuery(chatId: string) {
     // Неполная страница означает, что история кончилась.
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length < MESSAGES_PAGE_SIZE ? undefined : allPages.length * MESSAGES_PAGE_SIZE,
+    // Страницы склеиваются в одну ленту здесь, а не у каждого читателя.
+    // Результат `select` кешируется до следующего изменения данных, тогда
+    // как склейка в теле хука давала бы новый массив на каждый рендер —
+    // а лента служит зависимостью эффектов, и новая ссылка на ней
+    // запускает их заново.
+    select: flattenThread,
     // Свежесть приносит WebSocket, а не повторный опрос: перезапрос истории
     // сбрасывал бы позицию прокрутки и заново расшифровывал бы всю ленту.
     staleTime: Infinity,

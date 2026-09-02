@@ -1,68 +1,39 @@
 import {
+  CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { ChatListItem, ChatsSkeleton } from '@/components/ui';
-import { useChatLastMessagePreview, useIsMobile } from '@/hooks';
-import { services } from '@/services';
-import { useChatsStore } from '@/store';
-import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
-import { useEffect, useState } from 'react';
+import { ChatListItem, ChatListItemSkeleton, Icon } from '@/components/ui';
+import { useIsMobile } from '@/hooks';
+import { chatsQuery } from '@/queries/chats/chatsQuery';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
 
 export function ChatsPage() {
-  const chats = useChatsStore((state) => state.chats);
-  const setChats = useChatsStore((state) => state.setChats);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: chats = [],
+    isPending: isLoading,
+    error: loadError,
+    refetch: refetchChats,
+  } = useQuery(chatsQuery());
+  const error = loadError ? (loadError as Error).message : '';
   const { chatId } = useParams();
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [profileWidth, setProfileWidth] = useState<number | null>(null);
   const [profileState, setProfileState] = useState<IProfileState>({
     isOpen: false,
-    isLoading: false,
-    error: '',
-    user: null,
+    userId: null,
     chat: null,
     messages: [],
   });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
+  const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
   const { t } = useTranslation();
-
-  const fetchChatsList = () => {
-    services.chatService
-      .getChats()
-      .then((items) =>
-        Promise.all(
-          items.map(async (chat) => ({
-            ...chat,
-            lastMessage: chat.lastMessage
-              ? await decryptChatLastMessagePreview(chat.id, chat.lastMessage)
-              : chat.lastMessage,
-          }))
-        )
-      )
-      .then((items) => {
-        setChats(items);
-        setError('');
-      })
-      .catch((err) => {
-        setError(err.message || t('chatsLoadError', 'Не удалось загрузить чаты'));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    fetchChatsList();
-  }, []);
-
-  useChatLastMessagePreview();
 
   function startResize(kind: string, event: PointerEvent) {
     event.preventDefault();
@@ -95,6 +66,10 @@ export function ChatsPage() {
     window.addEventListener('pointerup', handleUp);
   }
 
+  const createGroupModal = isCreateGroupOpen ? (
+    <CreateGroupModal onClose={() => setCreateGroupOpen(false)} />
+  ) : null;
+
   const listContent = (
     <>
       <section className="chats-toolbar">
@@ -105,12 +80,22 @@ export function ChatsPage() {
         >
           <span className="chats-search-placeholder">{t('search', 'Поиск чатов и людей...')}</span>
         </Link>
+
+        <button
+          aria-label={t('newGroup', 'Новая группа')}
+          className="chats-new-group"
+          onClick={() => setCreateGroupOpen(true)}
+          title={t('newGroup', 'Новая группа')}
+          type="button"
+        >
+          <Icon name="groupAdd" />
+        </button>
       </section>
 
       <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
-        {isLoading ? <ChatsSkeleton /> : null}
+        {isLoading ? <ChatListItemSkeleton /> : null}
         {!isLoading && error && (
-          <ErrorChatListPlaceholder message={error} onRetry={fetchChatsList} />
+          <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}
         {!isLoading && !error && chats.length === 0 && <EmptyChatListPlaceholder />}
         {!isLoading && !error && chats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}
@@ -130,11 +115,20 @@ export function ChatsPage() {
         />
       );
     }
-    return <main className="chats-page">{listContent}</main>;
+    return (
+      <>
+        {createGroupModal}
+        <main className="chats-page">{listContent}</main>
+      </>
+    );
   }
 
   return (
     <div className={`chat-workspace ${profileState.isOpen ? 'has-profile' : ''}`}>
+      {/* Окно рисуется вне колонки списка: у той backdrop-filter, а он
+          делает position: fixed относительным ей, и окно оказывалось
+          прижатым к узкой колонке вместо экрана. */}
+      {createGroupModal}
       <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
         <main className="chats-page">{listContent}</main>
       </div>
@@ -170,14 +164,7 @@ export function ChatsPage() {
           >
             <UserProfilePanel
               onClose={() => {
-                setProfileState({
-                  isOpen: false,
-                  isLoading: false,
-                  error: '',
-                  user: null,
-                  chat: null,
-                  messages: [],
-                });
+                setProfileState({ isOpen: false, userId: null, chat: null, messages: [] });
                 setProfileCloseToken((value) => value + 1);
               }}
               profileState={profileState}

@@ -41,7 +41,7 @@ npm run dev                 # запускает клиент из frontend/
 ```
 
 Клиент держит собственный `package.json`. Корневые команды `dev`, `build:react`,
-`typecheck` и `test:react` вызывают его скрипты, поэтому требуют установленного
+`typecheck` и `test` вызывают его скрипты, поэтому требуют установленного
 `frontend/node_modules`.
 
 Переменная `DEV_API_PROXY_TARGET` для dev-сервера читается из `frontend/.env`.
@@ -50,10 +50,9 @@ Useful checks:
 
 ```bash
 npm test
-npm run test:react
 ```
 
-`npm test` currently runs the architecture/syntax guard. 
+`npm test` runs the frontend test suite. 
 React tests run through
 Vitest.
 

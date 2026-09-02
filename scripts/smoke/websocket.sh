@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # подключение и проверка хотя бы одного события.
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[2]}")" && pwd)"
+# От самого файла, а не от того, кто его подключил: BASH_SOURCE[2] зависит
+# от глубины вызова, и под set -u обращение к пустому элементу обрывает
+# прогон ещё до первой проверки.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 run_websocket_tests() {
 	echo ""

@@ -23,9 +23,10 @@ async function resolveNotificationBody(chatId: string, message: ILastMessageDto)
     const text = decrypted?.content;
 
     if (typeof text !== 'string' || !text) return FALLBACK_BODY;
-    // Расшифровать не удалось: сервис возвращает либо исходный payload,
-    // либо пометку с замком. В уведомлении не место ни тому, ни другому.
-    if (text.startsWith('{') || text.startsWith('🔒')) return FALLBACK_BODY;
+    // Расшифровать не удалось: сервис возвращает исходный payload либо
+    // заглушку с причиной. В уведомлении не место ни тому, ни другому.
+    if (decrypted?.undecryptable) return FALLBACK_BODY;
+    if (text.startsWith('{')) return FALLBACK_BODY;
 
     return text.slice(0, MAX_BODY_LENGTH);
   } catch {

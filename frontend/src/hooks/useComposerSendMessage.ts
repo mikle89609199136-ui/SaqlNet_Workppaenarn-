@@ -1,7 +1,8 @@
 import { chatKeys } from '@/queries/keys';
 import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services';
-import { useChatStore } from '@/store';
+import { useChatUiStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,6 +17,7 @@ import { useParams } from 'react-router-dom';
 
 interface Params {
   selectionMode: boolean;
+  draftRef: RefObject<HTMLInputElement | null>;
   pendingAttachment: IPendingAttachment | null;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   bottomRef: RefObject<HTMLDivElement | null>;
@@ -25,6 +27,7 @@ interface Params {
 export function useComposerSendMessage({
   attachmentInputRef,
   bottomRef,
+  draftRef,
   pendingAttachment,
   selectionMode,
   setPendingAttachment,
@@ -32,13 +35,11 @@ export function useComposerSendMessage({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  const draft = useChatStore((state) => state.draft);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
-  const setError = useChatStore((state) => state.setError);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
+  const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
+  const setError = useChatUiStore((state) => state.setError);
   const { chatId = '' } = useParams<{ chatId: string }>();
 
   const [isSending, setIsSending] = useState(false);
@@ -50,7 +51,8 @@ export function useComposerSendMessage({
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (selectionMode) return;
-    const content = draft.trim();
+    // Текст берётся из самого поля: в состоянии React его больше нет.
+    const content = (draftRef.current?.value ?? '').trim();
     if ((!content && !pendingAttachment) || isSending) return;
 
     setIsSending(true);
@@ -96,7 +98,7 @@ export function useComposerSendMessage({
         scrollToBottom();
         setReplyToMessage(null);
       }
-      setDraft('');
+      setComposerText(draftRef.current, '');
       setError('');
     } catch (err: any) {
       setError(err.message || t('messageSendError', 'Не удалось отправить сообщение'));

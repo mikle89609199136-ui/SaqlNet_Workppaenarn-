@@ -6,6 +6,15 @@ export { formatFileSize, getMaxUploadSize, isValidFileSize, parseFileSize } from
 export { formatLastSeen } from './formatLastSeen';
 export { getAttachmentIcon } from './getAttachmentIcon';
 export { getChatSubtitle } from './getChatSubtitle';
+export {
+  checkPassword,
+  getPasswordScore,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULES,
+  passwordSchema,
+  type IPasswordRule,
+} from './passwordRules';
 export { getLastMessageText } from './getLastMessageText';
 export {
   appendUniqueMessage,

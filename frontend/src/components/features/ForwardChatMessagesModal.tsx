@@ -1,12 +1,13 @@
 import { useDebounce } from '@/hooks';
 import { services } from '@/services';
-import { useChatsStore } from '@/store';
+import { chatsQuery } from '@/queries/chats/chatsQuery';
+import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Icon, Modal } from '../ui';
-import { Identicon } from '../ui/Identicon';
+import { Avatar } from '../ui/Avatar';
 
 interface Props {
   messages: TMessagesList;
@@ -22,7 +23,7 @@ export const ForwardChatMessagesModal = ({
   setSelectionMode,
 }: Props) => {
   const { t } = useTranslation();
-  const chats = useChatsStore((state) => state.chats);
+  const { data: chats = [] } = useQuery(chatsQuery());
 
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
@@ -53,7 +54,7 @@ export const ForwardChatMessagesModal = ({
     try {
       setForwarding(true);
       for (const message of messages) {
-        await services.messageService.forwardMessage(message.id, chatId);
+        await services.messageService.forwardMessage(message, chatId);
       }
 
       setSelectedMessages([]);
@@ -66,7 +67,11 @@ export const ForwardChatMessagesModal = ({
   };
 
   return (
-    <Modal className="max-w-4/5 md:max-w-1/5" onClose={onClose}>
+    <Modal
+      className="w-4/5 max-w-none bg-sheet md:w-100"
+      label="Переслать сообщения"
+      onClose={onClose}
+    >
       <header className="flex justify-between px-6">
         <h2 className="text-xl w-full text-left">{t('forward', 'Переслать...')}</h2>
 
@@ -113,14 +118,7 @@ export const ForwardChatMessagesModal = ({
                     data-chatid={chat.id}
                     className="w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-panel px-6 py-3"
                   >
-                    <div className="chat-avatar shrink-0">
-                      {chat.avatarUrl && <img src={chat.avatarUrl} alt="" />}
-                      {!chat.avatarUrl && chat.peerId ? (
-                        <Identicon userId={chat.peerId} size={48} />
-                      ) : (
-                        title.slice(0, 1).toUpperCase()
-                      )}
-                    </div>
+                    <Avatar id={chat.peerId} name={title} size="lg" src={chat.avatarUrl} />
 
                     <div className="flex flex-col gap-y-1 w-full">
                       <div className="text-left w-full">{title}</div>

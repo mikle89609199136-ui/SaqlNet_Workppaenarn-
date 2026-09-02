@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, type RefObject } from 'react';
 import { messagesQuery } from '@/queries/chat/threadQueries';
-import { flattenThread } from '@/queries/chat/threadCache';
+import { EMPTY_THREAD } from '@/queries/chat/threadCache';
 
 /** На каком расстоянии от верха начинать подгружать более старые сообщения. */
 const LOAD_MORE_THRESHOLD_PX = 50;
@@ -58,7 +58,9 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
   }, [containerRef, loadOlder]);
 
   return {
-    messages: flattenThread(query.data),
+    // Общая пустая лента, а не новый литерал: до первой загрузки ссылка
+    // тоже обязана оставаться прежней.
+    messages: query.data ?? EMPTY_THREAD,
     isLoading: query.isPending,
     isLoadingOlder: isFetchingNextPage,
     hasOlder: Boolean(hasNextPage),

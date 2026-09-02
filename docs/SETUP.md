@@ -123,15 +123,16 @@ cd frontend && npm ci && cd ..
 Запустите полный набор frontend-проверок из корня проекта:
 
 ```bash
-npm run typecheck
 npm test
-npm run test:react
 npm run build:react
 ```
 
-- `typecheck` проверяет TypeScript без создания сборки;
+- `typecheck` **сейчас ничего не проверяет**: корневой `tsconfig.json` — файл-решение
+  со списком проектов и пустым `files`, поэтому `tsc --noEmit` завершается успехом,
+  не открыв ни одного файла. Настоящая проверка — `npx tsc -p tsconfig.app.json --noEmit`
+  из `frontend`, и она сейчас находит сотни ошибок. Разбирается в #253;
 - `test` запускает архитектурные и синтаксические ограничения;
-- `test:react` запускает тесты Vitest;
+- `test` запускает тесты Vitest;
 - `build:react` проверяет production-сборку Vite.
 
 Проверки Go backend v2:
