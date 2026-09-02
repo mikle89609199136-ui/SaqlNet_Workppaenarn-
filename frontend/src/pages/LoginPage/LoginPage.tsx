@@ -1,147 +1,163 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { Icon } from '@/components/ui';
+import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
-import { ROUTES } from '../../consts/routes.js';
-import { STORAGE_KEYS } from '../../consts/storageKeys.js';
-import { useToasts } from '../../hooks/useToasts.js';
-import { fetchUserSettings, loginUser, saveAuthSession } from '../../services/authApi.js';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Button, Icon, Input } from '@/components/ui';
+import { AuthLayout } from '@/components/layouts';
+import { ROUTES } from '@/consts/routes';
+import { useToasts } from '@/hooks';
+import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
+import { services } from '@/services/serviceContainer';
+import { useProfileStore } from '@/store/profile';
+import type { IAuthResponse } from '@/types';
+import { loginFormSchema, type TLoginForm } from './loginSchema';
 
 export function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = useProfileStore((state) => state.token);
   const { showToast } = useToasts();
   const { t } = useTranslation();
+  const [showPassword, setShowPassword] = useState(false);
 
-  if (localStorage.getItem(STORAGE_KEYS.TOKEN)) {
-    window.location.href = ROUTES.CHATS;
-  }
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting, isSubmitted, touchedFields },
+  } = useForm<TLoginForm>({
+    resolver: zodResolver(loginFormSchema),
+    defaultValues: { username: '', password: '' },
+    /* Ругаться на пустое поле, которого человек ещё не касался, значит
+       встретить его формой в ошибках. */
+    mode: 'onTouched',
+  });
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    const cleanUsername = username.trim();
+  /* Уже вошли — на странице входа делать нечего. Раньше здесь стоял
+     `window.location.href` прямо в теле компонента: перезагрузка всего
+     приложения посреди отрисовки. */
+  if (token) return <Navigate replace to={ROUTES.CHATS} />;
 
-    if (!cleanUsername || !password) {
-      showToast('error', t('loginRequired', 'Введите юзернейм и пароль'));
-      return;
-    }
+  /* Схема проверяет оба поля разом, поэтому набор в одном показывал бы
+     претензию ко второму, ещё пустому. Ошибка появляется там, где
+     человек уже побывал, либо после попытки войти. */
+  const errorOf = (field: keyof TLoginForm) =>
+    isSubmitted || touchedFields[field] ? errors[field]?.message : undefined;
 
-    setIsSubmitting(true);
+  async function submit(values: TLoginForm) {
     try {
-      const clientIP = await getClientIP();
-      let data = await loginUser({
-        clientIP,
-        password,
-        username: cleanUsername,
+      const data: IAuthResponse = await services.authService.login({
+        password: values.password,
+        username: values.username.trim(),
       });
 
+      /* Второй пароль сервер ещё принимает, но интерфейса у него больше
+         нет — включить защиту негде. Если она всё же включена (осталась
+         с прежних времён или выставлена через API), человек должен
+         увидеть причину, а не форму, которая молча ничего не делает. */
       if (data.twoFARequired) {
-        const twoFAPassword = window.prompt(
-          t('twoFAPrompt', 'Введите дополнительный пароль (2FA):')
-        );
-        if (!twoFAPassword) {
-          setIsSubmitting(false);
-          return;
-        }
-
-        data = await loginUser({
-          clientIP,
-          password,
-          twoFAPassword,
-          username: cleanUsername,
+        setError('password', {
+          message: t(
+            'login.twoFAUnavailable',
+            'У аккаунта включён дополнительный пароль — вход с ним сейчас недоступен'
+          ),
         });
+        return;
       }
 
       if (!data.token) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
-      const settings = await fetchUserSettings(data.token);
-      saveAuthSession({ settings, token: data.token, user: data.user });
-      showToast('success', t('loginDone', 'Вход выполнен!'));
-      window.setTimeout(() => {
-        window.location.href = ROUTES.CHATS;
-      }, 500);
+      const settings = await fetchUserSettings();
+      saveAuthSession({ settings, token: data.token, user: data.user! });
+      navigate(safeReturnPath(searchParams.get('from')), { replace: true });
     } catch (error) {
-      showToast('error', error.message);
-      setIsSubmitting(false);
+      const code = (error as { data?: { code?: string } })?.data?.code;
+
+      /* Неверная пара — это про оба поля сразу, поэтому подпись под
+         паролем, а фокус туда же: имя человек, как правило, помнит.
+         Раньше об этом сообщал тост: он исчезал через пару секунд, а
+         форма оставалась заполненной, будто ничего не произошло. */
+      if (code === 'invalid_credentials') {
+        setError(
+          'password',
+          { message: t('login.invalidCredentials', 'Неверное имя пользователя или пароль') },
+          { shouldFocus: true }
+        );
+        return;
+      }
+
+      showToast('error', (error as Error).message);
     }
   }
 
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-logo">
-          <img src="https://i.ibb.co/1Y4Pg7BF/94-20260317155000.png" alt="CraneApp" />
-        </div>
-        <h1>CraneApp</h1>
-        <p className="login-subtitle">{t('loginSubtitle', 'Войдите в аккаунт')}</p>
-
-        <form onSubmit={handleSubmit}>
-          <div className="login-field">
-            <label htmlFor="loginUsername">{t('username', 'Юзернейм')}</label>
-            <input
-              id="loginUsername"
-              autoCapitalize="none"
-              autoComplete="username"
-              autoCorrect="off"
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="@username.123"
-              type="text"
-              value={username}
-            />
-          </div>
-
-          <div className="login-field">
-            <label htmlFor="loginPassword">{t('password', 'Пароль')}</label>
-            <div className="login-password-wrap">
-              <input
-                id="loginPassword"
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-              />
-              <button
-                aria-label={
-                  showPassword
-                    ? t('hidePassword', 'Скрыть пароль')
-                    : t('showPassword', 'Показать пароль')
-                }
-                className="login-eye"
-                onClick={() => setShowPassword((value) => !value)}
-                type="button"
-              >
-                <Icon name={showPassword ? 'eyeOff' : 'eye'} size="md" />
-              </button>
-            </div>
-          </div>
-
-          <button className="login-submit" disabled={isSubmitting} type="submit">
-            {isSubmitting ? t('loginLoading', 'Вход...') : t('login', 'Войти')}
-          </button>
-        </form>
-
-        <div className="login-footer">
+    <AuthLayout
+      footer={
+        <>
           {t('noAccount', 'Нет аккаунта?')}{' '}
-          <Link to={ROUTES.REGISTER}>{t('registerAction', 'Зарегистрироваться')}</Link>
-        </div>
-      </section>
-    </main>
+          <Link className="text-brand hover:underline" to={ROUTES.REGISTER}>
+            {t('registerAction', 'Зарегистрироваться')}
+          </Link>
+        </>
+      }
+      subtitle={t('loginSubtitle', 'Войдите в аккаунт')}
+      title="CraneApp"
+    >
+      <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
+        <Input
+          autoCapitalize="none"
+          autoComplete="username"
+          autoCorrect="off"
+          error={errorOf('username')}
+          label={t('username', 'Имя пользователя')}
+          placeholder="@username.123"
+          {...register('username')}
+        />
+
+        <Input
+          addon={
+            <button
+              aria-label={
+                showPassword
+                  ? t('hidePassword', 'Скрыть пароль')
+                  : t('showPassword', 'Показать пароль')
+              }
+              className="text-ink-2 transition-colors hover:text-ink"
+              onClick={() => setShowPassword((value) => !value)}
+              type="button"
+            >
+              <Icon name={showPassword ? 'eyeOff' : 'eye'} size="md" />
+            </button>
+          }
+          autoComplete="current-password"
+          error={errorOf('password')}
+          label={t('password', 'Пароль')}
+          placeholder="••••••••"
+          type={showPassword ? 'text' : 'password'}
+          {...register('password')}
+        />
+
+        <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+          {isSubmitting ? t('loginLoading', 'Вход...') : t('login', 'Войти')}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }
 
-async function getClientIP() {
-  try {
-    const response = await fetch('https://api.ipify.org?format=json');
-    if (!response.ok) return '';
-    const data = await response.json();
-    return data.ip || '';
-  } catch (_error) {
-    return '';
-  }
+/**
+ * Куда вернуть человека после входа.
+ *
+ * `AuthGuard`, выкидывая на вход, дописывает `?from=` — чтобы после
+ * входа человек оказался там, где его прервали. Значение приходит из
+ * адресной строки, поэтому проверяется: внутренний путь начинается с
+ * одной косой черты. `//example.com` — это уже чужой сайт, и переход
+ * туда был бы открытым перенаправлением.
+ */
+function safeReturnPath(from: string | null): string {
+  if (!from || !from.startsWith('/') || from.startsWith('//')) return ROUTES.CHATS;
+  return from;
 }
-

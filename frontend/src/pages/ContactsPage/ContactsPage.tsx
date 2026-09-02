@@ -52,7 +52,7 @@ export function ContactsPage() {
       if (data.chatId) {
         // Без этого созданный чат появлялся в списке только после перезагрузки.
         await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-        showToast('success', 'Чат создан!');
+        showToast('success', t('success', 'Чат создан!'));
         navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       } else {
         throw new Error(data.error || 'Не удалось создать чат');
@@ -109,7 +109,12 @@ export function ContactsPage() {
           return (
             <div key={user.id} className="contact-item-row" onClick={() => startChat(user.id)}>
               <div className="contact-left">
-                <Avatar id={user.id} name={user.firstName || user.username} size="lg" src={user.avatarUrl} />
+                <Avatar
+                  id={user.id}
+                  name={user.firstName || user.username}
+                  size="lg"
+                  src={user.avatarUrl}
+                />
                 <div className="contact-details">
                   <span className="contact-name-title">{user.firstName || 'Пользователь'}</span>
                   <span className="contact-username-sub">@{user.username}</span>

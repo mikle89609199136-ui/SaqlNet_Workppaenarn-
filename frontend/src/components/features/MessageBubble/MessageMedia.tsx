@@ -1,7 +1,9 @@
 import { Icon } from '@/components/ui';
+import { AudioPlayer } from '../AudioPlayer';
+import { VideoPlayer } from '../VideoPlayer';
 import type { IMessageDto } from '@/types';
 import { formatFileSize } from '@/utils';
-import React, { type Dispatch, type SetStateAction } from 'react';
+import { type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -40,15 +42,20 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     );
   }
 
-  if (['video', 'audio'].includes(actualType)) {
-    return React.createElement(actualType, {
-      className: 'message-media',
-      controls: true,
-      src: mediaUrl,
-    });
-  }
-  if (actualType === 'voice') {
-    return <audio className="message-media" controls src={mediaUrl} />;
+  if (['video', 'audio'].includes(actualType) || actualType === 'voice') {
+    if (actualType === 'video') {
+      return (
+        <div className="mt-1 mb-2 w-full max-w-sm">
+          <VideoPlayer src={mediaUrl} />
+        </div>
+      );
+    }
+    
+    return (
+      <div className="mt-1 mb-2 w-full">
+        <AudioPlayer src={mediaUrl} />
+      </div>
+    );
   }
 
   if (actualType === 'file') {

@@ -235,8 +235,10 @@ export const ChatThreadHeader = ({
       )}
 
       {locationPage === 'pinned-messages' && (
-        <div className="thread-header-card thread-header-info">
-          {t('pinnedMessagesTitle', 'Закрепленные сообщения')}
+        <div className="thread-header-card thread-header-info flex items-center gap-2 w-full">
+          <span className="font-semibold text-body">
+            {t('pinnedMessagesTitle', 'Закрепленные сообщения')}
+          </span>
         </div>
       )}
     </header>

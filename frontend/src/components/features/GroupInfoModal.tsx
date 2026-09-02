@@ -49,7 +49,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   }, [chat]);
 
   useEffect(() => {
-    if (membersError) showToast('error', 'Ошибка загрузки участников');
+    if (membersError) showToast('error', t('error', 'Ошибка загрузки участников'));
   }, [membersError, showToast]);
 
   if (!chat) return null;
@@ -73,7 +73,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       // только в состоянии модалки и пропадало при переоткрытии.
       await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
-      showToast('error', err.message || 'Ошибка выполнения действия');
+      showToast('error', err.message || t('toast.actionFailed', 'Ошибка выполнения действия'));
     }
   }
 
@@ -108,7 +108,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       navigate('/chats');
     } catch (err: any) {
-      showToast('error', err.message || 'Не удалось удалить чат, попробуйте ещё раз');
+      showToast(
+        'error',
+        err.message || t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+      );
     }
   };
 
@@ -116,8 +119,8 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
 
   return (
     <Modal
-      classNameOverlay="fixed inset-0 z-[1000] flex justify-center items-center backdrop-blur-sm bg-[rgba(0,0,0,0.4)] animate-[fadeIn_0.2s_ease-out]"
-      className="w-full flex flex-col overflow-hidden md:max-h-[85vh] h-full max-h-screen md:rounded-3xl max-w-125 bg-[rgba(20,20,22,0.85)] border border-[rgba(255,255,255,0.1)] border-b-none animate-[slideUp_0.3s_cubic-bezier(0.2,0.8,0.2,1)] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:rounded-t-3xl pt-0"
+      className="flex h-full max-h-screen w-full max-w-125 flex-col overflow-hidden rounded-none bg-sheet pt-0 backdrop:bg-black/40 backdrop:backdrop-blur-sm md:max-h-[85vh] md:rounded-window"
+      label="Сведения о группе"
       onClose={onClose}
     >
       <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border border-t-none border-[rgba(255,255,255,0.05)]">

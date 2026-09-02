@@ -2,7 +2,15 @@ import { Button } from '@/components/ui/Button';
 import { FieldCaption, FieldLabel, useField } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/utils';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { SelectMenu } from './SelectMenu';
 
 export interface SelectOption {
@@ -12,6 +20,12 @@ export interface SelectOption {
 }
 
 interface Props {
+  /**
+   * Идентификатор кнопки, открывающей список. Нужен, когда подпись стоит
+   * вне компонента и связывается с ним через `htmlFor` — например в ряду
+   * настройки, где подпись слева, а список справа.
+   */
+  id?: string;
   options: SelectOption[];
   value: string | null;
   onChange: (value: string) => void;
@@ -25,24 +39,44 @@ interface Props {
   className?: string;
 }
 
-export const Select = ({
-  options,
-  value,
-  onChange,
-  placeholder = 'Выбрать',
-  label,
-  hint,
-  error,
-  size = 'md',
-  disabled,
-  required,
-  className,
-}: Props) => {
-  const { fieldId: ownId, captionId, caption, isError, controlProps } = useField({ hint, error });
+/**
+ * Список выбора.
+ *
+ * `ref` указывает на кнопку, открывающую список, а не на обёртку: снаружи
+ * его просят ради фокуса — увести человека к полю с ошибкой или открыть
+ * выбор с клавиатуры. Обёртка для этого не годится, она не фокусируется.
+ */
+export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
+  {
+    id,
+    options,
+    value,
+    onChange,
+    placeholder = 'Выбрать',
+    label,
+    hint,
+    error,
+    size = 'md',
+    disabled,
+    required,
+    className,
+  },
+  ref
+) {
+  const {
+    fieldId: ownId,
+    captionId,
+    caption,
+    isError,
+    controlProps,
+  } = useField({ id, hint, error });
   const listboxId = `${ownId}-listbox`;
   const labelId = `${ownId}-label`;
 
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Внутренний ref нужен самому компоненту — вернуть фокус на кнопку после
+  // выбора и закрытия. Внешний получает тот же элемент.
+  useImperativeHandle(ref, () => triggerRef.current as HTMLButtonElement, []);
   const menuRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -274,4 +308,4 @@ export const Select = ({
       )}
     </div>
   );
-};
+});
