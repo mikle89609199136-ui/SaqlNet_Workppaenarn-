@@ -1,4 +1,4 @@
-import { useCall, useProfileEdit, useSafetyCode } from '@/hooks';
+import { useCall, useProfileEdit } from '@/hooks';
 import type { IProfileState } from '@/pages';
 import { userProfileQuery } from '@/queries/users/userProfileQuery';
 import { useProfileStore } from '@/store';
@@ -44,10 +44,6 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     profileState.chat?.title ||
     t('user', 'Пользователь');
 
-  const copyText = (value: string) => {
-    void navigator?.clipboard?.writeText(value).catch(() => {});
-  };
-
   /* Имена берутся из `useProfileEdit` как есть. Разметка одно время
      ждала другой набор — `isEditMode`, `editedProfile`, `handleSave` и
      прочее, — которого хук никогда не отдавал: панель не собиралась по
@@ -74,9 +70,6 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
 
   const isMyProfile = currentUser?.id === profileUser?.id;
   const isPeerOnline = Boolean(profileUser?.isOnline);
-
-  /* Своего кода безопасности не бывает: сверять себя с собой незачем. */
-  const safetyCode = useSafetyCode(isMyProfile ? null : profileUser?.id);
 
   const handleCall = (kind: TCallKind) => {
     if (!profileUser?.id || !profileState.chat) return;
@@ -242,42 +235,6 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           </div>
         )}
       </div>
-
-      {!isMyProfile && safetyCode && (
-        <div className="user-profile-security">
-          <div className="user-profile-security-header">
-            <div>
-              <h3>{t('securityCode', 'Код безопасности')}</h3>
-              <p>
-                {t(
-                  'securityCodeDesc',
-                  'Сверьте эти числа с собеседником при встрече или по другому каналу связи'
-                )}
-              </p>
-            </div>
-          </div>
-
-          <button
-            className="user-profile-copy-row user-profile-safety-row"
-            onClick={() => copyText(safetyCode)}
-            title={t(
-              'safetyCodeTitle',
-              'Сверьте этот код с собеседником другим способом — голосом или при встрече'
-            )}
-            type="button"
-          >
-            <strong className="user-profile-safety-code">{safetyCode}</strong>
-            <Icon name="copy" />
-          </button>
-
-          <p className="user-profile-security-code">
-            {t(
-              'securityCodeInstructions',
-              'Если числа совпадают у обоих, переписку никто не перехватывает.'
-            )}
-          </p>
-        </div>
-      )}
 
       {profileState.chat && (
         <div className="user-profile-shared-media">

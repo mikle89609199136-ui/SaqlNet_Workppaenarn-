@@ -16,7 +16,6 @@ export { useMessageSelection } from './useMessageSelection';
 export { usePhotoEditor } from './usePhotoEditor';
 export { useProfileEdit } from './useProfileEdit';
 export { useProfilePanel } from './useProfilePanel';
-export { useSafetyCode } from './useSafetyCode';
 export { useSecurityNotice } from './useSecurityNotice';
 export {
   disconnectRealtimeSocket,
