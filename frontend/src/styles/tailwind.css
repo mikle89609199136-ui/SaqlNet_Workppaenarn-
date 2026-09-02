@@ -242,7 +242,9 @@
   }
   .app-sidebar-pane {
     @media (min-width: 768px) {
-      @apply w-[360px] min-w-[320px] border-r border-line flex flex-col overflow-hidden h-full bg-sheet;
+      /* Мягкий по той же причине, что рельс и ресайзер: край колонки во
+         всю высоту экрана. */
+      @apply w-[360px] min-w-[320px] border-r border-line-soft flex flex-col overflow-hidden h-full bg-sheet;
     }
   }
   .app-chat-pane {
