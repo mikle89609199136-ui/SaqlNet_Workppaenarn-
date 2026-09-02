@@ -1,5 +1,5 @@
 import { services } from '@/services';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const useProfileEdit = (profileUser, displayName: string) => {
@@ -10,12 +10,18 @@ export const useProfileEdit = (profileUser, displayName: string) => {
   const [isSaving, setIsSaving] = useState(false);
   const { t } = useTranslation();
 
-  // Сброс состояния при смене пользователя
-  useEffect(() => {
+  /* Сброс при смене пользователя — сравнением во время отрисовки, а не
+     эффектом. Эффект сбрасывал бы после того, как React нарисовал кадр
+     с прежним человеком: форма правки успевала мигнуть чужим именем.
+     Приём из документации React, «adjusting state when a prop changes». */
+  const [seenUser, setSeenUser] = useState(profileUser);
+
+  if (profileUser !== seenUser) {
+    setSeenUser(profileUser);
     setEditableUser(profileUser);
     setIsEditing(false);
     setEditError('');
-  }, [profileUser]);
+  }
 
   const startEdit = () => {
     setEditDraft({

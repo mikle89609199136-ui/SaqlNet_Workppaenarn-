@@ -23,10 +23,22 @@ export function useProfilePanel({
 }: Params) {
   const [profileModal, setProfileModal] = useState<IProfileModal>(CLOSED_PROFILE);
 
-  // Профиль привязан к конкретному чату: при переходе в соседний не должен оставаться открытым.
-  useEffect(() => {
+  /* Профиль привязан к чату и к запросу на закрытие: при переходе в
+     соседний чат и по кнопке «закрыть» в панели он должен схлопнуться.
+
+     Сброс сделан сравнением во время отрисовки, а не эффектом. Эффект
+     сбрасывал бы состояние после того, как React уже нарисовал кадр со
+     старым: панель успевала мигнуть чужим профилем. Приём описан в
+     документации React как «adjusting state when a prop changes» —
+     React перерисует сразу, промежуточный кадр наружу не попадёт. */
+  const [seenChatId, setSeenChatId] = useState(chatId);
+  const [seenCloseToken, setSeenCloseToken] = useState(profileCloseToken);
+
+  if (chatId !== seenChatId || profileCloseToken !== seenCloseToken) {
+    setSeenChatId(chatId);
+    setSeenCloseToken(profileCloseToken);
     setProfileModal(CLOSED_PROFILE);
-  }, [chatId]);
+  }
 
   useEffect(() => {
     if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return;
@@ -37,11 +49,6 @@ export function useProfilePanel({
     // которого профиль когда-то открывали.
     onProfileStateChange({ ...profileModal, chat, messages: profileModal.isOpen ? messages : [] });
   }, [chat, messages, onProfileStateChange, profileMode, profileModal]);
-
-  useEffect(() => {
-    if (profileCloseToken === 0) return;
-    setProfileModal(CLOSED_PROFILE);
-  }, [profileCloseToken]);
 
   return { profileModal, setProfileModal };
 }

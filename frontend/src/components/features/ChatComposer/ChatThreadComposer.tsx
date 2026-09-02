@@ -79,12 +79,21 @@ export const ChatThreadComposer = ({
 
   const formRef = useRef<HTMLFormElement | null>(null);
 
-  // Возврат в чат: поле заполняется тем, что осталось недописанным.
-  useEffect(() => {
-    const saved = readDraft(chatId);
+  /* Возврат в чат: поле заполняется тем, что осталось недописанным.
 
-    if (draftRef.current) draftRef.current.value = saved;
-    setHasText(saved.length > 0);
+     Разделено надвое намеренно. Признак «в поле что-то есть» — состояние
+     React, и обновляется сравнением во время отрисовки: эффект успел бы
+     нарисовать кадр, где кнопка отправки уже активна от прежнего чата.
+     А запись в само поле — работа с DOM, ей место в эффекте. */
+  const [seenChatId, setSeenChatId] = useState(chatId);
+
+  if (chatId !== seenChatId) {
+    setSeenChatId(chatId);
+    setHasText(readDraft(chatId).length > 0);
+  }
+
+  useEffect(() => {
+    if (draftRef.current) draftRef.current.value = readDraft(chatId);
   }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();

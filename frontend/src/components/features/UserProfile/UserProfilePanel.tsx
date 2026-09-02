@@ -36,24 +36,30 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   // Профиль читается по идентификатору, а не передаётся сверху: раньше его
   // запрашивал обработчик клика по шапке, и каждое открытие панели означало
   // новый запрос (#232).
-  const {
-    data: profileUser,
-    isLoading,
-    isError,
-  } = useQuery(userProfileQuery(profileState.userId));
+  const { data: profileUser, isLoading, isError } = useQuery(userProfileQuery(profileState.userId));
 
-  const {
-    isSaving,
-    isEditMode,
-    editedProfile,
-    handleSave,
-    setEditMode,
-    handleInputChange,
-    handleToggleEditMode,
-  } = useProfileEdit(profileUser);
+  const displayName =
+    [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
+    profileUser?.username ||
+    profileState.chat?.title ||
+    t('user', 'Пользователь');
 
-  const { isVerifying, verifyIdentity, verified } = useSafetyCode(profileUser?.id);
+  const copyText = (value: string) => {
+    void navigator?.clipboard?.writeText(value).catch(() => {});
+  };
 
+  /* Имена берутся из `useProfileEdit` как есть. Разметка одно время
+     ждала другой набор — `isEditMode`, `editedProfile`, `handleSave` и
+     прочее, — которого хук никогда не отдавал: панель не собиралась по
+     типам и падала при открытии. */
+  const { isSaving, isEditing, setIsEditing, editDraft, setEditDraft, startEdit, saveProfileEdit } =
+    useProfileEdit(profileUser, displayName);
+
+  /* Хук отдаёт сам код строкой. Разметка ниже одно время ждала от него
+     объект с подтверждением личности — `verified`, `verifyIdentity`, —
+     но такого ни в хуке, ни в сервисах нет: деструктуризация `null`
+     роняла панель, стоило её открыть. Подтверждение личности — отдельная
+     работа, а до неё код показывается и копируется, как и раньше. */
   const sharedMedia = useMemo(() => {
     return (profileState.messages || []).filter((message) => {
       const type = message.type;
@@ -68,6 +74,9 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
 
   const isMyProfile = currentUser?.id === profileUser?.id;
   const isPeerOnline = Boolean(profileUser?.isOnline);
+
+  /* Своего кода безопасности не бывает: сверять себя с собой незачем. */
+  const safetyCode = useSafetyCode(isMyProfile ? null : profileUser?.id);
 
   const handleCall = (kind: TCallKind) => {
     if (!profileUser?.id || !profileState.chat) return;
@@ -91,7 +100,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
       name: 'edit',
       title: t('editProfile', 'Редактировать'),
       disabled: false,
-      handleClick: handleToggleEditMode,
+      handleClick: () => (isEditing ? setIsEditing(false) : startEdit()),
     },
   ];
 
@@ -190,12 +199,14 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
             <span className="user-profile-label">
               {field === 'firstName' ? t('name', 'Имя') : t('bio', 'О себе')}
             </span>
-            {isEditMode ? (
+            {isEditing ? (
               <input
                 className="user-profile-input"
                 name={field}
-                onChange={handleInputChange}
-                value={editedProfile[field] || ''}
+                onChange={(event) =>
+                  setEditDraft((draft) => ({ ...draft, [field]: event.target.value }))
+                }
+                value={editDraft[field] || ''}
               />
             ) : (
               <span className="user-profile-value">
@@ -210,12 +221,12 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           <span className="user-profile-value">@{profileUser.username}</span>
         </div>
 
-        {isEditMode && (
+        {isEditing && (
           <div className="user-profile-edit-actions">
             <button
               className="user-profile-save-btn"
               disabled={isSaving}
-              onClick={handleSave}
+              onClick={saveProfileEdit}
               type="button"
             >
               {isSaving ? t('saving', 'Сохранение...') : t('save', 'Сохранить')}
@@ -223,7 +234,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
             <button
               className="user-profile-cancel-btn"
               disabled={isSaving}
-              onClick={() => setEditMode(false)}
+              onClick={() => setIsEditing(false)}
               type="button"
             >
               {t('cancel', 'Отмена')}
@@ -232,7 +243,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
         )}
       </div>
 
-      {!isMyProfile && (
+      {!isMyProfile && safetyCode && (
         <div className="user-profile-security">
           <div className="user-profile-security-header">
             <div>
@@ -244,32 +255,27 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
                 )}
               </p>
             </div>
-            {verified ? (
-              <span className="user-profile-verified-badge">{t('verified', 'Подтверждён')}</span>
-            ) : null}
           </div>
 
-          <div className="user-profile-security-code" role="group">
-            <p>
-              {t(
-                'securityCodeInstructions',
-                'Если числа совпадают у обоих, переписку никто не перехватывает.'
-              )}
-            </p>
-          </div>
+          <button
+            className="user-profile-copy-row user-profile-safety-row"
+            onClick={() => copyText(safetyCode)}
+            title={t(
+              'safetyCodeTitle',
+              'Сверьте этот код с собеседником другим способом — голосом или при встрече'
+            )}
+            type="button"
+          >
+            <strong className="user-profile-safety-code">{safetyCode}</strong>
+            <Icon name="copy" />
+          </button>
 
-          {!verified ? (
-            <button
-              className="user-profile-verify-btn"
-              disabled={isVerifying}
-              onClick={() => void verifyIdentity()}
-              type="button"
-            >
-              {isVerifying
-                ? t('confirming', 'Подтверждаем...')
-                : t('confirmMatch', 'Код совпадает')}
-            </button>
-          ) : null}
+          <p className="user-profile-security-code">
+            {t(
+              'securityCodeInstructions',
+              'Если числа совпадают у обоих, переписку никто не перехватывает.'
+            )}
+          </p>
         </div>
       )}
 
