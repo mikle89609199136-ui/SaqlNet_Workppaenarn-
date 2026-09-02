@@ -21,13 +21,11 @@ import {
 } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  AttachmentControl,
-  AttachmentPreview,
-  ComposerContextBanner,
-  ComposerForm,
-  ComposerRow,
-} from '../ui';
+import { AttachmentControl } from './AttachmentControl';
+import { AttachmentPreview } from './AttachmentPreview';
+import { ComposerContextBanner } from './ComposerContextBanner';
+import { ComposerForm } from './ComposerForm';
+import { ComposerRow } from './ComposerRow';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
 function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
@@ -139,59 +137,26 @@ export const ChatThreadComposer = ({
           placeholder={composerPlaceholder(encryption, t)}
         />
 
-        <div className="thread-composer-submit-wrap">
-          <button
-            className={cn(
-              'thread-composer-action-btn thread-send-btn',
-              (hasText || pendingAttachment) && 'is-visible'
-            )}
-            disabled={(!hasText && !pendingAttachment) || isSending}
-            type="submit"
+        <button
+          aria-label={t('sendMessage', 'Отправить сообщение')}
+          className={cn('thread-composer-action-btn', hasText && 'is-active')}
+          disabled={encryption.status !== 'ready'}
+          type="submit"
+        >
+          <svg
+            fill="none"
+            height="18"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.5"
+            viewBox="0 0 24 24"
+            width="18"
           >
-            {isSending ? (
-              <span className="thread-sending-spinner">⏳</span>
-            ) : (
-              <svg
-                fill="none"
-                height="20"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="20"
-              >
-                <line x1="22" x2="11" y1="2" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            )}
-          </button>
-
-          <button
-            aria-label={t('voiceMessage', 'Голосовое сообщение')}
-            className={cn(
-              'thread-composer-action-btn thread-mic-btn',
-              !hasText && !pendingAttachment && 'is-visible'
-            )}
-            type="button"
-          >
-            <svg
-              fill="none"
-              height="20"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="20"
-            >
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" x2="12" y1="19" y2="23" />
-              <line x1="8" x2="16" y1="23" y2="23" />
-            </svg>
-          </button>
-        </div>
+            <line x1="22" x2="11" y1="2" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
       </ComposerRow>
     </ComposerForm>
   );

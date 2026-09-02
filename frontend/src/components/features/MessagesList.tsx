@@ -4,7 +4,7 @@ import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next';
 import { MessageBubble } from './MessageBubble/MessageBubble';
 import { MessageBubbleSkeleton } from './MessageBubble/MessageBubbleSkeleton';
-import { ThreadState } from '../ui/ThreadState';
+import { ThreadState } from './ThreadState';
 
 interface Props {
   messages: TMessagesList;

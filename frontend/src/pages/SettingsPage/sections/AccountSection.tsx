@@ -9,9 +9,9 @@ import {
   ConfirmDialog,
   Icon,
   Input,
-  PasswordRequirements,
   Textarea,
 } from '@/components/ui';
+import { PasswordRequirements } from '@/components/features';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {

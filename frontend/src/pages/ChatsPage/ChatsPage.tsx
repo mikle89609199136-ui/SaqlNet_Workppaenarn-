@@ -1,10 +1,12 @@
 import {
+  ChatListItem,
+  ChatListItemSkeleton,
   CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { ChatListItem, ChatListItemSkeleton, Icon } from '@/components/ui';
+import { Icon } from '@/components/ui';
 import { useIsMobile } from '@/hooks';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';

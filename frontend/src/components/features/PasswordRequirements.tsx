@@ -1,6 +1,6 @@
+import { Icon } from '@/components/ui';
 import { cn } from '@/utils';
 import { PASSWORD_RULES, checkPassword } from '@/utils/passwordRules';
-import { Icon } from './Icon';
 
 interface Props {
   value: string;

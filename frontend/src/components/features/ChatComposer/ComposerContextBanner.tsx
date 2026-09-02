@@ -1,3 +1,4 @@
+import { Icon } from '@/components/ui';
 import { useChatUiStore } from '@/store';
 import { getMessagePreview } from '@/utils';
 import { useTranslation } from 'react-i18next';
@@ -26,19 +27,7 @@ export const ComposerContextBanner = ({ onCancel }: Props) => {
         onClick={onCancel}
         type="button"
       >
-        <svg
-          fill="none"
-          height="14"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2.5"
-          viewBox="0 0 24 24"
-          width="14"
-        >
-          <line x1="18" x2="6" y1="6" y2="18" />
-          <line x1="6" x2="18" y1="6" y2="18" />
-        </svg>
+        <Icon name="cross" size="sm" />
       </button>
     </div>
   );
