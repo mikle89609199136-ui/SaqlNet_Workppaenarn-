@@ -8,6 +8,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { testI18n } from '@/test/harness/i18n';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
@@ -83,6 +84,14 @@ function assertExpected(kind: 'error' | 'warn', args: unknown[]) {
 }
 
 beforeEach(() => {
+  /* Связь шифрования с кешем запросов ставится перед каждым тестом, а не
+     только восстанавливается после. Её снимает `chatResolverBridge`, где
+     проверяется поведение незарегистрированного источника, и без общей
+     изоляции этот `null` доставался следующему файлу: расшифровка
+     превью падала, а уведомление показывало запасной текст вместо
+     сообщения. */
+  registerChatResolver();
+
   console.error = (...args: unknown[]) => {
     originalError(...args);
     assertExpected('error', args);
@@ -112,6 +121,20 @@ afterEach(() => {
   resetRealtimeSocketForTests();
   // Кеш чатов живёт на уровне модуля: без сброса в нём остаются промисы
   // предыдущего теста, и расшифровка ждёт ответа, которого не будет.
+
+  /* Язык — такой же синглтон на модуль, как сторы: тесты настроек
+     переключают его на английский через `useApplyPreferences`, а форма
+     регистрации потом берёт язык из i18n и отправляет на сервер. Пока
+     файлы шли в отдельных окружениях, чужой язык не доживал до
+     следующего; теперь модули общие, и сброс нужен явный. */
+  if (testI18n.language !== 'ru') void testI18n.changeLanguage('ru');
+
+  /* Подменённые таймеры и глобальные объекты возвращаются на место по
+     той же причине: без изоляции они переживают файл, в котором их
+     подменили. */
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 
   useCallStore.setState(useCallStore.getInitialState(), true);
   useChatUiStore.setState(useChatUiStore.getInitialState(), true);
