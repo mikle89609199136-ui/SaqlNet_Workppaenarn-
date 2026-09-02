@@ -1,5 +1,13 @@
+import { Modal } from '@/components/ui';
+import { VideoPlayer } from '@/components/features/VideoPlayer';
 import type { IMediaItem, IMessageDto } from '@/types';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+interface IOpenedMedia {
+  url: string;
+  isVideo: boolean;
+}
 
 interface Props {
   sharedMedia: IMediaItem[];
@@ -26,6 +34,7 @@ export function isDisplayableMedia(message: IMessageDto): message is IMediaItem 
 
 export function ProfileSharedMedia({ sharedMedia }: Props) {
   const { t } = useTranslation();
+  const [openedMedia, setOpenedMedia] = useState<IOpenedMedia | null>(null);
 
   return (
     <div className="flex flex-col gap-2">
@@ -39,12 +48,12 @@ export function ProfileSharedMedia({ sharedMedia }: Props) {
             const isVideo = message.type === 'video';
 
             return (
-              <a
+              <button
+                aria-label={isVideo ? t('videoMessage', 'Видео') : t('imageMessage', 'Изображение')}
                 className="relative block aspect-square overflow-hidden rounded-control bg-sheet-2 group border border-line"
-                href={mediaUrl}
                 key={message.id}
-                rel="noreferrer"
-                target="_blank"
+                onClick={() => setOpenedMedia({ url: mediaUrl, isVideo })}
+                type="button"
               >
                 {isVideo ? (
                   <video
@@ -69,7 +78,7 @@ export function ProfileSharedMedia({ sharedMedia }: Props) {
                     ▶
                   </span>
                 )}
-              </a>
+              </button>
             );
           })}
         </div>
@@ -77,6 +86,28 @@ export function ProfileSharedMedia({ sharedMedia }: Props) {
         <div className="py-6 px-3 bg-sheet-2 border border-line rounded-field text-center text-caption text-ink-3">
           {t('profileMediaEmpty', 'Медиафайлы отсутствуют')}
         </div>
+      )}
+
+      {/* Окно берётся из набора: оно на `<dialog>`, то есть Escape,
+          ловушка фокуса и возврат фокуса уже сделаны браузером. Прежде
+          плитка вела на `blob:`-адрес в соседней вкладке — там нет ни
+          названия, ни возврата в переписку, только голый файл. */}
+      {openedMedia && (
+        <Modal
+          className="w-[min(90vw,900px)] border-0 bg-transparent p-0 shadow-none"
+          label={t('imageViewer', 'Просмотр изображения')}
+          onClose={() => setOpenedMedia(null)}
+        >
+          {openedMedia.isVideo ? (
+            <VideoPlayer src={openedMedia.url} />
+          ) : (
+            <img
+              alt=""
+              className="w-full max-h-[80vh] rounded-window object-contain"
+              src={openedMedia.url}
+            />
+          )}
+        </Modal>
       )}
     </div>
   );

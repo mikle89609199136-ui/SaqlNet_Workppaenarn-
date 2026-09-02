@@ -180,12 +180,22 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
       const videoMsg = makeMediaMessage('msg-2', 'video', 'blob:crane/video');
 
-      renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg, videoMsg]} />);
+      const { container } = renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg, videoMsg]} />);
 
-      const links = screen.getAllByRole('link');
-      expect(links).toHaveLength(2);
-      expect(links[0]).toHaveAttribute('href', 'blob:crane/photo');
-      expect(links[1]).toHaveAttribute('href', 'blob:crane/video');
+      expect(screen.getAllByRole('button')).toHaveLength(2);
+      expect(container.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
+      expect(container.querySelector('video')).toHaveAttribute('src', 'blob:crane/video');
+    });
+
+    it('открывает изображение в окне просмотра, а не в соседней вкладке', async () => {
+      const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
+
+      renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg]} />);
+      await userEvent.click(screen.getByRole('button'));
+
+      const viewer = screen.getByRole('dialog', { name: /просмотр изображения/i });
+      expect(viewer).toBeInTheDocument();
+      expect(viewer.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
     });
   });
 
