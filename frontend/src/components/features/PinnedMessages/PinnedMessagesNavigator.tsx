@@ -141,7 +141,7 @@ export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Pro
         size="sm"
         variant="ghost"
         iconOnly
-        className="shrink-0 rounded-control text-ink-2 hover:text-ink hover:bg-sheet-3 transition-colors cursor-pointer rotate-45"
+        className="shrink-0 rounded-control text-ink-2 hover:text-ink hover:bg-sheet-2 transition-colors cursor-pointer rotate-45"
         aria-label={t('pinnedMessages.viewAll', 'Показать все закреплённые сообщения')}
         onClick={() => setPinnedMessagesOpen(true)}
       >

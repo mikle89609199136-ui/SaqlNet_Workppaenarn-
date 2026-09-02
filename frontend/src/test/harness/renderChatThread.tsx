@@ -30,6 +30,12 @@ interface IRenderChatThreadOptions {
    * иначе изоляцию обеспечит тест, а не проверяемый код.
    */
   queryClient?: QueryClient;
+  /**
+   * Куда страница сообщает о профиле собеседника. В приложении это
+   * состояние `ChatsPage`, которая и рисует панель: сама страница чата
+   * её не показывает, поэтому проверить открытие можно только здесь.
+   */
+  onProfileStateChange?: (state: unknown) => void;
 }
 
 export { createTestQueryClient };
@@ -64,6 +70,7 @@ export function renderChatThread({
   currentUser = makeUser({ id: 'user-1' }),
   keyUnavailable = false,
   queryClient = createTestQueryClient(),
+  onProfileStateChange = () => {},
 }: IRenderChatThreadOptions): RenderResult {
   useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
 
@@ -96,7 +103,7 @@ export function renderChatThread({
         element: (
           <Outlet
             context={{
-              onProfileStateChange: () => {},
+              onProfileStateChange,
               profileCloseToken: 0,
               profileMode: 'panel' as const,
             }}
