@@ -15,6 +15,9 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 export const registerFormSchema = z
   .object({
     firstName: z.string().trim().min(1, 'Введите имя').max(64, 'Слишком длинное имя'),
+    /* Необязательна: в профиле её тоже можно не заполнять, и требовать
+       фамилию при заведении аккаунта — лишний повод бросить регистрацию. */
+    lastName: z.string().trim().max(64, 'Слишком длинная фамилия'),
     username: z
       .string()
       .trim()
@@ -38,7 +41,7 @@ export type TRegisterForm = z.infer<typeof registerFormSchema>;
  */
 export const STEP_FIELDS = {
   welcome: [],
-  name: ['firstName'],
+  name: ['firstName', 'lastName'],
   credentials: ['username', 'password', 'passwordRepeat'],
 } as const satisfies Record<string, readonly (keyof TRegisterForm)[]>;
 
