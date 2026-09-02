@@ -910,6 +910,7 @@
   }
 
   @media (max-width: 768px) {
+    .message-actions-backdrop {
       display: block;
       position: fixed;
       inset: 0;
