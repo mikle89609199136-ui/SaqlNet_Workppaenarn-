@@ -1,4 +1,4 @@
-import { Skeleton } from '@/components/ui/Skeleton';
+import { Skeleton } from '@/components/ui';
 
 /* Лежит рядом с самой строкой намеренно. Скелетон обязан повторять её
    геометрию, а порознь они разъезжаются молча: прежний рисовал кружок в

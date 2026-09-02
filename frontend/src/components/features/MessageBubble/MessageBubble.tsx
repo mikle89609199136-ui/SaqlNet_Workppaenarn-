@@ -1,4 +1,3 @@
-import { MessageCheckbox } from '@/components/ui';
 import { useMessageLongPress } from '@/hooks';
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatUiStore } from '@/store';
@@ -7,6 +6,7 @@ import { cn, formatMessageTime, hasMessageMedia } from '@/utils';
 import { memo, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';
+import { MessageCheckbox } from './MessageCheckbox';
 import { MessageContentRenderer } from './MessageContent';
 import { MessageMedia } from './MessageMedia';
 

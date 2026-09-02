@@ -1,6 +1,7 @@
 import { useIsMobile } from '@/hooks';
 import { useTranslation } from 'react-i18next';
-import { ComposerRow, ComposerWrapper, Icon } from '../ui';
+import { Icon } from '../ui';
+import { ComposerRow, ComposerWrapper } from './ChatComposer';
 
 interface Props {
   handleCancelSelection: () => void;

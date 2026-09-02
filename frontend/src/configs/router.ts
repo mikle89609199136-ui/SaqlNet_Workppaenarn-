@@ -5,10 +5,10 @@ import { settingsQuery } from '@/queries/users/settingsQuery';
 import { useProfileStore } from '@/store';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
-import { AuthGuard } from '../components/guards/AuthGuard.js';
-import { AppLayout } from '../components/layouts/AppLayout.js';
-import { RootLayout } from '../components/layouts/RootLayout.js';
-import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
+import { AuthGuard } from '../components/guards/AuthGuard';
+import { AppLayout } from '../components/layouts/AppLayout';
+import { RootLayout } from '../components/layouts/RootLayout';
+import { RouteLoadingFallback } from '../components/layouts/RouteLoadingFallback';
 import {
   DEFAULT_SETTINGS_SECTION,
   REACT_ROUTES,
