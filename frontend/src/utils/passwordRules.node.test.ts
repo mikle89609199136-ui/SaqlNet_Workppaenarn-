@@ -1,55 +1,87 @@
 import { describe, expect, it } from 'vitest';
-import { checkPassword, getPasswordScore, PASSWORD_RULES, passwordSchema } from './passwordRules';
+import {
+  checkPassword,
+  getPasswordScore,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULES,
+  passwordSchema,
+} from './passwordRules';
 
 /**
  * Требования к паролю.
  *
- * Проверяются на самих правилах, без отрисовки формы: важно, что
- * считается годным паролем, а не как это выглядит.
+ * Проверяется соответствие серверной политике
+ * (`backend-v2/internal/auth/password_validator.go`): именно из-за
+ * расхождения форма пропускала пароль, который сервер отвергал.
+ * Проверки идут на самих правилах, без отрисовки формы.
  */
 describe('требования к паролю', () => {
-  it('принимает пароль, отвечающий всем требованиям', () => {
-    expect(passwordSchema.safeParse('Parol123!').success).toBe(true);
+  it('повторяет пороги сервера', () => {
+    expect(MIN_PASSWORD_LENGTH).toBe(10);
+    expect(MAX_PASSWORD_LENGTH).toBe(64);
+  });
+
+  it('принимает пароль, отвечающий политике', () => {
+    expect(passwordSchema.safeParse('Parol12345!').success).toBe(true);
+    // Заглавная сервером не требуется — не требуем и мы, иначе не дали бы
+    // ввести пароль, который сервер бы принял.
+    expect(passwordSchema.safeParse('parol12345!').success).toBe(true);
   });
 
   it.each([
-    ['Ab1!', 'слишком короткий'],
-    ['parol123!', 'без заглавной'],
+    ['Parol123!', 'девять символов — короче десяти'],
     ['ParolParol!', 'без цифры'],
-    ['Parol12345', 'без знака'],
+    ['Parol123456', 'без знака'],
+    ['Parol 12345!', 'с пробелом внутри'],
+    ['Parol\t12345!', 'с табуляцией'],
   ])('не принимает «%s» — %s', (password) => {
     expect(passwordSchema.safeParse(password).success).toBe(false);
   });
 
+  it('не принимает длиннее шестидесяти четырёх', () => {
+    const long = `${'a1!'.repeat(22)}xyz`;
+    expect([...long].length).toBeGreaterThan(MAX_PASSWORD_LENGTH);
+    expect(passwordSchema.safeParse(long).success).toBe(false);
+  });
+
   it('называет ближайшее невыполненное требование', () => {
-    const result = passwordSchema.safeParse('parol123!');
+    const result = passwordSchema.safeParse('parol');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Заглавная буква');
+      expect(result.error.issues[0].message).toBe('Не менее 10 символов');
     }
   });
 
-  it('засчитывает заглавную не только в латинице', () => {
-    // Человек набирает пароль по-русски — заглавная там такая же заглавная.
-    expect(checkPassword('Пароль123!').uppercase).toBe(true);
+  it('знаком считает только то, что считает сервер', () => {
+    // Список в password_validator.go: "!@#$%^&*()_+-=[]{}|;:'\",.<>/?`~"
+    expect(checkPassword('parol12345!').special).toBe(true);
+    expect(checkPassword('parol12345_').special).toBe(true);
+    // «№» и длинное тире в серверный список не входят: засчитай мы их —
+    // форма пропустила бы пароль, который сервер отвергнет.
+    expect(checkPassword('parol12345№').special).toBe(false);
+    expect(checkPassword('parol12345—').special).toBe(false);
   });
 
-  it('засчитывает знаки с любой раскладки', () => {
-    // «№» и «—» набираются в русской раскладке; списком их легко забыть.
-    expect(checkPassword('Parol123№').symbol).toBe(true);
-    expect(checkPassword('Parol123—').symbol).toBe(true);
-  });
-
-  it('не считает пробел знаком', () => {
-    // Иначе «Parol 123» проходил бы как пароль со специальным знаком.
-    expect(checkPassword('Parol 123').symbol).toBe(false);
+  it('считает длину в символах, а не в байтах', () => {
+    // Сервер меряет рунами (utf8.RuneCountInString). Десять кириллических
+    // букв — это десять символов, хотя байтов вдвое больше.
+    expect(checkPassword('пароль1234').length).toBe(true);
+    expect(checkPassword('пароль123').length).toBe(false);
   });
 
   it('оценка силы совпадает с числом требований', () => {
     // Полоска под полем меряется этим же: разойдись они, полоска
     // доходила бы до конца у пароля, который форма не принимает.
-    expect(getPasswordScore('Parol123!')).toBe(PASSWORD_RULES.length);
+    expect(getPasswordScore('parol12345!')).toBe(PASSWORD_RULES.length);
     expect(getPasswordScore('')).toBe(0);
     expect(getPasswordScore('parol')).toBe(0);
+  });
+
+  it('в подсказках нет запретов', () => {
+    // Список под полем говорит, что сделать. «Не длиннее 64» и «без
+    // пробелов» выполнены по умолчанию, и в списке были бы двумя
+    // зелёными галочками ни о чём — их проверяет схема.
+    expect(PASSWORD_RULES.map((rule) => rule.id)).toEqual(['length', 'digit', 'special']);
   });
 });

@@ -175,6 +175,30 @@ describe('регистрация', () => {
     expect(screen.getByLabelText('Имя пользователя')).toHaveValue('maximdon');
   });
 
+  it('отказ сервера по паролю показывает у поля пароля', async () => {
+    // Наши правила повторяют серверную политику, но могут отстать: её
+    // меняют на сервере, а клиент узнаёт об этом позже. Тогда причина
+    // должна встать у поля, а не улететь общим тостом.
+    server.use(
+      http.post(api('/auth/register'), () =>
+        HttpResponse.json(
+          { code: 'weak_password', error: 'password does not meet security requirements' },
+          { status: 400 }
+        )
+      )
+    );
+
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+
+    expect(await screen.findByText('Пароль не отвечает требованиям')).toBeInTheDocument();
+  });
+
   it('после успеха уводит в чаты', async () => {
     server.use(
       http.post(api('/auth/register'), () =>
