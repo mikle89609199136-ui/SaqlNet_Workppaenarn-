@@ -46,8 +46,12 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   const stageRef = useRef(null);
   const imageRef = useRef(null);
   const pointerRef = useRef(null);
-  const historyRef = useRef([]);
-  const historyIndexRef = useRef(-1);
+  /* Индекс и длина истории — состояние, а не ссылки: их читает разметка,
+     когда решает, доступны ли отмена и повтор. Прежде они лежали в
+     ссылках, разметка читала их прямо при отрисовке, а чтобы React
+     заметил изменение, рядом жил счётчик `historyVersion` — состояние,
+     которое никто не читал и которое существовало ради перерисовки.
+     Сами снимки остались в ссылке: они в отрисовке не участвуют. */
   const stateRef = useRef(null);
   const onCancelRef = useRef(onCancel);
   const inlineTextRef = useRef(null);
@@ -66,9 +70,16 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   const [brushSize, setBrushSize] = useState(8);
   const [textDraft, setTextDraft] = useState('');
   const [textFont, setTextFont] = useState('modern');
-  const [isReady, setIsReady] = useState(false);
+  /* Готовность хранится вместе с файлом, для которого получена: пока
+     новый снимок не загрузился, редактор считается не готовым сам собой.
+     Прежде готовность сбрасывалась вызовом прямо в эффекте — лишний
+     рендер сразу после первого, и кадр между ними показывал прежнюю
+     картинку как готовую к правке. */
+  const [readyFile, setReadyFile] = useState<File | null>(null);
+  const isReady = readyFile !== null && readyFile === file;
   const [isSaving, setIsSaving] = useState(false);
-  const [historyVersion, setHistoryVersion] = useState(0);
+  const [history, setHistory] = useState<ReturnType<typeof cloneState>[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const [editingTextId, setEditingTextId] = useState(null);
   const [canvasDisplayWidth, setCanvasDisplayWidth] = useState(1000);
 
@@ -78,7 +89,11 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     () => ({ filters, rotation, flipX, flipY, crop, cropRatio, objects }),
     [crop, cropRatio, filters, flipX, flipY, objects, rotation]
   );
-  stateRef.current = currentState;
+  /* Запись в ссылку — в эффекте: во время отрисовки менять их нельзя,
+     React вправе отбросить рендер и начать заново. */
+  useEffect(() => {
+    stateRef.current = currentState;
+  }, [currentState]);
 
   useEffect(() => {
     onCancelRef.current = onCancel;
@@ -127,21 +142,22 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     setSelectedId(null);
   }, []);
 
-  const pushHistory = useCallback((snapshot = stateRef.current) => {
-    if (!snapshot) return;
-    const next = historyRef.current.slice(0, historyIndexRef.current + 1);
-    next.push(cloneState(snapshot));
-    if (next.length > 50) next.shift();
-    historyRef.current = next;
-    historyIndexRef.current = next.length - 1;
-    setHistoryVersion((value) => value + 1);
-  }, []);
+  const pushHistory = useCallback(
+    (snapshot = stateRef.current) => {
+      if (!snapshot) return;
+      const next = history.slice(0, historyIndex + 1);
+      next.push(cloneState(snapshot));
+      if (next.length > 50) next.shift();
+      setHistory(next);
+      setHistoryIndex(next.length - 1);
+    },
+    [history, historyIndex]
+  );
 
   useEffect(() => {
     if (!file) return undefined;
     let cancelled = false;
     const reader = new FileReader();
-    setIsReady(false);
 
     reader.onload = () => {
       if (cancelled || typeof reader.result !== 'string') return;
@@ -149,7 +165,7 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
       image.onload = () => {
         if (cancelled) return;
         imageRef.current = image;
-        setIsReady(true);
+        setReadyFile(file);
       };
       image.onerror = () => {
         if (!cancelled) onCancelRef.current?.();
@@ -167,8 +183,12 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     };
   }, [file]);
 
-  useEffect(() => {
-    if (!isReady) return;
+  /* История заводится, как только готов новый снимок, — сравнением во
+     время отрисовки, а не эффектом: эффект успел бы нарисовать кадр, где
+     кнопки отмены живут от прошлой фотографии. */
+  const [historyForFile, setHistoryForFile] = useState<File | null>(null);
+
+  if (isReady && file && historyForFile !== file) {
     const initial = {
       filters: DEFAULT_FILTERS,
       rotation: 0,
@@ -178,10 +198,10 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
       cropRatio: null,
       objects: [],
     };
-    historyRef.current = [cloneState(initial)];
-    historyIndexRef.current = 0;
-    setHistoryVersion((value) => value + 1);
-  }, [isReady]);
+    setHistoryForFile(file);
+    setHistory([cloneState(initial)]);
+    setHistoryIndex(0);
+  }
 
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -226,27 +246,6 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
-
-  useEffect(() => {
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') onCancelRef.current?.();
-      const target = event.target;
-      const isEditingField =
-        target instanceof HTMLElement &&
-        (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
-      if (
-        (event.key === 'Delete' || event.key === 'Backspace') &&
-        selectedId &&
-        tool === 'text' &&
-        !isEditingField
-      ) {
-        event.preventDefault();
-        deleteSelectedText();
-      }
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [selectedId, tool]);
 
   function commit(patch = {}) {
     const next = { ...stateRef.current, ...patch };
@@ -307,17 +306,17 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
   }
 
   function undo() {
-    if (historyIndexRef.current <= 0) return;
-    historyIndexRef.current -= 1;
-    applySnapshot(cloneState(historyRef.current[historyIndexRef.current]));
-    setHistoryVersion((value) => value + 1);
+    if (historyIndex <= 0) return;
+    const target = historyIndex - 1;
+    applySnapshot(cloneState(history[target]));
+    setHistoryIndex(target);
   }
 
   function redo() {
-    if (historyIndexRef.current >= historyRef.current.length - 1) return;
-    historyIndexRef.current += 1;
-    applySnapshot(cloneState(historyRef.current[historyIndexRef.current]));
-    setHistoryVersion((value) => value + 1);
+    if (historyIndex >= history.length - 1) return;
+    const target = historyIndex + 1;
+    applySnapshot(cloneState(history[target]));
+    setHistoryIndex(target);
   }
 
   function getNormalizedPoint(event) {
@@ -496,14 +495,42 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     if (shouldCommit) commit({ objects: next });
   }
 
-  function deleteSelectedText() {
+  /* В `useCallback` ради подписки ниже: без этого функция новая на
+     каждый рендер, и слушатель клавиш пришлось бы переустанавливать
+     следом за ней. */
+  const deleteSelectedText = useCallback(() => {
     if (!selectedId) return;
     const next = objects.filter((item) => item.id !== selectedId);
     setObjects(next);
     setSelectedId(null);
     setEditingTextId(null);
-    commit({ objects: next });
-  }
+    pushHistory({ ...stateRef.current, objects: next });
+  }, [objects, pushHistory, selectedId]);
+
+  /* Эффект стоит ниже `deleteSelectedText` намеренно: подъём
+     объявлений позволял звать её выше по файлу, но тогда в
+     зависимостях её было не указать — на неё ругался линтер, а
+     подписка держала версию из первого рендера. */
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') onCancelRef.current?.();
+      const target = event.target;
+      const isEditingField =
+        target instanceof HTMLElement &&
+        (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
+      if (
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        selectedId &&
+        tool === 'text' &&
+        !isEditingField
+      ) {
+        event.preventDefault();
+        deleteSelectedText();
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [deleteSelectedText, onCancel, selectedId, tool]);
 
   function handleCropPointerDown(event, handle) {
     event.preventDefault();
@@ -586,9 +613,8 @@ export function PhotoEditorModal({ file, onCancel, onSave }) {
     }
   }
 
-  const canUndo = historyIndexRef.current > 0;
-  const canRedo =
-    historyIndexRef.current >= 0 && historyIndexRef.current < historyRef.current.length - 1;
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex >= 0 && historyIndex < history.length - 1;
 
   return (
     <div className="photo-editor-backdrop" role="presentation">

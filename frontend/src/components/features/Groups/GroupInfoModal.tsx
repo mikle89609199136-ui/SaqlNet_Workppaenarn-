@@ -20,7 +20,6 @@ interface Props {
 export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { showToast } = useToasts();
   const [isEditMode, setEditMode] = useState(false);
-  const [chatName, setChatName] = useState('');
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);
   const { t } = useTranslation();
@@ -36,15 +35,21 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   // Права видны из той же записи об участнике, что и всё остальное.
   const currentUser = members.find((member) => member.id === currentUserData?.id) ?? null;
 
-  useEffect(() => {
-    if (chat) {
-      setChatName(chat.title);
-    }
-  }, [chat]);
+  /* Поле названия заполняется из чата сразу, а дальше следует за ним
+     сравнением во время отрисовки, а не эффектом: тот заполнял бы поле
+     после первой отрисовки, и правка открывалась бы пустой, а при
+     переходе в другую группу показывала прежнее название. */
+  const [chatName, setChatName] = useState(chat?.title ?? '');
+  const [seenTitle, setSeenTitle] = useState(chat?.title);
+
+  if (chat && chat.title !== seenTitle) {
+    setSeenTitle(chat.title);
+    setChatName(chat.title);
+  }
 
   useEffect(() => {
     if (membersError) showToast('error', t('error', 'Ошибка загрузки участников'));
-  }, [membersError, showToast]);
+  }, [membersError, showToast, t]);
 
   if (!chat) return null;
 
@@ -168,7 +173,12 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
         <div className="flex gap-x-2 w-full">
           {!isEditMode && (
             <>
-              <Button className="w-full" onClick={handleToggleEditMode} size="sm" variant="outline">
+              <Button
+                className="w-full"
+                onClick={handleToggleEditMode}
+                size="sm"
+                variant="secondary"
+              >
                 {t('edit', 'Редактировать')}
               </Button>
               <Button className="w-full" onClick={handleLeaveChat} size="sm" variant="danger">
@@ -183,7 +193,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
           )}
           {isEditMode && (
             <>
-              <Button className="w-full" onClick={handleSaveEdited} size="sm" variant="brand">
+              <Button className="w-full" onClick={handleSaveEdited} size="sm" variant="primary">
                 {t('save', 'Сохранить')}
               </Button>
               <Button className="w-full" onClick={handleToggleEditMode} size="sm" variant="ghost">

@@ -48,7 +48,14 @@ export function CreateGroupModal({ onClose }: Props) {
   const [description, setDescription] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [search, setSearch] = useState('');
-  const [found, setFound] = useState<ISearchUserDto[]>([]);
+  /* Результат поиска хранится вместе с запросом, по которому получен.
+     Иначе при новом запросе показывались бы люди из прошлого, пока не
+     придёт ответ, — и очищать их пришлось бы вызовом прямо в эффекте,
+     то есть лишним рендером сразу после первого. */
+  const [foundFor, setFoundFor] = useState<{ query: string; users: ISearchUserDto[] }>({
+    query: '',
+    users: [],
+  });
   const [selected, setSelected] = useState<ISearchUserDto[]>([]);
   const [isCreating, setCreating] = useState(false);
 
@@ -58,28 +65,26 @@ export function CreateGroupModal({ onClose }: Props) {
   const suggestions = useMemo(() => suggestedMembers(chats, meId), [chats, meId]);
 
   useEffect(() => {
-    if (query.trim().length < SEARCH_FROM) {
-      setFound([]);
-      return;
-    }
+    if (query.trim().length < SEARCH_FROM) return undefined;
 
     let cancelled = false;
 
     services.chatService
       .searchUsers(query)
       .then((users) => {
-        if (!cancelled) setFound(users.filter((u) => u.id !== meId));
+        if (!cancelled) setFoundFor({ query, users: users.filter((u) => u.id !== meId) });
       })
       .catch(() => {
-        if (!cancelled) setFound([]);
+        if (!cancelled) setFoundFor({ query, users: [] });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [meId, query]);
 
   const isSearching = query.trim().length >= SEARCH_FROM;
+  const found = foundFor.query === query ? foundFor.users : [];
   const people = isSearching ? found : suggestions;
 
   const toggle = (user: ISearchUserDto) => {
