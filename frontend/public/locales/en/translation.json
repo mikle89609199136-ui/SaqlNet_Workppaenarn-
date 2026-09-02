@@ -114,7 +114,7 @@
   "openImage": "Open image",
   "openMedia": "Open media",
   "password": "Password",
-  "passwordMin": "At least 10 characters",
+  "passwordMin": "At least 6 characters",
   "passwordMinError": "The password must be at least 6 characters",
   "passwordsMismatch": "The passwords do not match",
   "peerNeedsUpdate": "Your contact will read this after updating the app",

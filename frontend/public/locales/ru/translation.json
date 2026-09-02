@@ -114,7 +114,7 @@
   "openImage": "Открыть изображение",
   "openMedia": "Открыть медиа",
   "password": "Пароль",
-  "passwordMin": "Минимум 10 символов",
+  "passwordMin": "Минимум 6 символов",
   "passwordMinError": "Пароль минимум 6 символов",
   "passwordsMismatch": "Пароли не совпадают",
   "peerNeedsUpdate": "Собеседник прочтёт после обновления приложения",

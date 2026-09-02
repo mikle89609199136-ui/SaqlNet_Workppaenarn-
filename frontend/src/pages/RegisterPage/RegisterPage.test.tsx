@@ -53,6 +53,23 @@ describe('регистрация', () => {
     expect(screen.getByLabelText('Повторите пароль')).not.toHaveAttribute('aria-invalid');
   });
 
+  it('забывает прошлые претензии при возврате на шаг', async () => {
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    // Попытались отправить пустую форму — ошибки заслуженные.
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+    expect(await screen.findByText('Не менее 3 символов')).toBeInTheDocument();
+
+    // Ушли назад и вернулись: поля те же, но претензии к пустым полям
+    // повторяться не должны — попытки уйти с этого шага ещё не было.
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+
+    expect(screen.queryByText('Не менее 3 символов')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Повторите пароль')).not.toHaveAttribute('aria-invalid');
+  });
+
   it('проверяет имя пользователя по формату', async () => {
     renderAuth({ page: 'register' });
 

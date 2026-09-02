@@ -28,19 +28,22 @@ export function RegisterPage() {
   const { t, i18n } = useTranslation();
 
   const [step, setStep] = useState<TRegisterStep>('welcome');
-  /* Пытались ли уже уйти с текущего шага. Пока не пытались, пустые поля
-     не считаются ошибкой — человек до них просто не дошёл. */
+  /* Пытались ли уже уйти с текущего шага — кнопкой «Продолжить» или
+     отправкой формы. Пока не пытались, пустые поля не считаются
+     ошибкой: человек до них просто не дошёл. */
   const [attempted, setAttempted] = useState(false);
   const [avatar, setAvatar] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
+    getValues,
     handleSubmit,
+    reset,
     setError,
     trigger,
     watch,
-    formState: { errors, isSubmitting, isSubmitted, touchedFields },
+    formState: { errors, isSubmitting, touchedFields },
   } = useForm<TRegisterForm>({
     resolver: zodResolver(registerFormSchema),
     defaultValues: { firstName: '', username: '', password: '', passwordRepeat: '' },
@@ -51,10 +54,10 @@ export function RegisterPage() {
 
   /* Схема проверяет объект целиком, поэтому стоит тронуть одно поле —
      и в состоянии формы оказываются ошибки всех остальных, ещё пустых.
-     Показываем ошибку только там, где человек уже побывал, либо после
-     попытки отправить: иначе он видит претензии к тому, чего не делал. */
+     Показываем ошибку только там, где человек уже побывал, либо куда
+     его не пустили: иначе он видит претензии к тому, чего не делал. */
   const errorOf = (field: keyof TRegisterForm) =>
-    isSubmitted || attempted || touchedFields[field] ? errors[field]?.message : undefined;
+    attempted || touchedFields[field] ? errors[field]?.message : undefined;
 
   /**
    * Вперёд пускают, только пройдя проверку текущего шага; назад — всегда
@@ -69,18 +72,28 @@ export function RegisterPage() {
     }
 
     const next = REGISTER_STEPS[REGISTER_STEPS.indexOf(step) + 1];
-    if (next) {
-      setAttempted(false);
-      setStep(next);
-    }
+    if (next) goToStep(next);
   }
 
   function goBack() {
     const previous = REGISTER_STEPS[REGISTER_STEPS.indexOf(step) - 1];
-    if (previous) {
-      setAttempted(false);
-      setStep(previous);
-    }
+    if (previous) goToStep(previous);
+  }
+
+  /**
+   * Шаг открывается с чистого листа, но с набранным.
+   *
+   * `reset` со значениями сбрасывает отметки о касаниях, ошибки и
+   * признак отправки — иначе они переезжают между шагами: попытка
+   * отправить пустую форму помечает тронутыми все поля разом, и после
+   * возврата назад человек снова видел бы претензии к тому, чего не
+   * заполнял. Значения при этом остаются на месте — ради них форма и
+   * держится одна на весь мастер.
+   */
+  function goToStep(next: TRegisterStep) {
+    reset(getValues());
+    setAttempted(false);
+    setStep(next);
   }
 
   function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -161,7 +174,11 @@ export function RegisterPage() {
       header={<StepHeader activeIndex={step === 'name' ? 0 : 1} onBack={goBack} />}
       title=""
     >
-      <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
+      <form
+        className="grid gap-4 text-left"
+        noValidate
+        onSubmit={handleSubmit(submit, () => setAttempted(true))}
+      >
         {step === 'name' ? (
           <NameStep
             avatar={avatar}
@@ -357,7 +374,7 @@ function CredentialsStep({
           autoComplete="new-password"
           error={errorOf('password')}
           label={t('password', 'Пароль')}
-          placeholder={t('passwordMin', 'Минимум 10 символов')}
+          placeholder={t('passwordMin', 'Минимум 6 символов')}
           type={showPassword ? 'text' : 'password'}
           {...register('password')}
         />
