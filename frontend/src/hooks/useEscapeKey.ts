@@ -7,7 +7,13 @@ interface Params {
 
 export function useEscapeKey({ active, onClose }: Params) {
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  /* Запись в ссылку — в эффекте, а не в теле хука. Во время отрисовки
+     менять ссылки нельзя: React вправе отбросить рендер и начать заново,
+     а изменение уже случилось. */
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!active) return undefined;

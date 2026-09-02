@@ -12,9 +12,16 @@ export function usePinnedNavigator(messages: TPinnedList) {
 
   const [currentPinnedMessageIndex, setCurrentPinnedMessageIndex] = useState<number | null>(null);
 
-  useEffect(() => {
+  /* Показывается последнее закрепление, и при изменении их числа выбор
+     возвращается к нему же. Сравнением во время отрисовки, а не
+     эффектом: эффект переставлял бы указатель после нарисованного кадра,
+     и при откреплении плашка успевала показать чужое сообщение. */
+  const [seenCount, setSeenCount] = useState(messages.length);
+
+  if (messages.length !== seenCount) {
+    setSeenCount(messages.length);
     setCurrentPinnedMessageIndex(messages.length ? messages.length - 1 : null);
-  }, [messages.length]);
+  }
 
   useEffect(() => {
     return () => {
@@ -26,7 +33,7 @@ export function usePinnedNavigator(messages: TPinnedList) {
 
   const totalSegments = messages.length;
   const safeIndex = Math.min(
-    currentPinnedMessageIndex ?? (totalSegments - 1),
+    currentPinnedMessageIndex ?? totalSegments - 1,
     Math.max(totalSegments - 1, 0)
   );
   const currentMessage = messages[safeIndex]?.message;
@@ -34,10 +41,7 @@ export function usePinnedNavigator(messages: TPinnedList) {
   const visibleSegments = Math.min(totalSegments, MAX_VISIBLE_SEGMENTS);
   const isFilling = totalSegments <= MAX_VISIBLE_SEGMENTS;
   const maxWindowStart = Math.max(totalSegments - visibleSegments, 0);
-  const windowStart = Math.min(
-    Math.max(safeIndex - visibleSegments + 1, 0),
-    maxWindowStart
-  );
+  const windowStart = Math.min(Math.max(safeIndex - visibleSegments + 1, 0), maxWindowStart);
 
   const handleClick = () => {
     if (!currentMessage) return;
@@ -63,7 +67,7 @@ export function usePinnedNavigator(messages: TPinnedList) {
     }
 
     setCurrentPinnedMessageIndex((prev) => {
-      const current = prev ?? (messages.length - 1);
+      const current = prev ?? messages.length - 1;
       return current === 0 ? messages.length - 1 : current - 1;
     });
   };
