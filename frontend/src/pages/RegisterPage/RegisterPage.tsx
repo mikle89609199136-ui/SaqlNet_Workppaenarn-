@@ -81,6 +81,21 @@ export function RegisterPage() {
   }
 
   /**
+   * Отправка формы — это всегда «дальше по шагу».
+   *
+   * Кнопка на всех шагах одна и та же, `type="submit"`, поэтому Enter в
+   * поле работает как нажатие на неё — так человек и ожидает. Раньше
+   * кнопка меняла тип с `button` на `submit` при переходе, и React успевал
+   * подменить её между нажатием и отпусканием мыши: отпускание приходилось
+   * уже на кнопку отправки, форма уходила на проверку сама и встречала
+   * человека ошибками на шаге, куда он только что пришёл.
+   */
+  const handleStepSubmit =
+    step === 'credentials'
+      ? handleSubmit(submit, () => setAttempted(true))
+      : withPreventDefault(goNext);
+
+  /**
    * Шаг открывается с чистого листа, но с набранным.
    *
    * `reset` со значениями сбрасывает отметки о касаниях, ошибки и
@@ -174,11 +189,7 @@ export function RegisterPage() {
       header={<StepHeader activeIndex={step === 'name' ? 0 : 1} onBack={goBack} />}
       title=""
     >
-      <form
-        className="grid gap-4 text-left"
-        noValidate
-        onSubmit={handleSubmit(submit, () => setAttempted(true))}
-      >
+      <form className="grid gap-4 text-left" noValidate onSubmit={handleStepSubmit}>
         {step === 'name' ? (
           <NameStep
             avatar={avatar}
@@ -195,20 +206,24 @@ export function RegisterPage() {
           />
         )}
 
-        {step === 'name' ? (
-          <Button className="mt-2 w-full" onClick={goNext} type="button">
-            {t('continueAction', 'Продолжить')}
-          </Button>
-        ) : (
-          <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
-            {isSubmitting
+        <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+          {step === 'name'
+            ? t('continueAction', 'Продолжить')
+            : isSubmitting
               ? t('creatingAccount', 'Создание аккаунта...')
               : t('createAccount', 'Создать аккаунт')}
-          </Button>
-        )}
+        </Button>
       </form>
     </AuthLayout>
   );
+}
+
+/* Отправка формы шага, которому нужен только переход вперёд. */
+function withPreventDefault(action: () => void) {
+  return (event: React.FormEvent) => {
+    event.preventDefault();
+    action();
+  };
 }
 
 /* Шапка шагов: возврат назад и точки хода. Логотип на этих экранах не

@@ -53,6 +53,19 @@ describe('регистрация', () => {
     expect(screen.getByLabelText('Повторите пароль')).not.toHaveAttribute('aria-invalid');
   });
 
+  it('переходит по Enter и не встречает ошибками следующий шаг', async () => {
+    renderAuth({ page: 'register' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+    // Enter в единственном поле шага — то же, что нажать «Продолжить».
+    await userEvent.type(screen.getByLabelText('Имя'), 'Максим{Enter}');
+
+    expect(await screen.findByLabelText('Имя пользователя')).toBeInTheDocument();
+    // Человек только пришёл на шаг — претензий к пустым полям быть не может.
+    expect(screen.queryByText('Не менее 3 символов')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Пароль')).not.toHaveAttribute('aria-invalid');
+  });
+
   it('забывает прошлые претензии при возврате на шаг', async () => {
     renderAuth({ page: 'register' });
 
