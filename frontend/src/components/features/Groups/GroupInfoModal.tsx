@@ -198,7 +198,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
         {isLoading ? (
           <div className="text-center py-6 text-ink-3">{t('loading', 'Загрузка...')}</div>
         ) : (
-          <ul className="divide-y divide-line rounded-card border border-line bg-sheet-2">
+          <ul className="divide-y divide-line rounded-window border border-line bg-sheet-2">
             {members.map((member) => {
               const memberId = member.id;
               const avatarUrl = member.avatarUrl;
