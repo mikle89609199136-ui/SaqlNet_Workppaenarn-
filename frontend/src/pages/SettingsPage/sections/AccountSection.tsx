@@ -346,8 +346,21 @@ function PasswordSettings({ onBack, showToast }) {
     } catch (error) {
       /* Неверный текущий пароль — ошибка поля, а не всей формы: тост
          исчезнет, а подпись под полем останется и скажет, что править. */
-      if ((error as { data?: { code?: string } })?.data?.code === 'wrong_password') {
+      const code = (error as { data?: { code?: string } })?.data?.code;
+
+      if (code === 'wrong_password') {
         setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
+        return;
+      }
+
+      /* Сервер отверг пароль своей политикой. Наши правила её повторяют,
+         но могли отстать — тогда причину показываем у поля, а не тостом. */
+      if (code === 'weak_password') {
+        setError(
+          'newPassword',
+          { message: t('settings.password.weak', 'Пароль не отвечает требованиям') },
+          { shouldFocus: true }
+        );
         return;
       }
       showToast('error', t('toast.passwordChangeFailed', 'Не удалось изменить пароль'));
