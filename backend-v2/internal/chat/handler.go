@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
@@ -81,31 +83,73 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CreateGroup handles POST /api/v2/chats/groups.
+// On success, it returns 201 Created with the chat ID and trimmed title.
+// On validation errors, it returns 400 Bad Request with a descriptive error code.
+// On internal errors, it returns 500 Internal Server Error.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
+	// Enforce HTTP method – only POST is allowed.
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	// Retrieve the authenticated user from the request context.
 	current := authctx.MustUser(r)
+
+	// Define the expected JSON request body structure.
 	var input struct {
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		AvatarURL   string   `json:"avatarUrl"`
-		Members     []string `json:"members"`
+		Title       string   `json:"title"`       // group name, required, max 128 chars
+		Description string   `json:"description"` // optional group description
+		AvatarURL   string   `json:"avatarUrl"`   // optional avatar URL
+		Members     []string `json:"members"`     // array of user IDs, required non-empty
 	}
+
+	// Decode the JSON body into the input struct.
 	if !decode(w, r, &input) {
 		return
 	}
-	chatID, err := h.service.CreateGroup(r.Context(), current.ID, input.Title, input.Description, input.AvatarURL, input.Members)
-	if errors.Is(err, ErrInvalidInput) {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title and members are required")
+
+	// ------------------------------------------------------------------
+	// Validation: enforce the database column limit for "title".
+	// ------------------------------------------------------------------
+	const maxTitleLen = 128
+
+	if utf8.RuneCountInString(input.Title) > maxTitleLen {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+			"title exceeds maximum length of 128 characters")
 		return
 	}
+
+	// Delegate the creation logic to the service layer.
+	chatID, err := h.service.CreateGroup(r.Context(), current.ID, input.Title, input.Description, input.AvatarURL, input.Members)
+
+	// ------------------------------------------------------------------
+	// Error mapping: convert domain errors to appropriate HTTP responses.
+	// ------------------------------------------------------------------
+
+	if errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+			"title and members are required")
+		return
+	}
+
+	// Any other unexpected error (database connection failure, constraint violation,
+	// etc.) is treated as an internal server error.
 	if err != nil {
+		log.Printf("Error from service:%v", err)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "group creation failed")
 		return
 	}
-	httpx.JSON(w, http.StatusCreated, map[string]any{"chatId": chatID, "title": strings.TrimSpace(input.Title)})
+
+	// ------------------------------------------------------------------
+	// Success: respond with 201 Created and return the newly created chat ID
+	// and the trimmed title (to remove accidental leading/trailing whitespace).
+	// ------------------------------------------------------------------
+	httpx.JSON(w, http.StatusCreated, map[string]any{
+		"chatId": chatID,
+		"title":  strings.TrimSpace(input.Title),
+	})
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
