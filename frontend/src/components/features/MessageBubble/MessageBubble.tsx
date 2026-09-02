@@ -1,7 +1,6 @@
 import { useMessageLongPress } from '@/hooks';
-import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatUiStore } from '@/store';
-import type { IMessageDto } from '@/types';
+import type { IMediaItem, IMessageDto } from '@/types';
 import { cn, formatMessageTime, hasMessageMedia } from '@/utils';
 import { memo, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,13 +12,25 @@ import { MessageMedia } from './MessageMedia';
 interface Props {
   currentUserId: string;
   message: IMessageDto;
+  /**
+   * Сообщение, на которое отвечают, — для превью над ответом. Ищет его
+   * список: у него лента уже есть, а пузырю нужна одна запись.
+   *
+   * Прежде пузырь искал сам, через `useThreadMessagesData`, и вместе с
+   * этим подписывался на всю историю чата. Подписки на один ключ
+   * дедуплицируются, а вот результат `select` — нет: он склеивает и
+   * сортирует страницы, и копию этого массива держал каждый наблюдатель.
+   * Сто сообщений — сто копий по сто ссылок, и сто сортировок на каждое
+   * изменение ленты.
+   */
+  repliedMessage?: IMediaItem;
   translations: Record<string, string>;
   onOpenImage: Dispatch<SetStateAction<string | null>>;
   onSelection: (message: IMessageDto) => void;
 }
 
 export const MessageBubble = memo(
-  ({ currentUserId, message, translations, onOpenImage, onSelection }: Props) => {
+  ({ currentUserId, message, repliedMessage, translations, onOpenImage, onSelection }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
     const isActionTarget = useChatUiStore((state) => state.actionMenu?.messageId === message.id);
@@ -28,12 +39,6 @@ export const MessageBubble = memo(
       state.selectedMessages.some(({ id }) => id === message.id)
     );
     const isHighlighted = useChatUiStore((state) => state.highlightedMessageId === message.id);
-    // Исходное сообщение ответа ищется в истории чата — она живёт в кеше запросов.
-    const threadMessages = useThreadMessagesData();
-    const repliedMessage = message.replyTo
-      ? threadMessages.find(({ id }) => id === message.replyTo)
-      : null;
-
     const { t } = useTranslation();
     const mine = message.senderId === currentUserId;
 
@@ -66,7 +71,8 @@ export const MessageBubble = memo(
             isAudio && 'has-audio w-full',
             isActionTarget && 'is-action-target',
             isSelected && 'is-selected bg-accent',
-            isHighlighted && 'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
+            isHighlighted &&
+              'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
           )}
         >
           {!mine && message.senderStatusEmoji && (
