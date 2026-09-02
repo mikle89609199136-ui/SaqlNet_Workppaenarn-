@@ -1,6 +1,6 @@
 import { useChatUiStore, useProfileStore } from '@/store';
-import type { IMessageDto, TMessagesList } from '@/types';
-import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
+import { memo, useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { MessageBubbleSkeleton } from '../MessageBubble/MessageBubbleSkeleton';
@@ -30,6 +30,16 @@ export const MessagesList = memo(
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
 
+    /* Указатель на сообщения по идентификатору — чтобы превью ответа
+       искалось один раз на ленту, а не в каждом пузыре. Ссылки на сами
+       сообщения при неизменной ленте те же, поэтому `memo` у пузыря
+       продолжает работать. */
+    const messagesById = useMemo(() => {
+      const index = new Map<string, IMediaItem>();
+      for (const message of messages) index.set(message.id, message);
+      return index;
+    }, [messages]);
+
     return (
       <section className="thread-messages styled-scrollbar" aria-busy={isLoading} ref={messagesRef}>
         {isLoading && <MessageBubbleSkeleton />}
@@ -48,6 +58,7 @@ export const MessagesList = memo(
               currentUserId={user.id}
               key={message.id}
               message={message}
+              repliedMessage={message.replyTo ? messagesById.get(message.replyTo) : undefined}
               translations={translations}
               onOpenImage={setOpenedImage}
               onSelection={toggleMessageSelection}
