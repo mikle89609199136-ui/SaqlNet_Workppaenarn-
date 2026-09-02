@@ -18,6 +18,20 @@ export const defaultHandlers = [
     HttpResponse.json({ id: 'user-1', username: 'tester', firstName: 'Тестовый' })
   ),
 
+  http.get(api('/users/:userId/profile'), ({ params }) =>
+    HttpResponse.json({
+      user: {
+        id: params.userId,
+        username: 'tester',
+        firstName: 'Тестовый',
+        lastName: '',
+        avatarUrl: '',
+        bio: '',
+        isOnline: false,
+      },
+    })
+  ),
+
   // Настройки и приватность сервер отдаёт одним ответом. Пустые объекты, а
   // не выдуманные значения: раздел обязан работать на том, чего сервер не
   // прислал, и тест, которому нужны конкретные настройки, задаёт их сам.
