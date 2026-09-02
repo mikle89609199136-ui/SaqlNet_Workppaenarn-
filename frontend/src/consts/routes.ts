@@ -29,7 +29,7 @@ export type TSettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEFAULT_SETTINGS_SECTION: TSettingsSection = 'account';
 
 /* Подстраницы аккаунта — второй уровень: /settings/account/password. */
-export const ACCOUNT_SUBSECTIONS = ['profile', 'email', 'password', 'twoFA', 'sessions'] as const;
+export const ACCOUNT_SUBSECTIONS = ['profile', 'email', 'password', 'sessions'] as const;
 
 export type TAccountSubsection = (typeof ACCOUNT_SUBSECTIONS)[number];
 

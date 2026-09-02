@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { passwordSchema } from '@/utils/passwordRules';
 
 /**
  * Правила форм аккаунта.
@@ -8,15 +9,12 @@ import { z } from 'zod';
  * раньше жили вперемешку с запросами.
  */
 
-/* Требование сервера — не менее шести знаков (auth/handler.go), но для
-   пароля от аккаунта этого мало, поэтому здесь десять. Расхождение
-   намеренное: клиент вправе быть строже сервера, наоборот — нет. */
-const MIN_PASSWORD = 10;
-
 export const passwordFormSchema = z
   .object({
     currentPassword: z.string().min(1, 'Введите текущий пароль'),
-    newPassword: z.string().min(MIN_PASSWORD, `Не менее ${MIN_PASSWORD} символов`),
+    /* Те же требования, что при регистрации: разойдись они, пароль,
+       годный при заведении аккаунта, нельзя было бы поставить при смене. */
+    newPassword: passwordSchema,
     confirmation: z.string().min(1, 'Повторите новый пароль'),
   })
   .refine((values) => values.newPassword === values.confirmation, {
@@ -36,11 +34,5 @@ export const profileFormSchema = z.object({
   bio: z.string().trim().max(160, 'Не больше 160 символов'),
 });
 
-/* Второй пароль сервер принимает от шести знаков (auth/handler.go:231). */
-export const twoFAFormSchema = z.object({
-  password: z.string().min(6, 'Не менее 6 символов'),
-});
-
 export type TPasswordForm = z.infer<typeof passwordFormSchema>;
 export type TProfileForm = z.infer<typeof profileFormSchema>;
-export type TTwoFAForm = z.infer<typeof twoFAFormSchema>;

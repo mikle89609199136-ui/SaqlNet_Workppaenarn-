@@ -18,7 +18,7 @@
   "chatSearching": "Поиск чата...",
   "chatsNotFound": "Чаты не найдены",
   "checkMessage": "Выбрать",
-  "chooseLoginSub": "Юзернейм и пароль для входа",
+  "chooseLoginSub": "Имя пользователя и пароль для входа",
   "chooseLoginTitle": "Придумайте логин",
   "close": "Закрыть",
   "connecting": "Соединяемся…",
@@ -72,6 +72,8 @@
   "loading": "Загрузка...",
   "loadingError": "Ошибка загрузки",
   "login": "Войти",
+  "login.invalidCredentials": "Неверное имя пользователя или пароль",
+  "login.twoFAUnavailable": "У аккаунта включён дополнительный пароль — вход с ним сейчас недоступен",
   "loginDone": "Вход выполнен!",
   "loginLoading": "Вход...",
   "loginRequired": "Введите юзернейм и пароль",
@@ -124,6 +126,7 @@
   "profileMediaEmpty": "Медиафайлы отсутствуют",
   "profileSaveError": "Не удалось сохранить профиль",
   "reactionError": "Не удалось обновить реакцию",
+  "register.usernameTaken": "Это имя пользователя занято",
   "registerAction": "Зарегистрироваться",
   "removeAttachment": "Убрать вложение",
   "removeMember": "Убрать участника",
@@ -265,6 +268,6 @@
   "welcomeFeatureE2E": "End-to-end шифрование всех сообщений",
   "welcomeFeatureMedia": "Голосовые, видео, стикеры и многое другое",
   "welcomeFeaturePrivacy": "Полная защита данных и приватность",
-  "welcomeRegisterTitle": "Добро пожаловать<br>в CraneApp",
+  "welcomeRegisterTitle": "Добро пожаловать в CraneApp",
   "whatIsYourName": "Как вас зовут?"
 }
