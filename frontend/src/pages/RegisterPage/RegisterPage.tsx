@@ -4,7 +4,7 @@ import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/layouts';
-import { Button, Icon, Input } from '@/components/ui';
+import { Button, Icon, Input, PasswordRequirements } from '@/components/ui';
 import { ROUTES } from '@/consts/routes';
 import { STORAGE_KEYS } from '@/consts/storageKeys';
 import { useToasts } from '@/hooks';
@@ -12,8 +12,8 @@ import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store/profile';
 import type { IAuthResponse } from '@/types';
+import { getPasswordScore, PASSWORD_RULES } from '@/utils/passwordRules';
 import {
-  getPasswordScore,
   registerFormSchema,
   REGISTER_STEPS,
   STEP_FIELDS,
@@ -199,11 +199,7 @@ export function RegisterPage() {
             register={register}
           />
         ) : (
-          <CredentialsStep
-            errorOf={errorOf}
-            passwordScore={getPasswordScore(watch('password'))}
-            register={register}
-          />
+          <CredentialsStep errorOf={errorOf} password={watch('password')} register={register} />
         )}
 
         <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
@@ -347,14 +343,11 @@ function NameStep({
   );
 }
 
-function CredentialsStep({
-  errorOf,
-  passwordScore,
-  register,
-}: IStepProps & { passwordScore: number }) {
+function CredentialsStep({ errorOf, password, register }: IStepProps & { password: string }) {
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [showRepeat, setShowRepeat] = useState(false);
+  const passwordScore = getPasswordScore(password);
 
   return (
     <>
@@ -394,6 +387,9 @@ function CredentialsStep({
           {...register('password')}
         />
         <PasswordStrength score={passwordScore} />
+        {/* Список нужен, пока человек печатает: сообщение об ошибке
+            называет одно ближайшее требование, а видеть надо все. */}
+        {password.length > 0 && <PasswordRequirements value={password} />}
       </div>
 
       <Input
@@ -424,14 +420,15 @@ function PasswordToggle({ onToggle, shown }: { onToggle: () => void; shown: bool
   );
 }
 
-/* Полоска силы пароля. Цвета — от опасного к безопасному, целиком на
-   токенах: два опорных и три ступени между ними. */
+/* Полоска силы пароля — доля выполненных требований, тех же самых, что
+   перечислены под полем. Считать её своим набором признаков нельзя:
+   полоска доходила бы до конца у пароля, который форма не принимает. */
 function PasswordStrength({ score }: { score: number }) {
+  const total = PASSWORD_RULES.length;
   const colors = [
     'var(--color-danger)',
     'color-mix(in srgb, var(--color-danger) 50%, var(--color-warn))',
     'var(--color-warn)',
-    'color-mix(in srgb, var(--color-warn) 45%, var(--color-ok))',
     'var(--color-ok)',
   ];
 
@@ -440,8 +437,8 @@ function PasswordStrength({ score }: { score: number }) {
       <div
         className="h-full transition-all duration-normal"
         style={{
-          background: score > 0 ? colors[score - 1] : 'transparent',
-          width: score > 0 ? `${score * 20}%` : '0%',
+          background: score > 0 ? colors[Math.min(score, colors.length) - 1] : 'transparent',
+          width: `${(score / total) * 100}%`,
         }}
       />
     </div>

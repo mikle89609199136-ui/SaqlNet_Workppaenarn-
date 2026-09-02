@@ -45,7 +45,7 @@ describe('регистрация', () => {
     await goToCredentials();
     // Набрали только пароль — про пустые имя пользователя и повтор пока
     // молчим: схема проверяет объект целиком, но человек их не касался.
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
 
     // Проверяем по признаку ошибки у поля, а не по тексту: «Повторите
     // пароль» — это ещё и подпись, она на экране в любом случае.
@@ -88,8 +88,8 @@ describe('регистрация', () => {
 
     await goToCredentials();
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'мак сим');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
-    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     expect(await screen.findByText('Только латинские буквы, цифры и _')).toBeInTheDocument();
@@ -100,8 +100,8 @@ describe('регистрация', () => {
 
     await goToCredentials();
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
-    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol654321');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol654321!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     expect(await screen.findByText('Пароли не совпадают')).toBeInTheDocument();
@@ -118,8 +118,8 @@ describe('регистрация', () => {
 
     await goToCredentials();
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
-    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     expect(await screen.findByText('Это имя пользователя занято')).toBeInTheDocument();
@@ -138,8 +138,8 @@ describe('регистрация', () => {
 
     await goToCredentials();
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
-    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     expect(await screen.findByText('Список чатов')).toBeInTheDocument();
@@ -158,8 +158,8 @@ describe('регистрация', () => {
 
     await goToCredentials('  Максим  ');
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456');
-    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     await screen.findByText('Список чатов');

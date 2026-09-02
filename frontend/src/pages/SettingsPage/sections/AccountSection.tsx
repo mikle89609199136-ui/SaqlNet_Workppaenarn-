@@ -2,7 +2,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
+import {
+  Avatar,
+  Banner,
+  Button,
+  ConfirmDialog,
+  Icon,
+  Input,
+  PasswordRequirements,
+  Textarea,
+} from '@/components/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -316,6 +325,7 @@ function PasswordSettings({ onBack, showToast }) {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<TPasswordForm>({
     resolver: zodResolver(passwordFormSchema),
@@ -325,6 +335,8 @@ function PasswordSettings({ onBack, showToast }) {
     // ошибка сразу исчезала.
     mode: 'onTouched',
   });
+
+  const newPassword = watch('newPassword');
 
   async function submit(values: TPasswordForm) {
     try {
@@ -356,13 +368,18 @@ function PasswordSettings({ onBack, showToast }) {
           type="password"
           {...register('currentPassword')}
         />
-        <Input
-          autoComplete="new-password"
-          error={errors.newPassword?.message}
-          label={t('settings.password.new', 'Новый пароль')}
-          type="password"
-          {...register('newPassword')}
-        />
+        <div>
+          <Input
+            autoComplete="new-password"
+            error={errors.newPassword?.message}
+            label={t('settings.password.new', 'Новый пароль')}
+            type="password"
+            {...register('newPassword')}
+          />
+          {/* Требования те же, что при регистрации, и показаны так же:
+              иначе человек узнаёт о них по одному, из сообщений об ошибке. */}
+          {newPassword.length > 0 && <PasswordRequirements value={newPassword} />}
+        </div>
         <Input
           autoComplete="new-password"
           error={errors.confirmation?.message}
