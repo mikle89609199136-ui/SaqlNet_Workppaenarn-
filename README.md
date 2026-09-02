@@ -12,7 +12,7 @@ database rows and uploaded files.
 
 ## Current Stack
 
-- Frontend: React/Vite SPA in `client/mobile/react`.
+- Frontend: React/Vite SPA in `frontend`, with its own dependency manifest.
 - Backend: Go edge/auth/user/chat/media/admin services, PostgreSQL schemas,
   OpenAPI, Protobuf, NATS, Redis, and S3-compatible object storage.
 - Crypto: Rust service with Argon2id password hashing, signed access tokens,
@@ -21,7 +21,7 @@ database rows and uploaded files.
 
 ## Repository Map
 
-- `client/mobile/react` - React client.
+- `frontend` - React client (Vite). Own `package.json`, sources in `frontend/src`.
 - `dist` - generated React build output served by the Go edge.
 - `server/crypto-rust` - Rust crypto service.
 - `backend-v2` - new Go backend foundation.
@@ -33,19 +33,26 @@ database rows and uploaded files.
 ## Development
 
 ```bash
-npm install
+npm install                 # инструменты репозитория
+cd frontend && npm ci       # зависимости клиента
+cd ..
 cp .env.example .env
-npm run dev
+npm run dev                 # запускает клиент из frontend/
 ```
+
+Клиент держит собственный `package.json`. Корневые команды `dev`, `build:react`,
+`typecheck` и `test` вызывают его скрипты, поэтому требуют установленного
+`frontend/node_modules`.
+
+Переменная `DEV_API_PROXY_TARGET` для dev-сервера читается из `frontend/.env`.
 
 Useful checks:
 
 ```bash
 npm test
-npm run test:react
 ```
 
-`npm test` currently runs the architecture/syntax guard. 
+`npm test` runs the frontend test suite. 
 React tests run through
 Vitest.
 

@@ -4,22 +4,66 @@ on:
   pull_request:
     branches:
       - master
+      - dev
   push:
     branches:
       - master
+      - dev
 
 permissions:
   contents: read
+  # Определение изменённых путей запрашивает список файлов Pull Request через API
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Определяет, каких частей проекта коснулись изменения, чтобы не запускать
+  # сборку Go и Rust на правку клиента и наоборот.
+  #
+  # Изменение самого ci.yml запускает все проверки: иначе ошибку в конфигурации
+  # можно внести незаметно.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      crypto: ${{ steps.filter.outputs.crypto }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'backend-v2/**'
+              - '.github/workflows/ci.yml'
+            crypto:
+              - 'server/crypto-rust/**'
+              - '.github/workflows/ci.yml'
+
   frontend:
     name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: frontend
 
     steps:
       - name: Checkout repository
@@ -30,24 +74,32 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Check types
-        run: npm run typecheck
+      # Проверка типов из конвейера убрана: корневой tsconfig — файл-решение
+      # со списком проектов и пустым files, поэтому `tsc --noEmit` завершался
+      # успехом, не открыв ни одного файла. Шаг занимал место обязательной
+      # проверки, ничего при этом не проверяя. Вернуть — вместе с #253.
 
-      - name: Run architecture checks
-        run: npm test
+      # Циклические импорты не ломают сборку, но делают модули непригодными
+      # для изолированного тестирования. dpdm учитывает, что import type
+      # стирается при компиляции, и не считает такие связи циклами.
+      - name: Check for import cycles
+        run: npm run check:cycles
 
       - name: Run React tests
-        run: npm run test:react
+        run: npm run test
 
       - name: Build frontend
-        run: npm run build:react
+        run: npm run build
 
   backend:
     name: Backend (Go)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -86,6 +138,8 @@ jobs:
 
   crypto:
     name: Crypto (Rust)
+    needs: changes
+    if: needs.changes.outputs.crypto == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

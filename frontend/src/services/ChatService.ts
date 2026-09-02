@@ -1,0 +1,136 @@
+import { API_ENDPOINTS, ApiClient } from '@/api';
+import type {
+  IChatDto,
+  IChatResponse,
+  IChatsResponse,
+  ICreateGroupChatResponse,
+  IMembersListResponse,
+  ISearchUsersResponse,
+  TChatRole,
+  TChatType,
+  TMembersList,
+} from '@/types';
+
+export class ChatService {
+  private apiClient: ApiClient;
+  constructor(apiClient: ApiClient) {
+    this.apiClient = apiClient;
+  }
+
+  // Свежестью списка распоряжается слой запросов: собственный кеш здесь
+  // сбрасывался только при ошибке, и успешный ответ жил до перезагрузки
+  // вкладки — созданный чат в списке не появлялся.
+  async getChats() {
+    const response = await this.apiClient.get<IChatsResponse>(API_ENDPOINTS.CHATS);
+    return response.data.chats;
+  }
+
+  // Запрос без собственного кеша: это функция загрузки для chat-запроса,
+  // и кеширование — его забота.
+  async getChat(chatId: string): Promise<IChatDto> {
+    const response = await this.apiClient.get<IChatResponse>(API_ENDPOINTS.CHAT_BY_ID(chatId));
+    return response.data.chat;
+  }
+
+  async createChat(type: TChatType, participants: string[], title = '') {
+    if (type === 'private') {
+      return this.apiClient
+        .post(API_ENDPOINTS.CHAT_PRIVATE, { userId: participants[0] })
+        .then((response) => response.data);
+    }
+
+    return this.apiClient
+      .post(API_ENDPOINTS.CHAT_GROUPS, { members: participants, title })
+      .then((response) => response.data);
+  }
+
+  async createGroup({
+    title,
+    description = '',
+    members = [],
+    avatarUrl = '',
+  }: {
+    title: string;
+    description: string;
+    members: string[];
+    avatarUrl?: string;
+  }): Promise<ICreateGroupChatResponse> {
+    const chat = await this.apiClient
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, {
+        title,
+        description,
+        members,
+        // Аватарка хранится строкой, поэтому уходит уменьшенной картинкой
+        // прямо в теле запроса: отдельная загрузка файла тут не нужна.
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
+      .then((response) => response.data);
+
+    return chat;
+  }
+
+  async searchUsers(query: string) {
+    return (
+      this.apiClient
+        .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
+        // Когда никто не нашёлся, сервер присылает null вместо пустого списка,
+        // а вызывающий код рисует результат перебором.
+        .then((response) => response.data.users ?? [])
+    );
+  }
+
+  // Свежесть списка — забота слоя запросов: раньше промис оставался в
+  // сервисе навсегда, и смена роли не была видна даже после переоткрытия.
+  async getMembers(chatId: string): Promise<TMembersList> {
+    return this.apiClient
+      .get<IMembersListResponse>(API_ENDPOINTS.CHAT_MEMBERS(chatId))
+      .then((response) => response.data.members ?? []);
+  }
+
+  async setMemberRole(chatId: string, userId: string, role: TChatRole) {
+    return this.apiClient
+      .post(API_ENDPOINTS.CHAT_MEMBER_ROLE(chatId, userId), { role })
+      .then((response) => response.data);
+  }
+
+  async removeMember(chatId: string, userId: string) {
+    return this.apiClient
+      .delete(API_ENDPOINTS.CHAT_MEMBER(chatId, userId))
+      .then((response) => response.data);
+  }
+
+  async updateChat(
+    chatId: string,
+    data: Partial<
+      Omit<IChatDto, 'id' | 'peerId' | 'peerPublicKey' | 'ownerId' | 'createdAt' | 'type'>
+    >
+  ): Promise<IChatDto> {
+    // Сервер принимает частичное изменение чата методом PATCH: с PUT
+    // переименование группы отвечало 405.
+    const response = await this.apiClient.patch<IChatResponse>(
+      API_ENDPOINTS.CHAT_BY_ID(chatId),
+      data
+    );
+    return response.data.chat;
+  }
+
+  async deleteChat<T>(chatId: string): Promise<T> {
+    const response = await this.apiClient.delete<T>(API_ENDPOINTS.CHAT_BY_ID(chatId));
+    return response.data;
+  }
+
+  async muteChat(chatId: string, duration: number) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
+    return response.data;
+  }
+
+  async pinChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
+    return response.data;
+  }
+
+  async archiveChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
+    return response.data;
+  }
+}

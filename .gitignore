@@ -28,11 +28,14 @@ uploads/
 # Build outputs
 dist/
 build/
-client/mobile/react-dist/
 
 # Test and coverage outputs
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
+.playwright-mcp/
+frontend/e2e/.auth/
 
 # Go
 backend-v2/bin/
@@ -56,10 +59,12 @@ data/
 # OS
 .DS_Store
 Thumbs.db
-backend-v2/edge
 
 # AI
 AGENTS.md
 .serena
 .agents
 .kimi-code
+
+# Local dev accounts (passwords, never commit)
+dev-accounts.local.md
