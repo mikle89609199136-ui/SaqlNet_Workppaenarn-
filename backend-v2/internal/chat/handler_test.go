@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -673,7 +674,7 @@ func TestHandler_CreateGroup(t *testing.T) {
 			name:   "title_too_long_400",
 			method: http.MethodPost,
 			requestBody: map[string]any{
-				"title":   string(make([]byte, 129)), // 129 characters
+				"title":   strings.Repeat("a", 129), // 129 characters
 				"members": []string{memberID1},
 			},
 			setupMock: func(mock *sqlmock.Sqlmock) {
