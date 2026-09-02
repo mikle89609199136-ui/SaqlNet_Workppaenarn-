@@ -9,9 +9,11 @@ export { getChatSubtitle } from './getChatSubtitle';
 export {
   checkPassword,
   getPasswordScore,
+  MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   PASSWORD_RULES,
   passwordSchema,
+  type IPasswordRule,
 } from './passwordRules';
 export { getLastMessageText } from './getLastMessageText';
 export {

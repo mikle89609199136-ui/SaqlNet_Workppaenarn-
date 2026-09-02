@@ -1,73 +1,84 @@
 import { z } from 'zod';
 
 /**
- * Требования к паролю — одни на всё приложение.
+ * Требования к паролю — копия серверных.
  *
- * Держать их в двух местах нельзя: разойдись пороги, и пароль, годный
- * при регистрации, нельзя будет поставить при смене. Поэтому и
- * регистрация, и настройки берут схему отсюда.
+ * Источник правды здесь не наш: политику задаёт
+ * `backend-v2/internal/auth/password_validator.go`, и она одна на
+ * регистрацию, смену пароля и второй пароль. Клиент повторяет её слово
+ * в слово, чтобы человек узнавал о несоответствии до отправки, а не из
+ * ответа сервера.
  *
- * Оговорка на будущее: действующая редакция NIST SP 800-63B требований
- * к составу не советует — люди обходят их предсказуемо («Parol123!»),
- * а запоминаемость падает. Стандарт предлагает вместо этого длину и
- * сверку со списками утёкших паролей. Состав здесь — осознанное решение
- * владельца, а не недосмотр; список утёкших к нему стоит добавить, когда
- * появится, чем угодно его заменять.
+ * Расхождение в любую сторону вредит: мягче — форма отправит то, что
+ * сервер отвергнет, и человек получит невнятную ошибку; строже — не даст
+ * ввести пароль, который сервер бы принял. Меняются требования — сперва
+ * на сервере, потом здесь.
+ *
+ * Оговорка на будущее: действующая редакция NIST SP 800-63B требований к
+ * составу не советует — их обходят предсказуемо («Parol123!»), а
+ * запоминаемость падает; вместо этого предлагается длина и сверка со
+ * списками утёкших. Это разговор про серверную политику, не про клиент.
  */
 
-/* Столько же принимает сервер (auth/handler.go). Клиент вправе быть
-   строже сервера, наоборот — нет. */
-export const MIN_PASSWORD_LENGTH = 6;
+/** `minPasswordLength` в password_validator.go. */
+export const MIN_PASSWORD_LENGTH = 10;
+
+/** `maxPasswordLength` там же. Считается в символах, не в байтах. */
+export const MAX_PASSWORD_LENGTH = 64;
 
 /**
- * Требования по одному, каждое со своей проверкой.
+ * `passwordSpecialCharacters` оттуда же, символ в символ.
  *
- * Список, а не единая регулярка: человеку под полем показывается, что
- * именно осталось сделать, а сообщение об ошибке собирается из тех же
- * правил — расхождению между подсказкой и запретом взяться неоткуда.
+ * Именно список, а не «всё, что не буква и не цифра»: сервер считает
+ * знаком только это, и «№», «€» или длинное тире он не засчитает. Свой,
+ * более широкий набор означал бы, что форма пропускает пароль, который
+ * сервер отвергнет.
  */
-export const PASSWORD_RULES = [
+const SPECIAL_CHARACTERS = '!@#$%^&*()_+-=[]{}|;:\'",.<>/?`~';
+
+export interface IPasswordRule {
+  id: string;
+  label: string;
+  test: (value: string) => boolean;
+}
+
+/**
+ * Что человеку нужно сделать, чтобы пароль приняли.
+ *
+ * Показывается списком под полем. Сюда входят только достижимые
+ * требования: запреты (длиннее шестидесяти четырёх, пробел внутри)
+ * выполнены по умолчанию, и держать их в списке значило бы с первого
+ * символа показывать две зелёные галочки ни о чём. Их проверяет схема и
+ * сообщает, только когда нарушены.
+ */
+export const PASSWORD_RULES: IPasswordRule[] = [
   {
     id: 'length',
     label: `Не менее ${MIN_PASSWORD_LENGTH} символов`,
-    test: (value: string) => value.length >= MIN_PASSWORD_LENGTH,
-  },
-  {
-    id: 'uppercase',
-    label: 'Заглавная буква',
-    test: (value: string) => /\p{Lu}/u.test(value),
+    test: (value) => [...value].length >= MIN_PASSWORD_LENGTH,
   },
   {
     id: 'digit',
     label: 'Цифра',
-    test: (value: string) => /\d/.test(value),
+    test: (value) => /\d/.test(value),
   },
   {
-    id: 'symbol',
-    label: 'Знак: !, ?, — и подобные',
-    /* Всё, что не буква, не цифра и не пробел. Через свойства Unicode, а
-       не списком: иначе знак с чужой раскладки — «№», «€», «—» — тихо
-       не засчитался бы, хотя человек его честно набрал. */
-    test: (value: string) => /[^\p{L}\p{N}\s]/u.test(value),
+    id: 'special',
+    label: `Знак из ${SPECIAL_CHARACTERS.slice(0, 8)} и подобных`,
+    test: (value) => [...value].some((character) => SPECIAL_CHARACTERS.includes(character)),
   },
-] as const;
-
-export type TPasswordRuleId = (typeof PASSWORD_RULES)[number]['id'];
+];
 
 /** Какие требования выполнены для этого значения. */
-export function checkPassword(value: string): Record<TPasswordRuleId, boolean> {
-  return Object.fromEntries(PASSWORD_RULES.map((rule) => [rule.id, rule.test(value)])) as Record<
-    TPasswordRuleId,
-    boolean
-  >;
+export function checkPassword(value: string): Record<string, boolean> {
+  return Object.fromEntries(PASSWORD_RULES.map((rule) => [rule.id, rule.test(value)]));
 }
 
 /**
  * Сколько требований выполнено — им же меряется полоска под полем.
  *
- * Раньше сила считалась своим набором признаков, не совпадавшим с тем,
- * что форма требует: полоска доходила до конца у пароля, который форма
- * не принимала.
+ * Считать силу своим набором признаков нельзя: полоска доходила бы до
+ * конца у пароля, который форма не принимает.
  */
 export function getPasswordScore(value: string): number {
   return PASSWORD_RULES.filter((rule) => rule.test(value)).length;
@@ -76,10 +87,22 @@ export function getPasswordScore(value: string): number {
 /**
  * Схема пароля.
  *
- * Проверки идут по одной и в том же порядке, что и подсказки под полем:
- * сообщение называет ближайшее невыполненное требование, а не всё разом.
+ * Порядок проверок тот же, что у сервера (`ValidatePassword`): сначала
+ * длина, потом пробелы, потом состав. Сообщение называет ближайшее
+ * невыполненное требование, а не всё разом.
  */
-export const passwordSchema = PASSWORD_RULES.reduce(
-  (schema, rule) => schema.refine(rule.test, { message: rule.label }),
-  z.string() as z.ZodType<string>
-);
+export const passwordSchema = z
+  .string()
+  .refine((value) => [...value].length >= MIN_PASSWORD_LENGTH, {
+    message: `Не менее ${MIN_PASSWORD_LENGTH} символов`,
+  })
+  .refine((value) => [...value].length <= MAX_PASSWORD_LENGTH, {
+    message: `Не более ${MAX_PASSWORD_LENGTH} символов`,
+  })
+  .refine((value) => !/\s/.test(value), {
+    message: 'Без пробелов',
+  })
+  .refine((value) => /\d/.test(value), { message: 'Нужна цифра' })
+  .refine((value) => [...value].some((character) => SPECIAL_CHARACTERS.includes(character)), {
+    message: 'Нужен знак: ! @ # $ % и подобные',
+  });

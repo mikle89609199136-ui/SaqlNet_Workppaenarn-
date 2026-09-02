@@ -4,7 +4,8 @@ import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/layouts';
-import { Button, Icon, Input, PasswordRequirements, SegmentedControl } from '@/components/ui';
+import { PasswordRequirements } from '@/components/features';
+import { Button, Icon, Input, SegmentedControl } from '@/components/ui';
 import { LANGUAGES, type TLanguage } from '@/consts';
 import { ROUTES } from '@/consts/routes';
 import { useToasts } from '@/hooks';
@@ -152,6 +153,20 @@ export function RegisterPage() {
       /* Занятое имя — ошибка своего поля, и человека надо вернуть
          на тот шаг, где это поле есть. Раньше об этом сообщал тост, а
          форма оставалась заполненной, будто всё прошло. */
+      /* Пароль сервер проверяет своей политикой, и она может оказаться
+         строже нашей копии — например, после правки на сервере, о
+         которой клиент ещё не знает. Тогда ошибка должна встать у поля
+         пароля, а не улететь общим тостом. */
+      if (code === 'weak_password') {
+        setStep('credentials');
+        setError(
+          'password',
+          { message: t('register.weakPassword', 'Пароль не отвечает требованиям') },
+          { shouldFocus: true }
+        );
+        return;
+      }
+
       if (code === 'username_taken' || code === 'user_exists') {
         setStep('credentials');
         setError(
