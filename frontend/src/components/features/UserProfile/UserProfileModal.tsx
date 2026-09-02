@@ -2,7 +2,7 @@ import { chatQuery } from '@/queries/chat/threadQueries';
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { UserProfilePanel } from '../UserProfilePanel';
+import { UserProfilePanel } from './UserProfilePanel';
 import type { IProfileModal } from '@/pages';
 
 interface Props {
