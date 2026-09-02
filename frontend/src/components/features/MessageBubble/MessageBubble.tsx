@@ -27,6 +27,7 @@ export const MessageBubble = memo(
     const isSelected = useChatUiStore((state) =>
       state.selectedMessages.some(({ id }) => id === message.id)
     );
+    const isHighlighted = useChatUiStore((state) => state.highlightedMessageId === message.id);
     // Исходное сообщение ответа ищется в истории чата — она живёт в кеше запросов.
     const threadMessages = useThreadMessagesData();
     const repliedMessage = message.replyTo
@@ -64,7 +65,8 @@ export const MessageBubble = memo(
             hasMessageMedia(message) && 'has-media',
             isAudio && 'has-audio w-full',
             isActionTarget && 'is-action-target',
-            isSelected && 'is-selected bg-accent'
+            isSelected && 'is-selected bg-accent',
+            isHighlighted && 'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
           )}
         >
           {!mine && message.senderStatusEmoji && (

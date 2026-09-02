@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
 import { chatKeys } from '../keys';
 import {
+  dropPinnedMessage,
   dropThreadMessage,
   markThreadRead,
   patchThreadMessage,
+  putPinnedMessage,
   putThreadMessage,
 } from './threadCacheActions';
 import { flattenThread, type IThreadPages } from './threadCache';
@@ -118,5 +120,50 @@ describe('правка и удаление', () => {
 
     expect(invalidated).toContainEqual(chatKeys.pins(CHAT_ID));
     expect(invalidated).toContainEqual(chatKeys.list());
+  });
+});
+
+describe('закрепление и открепление', () => {
+  it('should update isPinned in thread messages cache on putPinnedMessage', () => {
+    seedThread([makeMessage({ id: 'm-1', isPinned: false })]);
+
+    const pin = {
+      id: 'pin-1',
+      chatId: CHAT_ID,
+      messageId: 'm-1',
+      pinnedBy: 'user-1',
+      pinnedAt: new Date(),
+      message: makeMessage({ id: 'm-1', isPinned: true }),
+    };
+
+    putPinnedMessage(queryClient, CHAT_ID, pin);
+
+    const thread = flattenThread(
+      queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))
+    );
+    expect(thread.find((message) => message.id === 'm-1')?.isPinned).toBe(true);
+    expect(queryClient.getQueryData(chatKeys.pins(CHAT_ID))).toEqual([pin]);
+  });
+
+  it('should update isPinned to false in thread messages cache on dropPinnedMessage', () => {
+    seedThread([makeMessage({ id: 'm-1', isPinned: true })]);
+
+    const pin = {
+      id: 'pin-1',
+      chatId: CHAT_ID,
+      messageId: 'm-1',
+      pinnedBy: 'user-1',
+      pinnedAt: new Date(),
+      message: makeMessage({ id: 'm-1', isPinned: true }),
+    };
+    queryClient.setQueryData(chatKeys.pins(CHAT_ID), [pin]);
+
+    dropPinnedMessage(queryClient, CHAT_ID, 'm-1');
+
+    const thread = flattenThread(
+      queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))
+    );
+    expect(thread.find((message) => message.id === 'm-1')?.isPinned).toBe(false);
+    expect(queryClient.getQueryData(chatKeys.pins(CHAT_ID))).toEqual([]);
   });
 });

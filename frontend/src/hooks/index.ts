@@ -27,3 +27,4 @@ export { useToasts } from './useToasts';
 export { useTypingIndicator } from './useTypingIndicator';
 export { useAudio } from './useAudio';
 export { useVideo } from './useVideo';
+export { usePinnedNavigator } from './usePinnedNavigator';
