@@ -4,9 +4,10 @@ import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/layouts';
-import { Button, Icon, Input, PasswordRequirements } from '@/components/ui';
+import { PasswordRequirements } from '@/components/features';
+import { Button, Icon, Input, SegmentedControl } from '@/components/ui';
+import { LANGUAGES, type TLanguage } from '@/consts';
 import { ROUTES } from '@/consts/routes';
-import { STORAGE_KEYS } from '@/consts/storageKeys';
 import { useToasts } from '@/hooks';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
@@ -28,6 +29,10 @@ export function RegisterPage() {
   const { t, i18n } = useTranslation();
 
   const [step, setStep] = useState<TRegisterStep>('welcome');
+  /* Язык уже определён по браузеру при запуске (configs/i18n) — здесь
+     его только показывают и дают поправить. Выбранный тут же меняет
+     интерфейс мастера и вместе с ним уходит на сервер. */
+  const language = (i18n.language.split('-')[0] as TLanguage) ?? 'ru';
   /* Пытались ли уже уйти с текущего шага — кнопкой «Продолжить» или
      отправкой формы. Пока не пытались, пустые поля не считаются
      ошибкой: человек до них просто не дошёл. */
@@ -46,7 +51,7 @@ export function RegisterPage() {
     formState: { errors, isSubmitting, touchedFields },
   } = useForm<TRegisterForm>({
     resolver: zodResolver(registerFormSchema),
-    defaultValues: { firstName: '', username: '', password: '', passwordRepeat: '' },
+    defaultValues: { firstName: '', lastName: '', username: '', password: '', passwordRepeat: '' },
     mode: 'onTouched',
   });
 
@@ -122,11 +127,10 @@ export function RegisterPage() {
 
   async function submit(values: TRegisterForm) {
     try {
-      const language = i18n.language || localStorage.getItem(STORAGE_KEYS.LANGUAGE) || 'ru';
       const data: IAuthResponse = await services.authService.register({
         firstName: values.firstName.trim(),
         language,
-        lastName: '',
+        lastName: values.lastName.trim(),
         password: values.password,
         username: values.username.trim(),
       });
@@ -149,6 +153,20 @@ export function RegisterPage() {
       /* Занятое имя — ошибка своего поля, и человека надо вернуть
          на тот шаг, где это поле есть. Раньше об этом сообщал тост, а
          форма оставалась заполненной, будто всё прошло. */
+      /* Пароль сервер проверяет своей политикой, и она может оказаться
+         строже нашей копии — например, после правки на сервере, о
+         которой клиент ещё не знает. Тогда ошибка должна встать у поля
+         пароля, а не улететь общим тостом. */
+      if (code === 'weak_password') {
+        setStep('credentials');
+        setError(
+          'password',
+          { message: t('register.weakPassword', 'Пароль не отвечает требованиям') },
+          { shouldFocus: true }
+        );
+        return;
+      }
+
       if (code === 'username_taken' || code === 'user_exists') {
         setStep('credentials');
         setError(
@@ -176,7 +194,17 @@ export function RegisterPage() {
     return (
       <AuthLayout footer={loginLink} title={t('welcomeRegisterTitle', 'Добро пожаловать')}>
         <WelcomeFeatures />
-        <Button className="mt-6 w-full" onClick={goNext} type="button">
+        {/* Выбор языка стоит здесь, а не среди полей: он меняет язык
+            самого мастера, и человеку логично сделать это до того, как он
+            начнёт что-то заполнять. */}
+        <SegmentedControl
+          aria-label={t('settings.language.appLanguage', 'Язык приложения')}
+          className="mt-6"
+          onChange={(value) => void i18n.changeLanguage(value)}
+          options={[...LANGUAGES]}
+          value={language}
+        />
+        <Button className="mt-4 w-full" onClick={goNext} type="button">
           {t('createAccount', 'Создать аккаунт')}
         </Button>
       </AuthLayout>
@@ -338,6 +366,16 @@ function NameStep({
         maxLength={64}
         placeholder={t('firstNamePlaceholder', 'Ваше имя')}
         {...register('firstName')}
+      />
+
+      <Input
+        autoComplete="family-name"
+        error={errorOf('lastName')}
+        hint={t('optional', 'Необязательно')}
+        label={t('lastName', 'Фамилия')}
+        maxLength={64}
+        placeholder={t('lastNamePlaceholder', 'Ваша фамилия')}
+        {...register('lastName')}
       />
     </>
   );

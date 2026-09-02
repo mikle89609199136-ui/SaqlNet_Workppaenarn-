@@ -1,12 +1,11 @@
+import { ROUTES } from '@/consts';
 import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
 import { useTypingStore } from '@/store/typing';
-import { ROUTES } from '@/consts';
-import { getLastMessageText } from '@/utils';
+import { formatMessageTime, getLastMessageText } from '@/utils';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Avatar } from '../Avatar';
-import { Badge } from '../Badge';
+import { Avatar, Badge } from '@/components/ui';
 import type { IChatDto } from '@/types';
 
 interface Props {
@@ -40,7 +39,7 @@ export function ChatListItem({ chat }: Props) {
         <div className="chat-topline">
           <span className="chat-title">{title}</span>
           <span className="chat-time">
-            {chat.lastMessageAt && formatChatTime(chat.lastMessageAt)}
+            {chat.lastMessageAt && formatMessageTime(chat.lastMessageAt)}
           </span>
         </div>
         <div className="chat-subline">
@@ -65,15 +64,4 @@ export function ChatListItem({ chat }: Props) {
       </div>
     </Link>
   );
-}
-
-function formatChatTime(value: Date | string): string {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
 }

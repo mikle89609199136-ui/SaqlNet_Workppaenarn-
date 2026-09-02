@@ -1,5 +1,7 @@
 export * from './AudioPlayer';
+export * from './Auth';
 export * from './Calls';
+export * from './ChatComposer';
 export * from './ChatsList';
 export * from './ChatThread';
 export * from './Forwarding';
@@ -9,3 +11,4 @@ export * from './MessageBubble';
 export * from './PinnedMessages';
 export * from './UserProfile';
 export * from './VideoPlayer';
+
