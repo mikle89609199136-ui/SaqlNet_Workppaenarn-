@@ -196,7 +196,6 @@
   "settings.email.description": "Адрес для уведомлений и восстановления доступа.",
   "settings.language.appLanguage": "Язык приложения",
   "settings.language.description": "Язык интерфейса CraneApp.",
-  "settings.language.hint": "Другие языки появятся, когда будут переведены",
   "settings.language.title": "Язык",
   "settings.menu.about": "О приложении",
   "settings.menu.account": "Аккаунт",

@@ -196,7 +196,6 @@
   "settings.email.description": "An address for notifications and account recovery.",
   "settings.language.appLanguage": "App language",
   "settings.language.description": "The language of the CraneApp interface.",
-  "settings.language.hint": "Other languages will appear once they are translated",
   "settings.language.title": "Language",
   "settings.menu.about": "About",
   "settings.menu.account": "Account",

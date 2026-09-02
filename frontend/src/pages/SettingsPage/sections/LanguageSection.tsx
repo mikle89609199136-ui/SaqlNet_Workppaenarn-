@@ -25,7 +25,6 @@ export function LanguageSection() {
       >
         <Select
           className="w-52"
-          hint={t('settings.language.hint', 'Другие языки появятся, когда будут переведены')}
           id="setting-language"
           onChange={(value) => saveSettings({ language: value })}
           options={[...LANGUAGES]}
