@@ -1,28 +1,50 @@
 package chat
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"strings"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
-type UpdateGroupInput struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	AvatarURL   *string `json:"avatarUrl"`
-}
-
+// UpdateGroup handles PATCH /api/v2/chats/{chatID}.
+// It allows updating a group chat's title, description, and avatar URL.
+// All fields are optional; only provided fields will be updated.
+// The authenticated user must be the chat owner or an admin.
+//
+// On success, it returns 200 OK with the updated chat object.
 func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
-	chatID := r.PathValue("chatID")
+	// Enforce HTTP method – only PATCH is allowed.
+	if r.Method != http.MethodPatch {
+		methodNotAllowed(w, r)
+		return
+	}
 
-	var input UpdateGroupInput
-	if !decodeUpdateGroup(w, r, &input) {
+	// Retrieve the authenticated user from the request context.
+	current := authctx.MustUser(r)
+
+	// Extract the chat ID from the URL path (Go 1.22+ syntax).
+	chatID := r.PathValue("chatID")
+	if chatID == "" {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
+		return
+	}
+
+	// Define the request body structure with pointer fields.
+	// Using pointers allows us to distinguish between:
+	//   - field not provided (nil) – do not update
+	//   - field provided with empty string – update to empty string
+	var input struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+		AvatarURL   *string `json:"avatarUrl"`
+	}
+
+	// Decode the JSON body. If the body is malformed or empty, decode returns false
+	// and has already written a 400 response.
+	if !decode(w, r, &input) {
 		return
 	}
 
@@ -31,10 +53,18 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trimString(input.Title)
-	trimString(input.Description)
-	trimString(input.AvatarURL)
+	// Validate title length only if it was provided.
+	const maxTitleLen = 128
+	if input.Title != nil && utf8.RuneCountInString(*input.Title) > maxTitleLen {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+			"title exceeds maximum length of 128 characters")
+		return
+	}
 
+	// All fields are optional, but the request body must be valid JSON.
+
+	// Call the service layer with the provided fields.
+	// Note: the service expects *string arguments; nil means "do not update".
 	updatedChat, err := h.service.UpdateGroup(
 		r.Context(),
 		current.ID,
@@ -44,68 +74,26 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		input.AvatarURL,
 	)
 
+	// Map domain errors to appropriate HTTP status codes.
 	switch {
 	case errors.Is(err, ErrInvalidInput):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusBadRequest,
-			"validation_failed",
-			"invalid group data",
-		)
-	case errors.Is(err, ErrForbidden):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusForbidden,
-			"access_denied",
-			"access denied",
-		)
+		// This could happen if the chat is not a group, or if a provided
+		// title is empty (if the service enforces non-empty on update).
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
 	case errors.Is(err, ErrNotFound):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusNotFound,
-			"chat_not_found",
-			"chat not found",
-		)
+		// Chat not found or user not a member.
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat not found")
+	case errors.Is(err, ErrForbidden):
+		// User is not owner/admin and cannot update.
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 	case errors.Is(err, ErrInvalidChatType):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_chat_type",
-			"only group chats can be updated",
-		)
+		// Only groups can be updated through this endpoint.
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "only group chats can be updated")
 	case err != nil:
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusInternalServerError,
-			"internal_error",
-			"group update failed",
-		)
+		// Any other unexpected error (database, etc.).
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "update failed")
 	default:
-		httpx.JSON(w, http.StatusOK, map[string]any{
-			"chat": updatedChat,
-		})
-	}
-}
-
-func decodeUpdateGroup(w http.ResponseWriter, r *http.Request, input *UpdateGroupInput) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		return false
-	}
-
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		return false
-	}
-
-	return true
-}
-
-func trimString(value *string) {
-	if value != nil {
-		*value = strings.TrimSpace(*value)
+		// Success: return the updated chat object.
+		httpx.JSON(w, http.StatusOK, map[string]any{"chat": updatedChat})
 	}
 }
