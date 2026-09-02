@@ -5,14 +5,23 @@ import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
+import type { IMediaItem } from '@/types';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { useProfileStore } from '@/store';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileHeader } from './ProfileHeader';
-import { ProfileSharedMedia } from './ProfileSharedMedia';
+import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 import { UserProfilePanel } from './UserProfilePanel';
+
+function makeMediaMessage(
+  id: string,
+  type: 'image' | 'video',
+  mediaUrl: string | null
+): IMediaItem {
+  return { ...makeMessage({ id, type }), mediaUrl };
+}
 
 function renderWithI18n(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>);
@@ -27,9 +36,7 @@ function renderPanelWithProviders(ui: React.ReactElement) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <I18nextProvider i18n={testI18n}>
-        {ui}
-      </I18nextProvider>
+      <I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>
     </QueryClientProvider>
   );
 }
@@ -167,39 +174,42 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
     });
 
     it('рендерит изображения и видео при их наличии', () => {
-      const imgMsg = makeMessage({
-        id: 'msg-1',
-        type: 'image',
-        metadata: {
-          mediaUrl: 'https://example.com/photo.jpg',
-          fileName: 'photo.jpg',
-          isEncrypted: false,
-          mediaEncrypted: false,
-          mediaEncryption: { version: 2 } as any,
-          mediaType: 'image',
-          sizeBytes: 1024,
-        },
-      });
-      const videoMsg = makeMessage({
-        id: 'msg-2',
-        type: 'video',
-        metadata: {
-          mediaUrl: 'https://example.com/video.mp4',
-          fileName: 'video.mp4',
-          isEncrypted: false,
-          mediaEncrypted: false,
-          mediaEncryption: { version: 2 } as any,
-          mediaType: 'video',
-          sizeBytes: 2048,
-        },
-      });
+      /* Адрес берётся с самого сообщения: он появляется после
+         расшифровки. В `metadata.mediaUrl` лежит эндпойнт с шифровкой,
+         картинкой он не отдаётся. */
+      const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
+      const videoMsg = makeMediaMessage('msg-2', 'video', 'blob:crane/video');
 
       renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg, videoMsg]} />);
 
       const links = screen.getAllByRole('link');
       expect(links).toHaveLength(2);
-      expect(links[0]).toHaveAttribute('href', 'https://example.com/photo.jpg');
-      expect(links[1]).toHaveAttribute('href', 'https://example.com/video.mp4');
+      expect(links[0]).toHaveAttribute('href', 'blob:crane/photo');
+      expect(links[1]).toHaveAttribute('href', 'blob:crane/video');
+    });
+  });
+
+  describe('isDisplayableMedia', () => {
+    it('пропускает расшифрованное изображение и видео', () => {
+      expect(isDisplayableMedia(makeMediaMessage('msg-1', 'image', 'blob:crane/photo'))).toBe(true);
+      expect(isDisplayableMedia(makeMediaMessage('msg-2', 'video', 'blob:crane/video'))).toBe(true);
+    });
+
+    it('отсеивает вложение без пригодного адреса', () => {
+      const notDecrypted = makeMediaMessage('msg-3', 'image', null);
+      expect(isDisplayableMedia(notDecrypted)).toBe(false);
+    });
+
+    it('отсеивает вложение, помеченное недоступным', () => {
+      const unavailable: IMediaItem = {
+        ...makeMediaMessage('msg-4', 'image', 'blob:crane/legacy'),
+        mediaUnavailable: true,
+      };
+      expect(isDisplayableMedia(unavailable)).toBe(false);
+    });
+
+    it('отсеивает текстовое сообщение', () => {
+      expect(isDisplayableMedia(makeMessage({ id: 'msg-5', type: 'text' }))).toBe(false);
     });
   });
 
@@ -229,9 +239,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
     it('рендерит профиль пользователя при успешной загрузке', async () => {
       const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
-      server.use(
-        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer }))
-      );
+      server.use(http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })));
       useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
 
       const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });

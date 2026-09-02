@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfilePanelFallback } from './ProfilePanelFallback';
-import { ProfileSharedMedia } from './ProfileSharedMedia';
+import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 
 interface Props {
   profileState: IProfileState;
@@ -21,9 +21,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const { t } = useTranslation();
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
-  const { data: profileUser, isLoading, isError } = useQuery(
-    userProfileQuery(profileState.userId || '')
-  );
+  const {
+    data: profileUser,
+    isLoading,
+    isError,
+  } = useQuery(userProfileQuery(profileState.userId || ''));
 
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
@@ -31,20 +33,23 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     profileState.chat?.title ||
     t('user', 'Пользователь');
 
-  const { isEditing, setIsEditing, editDraft, setEditDraft, editError, isSaving, startEdit, saveProfileEdit } =
-    useProfileEdit(profileUser, displayName);
+  const {
+    isEditing,
+    setIsEditing,
+    editDraft,
+    setEditDraft,
+    editError,
+    isSaving,
+    startEdit,
+    saveProfileEdit,
+  } = useProfileEdit(profileUser, displayName);
 
   const isMyProfile = currentUser?.id === profileUser?.id;
 
-  const sharedMedia = useMemo(() => {
-    return (profileState.messages || []).filter((m) => {
-      const isMedia = m.type === 'image' || m.type === 'video';
-      const hasUrl = Boolean(
-        m.metadata && 'mediaUrl' in m.metadata && typeof m.metadata.mediaUrl === 'string' && m.metadata.mediaUrl
-      );
-      return isMedia && hasUrl;
-    });
-  }, [profileState.messages]);
+  const sharedMedia = useMemo(
+    () => (profileState.messages || []).filter(isDisplayableMedia),
+    [profileState.messages]
+  );
 
   const profileSubtitle = useMemo(
     () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t) : null),
@@ -77,7 +82,16 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           hasChat={Boolean(profileState.chat)}
           isMyProfile={isMyProfile}
           isPeerOnline={Boolean(profileUser.isOnline)}
-          onCall={(kind) => profileState.chat && initiateCall(profileState.chat.id, 'private', profileUser.username, kind, profileUser.id)}
+          onCall={(kind) =>
+            profileState.chat &&
+            initiateCall(
+              profileState.chat.id,
+              'private',
+              profileUser.username,
+              kind,
+              profileUser.id
+            )
+          }
           onClose={onClose}
           onStartEdit={startEdit}
           profileSubtitle={profileSubtitle}
