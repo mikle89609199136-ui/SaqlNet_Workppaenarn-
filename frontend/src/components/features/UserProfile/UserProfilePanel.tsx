@@ -25,7 +25,12 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     userProfileQuery(profileState.userId || '')
   );
 
-  const displayName = profileUser?.firstName || profileUser?.username || '';
+  const displayName =
+    [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
+    profileUser?.username ||
+    profileState.chat?.title ||
+    t('user', 'Пользователь');
+
   const { isEditing, setIsEditing, editDraft, setEditDraft, editError, isSaving, startEdit, saveProfileEdit } =
     useProfileEdit(profileUser, displayName);
 

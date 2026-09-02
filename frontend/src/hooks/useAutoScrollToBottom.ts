@@ -14,7 +14,10 @@ export function useAutoScrollToBottom(
   chatId: string,
   isLoading: boolean
 ) {
+  /* `anchorRef` в зависимостях, хотя ссылка стабильна: правило этого не
+     знает — параметром может прийти что угодно, — а лишних прогонов от
+     стабильной ссылки не будет. */
   useEffect(() => {
     scrollToBottomRef(anchorRef, 'auto');
-  }, [chatId, isLoading]);
+  }, [anchorRef, chatId, isLoading]);
 }

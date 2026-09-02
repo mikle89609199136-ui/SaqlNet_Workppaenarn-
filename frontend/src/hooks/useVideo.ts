@@ -103,8 +103,11 @@ export const useVideo = (
 
     if (!media.paused) setIsPlaying(true);
     if (media.currentTime) setCurrentTime(media.currentTime);
-    media.volume = volume;
-    media.muted = isMuted;
+    /* Громкость и приглушение здесь не выставляются: этим занят
+       следующий эффект, и он отрабатывает в том числе при первой
+       отрисовке. Дубль требовал держать `volume` и `isMuted` в
+       зависимостях подписки — то есть пересоздавать её на каждое
+       движение ползунка громкости. */
 
     return () => {
       media.removeEventListener('play', onPlay);

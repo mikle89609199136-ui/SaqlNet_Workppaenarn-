@@ -28,12 +28,16 @@ export const useVideoQuality = ({
   );
   const pendingRestoreRef = useRef<{ time: number; wasPlaying: boolean } | null>(null);
 
-  // Синхронизация src при смене исходного пропса
-  useEffect(() => {
-    if (!hasSources && src !== undefined) {
-      setActiveSrc(src);
-    }
-  }, [src, hasSources]);
+  /* Синхронизация с пропсом — сравнением во время отрисовки, а не
+     эффектом: эффект переключал бы источник после того, как React уже
+     нарисовал кадр со старым, то есть плеер успевал мигнуть прежним
+     видео. Приём из документации React. */
+  const [seenSrc, setSeenSrc] = useState(src);
+
+  if (src !== seenSrc) {
+    setSeenSrc(src);
+    if (!hasSources && src !== undefined) setActiveSrc(src);
+  }
 
   // Восстановление позиции воспроизведения после загрузки нового источника с авто-очисткой листенера
   useEffect(() => {

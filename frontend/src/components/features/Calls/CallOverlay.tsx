@@ -10,11 +10,16 @@ export function CallOverlay() {
 
   const frameRef = useRef<HTMLIFrameElement | null>(null);
 
+  /* Кадр перецепляется при смене комнаты, поэтому и проверка идёт по
+     ней: раньше эффект смотрел на весь `activeCall`, а в зависимостях
+     держал только `roomId` — то есть заявлял одно, а читал другое. */
+  const activeRoomId = activeCall?.roomId;
+
   useEffect(() => {
-    if (!activeCall) return;
+    if (!activeRoomId) return undefined;
     useCallStore.getState().attachCallFrame(frameRef.current);
     return () => useCallStore.getState().attachCallFrame(null);
-  }, [activeCall?.roomId]);
+  }, [activeRoomId]);
 
   if (incomingCall) {
     return (
