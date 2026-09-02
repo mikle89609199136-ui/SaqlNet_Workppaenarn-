@@ -84,6 +84,14 @@ function assertExpected(kind: 'error' | 'warn', args: unknown[]) {
 }
 
 beforeEach(() => {
+  /* Связь шифрования с кешем запросов ставится перед каждым тестом, а не
+     только восстанавливается после. Её снимает `chatResolverBridge`, где
+     проверяется поведение незарегистрированного источника, и без общей
+     изоляции этот `null` доставался следующему файлу: расшифровка
+     превью падала, а уведомление показывало запасной текст вместо
+     сообщения. */
+  registerChatResolver();
+
   console.error = (...args: unknown[]) => {
     originalError(...args);
     assertExpected('error', args);
