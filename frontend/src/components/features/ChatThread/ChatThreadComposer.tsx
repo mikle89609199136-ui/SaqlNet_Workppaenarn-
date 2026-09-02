@@ -27,7 +27,7 @@ import {
   ComposerContextBanner,
   ComposerForm,
   ComposerRow,
-} from '../ui';
+} from '@/components/ui';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
 function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {

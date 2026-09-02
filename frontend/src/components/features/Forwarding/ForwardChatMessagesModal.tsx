@@ -6,8 +6,7 @@ import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon, Modal } from '../ui';
-import { Avatar } from '../ui/Avatar';
+import { Avatar, Button, Icon, Modal } from '@/components/ui';
 
 interface Props {
   messages: TMessagesList;
@@ -69,34 +68,36 @@ export const ForwardChatMessagesModal = ({
   return (
     <Modal
       className="w-4/5 max-w-none bg-sheet md:w-100"
-      label="Переслать сообщения"
+      label={t('forwardMessages', 'Переслать сообщения')}
       onClose={onClose}
     >
-      <header className="flex justify-between px-6">
-        <h2 className="text-xl w-full text-left">{t('forward', 'Переслать...')}</h2>
+      <header className="flex justify-between items-center px-6 py-3">
+        <h2 className="text-xl font-medium w-full text-left">{t('forward', 'Переслать...')}</h2>
 
-        <button
-          type="button"
+        <Button
+          aria-label={t('close', 'Закрыть')}
+          className="shrink-0 text-ink-2 hover:text-ink"
           onClick={onClose}
-          className="cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)] shrink-0"
+          size="sm"
+          variant="ghost"
         >
           <Icon name="cross" />
-        </button>
+        </Button>
       </header>
 
       <div className="flex flex-col mb-auto">
-        <div className="px-6 border-b border-border">
+        <div className="px-6 border-b border-line">
           <label className="flex gap-x-2 items-center relative">
             <Icon
               name="search"
-              className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 opacity-70"
+              className="size-5 shrink-0 absolute top-1/2 -translate-y-1/2 text-ink-3"
             />
             <input
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value.trim().toLowerCase())}
               placeholder={t('chatSearching', 'Поиск чата...')}
-              className="py-3 text-lg pr-1 pl-7 w-full outline-none rounded-xl"
+              className="py-3 text-lg pr-1 pl-7 w-full bg-transparent outline-none rounded-xl text-ink placeholder:text-ink-3"
             />
           </label>
         </div>
@@ -106,25 +107,25 @@ export const ForwardChatMessagesModal = ({
           onClick={handleForward}
         >
           {filteredChats.length === 0 ? (
-            <li className="mx-auto py-2">{t('chatsNotFound', 'Чаты не найдены')}</li>
+            <li className="mx-auto py-2 text-ink-3">{t('chatsNotFound', 'Чаты не найдены')}</li>
           ) : (
             filteredChats.map((chat) => {
-              const title = chat.title || 'Без названия';
+              const title = chat.title || t('untitledChat', 'Без названия');
 
               return (
                 <li className="w-full" key={chat.id}>
                   <button
                     type="button"
                     data-chatid={chat.id}
-                    className="w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-panel px-6 py-3"
+                    className="w-full flex gap-x-2 cursor-pointer transition-colors hover:bg-sheet-2 px-6 py-3 text-ink"
                   >
                     <Avatar id={chat.peerId} name={title} size="lg" src={chat.avatarUrl} />
 
                     <div className="flex flex-col gap-y-1 w-full">
-                      <div className="text-left w-full">{title}</div>
+                      <div className="text-left w-full font-medium">{title}</div>
 
                       {chat.lastMessage?.content && (
-                        <div className="line-clamp-1 truncate min-w-0 max-w-8/10 text-left">
+                        <div className="line-clamp-1 truncate min-w-0 max-w-8/10 text-left text-ink-3">
                           {chat.lastMessage.content}
                         </div>
                       )}
@@ -137,14 +138,10 @@ export const ForwardChatMessagesModal = ({
         </ul>
       </div>
 
-      <footer className="px-4 flex justify-end border-t border-border w-full py-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="cursor-pointer transition-colors text-[#2b77e7] hover:text-[rgba(43,119,231,.9)] hover:bg-panel px-4 py-2 rounded-lg"
-        >
+      <footer className="px-4 flex justify-end border-t border-line w-full py-2">
+        <Button onClick={onClose} size="sm" variant="ghost">
           {t('cancel', 'Отмена')}
-        </button>
+        </Button>
       </footer>
     </Modal>
   );

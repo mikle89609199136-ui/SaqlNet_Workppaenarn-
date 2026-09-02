@@ -193,7 +193,7 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/features/EmptyChatPlaceholder.js').then((m) => ({
+                      import('../components/features/ChatThread/EmptyChatPlaceholder').then((m) => ({
                         Component: m.EmptyChatPlaceholder,
                       })),
                   },

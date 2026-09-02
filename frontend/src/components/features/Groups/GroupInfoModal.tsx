@@ -1,4 +1,4 @@
-import { Avatar, Modal } from '@/components/ui';
+import { Avatar, Button, Icon, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';
@@ -8,7 +8,6 @@ import { clearDraft } from '@/store/chatDrafts';
 import { useProfileStore } from '@/store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TChatRole } from '@/types';
-import { cn } from '@/utils';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -17,11 +16,6 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const actionBtnStyles =
-  'text-[#ddd] rounded-lg text-[0.8rem] cursor-pointer transition-all duration-200 font-medium bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.05)] px-3 py-1.5 hover:text-white hover:bg-[rgba(255,255,255,0.2)]';
-const dangerBtn =
-  'text-[#ff4444] bg-[rgba(255,50,50,0.1)] border-[rgba(255,50,50,0.2)] hover:text-[#ff6666] hover:bg-[rgba(255,50,50,0.2)]';
 
 export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { showToast } = useToasts();
@@ -97,7 +91,19 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     handleToggleEditMode();
   };
 
-  const handleLeaveChat = () => {};
+  const handleLeaveChat = async () => {
+    if (!currentUserData?.id || !chat) return;
+    try {
+      await services.chatService.removeMember(chat.id, currentUserData.id);
+      clearDraft(chat.id);
+      queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      onClose();
+      navigate('/chats');
+    } catch (err: any) {
+      showToast('error', err?.message || t('toast.leaveChatFailed', 'Не удалось покинуть чат'));
+    }
+  };
 
   const handleDeleteChat = async () => {
     try {
@@ -120,117 +126,120 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   return (
     <Modal
       className="flex h-full max-h-screen w-full max-w-125 flex-col overflow-hidden rounded-none bg-sheet pt-0 backdrop:bg-black/40 backdrop:backdrop-blur-sm md:max-h-[85vh] md:rounded-window"
-      label="Сведения о группе"
+      label={t('groupInfo', 'Сведения о группе')}
       onClose={onClose}
     >
-      <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border border-t-none border-[rgba(255,255,255,0.05)]">
-        <div className="flex w-full items-center gap-x-2">
-          <div className="flex w-full gap-x-2">
+      <header className="flex flex-col gap-y-4 justify-between items-center px-5 py-6 border-b border-line">
+        <div className="flex w-full items-center justify-between gap-x-2">
+          <div className="flex w-full items-center gap-x-3">
             <Avatar name={chat?.title} size="lg" src={chat?.avatarUrl} />
-            <div className="flex flex-col w-full">
+            <div className="flex flex-col w-full min-w-0">
               {!isEditMode ? (
-                <h2>{chat?.title}</h2>
+                <h2 className="text-lg font-medium text-ink truncate">{chat?.title}</h2>
               ) : (
-                <label className="flex flex-col border-b border-border focus-within:border-b-[#2b77e7] pb-1">
-                  <span className="text-sm">{t('chatName', 'Название чата')}</span>
+                <label className="flex flex-col border-b border-line focus-within:border-b-brand pb-1">
+                  <span className="text-micro text-ink-3">{t('chatName', 'Название чата')}</span>
                   <input
-                    className="w-full outline-0"
+                    className="w-full bg-transparent text-body text-ink outline-none"
                     type="text"
                     value={chatName}
                     onChange={(e) => setChatName(e.target.value)}
                   />
                 </label>
               )}
-              {!isEditMode && <p>{`${members.length} Участников`}</p>}
+              {!isEditMode && (
+                <p className="text-micro text-ink-3">
+                  {members.length} {t('participants', 'участников')}
+                </p>
+              )}
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}>
-            ✕
-          </button>
+          <Button
+            aria-label={t('close', 'Закрыть')}
+            className="shrink-0 text-ink-3 hover:text-ink"
+            onClick={onClose}
+            size="sm"
+            variant="ghost"
+          >
+            <Icon name="cross" size="md" />
+          </Button>
         </div>
 
         <div className="flex gap-x-2 w-full">
           {!isEditMode && (
             <>
-              <button className={cn(actionBtnStyles, 'w-full')} onClick={handleToggleEditMode}>
+              <Button className="w-full" onClick={handleToggleEditMode} size="sm" variant="outline">
                 {t('edit', 'Редактировать')}
-              </button>
-              <button
-                className={cn(actionBtnStyles, 'w-full', dangerBtn)}
-                onClick={handleLeaveChat}
-              >
+              </Button>
+              <Button className="w-full" onClick={handleLeaveChat} size="sm" variant="danger">
                 {t('leaveChat', 'Покинуть чат')}
-              </button>
+              </Button>
               {currentUser?.role === 'owner' && (
-                <button
-                  className={cn(actionBtnStyles, 'w-full', dangerBtn)}
-                  onClick={handleDeleteChat}
-                >
+                <Button className="w-full" onClick={handleDeleteChat} size="sm" variant="danger">
                   {t('deleteChat', 'Удалить чат')}
-                </button>
+                </Button>
               )}
             </>
           )}
           {isEditMode && (
             <>
-              <button className={cn(actionBtnStyles, 'w-full')} onClick={handleSaveEdited}>
+              <Button className="w-full" onClick={handleSaveEdited} size="sm" variant="brand">
                 {t('save', 'Сохранить')}
-              </button>
-              <button
-                className={cn(actionBtnStyles, 'w-full', dangerBtn)}
-                onClick={handleToggleEditMode}
-              >
+              </Button>
+              <Button className="w-full" onClick={handleToggleEditMode} size="sm" variant="ghost">
                 {t('cancel', 'Отменить')}
-              </button>
+              </Button>
             </>
           )}
         </div>
       </header>
 
-      <div className="group-info-body">
+      <div className="group-info-body flex-1 overflow-y-auto p-4">
         {isLoading ? (
-          <div className="loading-state">{t('loading', 'Загрузка...')}</div>
+          <div className="text-center py-6 text-ink-3">{t('loading', 'Загрузка...')}</div>
         ) : (
-          <ul className="members-list  styles-scroll">
+          <ul className="divide-y divide-line rounded-card border border-line bg-sheet-2">
             {members.map((member) => {
               const memberId = member.id;
               const avatarUrl = member.avatarUrl;
               return (
-                <li key={memberId} className="member-item">
-                  <Avatar
-                    className="mr-4"
-                    id={memberId}
-                    name={member.username}
-                    size="lg"
-                    src={avatarUrl}
-                  />
-                  <div className="member-details">
-                    <span className="member-name">{member.username}</span>
-                    <span className={`member-role role-${member.role}`}>{member.role}</span>
+                <li key={memberId} className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar id={memberId} name={member.username} size="md" src={avatarUrl} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-body font-medium text-ink truncate">
+                        {member.username}
+                      </span>
+                      <span className="text-micro text-ink-3">{member.role}</span>
+                    </div>
                   </div>
 
                   {(currentUser?.role === 'owner' || currentUser?.role === 'admin') &&
                     memberId !== currentUserData?.id && (
-                      <div className="member-actions">
+                      <div className="flex items-center gap-2">
                         {currentUser?.role === 'owner' && (
-                          <button
-                            className={cn(actionBtnStyles)}
+                          <Button
                             onClick={() =>
                               handleAction('change-participant-role', memberId, {
                                 role: member.role === 'admin' ? 'member' : 'admin',
                               })
                             }
+                            size="sm"
+                            variant="ghost"
                           >
-                            {member.role === 'admin' ? 'Снять админа' : 'Дать админа'}
-                          </button>
+                            {member.role === 'admin'
+                              ? t('demoteAdmin', 'Снять админа')
+                              : t('makeAdmin', 'Дать админа')}
+                          </Button>
                         )}
                         {member.role !== 'owner' && (
-                          <button
-                            className={cn(actionBtnStyles, dangerBtn)}
+                          <Button
                             onClick={() => handleAction('kick-participant', memberId)}
+                            size="sm"
+                            variant="danger"
                           >
-                            Кикнуть
-                          </button>
+                            {t('kick', 'Удалить')}
+                          </Button>
                         )}
                       </div>
                     )}

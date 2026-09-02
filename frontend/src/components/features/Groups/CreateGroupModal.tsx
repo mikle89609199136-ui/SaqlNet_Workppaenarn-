@@ -9,9 +9,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon, Input, Modal, Textarea } from '../ui';
-import { Avatar } from '../ui/Avatar';
-import { Chip } from '../ui/Chip';
+import { Icon, Input, Modal, Textarea } from '@/components/ui';
+import { Avatar } from '@/components/ui/Avatar';
+import { Chip } from '@/components/ui/Chip';
 import { suggestedMembers } from './suggestedMembers';
 
 interface Props {
@@ -58,23 +58,19 @@ export function CreateGroupModal({ onClose }: Props) {
   const suggestions = useMemo(() => suggestedMembers(chats, meId), [chats, meId]);
 
   useEffect(() => {
-    const clean = query.trim().replace('@', '');
-
-    if (clean.length < SEARCH_FROM) {
+    if (query.trim().length < SEARCH_FROM) {
       setFound([]);
-      return undefined;
+      return;
     }
 
     let cancelled = false;
 
     services.chatService
-      .searchUsers(clean)
+      .searchUsers(query)
       .then((users) => {
-        if (!cancelled) setFound(users);
+        if (!cancelled) setFound(users.filter((u) => u.id !== meId));
       })
       .catch(() => {
-        // Молчим: пустой список поиска сам по себе объясняет, что никого не
-        // нашлось, а падать из-за поиска посреди заполнения формы незачем.
         if (!cancelled) setFound([]);
       });
 

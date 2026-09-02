@@ -8,7 +8,7 @@ import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, Icon } from '../ui';
+import { Avatar, Icon } from '@/components/ui';
 import { useTypingStore } from '@/store/typing';
 
 /**
