@@ -1,4 +1,5 @@
 import {
+  ArchiveEntry,
   ChatListItem,
   ChatListItemSkeleton,
   ChatsSearchField,
@@ -39,6 +40,10 @@ export function ChatsPage() {
      тем же запросом пользуется выбор участников группы, и там нужны все
      собеседники. */
   const visibleChats = useMemo(() => chats.filter(isConversationStarted), [chats]);
+  const pinnedCount = useMemo(
+    () => visibleChats.filter((chat) => chat.isPinned).length,
+    [visibleChats]
+  );
   const search = useChatsSearch(visibleChats);
   const isMobile = useIsMobile();
   const sidebar = usePaneWidth('sidebar', SIDEBAR_LIMITS);
@@ -51,6 +56,18 @@ export function ChatsPage() {
   });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
   const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
+  const [isArchiveOpen, setArchiveOpen] = useState(false);
+
+  /* Архив грузится всегда, даже когда закрыт: по нему решается, показывать
+     ли строку входа и сколько там непрочитанных. Запрос лёгкий и живёт в
+     том же кеше, что и основной список. */
+  const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
+
+  /* Опустевший архив закрывается сам: человек вернул оттуда последний чат
+     и остался бы смотреть в пустой экран, из которого надо выбираться
+     кнопкой. Состояние при этом не сбрасывается — архив снова наполнится,
+     и он откроется там же. */
+  const showArchive = isArchiveOpen && archivedChats.length > 0;
   const { t } = useTranslation();
 
   function startResize(kind: 'sidebar' | 'profile', event: PointerEvent) {
@@ -85,6 +102,31 @@ export function ChatsPage() {
   const createGroupModal = isCreateGroupOpen ? (
     <CreateGroupModal onClose={() => setCreateGroupOpen(false)} />
   ) : null;
+
+  const archiveHeader = (
+    <section className="chats-toolbar">
+      <button
+        aria-label={t('back', 'Назад')}
+        className="chats-new-group"
+        onClick={() => setArchiveOpen(false)}
+        type="button"
+      >
+        <Icon name="chevronRight" className="rotate-180" />
+      </button>
+      <h1 className="text-section font-semibold text-ink">{t('archive', 'Архив')}</h1>
+    </section>
+  );
+
+  const archiveContent = (
+    <>
+      {archiveHeader}
+      <section className="chats-list styled-scrollbar">
+        {archivedChats.map((chat) => (
+          <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+        ))}
+      </section>
+    </>
+  );
 
   const listContent = (
     <>
@@ -121,13 +163,19 @@ export function ChatsPage() {
           />
         )}
 
+        {!isLoading && !error && !search.isSearching && (
+          <ArchiveEntry chats={archivedChats} onOpen={() => setArchiveOpen(true)} />
+        )}
+
         {!isLoading && !error && !search.isSearching && visibleChats.length === 0 && (
           <EmptyChatListPlaceholder />
         )}
         {!isLoading &&
           !error &&
           !search.isSearching &&
-          visibleChats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}
+          visibleChats.map((chat) => (
+            <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+          ))}
       </section>
     </>
   );
@@ -147,7 +195,7 @@ export function ChatsPage() {
     return (
       <>
         {createGroupModal}
-        <main className="chats-page">{listContent}</main>
+        <main className="chats-page">{showArchive ? archiveContent : listContent}</main>
       </>
     );
   }
@@ -159,7 +207,7 @@ export function ChatsPage() {
           прижатым к узкой колонке вместо экрана. */}
       {createGroupModal}
       <div className="app-sidebar-pane" style={{ flexBasis: sidebar.width }}>
-        <main className="chats-page">{listContent}</main>
+        <main className="chats-page">{showArchive ? archiveContent : listContent}</main>
       </div>
 
       <PaneResizer

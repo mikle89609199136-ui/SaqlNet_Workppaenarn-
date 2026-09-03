@@ -26,3 +26,12 @@ export {
 } from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';
 export { formatDateDivider, isDifferentDay } from './dateGroup';
+export {
+  clamp,
+  cloneEditorState,
+  createEditorId,
+  drawObject,
+  drawSelection,
+  findTextAtPoint,
+  splitPathByEraser,
+} from './editorCanvas';
