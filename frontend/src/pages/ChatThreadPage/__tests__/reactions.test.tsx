@@ -209,4 +209,42 @@ describe('реакции на чужое сообщение', () => {
 
     await waitFor(() => expect(screen.getByText('❤️ 1')).toBeInTheDocument());
   });
+  it('снимает реакцию нажатием по ней самой, без меню', async () => {
+    /* Прежде реакция была `span`, и убрать её можно было только через
+       меню по правой кнопке — то есть догадавшись, что оно там есть. */
+    const currentUser = makeUser({ id: 'user-1' });
+    const chat = makeChat({ id: 'chat-reactions-click' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение с моей реакцией',
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+
+    /* Собираем только запросы по своему сообщению: соседние тесты
+       оставляют незавершённые обращения, и они долетают сюда. */
+    const отправленные: string[] = [];
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.post(api('/messages/:messageId/reactions'), async ({ params, request }) => {
+        const body = (await request.json()) as { emoji: string };
+        if (params.messageId === message.id) отправленные.push(body.emoji);
+        return HttpResponse.json({ reactions: [] });
+      })
+    );
+
+    renderChatThread({ chat, messages: [message], currentUser });
+
+    const кнопка = await screen.findByRole('button', { name: '👍 1' });
+    expect(кнопка).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(кнопка);
+
+    await waitFor(() => expect(отправленные).toEqual(['👍']));
+    expect(screen.queryByRole('button', { name: '👍 1' })).toBeNull();
+    // Меню действий при этом не открывается: нажатие до него не доходит.
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

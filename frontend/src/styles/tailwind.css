@@ -812,7 +812,18 @@
   }
   .message-reactions {
     @apply mt-[7px] flex flex-wrap gap-[5px];
-    & span { min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--color-sheet-2); font-size: 12px; &.is-mine { background: var(--color-brand-soft); } }
+    /* Реакция — кнопка: по ней ставят свою и снимают. Раньше здесь был
+       span, и правило `is-mine` не применялось ни к чему — своя реакция
+       красилась утилитой `bg-accent-2` из старой палитры. */
+    & button {
+      min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill);
+      background: var(--color-sheet-2); font-size: 12px; cursor: pointer;
+      border: 1px solid transparent;
+      transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
+      &:hover { border-color: var(--color-line); }
+      &.is-mine { background: var(--color-brand-soft); }
+      &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+    }
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   @keyframes message-menu-in {

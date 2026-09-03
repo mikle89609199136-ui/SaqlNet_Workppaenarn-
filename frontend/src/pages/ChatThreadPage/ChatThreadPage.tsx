@@ -69,6 +69,7 @@ export function ChatThreadPage() {
     setProfileModal,
 
     toggleMessageSelection,
+    handleReact,
     selectedActionMessage,
 
     handleCancelSelection,
@@ -119,6 +120,7 @@ export function ChatThreadPage() {
             error={threadError}
             isLoading={isLoading}
             messages={messages}
+            onReact={handleReact}
             setOpenedImage={modals.setOpenedImage}
             toggleMessageSelection={toggleMessageSelection}
             bottomRef={bottomRef}
