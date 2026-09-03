@@ -2,6 +2,7 @@ import { ContextMenu } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { useChatActions } from '@/hooks';
 import type { IChatDto } from '@/types';
+import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
   pinnedCount: number;
   x: number;
   y: number;
+  /** Строка, из которой меню вызвали: ей вернётся фокус при закрытии. */
+  returnFocusRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }
 
@@ -21,7 +24,7 @@ interface Props {
  * умеет и что менялось молча, без единого способа управлять этим из
  * интерфейса.
  */
-export function ChatRowMenu({ chat, pinnedCount, x, y, onClose }: Props) {
+export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }: Props) {
   const { t } = useTranslation();
   const { togglePin, toggleArchive } = useChatActions();
 
@@ -30,6 +33,7 @@ export function ChatRowMenu({ chat, pinnedCount, x, y, onClose }: Props) {
       aria-label={t('chatActions', 'Действия с чатом')}
       onClose={onClose}
       open
+      returnFocusRef={returnFocusRef}
       x={x}
       y={y}
     >

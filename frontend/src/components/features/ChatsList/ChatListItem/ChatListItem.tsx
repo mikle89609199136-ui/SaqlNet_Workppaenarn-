@@ -22,7 +22,7 @@ export function ChatListItem({ chat, pinnedCount = 0 }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
   const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
-  const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
+  const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
 
   /* Долгое нажатие — тот же вызов меню, что правой кнопкой. Хук принимает
      событие мыши, поэтому жест приносит только координаты, а остальное
@@ -119,6 +119,7 @@ export function ChatListItem({ chat, pinnedCount = 0 }: Props) {
           chat={chat}
           onClose={closeContextMenu}
           pinnedCount={pinnedCount}
+          returnFocusRef={openerRef}
           x={contextMenu.x}
           y={contextMenu.y}
         />
