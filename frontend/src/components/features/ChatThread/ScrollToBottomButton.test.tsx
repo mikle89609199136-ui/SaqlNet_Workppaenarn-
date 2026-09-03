@@ -28,24 +28,4 @@ describe('ScrollToBottomButton', () => {
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
-
-  it('renders unread badge when unreadCount > 0', () => {
-    render(
-      <I18nextProvider i18n={testI18n}>
-        <ScrollToBottomButton onClick={vi.fn()} unreadCount={5} visible={true} />
-      </I18nextProvider>
-    );
-
-    expect(screen.getByText('5')).toBeInTheDocument();
-  });
-
-  it('renders 99+ when unreadCount > 99', () => {
-    render(
-      <I18nextProvider i18n={testI18n}>
-        <ScrollToBottomButton onClick={vi.fn()} unreadCount={150} visible={true} />
-      </I18nextProvider>
-    );
-
-    expect(screen.getByText('99+')).toBeInTheDocument();
-  });
 });

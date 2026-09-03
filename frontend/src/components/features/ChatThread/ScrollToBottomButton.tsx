@@ -4,11 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 interface Props {
   visible: boolean;
-  unreadCount?: number;
   onClick: () => void;
 }
 
-export const ScrollToBottomButton = memo(({ visible, unreadCount = 0, onClick }: Props) => {
+export const ScrollToBottomButton = memo(({ visible, onClick }: Props) => {
   const { t } = useTranslation();
 
   if (!visible) return null;
@@ -25,11 +24,6 @@ export const ScrollToBottomButton = memo(({ visible, unreadCount = 0, onClick }:
         variant="secondary"
       >
         <Icon name="chevronDown" size="md" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-fill text-on-brand text-caption font-bold flex items-center justify-center leading-none shadow-xs">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
       </Button>
     </div>
   );

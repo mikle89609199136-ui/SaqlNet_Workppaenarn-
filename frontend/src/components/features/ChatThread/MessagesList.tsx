@@ -34,6 +34,7 @@ export const MessagesList = memo(
     const translations = useChatUiStore((state) => state.translations);
 
     const {
+      activeDate,
       feedItems,
       messagesById,
       virtualizer,
@@ -45,6 +46,15 @@ export const MessagesList = memo(
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* Плавающий разделитель даты поверх виртуализированного списка */}
+        {activeDate && feedItems.length > 0 && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none transition-opacity duration-fast">
+            <span className="px-3.5 py-1 rounded-pill bg-sheet-2/90 backdrop-blur-md border border-line-soft text-caption font-medium text-ink-3 shadow-xs">
+              {activeDate}
+            </span>
+          </div>
+        )}
+
         <section
           aria-busy={isLoading}
           className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto"

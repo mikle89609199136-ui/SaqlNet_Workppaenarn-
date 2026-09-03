@@ -88,24 +88,8 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       [feedItems]
     ),
     gap: 10,
-    overscan: 25,
+    overscan: 8,
     useFlushSync: false,
-    initialRect: { width: 1000, height: 1000 },
-    observeElementRect: (instance, cb) => {
-      const element = instance.scrollElement;
-      if (!element) return undefined;
-      const update = () => {
-        const rect = element.getBoundingClientRect();
-        const width = rect.width || 1000;
-        const height = rect.height || element.clientHeight || 1000;
-        cb({ width, height });
-      };
-      update();
-      const observer =
-        typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
-      observer?.observe(element);
-      return () => observer?.disconnect();
-    },
   });
 
   // Отслеживание позиции прокрутки для кнопки и флага нахождения внизу
@@ -147,10 +131,6 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
           align: 'end',
           behavior: 'auto',
         });
-        const container = internalContainerRef.current;
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
       });
       return;
     }
@@ -169,10 +149,6 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
           align: 'end',
           behavior: 'smooth',
         });
-        const container = internalContainerRef.current;
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
       });
     }
   }, [feedItems, virtualizer]);
@@ -180,17 +156,25 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
   const scrollToBottom = useCallback(() => {
     if (feedItems.length === 0) return;
     virtualizer.scrollToIndex(feedItems.length - 1, { align: 'end', behavior: 'smooth' });
-    const container = internalContainerRef.current;
-    if (container) {
-      container.scrollTop = container.scrollHeight;
-    }
   }, [feedItems.length, virtualizer]);
 
+  const virtualItems = virtualizer.getVirtualItems();
+
+  // Дата верхнего видимого элемента для плавающего разделителя
+  const activeDate = useMemo(() => {
+    if (virtualItems.length === 0) return '';
+    const firstItem = feedItems[virtualItems[0].index];
+    if (!firstItem) return '';
+    if (firstItem.type === 'date') return firstItem.label;
+    return formatDateDivider(firstItem.message.createdAt, t);
+  }, [virtualItems, feedItems, t]);
+
   return {
+    activeDate,
     feedItems,
     messagesById,
     virtualizer,
-    virtualItems: virtualizer.getVirtualItems(),
+    virtualItems,
     setContainerRef,
     showScrollBottom,
     scrollToBottom,
