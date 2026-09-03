@@ -25,3 +25,4 @@ export {
   hasMessageMedia,
 } from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';
+export { formatDateDivider, isDifferentDay } from './dateGroup';

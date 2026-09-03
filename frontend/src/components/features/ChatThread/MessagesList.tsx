@@ -1,9 +1,12 @@
+import { useVirtualMessagesFeed } from '@/hooks';
 import { useChatUiStore, useProfileStore } from '@/store';
-import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
-import { memo, useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import type { IMessageDto, TMessagesList } from '@/types';
+import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { MessageBubbleSkeleton } from '../MessageBubble/MessageBubbleSkeleton';
+import { DateDivider } from './DateDivider';
+import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThreadState } from './ThreadState';
 
 interface Props {
@@ -30,42 +33,82 @@ export const MessagesList = memo(
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
 
-    /* Указатель на сообщения по идентификатору — чтобы превью ответа
-       искалось один раз на ленту, а не в каждом пузыре. Ссылки на сами
-       сообщения при неизменной ленте те же, поэтому `memo` у пузыря
-       продолжает работать. */
-    const messagesById = useMemo(() => {
-      const index = new Map<string, IMediaItem>();
-      for (const message of messages) index.set(message.id, message);
-      return index;
-    }, [messages]);
+    const {
+      feedItems,
+      messagesById,
+      virtualizer,
+      virtualItems,
+      setContainerRef,
+      showScrollBottom,
+      scrollToBottom,
+    } = useVirtualMessagesFeed({ messages, messagesRef });
 
     return (
-      <section className="thread-messages styled-scrollbar" aria-busy={isLoading} ref={messagesRef}>
-        {isLoading && <MessageBubbleSkeleton />}
-        {!isLoading && error && messages.length === 0 && (
-          <ThreadState message={error} title={t('loadingError', 'Ошибка загрузки')} />
-        )}
-        {!isLoading && !error && messages.length === 0 && (
-          <ThreadState
-            message={t('emptyThreadDescription', 'Напишите первое сообщение в этом чате.')}
-            title={t('emptyThread', 'Сообщений пока нет')}
-          />
-        )}
-        {user &&
-          messages.map((message) => (
-            <MessageBubble
-              currentUserId={user.id}
-              key={message.id}
-              message={message}
-              repliedMessage={message.replyTo ? messagesById.get(message.replyTo) : undefined}
-              translations={translations}
-              onOpenImage={setOpenedImage}
-              onSelection={toggleMessageSelection}
+      <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+        <section
+          aria-busy={isLoading}
+          className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto"
+          ref={setContainerRef}
+        >
+          {isLoading && <MessageBubbleSkeleton />}
+          {!isLoading && error && messages.length === 0 && (
+            <ThreadState message={error} title={t('loadingError', 'Ошибка загрузки')} />
+          )}
+          {!isLoading && !error && messages.length === 0 && (
+            <ThreadState
+              message={t('emptyThreadDescription', 'Напишите первое сообщение в этом чате.')}
+              title={t('emptyThread', 'Сообщений пока нет')}
             />
-          ))}
-        <div ref={bottomRef} />
-      </section>
+          )}
+
+          {user && feedItems.length > 0 && (
+            <div
+              className="w-full relative"
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+              }}
+            >
+              {virtualItems.map((virtualRow) => {
+                const item = feedItems[virtualRow.index];
+                if (!item) return null;
+
+                return (
+                  <div
+                    className="w-full absolute top-0 left-0"
+                    data-index={virtualRow.index}
+                    key={item.id}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {item.type === 'date' ? (
+                      <DateDivider label={item.label} />
+                    ) : (
+                      <MessageBubble
+                        currentUserId={user.id}
+                        message={item.message}
+                        onOpenImage={setOpenedImage}
+                        onSelection={toggleMessageSelection}
+                        repliedMessage={
+                          item.message.replyTo ? messagesById.get(item.message.replyTo) : undefined
+                        }
+                        translations={translations}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </section>
+
+        <ScrollToBottomButton onClick={scrollToBottom} visible={showScrollBottom} />
+      </div>
     );
   }
 );
+
+MessagesList.displayName = 'MessagesList';

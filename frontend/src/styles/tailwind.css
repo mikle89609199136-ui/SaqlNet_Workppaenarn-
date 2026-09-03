@@ -706,7 +706,7 @@
   .thread-call-button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   .thread-call-icon { @apply block w-6 h-6; }
   .thread-call-icon-video { width: 31px; height: 31px; opacity: 0.9; }
-  .thread-messages { @apply min-h-0 h-full overflow-y-auto flex flex-col gap-[10px]; padding: 18px 12px; }
+  .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
 
   /* Свой и чужой пузырь разведены не яркостью, а температурой: своё
      тёплое, чужое холодное, оба спокойные. Раньше своё было ярко-синим
@@ -906,7 +906,6 @@
     & button.is-danger { color: var(--color-danger); }
     & button.is-danger:hover { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
   }
-  .thread-state { @apply mx-auto max-w-[360px] text-center; padding: 28px 18px; & h2 { font-size: 20px; margin: 0 0 8px; } & p { color: var(--color-ink-2); } }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
   .thread-composer {
     @apply grid gap-[10px];
