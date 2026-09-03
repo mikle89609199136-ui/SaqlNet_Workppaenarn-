@@ -23,6 +23,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [isScrollingState, setIsScrollingState] = useState(false);
+  const [scrollPaddingRight, setScrollPaddingRight] = useState(0);
   const dateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottomRef = useRef(true);
 
@@ -36,9 +37,30 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       if (messagesRef) {
         (messagesRef as React.MutableRefObject<HTMLElement | null>).current = node;
       }
+      if (node) {
+        setScrollPaddingRight(Math.max(0, node.offsetWidth - node.clientWidth));
+      }
     },
     [messagesRef]
   );
+
+  // Измерение ширины полосы прокрутки для компенсации смещения стики-дивайдера
+  useEffect(() => {
+    const container = internalContainerRef.current;
+    if (!container) return undefined;
+
+    const updateScrollPadding = () => {
+      const scrollbarWidth = Math.max(0, container.offsetWidth - container.clientWidth);
+      setScrollPaddingRight(scrollbarWidth);
+    };
+
+    updateScrollPadding();
+
+    const resizeObserver = new ResizeObserver(updateScrollPadding);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, [setContainerRef]);
 
   /* Указатель на сообщения по ID для O(1) поиска превью цитирования */
   const messagesById = useMemo(() => {
@@ -233,6 +255,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     activeDate,
     isStickyVisible,
     stickyPushOffset,
+    scrollPaddingRight,
     feedItems,
     messagesById,
     virtualizer,

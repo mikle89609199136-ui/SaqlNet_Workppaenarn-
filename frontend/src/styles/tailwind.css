@@ -732,7 +732,6 @@
     width: fit-content;
     max-width: min(384px, calc(100% - 20px));
   }
-  .message-actions-backdrop { display: none; }
   .message-sender { @apply mb-[3px] text-brand text-xs font-semibold; }
   .message-content { @apply whitespace-pre-wrap leading-[1.38]; overflow-wrap: anywhere; }
   .message-call-content {
@@ -813,30 +812,20 @@
   }
   .message-reactions {
     @apply mt-[7px] flex flex-wrap gap-[5px];
-    & span { min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--color-sheet-2); font-size: 12px; &.is-mine { background: var(--color-brand-soft); } }
+    /* Реакция — кнопка: по ней ставят свою и снимают. Раньше здесь был
+       span, и правило `is-mine` не применялось ни к чему — своя реакция
+       красилась утилитой `bg-accent-2` из старой палитры. */
+    & button {
+      min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill);
+      background: var(--color-sheet-2); font-size: 12px; cursor: pointer;
+      border: 1px solid transparent;
+      transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
+      &:hover { border-color: var(--color-line); }
+      &.is-mine { background: var(--color-brand-soft); }
+      &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+    }
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .message-actions-popover {
-    @apply fixed z-[1202] flex flex-col items-stretch gap-[8px];
-    filter: drop-shadow(0 18px 38px rgba(0,0,0,0.48));
-    animation: message-menu-in 0.14s ease-out;
-    transform-origin: top center;
-  }
-  .message-actions-popover::before {
-    content: "";
-    position: absolute;
-    top: -5px;
-    left: 50%;
-    width: 12px;
-    height: 12px;
-    transform: translateX(-50%) rotate(45deg);
-    border-top: 1px solid var(--color-line);
-    border-left: 1px solid var(--color-line);
-    background: var(--color-sheet-2);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border-radius: 3px 0 0 0;
-  }
   @keyframes message-menu-in {
     from { opacity: 0; transform: translateY(4px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -941,15 +930,6 @@
   }
 
   @media (max-width: 768px) {
-    .message-actions-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      z-index: 1100;
-      background: rgba(0,0,0,0.36);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
 
     .message-bubble.is-action-target {
       z-index: 1201;

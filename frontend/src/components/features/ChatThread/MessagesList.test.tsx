@@ -20,6 +20,7 @@ describe('MessagesList', () => {
       error: '',
       setOpenedImage: vi.fn(),
       toggleMessageSelection: vi.fn(),
+      onReact: vi.fn(),
       ...props,
     };
 

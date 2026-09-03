@@ -6,10 +6,11 @@ interface Props {
   variant?: 'inline' | 'sticky';
   visible?: boolean;
   pushOffset?: number;
+  paddingRight?: number;
 }
 
 export const DateDivider = memo(
-  ({ label, variant = 'inline', visible = true, pushOffset = 0 }: Props) => {
+  ({ label, variant = 'inline', visible = true, pushOffset = 0, paddingRight = 0 }: Props) => {
     if (!label) return null;
 
     if (variant === 'sticky') {
@@ -21,6 +22,7 @@ export const DateDivider = memo(
           )}
           style={{
             transform: pushOffset ? `translateY(${pushOffset}px)` : undefined,
+            paddingRight: paddingRight ? `${paddingRight}px` : undefined,
           }}
         >
           <span className="px-3.5 py-1 rounded-pill bg-sheet-2/90 backdrop-blur-md border border-line-soft text-caption font-medium text-ink-3 shadow-xs">

@@ -69,6 +69,7 @@ export function ChatThreadPage() {
     setProfileModal,
 
     toggleMessageSelection,
+    handleReact,
     selectedActionMessage,
 
     handleCancelSelection,
@@ -119,6 +120,7 @@ export function ChatThreadPage() {
             error={threadError}
             isLoading={isLoading}
             messages={messages}
+            onReact={handleReact}
             setOpenedImage={modals.setOpenedImage}
             toggleMessageSelection={toggleMessageSelection}
             bottomRef={bottomRef}
@@ -127,7 +129,6 @@ export function ChatThreadPage() {
 
           {actionMenu && selectedActionMessage && (
             <>
-              <div aria-hidden="true" className="message-actions-backdrop" />
               <MessageActionsPopover
                 message={selectedActionMessage}
                 onSelection={toggleMessageSelection}

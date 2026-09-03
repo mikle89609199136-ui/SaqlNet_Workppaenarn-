@@ -15,6 +15,8 @@ interface Props {
   error: string;
   setOpenedImage: Dispatch<SetStateAction<string | null>>;
   toggleMessageSelection: (message: IMessageDto) => void;
+  /** Нажатие по реакции под сообщением: ставит свою или снимает. */
+  onReact: (message: IMessageDto, emoji: string) => void;
   messagesRef?: RefObject<HTMLElement | null>;
   bottomRef?: RefObject<HTMLDivElement | null>;
 }
@@ -26,6 +28,7 @@ export const MessagesList = memo(
     isLoading,
     setOpenedImage,
     toggleMessageSelection,
+    onReact,
     bottomRef,
     messagesRef,
   }: Props) => {
@@ -37,6 +40,7 @@ export const MessagesList = memo(
       activeDate,
       isStickyVisible,
       stickyPushOffset,
+      scrollPaddingRight,
       feedItems,
       messagesById,
       virtualizer,
@@ -48,16 +52,16 @@ export const MessagesList = memo(
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* Липкий разделитель даты в стиле Telegram с выталкиванием и затуханием */}
+        {/* Липкий разделитель даты в стиле Telegram с выталкиванием, затуханием и компенсацией скроллбара */}
         {activeDate && feedItems.length > 0 && (
           <DateDivider
             label={activeDate}
+            paddingRight={scrollPaddingRight}
             pushOffset={stickyPushOffset}
             variant="sticky"
             visible={isStickyVisible}
           />
         )}
-
         <section
           aria-busy={isLoading}
           className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto"
@@ -102,6 +106,7 @@ export const MessagesList = memo(
                         currentUserId={user.id}
                         message={item.message}
                         onOpenImage={setOpenedImage}
+                        onReact={onReact}
                         onSelection={toggleMessageSelection}
                         repliedMessage={
                           item.message.replyTo ? messagesById.get(item.message.replyTo) : undefined
