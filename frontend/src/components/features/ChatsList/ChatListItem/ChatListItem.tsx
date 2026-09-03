@@ -1,10 +1,10 @@
 import { ROUTES } from '@/consts';
 import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
 import { useTypingStore } from '@/store/typing';
-import { formatMessageTime, getLastMessageText } from '@/utils';
+import { formatChatListTime, getLastMessageText } from '@/utils';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { Avatar, Badge } from '@/components/ui';
 import type { IChatDto } from '@/types';
 
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function ChatListItem({ chat }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
   const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
 
@@ -32,15 +32,24 @@ export function ChatListItem({ chat }: Props) {
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
 
+  /* Имя ссылки собирается из её содержимого, а не задаётся
+     `aria-label`: тот заменяет собой всё внутри, и диктор объявлял одно
+     название чата — ни последнего сообщения, ни времени, ни счётчика
+     непрочитанных.
+
+     `NavLink` вместо `Link` ради `aria-current="page"`: по нему открытый
+     чат и подсвечивается, и объявляется диктором. */
   return (
-    <Link className="chat-row" to={ROUTES.CHAT_BY_ID(chat.id)} aria-label={title}>
+    <NavLink className="chat-row" to={ROUTES.CHAT_BY_ID(chat.id)}>
       <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
       <div className="chat-main">
         <div className="chat-topline">
           <span className="chat-title">{title}</span>
-          <span className="chat-time">
-            {chat.lastMessageAt && formatMessageTime(chat.lastMessageAt)}
-          </span>
+          {chat.lastMessageAt && (
+            <time className="chat-time" dateTime={new Date(chat.lastMessageAt).toISOString()}>
+              {formatChatListTime(chat.lastMessageAt, i18n.language)}
+            </time>
+          )}
         </div>
         <div className="chat-subline">
           {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
@@ -62,6 +71,6 @@ export function ChatListItem({ chat }: Props) {
           )}
         </div>
       </div>
-    </Link>
+    </NavLink>
   );
 }
