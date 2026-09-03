@@ -1,5 +1,5 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
-import { formatDateDivider, isDifferentDay } from '@/utils';
+import { estimateMessageItemSize, formatDateDivider, isDifferentDay } from '@/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -100,13 +100,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     count: feedItems.length,
     getScrollElement: () => internalContainerRef.current,
     estimateSize: useCallback(
-      (index: number) => {
-        const item = feedItems[index];
-        if (!item) return 72;
-        if (item.type === 'date') return 44;
-        if (item.message.mediaUrl) return 240;
-        return 72;
-      },
+      (index: number) => estimateMessageItemSize(feedItems[index]),
       [feedItems]
     ),
     getItemKey: useCallback(

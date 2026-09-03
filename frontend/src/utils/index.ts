@@ -35,3 +35,5 @@ export {
   findTextAtPoint,
   splitPathByEraser,
 } from './editorCanvas';
+export { estimateMessageItemSize } from './estimateMessageSize';
+
