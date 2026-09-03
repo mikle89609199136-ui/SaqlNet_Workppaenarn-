@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { Avatar, Button, Icon, Modal } from '@/components/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
@@ -72,7 +73,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       // только в состоянии модалки и пропадало при переоткрытии.
       await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
-      showToast('error', err.message || t('toast.actionFailed', 'Ошибка выполнения действия'));
+      showToast(
+        'error',
+        describeApiError(err, t, t('toast.actionFailed', 'Ошибка выполнения действия'))
+      );
     }
   }
 
@@ -106,7 +110,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       onClose();
       navigate('/chats');
     } catch (err: any) {
-      showToast('error', err?.message || t('toast.leaveChatFailed', 'Не удалось покинуть чат'));
+      showToast(
+        'error',
+        describeApiError(err, t, t('toast.leaveChatFailed', 'Не удалось покинуть чат'))
+      );
     }
   };
 
@@ -121,7 +128,11 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     } catch (err: any) {
       showToast(
         'error',
-        err.message || t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+        describeApiError(
+          err,
+          t,
+          t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+        )
       );
     }
   };

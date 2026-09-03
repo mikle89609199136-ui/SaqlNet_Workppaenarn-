@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { ROUTES } from '@/consts';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
@@ -31,7 +32,10 @@ export function useStartPrivateChat() {
       navigate(ROUTES.CHAT_BY_ID(data.chatId));
     },
     onError: (error: Error) => {
-      showToast('error', error.message || t('chatCreateFailed', 'Не удалось открыть чат'));
+      showToast(
+        'error',
+        describeApiError(error, t, t('chatCreateFailed', 'Не удалось открыть чат'))
+      );
     },
   });
 }

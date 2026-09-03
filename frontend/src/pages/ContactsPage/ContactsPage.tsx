@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -40,7 +41,7 @@ export function ContactsPage() {
       }
     } catch (err) {
       setUsers([]);
-      setStatusText(`Ошибка: ${err.message}`);
+      setStatusText(describeApiError(err, t, t('searchFailed', 'Не удалось выполнить поиск')));
     } finally {
       setIsLoading(false);
     }
@@ -58,7 +59,7 @@ export function ContactsPage() {
         throw new Error(data.error || 'Не удалось создать чат');
       }
     } catch (err) {
-      showToast('error', err.message);
+      showToast('error', describeApiError(err, t, t('chatCreateFailed', 'Не удалось открыть чат')));
     }
   }
 
