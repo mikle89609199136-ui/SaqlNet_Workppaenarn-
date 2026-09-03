@@ -133,7 +133,17 @@
     padding-top: calc(18px + env(safe-area-inset-top, 0px));
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   }
-  .chats-toolbar { @apply flex items-center gap-2 mb-3; }
+  .chats-toolbar {
+    @apply flex items-center gap-2 mb-3;
+    /* На телефоне прокручивается вся страница, и панель уезжала вверх
+       вместе с ней — на настольном она остаётся на месте, потому что там
+       прокручивается только список. Липкой она ведёт себя одинаково в
+       обоих случаях; фон обязателен, иначе под ней просвечивают строки. */
+    @media (max-width: 767px) {
+      @apply sticky z-10 py-2 bg-ground;
+      top: env(safe-area-inset-top, 0px);
+    }
+  }
   /* Кнопка новой группы: раньше создать её было нельзя вовсе — страница
      существовала, а ссылки на неё не было ни на одном экране. */
   .chats-new-group {
@@ -195,7 +205,10 @@
   .chat-title, .chat-subline span { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
   .chat-title { @apply text-base font-semibold text-ink; }
   .chat-time { @apply shrink-0 text-micro text-ink-3; font-family: var(--font-mono); }
-  .chat-subline { @apply text-caption text-ink-3; }
+  /* Текст сообщения светлее отметки времени: при беглом просмотре глаз
+     ищет «что», а не «когда». Прежде оба были одного цвета, и строка
+     читалась ровным серым полотном. */
+  .chat-subline { @apply text-caption text-ink-2; }
   /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
   .chat-draft-label { color: var(--color-danger); }
 
