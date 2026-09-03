@@ -3,9 +3,13 @@ import type { IEditorState } from '@/types';
 import { cloneEditorState } from '@/utils';
 import { useCallback, useState } from 'react';
 
+interface IHistoryState {
+  list: IEditorState[];
+  index: number;
+}
+
 export function usePhotoEditorHistory(file: File | null, isReady: boolean) {
-  const [history, setHistory] = useState<IEditorState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [historyState, setHistoryState] = useState<IHistoryState>({ list: [], index: -1 });
   const [historyForFile, setHistoryForFile] = useState<File | null>(null);
 
   if (isReady && file && historyForFile !== file) {
@@ -19,49 +23,44 @@ export function usePhotoEditorHistory(file: File | null, isReady: boolean) {
       objects: [],
     };
     setHistoryForFile(file);
-    setHistory([cloneEditorState(initial)]);
-    setHistoryIndex(0);
+    setHistoryState({ list: [cloneEditorState(initial)], index: 0 });
   }
 
-  const pushHistory = useCallback(
-    (snapshot: IEditorState) => {
-      const next = history.slice(0, historyIndex + 1);
+  const pushHistory = useCallback((snapshot: IEditorState) => {
+    setHistoryState((prev) => {
+      const next = prev.list.slice(0, prev.index + 1);
       next.push(cloneEditorState(snapshot));
       if (next.length > 50) next.shift();
-      setHistory(next);
-      setHistoryIndex(next.length - 1);
-    },
-    [history, historyIndex]
-  );
+      return { list: next, index: next.length - 1 };
+    });
+  }, []);
 
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex >= 0 && historyIndex < history.length - 1;
+  const canUndo = historyState.index > 0;
+  const canRedo = historyState.index >= 0 && historyState.index < historyState.list.length - 1;
 
-  const undo = useCallback(
-    (onApply: (snapshot: IEditorState) => void) => {
-      if (historyIndex <= 0) return;
-      const target = historyIndex - 1;
-      const snapshot = cloneEditorState(history[target]);
+  const undo = useCallback((onApply: (snapshot: IEditorState) => void) => {
+    setHistoryState((prev) => {
+      if (prev.index <= 0) return prev;
+      const target = prev.index - 1;
+      const snapshot = cloneEditorState(prev.list[target]);
       onApply(snapshot);
-      setHistoryIndex(target);
-    },
-    [history, historyIndex]
-  );
+      return { ...prev, index: target };
+    });
+  }, []);
 
-  const redo = useCallback(
-    (onApply: (snapshot: IEditorState) => void) => {
-      if (historyIndex >= history.length - 1) return;
-      const target = historyIndex + 1;
-      const snapshot = cloneEditorState(history[target]);
+  const redo = useCallback((onApply: (snapshot: IEditorState) => void) => {
+    setHistoryState((prev) => {
+      if (prev.index >= prev.list.length - 1) return prev;
+      const target = prev.index + 1;
+      const snapshot = cloneEditorState(prev.list[target]);
       onApply(snapshot);
-      setHistoryIndex(target);
-    },
-    [history, historyIndex]
-  );
+      return { ...prev, index: target };
+    });
+  }, []);
 
   return {
-    history,
-    historyIndex,
+    history: historyState.list,
+    historyIndex: historyState.index,
     pushHistory,
     canUndo,
     canRedo,

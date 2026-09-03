@@ -18,7 +18,7 @@ function renderWithI18n(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>);
 }
 
-describe('MediaEditor components', () => {
+describe('компоненты MediaEditor', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
