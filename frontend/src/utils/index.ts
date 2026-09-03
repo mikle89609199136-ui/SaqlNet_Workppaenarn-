@@ -25,6 +25,7 @@ export {
   hasMessageMedia,
 } from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';
+export { formatDateDivider, isDifferentDay } from './dateGroup';
 export {
   clamp,
   cloneEditorState,
@@ -34,3 +35,5 @@ export {
   findTextAtPoint,
   splitPathByEraser,
 } from './editorCanvas';
+export { estimateMessageItemSize } from './estimateMessageSize';
+

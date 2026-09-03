@@ -25,6 +25,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@tanstack/react-query": "^5.102.4",
+    "@tanstack/react-virtual": "^3.14.10",
     "clsx": "^2.1.1",
     "i18next": "^26.3.6",
     "i18next-http-backend": "^4.0.1",
