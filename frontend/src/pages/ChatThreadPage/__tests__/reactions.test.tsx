@@ -120,4 +120,50 @@ describe('реакции на чужое сообщение', () => {
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests.map((request) => request.body.emoji)).toEqual(['❤️', '👍']);
   });
+  it('не возвращает первый эмодзи, если ответ по нему опоздал', async () => {
+    /* Два быстрых нажатия подряд: ответ на первое приходит после второго.
+       Прежде он перетирал показанное — эмодзи прыгал обратно. */
+    const currentUser = makeUser({ id: 'user-1' });
+    const chat = makeChat({ id: 'chat-reactions-race' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение для гонки',
+      reactions: [],
+    });
+
+    let call = 0;
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
+        const body = (await request.json()) as { emoji: string };
+        call += 1;
+
+        // Первый ответ намеренно отстаёт от второго.
+        if (call === 1) await new Promise((resolve) => setTimeout(resolve, 300));
+
+        return HttpResponse.json({
+          reactions: [{ emoji: body.emoji, count: 1, myReaction: true }],
+        });
+      })
+    );
+
+    renderChatThread({ chat, messages: [message], currentUser });
+
+    const bubbleText = await screen.findByText('сообщение для гонки');
+    fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
+    await userEvent.click(await screen.findByRole('menuitem', { name: '👍' }));
+
+    fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
+    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+
+    // Ждём дольше задержки первого ответа: если бы он применялся, эмодзи
+    // сменился бы обратно.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(screen.getByText('❤️ 1')).toBeInTheDocument();
+    expect(screen.queryByText('👍 1')).toBeNull();
+  });
 });

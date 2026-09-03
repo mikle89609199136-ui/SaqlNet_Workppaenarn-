@@ -20,11 +20,27 @@ interface Props {
   draftRef?: RefObject<HTMLInputElement | null>;
 }
 
+/**
+ * Сколько раз нажимали на реакции каждого сообщения.
+ *
+ * Ответы сервера приходят в любом порядке, и ответ на первое нажатие,
+ * опоздав, возвращал бы картину, которую человек уже отменил вторым: два
+ * быстрых выбора подряд заканчивались прыжком к первому эмодзи. Ответ
+ * применяется, только если с момента отправки не было нового нажатия.
+ *
+ * Счёт ведётся вне React намеренно. Меню действий размонтируется сразу
+ * после нажатия, унося с собой всё, что жило в его состоянии, — счётчик
+ * в `useRef` обнулялся бы к каждому следующему нажатию и не защищал ни от
+ * чего.
+ */
+const reactionAttempts = new Map<string, number>();
+
 export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const [translatingIds, setTranslatingIds] = useState(new Set());
+
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
   const chatType = chat?.type;
@@ -140,6 +156,10 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     const mine = previous.find((reaction) => reaction.myReaction);
     const allowMultiple = Boolean(currentUser?.isPremium);
 
+    const attempt = (reactionAttempts.get(message.id) ?? 0) + 1;
+    reactionAttempts.set(message.id, attempt);
+    const isLatest = () => reactionAttempts.get(message.id) === attempt;
+
     /* Результат показывается сразу, до ответа сервера: реакция — жест
        мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
        При замене запросов и вовсе два, и ждать оба значит смотреть, как
@@ -155,9 +175,18 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       }
 
       const result = await services.messageService.reactToMessage(message.id, emoji);
+
+      // Пока ходили на сервер, человек мог выбрать другое — тогда ответ
+      // устарел и показывать его нельзя.
+      if (!isLatest()) return;
+
       patchThreadMessage(queryClient, chatId, message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
+      // Откат тоже только для последнего нажатия: иначе неудача старого
+      // запроса стёрла бы выбор, сделанный после него.
+      if (!isLatest()) return;
+
       // Не вышло — возвращаем то, что было: показанное авансом должно
       // исчезнуть, иначе человек уверен, что реакция стоит.
       patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
