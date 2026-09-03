@@ -1,3 +1,4 @@
+export { formatChatListTime } from './chatListTime';
 export { calculateMenuPosition } from './calculateMenuPosition';
 export { formatCallDuration, formatCallPreview, parseCallContent } from './call';
 export { clearAuthSession } from './clearAuthSession';
