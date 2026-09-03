@@ -56,7 +56,7 @@ function messageBubble(content: string): HTMLElement {
 /** Меню действий открывается правой кнопкой по сообщению. */
 async function openMessageActions(content: string) {
   fireEvent.contextMenu(messageBubble(content));
-  await screen.findByRole('button', { name: 'Скопировать' });
+  await screen.findByRole('menuitem', { name: 'Скопировать' });
 }
 
 describe('закрепление сообщения', () => {
@@ -72,7 +72,7 @@ describe('закрепление сообщения', () => {
     expect(screen.queryByRole('button', { name: 'Закреплённые сообщения' })).toBeNull();
 
     await openMessageActions('сообщение 1');
-    await user.click(screen.getByRole('button', { name: 'Закрепить' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Закрепить' }));
 
     await waitFor(() => expect(pinRequests).toHaveLength(1));
     expect(pinRequests[0]).toEqual({
@@ -111,7 +111,7 @@ describe('закрепление сообщения', () => {
     // У закреплённого сообщения в меню другой пункт — по нему видно,
     // что страница считает сообщение закреплённым.
     await openMessageActions('сообщение 1');
-    await user.click(screen.getByRole('button', { name: 'Открепить' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
 
     await waitFor(() => expect(pinRequests).toHaveLength(1));
     expect(pinRequests[0]).toEqual({

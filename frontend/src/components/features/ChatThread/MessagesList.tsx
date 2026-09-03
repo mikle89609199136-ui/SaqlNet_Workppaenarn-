@@ -12,6 +12,8 @@ interface Props {
   error: string;
   setOpenedImage: Dispatch<SetStateAction<string | null>>;
   toggleMessageSelection: (message: IMessageDto) => void;
+  /** Нажатие по реакции под сообщением: ставит свою или снимает. */
+  onReact: (message: IMessageDto, emoji: string) => void;
   messagesRef?: RefObject<HTMLElement | null>;
   bottomRef?: RefObject<HTMLDivElement | null>;
 }
@@ -23,6 +25,7 @@ export const MessagesList = memo(
     isLoading,
     setOpenedImage,
     toggleMessageSelection,
+    onReact,
     bottomRef,
     messagesRef,
   }: Props) => {
@@ -58,6 +61,7 @@ export const MessagesList = memo(
               currentUserId={user.id}
               key={message.id}
               message={message}
+              onReact={onReact}
               repliedMessage={message.replyTo ? messagesById.get(message.replyTo) : undefined}
               translations={translations}
               onOpenImage={setOpenedImage}

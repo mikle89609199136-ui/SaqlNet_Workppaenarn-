@@ -49,7 +49,7 @@ function setupChat() {
 /** Правый клик по пузырю и выбор «Изменить» в меню действий. */
 async function chooseEditAction(user: ReturnType<typeof userEvent.setup>) {
   await user.pointer({ keys: '[MouseRight]', target: await screen.findByText(ORIGINAL_TEXT) });
-  await user.click(await screen.findByRole('button', { name: 'Изменить' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Изменить' }));
 
   return screen.getByLabelText('Сообщение');
 }

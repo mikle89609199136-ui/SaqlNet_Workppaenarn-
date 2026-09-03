@@ -92,6 +92,7 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
@@ -160,6 +161,7 @@ export function useChatThreadPage({
     setProfileModal,
 
     toggleMessageSelection,
+    handleReact,
     selectedActionMessage,
 
     handleCancelSelection,

@@ -27,10 +27,25 @@ interface Props {
   translations: Record<string, string>;
   onOpenImage: Dispatch<SetStateAction<string | null>>;
   onSelection: (message: IMessageDto) => void;
+  /**
+   * Нажатие по реакции под сообщением. Обработчик приходит сверху, а не
+   * берётся хуком здесь: `useMessageActions` тянет за собой запрос чата и
+   * подписки, и в каждом пузыре это стоило бы столько же, сколько
+   * подписка на всю ленту, от которой избавлялись в #298.
+   */
+  onReact: (message: IMessageDto, emoji: string) => void;
 }
 
 export const MessageBubble = memo(
-  ({ currentUserId, message, repliedMessage, translations, onOpenImage, onSelection }: Props) => {
+  ({
+    currentUserId,
+    message,
+    repliedMessage,
+    translations,
+    onOpenImage,
+    onReact,
+    onSelection,
+  }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
     const isActionTarget = useChatUiStore((state) => state.actionMenu?.messageId === message.id);
@@ -119,9 +134,24 @@ export const MessageBubble = memo(
           {message.reactions?.length > 0 && (
             <div className="message-reactions">
               {message.reactions.map((reaction) => (
-                <span className={cn(reaction.myReaction && 'bg-accent-2')} key={reaction.emoji}>
+                /* Нажатие по реакции ставит свою или снимает — как в
+                   привычных мессенджерах. Прежде это был `span`, и
+                   единственным способом снять реакцию оставалось меню по
+                   правой кнопке. */
+                <button
+                  aria-label={`${reaction.emoji} ${reaction.count}`}
+                  aria-pressed={reaction.myReaction}
+                  className={cn(reaction.myReaction && 'is-mine')}
+                  key={reaction.emoji}
+                  onClick={(event) => {
+                    // Иначе нажатие уходит выше и открывает меню действий.
+                    event.stopPropagation();
+                    onReact(message, reaction.emoji);
+                  }}
+                  type="button"
+                >
                   {reaction.emoji} {reaction.count}
-                </span>
+                </button>
               ))}
             </div>
           )}

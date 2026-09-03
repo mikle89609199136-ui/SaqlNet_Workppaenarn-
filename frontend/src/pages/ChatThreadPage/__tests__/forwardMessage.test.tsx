@@ -64,7 +64,7 @@ async function openForwardPicker(messageText: string): Promise<void> {
   // нажатие требует pointerType 'touch', которого в jsdom нет.
   fireEvent.contextMenu(await screen.findByText(messageText));
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Переслать' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Переслать' }));
 
   await screen.findByRole('heading', { name: 'Переслать...' });
 }
@@ -77,7 +77,7 @@ describe('пересылка сообщения в другой чат', () => {
 
     fireEvent.contextMenu(await screen.findByText('сообщение 2'));
 
-    expect(await screen.findByRole('button', { name: 'Переслать' })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitem', { name: 'Переслать' })).toBeInTheDocument();
   });
 
   it('should open the chat picker without touching the thread history', async () => {
