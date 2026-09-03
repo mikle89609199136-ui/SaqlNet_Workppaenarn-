@@ -1,18 +1,21 @@
 import {
   ChatListItem,
   ChatListItemSkeleton,
+  ChatsSearchField,
+  ChatsSearchResults,
   CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
 import { Icon } from '@/components/ui';
-import { useIsMobile } from '@/hooks';
+import { useChatsSearch, useIsMobile } from '@/hooks';
+import { isConversationStarted } from '@/utils';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, Outlet, useParams } from 'react-router-dom';
+import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
 
 export function ChatsPage() {
@@ -24,6 +27,13 @@ export function ChatsPage() {
   } = useQuery(chatsQuery());
   const error = loadError ? (loadError as Error).message : '';
   const { chatId } = useParams();
+
+  /* Переписки, которые ещё не начались, в списке не показываются —
+     см. `isConversationStarted`. Фильтр стоит здесь, а не в запросе:
+     тем же запросом пользуется выбор участников группы, и там нужны все
+     собеседники. */
+  const visibleChats = useMemo(() => chats.filter(isConversationStarted), [chats]);
+  const search = useChatsSearch(visibleChats);
   const isMobile = useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [profileWidth, setProfileWidth] = useState<number | null>(null);
@@ -75,13 +85,7 @@ export function ChatsPage() {
   const listContent = (
     <>
       <section className="chats-toolbar">
-        <Link
-          className="chats-search"
-          to="/contacts"
-          aria-label={t('search', 'Поиск чатов и людей...')}
-        >
-          <span className="chats-search-placeholder">{t('search', 'Поиск чатов и людей...')}</span>
-        </Link>
+        <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
 
         <button
           aria-label={t('newGroup', 'Новая группа')}
@@ -99,8 +103,27 @@ export function ChatsPage() {
         {!isLoading && error && (
           <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}
-        {!isLoading && !error && chats.length === 0 && <EmptyChatListPlaceholder />}
-        {!isLoading && !error && chats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}
+
+        {/* Пока идёт поиск, список подменяется найденным — как в
+            привычных мессенджерах. Открытая переписка справа при этом
+            остаётся на месте: раньше поиск уводил на отдельную страницу
+            и закрывал её. */}
+        {!isLoading && !error && search.isSearching && (
+          <ChatsSearchResults
+            chats={search.chats}
+            isEmpty={search.isEmpty}
+            isLoadingPeople={search.isLoadingPeople}
+            people={search.people}
+          />
+        )}
+
+        {!isLoading && !error && !search.isSearching && visibleChats.length === 0 && (
+          <EmptyChatListPlaceholder />
+        )}
+        {!isLoading &&
+          !error &&
+          !search.isSearching &&
+          visibleChats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}
       </section>
     </>
   );

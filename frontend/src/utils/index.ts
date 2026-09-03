@@ -1,3 +1,4 @@
+export { isConversationStarted } from './isConversationStarted';
 export { formatChatListTime } from './chatListTime';
 export { calculateMenuPosition } from './calculateMenuPosition';
 export { formatCallDuration, formatCallPreview, parseCallContent } from './call';

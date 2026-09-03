@@ -7,6 +7,7 @@ export { useChatEncryption, useEncryptionState } from './useChatEncryption';
 export { useConnectionStatus } from './useConnectionStatus';
 export { useComposerSendMessage } from './useComposerSendMessage';
 export { useComposerShortcuts } from './useComposerShortcuts';
+export { useChatsSearch } from './useChatsSearch';
 export { useDebounce } from './useDebounce';
 export { useEscapeKey } from './useEscapeKey';
 export { useIsMobile } from './useIsMobile';
@@ -22,6 +23,7 @@ export {
   resetRealtimeSocketForTests,
   useRealtimeSocket,
 } from './useRealtimeSocket';
+export { useStartPrivateChat } from './useStartPrivateChat';
 export { useToasts } from './useToasts';
 export { useTypingIndicator } from './useTypingIndicator';
 export { useAudio } from './useAudio';
