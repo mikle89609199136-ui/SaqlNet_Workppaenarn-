@@ -60,7 +60,7 @@ func TestWSServer_Signaling(t *testing.T) {
 }
 
 func TestWSServerRejectsMissingToken(t *testing.T) {
-	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}})
+	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	response := httptest.NewRecorder()
 
@@ -72,7 +72,7 @@ func TestWSServerRejectsMissingToken(t *testing.T) {
 }
 
 func TestWSServerRejectsInvalidToken(t *testing.T) {
-	ws := NewWSServer(nil, fakeTokenVerifier{err: errors.New("invalid")})
+	ws := NewWSServer(nil, fakeTokenVerifier{err: errors.New("invalid")}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/ws?token=bad", nil)
 	response := httptest.NewRecorder()
 

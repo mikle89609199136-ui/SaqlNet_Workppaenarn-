@@ -28,8 +28,6 @@ func main() {
 	}
 	defer pool.Close()
 
-	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
-	wsServer := chat.NewWSServer(pool, crypto)
 	redisURL := config.Value("REDIS_URL", "redis://127.0.0.1:6379")
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -37,6 +35,8 @@ func main() {
 	}
 	redisClient := redis.NewClient(opt)
 	presenceStore := presence.NewRedisStore(redisClient)
+	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
+	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
 	handler := chat.NewHandler(chat.NewService(pool, wsServer, presenceStore))
 
 	// In production NATS is required. In other environments it is optional
