@@ -1,1 +1,10 @@
 export { PhotoEditorModal } from './PhotoEditorModal';
+export { EditorToolbar } from './EditorToolbar';
+export { EditorHistoryFloat } from './EditorHistoryFloat';
+export { EditorDrawPanel } from './EditorDrawPanel';
+export { EditorTextPanel } from './EditorTextPanel';
+export { EditorTransformPanel } from './EditorTransformPanel';
+export { EditorFiltersPanel } from './EditorFiltersPanel';
+export { EditorCropOverlay } from './EditorCropOverlay';
+export { EditorTextOverlay } from './EditorTextOverlay';
+export { PanelTitle, ColorPicker, EditorRange } from './EditorControls';

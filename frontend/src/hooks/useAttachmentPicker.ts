@@ -18,7 +18,6 @@ function getMediaMessageType(mimeType = '') {
 
 export function useAttachmentPicker({
   setPendingAttachment,
-  setPhotoEditorFile,
   attachmentInputRef,
 }: Params) {
   const { t } = useTranslation();
@@ -32,13 +31,6 @@ export function useAttachmentPicker({
     if (file.size > 100 * 1024 * 1024) {
       setError(t('attachmentTooLarge', 'Файл слишком большой. Максимальный размер — 100 МБ.'));
       event.target.value = '';
-      return;
-    }
-
-    if (file.type.startsWith('image/')) {
-      setPhotoEditorFile(file);
-      setEditingMessage(null);
-      setError('');
       return;
     }
 
