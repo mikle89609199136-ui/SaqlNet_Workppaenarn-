@@ -168,6 +168,7 @@ export function ChatThreadPage() {
               attachmentInputRef={attachmentInputRef}
               draftRef={draftRef}
               setPhotoEditorFile={modals.setPhotoEditorFile}
+              setOpenedImage={modals.setOpenedImage}
             />
           )}
           {selectionMode && (

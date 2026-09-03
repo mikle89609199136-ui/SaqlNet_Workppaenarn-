@@ -902,7 +902,7 @@
     grid-template-columns: 44px minmax(0,1fr) 44px;
     background: var(--color-sheet-2);
     & input { @apply min-w-0 min-h-[44px] outline-none text-white text-[15px]; padding: 0 14px; border: 1px solid var(--color-sheet-2); border-radius: 14px; background: var(--color-line-soft); &:focus { border-color: var(--color-brand-fill); } }
-    & button { @apply w-11 min-h-[44px] border-0 rounded-[14px] bg-[var(--color-warn)] text-[var(--color-sheet)] text-[18px] font-extrabold cursor-pointer; &:disabled { opacity: 0.45; cursor: not-allowed; } }
+    & .thread-composer-action-btn { @apply w-11 min-h-[44px] border-0 rounded-[14px] bg-[var(--color-warn)] text-[var(--color-sheet)] text-[18px] font-extrabold cursor-pointer; &:disabled { opacity: 0.45; cursor: not-allowed; } }
   }
   .thread-file-input { display: none !important; }
   .thread-composer .thread-attach-button {

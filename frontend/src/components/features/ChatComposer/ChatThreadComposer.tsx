@@ -52,6 +52,7 @@ interface Props {
   draftRef: RefObject<HTMLInputElement | null>;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
+  setOpenedImage?: Dispatch<SetStateAction<string | null>>;
 }
 
 export const ChatThreadComposer = ({
@@ -62,6 +63,7 @@ export const ChatThreadComposer = ({
   attachmentInputRef,
   draftRef,
   setPhotoEditorFile,
+  setOpenedImage,
 }: Props) => {
   const { t } = useTranslation();
 
@@ -129,7 +131,12 @@ export const ChatThreadComposer = ({
   return (
     <ComposerForm onSubmit={handleSubmit} ref={formRef}>
       <ComposerContextBanner onCancel={cancelComposerMode} />
-      <AttachmentPreview attachment={pendingAttachment} onRemove={removePendingAttachment} />
+      <AttachmentPreview
+        attachment={pendingAttachment}
+        onEdit={setPhotoEditorFile}
+        onOpenImage={setOpenedImage ? (url) => setOpenedImage(url) : undefined}
+        onRemove={removePendingAttachment}
+      />
       <ComposerRow>
         <AttachmentControl
           isSending={isSending}
