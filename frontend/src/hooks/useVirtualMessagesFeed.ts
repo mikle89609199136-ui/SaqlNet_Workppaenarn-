@@ -15,11 +15,15 @@ interface IUseVirtualMessagesFeedOptions {
 
 const SCROLL_THRESHOLD_PX = 200;
 const NEAR_BOTTOM_THRESHOLD_PX = 150;
+const DATE_HIDE_DELAY_MS = 1500;
+const STICKY_COLLISION_HEIGHT_PX = 44;
 
 export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isScrollingState, setIsScrollingState] = useState(false);
+  const dateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottomRef = useRef(true);
 
   const prevFirstIdRef = useRef<string | null>(null);
@@ -43,7 +47,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     return index;
   }, [messages]);
 
-  /* Формирование списка элементов ленты с виртуализируемыми плашками дат */
+  /* Формирование элементов ленты с инлайн-разделителями между днями */
   const feedItems = useMemo<TFeedItem[]>(() => {
     const items: TFeedItem[] = [];
     for (let i = 0; i < messages.length; i++) {
@@ -92,7 +96,22 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     useFlushSync: false,
   });
 
-  // Отслеживание позиции прокрутки для кнопки и флага нахождения внизу
+  const triggerDateVisibility = useCallback(() => {
+    setIsScrollingState(true);
+    if (dateTimerRef.current) clearTimeout(dateTimerRef.current);
+    dateTimerRef.current = setTimeout(() => {
+      setIsScrollingState(false);
+    }, DATE_HIDE_DELAY_MS);
+  }, []);
+
+  // Показ плашки даты на 1.5с при первой загрузке сообщений
+  useEffect(() => {
+    if (messages.length > 0) {
+      triggerDateVisibility();
+    }
+  }, [messages.length, triggerDateVisibility]);
+
+  // Отслеживание прокрутки для кнопки «Вниз» и отображения даты
   useEffect(() => {
     const container = internalContainerRef.current;
     if (!container) return undefined;
@@ -103,11 +122,16 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       const isScrolledUp = distanceFromBottom > SCROLL_THRESHOLD_PX;
       setShowScrollBottom(isScrolledUp);
       isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD_PX;
+
+      triggerDateVisibility();
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (dateTimerRef.current) clearTimeout(dateTimerRef.current);
+    };
+  }, [triggerDateVisibility]);
 
   // Умный скролл: вниз при открытии чата и новых сообщениях, сохранение позиции при подгрузке старых сверху
   useEffect(() => {
@@ -160,17 +184,55 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // Дата верхнего видимого элемента для плавающего разделителя
-  const activeDate = useMemo(() => {
-    if (virtualItems.length === 0) return '';
-    const firstItem = feedItems[virtualItems[0].index];
-    if (!firstItem) return '';
-    if (firstItem.type === 'date') return firstItem.label;
-    return formatDateDivider(firstItem.message.createdAt, t);
-  }, [virtualItems, feedItems, t]);
+  // Расчёт стики-поведения в стиле Telegram: выталкивание следующим дивайдером и активная дата
+  const { activeDate, stickyPushOffset, isInlineAtTop } = useMemo(() => {
+    if (virtualItems.length === 0) {
+      return { activeDate: '', stickyPushOffset: 0, isInlineAtTop: false };
+    }
+
+    const scrollOffset = virtualizer.scrollOffset ?? 0;
+    const firstRow = virtualItems[0];
+    const firstItem = feedItems[firstRow.index];
+
+    let dateText = '';
+    if (firstItem) {
+      dateText =
+        firstItem.type === 'date'
+          ? firstItem.label
+          : formatDateDivider(firstItem.message.createdAt, t);
+    }
+
+    let pushOffset = 0;
+    let inlineAtTop = false;
+
+    for (let i = 0; i < virtualItems.length; i++) {
+      const row = virtualItems[i];
+      const item = feedItems[row.index];
+      if (item?.type === 'date') {
+        const distFromTop = row.start - scrollOffset;
+        if (distFromTop >= -5 && distFromTop <= 15) {
+          inlineAtTop = true;
+        }
+        // Если следующий инлайн-дивайдер приближается сверху — выталкивает стики-плашку
+        if (distFromTop > 0 && distFromTop < STICKY_COLLISION_HEIGHT_PX) {
+          pushOffset = distFromTop - STICKY_COLLISION_HEIGHT_PX;
+        }
+      }
+    }
+
+    return {
+      activeDate: dateText,
+      stickyPushOffset: pushOffset,
+      isInlineAtTop: inlineAtTop,
+    };
+  }, [virtualItems, feedItems, virtualizer.scrollOffset, t]);
+
+  const isStickyVisible = Boolean(activeDate) && isScrollingState && !isInlineAtTop;
 
   return {
     activeDate,
+    isStickyVisible,
+    stickyPushOffset,
     feedItems,
     messagesById,
     virtualizer,

@@ -11,7 +11,7 @@ describe('useVirtualMessagesFeed', () => {
     <I18nextProvider i18n={testI18n}>{children}</I18nextProvider>
   );
 
-  it('creates date dividers and message feed items from message list', () => {
+  it('creates in-stream date dividers and message feed items from message list', () => {
     const m1 = makeMessage({
       id: 'msg-1',
       content: 'День 1',

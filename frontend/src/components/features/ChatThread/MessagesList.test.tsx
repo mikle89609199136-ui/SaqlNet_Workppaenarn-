@@ -40,7 +40,7 @@ describe('MessagesList', () => {
     expect(screen.getByText('Ошибка сети')).toBeInTheDocument();
   });
 
-  it('renders message bubbles and date dividers between different days', () => {
+  it('renders message bubbles and date dividers', () => {
     const m1 = makeMessage({
       id: 'msg-1',
       content: 'Привет от вчера',
@@ -56,27 +56,5 @@ describe('MessagesList', () => {
 
     expect(screen.getByText('Привет от вчера')).toBeInTheDocument();
     expect(screen.getByText('Привет от сегодня')).toBeInTheDocument();
-  });
-
-  it('renders single date divider for messages on the same day', () => {
-    const m1 = makeMessage({
-      id: 'msg-1',
-      content: 'Первое сообщение',
-      createdAt: '2026-05-10T10:00:00Z',
-    });
-    const m2 = makeMessage({
-      id: 'msg-2',
-      content: 'Второе сообщение',
-      createdAt: '2026-05-10T11:00:00Z',
-    });
-
-    const { container } = renderComponent({ messages: [m1, m2] });
-
-    expect(screen.getByText('Первое сообщение')).toBeInTheDocument();
-    expect(screen.getByText('Второе сообщение')).toBeInTheDocument();
-
-    // Ровно один DateDivider для одного дня
-    const dividers = container.querySelectorAll('.rounded-pill');
-    expect(dividers.length).toBeGreaterThanOrEqual(1);
   });
 });

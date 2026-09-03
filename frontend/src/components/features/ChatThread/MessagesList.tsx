@@ -35,6 +35,8 @@ export const MessagesList = memo(
 
     const {
       activeDate,
+      isStickyVisible,
+      stickyPushOffset,
       feedItems,
       messagesById,
       virtualizer,
@@ -46,13 +48,14 @@ export const MessagesList = memo(
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* Плавающий разделитель даты поверх виртуализированного списка */}
+        {/* Липкий разделитель даты в стиле Telegram с выталкиванием и затуханием */}
         {activeDate && feedItems.length > 0 && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none transition-opacity duration-fast">
-            <span className="px-3.5 py-1 rounded-pill bg-sheet-2/90 backdrop-blur-md border border-line-soft text-caption font-medium text-ink-3 shadow-xs">
-              {activeDate}
-            </span>
-          </div>
+          <DateDivider
+            label={activeDate}
+            pushOffset={stickyPushOffset}
+            variant="sticky"
+            visible={isStickyVisible}
+          />
         )}
 
         <section
@@ -93,7 +96,7 @@ export const MessagesList = memo(
                     }}
                   >
                     {item.type === 'date' ? (
-                      <DateDivider label={item.label} />
+                      <DateDivider label={item.label} variant="inline" />
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
