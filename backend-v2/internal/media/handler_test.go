@@ -19,6 +19,12 @@ import (
 type testStore struct{}
 
 func (testStore) Put(context.Context, string, string, io.Reader, int64, string) error { return nil }
+func (testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+	return &ObjectResponse{
+		Body:       io.NopCloser(bytes.NewReader(nil)),
+		StatusCode: http.StatusOK,
+	}, nil
+}
 func (testStore) PresignGet(context.Context, string, string, time.Duration) (string, error) {
 	return "https://storage.test/object", nil
 }

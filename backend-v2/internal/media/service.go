@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,10 +23,13 @@ import (
 )
 
 var (
-	ErrTooBig    = errors.New("file too large")
-	ErrBadType   = errors.New("unsupported content type")
-	ErrNotFound  = errors.New("upload not found")
-	ErrForbidden = errors.New("access denied")
+	ErrTooBig          = errors.New("file too large")
+	ErrBadType         = errors.New("unsupported content type")
+	ErrNotFound        = errors.New("upload not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrObjectNotFound  = errors.New("media object not found")
+	ErrStorage         = errors.New("media storage failure")
+	ErrResponseStarted = errors.New("media response stream failed")
 )
 
 const maxUploadBytes = 100 << 20 // 100 MB
@@ -48,8 +53,22 @@ var allowedTypes = map[string]bool{
 // Store abstracts object storage (MinIO / S3-compatible).
 type Store interface {
 	Put(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error
+	Get(ctx context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error)
 	PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error)
 	Delete(ctx context.Context, bucket, key string) error
+}
+
+type GetOptions struct {
+	Head  bool
+	Range string
+}
+
+type ObjectResponse struct {
+	Body          io.ReadCloser
+	StatusCode    int
+	ContentLength int64
+	ContentRange  string
+	AcceptRanges  string
 }
 
 type Upload struct {
@@ -182,14 +201,15 @@ func (s *Service) Get(ctx context.Context, userID, uploadID string) (Upload, err
 	return up, nil
 }
 
-func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.ResponseWriter) error {
+func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.ResponseWriter, options GetOptions) error {
 	var objectKey, bucket, contentType string
+	var sizeBytes int64
 	var isEncrypted bool
 	var encryptionJSON sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT bucket, object_key, content_type, is_encrypted, encryption_key_id 
+		SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id
 		FROM media.uploads WHERE id = $1
-	`, uploadID).Scan(&bucket, &objectKey, &contentType, &isEncrypted, &encryptionJSON)
+	`, uploadID).Scan(&bucket, &objectKey, &contentType, &sizeBytes, &isEncrypted, &encryptionJSON)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -202,22 +222,33 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 	}
 
 	if isEncrypted {
-		// Download object, encode as base64, return JSON
-		url, err := s.store.PresignGet(ctx, bucket, objectKey, 5*time.Minute)
+		encryptedOptions := GetOptions{}
+		if options.Head {
+			encryptedOptions.Head = true
+		}
+		object, err := s.store.Get(ctx, bucket, objectKey, encryptedOptions)
 		if err != nil {
-			return err
+			return storageError(ctx, err)
+		}
+		defer object.Body.Close()
+		switch object.StatusCode {
+		case http.StatusOK:
+		case http.StatusNotFound:
+			return ErrObjectNotFound
+		default:
+			return ErrStorage
+		}
+		if options.Head {
+			w.Header().Set("Cache-Control", "private, max-age=86400")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			return nil
 		}
 
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req)
+		// Preserve the existing encrypted JSON/base64 response contract.
+		data, err := io.ReadAll(object.Body)
 		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
+			return storageError(ctx, err)
 		}
 
 		var encMeta map[string]any
@@ -242,11 +273,70 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return nil
 	}
 
-	url, err := s.store.PresignGet(ctx, bucket, objectKey, 5*time.Minute)
+	object, err := s.store.Get(ctx, bucket, objectKey, options)
 	if err != nil {
-		return err
+		return storageError(ctx, err)
 	}
-	w.Header().Set("Location", url)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	defer object.Body.Close()
+
+	switch object.StatusCode {
+	case http.StatusOK, http.StatusPartialContent:
+	case http.StatusNotFound:
+		return ErrObjectNotFound
+	case http.StatusRequestedRangeNotSatisfiable:
+		copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
+		copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return nil
+	default:
+		return ErrStorage
+	}
+
+	w.Header().Set("Content-Type", safeContentType(contentType))
+	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
+	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
+	if w.Header().Get("Accept-Ranges") == "" {
+		w.Header().Set("Accept-Ranges", "bytes")
+	}
+
+	contentLength := sizeBytes
+	if object.StatusCode == http.StatusPartialContent {
+		contentLength = object.ContentLength
+	}
+	if contentLength >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	}
+	w.WriteHeader(object.StatusCode)
+
+	if options.Head {
+		return nil
+	}
+	if _, err := io.Copy(w, object.Body); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("%w: %v", ErrResponseStarted, err)
+	}
 	return nil
+}
+
+func storageError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: %v", ErrStorage, err)
+}
+
+func copyObjectHeader(header http.Header, name, value string) {
+	if value != "" {
+		header.Set(name, value)
+	}
+}
+
+func safeContentType(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil || mediaType == "" {
+		return "application/octet-stream"
+	}
+	return mediaType
 }
