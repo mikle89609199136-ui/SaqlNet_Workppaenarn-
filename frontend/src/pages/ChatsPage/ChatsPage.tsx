@@ -9,14 +9,20 @@ import {
   UserProfilePanel,
 } from '@/components/features';
 import { Icon } from '@/components/ui';
-import { useChatsSearch, useIsMobile } from '@/hooks';
+import { useChatsSearch, useIsMobile, usePaneWidth } from '@/hooks';
 import { isConversationStarted } from '@/utils';
+import { PaneResizer } from './PaneResizer';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
+
+/* Границы ширины колонок. Ниже нижней строка чата перестаёт помещаться,
+   выше верхней колонка съедает переписку. */
+const SIDEBAR_LIMITS = { min: 280, max: 520, fallback: 360 };
+const PROFILE_LIMITS = { min: 300, max: 560, fallback: 380 };
 
 export function ChatsPage() {
   const {
@@ -35,8 +41,8 @@ export function ChatsPage() {
   const visibleChats = useMemo(() => chats.filter(isConversationStarted), [chats]);
   const search = useChatsSearch(visibleChats);
   const isMobile = useIsMobile();
-  const [sidebarWidth, setSidebarWidth] = useState(360);
-  const [profileWidth, setProfileWidth] = useState<number | null>(null);
+  const sidebar = usePaneWidth('sidebar', SIDEBAR_LIMITS);
+  const profile = usePaneWidth('profile', PROFILE_LIMITS);
   const [profileState, setProfileState] = useState<IProfileState>({
     isOpen: false,
     userId: null,
@@ -47,31 +53,29 @@ export function ChatsPage() {
   const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
   const { t } = useTranslation();
 
-  function startResize(kind: string, event: PointerEvent) {
+  function startResize(kind: 'sidebar' | 'profile', event: PointerEvent) {
     event.preventDefault();
     const startX = event.clientX;
-    const startSidebarWidth = sidebarWidth;
-    const startProfileWidth = profileWidth || Math.round(window.innerWidth * 0.25);
+    const pane = kind === 'sidebar' ? sidebar : profile;
+    const limits = kind === 'sidebar' ? SIDEBAR_LIMITS : PROFILE_LIMITS;
+    const startWidth = pane.width;
+    let lastWidth = startWidth;
 
     function handleMove(moveEvent: PointerEvent) {
-      if (kind === 'sidebar') {
-        const nextWidth = Math.min(
-          Math.max(startSidebarWidth + moveEvent.clientX - startX, 280),
-          520
-        );
-        setSidebarWidth(nextWidth);
-      } else {
-        const nextWidth = Math.min(
-          Math.max(startProfileWidth - (moveEvent.clientX - startX), 300),
-          560
-        );
-        setProfileWidth(nextWidth);
-      }
+      const delta = moveEvent.clientX - startX;
+      // Панель профиля растёт влево, поэтому смещение у неё с обратным знаком.
+      const raw = kind === 'sidebar' ? startWidth + delta : startWidth - delta;
+
+      lastWidth = Math.min(Math.max(raw, limits.min), limits.max);
+      pane.setWidth(lastWidth);
     }
 
     function handleUp() {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      // Записывается один раз, по концу: иначе одно перетаскивание даёт
+      // несколько сотен обращений к хранилищу.
+      pane.remember(lastWidth);
     }
 
     window.addEventListener('pointermove', handleMove);
@@ -154,15 +158,19 @@ export function ChatsPage() {
           делает position: fixed относительным ей, и окно оказывалось
           прижатым к узкой колонке вместо экрана. */}
       {createGroupModal}
-      <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
+      <div className="app-sidebar-pane" style={{ flexBasis: sidebar.width }}>
         <main className="chats-page">{listContent}</main>
       </div>
 
-      <div
-        aria-label="Изменить ширину списка чатов"
+      <PaneResizer
         className="app-pane-resizer app-pane-resizer-sidebar"
+        label={t('resizeChatList', 'Изменить ширину списка чатов')}
+        max={SIDEBAR_LIMITS.max}
+        min={SIDEBAR_LIMITS.min}
         onPointerDown={(event) => startResize('sidebar', event.nativeEvent)}
-        role="separator"
+        onJump={sidebar.jump}
+        onNudge={sidebar.nudge}
+        width={sidebar.width}
       />
 
       <div className="app-chat-pane">
@@ -177,16 +185,17 @@ export function ChatsPage() {
 
       {profileState.isOpen && (
         <>
-          <div
-            aria-label="Изменить ширину профиля"
+          <PaneResizer
             className="app-pane-resizer app-pane-resizer-profile"
+            label={t('resizeProfile', 'Изменить ширину профиля')}
+            max={PROFILE_LIMITS.max}
+            min={PROFILE_LIMITS.min}
             onPointerDown={(event) => startResize('profile', event.nativeEvent)}
-            role="separator"
+            onJump={profile.jump}
+            onNudge={profile.nudge}
+            width={profile.width}
           />
-          <div
-            className="app-profile-pane"
-            style={profileWidth ? { flexBasis: profileWidth } : undefined}
-          >
+          <div className="app-profile-pane" style={{ flexBasis: profile.width }}>
             <UserProfilePanel
               onClose={() => {
                 setProfileState({ isOpen: false, userId: null, chat: null, messages: [] });

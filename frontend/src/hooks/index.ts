@@ -23,6 +23,7 @@ export {
   resetRealtimeSocketForTests,
   useRealtimeSocket,
 } from './useRealtimeSocket';
+export { usePaneWidth } from './usePaneWidth';
 export { useStartPrivateChat } from './useStartPrivateChat';
 export { useToasts } from './useToasts';
 export { useTypingIndicator } from './useTypingIndicator';
