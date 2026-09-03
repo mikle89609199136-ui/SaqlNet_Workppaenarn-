@@ -1,4 +1,5 @@
 import { ContextMenu, Icon } from '@/components/ui';
+import { cn } from '@/utils';
 import { useMessageActions } from '@/hooks';
 import { pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
@@ -51,6 +52,7 @@ export const MessageActionsPopover = ({
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
 
   const mine = message.senderId === currentUser?.id;
+  const myReaction = message.reactions?.find((reaction) => reaction.myReaction)?.emoji;
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
 
@@ -144,18 +146,29 @@ export const MessageActionsPopover = ({
         className="flex gap-1 px-1 pb-1"
         role="group"
       >
-        {REACTIONS.map((emoji) => (
-          <button
-            aria-label={emoji}
-            className="flex size-8 shrink-0 items-center justify-center rounded-control text-[18px] transition-colors hover:bg-sheet-2"
-            key={emoji}
-            onClick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
-            role="menuitem"
-            type="button"
-          >
-            {emoji}
-          </button>
-        ))}
+        {REACTIONS.map((emoji) => {
+          const chosen = myReaction === emoji;
+
+          return (
+            <button
+              aria-label={chosen ? `${emoji} ${t('reactionChosen', '— ваша реакция')}` : emoji}
+              aria-pressed={chosen}
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-control text-[18px] transition-colors hover:bg-sheet-2',
+                /* Поставленная реакция видна и в меню, не только на самом
+                   сообщении: иначе, открыв меню второй раз, не понять, что
+                   уже отмечено, — а нажатие на неё теперь снимает. */
+                chosen && 'bg-brand-soft'
+              )}
+              key={emoji}
+              onClick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
+              role="menuitem"
+              type="button"
+            >
+              {emoji}
+            </button>
+          );
+        })}
       </div>
 
       <ContextMenu.Separator />

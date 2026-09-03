@@ -73,7 +73,7 @@ describe('реакции на чужое сообщение', () => {
     expect(screen.getByText('❤️ 2')).toBeInTheDocument();
   });
 
-  it('should send no request when the user already reacted to the message', async () => {
+  it('заменяет прежнюю реакцию выбранной', async () => {
     const currentUser = makeUser({ id: 'user-1' });
     const chat = makeChat({ id: 'chat-reactions-repeat' });
     const message = makeMessage({
@@ -107,12 +107,17 @@ describe('реакции на чужое сообщение', () => {
     const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
     await userEvent.click(thumbsUp);
 
-    // ФАКТИЧЕСКОЕ ПОВЕДЕНИЕ: вторая реакция доступна только по подписке —
-    // запрос не уходит вовсе, интерфейс молчит, реакция остаётся прежней.
-    // Закрытие меню — единственный видимый отклик на нажатие; дождавшись его,
-    // мы знаем, что обработчик отработал целиком и запрос уже был бы отправлен.
-    await waitFor(() => expect(screen.queryByRole('menuitem', { name: '👍' })).toBeNull());
-    expect(requests).toHaveLength(0);
-    expect(screen.getByText('❤️ 1')).toBeInTheDocument();
+    /* Без подписки реакция одна, поэтому прежняя снимается и ставится
+       новая. Отдельной операции «замени» у сервера нет — он умеет только
+       переключать конкретный эмодзи, — отсюда два запроса; заведено
+       в #566.
+
+       Показывается замена сразу, не дожидаясь ответа: реакция — жест
+       мгновенный. */
+    await waitFor(() => expect(screen.getByText('👍 1')).toBeInTheDocument());
+    expect(screen.queryByText('❤️ 1')).toBeNull();
+
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests.map((request) => request.body.emoji)).toEqual(['❤️', '👍']);
   });
 });

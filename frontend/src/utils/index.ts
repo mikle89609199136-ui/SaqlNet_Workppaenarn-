@@ -1,3 +1,4 @@
+export { applyReaction } from './applyReaction';
 export { isConversationStarted } from './isConversationStarted';
 export { formatChatListTime } from './chatListTime';
 export { formatCallDuration, formatCallPreview, parseCallContent } from './call';

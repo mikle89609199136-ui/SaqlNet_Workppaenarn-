@@ -3,6 +3,7 @@ import { useToasts } from './useToasts';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services/serviceContainer';
+import { applyReaction } from '@/utils';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';
@@ -123,15 +124,43 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
+  /**
+   * Поставить, снять или заменить реакцию.
+   *
+   * Сервер переключает сам: та же реакция от того же человека снимается,
+   * новая ставится. Прежде клиент до него не доходил — при любой уже
+   * поставленной реакции он молча возвращался, и шесть эмодзи в меню
+   * становились мёртвыми: ни снять, ни поменять.
+   *
+   * Без подписки реакция одна: выбор другого эмодзи сначала снимает
+   * прежний. С подпиской они копятся — это и есть всё её отличие здесь.
+   */
   const handleReact = async (message: IMessageDto, emoji: string) => {
-    if (message.reactions.find((reaction) => reaction.myReaction) && !currentUser?.isPremium)
-      return;
+    const previous = message.reactions ?? [];
+    const mine = previous.find((reaction) => reaction.myReaction);
+    const allowMultiple = Boolean(currentUser?.isPremium);
+
+    /* Результат показывается сразу, до ответа сервера: реакция — жест
+       мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
+       При замене запросов и вовсе два, и ждать оба значит смотреть, как
+       эмодзи меняются по очереди. */
+    patchThreadMessage(queryClient, chatId, message.id, {
+      reactions: applyReaction(previous, emoji, { allowMultiple }),
+    });
 
     try {
+      // Своя же реакция снимается одним запросом: сервер переключает сам.
+      if (mine && mine.emoji !== emoji && !allowMultiple) {
+        await services.messageService.reactToMessage(message.id, mine.emoji);
+      }
+
       const result = await services.messageService.reactToMessage(message.id, emoji);
       patchThreadMessage(queryClient, chatId, message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
+      // Не вышло — возвращаем то, что было: показанное авансом должно
+      // исчезнуть, иначе человек уверен, что реакция стоит.
+      patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
       setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
     }
   };
@@ -158,7 +187,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messageUnpinMemberError',
             'Не удалось открепить сообщение. У вас нет прав администратора.'
-          ));
+          )
+        );
         return;
       }
 
@@ -188,7 +218,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messagePinMemberError',
             'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          ));
+          )
+        );
         return;
       }
 
