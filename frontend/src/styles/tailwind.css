@@ -732,7 +732,6 @@
     width: fit-content;
     max-width: min(384px, calc(100% - 20px));
   }
-  .message-actions-backdrop { display: none; }
   .message-sender { @apply mb-[3px] text-brand text-xs font-semibold; }
   .message-content { @apply whitespace-pre-wrap leading-[1.38]; overflow-wrap: anywhere; }
   .message-call-content {
@@ -816,95 +815,9 @@
     & span { min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--color-sheet-2); font-size: 12px; &.is-mine { background: var(--color-brand-soft); } }
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .message-actions-popover {
-    @apply fixed z-[1202] flex flex-col items-stretch gap-[8px];
-    filter: drop-shadow(0 18px 38px rgba(0,0,0,0.48));
-    animation: message-menu-in 0.14s ease-out;
-    transform-origin: top center;
-  }
-  .message-actions-popover::before {
-    content: "";
-    position: absolute;
-    top: -5px;
-    left: 50%;
-    width: 12px;
-    height: 12px;
-    transform: translateX(-50%) rotate(45deg);
-    border-top: 1px solid var(--color-line);
-    border-left: 1px solid var(--color-line);
-    background: var(--color-sheet-2);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border-radius: 3px 0 0 0;
-  }
   @keyframes message-menu-in {
     from { opacity: 0; transform: translateY(4px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  .message-actions-popover button {
-    font-family: inherit;
-  }
-  .message-actions-popover > * {
-    position: relative;
-    z-index: 1;
-  }
-  .message-actions-popover {
-    & button {
-      border: 0;
-      color: var(--color-ink);
-      font-weight: 700;
-      cursor: pointer;
-    }
-    & button:active { transform: translateY(1px); }
-  }
-  .message-reaction-actions {
-    @apply flex items-center justify-between gap-[4px];
-    padding: 7px;
-    border-radius: 20px;
-    background: var(--color-sheet-2);
-    border: 1px solid var(--color-line);
-    box-shadow: inset 0 1px 0 var(--color-line);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    & button {
-      width: 36px;
-      height: 36px;
-      padding: 0;
-      border-radius: 14px;
-      background: transparent;
-      font-size: 22px;
-      line-height: 1;
-      transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
-    }
-    & button:hover {
-      background: var(--color-line);
-      transform: translateY(-2px) scale(1.08);
-      box-shadow: 0 8px 18px rgba(0,0,0,0.24);
-    }
-  }
-  .message-text-actions {
-    @apply flex flex-col items-stretch self-center rounded-[18px] max-w-50 w-full overflow-hidden;
-    padding: 5px;
-    background: var(--color-sheet-2);
-    border: 1px solid var(--color-line);
-    box-shadow: inset 0 1px 0 var(--color-line);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    & button {
-      @apply w-full flex items-center gap-[10px] text-left;
-      min-height: 40px;
-      padding: 0 10px;
-      border-radius: 12px;
-      background: transparent;
-      color: var(--color-ink);
-      font-size: 13px;
-      white-space: nowrap;
-      transition: background 0.14s ease, color 0.14s ease;
-    }
-    & button + button { margin-top: 2px; }
-    & button:hover { background: var(--color-sheet-2); color: var(--color-ink); }
-    & button.is-danger { color: var(--color-danger); }
-    & button.is-danger:hover { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
   }
   .thread-state { @apply mx-auto max-w-[360px] text-center; padding: 28px 18px; & h2 { font-size: 20px; margin: 0 0 8px; } & p { color: var(--color-ink-2); } }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
@@ -942,15 +855,6 @@
   }
 
   @media (max-width: 768px) {
-    .message-actions-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      z-index: 1100;
-      background: rgba(0,0,0,0.36);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
 
     .message-bubble.is-action-target {
       z-index: 1201;

@@ -127,7 +127,6 @@ export function ChatThreadPage() {
 
           {actionMenu && selectedActionMessage && (
             <>
-              <div aria-hidden="true" className="message-actions-backdrop" />
               <MessageActionsPopover
                 message={selectedActionMessage}
                 onSelection={toggleMessageSelection}

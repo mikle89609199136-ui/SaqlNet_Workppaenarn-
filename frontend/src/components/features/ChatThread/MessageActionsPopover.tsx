@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { ContextMenu, Icon } from '@/components/ui';
 import { useMessageActions } from '@/hooks';
 import { pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
@@ -45,6 +45,7 @@ export const MessageActionsPopover = ({
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const selectionMode = useChatUiStore((state) => state.selectionMode);
   const actionMenu = useChatUiStore((state) => state.actionMenu);
+  const setActionMenu = useChatUiStore((state) => state.setActionMenu);
   // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
@@ -127,53 +128,61 @@ export const MessageActionsPopover = ({
   );
 
   return (
-    <div
-      className="message-actions-popover"
-      onClick={(e) => e.stopPropagation()}
-      style={{ left: actionMenu?.x, top: actionMenu?.y }}
+    <ContextMenu
+      aria-label={t('messageActions.title', 'Действия с сообщением')}
+      onClose={() => setActionMenu(null)}
+      open
+      x={actionMenu?.x}
+      y={actionMenu?.y}
     >
-      <div className="message-reaction-actions">
+      {/* Реакции идут рядом, а не столбиком: их шесть, они короткие, и
+          выбирают из них глазами, а не по названию. Роль у каждой та же,
+          что у обычного пункта, — иначе стрелки перескакивали бы через
+          весь ряд. */}
+      <div
+        aria-label={t('messageActions.reactions', 'Реакции')}
+        className="flex gap-1 px-1 pb-1"
+        role="group"
+      >
         {REACTIONS.map((emoji) => (
           <button
+            aria-label={emoji}
+            className="flex size-8 shrink-0 items-center justify-center rounded-control text-[18px] transition-colors hover:bg-sheet-2"
             key={emoji}
             onClick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
+            role="menuitem"
             type="button"
-            className="shrink-0"
           >
             {emoji}
           </button>
         ))}
       </div>
 
-      <div className="message-text-actions">
-        {buttons
-          .filter((b) => b.show)
-          .map((b) => (
-            <button
-              key={b.key}
-              className={b.className}
-              onClick={() => actions.runMessageAction(b.action)}
-              type="button"
-            >
-              <Icon name={b.icon} className="fill-transparent" />
-              <span>{t(b.key, b.def)}</span>
-            </button>
-          ))}
+      <ContextMenu.Separator />
 
-        <button
-          onClick={() =>
-            actions.runMessageAction(() =>
-              selectionMode ? onSelection(message) : actions.startSelection(message)
-            )
-          }
-          type="button"
-        >
-          <Icon name="checkCircle" className="fill-transparent" />
-          <span>
-            {isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать')}
-          </span>
-        </button>
-      </div>
-    </div>
+      {buttons
+        .filter((b) => b.show)
+        .map((b) => (
+          <ContextMenu.Item
+            icon={<Icon className="fill-transparent" name={b.icon} />}
+            key={b.key}
+            onClick={() => actions.runMessageAction(b.action)}
+            variant={b.className?.includes('danger') ? 'danger' : 'default'}
+          >
+            {t(b.key, b.def)}
+          </ContextMenu.Item>
+        ))}
+
+      <ContextMenu.Item
+        icon={<Icon className="fill-transparent" name="checkCircle" />}
+        onClick={() =>
+          actions.runMessageAction(() =>
+            selectionMode ? onSelection(message) : actions.startSelection(message)
+          )
+        }
+      >
+        {isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать')}
+      </ContextMenu.Item>
+    </ContextMenu>
   );
 };

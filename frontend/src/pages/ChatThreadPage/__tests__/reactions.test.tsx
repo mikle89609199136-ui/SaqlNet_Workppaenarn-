@@ -59,7 +59,7 @@ describe('реакции на чужое сообщение', () => {
     // с мышью: долгое нажатие обработчик принимает только от touch и pen.
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('button', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
     await userEvent.click(thumbsUp);
 
     await waitFor(() => expect(requests).toHaveLength(1));
@@ -104,14 +104,14 @@ describe('реакции на чужое сообщение', () => {
     const bubbleText = await screen.findByText('сообщение с моей реакцией');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('button', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
     await userEvent.click(thumbsUp);
 
     // ФАКТИЧЕСКОЕ ПОВЕДЕНИЕ: вторая реакция доступна только по подписке —
     // запрос не уходит вовсе, интерфейс молчит, реакция остаётся прежней.
     // Закрытие меню — единственный видимый отклик на нажатие; дождавшись его,
     // мы знаем, что обработчик отработал целиком и запрос уже был бы отправлен.
-    await waitFor(() => expect(screen.queryByRole('button', { name: '👍' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: '👍' })).toBeNull());
     expect(requests).toHaveLength(0);
     expect(screen.getByText('❤️ 1')).toBeInTheDocument();
   });
