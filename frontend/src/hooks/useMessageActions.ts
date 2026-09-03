@@ -2,6 +2,7 @@ import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
 import { useToasts } from './useToasts';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
+import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
 import { services } from '@/services/serviceContainer';
 import { applyReaction } from '@/utils';
 import { translateText } from '@/services/translatorApi';
@@ -160,6 +161,10 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     reactionAttempts.set(message.id, attempt);
     const isLatest = () => reactionAttempts.get(message.id) === attempt;
 
+    // Пока идёт замена, вести сервера по этому сообщению не применяются:
+    // между двумя запросами он рассылает состояние «реакции нет».
+    beginReactionChange(message.id);
+
     /* Результат показывается сразу, до ответа сервера: реакция — жест
        мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
        При замене запросов и вовсе два, и ждать оба значит смотреть, как
@@ -191,6 +196,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       // исчезнуть, иначе человек уверен, что реакция стоит.
       patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
       setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
+    } finally {
+      if (isLatest()) endReactionChange(message.id);
     }
   };
 

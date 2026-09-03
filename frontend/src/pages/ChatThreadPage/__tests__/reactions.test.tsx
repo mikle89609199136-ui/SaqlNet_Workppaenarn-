@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
+import { fakeSocket } from '@/test/harness/fakeSocket';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { renderChatThread } from '@/test/harness/renderChatThread';
@@ -165,5 +166,47 @@ describe('реакции на чужое сообщение', () => {
 
     expect(screen.getByText('❤️ 1')).toBeInTheDocument();
     expect(screen.queryByText('👍 1')).toBeNull();
+  });
+  it('не показывает промежуточное состояние, пока идёт своя замена', async () => {
+    /* Замена — два запроса, и между ними сервер рассылает всем «реакции
+       нет». Применив эту весть, интерфейс мигал пустотой вместо только
+       что выбранного эмодзи. */
+    const currentUser = makeUser({ id: 'user-1' });
+    const chat = makeChat({ id: 'chat-reactions-echo' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение с эхом',
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
+        const body = (await request.json()) as { emoji: string };
+
+        // Пока запрос в пути, сервер успевает рассказать о снятии прежней.
+        fakeSocket.emit('reaction_updated', {
+          chatId: chat.id,
+          messageId: message.id,
+          reactions: [],
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return HttpResponse.json({
+          reactions: [{ emoji: body.emoji, count: 1, myReaction: true }],
+        });
+      })
+    );
+
+    renderChatThread({ chat, messages: [message], currentUser });
+
+    const bubbleText = await screen.findByText('сообщение с эхом');
+    fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
+    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+
+    await waitFor(() => expect(screen.getByText('❤️ 1')).toBeInTheDocument());
   });
 });
