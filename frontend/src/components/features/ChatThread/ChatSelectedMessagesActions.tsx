@@ -52,16 +52,17 @@ export const ChatSelectedMessagesActions = ({
   return (
     <>
       <ComposerWrapper>
-        <ComposerRow className="justify-between items-center gap-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
+        <ComposerRow className="justify-between items-center gap-2 flex-nowrap">
+          <div className="flex items-center gap-1.5 flex-nowrap shrink-0 min-w-0">
             {/* Счетчик выбранных сообщений */}
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-control bg-sheet-2 text-ink text-caption font-semibold select-none mr-1">
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-control bg-sheet-2 text-ink text-caption font-semibold select-none mr-1 shrink-0">
               <span className="text-ink-2">{t('selected', 'Выбрано')}:</span>
               <span data-testid="selected-count">{selectedCount}</span>
             </div>
 
             <Button
               aria-label={t('forward', 'Переслать')}
+              className="shrink-0"
               disabled={selectedCount === 0}
               onClick={onForwardMessage}
               size="sm"
@@ -75,6 +76,7 @@ export const ChatSelectedMessagesActions = ({
 
             <Button
               aria-label={t('copy', 'Скопировать')}
+              className="shrink-0"
               disabled={selectedCount === 0}
               onClick={onCopyMessage}
               size="sm"
@@ -88,6 +90,7 @@ export const ChatSelectedMessagesActions = ({
 
             <Button
               aria-label={t('delete', 'Удалить')}
+              className="shrink-0"
               disabled={selectedCount === 0}
               onClick={() => setIsConfirmOpen(true)}
               size="sm"
@@ -102,6 +105,7 @@ export const ChatSelectedMessagesActions = ({
 
           <Button
             aria-label={t('cancel', 'Отмена')}
+            className="shrink-0"
             onClick={handleCancelSelection}
             size="sm"
             title={t('cancel', 'Отмена')}
