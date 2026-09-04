@@ -16,7 +16,11 @@ type MemoryStore struct {
 }
 
 // NewMemoryStore создаёт MemoryStore с заданным источником текущего времени.
+// Если now == nil, по умолчанию используется time.Now.
 func NewMemoryStore(now func() time.Time) *MemoryStore {
+	if now == nil {
+		now = time.Now
+	}
 	return &MemoryStore{
 		now:    now,
 		leases: make(map[string]map[string]time.Time),

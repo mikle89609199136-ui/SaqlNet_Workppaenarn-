@@ -211,3 +211,17 @@ func TestOnlineUsers_MixedActiveAndExpiredConnections(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{}, online)
 }
+
+// NewMemoryStore с nil в качестве источника времени использует time.Now по умолчанию
+// и не паникует при вызовах методов.
+func TestNewMemoryStore_NilNowDefaultsToTimeNow(t *testing.T) {
+	store := presence.NewMemoryStore(nil)
+	ctx := context.Background()
+
+	err := store.Connect(ctx, testUserID, testConnectionID)
+	require.NoError(t, err)
+
+	online, err := store.OnlineUsers(ctx, []string{testUserID})
+	require.NoError(t, err)
+	require.Equal(t, []string{testUserID}, online)
+}
