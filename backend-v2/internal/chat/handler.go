@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -841,11 +842,43 @@ func parseMemberAction(suffix string) (string, string) {
 	return parts[0], "/" + parts[1]
 }
 
+// decode reads and validates a JSON request body into the provided value.
+// Returns:
+//   - true if the body is valid, correctly formed, contains no extra data,
+//     and contains no unknown fields (strict mode).
+//   - false if an error occurred; the response has already been written.
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(value); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	// ------------------------------------------------------------------
+	// Step 1: Limit the request body size.
+	// ------------------------------------------------------------------
+	body := http.MaxBytesReader(w, r.Body, 256<<10) // 256 KiB
+	dec := json.NewDecoder(body)
+
+	// ------------------------------------------------------------------
+	// Step 2: Enforce strict field validation – reject unknown fields.
+	// ------------------------------------------------------------------
+	dec.DisallowUnknownFields()
+
+	// ------------------------------------------------------------------
+	// Step 3: Decode the first JSON value.
+	// ------------------------------------------------------------------
+	if err := dec.Decode(value); err != nil {
+		// Можно вернуть детали ошибки, чтобы клиент видел причину
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", err.Error())
 		return false
 	}
+
+	// ------------------------------------------------------------------
+	// Step 4: Ensure no trailing data exists after the first JSON value.
+	// ------------------------------------------------------------------
+	if _, err := dec.Token(); err != io.EOF {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "multiple JSON values in body")
+		return false
+	}
+
+	// ------------------------------------------------------------------
+	// All checks passed.
+	// ------------------------------------------------------------------
 	return true
 }
 
