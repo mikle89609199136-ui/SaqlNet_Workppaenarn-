@@ -153,4 +153,35 @@ describe('кнопка', () => {
     expect(screen.getByRole('button', { name: 'Обычная' })).toHaveClass('text-body');
     expect(screen.getByRole('button', { name: 'Крупная' })).toHaveClass('text-title');
   });
+  it('should replace the size radius when the shape is round', () => {
+    /* Радиус приходит из размера, поэтому круглая форма обязана стоять
+       после него: иначе tailwind-merge оставит rounded-control, и
+       кнопка при иконке останется прямоугольной. */
+    render(
+      <Button aria-label="Позвонить" iconOnly shape="round" size="sm" variant="ghost">
+        <span aria-hidden>+</span>
+      </Button>
+    );
+
+    const button = screen.getByRole('button', { name: 'Позвонить' });
+
+    expect(button).toHaveClass('rounded-full');
+    expect(button).not.toHaveClass('rounded-control');
+  });
+
+  it('should give the extra small icon button a tighter padding than the small one', () => {
+    render(
+      <>
+        <Button aria-label="Закрыть" iconOnly size="xs">
+          <span aria-hidden>x</span>
+        </Button>
+        <Button aria-label="Вложение" iconOnly size="sm">
+          <span aria-hidden>+</span>
+        </Button>
+      </>
+    );
+
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toHaveClass('p-0.5');
+    expect(screen.getByRole('button', { name: 'Вложение' })).toHaveClass('p-1.5');
+  });
 });

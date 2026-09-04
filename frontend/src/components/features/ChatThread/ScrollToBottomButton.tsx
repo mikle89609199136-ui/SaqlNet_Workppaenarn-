@@ -16,9 +16,10 @@ export const ScrollToBottomButton = memo(({ visible, onClick }: Props) => {
     <div className="absolute right-4 bottom-4 z-20 transition-all duration-fast">
       <Button
         aria-label={t('scrollToBottom', 'Перейти к последним сообщениям')}
-        className="relative rounded-full size-10 min-h-0 p-0 flex items-center justify-center shadow-[var(--elev-2)] hover:shadow-[var(--elev-3)] active:scale-95 bg-sheet-2 hover:bg-sheet border border-line text-ink"
+        className="relative size-10 p-0 shadow-[var(--elev-2)] hover:shadow-[var(--elev-3)] hover:bg-sheet active:scale-95"
         iconOnly
         onClick={onClick}
+        shape="round"
         size="md"
         title={t('scrollToBottom', 'Перейти к последним сообщениям')}
         variant="secondary"
