@@ -2,6 +2,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { makeMessage } from '@/test/fixtures';
 import { render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
+import { useChatUiStore } from '@/store';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 
@@ -73,4 +74,28 @@ describe('MessageBubble', () => {
 
     expect(screen.getByText('текст из ответа')).toBeInTheDocument();
   });
+
+  it('применяет акцентный стиль при выделении сообщения', () => {
+    const message = makeMessage({ id: 'msg-select-1', content: 'выбранное сообщение' });
+    useChatUiStore.setState({
+      selectedMessages: [message],
+      selectionMode: true,
+    });
+
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const bubble = container.querySelector('.message-bubble');
+    expect(bubble).toHaveClass('is-selected');
+    expect(bubble).toHaveClass('ring-brand');
+    expect(bubble).toHaveStyle({ backgroundColor: 'var(--color-brand-soft)' });
+  });
 });
+

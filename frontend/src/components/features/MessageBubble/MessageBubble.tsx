@@ -85,10 +85,12 @@ export const MessageBubble = memo(
             hasMessageMedia(message) && 'has-media',
             isAudio && 'has-audio w-full',
             isActionTarget && 'is-action-target',
-            isSelected && 'is-selected bg-accent',
+            isSelected &&
+              'is-selected ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
             isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
+              'ring-2 ring-brand ring-offset-2 ring-offset-sheet bg-brand-soft/25 transition-all duration-500'
           )}
+          style={isSelected ? { backgroundColor: 'var(--color-brand-soft)' } : undefined}
         >
           {!mine && message.senderStatusEmoji && (
             <div className="message-sender">
