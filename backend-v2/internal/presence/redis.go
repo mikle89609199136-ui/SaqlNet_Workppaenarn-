@@ -33,9 +33,13 @@ func (s *RedisStore) Connect(ctx context.Context, userID, connectionID string) e
 	}).Err()
 }
 
-// Heartbeat продлевает lease конкретного соединения, не трогая остальные.
+// Heartbeat продлевает lease конкретного соединения на LeaseTTL.
+// Несуществующий lease не создаётся (ZAddXX обновляет только существующий member).
 func (s *RedisStore) Heartbeat(ctx context.Context, userID, connectionID string) error {
-	return s.Connect(ctx, userID, connectionID)
+	return s.client.ZAddXX(ctx, redisKey(userID), redis.Z{
+		Member: connectionID,
+		Score:  float64(time.Now().Add(LeaseTTL).UnixNano()),
+	}).Err()
 }
 
 // Disconnect удаляет lease конкретного соединения; пропущенный disconnect
