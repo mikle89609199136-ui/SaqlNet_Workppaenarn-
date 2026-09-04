@@ -157,49 +157,7 @@
 	cursor: not-allowed;
 }
 
-.thread-composer-submit-wrap {
-	position: relative;
-	width: 32px;
-	height: 32px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-.thread-send-btn, 
-.thread-mic-btn {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	opacity: 0;
-	transform: scale(0.5) rotate(-45deg);
-	pointer-events: none;
-	transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease;
-}
-
-.thread-send-btn.is-visible,
-.thread-mic-btn.is-visible {
-	opacity: 1;
-	transform: scale(1) rotate(0deg);
-	pointer-events: auto;
-}
-
 .thread-composer-context,
-.thread-attachment-preview {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	background: var(--color-line-soft);
-	border-radius: 14px;
-	padding: 6px 12px;
-	font-size: 13px;
-	color: var(--color-ink);
-	margin-top: 2px;
-}
-
 .thread-composer-close-btn {
 	background: transparent;
 	border: none;
@@ -220,36 +178,6 @@
 .thread-file-input {
 	display: none;
 }
-.thread-composer-submit-wrap {
-	position: relative;
-	width: 34px;
-	height: 34px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-.thread-send-btn, 
-.thread-mic-btn {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	width: 34px;
-	height: 34px;
-	margin: 0;
-	opacity: 0;
-	transform: translate(-50%, -50%) scale(0.4) rotate(-45deg);
-	pointer-events: none;
-	transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease;
-}
-
-.thread-send-btn.is-visible,
-.thread-mic-btn.is-visible {
-	opacity: 1;
-	transform: translate(-50%, -50%) scale(1) rotate(0deg);
-	pointer-events: auto;
-}
-
 
 .chats-toolbar {
 	padding: 8px 16px 12px 16px;
