@@ -714,7 +714,7 @@
      откуда пришло сообщение. */
   .message-bubble {
     @apply relative w-fit bg-bubble-in text-ink;
-    max-width: min(76%,560px); padding: 9px 11px 7px;
+    max-width: min(76%,560px); padding: 5px 8px 4px;
     border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 5px;
     box-shadow: var(--elev-1);
     transition: box-shadow var(--transition-duration-fast) ease-out, filter var(--transition-duration-fast) ease-out;
@@ -802,7 +802,6 @@
     font-size: 30px;
     line-height: 1;
   }
-  .message-reply-preview { @apply mb-[6px] rounded-lg text-xs; padding: 6px 8px; border-left: 3px solid var(--color-warn); background: var(--color-line); color: var(--color-ink-2); }
   /* Автор не подтверждён: текст показываем, но с оговоркой. Прятать нельзя
      — подделка и рассчитана на то, что её прочтут как настоящую. */
   .message-unverified {

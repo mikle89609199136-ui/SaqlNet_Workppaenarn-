@@ -1,6 +1,7 @@
-import { testI18n } from '@/test/harness/i18n';
 import { makeMessage } from '@/test/fixtures';
-import { render, screen } from '@testing-library/react';
+import { testI18n } from '@/test/harness/i18n';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
@@ -19,6 +20,7 @@ describe('MessageBubble', () => {
         currentUserId="user-1"
         message={reply}
         onOpenImage={vi.fn()}
+        onReact={vi.fn()}
         onSelection={vi.fn()}
         repliedMessage={replied}
         translations={{}}
@@ -30,9 +32,6 @@ describe('MessageBubble', () => {
   });
 
   it('обходится без истории чата: ни кеша запросов, ни маршрутизатора', () => {
-    /* Пузырь рисуется без `QueryClientProvider` и без роутера. Пока он
-       искал цитату сам, ему требовались оба, а вместе с ними —
-       подписка на всю ленту в каждом из сотен пузырей. */
     const message = makeMessage({ id: 'msg-1', content: 'просто сообщение' });
 
     expect(() =>
@@ -41,6 +40,7 @@ describe('MessageBubble', () => {
           currentUserId="user-1"
           message={message}
           onOpenImage={vi.fn()}
+          onReact={vi.fn()}
           onSelection={vi.fn()}
           translations={{}}
         />
@@ -51,9 +51,6 @@ describe('MessageBubble', () => {
   });
 
   it('берёт запасное превью из самого сообщения, когда исходное не найдено', () => {
-    /* Сообщение, на которое отвечают, может лежать за пределами
-       загруженных страниц — тогда сервер присылает его текст прямо в
-       ответе. */
     const reply = makeMessage({
       id: 'msg-2',
       content: 'ответ',
@@ -66,11 +63,50 @@ describe('MessageBubble', () => {
         currentUserId="user-1"
         message={reply}
         onOpenImage={vi.fn()}
+        onReact={vi.fn()}
         onSelection={vi.fn()}
         translations={{}}
       />
     );
 
     expect(screen.getByText('текст из ответа')).toBeInTheDocument();
+  });
+
+  it('вызывает onJumpToMessage при клике и нажатии клавиш на плашке ответа (#553)', async () => {
+    const user = userEvent.setup();
+    const onJumpToMessage = vi.fn();
+    const reply = makeMessage({
+      id: 'msg-2',
+      content: 'ответ',
+      replyTo: 'msg-target-99',
+      replyToContent: 'текст цитаты',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={reply}
+        onJumpToMessage={onJumpToMessage}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const quoteButton = screen.getByRole('button', { name: /перейти к сообщению/i });
+    expect(quoteButton).toHaveAttribute('tabindex', '0');
+
+    // Клик мышью
+    await user.click(quoteButton);
+    expect(onJumpToMessage).toHaveBeenCalledWith('msg-target-99');
+
+    // Клавиатура: Enter
+    fireEvent.keyDown(quoteButton, { key: 'Enter' });
+    expect(onJumpToMessage).toHaveBeenCalledTimes(2);
+
+    // Клавиатура: Space
+    fireEvent.keyDown(quoteButton, { key: ' ' });
+    expect(onJumpToMessage).toHaveBeenCalledTimes(3);
   });
 });

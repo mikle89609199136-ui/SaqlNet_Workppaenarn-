@@ -1,4 +1,4 @@
-import { useVirtualMessagesFeed } from '@/hooks';
+import { useJumpToMessage, useVirtualMessagesFeed } from '@/hooks';
 import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
@@ -17,6 +17,8 @@ interface Props {
   toggleMessageSelection: (message: IMessageDto) => void;
   /** Нажатие по реакции под сообщением: ставит свою или снимает. */
   onReact: (message: IMessageDto, emoji: string) => void;
+  /** Переход к цитируемому сообщению (#553). */
+  onJumpToMessage?: (messageId: string) => void;
   messagesRef?: RefObject<HTMLElement | null>;
   bottomRef?: RefObject<HTMLDivElement | null>;
 }
@@ -29,6 +31,7 @@ export const MessagesList = memo(
     setOpenedImage,
     toggleMessageSelection,
     onReact,
+    onJumpToMessage,
     bottomRef,
     messagesRef,
   }: Props) => {
@@ -48,7 +51,14 @@ export const MessagesList = memo(
       setContainerRef,
       showScrollBottom,
       scrollToBottom,
+      jumpToMessage,
     } = useVirtualMessagesFeed({ messages, messagesRef });
+
+    const { jumpToMessage: defaultJumpToMessage } = useJumpToMessage({
+      onScrollToMessage: jumpToMessage,
+    });
+
+    const handleJumpToMessage = onJumpToMessage ?? defaultJumpToMessage;
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -105,6 +115,7 @@ export const MessagesList = memo(
                       <MessageBubble
                         currentUserId={user.id}
                         message={item.message}
+                        onJumpToMessage={handleJumpToMessage}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onSelection={toggleMessageSelection}

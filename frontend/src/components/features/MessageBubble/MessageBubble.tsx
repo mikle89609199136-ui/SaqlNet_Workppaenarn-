@@ -8,6 +8,7 @@ import { CallMessageContent } from './CallMessageContent';
 import { MessageCheckbox } from './MessageCheckbox';
 import { MessageContentRenderer } from './MessageContent';
 import { MessageMedia } from './MessageMedia';
+import { MessageReplyPreview } from './MessageReplyPreview';
 
 interface Props {
   currentUserId: string;
@@ -34,6 +35,8 @@ interface Props {
    * подписка на всю ленту, от которой избавлялись в #298.
    */
   onReact: (message: IMessageDto, emoji: string) => void;
+  /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
+  onJumpToMessage?: (messageId: string) => void;
 }
 
 export const MessageBubble = memo(
@@ -45,6 +48,7 @@ export const MessageBubble = memo(
     onOpenImage,
     onReact,
     onSelection,
+    onJumpToMessage,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -66,9 +70,6 @@ export const MessageBubble = memo(
       message
     );
 
-    const replyText = repliedMessage?.content?.trim() || message.replyToContent?.trim() || '';
-    const replyImage = repliedMessage?.mediaUrl || message.replyToMediaUrl || null;
-
     const actualType = message.mediaType || message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
 
@@ -87,7 +88,7 @@ export const MessageBubble = memo(
             isActionTarget && 'is-action-target',
             isSelected && 'is-selected bg-accent',
             isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
+              'ring-2 ring-brand ring-offset-2 ring-offset-sheet bg-brand-soft/25 transition-all duration-500'
           )}
         >
           {!mine && message.senderStatusEmoji && (
@@ -98,17 +99,12 @@ export const MessageBubble = memo(
             </div>
           )}
 
-          {(replyText || replyImage) && (
-            <a
-              href={`#${message.replyTo}`}
-              className="message-reply-preview"
-              aria-label={t('goToMessage', 'Перейти к сообщению')}
-            >
-              {replyImage && (
-                <img src={replyImage} alt="" className="message-reply-preview-image" />
-              )}
-              {replyText && <span>{replyText}</span>}
-            </a>
+          {message.replyTo && (
+            <MessageReplyPreview
+              message={message}
+              onJumpToMessage={onJumpToMessage}
+              repliedMessage={repliedMessage}
+            />
           )}
 
           <MessageMedia message={message} onOpenImage={onOpenImage} />

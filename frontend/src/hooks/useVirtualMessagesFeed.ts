@@ -245,6 +245,19 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
   const isStickyVisible = Boolean(activeDate) && isScrollingState && !isInlineAtTop;
 
+  const jumpToMessage = useCallback(
+    (messageId: string) => {
+      if (!messageId) return false;
+      const targetIndex = feedItems.findIndex((item) => item.id === messageId);
+      if (targetIndex !== -1) {
+        virtualizer.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
+        return true;
+      }
+      return false;
+    },
+    [feedItems, virtualizer]
+  );
+
   return {
     activeDate,
     isStickyVisible,
@@ -257,5 +270,6 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     setContainerRef,
     showScrollBottom,
     scrollToBottom,
+    jumpToMessage,
   };
 }
