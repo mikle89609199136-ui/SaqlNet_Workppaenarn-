@@ -76,13 +76,8 @@
   50%  { transform: scale(1.1); opacity: 1; }
   100% { transform: scale(0.9); opacity: 0.5; }
 }
-@keyframes fadeIn  { from { opacity: 0; }              to { opacity: 1; } }
-@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes bgPulse { from { opacity: 0.6; }            to { opacity: 1; } }
 @keyframes cardIn  { from { opacity: 0; transform: translateY(32px) scale(0.92); } to { opacity: 1; transform: none; } }
-@keyframes bounce  { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes blink   { 0%, 100% { opacity: 1; }          50% { opacity: 0.2; } }
-
 /* =========================================================
    Base layer — global resets + CSS var aliases
    ========================================================= */
@@ -153,15 +148,6 @@
     &:hover { @apply text-ink; border-color: var(--color-ink-3); }
     &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   }
-  .chats-search {
-    @apply min-w-0 h-11 px-3.5 rounded-field flex items-center gap-2.5 no-underline cursor-pointer select-none bg-sheet-2 text-ink-3;
-    border: 1px solid var(--color-line);
-    transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-    &:hover { @apply text-ink-2; border-color: var(--color-ink-3); }
-    &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-  }
-  .chats-search-placeholder { @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-body; }
-
   /* Окно создания группы */
   .create-group-avatar {
     @apply w-16 h-16 rounded-bubble flex items-center justify-center cursor-pointer overflow-hidden bg-brand-soft text-ink-2;
@@ -212,17 +198,7 @@
   /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
   .chat-draft-label { color: var(--color-danger); }
 
-  .chats-state { @apply py-[52px] px-6 text-center; }
-  .chats-state-icon { @apply w-[54px] h-[54px] mt-0 mx-auto mb-4 rounded-bubble flex items-center justify-center text-[28px] font-extrabold bg-sheet-2 text-warn; }
-  .chats-state h2 { @apply m-0 mb-2 text-section text-ink; }
-  .chats-state p { @apply max-w-[360px] m-0 mx-auto leading-[1.5] text-ink-2; }
   /* Кнопка временная, см. #340. */
-  .chats-retry {
-    @apply min-h-[42px] mt-[18px] py-0 px-[18px] border-0 rounded-field font-semibold cursor-pointer bg-brand-fill text-on-brand;
-    transition: filter var(--transition-duration-fast) ease-out;
-    &:hover { filter: brightness(1.08); }
-  }
-
 }
 
 /* =========================================================
@@ -230,11 +206,6 @@
    ========================================================= */
 @layer components {
 
-  .toast-container {
-    @apply fixed right-3 left-3 z-[99999] flex flex-col gap-1.5 pointer-events-none;
-    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    @media (min-width: 768px) { left: auto; width: 360px; }
-  }
   .toast {
     @apply py-3 px-4 rounded-xl flex items-center gap-2 text-sm;
     background: var(--color-sheet); border-left: 3px solid var(--color-danger);
@@ -511,49 +482,6 @@
   .contact-details { @apply flex flex-col; }
   .contact-name-title { @apply font-semibold text-[15px]; }
   .contact-username-sub { @apply text-xs; color: var(--color-muted); }
-  .contact-select-checkbox { @apply w-[22px] h-[22px] rounded-[6px]; border: 2px solid var(--color-ink-3); accent-color: var(--color-accent); }
-
-  .settings-profile-card {
-    @apply flex items-center gap-4 rounded-[20px] mb-6 w-full box-border;
-    padding: 20px; background: var(--color-panel); border: 1px solid var(--color-line-soft);
-    @media (min-width: 768px) { @apply gap-6 rounded-[24px] mb-8; padding: 28px 32px; }
-  }
-  .settings-profile-info {
-    @apply min-w-0 flex-1;
-    & h2 { @apply text-[18px] font-bold whitespace-nowrap overflow-hidden text-ellipsis; margin: 0 0 4px; @media (min-width: 768px) { @apply text-[22px]; } }
-    & p  { @apply m-0 text-[13px]; color: var(--color-muted); @media (min-width: 768px) { @apply text-sm; } }
-  }
-  .settings-block-group {
-    @apply rounded-[20px] mb-5 overflow-hidden w-full box-border;
-    background: var(--color-panel); border: 1px solid var(--color-line-soft);
-    @media (min-width: 768px) { @apply rounded-[24px] mb-6; }
-  }
-  .settings-row-item {
-    @apply flex items-center justify-between cursor-pointer transition-colors duration-200 text-white no-underline text-[15px] gap-3;
-    padding: 14px 18px; border-bottom: 1px solid var(--color-sheet-2);
-    &:last-child { border-bottom: 0; }
-    &:hover { background: var(--color-sheet-2); }
-    @media (min-width: 768px) { @apply text-base; padding: 18px 24px; }
-  }
-  .settings-row-left  { @apply flex items-center gap-3 flex-1 min-w-0; }
-  .settings-row-icon  { @apply text-[18px] shrink-0; @media (min-width: 768px) { @apply text-[20px]; } }
-  .settings-row-right { @apply flex items-center gap-2 text-sm shrink-0 whitespace-nowrap; color: var(--color-muted); @media (min-width: 768px) { @apply text-[15px]; } }
-  .settings-toggle-switch {
-    @apply w-11 h-6 rounded-xl relative transition-colors duration-200 cursor-pointer shrink-0;
-    background: var(--color-line);
-    &.is-active { background: var(--color-accent); }
-  }
-  .settings-toggle-knob {
-    @apply w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] left-[3px] transition-all duration-200;
-    .settings-toggle-switch.is-active & { left: 23px; }
-  }
-  .logout-btn-container { @apply mt-[30px] w-full; }
-  .logout-btn-block {
-    @apply w-full rounded-[12px] text-[var(--color-danger)] text-[15px] font-bold cursor-pointer transition-colors duration-200 box-border;
-    padding: 14px; border: 1px solid color-mix(in srgb, var(--color-danger) 26%, transparent); background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-    &:hover { background: color-mix(in srgb, var(--color-danger) 16%, transparent); }
-    @media (min-width: 768px) { @apply text-base rounded-2xl; padding: 16px; }
-  }
   .create-group-btn {
     @apply w-full rounded-[12px] text-white text-[15px] font-bold cursor-pointer mt-[18px] border-0;
     padding: 14px; background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
@@ -561,48 +489,12 @@
   }
 
   /* Group info modal */
-  .group-info-header {
-    & h2 { @apply text-[1.2rem] font-semibold m-0; background: linear-gradient(135deg,var(--color-ink) 0%,var(--color-ink-2) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  }
   .close-btn {
     @apply w-8 h-8 rounded-full text-white text-base cursor-pointer flex items-center justify-center transition-colors duration-200 border-none;
     background: var(--color-line);
     &:hover { background: var(--color-line); }
   }
   .group-info-body { @apply p-0 overflow-y-auto flex-1; }
-  .members-list { @apply list-none m-0 p-0; }
-  .member-item {
-    @apply flex items-center transition-colors duration-200;
-    padding: 16px 24px; border-bottom: 1px solid var(--color-sheet-2);
-    &:hover { background: var(--color-sheet-2); }
-  }
-  .avatar-placeholder { @apply w-full h-full flex items-center justify-center text-[1.2rem] font-bold text-white; }
-  .member-details { @apply flex-1 flex flex-col gap-1 overflow-hidden; }
-  .member-name { @apply font-medium text-base text-white whitespace-nowrap overflow-hidden text-ellipsis; }
-  .member-role { @apply text-[0.75rem] font-semibold uppercase tracking-[0.5px] w-fit; padding: 2px 8px; border-radius: 12px; }
-  .role-owner { color: var(--color-warn); background: color-mix(in srgb, var(--color-warn) 22%, transparent); border: 1px solid color-mix(in srgb, var(--color-warn) 32%, transparent); }
-  .role-admin  { color: var(--color-brand); background: var(--color-brand-soft); border: 1px solid color-mix(in srgb, var(--color-brand) 32%, transparent); }
-  .role-member { color: var(--color-ink-2); background: var(--color-line); }
-  .member-actions {
-    @apply flex gap-2 ml-3;
-    & .action-btn {
-      @apply text-[var(--color-ink-2)] rounded-lg text-[0.8rem] cursor-pointer transition-all duration-200 font-medium;
-      background: var(--color-line); border: 1px solid var(--color-sheet-2); padding: 6px 12px;
-      &:hover { @apply text-white; background: var(--color-line); }
-      &.danger { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); border-color: color-mix(in srgb, var(--color-danger) 22%, transparent); &:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 22%, transparent); } }
-    }
-  }
-  .loading-state { @apply p-10 text-center text-[var(--color-ink-2)] text-[0.9rem]; }
-  .selected-members-section { @apply mb-6; animation: fadeIn 0.3s ease; & h4 { @apply text-[0.9rem] text-[var(--color-ink-2)] mb-3 font-medium; } }
-  .selected-members-list { @apply flex flex-wrap gap-[10px]; }
-  .selected-member-pill {
-    @apply rounded-[20px] text-[0.85rem] cursor-pointer flex items-center gap-2 text-white transition-all duration-200;
-    background: linear-gradient(135deg, var(--color-line), var(--color-sheet-2));
-    border: 1px solid var(--color-line); padding: 6px 14px;
-    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    &:hover { @apply -translate-y-px; background: color-mix(in srgb, var(--color-danger) 16%, transparent); border-color: color-mix(in srgb, var(--color-danger) 32%, transparent); & .remove-pill { color: var(--color-danger); } }
-  }
-  .remove-pill { @apply text-[0.8rem] text-[var(--color-ink-2)] transition-colors duration-200; }
 }
 
 /* =========================================================
@@ -705,7 +597,6 @@
   .thread-call-button:active { transform: translateY(0); background: var(--color-brand-soft); }
   .thread-call-button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   .thread-call-icon { @apply block w-6 h-6; }
-  .thread-call-icon-video { width: 31px; height: 31px; opacity: 0.9; }
   .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
 
   /* Свой и чужой пузырь разведены не яркостью, а температурой: своё
@@ -826,75 +717,6 @@
     }
   }
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  @keyframes message-menu-in {
-    from { opacity: 0; transform: translateY(4px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  .message-actions-popover button {
-    font-family: inherit;
-  }
-  .message-actions-popover > * {
-    position: relative;
-    z-index: 1;
-  }
-  .message-actions-popover {
-    & button {
-      border: 0;
-      color: var(--color-ink);
-      font-weight: 700;
-      cursor: pointer;
-    }
-    & button:active { transform: translateY(1px); }
-  }
-  .message-reaction-actions {
-    @apply flex items-center justify-between gap-[4px];
-    padding: 7px;
-    border-radius: 20px;
-    background: var(--color-sheet-2);
-    border: 1px solid var(--color-line);
-    box-shadow: inset 0 1px 0 var(--color-line);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    & button {
-      width: 36px;
-      height: 36px;
-      padding: 0;
-      border-radius: 14px;
-      background: transparent;
-      font-size: 22px;
-      line-height: 1;
-      transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
-    }
-    & button:hover {
-      background: var(--color-line);
-      transform: translateY(-2px) scale(1.08);
-      box-shadow: 0 8px 18px rgba(0,0,0,0.24);
-    }
-  }
-  .message-text-actions {
-    @apply flex flex-col items-stretch self-center rounded-[18px] max-w-50 w-full overflow-hidden;
-    padding: 5px;
-    background: var(--color-sheet-2);
-    border: 1px solid var(--color-line);
-    box-shadow: inset 0 1px 0 var(--color-line);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    & button {
-      @apply w-full flex items-center gap-[10px] text-left;
-      min-height: 40px;
-      padding: 0 10px;
-      border-radius: 12px;
-      background: transparent;
-      color: var(--color-ink);
-      font-size: 13px;
-      white-space: nowrap;
-      transition: background 0.14s ease, color 0.14s ease;
-    }
-    & button + button { margin-top: 2px; }
-    & button:hover { background: var(--color-sheet-2); color: var(--color-ink); }
-    & button.is-danger { color: var(--color-danger); }
-    & button.is-danger:hover { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
-  }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
   .thread-composer {
     @apply grid gap-[10px];
@@ -912,16 +734,6 @@
     font-size: 20px;
   }
   .thread-composer .thread-attach-button:hover { background: var(--color-line); }
-  .thread-attachment-preview {
-    @apply col-span-full grid items-center gap-x-2 rounded-[12px];
-    grid-template-columns: auto minmax(0,1fr) auto auto;
-    min-height: 42px;
-    padding: 6px 7px 6px 11px;
-    background: var(--color-sheet-2);
-    color: var(--color-ink);
-    & > span:nth-child(2) { @apply overflow-hidden text-ellipsis whitespace-nowrap; font-size: 13px; font-weight: 700; }
-    & button { width: 30px; min-height: 30px; border-radius: 9px; background: var(--color-line); color: var(--color-ink); }
-  }
   .thread-composer-context {
     @apply col-span-full flex items-center justify-between gap-3 rounded-[12px] text-[13px];
     min-height: 34px; padding: 6px 8px 6px 11px; background: var(--color-sheet-2); color: var(--color-ink-2);
@@ -951,26 +763,5 @@
   .logo {
     @apply absolute top-6 left-1/2 -translate-x-1/2 text-[13px] font-bold uppercase tracking-[0.08em];
     color: var(--color-line);
-  }
-  .emoji-wrap { @apply text-[72px] leading-none mb-2 block; animation: bounce 1.5s ease-in-out infinite; }
-  .status-badge {
-    @apply inline-flex items-center gap-1.5 rounded-[20px] text-xs font-semibold uppercase tracking-[0.04em] mb-5;
-    padding: 4px 12px; background: color-mix(in srgb, var(--color-warn) 14%, transparent); border: 1px solid color-mix(in srgb, var(--color-warn) 32%, transparent); color: var(--color-warn);
-  }
-  .status-dot { @apply w-[7px] h-[7px] rounded-full; background: var(--color-warn); animation: blink 1s ease-in-out infinite; }
-  .timer-wrap { @apply flex flex-col items-center gap-2 mb-7; }
-  .timer-ring { @apply relative w-[100px] h-[100px]; & svg { transform: rotate(-90deg); } }
-  .ring-bg  { fill: none; stroke: var(--color-line); stroke-width: 6; stroke-linecap: round; }
-  .ring-bar { fill: none; stroke: var(--color-warn); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
-  .timer-num { @apply absolute inset-0 flex items-center justify-center text-[28px] font-bold; letter-spacing: -0.03em; }
-  .timer-label { @apply text-[13px]; color: var(--color-ink-3); }
-  .retry-btn {
-    @apply w-full rounded-[16px] border-none text-white text-base font-semibold cursor-pointer flex items-center justify-center gap-2;
-    padding: 16px; letter-spacing: -0.01em;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
-    box-shadow: 0 8px 32px color-mix(in srgb, var(--color-brand) 35%, transparent);
-    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s;
-    &:disabled { @apply opacity-40 cursor-not-allowed; transform: none !important; }
-    &:not(:disabled):active { transform: scale(0.96); }
   }
 }
