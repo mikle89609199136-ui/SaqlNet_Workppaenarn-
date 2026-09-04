@@ -48,6 +48,8 @@
   "firstNamePlaceholder": "Your name",
   "forward": "Forward",
   "goToMessage": "Go to message",
+  "loadingOlderForJump": "Loading chat history to navigate to message...",
+  "messageNotInHistory": "Message is further up in history",
   "groupAvatar": "Group photo",
   "groupChat": "Group",
   "groupDescPlaceholder": "Description (optional)",

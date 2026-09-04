@@ -245,17 +245,20 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
   const isStickyVisible = Boolean(activeDate) && isScrollingState && !isInlineAtTop;
 
+  const feedItemsRef = useRef(feedItems);
+  feedItemsRef.current = feedItems;
+
   const jumpToMessage = useCallback(
     (messageId: string) => {
       if (!messageId) return false;
-      const targetIndex = feedItems.findIndex((item) => item.id === messageId);
+      const targetIndex = feedItemsRef.current.findIndex((item) => item.id === messageId);
       if (targetIndex !== -1) {
         virtualizer.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
         return true;
       }
       return false;
     },
-    [feedItems, virtualizer]
+    [virtualizer]
   );
 
   return {

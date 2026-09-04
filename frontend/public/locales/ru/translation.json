@@ -48,6 +48,8 @@
   "firstNamePlaceholder": "Ваше имя",
   "forward": "Переслать",
   "goToMessage": "Перейти к сообщению",
+  "loadingOlderForJump": "Загрузка истории для перехода к сообщению...",
+  "messageNotInHistory": "Сообщение находится выше в истории",
   "groupAvatar": "Аватар группы",
   "groupChat": "Группа",
   "groupDescPlaceholder": "Описание (необязательно)",

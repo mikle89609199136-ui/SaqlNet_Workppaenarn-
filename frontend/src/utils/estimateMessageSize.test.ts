@@ -36,7 +36,7 @@ describe('estimateMessageItemSize', () => {
       reactions: [{ emoji: '👍', count: 1, myReaction: true }],
     });
     const size = estimateMessageItemSize({ type: 'message', message });
-    // Базовый текст (56) + reply (38) + reactions (28) = ~122
-    expect(size).toBe(122);
+    // Базовый текст (56) + reply (48) + reactions (28) = ~132
+    expect(size).toBe(132);
   });
 });

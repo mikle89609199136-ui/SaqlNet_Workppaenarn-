@@ -38,4 +38,3 @@ export { usePhotoEditorCrop } from './usePhotoEditorCrop';
 export { usePhotoEditorDrawing } from './usePhotoEditorDrawing';
 export { usePhotoEditorHistory } from './usePhotoEditorHistory';
 export { useJumpToMessage } from './useJumpToMessage';
-

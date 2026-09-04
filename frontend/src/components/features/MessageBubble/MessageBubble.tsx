@@ -72,6 +72,10 @@ export const MessageBubble = memo(
 
     const actualType = message.mediaType || message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
+    const targetReplyId = message.replyTo || message.replyToMessageId;
+    const hasReply = Boolean(
+      targetReplyId || message.replyToContent || message.replyToMediaUrl || repliedMessage
+    );
 
     return (
       <article
@@ -88,7 +92,7 @@ export const MessageBubble = memo(
             isActionTarget && 'is-action-target',
             isSelected && 'is-selected bg-accent',
             isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-sheet bg-brand-soft/25 transition-all duration-500'
+              'ring-2 ring-brand ring-offset-2 ring-offset-ground bg-brand-soft/25 transition-all duration-500'
           )}
         >
           {!mine && message.senderStatusEmoji && (
@@ -99,7 +103,7 @@ export const MessageBubble = memo(
             </div>
           )}
 
-          {message.replyTo && (
+          {hasReply && (
             <MessageReplyPreview
               message={message}
               onJumpToMessage={onJumpToMessage}

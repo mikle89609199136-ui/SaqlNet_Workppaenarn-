@@ -8,7 +8,7 @@ const CHARS_PER_LINE = 42;
 const LINE_HEIGHT_PX = 20;
 const BASE_BUBBLE_PADDING_PX = 36;
 const DATE_DIVIDER_HEIGHT_PX = 44;
-const REPLY_PREVIEW_HEIGHT_PX = 38;
+const REPLY_PREVIEW_HEIGHT_PX = 48;
 const REACTIONS_ROW_HEIGHT_PX = 28;
 const MEDIA_PHOTO_HEIGHT_PX = 240;
 const MEDIA_AUDIO_HEIGHT_PX = 64;
@@ -44,7 +44,7 @@ export function estimateMessageItemSize(item?: TEstimatableFeedItem | null): num
   }
 
   // 2. Цитата (ответ на другое сообщение)
-  if (message.replyTo || message.replyToContent || message.replyToMediaUrl) {
+  if (message.replyTo || message.replyToMessageId || message.replyToContent || message.replyToMediaUrl) {
     height += REPLY_PREVIEW_HEIGHT_PX;
   }
 

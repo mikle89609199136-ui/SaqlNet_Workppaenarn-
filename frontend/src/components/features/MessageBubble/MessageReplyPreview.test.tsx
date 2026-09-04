@@ -60,7 +60,7 @@ describe('MessageReplyPreview', () => {
     );
 
     expect(screen.getByText('Иван')).toBeInTheDocument();
-    expect(screen.getByText(/📷 Фото: Описание фото/i)).toBeInTheDocument();
+    expect(screen.getByText('Описание фото')).toBeInTheDocument();
     const img = container.querySelector('img');
     expect(img).toHaveAttribute('src', 'https://example.com/photo.jpg');
   });
@@ -82,8 +82,8 @@ describe('MessageReplyPreview', () => {
     );
 
     expect(screen.getByText('Ольга')).toBeInTheDocument();
-    expect(screen.getByText(/📹 Видео/i)).toBeInTheDocument();
-    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.getByText('Видео')).toBeInTheDocument();
+    expect(container.querySelector('svg')).toBeInTheDocument();
   });
 
   it('вызывает onJumpToMessage при клике и нажатии клавиатурных клавиш', async () => {

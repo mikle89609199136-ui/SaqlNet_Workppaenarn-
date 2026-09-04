@@ -77,11 +77,36 @@ describe('useJumpToMessage', () => {
 
     let success = false;
     await act(async () => {
-      success = await result.current.jumpToMessage('older-msg-1');
+      const promise = result.current.jumpToMessage('older-msg-1');
+      await vi.advanceTimersByTimeAsync(50);
+      success = await promise;
     });
 
     expect(loadOlder).toHaveBeenCalled();
     expect(success).toBe(true);
     expect(useChatUiStore.getState().highlightedMessageId).toBe('older-msg-1');
+  });
+
+  it('retries up to 5 times when message is several pages up in history', async () => {
+    let attempts = 0;
+    const onScrollToMessage = vi.fn().mockImplementation(() => attempts >= 3);
+    const loadOlder = vi.fn().mockImplementation(async () => {
+      attempts++;
+    });
+
+    const { result } = renderHook(
+      () => useJumpToMessage({ onScrollToMessage, loadOlder, hasMoreOlder: true }),
+      { wrapper }
+    );
+
+    let success = false;
+    await act(async () => {
+      const promise = result.current.jumpToMessage('deep-msg');
+      await vi.advanceTimersByTimeAsync(200);
+      success = await promise;
+    });
+
+    expect(loadOlder).toHaveBeenCalledTimes(3);
+    expect(success).toBe(true);
   });
 });

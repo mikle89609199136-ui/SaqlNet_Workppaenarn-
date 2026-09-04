@@ -49,6 +49,8 @@ export function ChatThreadPage() {
     pinnedMessages,
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -117,14 +119,16 @@ export function ChatThreadPage() {
             setPinnedMessagesOpen={modals.setPinnedMessagesOpen}
           />
           <MessagesList
+            bottomRef={bottomRef}
             error={threadError}
+            hasOlder={hasOlder}
             isLoading={isLoading}
+            loadOlder={loadOlder}
             messages={messages}
+            messagesRef={messagesRef}
             onReact={handleReact}
             setOpenedImage={modals.setOpenedImage}
             toggleMessageSelection={toggleMessageSelection}
-            bottomRef={bottomRef}
-            messagesRef={messagesRef}
           />
 
           {actionMenu && selectedActionMessage && (

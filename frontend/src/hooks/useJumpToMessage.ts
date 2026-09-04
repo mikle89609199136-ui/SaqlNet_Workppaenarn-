@@ -1,15 +1,15 @@
-import { useChatUiStore } from '@/store';
+import { useChatUiStore, useToastStore } from '@/store';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useToasts } from './useToasts';
 
 const HIGHLIGHT_DURATION_MS = 1800;
+const MAX_LOAD_OLDER_ATTEMPTS = 5;
 
 interface IUseJumpToMessageOptions {
   /** Функция скролла к сообщению (например, через виртуализатор) */
   onScrollToMessage?: (messageId: string) => boolean;
   /** Функция подгрузки более старых страниц истории */
-  loadOlder?: () => Promise<void> | void;
+  loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
   /** Флаг наличия более старых страниц */
   hasMoreOlder?: boolean;
 }
@@ -20,9 +20,12 @@ interface IUseJumpToMessageOptions {
  */
 export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
   const { t } = useTranslation();
-  const { showToast } = useToasts();
+  const showToast = useToastStore((state) => state.showToast);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setHighlightedMessageId = useChatUiStore((state) => state.setHighlightedMessageId);
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const applyHighlight = useCallback(
     (messageId: string) => {
@@ -42,7 +45,7 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
       if (!messageId) return false;
 
       // 1. Попытка перехода через виртуализатор
-      let success = options?.onScrollToMessage?.(messageId) ?? false;
+      let success = optionsRef.current?.onScrollToMessage?.(messageId) ?? false;
 
       // 2. Фоллбэк через DOM, если элемент уже смонтирован
       if (!success) {
@@ -59,28 +62,43 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
         return true;
       }
 
-      // 3. Если сообщение выше в истории и есть возможность догрузить
-      if (options?.loadOlder && options?.hasMoreOlder) {
+      // 3. Если сообщение выше в истории и есть возможность догрузить (до 5 страниц)
+      const initialOpts = optionsRef.current;
+      if (initialOpts?.loadOlder && initialOpts?.hasMoreOlder) {
         showToast(
           'info',
           t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...')
         );
-        try {
-          await options.loadOlder();
-          const retrySuccess = options?.onScrollToMessage?.(messageId) ?? false;
+
+        let attempts = 0;
+        while (attempts < MAX_LOAD_OLDER_ATTEMPTS) {
+          attempts++;
+          try {
+            await optionsRef.current?.loadOlder?.({ isJump: true });
+          } catch {
+            break;
+          }
+
+          // Тик ожидания, чтобы React закоммитил новые элементы в виртуализатор
+          await new Promise((resolve) => setTimeout(resolve, 30));
+
+          const currentOpts = optionsRef.current;
+          const retrySuccess = currentOpts?.onScrollToMessage?.(messageId) ?? false;
           if (retrySuccess) {
             applyHighlight(messageId);
             return true;
           }
-        } catch {
-          // Игнорируем ошибку сети при подгрузке, покажем тост отсутствия ниже
+
+          if (!currentOpts?.hasMoreOlder) {
+            break;
+          }
         }
       }
 
       showToast('info', t('messageNotInHistory', 'Сообщение находится выше в истории'));
       return false;
     },
-    [applyHighlight, options, showToast, t]
+    [applyHighlight, showToast, t]
   );
 
   useEffect(() => {
