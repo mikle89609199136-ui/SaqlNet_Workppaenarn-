@@ -10,7 +10,7 @@ describe('estimateMessageItemSize', () => {
   it('estimates short single line text message', () => {
     const message = makeMessage({ content: 'Привет' });
     const size = estimateMessageItemSize({ type: 'message', message });
-    expect(size).toBe(56);
+    expect(size).toBe(49);
   });
 
   it('estimates multi-line text message with higher height', () => {
@@ -36,7 +36,7 @@ describe('estimateMessageItemSize', () => {
       reactions: [{ emoji: '👍', count: 1, myReaction: true }],
     });
     const size = estimateMessageItemSize({ type: 'message', message });
-    // Базовый текст (56) + reply (38) + reactions (28) = ~122
-    expect(size).toBe(122);
+    // Базовый текст (49) + reply (48) + reactions (28) = 125
+    expect(size).toBe(125);
   });
 });

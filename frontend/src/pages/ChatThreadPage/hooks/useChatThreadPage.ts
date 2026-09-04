@@ -61,6 +61,8 @@ export function useChatThreadPage({
   const {
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     error: messagesError,
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
@@ -137,6 +139,8 @@ export function useChatThreadPage({
     pinnedMessages,
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     threadError,
     setError,
     setEditingMessage,

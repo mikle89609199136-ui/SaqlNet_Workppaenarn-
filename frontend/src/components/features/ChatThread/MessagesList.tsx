@@ -1,4 +1,4 @@
-import { useVirtualMessagesFeed } from '@/hooks';
+import { useJumpToMessage, useVirtualMessagesFeed } from '@/hooks';
 import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
@@ -17,6 +17,8 @@ interface Props {
   toggleMessageSelection: (message: IMessageDto) => void;
   /** Нажатие по реакции под сообщением: ставит свою или снимает. */
   onReact: (message: IMessageDto, emoji: string) => void;
+  loadOlder?: () => Promise<void> | void;
+  hasOlder?: boolean;
   messagesRef?: RefObject<HTMLElement | null>;
   bottomRef?: RefObject<HTMLDivElement | null>;
 }
@@ -29,6 +31,8 @@ export const MessagesList = memo(
     setOpenedImage,
     toggleMessageSelection,
     onReact,
+    loadOlder,
+    hasOlder,
     bottomRef,
     messagesRef,
   }: Props) => {
@@ -48,7 +52,14 @@ export const MessagesList = memo(
       setContainerRef,
       showScrollBottom,
       scrollToBottom,
+      jumpToMessage,
     } = useVirtualMessagesFeed({ messages, messagesRef });
+
+    const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
+      onScrollToMessage: jumpToMessage,
+      loadOlder,
+      hasMoreOlder: hasOlder,
+    });
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -89,6 +100,11 @@ export const MessagesList = memo(
                 const item = feedItems[virtualRow.index];
                 if (!item) return null;
 
+                const replyId =
+                  item.type === 'message'
+                    ? item.message.replyTo || item.message.replyToMessageId
+                    : null;
+
                 return (
                   <div
                     className="w-full absolute top-0 left-0"
@@ -105,11 +121,12 @@ export const MessagesList = memo(
                       <MessageBubble
                         currentUserId={user.id}
                         message={item.message}
+                        onJumpToMessage={handleJumpToMessage}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onSelection={toggleMessageSelection}
                         repliedMessage={
-                          item.message.replyTo ? messagesById.get(item.message.replyTo) : undefined
+                          replyId ? messagesById.get(replyId) : undefined
                         }
                         translations={translations}
                       />

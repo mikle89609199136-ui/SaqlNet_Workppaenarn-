@@ -245,6 +245,24 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
   const isStickyVisible = Boolean(activeDate) && isScrollingState && !isInlineAtTop;
 
+  const feedItemsRef = useRef(feedItems);
+  useEffect(() => {
+    feedItemsRef.current = feedItems;
+  }, [feedItems]);
+
+  const jumpToMessage = useCallback(
+    (messageId: string) => {
+      if (!messageId) return false;
+      const targetIndex = feedItemsRef.current.findIndex((item) => item.id === messageId);
+      if (targetIndex !== -1) {
+        virtualizer.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
+        return true;
+      }
+      return false;
+    },
+    [virtualizer]
+  );
+
   return {
     activeDate,
     isStickyVisible,
@@ -257,5 +275,6 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     setContainerRef,
     showScrollBottom,
     scrollToBottom,
+    jumpToMessage,
   };
 }
