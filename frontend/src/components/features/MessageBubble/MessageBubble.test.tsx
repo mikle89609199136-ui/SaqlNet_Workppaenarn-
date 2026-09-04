@@ -54,15 +54,12 @@ describe('MessageBubble', () => {
     expect(screen.getByText('просто сообщение')).toBeInTheDocument();
   });
 
-  it('берёт запасное превью из самого сообщения, когда исходное не найдено', () => {
-    /* Сообщение, на которое отвечают, может лежать за пределами
-       загруженных страниц — тогда сервер присылает его текст прямо в
-       ответе. */
+  it('показывает фоллбэк плашки ответа, когда исходное сообщение не найдено', () => {
     const reply = makeMessage({
       id: 'msg-2',
       content: 'ответ',
       replyTo: 'msg-0',
-      replyToContent: 'текст из ответа',
+      replyToSenderName: 'Борис',
     });
 
     renderBubble(
@@ -76,7 +73,8 @@ describe('MessageBubble', () => {
       />
     );
 
-    expect(screen.getByText('текст из ответа')).toBeInTheDocument();
+    expect(screen.getByText('Борис')).toBeInTheDocument();
+    expect(screen.getByText('Сообщение')).toBeInTheDocument();
   });
 
   it('вызывает onJumpToMessage при клике и нажатии клавиш на плашке ответа (#553)', async () => {

@@ -73,9 +73,7 @@ export const MessageBubble = memo(
     const actualType = message.mediaType || message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
     const targetReplyId = message.replyTo || message.replyToMessageId;
-    const hasReply = Boolean(
-      targetReplyId || message.replyToContent || message.replyToMediaUrl || repliedMessage
-    );
+    const hasReply = Boolean(targetReplyId || repliedMessage);
 
     return (
       <article
@@ -89,7 +87,7 @@ export const MessageBubble = memo(
             'message-bubble',
             mine && 'is-mine',
             hasMessageMedia(message) && 'has-media',
-            isAudio && 'has-audio w-full',
+            isAudio && 'w-full',
             isActionTarget && 'is-action-target',
             isSelected &&
               'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
@@ -98,8 +96,8 @@ export const MessageBubble = memo(
           )}
         >
           {!mine && message.senderStatusEmoji && (
-            <div className="message-sender">
-              <span className="sender-status-emoji" style={{ marginLeft: 6 }}>
+            <div className="mb-[3px] text-brand text-xs font-semibold">
+              <span className="ml-1.5 inline-block">
                 {message.senderStatusEmoji}
               </span>
             </div>
@@ -116,7 +114,7 @@ export const MessageBubble = memo(
           <MessageMedia message={message} onOpenImage={onOpenImage} />
 
           {message.senderVerified === false && (
-            <p className="message-unverified">
+            <p className="mb-1 text-xs text-warn">
               {t('senderNotConfirmed', '⚠️ Не удалось подтвердить отправителя')}
             </p>
           )}

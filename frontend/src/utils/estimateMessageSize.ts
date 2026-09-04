@@ -6,15 +6,15 @@ export type TEstimatableFeedItem =
 
 const CHARS_PER_LINE = 42;
 const LINE_HEIGHT_PX = 20;
-const BASE_BUBBLE_PADDING_PX = 36;
+const BASE_BUBBLE_PADDING_PX = 29;
 const DATE_DIVIDER_HEIGHT_PX = 44;
 const REPLY_PREVIEW_HEIGHT_PX = 48;
 const REACTIONS_ROW_HEIGHT_PX = 28;
 const MEDIA_PHOTO_HEIGHT_PX = 240;
 const MEDIA_AUDIO_HEIGHT_PX = 64;
-const CALL_MESSAGE_HEIGHT_PX = 54;
+const CALL_MESSAGE_HEIGHT_PX = 47;
 const SENDER_STATUS_HEIGHT_PX = 18;
-const MIN_BUBBLE_HEIGHT_PX = 52;
+const MIN_BUBBLE_HEIGHT_PX = 45;
 const MAX_BUBBLE_HEIGHT_PX = 1200;
 
 /**
@@ -44,7 +44,7 @@ export function estimateMessageItemSize(item?: TEstimatableFeedItem | null): num
   }
 
   // 2. Цитата (ответ на другое сообщение)
-  if (message.replyTo || message.replyToMessageId || message.replyToContent || message.replyToMediaUrl) {
+  if (message.replyTo || message.replyToMessageId) {
     height += REPLY_PREVIEW_HEIGHT_PX;
   }
 

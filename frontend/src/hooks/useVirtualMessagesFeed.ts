@@ -246,7 +246,9 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
   const isStickyVisible = Boolean(activeDate) && isScrollingState && !isInlineAtTop;
 
   const feedItemsRef = useRef(feedItems);
-  feedItemsRef.current = feedItems;
+  useEffect(() => {
+    feedItemsRef.current = feedItems;
+  }, [feedItems]);
 
   const jumpToMessage = useCallback(
     (messageId: string) => {

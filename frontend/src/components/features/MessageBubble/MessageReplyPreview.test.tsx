@@ -27,7 +27,7 @@ describe('MessageReplyPreview', () => {
     renderPreview(<MessageReplyPreview message={message} />);
 
     expect(screen.getByText('Анна')).toBeInTheDocument();
-    expect(screen.getByText('Текст исходного сообщения')).toBeInTheDocument();
+    expect(screen.getByText('Сообщение')).toBeInTheDocument();
   });
 
   it('показывает дефолтный заголовок и текст, когда исходное сообщение не загружено и нет метаданных', () => {

@@ -25,7 +25,22 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
   const setHighlightedMessageId = useChatUiStore((state) => state.setHighlightedMessageId);
 
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+  const pendingJumpTargetRef = useRef<string | null>(null);
+  const pendingResolveRef = useRef<((found: boolean) => void) | null>(null);
+
+  // Запись в ссылку — в эффекте, а не в теле хука (#553 review)
+  useEffect(() => {
+    optionsRef.current = options;
+
+    // Реактивное разрешение ожидания: при обновлении feedItems/опций сразу проверяем наличие цели
+    if (pendingJumpTargetRef.current && pendingResolveRef.current) {
+      const targetId = pendingJumpTargetRef.current;
+      const found = options?.onScrollToMessage?.(targetId) ?? false;
+      const resolve = pendingResolveRef.current;
+      pendingResolveRef.current = null;
+      resolve(found);
+    }
+  }, [options]);
 
   const applyHighlight = useCallback(
     (messageId: string) => {
@@ -70,28 +85,45 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
           t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...')
         );
 
+        pendingJumpTargetRef.current = messageId;
         let attempts = 0;
-        while (attempts < MAX_LOAD_OLDER_ATTEMPTS) {
-          attempts++;
-          try {
-            await optionsRef.current?.loadOlder?.({ isJump: true });
-          } catch {
-            break;
-          }
 
-          // Тик ожидания, чтобы React закоммитил новые элементы в виртуализатор
-          await new Promise((resolve) => setTimeout(resolve, 30));
+        try {
+          while (attempts < MAX_LOAD_OLDER_ATTEMPTS) {
+            attempts++;
 
-          const currentOpts = optionsRef.current;
-          const retrySuccess = currentOpts?.onScrollToMessage?.(messageId) ?? false;
-          if (retrySuccess) {
-            applyHighlight(messageId);
-            return true;
-          }
+            // Ждем реактивного коммита через эффект списка либо фоллбэк по таймеру
+            const waitForUpdate = new Promise<boolean>((resolve) => {
+              const timer = setTimeout(() => {
+                pendingResolveRef.current = null;
+                resolve(optionsRef.current?.onScrollToMessage?.(messageId) ?? false);
+              }, 30);
 
-          if (!currentOpts?.hasMoreOlder) {
-            break;
+              pendingResolveRef.current = (found) => {
+                clearTimeout(timer);
+                resolve(found);
+              };
+            });
+
+            try {
+              await optionsRef.current?.loadOlder?.({ isJump: true });
+            } catch {
+              break;
+            }
+
+            const found = await waitForUpdate;
+            if (found) {
+              applyHighlight(messageId);
+              return true;
+            }
+
+            if (!optionsRef.current?.hasMoreOlder) {
+              break;
+            }
           }
+        } finally {
+          pendingJumpTargetRef.current = null;
+          pendingResolveRef.current = null;
         }
       }
 

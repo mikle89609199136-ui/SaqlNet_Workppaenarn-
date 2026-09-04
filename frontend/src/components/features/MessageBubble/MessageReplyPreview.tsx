@@ -1,6 +1,6 @@
 import { Icon } from '@/components/ui/Icon';
 import { useChatUiStore } from '@/store';
-import type { IMediaItem, IMessageDto } from '@/types';
+import type { IMediaItem, IMessageDto, TMediaMessageType } from '@/types';
 import { cn } from '@/utils';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,18 +23,19 @@ export const MessageReplyPreview = memo(
     const selectionMode = useChatUiStore((state) => state.selectionMode);
 
     const targetReplyId = message.replyTo || message.replyToMessageId;
-    const hasReply = Boolean(
-      targetReplyId || message.replyToContent || message.replyToMediaUrl || repliedMessage
-    );
+    const hasReply = Boolean(targetReplyId || repliedMessage);
     if (!hasReply) return null;
 
-    const mediaUrl = repliedMessage?.mediaUrl || message.replyToMediaUrl || null;
+    const mediaUrl =
+      repliedMessage?.mediaUrl ||
+      (repliedMessage?.metadata as { mediaUrl?: string })?.mediaUrl ||
+      null;
     const actualType =
       repliedMessage?.mediaType ||
+      (repliedMessage?.metadata as { mediaType?: TMediaMessageType })?.mediaType ||
       (repliedMessage?.type && repliedMessage.type !== 'text' && repliedMessage.type !== 'call'
         ? repliedMessage.type
         : null) ||
-      message.replyToMediaType ||
       null;
 
     const isVideo = actualType === 'video';
@@ -52,10 +53,9 @@ export const MessageReplyPreview = memo(
       message.replySenderName ||
       repliedMessage?.senderName ||
       repliedMessage?.senderFirstName ||
-      t('reply', 'Ответ');
+      t('replyTo', 'Ответ');
 
-    const textSnippet =
-      repliedMessage?.content?.trim() || message.replyToContent?.trim() || '';
+    const textSnippet = repliedMessage?.content?.trim() || '';
 
     let typeLabel = '';
     if (isImage) {
