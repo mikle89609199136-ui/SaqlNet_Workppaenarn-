@@ -30,6 +30,25 @@ const (
 
 var errRedisDown = errors.New("redis down")
 
+// mockGroupWithMembers настраивает ожидания sqlmock для группового чата
+// и выборки указанных участников для onlineChatID и onlineUserID.
+func mockGroupWithMembers(mock sqlmock.Sqlmock, memberIDs ...string) {
+	rows := sqlmock.NewRows([]string{"user_id"})
+	for _, id := range memberIDs {
+		rows.AddRow(id)
+	}
+
+	mock.ExpectQuery(selectChatTypeSQL).
+		WithArgs(onlineChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+	mock.ExpectQuery(selectMemberRoleSQL).
+		WithArgs(onlineUserID, onlineChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+	mock.ExpectQuery(selectMemberIDsSQL).
+		WithArgs(onlineChatID).
+		WillReturnRows(rows)
+}
+
 // TestGetOnlineMembers_InvalidChatID проверяет, что синтаксически невалидный
 // chatID отклоняется с ErrInvalidInput до обращения к БД и presence-store.
 func TestGetOnlineMembers_InvalidChatID(t *testing.T) {
@@ -127,15 +146,7 @@ func TestGetOnlineMembers_ReturnsOnlyOnlineMembers(t *testing.T) {
 
 	svc := chat.NewService(db, nil, store)
 
-	mock.ExpectQuery(selectChatTypeSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
-	mock.ExpectQuery(selectMemberRoleSQL).
-		WithArgs(onlineUserID, onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
-	mock.ExpectQuery(selectMemberIDsSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(onlineUserID).AddRow(onlineUserID2).AddRow(onlineUserID3))
+	mockGroupWithMembers(mock, onlineUserID, onlineUserID2, onlineUserID3)
 
 	got, err := svc.GetOnlineMembers(context.Background(), onlineChatID, onlineUserID)
 	require.NoError(t, err)
@@ -155,15 +166,7 @@ func TestGetOnlineMembers_NoOneOnline(t *testing.T) {
 	store := presence.NewMemoryStore(time.Now)
 	svc := chat.NewService(db, nil, store)
 
-	mock.ExpectQuery(selectChatTypeSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
-	mock.ExpectQuery(selectMemberRoleSQL).
-		WithArgs(onlineUserID, onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
-	mock.ExpectQuery(selectMemberIDsSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(onlineUserID).AddRow(onlineUserID2).AddRow(onlineUserID3))
+	mockGroupWithMembers(mock, onlineUserID, onlineUserID2, onlineUserID3)
 
 	got, err := svc.GetOnlineMembers(context.Background(), onlineChatID, onlineUserID)
 	require.NoError(t, err)
@@ -200,15 +203,7 @@ func TestGetOnlineMembers_StoreError(t *testing.T) {
 
 	svc := chat.NewService(db, nil, errStore)
 
-	mock.ExpectQuery(selectChatTypeSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
-	mock.ExpectQuery(selectMemberRoleSQL).
-		WithArgs(onlineUserID, onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
-	mock.ExpectQuery(selectMemberIDsSQL).
-		WithArgs(onlineChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(onlineUserID).AddRow(onlineUserID2).AddRow(onlineUserID3))
+	mockGroupWithMembers(mock, onlineUserID, onlineUserID2, onlineUserID3)
 
 	_, err = svc.GetOnlineMembers(context.Background(), onlineChatID, onlineUserID)
 	require.ErrorIs(t, err, errRedisDown)

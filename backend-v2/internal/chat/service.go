@@ -2678,37 +2678,30 @@ type onlineMembersInput struct {
 	UserID string `validate:"required,uuid"`
 }
 
-// GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
-// (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
-func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
-	// 1. Валидация входных данных
-	input := onlineMembersInput{ChatID: chatID, UserID: userID}
-	if err := validate.Struct(input); err != nil {
-		return nil, ErrInvalidInput
-	}
-
-	// 2. Чат должен существовать; заодно читаем его тип для проверки ниже.
+// ensureGroupMember проверяет существование чата, членство пользователя
+// и принадлежность чата к типу "group".
+func (s *Service) ensureGroupMember(ctx context.Context, chatID, userID string) error {
 	var chatType string
 	err := s.db.QueryRowContext(ctx, "SELECT type FROM chats.chats WHERE id = $1", chatID).Scan(&chatType)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// 3. Только участник чата может видеть online-участников.
 	if _, err := s.memberRole(ctx, userID, chatID); err != nil {
-		return nil, err
+		return err
 	}
 
-	// 4. Online-участники доступны только для групповых чатов.
 	if chatType != "group" {
-		return nil, ErrInvalidChatType
+		return ErrInvalidChatType
 	}
+	return nil
+}
 
-	// 5. Участники чата читаются из PostgreSQL — только их UUID передаём
-	// в store, чтобы не раскрывать presence посторонних пользователей.
+// chatMemberIDs возвращает список UUID участников чата в порядке их хранения в БД.
+func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT user_id::text FROM chats.members WHERE chat_id = $1", chatID)
 	if err != nil {
 		return nil, err
@@ -2726,7 +2719,24 @@ func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) (
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return memberIDs, nil
+}
 
-	// 6. Online определяется по presence.Store; порядок совпадает с выборкой из БД.
+// GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
+// (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
+func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
+	if err := validate.Struct(onlineMembersInput{ChatID: chatID, UserID: userID}); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	if err := s.ensureGroupMember(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+
+	memberIDs, err := s.chatMemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+
 	return s.presence.OnlineUsers(ctx, memberIDs)
 }
