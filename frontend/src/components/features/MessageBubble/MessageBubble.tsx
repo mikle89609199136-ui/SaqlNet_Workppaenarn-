@@ -79,6 +79,7 @@ export const MessageBubble = memo(
         {...longPressHandlers}
       >
         <div
+          data-state={isSelected ? 'selected' : undefined}
           className={cn(
             'message-bubble',
             mine && 'is-mine',
@@ -86,11 +87,10 @@ export const MessageBubble = memo(
             isAudio && 'has-audio w-full',
             isActionTarget && 'is-action-target',
             isSelected &&
-              'is-selected ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
+              'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
             isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-sheet bg-brand-soft/25 transition-all duration-500'
+              'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
           )}
-          style={isSelected ? { backgroundColor: 'var(--color-brand-soft)' } : undefined}
         >
           {!mine && message.senderStatusEmoji && (
             <div className="message-sender">

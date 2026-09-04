@@ -93,9 +93,7 @@ describe('MessageBubble', () => {
     );
 
     const bubble = container.querySelector('.message-bubble');
+    expect(bubble).toHaveAttribute('data-state', 'selected');
     expect(bubble).toHaveClass('is-selected');
-    expect(bubble).toHaveClass('ring-brand');
-    expect(bubble).toHaveStyle({ backgroundColor: 'var(--color-brand-soft)' });
   });
 });
-

@@ -1,7 +1,6 @@
 import { Button, ConfirmDialog, Icon } from '@/components/ui';
 import { useEscapeKey, useIsMobile } from '@/hooks';
-import { useChatUiStore } from '@/store';
-import type { IMessageDto } from '@/types';
+import { useChatUiStore, useToastStore } from '@/store';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow, ComposerWrapper } from '../ChatComposer';
@@ -11,7 +10,6 @@ interface Props {
   onForwardMessage: () => void;
   onCopyMessage: () => void;
   onDeleteMessage: () => Promise<void> | void;
-  selectedMessages?: IMessageDto[];
 }
 
 /**
@@ -25,12 +23,11 @@ export const ChatSelectedMessagesActions = ({
   onCopyMessage,
   onDeleteMessage,
   onForwardMessage,
-  selectedMessages: propSelectedMessages,
 }: Props) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const storeSelected = useChatUiStore((state) => state.selectedMessages);
-  const selectedMessages = propSelectedMessages ?? storeSelected;
+  const showToast = useToastStore((state) => state.showToast);
+  const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const selectedCount = selectedMessages.length;
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -44,6 +41,8 @@ export const ChatSelectedMessagesActions = ({
     try {
       await onDeleteMessage();
       setIsConfirmOpen(false);
+    } catch {
+      showToast('error', t('messageDeleteError', 'Не удалось удалить сообщение(я)'));
     } finally {
       setIsDeleting(false);
     }
@@ -118,26 +117,22 @@ export const ChatSelectedMessagesActions = ({
       </ComposerWrapper>
 
       {/* Диалог подтверждения удаления выбранных сообщений */}
-      {isConfirmOpen && (
-        <ConfirmDialog
-          cancelLabel={t('cancel', 'Отмена')}
-          confirmLabel={t('delete', 'Удалить')}
-          confirming={isDeleting}
-          danger
-          onCancel={() => setIsConfirmOpen(false)}
-          onConfirm={handleConfirmDelete}
-          open={isConfirmOpen}
-          title={t('deleteSelectedTitle', 'Удалить выбранные сообщения?')}
-        >
-          <p className="text-sm text-ink-2">
-            {t(
-              'deleteSelectedConfirm',
-              'Вы уверены, что хотите удалить выбранные сообщения ({{count}} шт.)? Это действие нельзя отменить.',
-              { count: selectedCount }
-            )}
-          </p>
-        </ConfirmDialog>
-      )}
+      <ConfirmDialog
+        cancelLabel={t('cancel', 'Отмена')}
+        confirmLabel={t('delete', 'Удалить')}
+        confirming={isDeleting}
+        danger
+        onCancel={() => setIsConfirmOpen(false)}
+        onConfirm={handleConfirmDelete}
+        open={isConfirmOpen}
+        title={t('deleteSelectedTitle', 'Удалить выбранные сообщения?')}
+      >
+        <p className="text-sm text-ink-2">
+          {t('deleteSelectedConfirm', 'Сообщения удалятся у всех участников. {{count}} шт.', {
+            count: selectedCount,
+          })}
+        </p>
+      </ConfirmDialog>
     </>
   );
 };

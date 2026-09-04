@@ -1,3 +1,4 @@
+import { useChatUiStore, useToastStore } from '@/store';
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -20,11 +21,14 @@ describe('ChatSelectedMessagesActions', () => {
     onForwardMessage: vi.fn(),
     onCopyMessage: vi.fn(),
     onDeleteMessage: vi.fn(),
-    selectedMessages: [makeMessage({ id: 'msg-1' }), makeMessage({ id: 'msg-2' })],
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useChatUiStore.setState({
+      selectedMessages: [makeMessage({ id: 'msg-1' }), makeMessage({ id: 'msg-2' })],
+    });
+    useToastStore.setState({ toasts: [] });
   });
 
   it('отображает количество выбранных сообщений и кнопки действий', () => {
@@ -38,10 +42,8 @@ describe('ChatSelectedMessagesActions', () => {
   });
 
   it('отключает кнопки действий при пустом выборе', () => {
-    renderActions({
-      ...defaultProps,
-      selectedMessages: [],
-    });
+    useChatUiStore.setState({ selectedMessages: [] });
+    renderActions(defaultProps);
 
     expect(screen.getByTestId('selected-count')).toHaveTextContent('0');
     expect(screen.getByRole('button', { name: 'Переслать' })).toBeDisabled();
@@ -64,11 +66,13 @@ describe('ChatSelectedMessagesActions', () => {
 
   it('открывает диалог подтверждения при нажатии Удалить и не удаляет при отмене', async () => {
     const user = userEvent.setup();
-    renderActions(defaultProps);
+    const { container } = renderActions(defaultProps);
 
     await user.click(screen.getByRole('button', { name: 'Удалить' }));
 
     // Появился модальный диалог подтверждения
+    const dialog = container.querySelector('dialog');
+    expect(dialog).toHaveAttribute('open');
     expect(screen.getByText('Удалить выбранные сообщения?')).toBeInTheDocument();
     expect(screen.getByText(/2 шт\./i)).toBeInTheDocument();
 
@@ -78,7 +82,7 @@ describe('ChatSelectedMessagesActions', () => {
     await user.click(cancelButtons[cancelButtons.length - 1]);
 
     expect(defaultProps.onDeleteMessage).not.toHaveBeenCalled();
-    expect(screen.queryByText('Удалить выбранные сообщения?')).not.toBeInTheDocument();
+    expect(dialog).not.toHaveAttribute('open');
   });
 
   it('удаляет сообщения при подтверждении в диалоге', async () => {
@@ -108,5 +112,25 @@ describe('ChatSelectedMessagesActions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(defaultProps.handleCancelSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('показывает ошибку в тосте, если удаление сообщений завершилось сбоем', async () => {
+    const user = userEvent.setup();
+    const onDeleteMessage = vi.fn().mockRejectedValue(new Error('Network error'));
+    renderActions({ ...defaultProps, onDeleteMessage });
+
+    await user.click(screen.getByRole('button', { name: 'Удалить' }));
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'Удалить' });
+    const modalConfirmBtn = deleteButtons[deleteButtons.length - 1];
+
+    await user.click(modalConfirmBtn);
+
+    expect(useToastStore.getState().toasts).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        message: 'Не удалось удалить сообщение(я)',
+      })
+    );
   });
 });
