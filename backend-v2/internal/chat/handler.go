@@ -871,8 +871,8 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	// ------------------------------------------------------------------
 	// Step 4: Ensure no trailing data exists after the first JSON value.
 	// ------------------------------------------------------------------
-	if _, err := dec.Token(); err != io.EOF {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "multiple JSON values in body")
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
 

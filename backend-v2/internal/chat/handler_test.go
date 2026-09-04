@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bytes"
+	"context"
 	"craneapp/backend-v2/internal/platform/authctx"
 	"database/sql"
 	"encoding/json"
@@ -656,6 +657,10 @@ func kindName(k bodyKind) string {
 //   - PATCH /api/v2/chats/{chatID}     (UpdateGroup)
 //   - POST /api/v2/chats/{chatID}/transfer-ownership (via Chat handler)
 //   - POST /api/v2/messages/{chatID}   (SendMessage, via Messages handler)
+//   - PUT /api/v2/messages/{messageID} (EditMessage, via Messages handler)
+//   - POST /api/v2/messages/read       (MessagesRead)
+//   - POST /api/v2/messages/{messageID}/forward (ForwardMessage, via Messages handler)
+//   - POST /api/v2/messages/{messageID}/reactions (ToggleReaction, via Messages handler)
 //
 // For each endpoint, a set of negative body variants is tested:
 //   - secondJSON      – valid first object followed by a second JSON value.
@@ -678,6 +683,7 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 	// Fixed UUIDs used in request paths and bodies.
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	chatID := "550e8400-e29b-41d4-a716-446655440001"
+	messageID := "550e8400-e29b-41d4-a716-446655440003"
 	memberID := "550e8400-e29b-41d4-a716-446655440002"
 
 	// Define test cases for each endpoint.
@@ -805,11 +811,106 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 			},
 			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
 		},
+		// New endpoints from specification
+		{
+			name:   "EditMessage",
+			method: http.MethodPut,
+			path:   "/api/v2/messages/" + messageID,
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"content":"edited"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"content":"edited"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"content":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"content": "edited"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "MessagesRead",
+			method: http.MethodPost,
+			path:   "/api/v2/messages/read",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"chatId":"` + chatID + `"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"chatId":"` + chatID + `"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"chatId":"` + chatID + `", "extra":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"chatId": "` + chatID + `"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "ForwardMessage",
+			method: http.MethodPost,
+			path:   "/api/v2/messages/" + messageID + "/forward",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"targetChatId":"` + chatID + `"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"targetChatId":"` + chatID + `"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"targetChatId":"` + chatID + `", "extra":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"targetChatId": "` + chatID + `"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "ToggleReaction",
+			method: http.MethodPost,
+			path:   "/api/v2/messages/" + messageID + "/reactions",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"emoji":"👍"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"emoji":"👍"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"emoji":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"emoji": "👍"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
 	}
 
 	// Helper to route the request to the appropriate handler method.
 	callHandler := func(h *Handler, method, path string, body []byte, r *http.Request) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
+
+		// Explicitly handle each case
 		switch {
 		case path == "/api/v2/chats/private":
 			h.CreatePrivate(rr, r)
@@ -817,12 +918,16 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 			h.CreateGroup(rr, r)
 		case strings.HasPrefix(path, "/api/v2/chats/") && strings.Contains(path, "/transfer-ownership"):
 			h.Chat(rr, r)
-		case strings.HasPrefix(path, "/api/v2/chats/") && !strings.Contains(path, "/transfer-ownership") && method == http.MethodPatch:
+		case strings.HasPrefix(path, "/api/v2/chats/") && method == http.MethodPatch:
+			// PATCH /api/v2/chats/{chatID} -> UpdateGroup
 			h.UpdateGroup(rr, r)
+		case path == "/api/v2/messages/read":
+			h.MessagesRead(rr, r)
 		case strings.HasPrefix(path, "/api/v2/messages/"):
+			// All other messages endpoints
 			h.Messages(rr, r)
 		default:
-			t.Errorf("unknown endpoint: %s", path)
+			t.Errorf("unknown endpoint: %s %s", method, path)
 		}
 		return rr
 	}
@@ -842,6 +947,8 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 
 					// add user into context
 					ctx := authctx.WithUser(req.Context(), user)
+					// ВАЖНО: Добавляем chatID в контекст
+					ctx = context.WithValue(ctx, "chatID", chatID)
 					req = req.WithContext(ctx)
 
 					rr := callHandler(h, tc.method, tc.path, body, req)
