@@ -48,23 +48,15 @@ func (s *RedisStore) Disconnect(ctx context.Context, userID, connectionID string
 	return s.client.ZRem(ctx, redisKey(userID), connectionID).Err()
 }
 
-// OnlineUsers возвращает UUID из userIDs, у которых есть неистёкшая lease,
-// в порядке входного среза. Заодно чистит истёкшие lease (ZREMRANGEBYSCORE).
-func (s *RedisStore) OnlineUsers(ctx context.Context, userIDs []string) ([]string, error) {
-	online := make([]string, 0, len(userIDs))
-	if len(userIDs) == 0 {
-		return online, nil
-	}
+// pendingPresence связывает идентификатор пользователя с отложенной командой выборки lease.
+type pendingPresence struct {
+	userID string
+	cmd    *redis.StringSliceCmd
+}
 
-	now := strconv.FormatInt(time.Now().UnixNano(), 10)
-
-	pipe := s.client.Pipeline()
-	type pending struct {
-		userID string
-		cmd    *redis.StringSliceCmd
-	}
-
-	cmds := make([]pending, 0, len(userIDs))
+// queuePresenceQueries добавляет в pipeline команды очистки истёкших lease и выборки активных.
+func queuePresenceQueries(ctx context.Context, pipe redis.Pipeliner, userIDs []string, now string) []pendingPresence {
+	cmds := make([]pendingPresence, 0, len(userIDs))
 	for _, id := range userIDs {
 		key := redisKey(id)
 		// Чистка истёкших lease при чтении: score <= now удаляются.
@@ -74,15 +66,35 @@ func (s *RedisStore) OnlineUsers(ctx context.Context, userIDs []string) ([]strin
 			Min: "(" + now,
 			Max: "+inf",
 		})
-		cmds = append(cmds, pending{userID: id, cmd: cmd})
+		cmds = append(cmds, pendingPresence{userID: id, cmd: cmd})
 	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, err
-	}
+	return cmds
+}
+
+// collectOnlineUsers фильтрует пользователей, у которых остался хотя бы один активный lease.
+func collectOnlineUsers(cmds []pendingPresence) []string {
+	online := make([]string, 0, len(cmds))
 	for _, p := range cmds {
 		if len(p.cmd.Val()) > 0 {
 			online = append(online, p.userID)
 		}
 	}
-	return online, nil
+	return online
+}
+
+// OnlineUsers возвращает UUID из userIDs, у которых есть неистёкшая lease,
+// в порядке входного среза. Заодно чистит истёкшие lease (ZREMRANGEBYSCORE).
+func (s *RedisStore) OnlineUsers(ctx context.Context, userIDs []string) ([]string, error) {
+	if len(userIDs) == 0 {
+		return []string{}, nil
+	}
+
+	now := strconv.FormatInt(time.Now().UnixNano(), 10)
+	pipe := s.client.Pipeline()
+	cmds := queuePresenceQueries(ctx, pipe, userIDs, now)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
+	}
+	return collectOnlineUsers(cmds), nil
 }
