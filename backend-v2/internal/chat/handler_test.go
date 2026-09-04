@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -603,4 +604,263 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 
 	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// ----------------------------------------------------------------------------
+// Package-level declarations (shared between tests).
+// ----------------------------------------------------------------------------
+
+// bodyKind represents the type of malformed request body used in negative tests.
+type bodyKind int
+
+// Constants defining specific negative scenarios.
+const (
+	valid           bodyKind = iota // not used in tests; kept for clarity.
+	secondJSON                      // {"a":1} {"b":2}
+	trailingGarbage                 // {"a":1} garbage
+	oversized                       // body > 256 KiB
+	emptyBody                       // only whitespace
+	invalidSyntax                   // malformed JSON
+)
+
+// kindName returns a human-readable name for a negative test case kind.
+// It is used as a subtest name in t.Run().
+func kindName(k bodyKind) string {
+	switch k {
+	case secondJSON:
+		return "secondJSON"
+	case trailingGarbage:
+		return "trailingGarbage"
+	case oversized:
+		return "oversized"
+	case emptyBody:
+		return "emptyBody"
+	case invalidSyntax:
+		return "invalidSyntax"
+	default:
+		return "unknown"
+	}
+}
+
+// TestDecodeNegativeScenarios ensures that all API endpoints using the common
+// decode() function properly reject requests with malformed or extraneous data.
+// It verifies that the decode function correctly enforces three key constraints:
+//
+// 1. A single JSON value is expected (no multiple concatenated objects).
+// 2. No trailing garbage (non‑whitespace characters after the JSON value).
+// 3. The request body does not exceed the size limit (256 KB) and has valid syntax.
+//
+// The test covers the following endpoints:
+//   - POST /api/v2/chats/private       (CreatePrivate)
+//   - POST /api/v2/chats/groups        (CreateGroup)
+//   - PATCH /api/v2/chats/{chatID}     (UpdateGroup)
+//   - POST /api/v2/chats/{chatID}/transfer-ownership (via Chat handler)
+//   - POST /api/v2/messages/{chatID}   (SendMessage, via Messages handler)
+//
+// For each endpoint, a set of negative body variants is tested:
+//   - secondJSON      – valid first object followed by a second JSON value.
+//   - trailingGarbage – valid first object followed by arbitrary text.
+//   - oversized       – body larger than 256 KiB (exceeds MaxBytesReader limit).
+//   - emptyBody       – only whitespace (no JSON).
+//   - invalidSyntax   – malformed JSON (missing closing brace).
+//
+// All such requests must be rejected with HTTP 400 Bad Request and an error code
+// "invalid_json". The test uses a service with nil database – any call to the
+// service layer would panic, confirming that validation happens before business logic.
+func TestDecodeNegativeScenarios(t *testing.T) {
+	// Create a service with a nil database. Since the decode() validation
+	// should intercept all invalid requests, the service methods should never
+	// be invoked. If they are, the test will panic (nil pointer dereference),
+	// indicating that the handler did not properly abort after a decode failure.
+	svc := NewService(nil, nil)
+	h := NewHandler(svc)
+
+	// Fixed UUIDs used in request paths and bodies.
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	chatID := "550e8400-e29b-41d4-a716-446655440001"
+	memberID := "550e8400-e29b-41d4-a716-446655440002"
+
+	// Define test cases for each endpoint.
+	type testCase struct {
+		name     string
+		method   string
+		path     string
+		bodyFunc func(kind bodyKind) []byte
+		kinds    []bodyKind
+	}
+
+	cases := []testCase{
+		{
+			name:   "CreatePrivate",
+			method: http.MethodPost,
+			path:   "/api/v2/chats/private",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"userId":"` + memberID + `"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"userId":"` + memberID + `"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"userId":"` + memberID + `", "extra":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"userId": "` + memberID + `"`) // missing closing '}'
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "CreateGroup",
+			method: http.MethodPost,
+			path:   "/api/v2/chats/groups",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"title":"G","members":["` + memberID + `"]} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"title":"G","members":["` + memberID + `"]} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"title":"G","members":["` + memberID + `"],"extra":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"title": "G", "members": [` + memberID + `]`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "UpdateGroup",
+			method: http.MethodPatch,
+			path:   "/api/v2/chats/" + chatID,
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"title":"New"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"title":"New"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"title":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"title": "New"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "TransferOwnership",
+			method: http.MethodPost,
+			path:   "/api/v2/chats/" + chatID + "/transfer-ownership",
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"userId":"` + memberID + `"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"userId":"` + memberID + `"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"userId":"` + memberID + `", "extra":"` + big + `"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"userId": "` + memberID + `"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+		{
+			name:   "SendMessage",
+			method: http.MethodPost,
+			path:   "/api/v2/messages/" + chatID,
+			bodyFunc: func(kind bodyKind) []byte {
+				switch kind {
+				case secondJSON:
+					return []byte(`{"content":"hi","type":"text"} {"second":true}`)
+				case trailingGarbage:
+					return []byte(`{"content":"hi","type":"text"} garbage`)
+				case oversized:
+					big := strings.Repeat("a", 300*1024)
+					return []byte(`{"content":"` + big + `","type":"text"}`)
+				case emptyBody:
+					return []byte("   ")
+				case invalidSyntax:
+					return []byte(`{"content": "hi", "type": "text"`)
+				default:
+					return nil
+				}
+			},
+			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+		},
+	}
+
+	// Helper to route the request to the appropriate handler method.
+	callHandler := func(h *Handler, method, path string, body []byte, r *http.Request) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		switch {
+		case path == "/api/v2/chats/private":
+			h.CreatePrivate(rr, r)
+		case path == "/api/v2/chats/groups":
+			h.CreateGroup(rr, r)
+		case strings.HasPrefix(path, "/api/v2/chats/") && strings.Contains(path, "/transfer-ownership"):
+			h.Chat(rr, r)
+		case strings.HasPrefix(path, "/api/v2/chats/") && !strings.Contains(path, "/transfer-ownership") && method == http.MethodPatch:
+			h.UpdateGroup(rr, r)
+		case strings.HasPrefix(path, "/api/v2/messages/"):
+			h.Messages(rr, r)
+		default:
+			t.Errorf("unknown endpoint: %s", path)
+		}
+		return rr
+	}
+
+	// Execute the test cases.
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, kind := range tc.kinds {
+				// Use kindName for a readable subtest name.
+				t.Run(kindName(kind), func(t *testing.T) {
+					body := tc.bodyFunc(kind)
+					req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("X-Request-ID", "test-request-id")
+
+					user := authctx.User{ID: userID, Username: "testuser"}
+
+					// add user into context
+					ctx := authctx.WithUser(req.Context(), user)
+					req = req.WithContext(ctx)
+
+					rr := callHandler(h, tc.method, tc.path, body, req)
+
+					// Assert status 400 Bad Request.
+					if rr.Code != http.StatusBadRequest {
+						t.Errorf("status = %d, expected %d, body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+					}
+
+					// Assert error code "invalid_json".
+					var resp map[string]any
+					if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+						t.Fatalf("failed to parse response JSON: %v", err)
+					}
+					if code, ok := resp["code"].(string); !ok || code != "invalid_json" {
+						t.Errorf("error code = %v, expected 'invalid_json'", resp["code"])
+					}
+				})
+			}
+		})
+	}
 }
