@@ -3,6 +3,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
+import { useChatUiStore } from '@/store';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 
@@ -114,5 +115,28 @@ describe('MessageBubble', () => {
     // Клавиатура: Space
     fireEvent.keyDown(quoteButton, { key: ' ' });
     expect(onJumpToMessage).toHaveBeenCalledTimes(3);
+  });
+
+  it('применяет акцентный стиль при выделении сообщения', () => {
+    const message = makeMessage({ id: 'msg-select-1', content: 'выбранное сообщение' });
+    useChatUiStore.setState({
+      selectedMessages: [message],
+      selectionMode: true,
+    });
+
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const bubble = container.querySelector('.message-bubble');
+    expect(bubble).toHaveAttribute('data-state', 'selected');
+    expect(bubble).toHaveClass('is-selected');
   });
 });

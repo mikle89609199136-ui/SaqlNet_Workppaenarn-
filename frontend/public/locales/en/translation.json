@@ -33,6 +33,8 @@
   "creatingAccount": "Creating account…",
   "delete": "Delete",
   "deleteChat": "Delete chat",
+  "deleteSelectedConfirm": "Messages will be deleted for everyone. {{count}} pcs.",
+  "deleteSelectedTitle": "Delete selected messages?",
   "draft": "Draft",
   "edit": "Edit",
   "editShort": "Edit",
