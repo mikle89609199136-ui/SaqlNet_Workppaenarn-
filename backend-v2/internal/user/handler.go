@@ -397,11 +397,11 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-		current, ok := authctx.UserFromContext(r.Context())
-		if !ok {
-			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
-			return
-		}
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	data, err := h.service.Export(r.Context(), current.ID)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "export failed")
