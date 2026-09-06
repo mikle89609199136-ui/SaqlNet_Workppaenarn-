@@ -24,7 +24,11 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 
 	contentType := r.Header.Get("Content-Type")
 

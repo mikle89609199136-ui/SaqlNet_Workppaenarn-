@@ -217,6 +217,34 @@ export const router = createBrowserRouter([
                   })),
               },
               {
+                path: REACT_ROUTES.CHANNELS,
+                lazy: () =>
+                  import('../pages/ChannelsPage/ChannelsPage.js').then((m) => ({
+                    Component: m.ChannelsPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.CALLS,
+                lazy: () =>
+                  import('../pages/CallsPage/CallsPage.js').then((m) => ({
+                    Component: m.CallsPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.COMMUNITIES,
+                lazy: () =>
+                  import('../pages/CommunitiesPage/CommunitiesPage.js').then((m) => ({
+                    Component: m.CommunitiesPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.MEETINGS,
+                lazy: () =>
+                  import('../pages/MeetingsPage/MeetingsPage.js').then((m) => ({
+                    Component: m.MeetingsPage,
+                  })),
+              },
+              {
                 path: REACT_ROUTES.SETTINGS,
                 lazy: () =>
                   import('../pages/SettingsPage/SettingsPage.js').then((m) => ({

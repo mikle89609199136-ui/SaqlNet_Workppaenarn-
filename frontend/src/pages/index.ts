@@ -1,5 +1,10 @@
 export { ChatThreadPage, type IProfileModal, type IProfileState } from './ChatPage/ChatThreadPage';
 export { ChatsPage } from './ChatsPage/ChatsPage';
+export { ContactsPage } from './ContactsPage/ContactsPage';
+export { ChannelsPage } from './ChannelsPage/ChannelsPage';
+export { CallsPage } from './CallsPage/CallsPage';
+export { CommunitiesPage } from './CommunitiesPage/CommunitiesPage';
+export { MeetingsPage } from './MeetingsPage/MeetingsPage';
 export { LoginPage } from './LoginPage/LoginPage';
 export { RegisterPage } from './RegisterPage/RegisterPage';
 export { SettingsPage } from './SettingsPage/SettingsPage';

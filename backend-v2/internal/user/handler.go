@@ -27,7 +27,11 @@ func (h *Handler) SubscribePremium(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	if err := h.service.SubscribePremium(r.Context(), current.ID); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "subscription failed")
 		return
@@ -74,11 +78,19 @@ func (h *Handler) QRCode(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		current := authctx.MustUser(r)
+		current, ok := authctx.UserFromContext(r.Context())
+		if !ok {
+			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+			return
+		}
 		profile, err := h.service.Me(r.Context(), current.ID)
 		respondProfile(w, r, profile, err)
 	case http.MethodPut:
-		current := authctx.MustUser(r)
+		current, ok := authctx.UserFromContext(r.Context())
+		if !ok {
+			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+			return
+		}
 		var input struct {
 			FirstName *string `json:"firstName"`
 			LastName  *string `json:"lastName"`
@@ -100,7 +112,11 @@ func (h *Handler) Avatar(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		Avatar    *string `json:"avatar"`
 		AvatarURL *string `json:"avatarUrl"`
@@ -121,7 +137,11 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	users, err := h.service.Search(r.Context(), current.ID, r.URL.Query().Get("q"))
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "search failed")
@@ -180,7 +200,11 @@ func (h *Handler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		settings, privacy, err := h.service.Settings(r.Context(), current.ID)
@@ -206,7 +230,11 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AllSettings(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		settings, err := h.service.AllSettings(r.Context(), current.ID)
@@ -235,7 +263,11 @@ func (h *Handler) Privacy(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var body map[string]any
 	if !decode(w, r, &body) {
 		return
@@ -249,7 +281,11 @@ func (h *Handler) Privacy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Preference(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	spec, ok := preferenceSpec(r.URL.Path)
 	if !ok {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
@@ -280,7 +316,11 @@ func (h *Handler) Preference(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Folders(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		folders, err := h.service.Folders(r.Context(), current.ID)
@@ -310,7 +350,11 @@ func (h *Handler) Folders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	path := r.URL.Path
 	switch {
 	case path == "/api/v2/users/storage" && r.Method == http.MethodGet:
@@ -353,7 +397,11 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+		current, ok := authctx.UserFromContext(r.Context())
+		if !ok {
+			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+			return
+		}
 	data, err := h.service.Export(r.Context(), current.ID)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "export failed")
@@ -366,7 +414,11 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Blocked(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		current := authctx.MustUser(r)
+		current, ok := authctx.UserFromContext(r.Context())
+		if !ok {
+			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+			return
+		}
 		blocked, err := h.service.Blocked(r.Context(), current.ID)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "blocked users fetch failed")
@@ -374,7 +426,11 @@ func (h *Handler) Blocked(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"blocked": blocked})
 	case http.MethodPost:
-		current := authctx.MustUser(r)
+		current, ok := authctx.UserFromContext(r.Context())
+		if !ok {
+			httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+			return
+		}
 		var input struct {
 			UserID string `json:"userId"`
 		}
@@ -408,7 +464,11 @@ func (h *Handler) Unblock(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	blockedUserID := strings.TrimPrefix(r.URL.Path, "/api/v2/users/blocked/")
 	if blockedUserID == "" || blockedUserID == r.URL.Path {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "blocked user id is required")

@@ -21,7 +21,11 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	suffix := strings.TrimPrefix(r.URL.Path, "/api/v2/admin/users")
 
 	if suffix == "" || suffix == "/" {
@@ -99,7 +103,11 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Reports(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	suffix := strings.TrimPrefix(r.URL.Path, "/api/v2/admin/reports")
 
 	if suffix == "" || suffix == "/" {
@@ -177,7 +185,11 @@ func (h *Handler) Reports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SupportRequests(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	suffix := strings.TrimPrefix(r.URL.Path, "/api/v2/admin/support/requests")
 
 	if suffix == "" || suffix == "/" {

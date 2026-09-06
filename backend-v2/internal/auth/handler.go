@@ -111,7 +111,11 @@ func (h *Handler) PublicKey(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		PublicKey string `json:"publicKey"`
 	}
@@ -134,7 +138,11 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	// Token from Rust service expires in 30 days; store hash for that duration.
 	if err := h.service.Logout(r.Context(), current.ID, token, time.Now().Add(30*24*time.Hour)); err != nil {
@@ -149,7 +157,11 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	if err := h.service.LogoutAll(r.Context(), current.ID); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "logout failed")
 		return
@@ -162,7 +174,11 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	sessions, err := h.service.Sessions(r.Context(), current.ID)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to get sessions")
@@ -179,7 +195,11 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		CurrentPassword string `json:"currentPassword"`
 		NewPassword     string `json:"newPassword"`
@@ -209,7 +229,11 @@ func (h *Handler) TwoFAStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	enabled, err := h.service.TwoFAStatus(r.Context(), current.ID)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to get 2fa status")
@@ -223,7 +247,11 @@ func (h *Handler) TwoFAEnable(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		Password string `json:"password"`
 	}

@@ -38,7 +38,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	chats, err := h.service.List(r.Context(), current.ID, r.URL.Query().Get("archived") == "true")
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
@@ -55,7 +59,11 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		UserID string `json:"userId"`
 	}
@@ -86,7 +94,11 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		Title       string   `json:"title"`
 		Description string   `json:"description"`
@@ -109,7 +121,11 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	chatID, suffix := parseChatPath(r.URL.Path)
 	switch {
 	case chatID == "":
@@ -348,7 +364,11 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	if input.CallKind == "" {
 		input.CallKind = "video"
 	}
@@ -536,7 +556,11 @@ func (h *Handler) MessagesRead(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var input struct {
 		ChatID     string   `json:"chatId"`
 		MessageIDs []string `json:"messageIds"`

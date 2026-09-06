@@ -18,7 +18,11 @@ type UpdateGroupInput struct {
 }
 
 func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	chatID := r.PathValue("chatID")
 
 	var input UpdateGroupInput

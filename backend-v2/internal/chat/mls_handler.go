@@ -12,7 +12,11 @@ import (
 )
 
 func (h *Handler) MLSRoutes(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	path := r.URL.Path
 	cryptoURL := config.Value("CRYPTO_URL", "http://127.0.0.1:5005")
 

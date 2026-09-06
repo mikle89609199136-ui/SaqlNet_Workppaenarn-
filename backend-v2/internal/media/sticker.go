@@ -61,7 +61,11 @@ func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (
 }
 
 func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
 		SELECT sp.id::text, sp.name, sp.description, COALESCE(sp.icon_url, ''),
@@ -93,7 +97,11 @@ func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -171,7 +179,11 @@ func (h *Handler) GetStickers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")
@@ -220,7 +232,11 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteSticker(w http.ResponseWriter, r *http.Request) {
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")

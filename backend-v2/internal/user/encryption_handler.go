@@ -13,7 +13,11 @@ import (
 )
 
 func (h *Handler) EncryptionRoutes(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
+	current, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	path := r.URL.Path
 
 	switch {

@@ -57,7 +57,11 @@ func (h *Handler) CreateGif(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 
 	var req struct {
 		Name string `json:"name"`
@@ -92,7 +96,11 @@ func (h *Handler) ListFavoriteGifs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
 		SELECT g.id::text, g.name, g.url, COALESCE(u.username, ''), g.created_at::text
@@ -125,7 +133,11 @@ func (h *Handler) ListFavoriteGifs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ToggleFavoriteGif(w http.ResponseWriter, r *http.Request) {
-	user := authctx.MustUser(r)
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_user", "authenticated user missing from context")
+		return
+	}
 	parts := strings.Split(r.URL.Path, "/")
 	// /api/v2/gifs/:gifId/favorite
 	if len(parts) < 6 {

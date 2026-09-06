@@ -4,7 +4,6 @@ export { CallProvider } from './Calls/CallProvider';
 export { ChatSelectedMessagesActions } from './ChatSelectedMessagesActions';
 export { ChatThreadComposer } from './ChatThreadComposer';
 export { ChatThreadHeader } from './ChatThreadHeader';
-export { EmptyChatPlaceholder } from './EmptyChatPlaceholder';
 export { EmptyChatListPlaceholder } from './EmptyChatsListPlaceholder';
 export { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
 export { ForwardChatMessagesModal } from './ForwardChatMessagesModal';
