@@ -4,6 +4,7 @@ import { forgetSecurityNotices } from '@/crypto/securityNotices';
 import { clearMediaObjectUrls } from '@/services/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
 import { clearAllDrafts } from '@/store/chatDrafts';
+import { clearOutbox } from '@/store/outbox';
 import { useChatUiStore } from '@/store/chatUi';
 import { queryClient } from '@/queries/queryClient';
 import { useProfileStore } from '@/store/profile';
@@ -21,6 +22,8 @@ export function clearAuthSession() {
   // Недописанные сообщения — тоже открытый текст, и они не должны
   // достаться следующему, кто войдёт в этой вкладке.
   clearAllDrafts();
+  // Очередь исходящих сообщений и временные Blob URL также очищаются.
+  clearOutbox();
   // Показанные переводы — тоже открытый текст. Они сбрасываются при смене
   // чата, но не при выходе: страница треда размонтируется, а chatId при
   // этом не меняется, поэтому сброс не срабатывает.

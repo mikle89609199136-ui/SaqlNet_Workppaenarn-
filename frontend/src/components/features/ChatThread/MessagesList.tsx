@@ -21,6 +21,8 @@ interface Props {
   hasOlder?: boolean;
   messagesRef?: RefObject<HTMLElement | null>;
   bottomRef?: RefObject<HTMLDivElement | null>;
+  /** Повторная отправка сообщения из Outbox при сбое сети (#552). */
+  onRetryMessage?: (message: IMessageDto) => void;
 }
 
 export const MessagesList = memo(
@@ -35,6 +37,7 @@ export const MessagesList = memo(
     hasOlder,
     bottomRef,
     messagesRef,
+    onRetryMessage,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -124,6 +127,7 @@ export const MessagesList = memo(
                         onJumpToMessage={handleJumpToMessage}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
+                        onRetryMessage={onRetryMessage}
                         onSelection={toggleMessageSelection}
                         repliedMessage={
                           replyId ? messagesById.get(replyId) : undefined

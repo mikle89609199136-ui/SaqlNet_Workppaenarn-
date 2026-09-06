@@ -37,6 +37,8 @@ interface Props {
   onReact: (message: IMessageDto, emoji: string) => void;
   /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
   onJumpToMessage?: (messageId: string) => void;
+  /** Повторная отправка сообщения из Outbox при ошибке сети (#552). */
+  onRetryMessage?: (message: IMessageDto) => void;
 }
 
 export const MessageBubble = memo(
@@ -49,6 +51,7 @@ export const MessageBubble = memo(
     onReact,
     onSelection,
     onJumpToMessage,
+    onRetryMessage,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -156,10 +159,99 @@ export const MessageBubble = memo(
             </div>
           )}
 
+          {typeof message.uploadProgress === 'number' && message.status === 'uploading' && (
+            <div
+              aria-label={t('uploadProgress', 'Прогресс загрузки')}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={Math.round(message.uploadProgress)}
+              className="w-full bg-line-soft rounded-full h-1 my-1 overflow-hidden"
+              role="progressbar"
+            >
+              <div
+                className="bg-brand h-full rounded-full transition-all duration-200 ease-out"
+                style={{ width: `${Math.max(5, Math.min(100, message.uploadProgress))}%` }}
+              />
+            </div>
+          )}
+
           <div className="message-meta">
             {message.isEdited && <span>{t('edited', 'изменено')}</span>}
             <time>{formatMessageTime(message.createdAt)}</time>
+            {mine && (message.status === 'pending' || message.status === 'uploading' || message.status === 'encrypting') && (
+              <span
+                className="inline-flex items-center gap-1 text-ink-3"
+                title={
+                  message.status === 'uploading'
+                    ? `${t('uploading', 'Загрузка...')} ${typeof message.uploadProgress === 'number' ? `${Math.round(message.uploadProgress)}%` : ''}`
+                    : message.status === 'encrypting'
+                      ? t('encrypting', 'Шифрование...')
+                      : t('sending', 'Отправка...')
+                }
+              >
+                <svg
+                  aria-hidden="true"
+                  className="w-3 h-3 animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                {typeof message.uploadProgress === 'number' && message.uploadProgress > 0 && message.uploadProgress < 100 && (
+                  <span>{Math.round(message.uploadProgress)}%</span>
+                )}
+              </span>
+            )}
           </div>
+
+          {mine && message.status === 'failed' && (
+            <div className="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-danger/20 text-danger text-caption">
+              <span className="flex items-center gap-1 font-medium">
+                <svg
+                  aria-hidden="true"
+                  className="w-3.5 h-3.5 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {t('sendFailed', 'Не удалось отправить')}
+              </span>
+              {onRetryMessage && (
+                <button
+                  aria-label={t('retrySend', 'Повторить отправку')}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill bg-danger/10 hover:bg-danger/20 text-danger font-semibold text-caption cursor-pointer transition-colors border-0"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRetryMessage(message);
+                  }}
+                  type="button"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M21 2v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3 12a9 9 0 0 1 15-6.7L21 8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3 22v-6h6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M21 12a9 9 0 0 1-15 6.7L3 16" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {t('retry', 'Повторить')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {selectionMode && <MessageCheckbox isChecked={isSelected} className="grow-0 self-end" />}
       </article>

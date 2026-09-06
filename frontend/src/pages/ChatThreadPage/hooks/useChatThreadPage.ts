@@ -9,10 +9,12 @@ import {
   useRealtimeSocket,
 } from '@/hooks';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import type { IMessageDto } from '@/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { useParams } from 'react-router-dom';
 import type { IProfileState } from '../ChatThreadPage';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -97,6 +99,14 @@ export function useChatThreadPage({
     handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
+  const queryClient = useQueryClient();
+  const handleRetryMessage = useCallback(
+    (message: IMessageDto) => {
+      void retryOutboxMessage(queryClient, message.tempId || message.id);
+    },
+    [queryClient]
+  );
+
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
   // при переходе в соседний они не должны переезжать вместе с окном.
   useEffect(() => {
@@ -174,5 +184,6 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleRetryMessage,
   };
 }

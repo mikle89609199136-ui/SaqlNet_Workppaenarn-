@@ -71,6 +71,27 @@ export function removeMessage(data: IThreadPages, messageId: string): IThreadPag
   };
 }
 
+export function replaceMessage(
+  data: IThreadPages,
+  targetId: string,
+  replacement: IMessageDto
+): IThreadPages {
+  if (!hasMessage(data, targetId)) {
+    return appendMessage(data, replacement);
+  }
+
+  if (targetId !== replacement.id && hasMessage(data, replacement.id)) {
+    return removeMessage(data, targetId);
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page) =>
+      page.map((message) => (message.id === targetId ? replacement : message))
+    ),
+  };
+}
+
 /**
  * Решает, можно ли дописать сообщение в кеш чата.
  *

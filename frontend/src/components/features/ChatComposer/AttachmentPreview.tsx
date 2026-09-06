@@ -1,7 +1,7 @@
 import { Button, Icon } from '@/components/ui';
+import { useObjectUrl } from '@/hooks';
 import type { IPendingAttachment } from '@/types';
 import { formatFileSize } from '@/utils';
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
   onRemove: () => void;
   onEdit?: (file: File) => void;
   onOpenImage?: (url: string) => void;
+  uploadProgress?: number;
 }
 
 export const AttachmentPreview = ({
@@ -16,21 +17,11 @@ export const AttachmentPreview = ({
   onRemove,
   onEdit,
   onOpenImage,
+  uploadProgress,
 }: Props) => {
   const { t } = useTranslation();
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!attachment?.file || !attachment.file.type.startsWith('image/')) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(attachment.file);
-    setPreviewUrl(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [attachment?.file]);
+  const isImageFile = Boolean(attachment?.file && attachment.file.type.startsWith('image/'));
+  const previewUrl = useObjectUrl(isImageFile ? attachment?.file : null);
 
   if (!attachment) return null;
 
@@ -58,13 +49,33 @@ export const AttachmentPreview = ({
           </div>
         )}
 
-        <div className="flex items-center min-w-0 gap-2">
-          <span className="text-body font-medium text-ink truncate leading-tight">
-            {attachment.file.name}
-          </span>
-          <span className="text-caption text-ink-3 font-normal shrink-0">
-            {formatFileSize(attachment.file.size)}
-          </span>
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-body font-medium text-ink truncate leading-tight">
+              {attachment.file.name}
+            </span>
+            <span className="text-caption text-ink-3 font-normal shrink-0">
+              {formatFileSize(attachment.file.size)}
+            </span>
+          </div>
+          {typeof uploadProgress === 'number' && uploadProgress >= 0 && (
+            <div className="flex items-center gap-2 mt-1 w-full">
+              <div
+                aria-label={t('uploadProgress', 'Прогресс загрузки')}
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={Math.round(uploadProgress)}
+                className="flex-1 bg-line rounded-full h-1 overflow-hidden"
+                role="progressbar"
+              >
+                <div
+                  className="bg-brand h-full rounded-full transition-all duration-200 ease-out"
+                  style={{ width: `${Math.max(5, Math.min(100, uploadProgress))}%` }}
+                />
+              </div>
+              <span className="text-micro text-ink-3 font-mono">{Math.round(uploadProgress)}%</span>
+            </div>
+          )}
         </div>
       </div>
 

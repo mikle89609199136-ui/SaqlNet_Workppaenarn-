@@ -137,4 +137,58 @@ describe('MessageBubble', () => {
     expect(bubble).toHaveAttribute('data-state', 'selected');
     expect(bubble).toHaveClass('is-selected');
   });
+
+  it('показывает индикатор отправки и прогресс для исходящего сообщения со статусом uploading', () => {
+    const message = makeMessage({
+      id: 'msg-uploading-1',
+      senderId: 'user-1',
+      content: 'загрузка фото',
+      status: 'uploading',
+      uploadProgress: 45,
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const progressBar = screen.getByRole('progressbar');
+    expect(progressBar).toHaveAttribute('aria-valuenow', '45');
+    expect(screen.getByText('45%')).toBeInTheDocument();
+  });
+
+  it('отображает плашку ошибки и вызывает onRetryMessage по клику на кнопку повтора', async () => {
+    const user = userEvent.setup();
+    const onRetryMessage = vi.fn();
+    const message = makeMessage({
+      id: 'msg-failed-1',
+      senderId: 'user-1',
+      content: 'не ушло',
+      status: 'failed',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onRetryMessage={onRetryMessage}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText(/не удалось отправить/i)).toBeInTheDocument();
+    const retryButton = screen.getByRole('button', { name: /повторить отправку/i });
+    await user.click(retryButton);
+
+    expect(onRetryMessage).toHaveBeenCalledWith(message);
+  });
 });
