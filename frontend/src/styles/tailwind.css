@@ -597,6 +597,232 @@
   .thread-call-button:active { transform: translateY(0); background: var(--color-brand-soft); }
   .thread-call-button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
   .thread-call-icon { @apply block w-6 h-6; }
+  /* Шапка треда лежала во втором файле, ChatThreadPage.css, и перекрывала
+     всё, что объявлено выше: grid становился flex, фон — прозрачным,
+     рамка исчезала. Тот файл подключается из компонента страницы, то есть
+     приезжает отдельным чанком по ленивому импорту — до его загрузки
+     шапка рисовалась первой версией, после становилась второй.
+     Правила сведены сюда; порядок сохранён, поэтому вид не изменился. */
+
+  .thread-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px 16px;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .thread-header-card {
+    background: var(--color-sheet);
+
+    border-radius: 9999px;
+
+    border: 1px solid var(--color-line);
+
+    box-shadow: var(--elev-2);
+
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .thread-header-info {
+    flex: 1;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .thread-call-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 6px 12px;
+  }
+
+  .thread-call-button {
+    background: transparent;
+    border: none;
+    padding: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-ink);
+    transition: background-color 0.2s;
+  }
+
+  .thread-call-button:hover {
+    background-color: var(--color-sheet-2);
+  }
+
+  .thread-back {
+    display: none;
+  }
+
+  .pinned-thread-back {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-ink);
+      text-decoration: none;
+
+      background: var(--color-sheet);
+
+      border-radius: 50%;
+      border: 1px solid var(--color-line);
+      box-shadow: var(--elev-2);
+
+      flex-shrink: 0;
+      transition: transform 0.15s, border-color 0.2s, background-color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+  }
+
+  .thread-call-actions-wrap {
+    position: relative;
+  }
+
+  .thread-call-desktop {
+    display: flex;
+  }
+
+  .thread-call-mobile {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    .thread-back {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 50px;
+      height: 50px;
+      color: var(--color-ink);
+      text-decoration: none;
+
+      background: var(--color-sheet);
+
+      border-radius: 50%;
+      border: 1px solid var(--color-line);
+      box-shadow: var(--elev-2);
+
+      flex-shrink: 0;
+      transition: transform 0.15s, border-color 0.2s, background-color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .thread-back svg {
+      display: block;
+      transition: transform 0.2s ease;
+    }
+
+    .thread-back:hover {
+      border-color: var(--color-ink-3);
+    }
+
+    .thread-back:hover svg {
+      transform: translateX(-2px);
+    }
+
+    .thread-back:active {
+      transform: scale(0.92);
+    }
+
+    .thread-call-desktop {
+      display: none;
+    }
+
+    .thread-call-mobile {
+      display: flex;
+      padding: 4px;
+      margin: 14px 12px 14px 0px;
+      padding: 6px; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thread-call-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px;
+      background: var(--color-sheet-2);
+      border-radius: 18px;
+      border: 1px solid var(--color-line);
+      box-shadow: var(--elev-3);
+      z-index: 100;
+      min-width: 120px;
+    }
+
+    .thread-call-menu button {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--color-ink);
+      padding: 8px 12px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .thread-call-menu button:active {
+      background-color: var(--color-sheet-2);
+    }
+    .thread-call-mobile .thread-call-button {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thread-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 12px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    .thread-header-info {
+      flex: 1;
+      margin: 0 8px;
+      min-width: 0;
+    }
+
+    .thread-call-actions-wrap {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+  }
+
   .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
 
   /* Свой и чужой пузырь разведены не яркостью, а температурой: своё
