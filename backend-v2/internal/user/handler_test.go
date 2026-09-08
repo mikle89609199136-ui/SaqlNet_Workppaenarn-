@@ -7,7 +7,7 @@ import (
 )
 
 func TestMeRejectsUnsupportedMethodWithoutServiceCall(t *testing.T) {
-	handler := NewHandler(nil)
+	handler := NewHandler(nil, nil)
 	request := httptest.NewRequest(http.MethodDelete, "/api/v2/users/me", nil)
 	response := httptest.NewRecorder()
 
