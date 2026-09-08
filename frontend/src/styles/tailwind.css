@@ -323,78 +323,8 @@
     @media (min-width: 768px) { @apply flex-1; }
   }
 
-  .nav-rail {
-    @media (min-width: 768px) {
-      @apply w-[72px] min-w-[72px] flex flex-col items-center py-6 gap-3 z-[100] shrink-0 bg-sheet;
-      /* Мягкий цвет, а не --color-line: линия идёт во всю высоту экрана,
-         и на такой площади предельный контраст режет глаз. Требование
-         1.4.11 сюда не относится — это не элемент управления, а край
-         колонки. */
-      border-right: 1px solid var(--color-line-soft);
-    }
-  }
   /* Всплывающая подсказка у кнопок рельса. Раньше это правило было
      трижды скопировано — у бургера, вкладки и помощи. */
-  .rail-burger, .rail-tab, .rail-help {
-    @media (min-width: 768px) {
-      &::after {
-        content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%;
-        transform: translateY(-50%) translateX(-4px);
-        background: var(--color-sheet-2); color: var(--color-ink);
-        border: 1px solid var(--color-line); padding: 6px 10px;
-        border-radius: var(--radius-control);
-        font-size: 12px; font-weight: 500; white-space: nowrap;
-        box-shadow: var(--elev-2);
-        pointer-events: none; opacity: 0;
-        transition: opacity var(--transition-duration-fast) ease-out, transform var(--transition-duration-fast) ease-out;
-        z-index: 99999;
-      }
-      &:hover::after { opacity: 1; transform: translateY(-50%) translateX(0); }
-    }
-  }
-  .rail-burger {
-    @media (min-width: 768px) {
-      @apply w-11 h-11 rounded-field bg-transparent border-none text-ink-2 flex items-center justify-center cursor-pointer mb-4 relative;
-      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-      &:hover { @apply text-ink bg-sheet-2; }
-    }
-  }
-  .rail-tab {
-    @media (min-width: 768px) {
-      @apply w-[46px] h-[46px] rounded-field border border-transparent bg-transparent flex items-center justify-center cursor-pointer relative text-ink-2;
-      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
-      & span { @apply hidden; }
-      &:hover { @apply text-ink bg-sheet-2; }
-      &.active {
-        color: var(--color-brand);
-        background: var(--color-brand-soft);
-        border-color: color-mix(in srgb, var(--color-brand) 32%, transparent);
-      }
-    }
-  }
-  .rail-help {
-    @media (min-width: 768px) {
-      @apply w-11 h-11 rounded-field bg-transparent border-none flex items-center justify-center cursor-pointer relative text-ink-2;
-      transition: background-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-      &:hover { @apply text-ink bg-sheet-2; }
-    }
-  }
-  .rail-spacer { @media (min-width: 768px) { @apply flex-1; } }
-  .rail-help {
-    @media (min-width: 768px) {
-      @apply w-11 h-11 rounded-xl bg-transparent border-none flex items-center justify-center cursor-pointer relative;
-      color: var(--color-ink-2); transition: all 0.2s;
-      &:hover { @apply text-white; background: var(--color-sheet-2); }
-      &::after {
-        content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%;
-        transform: translateY(-50%) translateX(-4px); background: var(--color-sheet-2); color: var(--color-ink);
-        border: 1px solid var(--color-line); padding: 6px 10px; border-radius: 8px;
-        font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: 0 4px 18px rgba(0,0,0,0.5);
-        pointer-events: none; opacity: 0; transition: all 0.15s ease; z-index: 99999;
-      }
-      &:hover::after { opacity: 1; transform: translateY(-50%) translateX(0); }
-    }
-  }
   .empty-chat-placeholder {
     @media (min-width: 768px) { @apply flex-1 flex flex-col items-center justify-center text-center p-10 text-ink-3; }
   }
@@ -413,20 +343,6 @@
     min-height: 100vh; min-height: 100dvh;
     background: var(--color-bg);
 
-    & .nav-rail {
-      @apply fixed bottom-0 left-0 right-0 flex justify-around items-center z-[1000] h-nav;
-      background: var(--color-sheet);
-      border-top: 1px solid var(--color-line);
-      padding: 0 10px env(safe-area-inset-bottom, 0px);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-    }
-    & .rail-burger, & .rail-spacer, & .rail-help { @apply hidden; }
-    & .rail-tab {
-      @apply flex-1 h-[60px] border-0 bg-transparent flex flex-col items-center justify-center text-[10px] font-medium gap-1 cursor-pointer;
-      color: var(--color-ink-3);
-      &.active { color: var(--color-brand); }
-    }
     & .chats-page, & .contacts-page, & .settings-page { @apply pb-safe-nav; }
   }
 	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
