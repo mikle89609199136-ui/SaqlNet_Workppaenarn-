@@ -2202,14 +2202,17 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	switch {
 	case !hasCurrent:
 		// No reaction yet – insert the new one
-		_, err = tx.ExecContext(ctx,
+		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji) 
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
-		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", err)
-			return "", "", nil, fmt.Errorf("insert reaction: %w", err)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("insert reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "insert reaction"); err != nil {
+			return "", "", nil, err
 		}
 
 		currentEmoji = emoji
@@ -2217,14 +2220,17 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 
 	case currentEmoji == emoji:
 		// Same emoji – remove the reaction (toggle off)
-		_, err = tx.ExecContext(ctx,
+		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions 
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
-		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", err)
-			return "", "", nil, fmt.Errorf("delete reaction: %w", err)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("delete reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "delete reaction"); err != nil {
+			return "", "", nil, err
 		}
 
 		currentEmoji = ""
@@ -2232,13 +2238,16 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 
 	default:
 		// Different emoji – update the existing one
-		_, err = tx.ExecContext(ctx,
+		result, execErr := tx.ExecContext(ctx,
 			`UPDATE messages.reactions SET emoji = $1 
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
-		if err != nil {
-			return "", "", nil, fmt.Errorf("update reaction: %w", err)
+		if execErr != nil {
+			return "", "", nil, fmt.Errorf("update reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "update reaction"); err != nil {
+			return "", "", nil, err
 		}
 
 		currentEmoji = emoji
@@ -2302,6 +2311,17 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	return status, currentEmoji, reactions, nil
+}
+
+func requireOneAffectedRow(result sql.Result, operation string) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s rows affected: %w", operation, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("%s: expected 1 affected row, got %d", operation, affected)
+	}
+	return nil
 }
 
 // getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
