@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
@@ -9,10 +10,13 @@ import {
   useRealtimeSocket,
 } from '@/hooks';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import type { IMessageDto } from '@/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import type { IProfileState } from '../ChatThreadPage';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -97,6 +101,38 @@ export function useChatThreadPage({
     handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const handleRetryMessage = useCallback(
+    (message: IMessageDto) => {
+      setError('');
+      void retryOutboxMessage(queryClient, message.tempId || message.id, {
+        onError: (err) => {
+          setError(
+            describeApiError(
+              err as { code?: string; message?: string },
+              t,
+              t('messageSendError', 'Не удалось отправить сообщение')
+            )
+          );
+        },
+        onSuccess: () => {
+          setError('');
+        },
+      });
+    },
+    [queryClient, setError, t]
+  );
+
+  const handleCancelMessage = useCallback(
+    (message: IMessageDto) => {
+      const id = message.tempId || message.id;
+      cancelOutboxMessage(queryClient, chatId, id);
+    },
+    [chatId, queryClient]
+  );
+
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
   // при переходе в соседний они не должны переезжать вместе с окном.
   useEffect(() => {
@@ -174,5 +210,7 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleRetryMessage,
+    handleCancelMessage,
   };
 }

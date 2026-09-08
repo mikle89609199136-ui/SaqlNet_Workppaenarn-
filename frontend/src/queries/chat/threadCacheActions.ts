@@ -6,6 +6,7 @@ import {
   canAppendToThread,
   patchMessage,
   removeMessage,
+  replaceMessage,
   type IThreadPages,
 } from './threadCache';
 
@@ -61,6 +62,18 @@ export function patchThreadMessage(
     current ? patchMessage(current, messageId, patch) : current
   );
   // Отредактированным могло оказаться последнее сообщение чата.
+  markChatListStale(queryClient);
+}
+
+export function replaceThreadMessage(
+  queryClient: QueryClient,
+  chatId: string,
+  targetId: string,
+  replacement: IMessageDto
+): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? replaceMessage(current, targetId, replacement) : current
+  );
   markChatListStale(queryClient);
 }
 

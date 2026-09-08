@@ -9,6 +9,7 @@ import { applyReaction } from '@/utils';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';
+import { removeOutboxItem } from '@/store/outbox';
 import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
@@ -115,19 +116,43 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         // иначе в набор попадали undefined вместо идентификаторов.
         const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
 
-        // Именно возврат промиса делает ожидание настоящим: без него
-        // Promise.all завершался мгновенно, а отказы становились
-        // необработанными и не доходили до catch.
-        await Promise.all(own.map((item) => services.messageService.deleteMessage(item.id)));
+        const serverMessages = own.filter(
+          (item) => !item.tempId && !item.id.startsWith('temp-')
+        );
+        const outboxMessages = own.filter(
+          (item) => Boolean(item.tempId) || item.id.startsWith('temp-')
+        );
 
-        own.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
+        outboxMessages.forEach((item) => {
+          const id = item.tempId || item.id;
+          removeOutboxItem(id);
+          dropThreadMessage(queryClient, chatId, id);
+        });
+
+        if (serverMessages.length > 0) {
+          // Именно возврат промиса делает ожидание настоящим: без него
+          // Promise.all завершался мгновенно, а отказы становились
+          // необработанными и не доходили до catch.
+          await Promise.all(serverMessages.map((item) => services.messageService.deleteMessage(item.id)));
+          serverMessages.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
+        }
+
         handleCancelSelection();
       }
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
-        await services.messageService.deleteMessage(message.id);
-        dropThreadMessage(queryClient, chatId, message.id);
+        const id = message.tempId || message.id;
+        const isOutbox = Boolean(message.tempId) || message.id.startsWith('temp-');
+
+        if (isOutbox) {
+          removeOutboxItem(id);
+          dropThreadMessage(queryClient, chatId, id);
+        } else {
+          await services.messageService.deleteMessage(message.id);
+          dropThreadMessage(queryClient, chatId, message.id);
+        }
+
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
           setComposerText(draftRef?.current ?? null, '');
@@ -137,7 +162,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         }
       }
       setError('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(
         describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
       );
