@@ -187,14 +187,14 @@ export class WebSocketClient {
   }
 
   nextReconnectDelay() {
-    const шаг = Math.min(
+    const backoff = Math.min(
       this.reconnectDelay * 2 ** (this.reconnectAttempts - 1),
       this.maxReconnectDelay
     );
 
     // Разброс: после перезапуска сервера все вкладки всех пользователей
     // отсчитывают одну и ту же паузу от одного и того же мгновения.
-    return Math.round(шаг * (1 - JITTER + Math.random() * JITTER * 2));
+    return Math.round(backoff * (1 - JITTER + Math.random() * JITTER * 2));
   }
 
   cancelScheduledReconnect() {
@@ -215,9 +215,9 @@ export class WebSocketClient {
 
     // Соединение могло зависнуть в попытке подключиться ещё тогда, когда
     // сети не было: мёртвым браузер признает его нескоро. Начинаем начисто.
-    const прежний = this.socket;
+    const stale = this.socket;
     this.socket = null;
-    прежний?.close();
+    stale?.close();
 
     this.cancelScheduledReconnect();
     this.reconnectAttempts = 0;

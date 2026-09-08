@@ -22,7 +22,7 @@ import type {
   TMessageType,
 } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
-import type { CryptoService, IDecryptedMessage } from './CryptoService';
+import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
@@ -173,15 +173,19 @@ export class MessageService {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
     let content = item.content;
     let senderVerified: boolean | undefined;
+    /* Причина, по которой сообщение не прочиталось, едет вместе с ним:
+       подпись подставит тот, кто рисует, — он знает язык. */
+    let undecryptable: TUndecryptableReason | undefined;
 
     if (content) {
       const decrypted = await this.decryptContent(chatId, content, context, item.senderId);
       content = decrypted.text;
       senderVerified = decrypted.senderVerified;
+      undecryptable = decrypted.undecryptable;
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return { ...item, content, senderVerified, ...mediaPatch };
+    return { ...item, content, senderVerified, undecryptable, ...mediaPatch };
   }
 
   async processPinnedMessageForDisplay(
@@ -213,11 +217,15 @@ export class MessageService {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
 
     let content = message.content;
+    let undecryptable: TUndecryptableReason | undefined;
+
     if (content) {
-      content = (await this.decryptContent(chatId, content, context, message.senderId)).text;
+      const decrypted = await this.decryptContent(chatId, content, context, message.senderId);
+      content = decrypted.text;
+      undecryptable = decrypted.undecryptable;
     }
 
-    return { ...message, content };
+    return { ...message, content, undecryptable };
   }
 
   /**
@@ -370,7 +378,9 @@ export class MessageService {
   async forwardMessage(message: IMessageDto, targetChatId: string) {
     const content = message.content ?? '';
 
-    if (content.startsWith('🔒')) {
+    /* Признак надёжнее прежней проверки по ведущему замку: подпись
+       переводится, а причина — нет. */
+    if ((message as IMessageDto & { undecryptable?: TUndecryptableReason }).undecryptable) {
       throw new Error('Нельзя переслать сообщение, которое не удалось расшифровать');
     }
 

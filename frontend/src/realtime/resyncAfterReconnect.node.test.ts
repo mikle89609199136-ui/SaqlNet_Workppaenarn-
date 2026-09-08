@@ -38,22 +38,22 @@ describe('восстановление после обрыва связи', () =
     // Пока связи не было, собеседник написал. Без этого сообщение не
     // появилось бы в ленте никогда: история помечена как никогда не
     // устаревающая, и её никто не перезапрашивает.
-    const было = makeMessage({ id: 'm-1', chatId: CHAT_ID, content: 'до обрыва' });
-    const пропущенное = makeMessage({ id: 'm-2', chatId: CHAT_ID, content: 'во время обрыва' });
+    const before = makeMessage({ id: 'm-1', chatId: CHAT_ID, content: 'до обрыва' });
+    const missed = makeMessage({ id: 'm-2', chatId: CHAT_ID, content: 'во время обрыва' });
 
     server.use(
-      http.get(api(`/messages/${CHAT_ID}`), () =>
-        HttpResponse.json({ messages: [было, пропущенное] })
-      )
+      http.get(api(`/messages/${CHAT_ID}`), () => HttpResponse.json({ messages: [before, missed] }))
     );
 
     const queryClient = makeClient();
-    const unsubscribe = openThread(queryClient, [[было]]);
+    const unsubscribe = openThread(queryClient, [[before]]);
 
     await resyncAfterReconnect(queryClient);
 
-    const лента = flattenThread(queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID)));
-    expect(лента.map((m) => m.id)).toEqual(['m-1', 'm-2']);
+    const thread = flattenThread(
+      queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))
+    );
+    expect(thread.map((m) => m.id)).toEqual(['m-1', 'm-2']);
 
     unsubscribe();
   });
@@ -61,25 +61,27 @@ describe('восстановление после обрыва связи', () =
   it('should keep the history the user scrolled up to', async () => {
     // Прокрученные страницы не перезапрашиваются: это десятки запросов и
     // полная перерасшифровка ради сообщений, которые не менялись.
-    const старое = makeMessage({ id: 'm-old', chatId: CHAT_ID });
-    const свежее = makeMessage({ id: 'm-new', chatId: CHAT_ID });
+    const older = makeMessage({ id: 'm-old', chatId: CHAT_ID });
+    const newer = makeMessage({ id: 'm-new', chatId: CHAT_ID });
 
-    let запросов = 0;
+    let requests = 0;
     server.use(
       http.get(api(`/messages/${CHAT_ID}`), () => {
-        запросов += 1;
-        return HttpResponse.json({ messages: [свежее] });
+        requests += 1;
+        return HttpResponse.json({ messages: [newer] });
       })
     );
 
     const queryClient = makeClient();
-    const unsubscribe = openThread(queryClient, [[свежее], [старое]]);
+    const unsubscribe = openThread(queryClient, [[newer], [older]]);
 
     await resyncAfterReconnect(queryClient);
 
-    const лента = flattenThread(queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID)));
-    expect(лента.map((m) => m.id)).toContain('m-old');
-    expect(запросов).toBe(1);
+    const thread = flattenThread(
+      queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))
+    );
+    expect(thread.map((m) => m.id)).toContain('m-old');
+    expect(requests).toBe(1);
 
     unsubscribe();
   });
@@ -87,10 +89,10 @@ describe('восстановление после обрыва связи', () =
   it('should leave closed chats alone', async () => {
     // У закрытого чата наблюдателей нет: тянуть его историю незачем.
     const queryClient = makeClient();
-    let запросов = 0;
+    let requests = 0;
     server.use(
       http.get(api(`/messages/${CHAT_ID}`), () => {
-        запросов += 1;
+        requests += 1;
         return HttpResponse.json({ messages: [] });
       })
     );
@@ -102,7 +104,7 @@ describe('восстановление после обрыва связи', () =
 
     await resyncAfterReconnect(queryClient);
 
-    expect(запросов).toBe(0);
+    expect(requests).toBe(0);
   });
 
   it('should mark the chat list as stale', async () => {

@@ -36,6 +36,7 @@ describe('состояние интерфейса чата', () => {
     // в соседний они не должны переезжать вместе с окном.
     useChatUiStore.getState().setSelectionMode(true);
     useChatUiStore.getState().setActionMenu({ messageId: 'm-1', x: 0, y: 0 });
+    useChatUiStore.getState().setHighlightedMessageId('m-1');
     useChatUiStore.getState().setError('ошибка');
 
     useChatUiStore.getState().resetChatState();
@@ -43,7 +44,16 @@ describe('состояние интерфейса чата', () => {
     const state = useChatUiStore.getState();
     expect(state.selectionMode).toBe(false);
     expect(state.actionMenu).toBeNull();
+    expect(state.highlightedMessageId).toBeNull();
     expect(state.error).toBe('');
+  });
+
+  it('should set and clear highlighted message id', () => {
+    useChatUiStore.getState().setHighlightedMessageId('m-1');
+    expect(useChatUiStore.getState().highlightedMessageId).toBe('m-1');
+
+    useChatUiStore.getState().setHighlightedMessageId(null);
+    expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });
 
   it('should no longer hold server data', () => {

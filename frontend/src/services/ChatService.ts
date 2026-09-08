@@ -20,8 +20,15 @@ export class ChatService {
   // Свежестью списка распоряжается слой запросов: собственный кеш здесь
   // сбрасывался только при ошибке, и успешный ответ жил до перезагрузки
   // вкладки — созданный чат в списке не появлялся.
-  async getChats() {
-    const response = await this.apiClient.get<IChatsResponse>(API_ENDPOINTS.CHATS);
+  /**
+   * Список чатов. Архивные лежат отдельно и приходят только по просьбе:
+   * сервер фильтрует по `archived`, а не отдаёт всё вперемешку.
+   */
+  async getChats(archived = false) {
+    const response = await this.apiClient.get<IChatsResponse>(
+      API_ENDPOINTS.CHATS,
+      archived ? { archived: 'true' } : {}
+    );
     return response.data.chats;
   }
 
@@ -48,13 +55,22 @@ export class ChatService {
     title,
     description = '',
     members = [],
+    avatarUrl = '',
   }: {
     title: string;
     description: string;
     members: string[];
+    avatarUrl?: string;
   }): Promise<ICreateGroupChatResponse> {
     const chat = await this.apiClient
-      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, {
+        title,
+        description,
+        members,
+        // Аватарка хранится строкой, поэтому уходит уменьшенной картинкой
+        // прямо в теле запроса: отдельная загрузка файла тут не нужна.
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
       .then((response) => response.data);
 
     return chat;
@@ -120,8 +136,18 @@ export class ChatService {
     return response.data;
   }
 
+  async unpinChat(chatId: string) {
+    const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN(chatId));
+    return response.data;
+  }
+
   async archiveChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
+    return response.data;
+  }
+
+  async unarchiveChat(chatId: string) {
+    const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
     return response.data;
   }
 }

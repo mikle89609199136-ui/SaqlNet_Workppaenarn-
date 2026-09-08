@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { chatKeys } from '@/queries/keys';
 import { queryClient } from '@/queries/queryClient';
+import { useChatUiStore } from '@/store/chatUi';
 import { useProfileStore } from '@/store/profile';
 import { clearAuthSession } from './clearAuthSession';
 
@@ -22,6 +23,16 @@ describe('выход из сессии', () => {
 
     expect(queryClient.getQueryData(chatKeys.messages('chat-1'))).toBeUndefined();
     expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  });
+
+  it('should wipe shown translations', () => {
+    // Перевод — это тот же расшифрованный текст, только ещё и отправленный
+    // наружу. Он сбрасывается при смене чата, но выход чата не меняет.
+    useChatUiStore.getState().setTranslations({ 'm-1': 'переведённый секрет' });
+
+    clearAuthSession();
+
+    expect(useChatUiStore.getState().translations).toEqual({});
   });
 
   it('should do nothing without an active session', () => {

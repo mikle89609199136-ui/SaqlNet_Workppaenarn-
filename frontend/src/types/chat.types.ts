@@ -11,6 +11,12 @@ export interface ILastMessageDto {
   senderId: string;
   senderName: string;
   reactions: TReactionsList;
+  /**
+   * Почему сообщение не прочиталось: ключа нет, оно старше нашего
+   * появления в чате или в устаревшем формате. Подпись по этой причине
+   * подставляет интерфейс — сервису язык неизвестен.
+   */
+  undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
 }
 
 export interface IChatDto {
@@ -21,6 +27,11 @@ export interface IChatDto {
   avatarUrl: string;
   peerPublicKey?: string;
   peerId?: string;
+  /* Сервер их шлёт (chat/service.go, ChatDTO), а тип о них не знал:
+     обращения к chat.peerIsOnline были в четырёх местах и все считались
+     ошибкой типов. Работало только потому, что проверка не запускалась. */
+  peerIsOnline?: boolean;
+  peerLastSeen?: string;
   ownerId: string;
   role: TChatRole;
   isPinned: boolean;
