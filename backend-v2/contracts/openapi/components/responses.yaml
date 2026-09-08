@@ -9,7 +9,17 @@ FileTooLarge:
   content:
     application/json:
       schema:
-        $ref: './schemas.yaml#/Error'
+        type: object
+        required: [error]
+        properties:
+          error:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string, enum: [file_too_large] }
+              message: { type: string, example: file exceeds 100 MB limit }
+              requestId: { type: string }
       example:
-        code: file_too_large
-        message: file exceeds 100 MB limit
+        error:
+          code: file_too_large
+          message: file exceeds 100 MB limit
