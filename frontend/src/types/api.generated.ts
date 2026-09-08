@@ -1582,16 +1582,19 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                uploadId: string;
+            };
             cookie?: never;
         };
-        /** Get media */
+        /** Download media */
         get: operations["getMedia"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /** Get media headers */
+        head: operations["headMedia"];
         patch?: never;
         trace?: never;
     };
@@ -2024,6 +2027,31 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Media payload exceeds the configured upload limit */
+        FileTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "file_too_large",
+                 *         "message": "file exceeds 100 MB limit"
+                 *       }
+                 *     }
+                 */
+                "application/json": {
+                    error: {
+                        /** @enum {string} */
+                        code: "file_too_large";
+                        /** @example file exceeds 100 MB limit */
+                        message: string;
+                        requestId?: string;
+                    };
+                };
             };
         };
     };
@@ -4599,11 +4627,54 @@ export interface operations {
                     "application/json": components["schemas"]["UploadResponse"];
                 };
             };
-            413: components["responses"]["Error"];
+            413: components["responses"]["FileTooLarge"];
             415: components["responses"]["Error"];
         };
     };
     getMedia: {
+        parameters: {
+            query?: never;
+            header?: {
+                Range?: string;
+            };
+            path: {
+                uploadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Media stream, or encrypted media metadata and ciphertext */
+            200: {
+                headers: {
+                    "Accept-Ranges"?: string;
+                    "Content-Length"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                    "application/json": components["schemas"]["Object"];
+                };
+            };
+            /** @description Partial media stream */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+            /** @description Requested range is not satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            502: components["responses"]["Error"];
+        };
+    };
+    headMedia: {
         parameters: {
             query?: never;
             header?: never;
@@ -4614,23 +4685,29 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Encrypted media metadata and ciphertext */
+            /** @description Media headers */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["Object"];
-                };
+                content?: never;
             };
-            /** @description Redirect to object storage */
-            307: {
+            /** @description Partial media headers */
+            206: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
             404: components["responses"]["Error"];
+            /** @description Requested range is not satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            502: components["responses"]["Error"];
         };
     };
     listEmojis: {
