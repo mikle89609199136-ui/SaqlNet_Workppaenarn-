@@ -1,10 +1,20 @@
 .PHONY: test build migrate migrate-legacy-dry-run migrate-legacy smoke load-test
 
+BIN_DIR := bin
+
 test:
 	GOCACHE=/tmp/crane-go-cache go test ./...
 
 build:
-	GOCACHE=/tmp/crane-go-cache go build ./cmd/edge ./cmd/auth ./cmd/user ./cmd/chat ./cmd/migrate-legacy ./cmd/migrate
+	mkdir -p $(BIN_DIR)
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/edge ./cmd/edge
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/auth ./cmd/auth
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/user ./cmd/user
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/chat ./cmd/chat
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/media ./cmd/media
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/admin ./cmd/admin
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/migrate ./cmd/migrate
+	GOCACHE=/tmp/crane-go-cache go build -o $(BIN_DIR)/migrate-legacy ./cmd/migrate-legacy
 
 migrate:
 	GOCACHE=/tmp/crane-go-cache go run ./cmd/migrate

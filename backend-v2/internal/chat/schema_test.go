@@ -24,7 +24,7 @@ func TestMessagesMigrationMatchesServiceQueries(t *testing.T) {
 }
 
 func TestMessagesCompatMigrationBackfillsExistingTables(t *testing.T) {
-	sql, err := os.ReadFile("../../migrations/0015_messages_compat.sql")
+	sql, err := os.ReadFile("../../migrations/0017_messages_compat.sql")
 	if err != nil {
 		t.Fatalf("read messages compat migration: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestMessagesCompatMigrationBackfillsExistingTables(t *testing.T) {
 }
 
 func TestUserMuteCompatMigrationBackfillsSendMessageDependencies(t *testing.T) {
-	sql, err := os.ReadFile("../../migrations/0016_user_mute_compat.sql")
+	sql, err := os.ReadFile("../../migrations/0018_user_mute_compat.sql")
 	if err != nil {
 		t.Fatalf("read user mute compat migration: %v", err)
 	}

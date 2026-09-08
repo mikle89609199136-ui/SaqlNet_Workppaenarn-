@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/authctx"
-	"craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
@@ -199,13 +197,13 @@ func (h *Handler) uploadSignalKeys(w http.ResponseWriter, r *http.Request, userI
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	
-	cryptoURL := os.Getenv("CRYPTO_SERVICE_URL")
-	if cryptoURL == "" {
-		cryptoURL = "http://localhost:5005"
+
+	if h.crypto == nil {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "cryptographic validation is unavailable")
+		return
 	}
-	cryptoClient := crypto.NewClient(cryptoURL)
-	valid, err := cryptoClient.ValidateSignalRegistration(r.Context(), input.IdentityKey.IdentityKey, input.SignedPreKey.PublicKey, input.SignedPreKey.Signature)
+
+	valid, err := h.crypto.ValidateSignalRegistration(r.Context(), input.IdentityKey.IdentityKey, input.SignedPreKey.PublicKey, input.SignedPreKey.Signature)
 	if err != nil || !valid {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_registration", "cryptographic validation failed")
 		return

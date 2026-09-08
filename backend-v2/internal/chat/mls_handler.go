@@ -167,7 +167,7 @@ func (h *Handler) mlsAddProposal(w http.ResponseWriter, r *http.Request, senderI
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	
+
 	err := h.service.MLSAddProposal(r.Context(), senderID, chatID, input.ProposalType, input.ProposalBytes, input.Epoch, cryptoURL)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_proposal", err.Error())

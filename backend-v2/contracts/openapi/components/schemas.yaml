@@ -16,12 +16,25 @@ User:
     language: { type: string }
     bio: { type: string }
     avatarUrl: { type: string }
+Password:
+  # Требования задаёт internal/auth/password_validator.go и применяет во
+  # всех трёх местах, где пароль задаётся: регистрация, смена, включение
+  # второго пароля. Нарушение любого из них возвращает 400 weak_password.
+  type: string
+  format: password
+  minLength: 10
+  maxLength: 64
+  description: >-
+    At least 10 and at most 64 characters, counted in runes.
+    Must contain a digit and one of !@#$%^&*()_+-=[]{}|;:'",.<>/?`~
+    Whitespace is not allowed anywhere in the value.
+  example: parolproba1!
 RegisterRequest:
   type: object
   required: [username, password, firstName]
   properties:
     username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
-    password: { type: string, format: password, minLength: 6 }
+    password: { $ref: '#/Password' }
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
@@ -74,6 +87,7 @@ ChatMember:
         role: { type: string, enum: [owner, admin, member] }
         permissions: { type: object, additionalProperties: true }
         mutedUntil: { type: string, nullable: true }
+        mutedAt: { type: string, nullable: true, description: 'set when muted; mutedUntil null = permanent mute' }
         joinedAt: { type: string }
 Message:
   type: object

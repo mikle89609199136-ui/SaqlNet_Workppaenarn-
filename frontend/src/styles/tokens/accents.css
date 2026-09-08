@@ -1,0 +1,100 @@
+/* =============================================================
+   Слой 2. Акцент.
+
+   Собран отдельным набором, потому что цвет оформления будет
+   меняться. Размазать его по системе — значит потом переписывать
+   каждый компонент; здесь смена схемы это один атрибут на <html>.
+
+   В наборе пять значений, и вот почему не одно:
+
+     brand-lo   цвет, читаемый как текст на СВЕТЛОМ фоне
+     brand-hi   цвет, читаемый как текст на ТЁМНОМ фоне
+     brand-fill заливка кнопок и меток
+     on-brand   чем писать поверх заливки
+     bubble-out свой пузырь — оттенок того же цвета
+
+   Один цвет не годится: то, что читается текстом на тёмном фоне,
+   слишком светло для заливки под белыми буквами, и наоборот.
+   Тема сама берёт нужный вариант — см. themes.css.
+
+   on-brand тоже часть набора, а не общее правило: у янтаря поверх
+   заливки идёт тёмный текст, у остальных — белый.
+
+   Схема по умолчанию задана на :root, чтобы всё работало и без
+   атрибута. [data-accent] только переопределяет.
+   ============================================================= */
+
+:root,
+[data-accent='violet'] {
+  --brand-lo: #7c4dd8;
+  --brand-hi: #b48cec;
+  --brand-fill: #7c4dd8;
+  --on-brand: #ffffff;
+  --brand-soft: rgba(124, 77, 216, 0.11);
+  --bubble-out-light: #f0eafb;
+  --bubble-out-dark: #292234;
+  --bubble-out-ink-light: #3d2a63;
+  --bubble-out-ink-dark: #e9e2f5;
+}
+
+[data-accent='plum'] {
+  --brand-lo: #8e3e86;
+  --brand-hi: #d392cb;
+  --brand-fill: #8e3e86;
+  --on-brand: #ffffff;
+  --brand-soft: rgba(142, 62, 134, 0.11);
+  --bubble-out-light: #f8eaf6;
+  --bubble-out-dark: #2f2433;
+  --bubble-out-ink-light: #4e1b49;
+  --bubble-out-ink-dark: #f0deee;
+}
+
+[data-accent='orchid'] {
+  --brand-lo: #c2459b;
+  --brand-hi: #ec8cc8;
+  --brand-fill: #c2459b;
+  --on-brand: #ffffff;
+  --brand-soft: rgba(194, 69, 155, 0.11);
+  --bubble-out-light: #fce9f5;
+  --bubble-out-dark: #322431;
+  --bubble-out-ink-light: #66194a;
+  --bubble-out-ink-dark: #f5dfee;
+}
+
+[data-accent='indigo'] {
+  --brand-lo: #4c5fd0;
+  --brand-hi: #9baaf2;
+  --brand-fill: #4c5fd0;
+  --on-brand: #ffffff;
+  --brand-soft: rgba(76, 95, 208, 0.11);
+  --bubble-out-light: #e9ecfc;
+  --bubble-out-dark: #232839;
+  --bubble-out-ink-light: #23306e;
+  --bubble-out-ink-dark: #dfe4f7;
+}
+
+/* Единственная схема с тёмным текстом поверх заливки: жёлтый под
+   белыми буквами даёт 3,2:1 и норму не проходит. */
+[data-accent='amber'] {
+  --brand-lo: #a9690c;
+  --brand-hi: #f2a93b;
+  --brand-fill: #f2a93b;
+  --on-brand: #1a1203;
+  --brand-soft: rgba(169, 105, 12, 0.12);
+  --bubble-out-light: #fbf0dc;
+  --bubble-out-dark: #33291a;
+  --bubble-out-ink-light: #5a4318;
+  --bubble-out-ink-dark: #f0e6d6;
+}
+
+[data-accent='teal'] {
+  --brand-lo: #17806e;
+  --brand-hi: #5fd3be;
+  --brand-fill: #17806e;
+  --on-brand: #ffffff;
+  --brand-soft: rgba(23, 128, 110, 0.11);
+  --bubble-out-light: #e3f5f1;
+  --bubble-out-dark: #1e2e2c;
+  --bubble-out-ink-light: #0d4a3f;
+  --bubble-out-ink-dark: #d6efe9;
+}

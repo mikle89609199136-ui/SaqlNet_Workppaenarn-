@@ -20,8 +20,8 @@ git push origin rollback/main-before-merge-YYYYMMDD
 Run these locally before pushing/merging:
 
 ```bash
+cd frontend && npm ci && cd ..
 npm test
-npm run test:react
 npm run build:react
 ```
 

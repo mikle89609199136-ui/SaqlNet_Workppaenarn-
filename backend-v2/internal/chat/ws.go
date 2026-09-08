@@ -13,6 +13,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -220,7 +221,7 @@ func (ws *WSServer) readPump(client *Client) {
 						msg["createdAt"] = time.Now().Format(time.RFC3339Nano)
 						// Attach sender display name for client-side notifications.
 						var senderName string
-						ws.db.QueryRow(`SELECT username || '.' || username_discriminator FROM auth.users WHERE id = $1`, client.UserID).Scan(&senderName)
+						ws.db.QueryRow(`SELECT username FROM auth.users WHERE id = $1`, client.UserID).Scan(&senderName)
 						msg["senderName"] = senderName
 						newMessage, _ := json.Marshal(msg)
 						ws.BroadcastToChat(chatID, newMessage, client.UserID)
@@ -528,6 +529,14 @@ func (ws *WSServer) BroadcastToChat(chatID string, message []byte, excludeUserID
 			continue
 		}
 		ws.sendToUserLocked(memberID, message)
+	}
+}
+
+func (ws *WSServer) BroadcastToUsers(userIDs []string, message []byte) {
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	for _, uid := range userIDs {
+		ws.sendToUserLocked(uid, message)
 	}
 }
 

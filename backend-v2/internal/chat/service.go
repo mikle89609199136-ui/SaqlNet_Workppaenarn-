@@ -5,20 +5,34 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"hash/fnv"
+	"log"
+	"log/slog"
 	"path"
 	"strings"
+	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 var (
-	ErrNotFound        = errors.New("chat not found")
-	ErrForbidden       = errors.New("access denied")
-	ErrInvalidInput    = errors.New("invalid input")
-	ErrUserNotFound    = errors.New("user not found")
-	ErrBlockedByUser   = errors.New("blocked by user")
-	ErrInvalidChatType = errors.New("invalid chat type")
+	ErrNotFound                  = errors.New("chat not found")
+	ErrForbidden                 = errors.New("access denied")
+	ErrInvalidInput              = errors.New("invalid input")
+	ErrUserNotFound              = errors.New("user not found")
+	ErrBlockedByUser             = errors.New("blocked by user")
+	ErrInvalidChatType           = errors.New("invalid chat type")
+	ErrAlreadyMember             = errors.New("user already in group")
+	ErrUserBanned                = errors.New("user is banned")
+	ErrOwnershipTransferRequired = errors.New("ownership transfer required")
+	ErrNotMember                 = errors.New("user is not a member")
+	ErrOwnershipConflict         = errors.New("ownership changed concurrently")
+	ErrMemberNotFound            = errors.New("member not found")
+	ErrStateUnchanged            = errors.New("state unchanged")
+	ErrMemberMuted               = errors.New("member is muted")
+	ErrCannotModerateTarget      = errors.New("cannot moderate target")
 )
 
 type Chat struct {
@@ -45,10 +59,12 @@ type Chat struct {
 }
 
 type LastMessagePreview struct {
-	Content    string `json:"content"`
-	Type       string `json:"type"`
-	SenderID   string `json:"senderId,omitempty"`
-	SenderName string `json:"senderName"`
+	ID         string     `json:"id"`
+	Content    string     `json:"content"`
+	Type       string     `json:"type"`
+	SenderID   string     `json:"senderId,omitempty"`
+	SenderName string     `json:"senderName"`
+	Reactions  []Reaction `json:"reactions"`
 }
 
 type Member struct {
@@ -60,6 +76,7 @@ type Member struct {
 	Role        string         `json:"role"`
 	Permissions map[string]any `json:"permissions"`
 	MutedUntil  string         `json:"mutedUntil,omitempty"`
+	MutedAt     string         `json:"mutedAt,omitempty"`
 	JoinedAt    string         `json:"joinedAt"`
 }
 
@@ -76,6 +93,7 @@ type Message struct {
 	ReplyToMessageID    *string        `json:"replyToMessageId,omitempty"`
 	ReplySenderName     string         `json:"replySenderName,omitempty"`
 	ReplyToSenderName   string         `json:"replyToSenderName,omitempty"`
+	Reactions           []Reaction     `json:"reactions"`
 	Metadata            map[string]any `json:"metadata,omitempty"`
 	IsForwarded         bool           `json:"isForwarded"`
 	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
@@ -88,7 +106,14 @@ type Message struct {
 
 type Service struct {
 	db *sql.DB
-	ws *WSServer
+	ws realtimeServer
+}
+
+type realtimeServer interface {
+	CallRooms() *CallRoomManager
+	IsUserConnected(userID string) bool
+	BroadcastToChat(chatID string, message []byte, excludeUserID string)
+	BroadcastToUsers(userIDs []string, message []byte)
 }
 
 const (
@@ -151,7 +176,7 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName 
 	return fileName, sizeBytes, nil
 }
 
-func NewService(db *sql.DB, ws *WSServer) *Service {
+func NewService(db *sql.DB, ws realtimeServer) *Service {
 	return &Service{db: db, ws: ws}
 }
 
@@ -202,6 +227,102 @@ func (s *Service) hydrateMessagesFields(ctx context.Context, messages []Message)
 	return nil
 }
 
+func (s *Service) loadReactionsByMessageIDs(ctx context.Context, userID string, messageIDs []string) (map[string][]Reaction, error) {
+	reactionsByMessageID := make(map[string][]Reaction, len(messageIDs))
+
+	if len(messageIDs) == 0 {
+		return reactionsByMessageID, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT message_id::text,
+		       emoji,
+		       COUNT(*) AS cnt,
+		       BOOL_OR(user_id = $2) AS my_reaction
+		FROM messages.reactions
+		WHERE message_id = ANY($1::uuid[])
+		GROUP BY message_id, emoji
+		ORDER BY message_id, cnt DESC, emoji
+	`, pq.Array(messageIDs), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID string
+		var reaction Reaction
+
+		if err := rows.Scan(
+			&messageID,
+			&reaction.Emoji,
+			&reaction.Count,
+			&reaction.MyReaction,
+		); err != nil {
+			return nil, err
+		}
+
+		reactionsByMessageID[messageID] = append(reactionsByMessageID[messageID], reaction)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return reactionsByMessageID, nil
+}
+
+func (s *Service) hydrateMessagesReactions(ctx context.Context, userID string, messages []Message) error {
+	messageIDs := make([]string, 0, len(messages))
+
+	for i := range messages {
+		messages[i].Reactions = []Reaction{}
+		messageIDs = append(messageIDs, messages[i].ID)
+	}
+
+	reactionsByMessageID, err := s.loadReactionsByMessageIDs(ctx, userID, messageIDs)
+	if err != nil {
+		return err
+	}
+
+	for i := range messages {
+		reactions, ok := reactionsByMessageID[messages[i].ID]
+		if ok {
+			messages[i].Reactions = reactions
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) hydrateChatsLastMessageReactions(ctx context.Context, userID string, chats []Chat) error {
+	messageIDs := make([]string, 0, len(chats))
+
+	for i := range chats {
+		lastMessage := chats[i].LastMessage
+		if lastMessage != nil && lastMessage.ID != "" {
+			lastMessage.Reactions = []Reaction{}
+			messageIDs = append(messageIDs, lastMessage.ID)
+		}
+	}
+
+	reactionsByMessageID, err := s.loadReactionsByMessageIDs(ctx, userID, messageIDs)
+	if err != nil {
+		return err
+	}
+
+	for i := range chats {
+		lastMessage := chats[i].LastMessage
+		if lastMessage != nil && lastMessage.ID != "" {
+			reactions, ok := reactionsByMessageID[lastMessage.ID]
+			if ok {
+				lastMessage.Reactions = reactions
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Service) CallRooms() *CallRoomManager {
 	return s.ws.CallRooms()
 }
@@ -228,7 +349,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -239,7 +360,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         COALESCE(up.avatar_url, '') AS avatar_url,
-			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         au.username AS display_username,
 			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
 			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
 			  FROM chats.members pm
@@ -249,7 +370,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT sender_id, content, type
+		  SELECT id, sender_id, content, type
 		  FROM messages.messages
 		  WHERE chat_id = c.id AND deleted_at IS NULL
 		  ORDER BY created_at DESC
@@ -261,7 +382,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen,
-			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
 	if err != nil {
@@ -270,6 +391,9 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 	defer rows.Close()
 	chats, err := scanChats(rows)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
 		return nil, err
 	}
 	s.hydrateRealtimePresence(chats)
@@ -298,7 +422,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -309,7 +433,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         COALESCE(up.avatar_url, '') AS avatar_url,
-			         au.username || '.' || au.username_discriminator::text AS display_username,
+			         au.username AS display_username,
 			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
 			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
 			  FROM chats.members pm
@@ -319,7 +443,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT sender_id, content, type
+		  SELECT id, sender_id, content, type
 		  FROM messages.messages
 		  WHERE chat_id = c.id AND deleted_at IS NULL
 		  ORDER BY created_at DESC
@@ -331,7 +455,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen,
-			         lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -343,6 +467,9 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	}
 	if len(chats) == 0 {
 		return Chat{}, ErrNotFound
+	}
+	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return Chat{}, err
 	}
 	chat := chats[0]
 	if chat.Type == "private" {
@@ -359,18 +486,10 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 
 func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (string, string, error) {
 	var chatType, role string
-	err := s.db.QueryRowContext(ctx, `SELECT c.type, cm.role 
+	err := s.db.QueryRowContext(ctx, `SELECT c.type, cm.role
 	FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`, userID, chatID).Scan(&chatType, &role)
 
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", ErrForbidden
-	}
-
-	if err != nil {
-		return "", "", err
-	}
-
-	return chatType, role, nil
+	return chatType, role, err
 }
 
 func (s *Service) hydrateRealtimePresence(chats []Chat) {
@@ -569,7 +688,7 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
-		       COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), cm.joined_at::text
+		       COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), COALESCE(cm.muted_at::text, ''), cm.joined_at::text
 		FROM chats.members cm
 		JOIN auth.users au ON au.id = cm.user_id
 		LEFT JOIN users.profiles up ON up.user_id = au.id
@@ -584,7 +703,7 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 	for rows.Next() {
 		var member Member
 		var permissions jsonMap
-		if err := rows.Scan(&member.ID, &member.Username, &member.FirstName, &member.LastName, &member.AvatarURL, &member.Role, &permissions, &member.MutedUntil, &member.JoinedAt); err != nil {
+		if err := rows.Scan(&member.ID, &member.Username, &member.FirstName, &member.LastName, &member.AvatarURL, &member.Role, &permissions, &member.MutedUntil, &member.MutedAt, &member.JoinedAt); err != nil {
 			return nil, err
 		}
 		member.Permissions = map[string]any(permissions)
@@ -597,45 +716,134 @@ func (s *Service) SetMemberRole(ctx context.Context, actorID, chatID, memberID, 
 	if role != "admin" && role != "member" {
 		return ErrInvalidInput
 	}
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	if actorID == memberID {
+		return ErrForbidden
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" {
 		return ErrForbidden
 	}
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE chats.members SET role = $1
-		WHERE chat_id = $2 AND user_id = $3 AND role <> 'owner'
-	`, role, chatID, memberID)
+
+	var memberRole string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role FROM chats.members
+		WHERE chat_id = $1 AND user_id = $2
+	`, chatID, memberID).Scan(&memberRole)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMemberNotFound
+	}
 	if err != nil {
 		return err
 	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
+	if memberRole == "owner" {
 		return ErrForbidden
+	}
+	if memberRole == role {
+		return nil
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE chats.members SET role = $1
+		WHERE chat_id = $2 AND user_id = $3 AND role = $4
+	`, role, chatID, memberID, memberRole)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrStateUnchanged
+	}
+
+	if s.ws != nil {
+		payload, err := json.Marshal(MemberRoleUpdatedEvent{
+			Type:   "chat_member_role_updated",
+			ChatID: chatID,
+			UserID: memberID,
+			Role:   role,
+		})
+		if err != nil {
+			slog.Error("failed to marshal member role event", "err", err, "chatID", chatID, "userID", memberID)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
 	}
 	return nil
 }
 
 func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID string) error {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	if actorID == memberID {
+		return ErrForbidden
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
-	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM chats.members
-		WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'
-	`, chatID, memberID)
+
+	var memberRole string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role FROM chats.members
+		WHERE chat_id = $1 AND user_id = $2
+	`, chatID, memberID).Scan(&memberRole)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMemberNotFound
+	}
 	if err != nil {
 		return err
 	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
+	if memberRole == "owner" {
 		return ErrForbidden
+	}
+	if actorRole == "admin" && memberRole != "member" {
+		return ErrForbidden
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM chats.members
+		WHERE chat_id = $1 AND user_id = $2 AND role = $3
+	`, chatID, memberID, memberRole)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrStateUnchanged
+	}
+
+	if s.ws != nil {
+		payload, err := json.Marshal(MemberRemovedEvent{
+			Type:   "chat_member_removed",
+			ChatID: chatID,
+			UserID: memberID,
+		})
+		if err != nil {
+			slog.Error("failed to marshal member removed event", "err", err, "chatID", chatID, "userID", memberID)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
 	}
 	return nil
 }
@@ -687,71 +895,405 @@ type Ban struct {
 	CreatedAt   string  `json:"createdAt"`
 }
 
-func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) error {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
-	if err != nil {
-		return err
-	}
-	if actorRole != "owner" && actorRole != "admin" {
-		return ErrForbidden
-	}
-	// Check if banned.
-	var dummy int
-	err = s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW())`,
-		chatID, userID).Scan(&dummy)
-	if err == nil {
-		return ErrForbidden // user is banned
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, 'member')
-		ON CONFLICT DO NOTHING
-	`, chatID, userID)
-	return err
+type MemberAddedEvent struct {
+	Type   string  `json:"type"`
+	ChatID string  `json:"chatId"`
+	Member *Member `json:"member"`
 }
 
-func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID, reason string) error {
+type MemberRoleUpdatedEvent struct {
+	Type   string `json:"type"`
+	ChatID string `json:"chatId"`
+	UserID string `json:"userId"`
+	Role   string `json:"role"`
+}
+
+type addMemberInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+type muteMemberInput struct {
+	ActorID string `validate:"required,uuid"`
+	ChatID  string `validate:"required,uuid"`
+	UserID  string `validate:"required,uuid"`
+}
+
+type MemberMuteEvent struct {
+	Type       string     `json:"type"`
+	ChatID     string     `json:"chatId"`
+	UserID     string     `json:"userId"`
+	ByUserID   string     `json:"byUserId"`
+	MutedUntil *time.Time `json:"mutedUntil"`
+}
+
+// MemberBanEvent — событие ban/unban участника; Type различает
+// (chat_member_banned / chat_member_unbanned). При unban поля Reason и
+// BannedUntil пустые ("" и null) — клиенты должны их игнорировать.
+type MemberBanEvent struct {
+	Type        string     `json:"type"`
+	ChatID      string     `json:"chatId"`
+	UserID      string     `json:"userId"`
+	ByUserID    string     `json:"byUserId"`
+	Reason      string     `json:"reason"`
+	BannedUntil *time.Time `json:"bannedUntil"`
+}
+
+func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string) (*Member, error) {
+	// 1. Валидация входных данных
+	input := addMemberInput{ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	// 2. Проверка прав актора
 	actorRole, err := s.memberRole(ctx, actorID, chatID)
 	if err != nil {
+		return nil, err
+	}
+	if actorRole != "owner" && actorRole != "admin" {
+		return nil, ErrForbidden
+	}
+
+	// 3. Проверка типа чата
+	var chatType string
+	err = s.db.QueryRowContext(ctx, `SELECT type FROM chats.chats WHERE id = $1`, chatID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if chatType != "group" {
+		return nil, ErrInvalidChatType
+	}
+
+	// 4. Проверка существования и активности пользователя
+	var exists bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1 AND disabled_at IS NULL)`, userID).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrUserNotFound
+	}
+
+	// 5. Транзакция: согласованная блокировка пары (chat, user) — та же
+	// формула, что в BanMember, чтобы исключить гонку add/ban.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var lockDummy any
+	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
+		return nil, err
+	}
+
+	// 6. Условная вставка: не выполняется при активном бане или существующем
+	// membership. Пред-проверки не нужны — финальная истина в RowsAffected.
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.members (chat_id, user_id, role)
+		SELECT $1, $2, 'member'
+		WHERE NOT EXISTS(
+			SELECT 1 FROM chats.bans
+			WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW())
+		)
+		ON CONFLICT DO NOTHING
+	`, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		// Различаем причину отказа: активный бан, затем membership.
+		var banned bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM chats.bans WHERE chat_id = $1 AND user_id = $2 AND (banned_until IS NULL OR banned_until > NOW()))`,
+			chatID, userID).Scan(&banned); err != nil {
+			return nil, err
+		}
+		if banned {
+			return nil, ErrUserBanned
+		}
+		var isMember bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`,
+			chatID, userID).Scan(&isMember); err != nil {
+			return nil, err
+		}
+		if isMember {
+			return nil, ErrAlreadyMember
+		}
+		return nil, errors.New("member insert conflict without known reason")
+	}
+
+	// 8. Получение и возврат объекта Member
+	var permissions jsonMap
+	var m Member
+	err = tx.QueryRowContext(ctx, `
+		SELECT au.id::text, au.username, COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
+		COALESCE(up.avatar_url, ''), cm.role, cm.permissions, COALESCE(cm.muted_until::text, ''), COALESCE(cm.muted_at::text, ''), cm.joined_at::text
+		FROM auth.users au
+		JOIN chats.members cm ON cm.user_id = au.id
+		LEFT JOIN users.profiles up ON up.user_id = au.id
+		WHERE cm.chat_id = $1 AND au.id = $2
+		`, chatID, userID).Scan(
+		&m.ID,
+		&m.Username,
+		&m.FirstName,
+		&m.LastName,
+		&m.AvatarURL,
+		&m.Role,
+		&permissions,
+		&m.MutedUntil,
+		&m.MutedAt,
+		&m.JoinedAt,
+	)
+	m.Permissions = map[string]any(permissions)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("added member not found after insertion")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// 9. Рассылка WebSocket-события
+	if s.ws != nil {
+		event := MemberAddedEvent{
+			Type:   "chat_member_added",
+			ChatID: chatID,
+			Member: &m,
+		}
+		payload, err := json.Marshal(event)
+		if err != nil {
+			slog.Error("failed to marshal member_added event", "err", err, "chatID", chatID, "userID", userID)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
+	}
+
+	return &m, nil
+}
+
+// BanMember банит пользователя в групповом чате. Если цель — текущий
+// участник, он удаляется из чата в той же транзакции. Не-участника можно
+// забанить превентивно (он обязан существовать в auth.users).
+//
+// Гонки: первым запросом внутри транзакции берётся pg_advisory_xact_lock
+// по паре (chat_id, user_id) — тот же lock берёт AddMember, поэтому
+// параллельные add/ban одной пары сериализуются. Membership и существующий
+// ban перечитываются уже после lock, внутри транзакции.
+//
+// Иерархия: owner банит admin/member, admin — только member (AssertCanModerate).
+// Валидация (UUID, bannedUntil в прошлом, reason длиннее 500 рун) — до любого SQL.
+// Повторный активный ban с теми же bannedUntil и reason — no-op без записей
+// и событий; другие параметры или истёкший ban — upsert chats.bans и событие.
+//
+// WS-события при успехе: chat_member_banned в чат — всегда;
+// chat_member_removed (reason "banned") в чат и адресное chat_member_banned
+// забаненному — только если DELETE membership фактически удалил строку
+// (RowsAffected == 1): при гонке с RemoveMember/LeaveChat ложных событий нет.
+func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string, bannedUntil *time.Time, reason string) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	if bannedUntil != nil && !bannedUntil.After(time.Now()) {
+		return ErrInvalidInput
+	}
+	if utf8.RuneCountInString(reason) > 500 {
+		return ErrInvalidInput
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
+	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
+
+	// Пользователь обязан существовать — и для ban участника, и для
+	// превентивного ban не-участника.
+	var userExists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&userExists); err != nil {
+		return err
+	}
+	if !userExists {
+		return ErrUserNotFound
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	// Remove from chat.
-	_, _ = tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`, chatID, userID)
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO chats.bans (chat_id, user_id, banned_by, reason)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (chat_id, user_id) DO UPDATE SET banned_by = EXCLUDED.banned_by, reason = EXCLUDED.reason, banned_until = NULL, created_at = NOW()
-	`, chatID, userID, actorID, reason)
-	if err != nil {
+
+	// Согласованная блокировка пары (chat, user): AddMember берёт тот же
+	// lock до проверок membership/ban — гонка add/ban исключена.
+	var lockDummy any
+	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
 		return err
 	}
-	return tx.Commit()
+
+	// Membership перечитываем внутри транзакции, после lock.
+	memberToRemove := false
+	var targetRole string
+	err = tx.QueryRowContext(ctx, `
+		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole)
+	switch {
+	case err == nil:
+		if err := AssertCanModerate(actorRole, targetRole); err != nil {
+			return err
+		}
+		memberToRemove = true
+	case errors.Is(err, sql.ErrNoRows):
+		// Цель не участник — превентивный ban.
+	default:
+		return err
+	}
+
+	// Существующий ban тоже перечитываем внутри транзакции (идемпотентность).
+	var existingBannedUntil sql.NullTime
+	var existingReason string
+	err = tx.QueryRowContext(ctx, `
+		SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2
+		`, chatID, userID).Scan(&existingBannedUntil, &existingReason)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil {
+		active := !existingBannedUntil.Valid || existingBannedUntil.Time.After(time.Now())
+		same := existingReason == reason && ((!existingBannedUntil.Valid && bannedUntil == nil) || (existingBannedUntil.Valid && bannedUntil != nil && existingBannedUntil.Time.Equal(*bannedUntil)))
+		if active && same {
+			return nil // повтор с тем же состоянием: ни записи, ни событий
+		}
+	}
+
+	// Участника удаляем из чата; факт удаления определяет состав событий.
+	memberRemoved := false
+	if memberToRemove {
+		res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+		if err != nil {
+			return err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		memberRemoved = affected == 1
+	}
+
+	// Единый upsert: атомарен при гонке ban/unban, всегда затрагивает строку.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (chat_id, user_id) DO UPDATE SET banned_by = $3, reason = $4, banned_until = $5, created_at = NOW()
+		`, chatID, userID, actorID, reason, bannedUntil); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberBanEvent{
+			Type: "chat_member_banned", ChatID: chatID, UserID: userID,
+			ByUserID: actorID, Reason: reason, BannedUntil: bannedUntil,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+		if memberRemoved {
+			removedPayload, _ := json.Marshal(MemberRemovedEvent{
+				Type:   "chat_member_removed",
+				ChatID: chatID,
+				UserID: userID,
+				Reason: "banned",
+			})
+			s.ws.BroadcastToChat(chatID, removedPayload, "")
+			s.ws.BroadcastToUsers([]string{userID}, payload)
+		}
+	}
+	return nil
 }
 
 func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID string) error {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
-	return err
+
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)
+		`, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrUserNotFound
+	}
+
+	// Идемпотентность: событие шлём только если бан реально существовал и удалён
+	res, err := s.db.ExecContext(ctx, `DELETE FROM chats.bans WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return nil
+	}
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberBanEvent{
+			Type: "chat_member_unbanned", ChatID: chatID, UserID: userID, ByUserID: actorID,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	input := leaveChatInput{ChatID: chatID}
+	if err := validate.Struct(input); err != nil {
+		return nil, ErrInvalidInput
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrForbidden
+	}
 	if err != nil {
 		return nil, err
+	}
+	if chatType != "group" {
+		return nil, ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return nil, ErrForbidden
@@ -778,34 +1320,151 @@ func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, 
 	return bans, rows.Err()
 }
 
-func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string) error {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+func (s *Service) MuteMember(ctx context.Context, actorID, chatID, userID string, mutedUntil *time.Time) error {
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	if mutedUntil != nil && !mutedUntil.After(time.Now()) {
+		return ErrInvalidInput
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_until = NOW() + INTERVAL '365 days'
-		WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'
-	`, chatID, userID)
-	return err
+	var targetRole string
+	var mutedAt sql.NullTime
+	var currentMutedUntil sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMemberNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if err := AssertCanModerate(actorRole, targetRole); err != nil {
+		return err
+	}
+	sameUntil := (!currentMutedUntil.Valid && mutedUntil == nil) || (currentMutedUntil.Valid && mutedUntil != nil && currentMutedUntil.Time.Equal(*mutedUntil))
+	if mutedAt.Valid && sameUntil {
+		return nil
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE chats.members SET muted_at = NOW(), muted_until = $3 WHERE chat_id = $1 AND user_id = $2 AND (muted_at IS NULL OR muted_until IS DISTINCT FROM $3)`, chatID, userID, mutedUntil)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// Гонка: состояние изменилось между SELECT и UPDATE. Различаем
+		// «участника удалили» и «нужное состояние уже достигнуто» —
+		// событие публикуем только при фактическом изменении.
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrMemberNotFound
+		}
+		return nil
+	}
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberMuteEvent{
+			Type:       "chat_member_muted",
+			ChatID:     chatID,
+			UserID:     userID,
+			ByUserID:   actorID,
+			MutedUntil: mutedUntil,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) UnmuteMember(ctx context.Context, actorID, chatID, userID string) error {
-	actorRole, err := s.memberRole(ctx, actorID, chatID)
+	input := muteMemberInput{ActorID: actorID, ChatID: chatID, UserID: userID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+	chatType, actorRole, err := s.getChatInfo(ctx, actorID, chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrForbidden
+	}
 	if err != nil {
 		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType
 	}
 	if actorRole != "owner" && actorRole != "admin" {
 		return ErrForbidden
 	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE chats.members SET muted_until = NULL
-		WHERE chat_id = $1 AND user_id = $2
-	`, chatID, userID)
-	return err
+
+	var targetRole string
+	var mutedAt sql.NullTime
+	var currentMutedUntil sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&targetRole, &mutedAt, &currentMutedUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMemberNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := AssertCanModerate(actorRole, targetRole); err != nil {
+		return err
+	}
+	if !mutedAt.Valid {
+		return nil
+	}
+
+	res, err := s.db.ExecContext(ctx, `UPDATE chats.members SET muted_at = NULL, muted_until = NULL	WHERE chat_id = $1 AND user_id = $2 AND muted_at IS NOT NULL`, chatID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// Гонка: состояние изменилось между SELECT и UPDATE. Различаем
+		// «участника удалили» и «нужное состояние уже достигнуто» —
+		// событие публикуем только при фактическом изменении.
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrMemberNotFound
+		}
+		return nil
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(MemberMuteEvent{
+			Type:     "chat_member_unmuted",
+			ChatID:   chatID,
+			UserID:   userID,
+			ByUserID: actorID,
+		})
+		s.ws.BroadcastToChat(chatID, payload, "")
+	}
+	return nil
 }
 
 func (s *Service) MembersOnline(ctx context.Context, userID, chatID string) ([]string, error) {
@@ -882,19 +1541,20 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 	for rows.Next() {
 		var chat Chat
 		var unreadCount int
-		var lmSenderID, lmContent, lmType, lmSender sql.NullString
+		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
-			&unreadCount, &lmSenderID, &lmContent, &lmType, &lmSender,
+			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
 		); err != nil {
 			return nil, err
 		}
 		chat.UnreadCount = unreadCount
 		if lmContent.Valid || lmType.Valid {
 			chat.LastMessage = &LastMessagePreview{
+				ID:         lmID.String,
 				Content:    lmContent.String,
 				Type:       lmType.String,
 				SenderID:   lmSenderID.String,
@@ -939,6 +1599,9 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err != nil {
 		return nil, err
 	}
+	if err := s.hydrateMessagesReactions(ctx, userID, messages); err != nil {
+		return nil, err
+	}
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
@@ -981,10 +1644,10 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 	var role string
 	var isMuted sql.NullBool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT cm.role, 
+		SELECT cm.role,
 		       (
-		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR 
-		         (cm.role = 'member' AND cm.muted_until > NOW())
+		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
+		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
 		       )
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
@@ -998,7 +1661,7 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		return Message{}, err
 	}
 	if isMuted.Valid && isMuted.Bool {
-		return Message{}, ErrForbidden
+		return Message{}, ErrMemberMuted
 	}
 
 	var replyToSQL sql.NullString
@@ -1130,41 +1793,167 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	return msg, nil
 }
 
-func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) error {
+func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (*Message, error) {
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
 	var chatID string
+	var createdAt time.Time
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	// Require sender to be a current member to prevent deletion after being kicked.
-	err := s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE messages.messages AS m
 		SET deleted_at = NOW()
 		FROM chats.members AS cm
 		WHERE m.id = $1 AND (m.sender_id = $2 OR cm.role = 'owner' OR (cm.role = 'admin' AND cm.permissions->>'can_delete_messages' = 'true')) AND m.deleted_at IS NULL
 		  AND cm.chat_id = m.chat_id AND cm.user_id = $2
-		RETURNING m.chat_id::text
-	`, messageID, userID).Scan(&chatID)
+		RETURNING m.chat_id::text, m.created_at
+	`, messageID, userID).Scan(&chatID, &createdAt)
 
-	if errors.Is(err, sql.ErrNoRows) {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
 		exists, existsErr := s.messageExistsForMember(ctx, userID, messageID)
 		if existsErr != nil {
-			return existsErr
+			return nil, existsErr
 		}
 		if exists {
-			return ErrForbidden
+			return nil, ErrForbidden
 		}
-		return ErrNotFound
+		return nil, ErrNotFound
+
+	case err != nil:
+		return nil, err
 	}
+
+	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{
-			"type":      "message_deleted",
-			"chatId":    chatID,
-			"messageId": messageID,
+			"type":            "message_deleted",
+			"chatId":          chatID,
+			"messageId":       messageID,
+			"previousMessage": previousMessage,
 		})
 		s.ws.BroadcastToChat(chatID, payload, userID)
 	}
 
+	return lastMessage, nil
+}
+
+// loadMessageAfterDelete returns either the newest message before the deleted
+// message (when before is non-nil), or the newest remaining message in the chat.
+func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string) (*Message, error) {
+	var msg Message
+	var replyTo sql.NullString
+	var metadataBytes, reactionsBytes []byte
+	var deletedAt sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
+		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
+		       m.content, m.type, m.reply_to::text, m.metadata,
+		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text,
+		       COALESCE((
+		           SELECT jsonb_agg(jsonb_build_object(
+		               'emoji', grouped.emoji,
+		               'count', grouped.reaction_count,
+		               'myReaction', grouped.my_reaction
+		           ) ORDER BY grouped.reaction_count DESC, grouped.emoji)
+		           FROM (
+		               SELECT r.emoji, COUNT(*) AS reaction_count,
+		                      BOOL_OR(r.user_id = $4) AS my_reaction
+		               FROM messages.reactions r
+		               WHERE r.message_id = m.id
+		               GROUP BY r.emoji
+		           ) grouped
+		       ), '[]'::jsonb)
+		FROM messages.messages m
+		LEFT JOIN auth.users au ON au.id = m.sender_id
+		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+		LEFT JOIN messages.pins p ON p.message_id = m.id
+		WHERE m.chat_id = $1
+		  AND m.deleted_at IS NULL
+		  AND ($2::timestamptz IS NULL OR (m.created_at, m.id) < ($2, $3::uuid))
+		ORDER BY m.created_at DESC, m.id DESC
+		LIMIT 1
+	`, chatID, before, messageID, userID).Scan(
+		&msg.ID, &msg.ChatID, &msg.SenderID,
+		&msg.SenderName, &msg.SenderAvatar,
+		&msg.Content, &msg.Type, &replyTo, &metadataBytes,
+		&msg.IsPinned, &msg.IsEdited,
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &reactionsBytes,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if replyTo.Valid {
+		msg.ReplyTo = &replyTo.String
+		msg.ReplyToMessageID = msg.ReplyTo
+	}
+	if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(reactionsBytes, &msg.Reactions); err != nil {
+		return nil, err
+	}
+	msg.SenderFirstName = msg.SenderName
+	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
+func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message) error {
+	if msg.ReplyTo != nil {
+		var name string
+		err := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+			FROM messages.messages m
+			LEFT JOIN auth.users au ON au.id = m.sender_id
+			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+			WHERE m.id = $1
+		`, *msg.ReplyTo).Scan(&name)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		msg.ReplySenderName = name
+		msg.ReplyToSenderName = name
+	}
+	if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
+		msg.IsForwarded = true
+		if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
+			msg.ForwardedSenderName = name
+		}
+		if msg.ForwardedSenderName == "" {
+			_ = tx.QueryRowContext(ctx, `
+				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				FROM messages.messages m
+				LEFT JOIN auth.users au ON au.id = m.sender_id
+				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+				WHERE m.id::text = $1
+			`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+		}
+	}
 	return nil
 }
 
@@ -1251,8 +2040,51 @@ type Reaction struct {
 	MyReaction bool   `json:"myReaction"`
 }
 
+// ReactionStatus represents the outcome of a reaction toggle operation.
+// It is returned only when the operation succeeds (error == nil).
+type ReactionStatus string
+
+const (
+	// StatusAdded indicates that a new reaction was successfully inserted
+	// for the user and message.
+	StatusAdded ReactionStatus = "added"
+
+	// StatusRemoved indicates that an existing reaction was successfully
+	// deleted (the user toggled off the same emoji).
+	StatusRemoved ReactionStatus = "removed"
+
+	// StatusReplaced indicates that the user changed their reaction from
+	// one emoji to another (update of the existing record).
+	StatusReplaced ReactionStatus = "replaced"
+)
+
+// ReactionResponse – reaction without myReaction flag for WebSocket payload
+type ReactionResponse struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+}
+
+// ChangeResponse – information about the reaction change
+type ChangeResponse struct {
+	Action        string  `json:"action"`        // "added", "removed", "replaced"
+	Emoji         *string `json:"emoji"`         // current emoji (nil if removed)
+	PreviousEmoji *string `json:"previousEmoji"` // previous emoji (nil if none)
+}
+
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.listReactionsInternal(ctx, s.db, messageID, userID)
+}
+
+// Querier is an interface that both *sql.DB and *sql.Tx implement.
+type Querier interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+}
+
+// listReactionsInternal executes the aggregation query using any Querier
+// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
 		FROM messages.reactions
 		WHERE message_id = $1
@@ -1260,13 +2092,16 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
+		log.Printf("[chat-service-listReactionsInternal]:(error during DB request): %v", err)
 		return nil, err
 	}
 	defer rows.Close()
+
 	var result []Reaction
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
+			log.Printf("[chat-service-listReactionsInternal]:(error during rows scan): %v", err)
 			return nil, err
 		}
 		result = append(result, r)
@@ -1274,61 +2109,254 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 	return result, rows.Err()
 }
 
-// ToggleReaction adds or removes a reaction (toggle semantics).
-// Returns (added bool, updated reactions, error).
-func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (bool, []Reaction, error) {
-	if emoji == "" {
-		return false, nil, ErrInvalidInput
-	}
-	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		return false, nil, ErrInvalidInput
-	}
-
-	var chatID string
-	if err := s.db.QueryRowContext(ctx, `SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`, messageID).Scan(&chatID); errors.Is(err, sql.ErrNoRows) {
-		return false, nil, ErrNotFound
-	} else if err != nil {
-		return false, nil, err
-	}
-
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
-		if err != nil {
-			return false, nil, err
-		}
-		return false, nil, ErrForbidden
-	}
-
-	var existingID string
-	err := s.db.QueryRowContext(ctx, `SELECT id::text FROM messages.reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3`, messageID, userID, emoji).Scan(&existingID)
-	added := errors.Is(err, sql.ErrNoRows)
-	if added {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`, messageID, userID, emoji); err != nil {
-			return false, nil, err
-		}
-	} else if err == nil {
-		if _, err := s.db.ExecContext(ctx, `DELETE FROM messages.reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3`, messageID, userID, emoji); err != nil {
-			return false, nil, err
-		}
-	} else {
-		return false, nil, err
-	}
-
-	reactions, err := s.ListReactions(ctx, userID, messageID)
+// isMemberWithQuerier executes the query using any Querier
+// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
+	var exists bool
+	err := q.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
+		userID, chatID,
+	).Scan(&exists)
 	if err != nil {
-		return added, nil, err
+		return false, err
+	}
+	return exists, nil
+}
+
+// ToggleReaction adds or removes a reaction (toggle semantics).
+// Returns:
+//   - ReactionStatus: "added", "removed", "replaced"
+//   - string: current emoji for response
+//   - []Reaction: aggregated reactions with the myReaction flag.
+//   - error: if we have error.
+func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
+	// check - if emoji not empty
+	if emoji == "" {
+		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		return "", "", nil, ErrInvalidInput
+	}
+	// check the length of emoji and symbols
+	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
+		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		return "", "", nil, ErrInvalidInput
 	}
 
+	// 1. Start transaction with READ COMMITTED isolation level
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to begin transaction: %v", err)
+		return "", "", nil, fmt.Errorf("begin tx: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 2. Check message existence and get chatID inside transaction
+	var chatID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		log.Printf("[chat-service-ToggleReaction]:chat was not found: %v", err)
+		return "", "", nil, ErrNotFound
+	} else if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to get chatID: %v", err)
+		return "", "", nil, fmt.Errorf("get chatID: %w", err)
+	}
+
+	// 3. Check membership inside transaction
+	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
+			return "", "", nil, fmt.Errorf("check membership: %w", err)
+		}
+		log.Printf("[chat-service-ToggleReaction]:user not a member: %v", userID)
+		return "", "", nil, ErrForbidden
+	}
+
+	// 4. Acquire advisory lock for the (message_id, user_id) pair
+	// pg_advisory_xact_lock blocks until lock is available or timeout occurs
+	_, err = tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock($1)`,
+		getAdvisoryKey(messageID, userID),
+	)
+	if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
+		return "", "", nil, fmt.Errorf("acquire lock: %w", err)
+	}
+
+	// 5. Now safely query the current reaction (with lock held)
+	var currentEmoji string
+	err = tx.QueryRowContext(ctx,
+		`SELECT emoji FROM messages.reactions 
+		 WHERE message_id = $1 AND user_id = $2`,
+		messageID, userID,
+	).Scan(&currentEmoji)
+
+	hasCurrent := true
+	if errors.Is(err, sql.ErrNoRows) {
+		hasCurrent = false
+	} else if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to get current reaction: %v", err)
+		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
+	}
+
+	// Store the previous emoji (if any) as a pointer
+	var previousEmoji *string
+	if hasCurrent {
+		prev := currentEmoji
+		previousEmoji = &prev
+	} else {
+		previousEmoji = nil
+	}
+
+	// create status variable
+	var status ReactionStatus
+
+	// 6. Perform the appropriate action based on the current state
+	switch {
+	case !hasCurrent:
+		// No reaction yet – insert the new one
+		result, execErr := tx.ExecContext(ctx,
+			`INSERT INTO messages.reactions (message_id, user_id, emoji) 
+			 VALUES ($1, $2, $3)`,
+			messageID, userID, emoji,
+		)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("insert reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "insert reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = emoji
+		status = StatusAdded
+
+	case currentEmoji == emoji:
+		// Same emoji – remove the reaction (toggle off)
+		result, execErr := tx.ExecContext(ctx,
+			`DELETE FROM messages.reactions 
+			 WHERE message_id = $1 AND user_id = $2`,
+			messageID, userID,
+		)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("delete reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "delete reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = ""
+		status = StatusRemoved
+
+	default:
+		// Different emoji – update the existing one
+		result, execErr := tx.ExecContext(ctx,
+			`UPDATE messages.reactions SET emoji = $1 
+			 WHERE message_id = $2 AND user_id = $3`,
+			emoji, messageID, userID,
+		)
+		if execErr != nil {
+			return "", "", nil, fmt.Errorf("update reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "update reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = emoji
+		status = StatusReplaced
+	}
+
+	// 7. Fetch the aggregated counts per emoji for the message
+	reactions, err := s.listReactionsInternal(ctx, tx, messageID, userID)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("get aggregates: %w", err)
+	}
+
+	// 8. Commit transaction (automatically releases advisory lock)
+	if err = tx.Commit(); err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to commit transaction: %v", err)
+		return "", "", nil, fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+
+	// 9. Build the change response
+	change := ChangeResponse{
+		Action: string(status),
+	}
+
+	switch status {
+	case StatusAdded:
+		change.Emoji = &emoji
+		change.PreviousEmoji = nil
+	case StatusRemoved:
+		change.Emoji = nil
+		change.PreviousEmoji = previousEmoji
+	case StatusReplaced:
+		change.Emoji = &emoji                // new emoji
+		change.PreviousEmoji = previousEmoji // old emoji
+	}
+
+	// 10. Convert reactions to response format without myReaction flag
+	reactionResponses := make([]ReactionResponse, len(reactions))
+	for i, r := range reactions {
+		reactionResponses[i] = ReactionResponse{
+			Emoji: r.Emoji,
+			Count: r.Count,
+		}
+	}
+
+	// 11. Send WebSocket notification
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{
+		payload, err := json.Marshal(map[string]any{
 			"type":      "reaction_updated",
 			"chatId":    chatID,
 			"messageId": messageID,
-			"reactions": reactions,
+			"actorId":   userID,
+			"change":    change,
+			"reactions": reactionResponses,
 		})
-		s.ws.BroadcastToChat(chatID, payload, "")
+		if err != nil {
+			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
 	}
 
-	return added, reactions, nil
+	return status, currentEmoji, reactions, nil
+}
+
+func requireOneAffectedRow(result sql.Result, operation string) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s rows affected: %w", operation, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("%s: expected 1 affected row, got %d", operation, affected)
+	}
+	return nil
+}
+
+// getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
+func getAdvisoryKey(messageID, userID string) int64 {
+	// Combine both IDs into a single string and hash to 64-bit
+	// Using FNV-1a 64-bit hash for good distribution and low collision rate
+	h := fnv.New64a()
+	h.Write([]byte(messageID))
+	h.Write([]byte(":"))
+	h.Write([]byte(userID))
+
+	// FNV-1a returns uint64, convert to int64
+	// PostgreSQL advisory locks work with signed 64-bit integers
+	return int64(h.Sum64())
 }
 
 // Message pin types.
@@ -1452,25 +2480,15 @@ func (s *Service) ListPins(
 	return pins, nil
 }
 
-func validateUUID(ids ...string) error {
-	for _, id := range ids {
-		if _, err := uuid.Parse(id); err != nil {
-			return ErrInvalidInput
-		}
-	}
-	return nil
-}
-
 func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID string) error {
-
-	if err := validateUUID(chatID, messageID); err != nil {
-		return err
-	}
 
 	// Проверяет, что чат существует и что пользователь состоит в чате. Возвращает тип чата, роль пользователя и ошибку.
 	chatType, role, err := s.getChatInfo(ctx, userID, chatID)
 
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrForbidden
+		}
 		return err
 	}
 
@@ -1507,21 +2525,41 @@ func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID stri
 	}
 
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{"type": "message_pinned", "chatId": chatID, "messageId": messageID})
-		s.ws.BroadcastToChat(chatID, payload, "")
+		pins, err := s.ListPins(ctx, userID, chatID)
+		if err == nil {
+			for _, pin := range pins {
+				if pin.MessageID != messageID {
+					continue
+				}
+				payload, marshalErr := messagePinnedPayload(pin)
+				if marshalErr == nil {
+					s.ws.BroadcastToChat(chatID, payload, "")
+				}
+				break
+			}
+		}
 	}
 	return nil
 }
 
+func messagePinnedPayload(pin Pin) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"type":      "message_pinned",
+		"chatId":    pin.ChatID,
+		"messageId": pin.MessageID,
+		"pin":       pin,
+	})
+}
+
 func (s *Service) UnpinMessage(ctx context.Context, userID, chatID, messageID string) error {
-	if err := validateUUID(chatID, messageID); err != nil {
-		return err
-	}
 
 	// Проверяет, что чат существует и что пользователь состоит в чате. Возвращает тип чата, роль пользователя и ошибку.
 	chatType, role, err := s.getChatInfo(ctx, userID, chatID)
 
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrForbidden
+		}
 		return err
 	}
 
@@ -1671,4 +2709,226 @@ func (s *Service) GetMlsState(ctx context.Context, chatID string) (int64, string
 		return 0, "", nil
 	}
 	return epoch, treeState.String, err
+}
+
+type leaveChatInput struct {
+	ChatID string `validate:"required,uuid"`
+}
+
+type MemberRemovedEvent struct {
+	Type   string `json:"type"`
+	ChatID string `json:"chatId"`
+	UserID string `json:"userId"`
+	Reason string `json:"reason"`
+}
+
+func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
+	input := leaveChatInput{ChatID: chatID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+
+	role, err := s.memberRole(ctx, userID, chatID)
+	if err != nil {
+		return err
+	}
+	if role == "owner" {
+		return ErrOwnershipTransferRequired
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	var recipients []string
+	for rows.Next() {
+		var memberID string
+		if err := rows.Scan(&memberID); err != nil {
+			_ = rows.Close()
+			_ = tx.Rollback()
+			return err
+		}
+		recipients = append(recipients, memberID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		_ = tx.Rollback()
+		return err
+	}
+	_ = rows.Close()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		_ = tx.Rollback()
+		return ErrForbidden
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	if s.ws != nil {
+		event := MemberRemovedEvent{
+			Type:   "chat_member_removed",
+			ChatID: chatID,
+			UserID: userID,
+			Reason: "left",
+		}
+		payload, err := json.Marshal(event)
+		if err != nil {
+			slog.Error("failed to marshal member_removed event", "err", err, "chatID", chatID, "userID", userID)
+		} else {
+			s.ws.BroadcastToUsers(recipients, payload)
+		}
+	}
+	return nil
+}
+
+type transferOwnershipInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, targetUserID string) error {
+	// 1. Валидация UUID
+	input := transferOwnershipInput{ChatID: chatID, UserID: targetUserID}
+	if err := validate.Struct(input); err != nil {
+		return ErrInvalidInput
+	}
+
+	// 2. Цель ≠ actor
+	if targetUserID == actorID {
+		return ErrInvalidInput
+	}
+
+	// 3. Транзакция: блокируем чат и membership-строку target,
+	// проверяем актуального владельца и членство target, обновляем роли.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	var currentOwnerID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID)
+	if err == sql.ErrNoRows {
+		_ = tx.Rollback()
+		return ErrNotFound
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if currentOwnerID != actorID {
+		_ = tx.Rollback()
+		return ErrOwnershipConflict
+	}
+
+	var targetRole string
+	err = tx.QueryRowContext(ctx,
+		`SELECT role FROM chats.members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`,
+		chatID, targetUserID).Scan(&targetRole)
+	if err == sql.ErrNoRows {
+		_ = tx.Rollback()
+		return ErrNotMember
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	// 4.1. Обновить chats.chats.owner_id
+	res, err := tx.ExecContext(ctx,
+		`UPDATE chats.chats SET owner_id = $1, updated_at = NOW() WHERE id = $2`,
+		targetUserID, chatID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n != 1 {
+		_ = tx.Rollback()
+		return ErrNotFound
+	}
+
+	// 4.2. Новый owner в members
+	res, err = tx.ExecContext(ctx,
+		`UPDATE chats.members SET role = 'owner' WHERE chat_id = $1 AND user_id = $2`,
+		chatID, targetUserID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	n, err = res.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n != 1 {
+		_ = tx.Rollback()
+		return ErrNotMember
+	}
+
+	// 4.3. Прежний owner в member
+	res, err = tx.ExecContext(ctx,
+		`UPDATE chats.members SET role = 'member' WHERE chat_id = $1 AND user_id = $2`,
+		chatID, actorID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	n, err = res.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n != 1 {
+		_ = tx.Rollback()
+		return ErrOwnershipConflict
+	}
+
+	return tx.Commit()
+}
+
+// AssertCanModerate проверяет иерархию ролей: owner модерирует admin/member,
+// admin — только member, member — никого.
+func AssertCanModerate(actorRole, targetRole string) error {
+	switch actorRole {
+	case "owner":
+		if targetRole == "owner" {
+			return ErrCannotModerateTarget
+		}
+	case "admin":
+		if targetRole != "member" {
+			return ErrCannotModerateTarget
+		}
+	default:
+		return ErrCannotModerateTarget
+	}
+	return nil
 }

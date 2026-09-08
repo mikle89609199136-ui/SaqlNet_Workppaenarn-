@@ -4,3 +4,22 @@ Error:
     application/json:
       schema:
         $ref: './schemas.yaml#/Error'
+FileTooLarge:
+  description: Media payload exceeds the configured upload limit
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [error]
+        properties:
+          error:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string, enum: [file_too_large] }
+              message: { type: string, example: file exceeds 100 MB limit }
+              requestId: { type: string }
+      example:
+        error:
+          code: file_too_large
+          message: file exceeds 100 MB limit

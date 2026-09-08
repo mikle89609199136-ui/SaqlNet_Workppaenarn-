@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -15,10 +16,18 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
+
+	"github.com/go-playground/validator/v10"
 )
 
 type Handler struct {
 	service *Service
+}
+
+var validate *validator.Validate
+
+func init() {
+	validate = validator.New()
 }
 
 func NewHandler(service *Service) *Handler {
@@ -138,7 +147,32 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		respondSuccess(w, r, h.service.AddMember(r.Context(), current.ID, chatID, input.UserID))
+		member, err := h.service.AddMember(r.Context(), current.ID, chatID, input.UserID)
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
+		case errors.Is(err, ErrInvalidChatType):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+		case errors.Is(err, ErrUserNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", err.Error())
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+		case errors.Is(err, ErrAlreadyMember):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "already_member", err.Error())
+		case errors.Is(err, ErrUserBanned):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "user_banned", err.Error())
+		case err != nil:
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to add member")
+		default:
+			response := MemberAddedEvent{
+				Type:   "chat_member_added",
+				ChatID: chatID,
+				Member: member,
+			}
+			httpx.JSON(w, http.StatusCreated, response)
+		}
 	case suffix == "/members-online" && r.Method == http.MethodGet:
 		ids, err := h.service.MembersOnline(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -159,6 +193,14 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 			return
 		}
+		if errors.Is(err, ErrInvalidInput) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+			return
+		}
+		if errors.Is(err, ErrInvalidChatType) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "fetch failed")
 			return
@@ -167,6 +209,44 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			bans = []Ban{}
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"bans": bans})
+	case suffix == "/leave" && r.Method == http.MethodPost:
+		err := h.service.LeaveChat(r.Context(), current.ID, chatID)
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+		case errors.Is(err, ErrOwnershipTransferRequired):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "ownership_transfer_required", err.Error())
+		case err != nil:
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to leave chat")
+		default:
+			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
+		}
+	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:
+		var input struct {
+			UserID string `json:"userId"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		err := h.service.TransferOwnership(r.Context(), current.ID, chatID, input.UserID)
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+		case errors.Is(err, ErrNotMember):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "not_member", err.Error())
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
+		case errors.Is(err, ErrOwnershipConflict):
+			httpx.ErrorJSON(w, r, http.StatusConflict, "ownership_conflict", err.Error())
+		case err != nil:
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "transfer ownership failed")
+		default:
+			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
+		}
 	case strings.HasPrefix(suffix, "/members/"):
 		memberID, action := parseMemberAction(suffix)
 		if memberID == "" {
@@ -185,10 +265,14 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/ban" && r.Method == http.MethodPost {
 			var input struct {
-				Reason string `json:"reason"`
+				BannedUntil *time.Time `json:"bannedUntil"`
+				Reason      string     `json:"reason"`
 			}
-			_ = decode(w, r, &input)
-			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.Reason))
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid ban body")
+				return
+			}
+			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.BannedUntil, input.Reason))
 			return
 		}
 		if action == "/unban" && r.Method == http.MethodPost {
@@ -196,11 +280,28 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if action == "/mute" && r.Method == http.MethodPost {
-			respondSuccess(w, r, h.service.MuteMember(r.Context(), current.ID, chatID, memberID))
+			var input struct {
+				MutedUntil *time.Time `json:"mutedUntil"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mute body")
+				return
+			}
+			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, input.MutedUntil)
+			if errors.Is(err, ErrNotFound) {
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
+				return
+			}
+			respondSuccess(w, r, err)
 			return
 		}
 		if action == "/unmute" && r.Method == http.MethodPost {
-			respondSuccess(w, r, h.service.UnmuteMember(r.Context(), current.ID, chatID, memberID))
+			err := h.service.UnmuteMember(r.Context(), current.ID, chatID, memberID)
+			if errors.Is(err, ErrNotFound) {
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
+				return
+			}
+			respondSuccess(w, r, err)
 			return
 		}
 		if action == "" && r.Method == http.MethodDelete {
@@ -400,8 +501,28 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 		return
 	}
+	if errors.Is(err, ErrInvalidChatType) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "invalid chat type")
+		return
+	}
+	if errors.Is(err, ErrMemberNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
+		return
+	}
+	if errors.Is(err, ErrStateUnchanged) {
+		httpx.ErrorJSON(w, r, http.StatusConflict, "state_not_changed", "state was not changed")
+		return
+	}
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "resource not found")
+		return
+	}
+	if errors.Is(err, ErrCannotModerateTarget) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "cannot_moderate_target", "cannot moderate target")
+		return
+	}
+	if errors.Is(err, ErrUserNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
 		return
 	}
 	if err != nil {
@@ -533,6 +654,14 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, input.Content, input.Type, input.ReplyTo, metadata)
+		if errors.Is(err, ErrMemberMuted) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
+			return
+		}
+		if errors.Is(err, ErrForbidden) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			return
+		}
 		if err != nil {
 			slog.Error("send message failed", "err", err, "chatId", targetID, "userId", current.ID, "type", input.Type)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to send message")
@@ -553,8 +682,15 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, msg)
 	case suffix == "" && r.Method == http.MethodDelete:
-		err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
-		respondSuccess(w, r, err)
+		lastMessage, err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
+		if err != nil {
+			respondSuccess(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"success":     true,
+			"lastMessage": lastMessage,
+		})
 	case suffix == "/forward" && r.Method == http.MethodPost:
 		var input struct {
 			TargetChatID string `json:"targetChatId"`
@@ -590,24 +726,37 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		added, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if errors.Is(err, ErrInvalidInput) {
-			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
-			return
-		}
+		// Call the service layer to toggle the user's reaction on the target message.
+		// Returns the operation status, the current emoji after toggling, the updated reaction list, and any error.
+		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			// Handle known domain errors with appropriate HTTP status codes and user-friendly messages.
+			switch {
+			case errors.Is(err, ErrNotFound):
+				// The target message does not exist or was deleted.
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
+			case errors.Is(err, ErrForbidden):
+				// The current user is not a member of the chat, so they cannot react.
+				httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			case errors.Is(err, ErrInvalidInput):
+				// The provided emoji is empty or contains invalid characters.
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
+			default:
+				// Any unexpected error (e.g., database failures) is treated as internal server error.
+				log.Printf("[chat-handler-Messages]:unexpected error toggling reaction:%v", err)
+				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			}
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"added": added, "reactions": reactions})
+
+		// Success: return the action result, the current emoji (empty if removed), and the aggregated reaction list.
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"action":       status,       // "added", "removed", or "replaced"
+			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
+			"reactions":    reactions,    // full list of emoji counts with myReaction flags
+		})
+
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
@@ -621,6 +770,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
+
 	current := authctx.MustUser(r)
 	chatID, suffix := parseChatPath(r.URL.Path)
 	if chatID == "" || suffix != "/pins" && !strings.HasPrefix(suffix, "/pins/") {
@@ -647,11 +797,23 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	pinsData := PinsData{ChatID: chatID, MessageID: messageID}
+
+	if err := validate.Struct(pinsData); err != nil {
+		if _, ok := err.(validator.ValidationErrors); ok {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_input", "invalid chatId or messageId")
+			return
+		}
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "validation failed")
+		return
+	}
+
 	switch r.Method {
 	case http.MethodPost:
-		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, chatID, messageID))
+		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))
 	case http.MethodDelete:
-		respondSuccess(w, r, h.service.UnpinMessage(r.Context(), current.ID, chatID, messageID))
+		respondSuccess(w, r, h.service.UnpinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))
 	default:
 		methodNotAllowed(w, r)
 	}

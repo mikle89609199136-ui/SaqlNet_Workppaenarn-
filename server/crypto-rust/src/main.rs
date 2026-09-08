@@ -178,11 +178,23 @@ async fn main() {
         .route("/internal/v1/encrypt", post(encrypt))
         .route("/internal/v1/decrypt", post(decrypt))
         .route("/api/v2/crypto/verify-key", post(verify_key))
-        .route("/api/v2/crypto/mls/validate-keypackage", post(validate_keypackage))
+        .route(
+            "/api/v2/crypto/mls/validate-keypackage",
+            post(validate_keypackage),
+        )
         .route("/api/v2/crypto/mls/validate-commit", post(validate_commit))
-        .route("/api/v2/crypto/mls/validate-welcome", post(validate_welcome))
-        .route("/api/v2/crypto/mls/validate-proposal", post(validate_proposal))
-        .route("/api/v2/crypto/signal/validate-registration", post(validate_signal_registration));
+        .route(
+            "/api/v2/crypto/mls/validate-welcome",
+            post(validate_welcome),
+        )
+        .route(
+            "/api/v2/crypto/mls/validate-proposal",
+            post(validate_proposal),
+        )
+        .route(
+            "/api/v2/crypto/signal/validate-registration",
+            post(validate_signal_registration),
+        );
 
     let port = env::var("CRYPTO_PORT")
         .ok()
@@ -200,7 +212,11 @@ async fn health() -> Json<serde_json::Value> {
 
 async fn hash_password(Json(payload): Json<PasswordRequest>) -> ApiResult<HashResponse> {
     if payload.password.len() < 6 || payload.password.len() > 1024 {
-        return Err(error(StatusCode::BAD_REQUEST, "invalid_password", "password length must be between 6 and 1024"));
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "invalid_password",
+            "password length must be between 6 and 1024",
+        ));
     }
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
@@ -211,8 +227,13 @@ async fn hash_password(Json(payload): Json<PasswordRequest>) -> ApiResult<HashRe
 }
 
 async fn verify_password(Json(payload): Json<VerifyPasswordRequest>) -> ApiResult<ValidResponse> {
-    let parsed = PasswordHash::new(&payload.hash)
-        .map_err(|_| error(StatusCode::BAD_REQUEST, "invalid_hash", "password hash is malformed"))?;
+    let parsed = PasswordHash::new(&payload.hash).map_err(|_| {
+        error(
+            StatusCode::BAD_REQUEST,
+            "invalid_hash",
+            "password hash is malformed",
+        )
+    })?;
     let valid = Argon2::default()
         .verify_password(payload.password.as_bytes(), &parsed)
         .is_ok();
@@ -221,7 +242,11 @@ async fn verify_password(Json(payload): Json<VerifyPasswordRequest>) -> ApiResul
 
 async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueTokenResponse> {
     if payload.subject.is_empty() || payload.username.is_empty() {
-        return Err(error(StatusCode::BAD_REQUEST, "invalid_claims", "subject and username are required"));
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "invalid_claims",
+            "subject and username are required",
+        ));
     }
     let issued_at = unix_time();
     let expires_at = issued_at + token_ttl();
@@ -233,7 +258,8 @@ async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueT
         expires_at,
     };
     let header = general_purpose::URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
-    let body = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).map_err(internal)?);
+    let body =
+        general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).map_err(internal)?);
     let signing_input = format!("{header}.{body}");
     let signature = sign(signing_input.as_bytes())?;
     Ok(Json(IssueTokenResponse {
@@ -245,22 +271,45 @@ async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueT
 async fn verify_token(Json(payload): Json<VerifyTokenRequest>) -> ApiResult<VerifyTokenResponse> {
     let parts: Vec<&str> = payload.token.split('.').collect();
     if parts.len() != 3 {
-        return Err(error(StatusCode::UNAUTHORIZED, "invalid_token", "token is malformed"));
+        return Err(error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_token",
+            "token is malformed",
+        ));
     }
     let signing_input = format!("{}.{}", parts[0], parts[1]);
     let expected_signature = sign(signing_input.as_bytes())?;
     let supplied_signature = parts[2];
     if !constant_time_eq(expected_signature.as_bytes(), supplied_signature.as_bytes()) {
-        return Err(error(StatusCode::UNAUTHORIZED, "invalid_token", "token signature is invalid"));
+        return Err(error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_token",
+            "token signature is invalid",
+        ));
     }
-    let claims: TokenClaims = serde_json::from_slice(
-        &general_purpose::URL_SAFE_NO_PAD
-            .decode(parts[1])
-            .map_err(|_| error(StatusCode::UNAUTHORIZED, "invalid_token", "token body is malformed"))?,
-    )
-    .map_err(|_| error(StatusCode::UNAUTHORIZED, "invalid_token", "token claims are malformed"))?;
+    let claims: TokenClaims =
+        serde_json::from_slice(&general_purpose::URL_SAFE_NO_PAD.decode(parts[1]).map_err(
+            |_| {
+                error(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_token",
+                    "token body is malformed",
+                )
+            },
+        )?)
+        .map_err(|_| {
+            error(
+                StatusCode::UNAUTHORIZED,
+                "invalid_token",
+                "token claims are malformed",
+            )
+        })?;
     if claims.expires_at <= unix_time() {
-        return Err(error(StatusCode::UNAUTHORIZED, "token_expired", "token has expired"));
+        return Err(error(
+            StatusCode::UNAUTHORIZED,
+            "token_expired",
+            "token has expired",
+        ));
     }
     Ok(Json(VerifyTokenResponse {
         subject: claims.subject,
@@ -273,35 +322,67 @@ async fn verify_token(Json(payload): Json<VerifyTokenRequest>) -> ApiResult<Veri
 async fn encrypt(Json(payload): Json<CipherRequest>) -> ApiResult<CipherResponse> {
     let plaintext = general_purpose::STANDARD
         .decode(payload.data)
-        .map_err(|_| error(StatusCode::BAD_REQUEST, "invalid_base64", "data is not valid base64"))?;
+        .map_err(|_| {
+            error(
+                StatusCode::BAD_REQUEST,
+                "invalid_base64",
+                "data is not valid base64",
+            )
+        })?;
     let mut nonce_bytes = [0u8; 12];
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
     let cipher = encryption_cipher()?;
     let ciphertext = cipher
         .encrypt(
             Nonce::from_slice(&nonce_bytes),
-            Payload { msg: &plaintext, aad: payload.associated_data.as_bytes() },
+            Payload {
+                msg: &plaintext,
+                aad: payload.associated_data.as_bytes(),
+            },
         )
         .map_err(internal)?;
     let mut envelope = nonce_bytes.to_vec();
     envelope.extend(ciphertext);
-    Ok(Json(CipherResponse { data: general_purpose::STANDARD.encode(envelope) }))
+    Ok(Json(CipherResponse {
+        data: general_purpose::STANDARD.encode(envelope),
+    }))
 }
 
 async fn decrypt(Json(payload): Json<CipherRequest>) -> ApiResult<CipherResponse> {
     let envelope = general_purpose::STANDARD
         .decode(payload.data)
-        .map_err(|_| error(StatusCode::BAD_REQUEST, "invalid_base64", "data is not valid base64"))?;
+        .map_err(|_| {
+            error(
+                StatusCode::BAD_REQUEST,
+                "invalid_base64",
+                "data is not valid base64",
+            )
+        })?;
     if envelope.len() < 28 {
-        return Err(error(StatusCode::BAD_REQUEST, "invalid_ciphertext", "ciphertext is too short"));
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "invalid_ciphertext",
+            "ciphertext is too short",
+        ));
     }
     let plaintext = encryption_cipher()?
         .decrypt(
             Nonce::from_slice(&envelope[..12]),
-            Payload { msg: &envelope[12..], aad: payload.associated_data.as_bytes() },
+            Payload {
+                msg: &envelope[12..],
+                aad: payload.associated_data.as_bytes(),
+            },
         )
-        .map_err(|_| error(StatusCode::BAD_REQUEST, "decryption_failed", "ciphertext or associated data is invalid"))?;
-    Ok(Json(CipherResponse { data: general_purpose::STANDARD.encode(plaintext) }))
+        .map_err(|_| {
+            error(
+                StatusCode::BAD_REQUEST,
+                "decryption_failed",
+                "ciphertext or associated data is invalid",
+            )
+        })?;
+    Ok(Json(CipherResponse {
+        data: general_purpose::STANDARD.encode(plaintext),
+    }))
 }
 
 async fn verify_key(Json(payload): Json<KeyVerificationRequest>) -> Json<KeyVerificationResponse> {
@@ -313,7 +394,9 @@ async fn verify_key(Json(payload): Json<KeyVerificationRequest>) -> Json<KeyVeri
     Json(KeyVerificationResponse { valid, checksum })
 }
 
-async fn validate_keypackage(Json(payload): Json<ValidateKeyPackageRequest>) -> Json<ValidateKeyPackageResponse> {
+async fn validate_keypackage(
+    Json(payload): Json<ValidateKeyPackageRequest>,
+) -> Json<ValidateKeyPackageResponse> {
     // Expect a P-256 raw uncompressed public key: 65 bytes, first byte 0x04
     match decode_artifact(&payload.keypackage_bytes, 65) {
         Ok(bytes) => {
@@ -321,7 +404,10 @@ async fn validate_keypackage(Json(payload): Json<ValidateKeyPackageRequest>) -> 
                 return Json(ValidateKeyPackageResponse {
                     valid: false,
                     key_id: None,
-                    error: Some("keypackage must be a 65-byte P-256 uncompressed point (0x04 prefix)".to_string()),
+                    error: Some(
+                        "keypackage must be a 65-byte P-256 uncompressed point (0x04 prefix)"
+                            .to_string(),
+                    ),
                 });
             }
             Json(ValidateKeyPackageResponse {
@@ -338,7 +424,9 @@ async fn validate_keypackage(Json(payload): Json<ValidateKeyPackageRequest>) -> 
     }
 }
 
-async fn validate_commit(Json(payload): Json<ValidateCommitRequest>) -> Json<ValidateCommitResponse> {
+async fn validate_commit(
+    Json(payload): Json<ValidateCommitRequest>,
+) -> Json<ValidateCommitResponse> {
     // Commit authenticator must be exactly 32 bytes (HKDF-SHA256 output)
     match decode_artifact(&payload.commit_bytes, 32) {
         Ok(bytes) => {
@@ -349,7 +437,11 @@ async fn validate_commit(Json(payload): Json<ValidateCommitRequest>) -> Json<Val
                     error: Some("commit_bytes must be exactly 32 bytes".to_string()),
                 });
             }
-            Json(ValidateCommitResponse { valid: true, next_epoch: Some(payload.current_epoch + 1), error: None })
+            Json(ValidateCommitResponse {
+                valid: true,
+                next_epoch: Some(payload.current_epoch + 1),
+                error: None,
+            })
         }
         Err(_) => Json(ValidateCommitResponse {
             valid: false,
@@ -362,21 +454,30 @@ async fn validate_commit(Json(payload): Json<ValidateCommitRequest>) -> Json<Val
 async fn validate_welcome(Json(payload): Json<ValidateWelcomeRequest>) -> Json<ValidResponse> {
     // Welcome contains ephemeralPub (65B) + iv (12B) + sealed (32B+tag) encoded as JSON+base64
     // Minimum meaningful size: 64 bytes decoded
-    Json(ValidResponse { valid: decode_artifact(&payload.welcome_bytes, 64).is_ok() })
+    Json(ValidResponse {
+        valid: decode_artifact(&payload.welcome_bytes, 64).is_ok(),
+    })
 }
 
-async fn validate_proposal(Json(payload): Json<ValidateProposalRequest>) -> Json<ValidateProposalResponse> {
+async fn validate_proposal(
+    Json(payload): Json<ValidateProposalRequest>,
+) -> Json<ValidateProposalResponse> {
     let min_len = match payload.proposal_type.as_str() {
         "ADD" | "UPDATE" => 65, // Typically includes a KeyPackage or similar length structure
         "REMOVE" => 16,         // Typically includes a short LeafNode identifier
-        _ => return Json(ValidateProposalResponse { 
-            valid: false, 
-            error: Some("invalid proposal_type".to_string()) 
-        }),
+        _ => {
+            return Json(ValidateProposalResponse {
+                valid: false,
+                error: Some("invalid proposal_type".to_string()),
+            })
+        }
     };
 
     match decode_artifact(&payload.proposal_bytes, min_len) {
-        Ok(_) => Json(ValidateProposalResponse { valid: true, error: None }),
+        Ok(_) => Json(ValidateProposalResponse {
+            valid: true,
+            error: None,
+        }),
         Err(_) => Json(ValidateProposalResponse {
             valid: false,
             error: Some(format!("proposal must be at least {} bytes", min_len)),
@@ -384,7 +485,9 @@ async fn validate_proposal(Json(payload): Json<ValidateProposalRequest>) -> Json
     }
 }
 
-async fn validate_signal_registration(Json(payload): Json<ValidateSignalRegistrationRequest>) -> Json<ValidResponse> {
+async fn validate_signal_registration(
+    Json(payload): Json<ValidateSignalRegistrationRequest>,
+) -> Json<ValidResponse> {
     let identity_key_bytes = match general_purpose::STANDARD.decode(&payload.identity_key) {
         Ok(b) if b.len() == 32 => b,
         _ => return Json(ValidResponse { valid: false }),
@@ -400,22 +503,25 @@ async fn validate_signal_registration(Json(payload): Json<ValidateSignalRegistra
 
     use ed25519_dalek::Verifier;
     let verifying_key = match ed25519_dalek::VerifyingKey::from_bytes(
-        &identity_key_bytes.try_into().unwrap_or([0; 32])
+        &identity_key_bytes.try_into().unwrap_or([0; 32]),
     ) {
         Ok(key) => key,
         Err(_) => return Json(ValidResponse { valid: false }),
     };
 
-    let signature = ed25519_dalek::Signature::from_bytes(
-        &signature_bytes.try_into().unwrap_or([0; 64])
-    );
+    let signature =
+        ed25519_dalek::Signature::from_bytes(&signature_bytes.try_into().unwrap_or([0; 64]));
 
-    let valid = verifying_key.verify(&signed_pre_key_bytes, &signature).is_ok();
+    let valid = verifying_key
+        .verify(&signed_pre_key_bytes, &signature)
+        .is_ok();
     Json(ValidResponse { valid })
 }
 
 fn sign(body: &[u8]) -> Result<String, (StatusCode, Json<ApiError>)> {
-    let mut mac = <HmacSha256 as Mac>::new_from_slice(required_secret("CRYPTO_SIGNING_SECRET").as_bytes()).map_err(internal)?;
+    let mut mac =
+        <HmacSha256 as Mac>::new_from_slice(required_secret("CRYPTO_SIGNING_SECRET").as_bytes())
+            .map_err(internal)?;
     mac.update(body);
     Ok(general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
@@ -426,7 +532,9 @@ fn encryption_cipher() -> Result<Aes256Gcm, (StatusCode, Json<ApiError>)> {
 }
 
 fn decode_artifact(value: &str, minimum: usize) -> Result<Vec<u8>, String> {
-    let bytes = general_purpose::STANDARD.decode(value).map_err(|_| "invalid base64 encoding".to_string())?;
+    let bytes = general_purpose::STANDARD
+        .decode(value)
+        .map_err(|_| "invalid base64 encoding".to_string())?;
     if bytes.len() < minimum {
         return Err(format!("artifact must be at least {minimum} bytes"));
     }
@@ -450,23 +558,43 @@ fn token_ttl() -> u64 {
 }
 
 fn unix_time() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
     if left.len() != right.len() {
         return false;
     }
-    left.iter().zip(right).fold(0u8, |difference, (a, b)| difference | (a ^ b)) == 0
+    left.iter()
+        .zip(right)
+        .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+        == 0
 }
 
-fn error(status: StatusCode, code: &'static str, message: impl Into<String>) -> (StatusCode, Json<ApiError>) {
-    (status, Json(ApiError { code, message: message.into() }))
+fn error(
+    status: StatusCode,
+    code: &'static str,
+    message: impl Into<String>,
+) -> (StatusCode, Json<ApiError>) {
+    (
+        status,
+        Json(ApiError {
+            code,
+            message: message.into(),
+        }),
+    )
 }
 
 fn internal(error_value: impl std::fmt::Display) -> (StatusCode, Json<ApiError>) {
     eprintln!("crypto operation failed: {error_value}");
-    error(StatusCode::INTERNAL_SERVER_ERROR, "crypto_failure", "cryptographic operation failed")
+    error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "crypto_failure",
+        "cryptographic operation failed",
+    )
 }
 
 #[cfg(test)]
@@ -491,10 +619,17 @@ mod tests {
         let password = "my_secure_password";
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
-        let password_hash = argon2.hash_password(password.as_bytes(), &salt).unwrap().to_string();
-        
+        let password_hash = argon2
+            .hash_password(password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+
         let parsed_hash = PasswordHash::new(&password_hash).unwrap();
-        assert!(argon2.verify_password(password.as_bytes(), &parsed_hash).is_ok());
-        assert!(argon2.verify_password("wrong_password".as_bytes(), &parsed_hash).is_err());
+        assert!(argon2
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok());
+        assert!(argon2
+            .verify_password("wrong_password".as_bytes(), &parsed_hash)
+            .is_err());
     }
 }
