@@ -10,6 +10,8 @@ interface INavItem {
   label: string;
   path: string;
   icon: TIconTypes;
+  /** Показывать только в нижней панели телефона. */
+  mobileOnly?: boolean;
 }
 
 const navItems: INavItem[] = [
@@ -31,6 +33,17 @@ const navItems: INavItem[] = [
     label: 'Встречи',
     path: ROUTES.MEETINGS,
     icon: 'video',
+  },
+  /* На телефоне это единственный вход в настройки: там нет ни бокового
+     рельса, ни бургера, и до `/settings` нельзя было добраться вовсе —
+     только набрав адрес руками. На широких экранах пункт не дублируется:
+     внизу рельса для него есть своё место. */
+  {
+    key: 'settings',
+    label: 'Настройки',
+    path: ROUTES.SETTINGS,
+    icon: 'settings',
+    mobileOnly: true,
   },
 ];
 
@@ -69,16 +82,18 @@ export function AppLayout() {
               <Icon name="burger" />
             </NavLink>
 
-            {navItems.map(({ icon, key, label, path }) => (
-              <NavLink
-                key={key}
-                to={path}
-                className={cn('rail-tab', pathname.includes(path) && 'active')}
-                data-tip={label}
-              >
-                <Icon name={icon} />
-              </NavLink>
-            ))}
+            {navItems
+              .filter((item) => !item.mobileOnly)
+              .map(({ icon, key, label, path }) => (
+                <NavLink
+                  key={key}
+                  to={path}
+                  className={cn('rail-tab', pathname.includes(path) && 'active')}
+                  data-tip={label}
+                >
+                  <Icon name={icon} />
+                </NavLink>
+              ))}
 
             <div className="rail-spacer"></div>
 

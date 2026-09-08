@@ -21,6 +21,13 @@ export interface IApiResponse<T = unknown> {
 export interface IApiError extends Error {
   status: number;
   data: unknown;
+  /**
+   * Код ошибки от сервера: `member_muted`, `access_denied` и прочие.
+   *
+   * Показывать человеку нужно именно по нему, а не по `message`: там
+   * лежит английская строка для разработчика — «member is muted».
+   */
+  code?: string;
 }
 
 export class ApiClient {
@@ -141,6 +148,7 @@ export class ApiClient {
       const error = new Error(message) as IApiError;
       error.status = response.status;
       error.data = payload;
+      error.code = payloadObj?.code;
       throw error;
     }
 

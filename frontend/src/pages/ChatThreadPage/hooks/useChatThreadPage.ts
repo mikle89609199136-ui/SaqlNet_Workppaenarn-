@@ -61,6 +61,8 @@ export function useChatThreadPage({
   const {
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     error: messagesError,
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
@@ -92,6 +94,7 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
@@ -136,6 +139,8 @@ export function useChatThreadPage({
     pinnedMessages,
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     threadError,
     setError,
     setEditingMessage,
@@ -160,6 +165,7 @@ export function useChatThreadPage({
     setProfileModal,
 
     toggleMessageSelection,
+    handleReact,
     selectedActionMessage,
 
     handleCancelSelection,

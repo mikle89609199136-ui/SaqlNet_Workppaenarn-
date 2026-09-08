@@ -2,15 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Avatar,
-  Banner,
-  Button,
-  ConfirmDialog,
-  Icon,
-  Input,
-  Textarea,
-} from '@/components/ui';
+import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
 import { PasswordRequirements } from '@/components/features';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -260,7 +252,7 @@ function AccountSettings({
       </h2>
       {/* Строки разделены линией внутри блока — line-soft, а не line:
           она делит содержимое, а не очерчивает элемент управления (#374). */}
-      <div className="mb-7 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mb-7 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.email', 'Электронная почта')}
           onClick={onOpenEmail}
@@ -276,7 +268,7 @@ function AccountSettings({
       <h2 className="text-caption mb-3 font-semibold text-ink-2">
         {t('settings.account.groupActions', 'Действия')}
       </h2>
-      <div className="divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.sessions', 'Активные сеансы')}
           onClick={onOpenSessions}
@@ -446,7 +438,7 @@ function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
         </Banner>
       )}
 
-      <div className="mt-4 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mt-4 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         {loading ? (
           <div className="text-body p-5 text-center text-ink-2">Загрузка…</div>
         ) : sessions.length > 0 ? (

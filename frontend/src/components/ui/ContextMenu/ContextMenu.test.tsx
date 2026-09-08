@@ -1,14 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  ContextMenu,
-  ContextMenuItem,
-  useContextMenu
-} from './ContextMenu';
+import { ContextMenu, ContextMenuItem, useContextMenu } from './ContextMenu';
 
-describe('ContextMenu', () => {
-  it('1. does not render when open is false', () => {
+describe('контекстное меню', () => {
+  it('не рисуется, пока закрыто', () => {
     render(
       <ContextMenu open={false} onClose={vi.fn()}>
         <ContextMenuItem>Пункт 1</ContextMenuItem>
@@ -19,7 +16,7 @@ describe('ContextMenu', () => {
     expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
   });
 
-  it('2. renders items and separators when open is true', () => {
+  it('показывает пункты и разделители', () => {
     render(
       <ContextMenu open={true} onClose={vi.fn()} x={100} y={100}>
         <ContextMenu.ContextMenuItem>Закрепить</ContextMenu.ContextMenuItem>
@@ -35,7 +32,7 @@ describe('ContextMenu', () => {
     expect(screen.getByText('Удалить чат')).toBeInTheDocument();
   });
 
-  it('3. triggers item onClick when clicked', async () => {
+  it('вызывает действие пункта по нажатию', async () => {
     const user = userEvent.setup();
     const handleClick = vi.fn();
 
@@ -49,7 +46,7 @@ describe('ContextMenu', () => {
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('4. does not trigger onClick on disabled item', async () => {
+  it('не вызывает действие у недоступного пункта', async () => {
     const user = userEvent.setup();
     const handleClick = vi.fn();
 
@@ -69,7 +66,7 @@ describe('ContextMenu', () => {
     expect(handleClick).not.toHaveBeenCalled();
   });
 
-  it('5. calls onClose on Escape key press', () => {
+  it('закрывается по Escape', () => {
     const handleClose = vi.fn();
 
     render(
@@ -82,7 +79,7 @@ describe('ContextMenu', () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it('6. calls onClose on pointerdown outside menu', () => {
+  it('закрывается по нажатию мимо', () => {
     const handleClose = vi.fn();
 
     render(
@@ -98,7 +95,7 @@ describe('ContextMenu', () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it('7. navigates menu items with ArrowDown and ArrowUp', () => {
+  it('ходит по пунктам стрелками', () => {
     render(
       <ContextMenu open={true} onClose={vi.fn()}>
         <ContextMenuItem>Первый</ContextMenuItem>
@@ -128,7 +125,7 @@ describe('ContextMenu', () => {
     expect(document.activeElement).toBe(items[2]);
   });
 
-  it('8. navigates to first and last item with Home and End', () => {
+  it('прыгает к первому и последнему по Home и End', () => {
     render(
       <ContextMenu open={true} onClose={vi.fn()}>
         <ContextMenuItem>Первый</ContextMenuItem>
@@ -148,7 +145,7 @@ describe('ContextMenu', () => {
     expect(document.activeElement).toBe(items[2]);
   });
 
-  it('9. danger variant applies text-danger style', () => {
+  it('опасное действие выделяется цветом', () => {
     render(
       <ContextMenu open={true} onClose={vi.fn()}>
         <ContextMenuItem variant="danger">Удалить</ContextMenuItem>
@@ -159,7 +156,7 @@ describe('ContextMenu', () => {
     expect(item.className).toContain('text-danger');
   });
 
-  it('10. useContextMenu helper hook manages open state and coordinates', () => {
+  it('хук хранит состояние и координаты вызова', () => {
     const TestComponent = () => {
       const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
 
@@ -191,5 +188,56 @@ describe('ContextMenu', () => {
 
     expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /действие/i })).toBeInTheDocument();
+  });
+  it('возвращает фокус на строку, из которой меню вызвали', async () => {
+    /* Ни правый клик, ни долгое нажатие фокус не переводят, поэтому
+       компонент запоминает сам элемент вызова. Прежде фокус после
+       закрытия оставался на body, и обход списка с клавиатуры начинался
+       заново. */
+    function Harness() {
+      const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
+
+      return (
+        <>
+          <button onContextMenu={handleContextMenu} type="button">
+            Строка чата
+          </button>
+          {contextMenu?.open && (
+            <ContextMenu
+              onClose={closeContextMenu}
+              open
+              returnFocusRef={openerRef}
+              x={contextMenu.x}
+              y={contextMenu.y}
+            >
+              <ContextMenuItem>Закрепить</ContextMenuItem>
+            </ContextMenu>
+          )}
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const row = screen.getByRole('button', { name: 'Строка чата' });
+    fireEvent.contextMenu(row);
+
+    await waitFor(() => expect(screen.getByRole('menuitem')).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('ограничивает высоту, чтобы длинное меню не уходило за экран', () => {
+    render(
+      <ContextMenu onClose={vi.fn()} open x={0} y={0}>
+        {Array.from({ length: 15 }, (_, index) => (
+          <ContextMenuItem key={index}>Пункт {index + 1}</ContextMenuItem>
+        ))}
+      </ContextMenu>
+    );
+
+    const menu = screen.getByRole('menu');
+    expect(menu.className).toContain('max-h-');
+    expect(menu.className).toContain('overflow-y-auto');
   });
 });

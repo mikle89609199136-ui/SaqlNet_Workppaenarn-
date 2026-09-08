@@ -30,8 +30,14 @@ export const Badge = ({ children, tone = 'brand', max = 99, label, className }: 
     <span
       className={cn(
         /* Моноширинный и tabular-nums, иначе счётчик дёргается вбок при
-           смене 9 на 10. min-w — чтобы единица не была узким овалом. */
-        'inline-flex min-w-5 items-center justify-center rounded-pill px-2 py-0.5',
+           смене 9 на 10. min-w — чтобы единица не была узким овалом.
+
+           shrink-0 — потому что счётчик всегда стоит рядом с текстом,
+           который длиннее его: в строке чата это последнее сообщение. Без
+           запрета на сжатие флекс отдаёт место тексту, и «99+» показывается
+           обрубком — замерено 22 пикселя вместо нужных 29. Сжиматься должен
+           текст, у него для этого есть многоточие. */
+        'inline-flex min-w-5 shrink-0 items-center justify-center rounded-pill px-2 py-0.5',
         'font-mono text-micro font-medium tabular-nums',
         tones[tone],
         className

@@ -25,11 +25,7 @@ export interface ContextMenuSeparatorProps extends HTMLAttributes<HTMLDivElement
 
 export const ContextMenuSeparator = ({ className, ...props }: ContextMenuSeparatorProps) => {
   return (
-    <div
-      role="separator"
-      className={cn('h-px bg-line-soft my-1.5 mx-1', className)}
-      {...props}
-    />
+    <div role="separator" className={cn('h-px bg-divider my-1.5 mx-1', className)} {...props} />
   );
 };
 
@@ -42,15 +38,7 @@ export interface ContextMenuItemProps extends ButtonHTMLAttributes<HTMLButtonEle
 
 export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProps>(
   function ContextMenuItem(
-    {
-      icon,
-      variant = 'default',
-      disabled,
-      className,
-      children,
-      onClick,
-      ...props
-    },
+    { icon, variant = 'default', disabled, className, children, onClick, ...props },
     ref
   ) {
     return (
@@ -71,7 +59,11 @@ export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProp
         )}
         {...props}
       >
-        {icon && <span className="size-4 shrink-0 flex items-center justify-center [&>svg]:size-4">{icon}</span>}
+        {icon && (
+          <span className="size-4 shrink-0 flex items-center justify-center [&>svg]:size-4">
+            {icon}
+          </span>
+        )}
         <span className="flex-1 truncate text-left">{children}</span>
       </Button>
     );
@@ -85,6 +77,12 @@ interface Props {
   x?: number;
   y?: number;
   anchorRef?: RefObject<HTMLElement | null>;
+  /**
+   * Куда вернуть фокус при закрытии. Для меню, открытого по координатам:
+   * правый клик и долгое нажатие фокус никуда не переводят, поэтому
+   * запоминать активный элемент бесполезно — там `body`.
+   */
+  returnFocusRef?: RefObject<HTMLElement | null>;
   className?: string;
   id?: string;
   'aria-label'?: string;
@@ -97,6 +95,7 @@ const ContextMenuRoot = ({
   x,
   y,
   anchorRef,
+  returnFocusRef,
   className,
   id: customId,
   'aria-label': ariaLabel,
@@ -125,6 +124,15 @@ const ContextMenuRoot = ({
       const anchorRect = anchorRef.current.getBoundingClientRect();
       posX = anchorRect.left;
       posY = anchorRect.bottom + 4;
+
+      /* Не помещается снизу — раскрывается вверх. Прежде меню в такой
+         ситуации просто прижималось к нижнему краю и накрывало собой
+         кнопку, которой его открыли. */
+      const fitsBelow = posY + menuRect.height <= viewportHeight - 8;
+      const fitsAbove = anchorRect.top - menuRect.height - 4 >= 8;
+      if (!fitsBelow && fitsAbove) {
+        posY = anchorRect.top - menuRect.height - 4;
+      }
     }
 
     if (posX + menuRect.width > viewportWidth - 8) {
@@ -175,6 +183,10 @@ const ContextMenuRoot = ({
     };
   }, [open, onClose, anchorRef, updatePosition]);
 
+  /* Куда вернуть фокус, когда меню закроется. Раньше он возвращался
+     только при `anchorRef`, а контекстное меню открывают по координатам —
+     и после Escape фокус оставался на body: человек, идущий по списку с
+     клавиатуры, терял место и начинал обход заново. */
   useEffect(() => {
     if (!open) return;
 
@@ -190,16 +202,24 @@ const ContextMenuRoot = ({
       }
     });
 
-    return () => cancelAnimationFrame(timer);
-  }, [open]);
+    return () => {
+      cancelAnimationFrame(timer);
+
+      /* Возвращается только фокус, ушедший внутрь меню. Если за это время
+         его забрал кто-то другой — например, открылось окно поверх, —
+         отбирать обратно нельзя. */
+      const insideMenu = menuRef.current?.contains(document.activeElement);
+      if (insideMenu || document.activeElement === document.body) {
+        (anchorRef?.current ?? returnFocusRef?.current)?.focus?.();
+      }
+    };
+  }, [open, anchorRef, returnFocusRef]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!menuRef.current) return;
 
     const items = Array.from(
-      menuRef.current.querySelectorAll<HTMLButtonElement>(
-        'button[role="menuitem"]:not([disabled])'
-      )
+      menuRef.current.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])')
     );
     const activeIndex = items.findIndex((item) => item === document.activeElement);
 
@@ -229,9 +249,6 @@ const ContextMenuRoot = ({
       case 'Escape': {
         e.preventDefault();
         onClose();
-        if (anchorRef?.current) {
-          anchorRef.current.focus();
-        }
         break;
       }
       case 'Tab': {
@@ -253,7 +270,10 @@ const ContextMenuRoot = ({
       aria-labelledby={ariaLabelledby}
       onKeyDown={handleKeyDown}
       className={cn(
-        'fixed z-50 p-1.5 min-w-[216px] outline-none',
+        /* Высота ограничена: пятнадцать пунктов иначе уходят за нижний
+           край, потому что позиция зажимается, а содержимое — нет. */
+        'fixed z-50 p-1.5 min-w-[216px] max-h-[min(60vh,420px)] overflow-y-auto outline-none',
+        'styled-scrollbar',
         'bg-sheet border border-line rounded-field shadow-[var(--elev-3)]',
         'flex flex-col gap-0.5',
         className
@@ -277,11 +297,22 @@ export const ContextMenu = Object.assign(ContextMenuRoot, {
 });
 
 export function useContextMenu() {
-  const [contextMenu, setContextMenu] = useState<{ open: boolean; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ open: boolean; x: number; y: number } | null>(
+    null
+  );
+
+  /* Элемент, на котором вызвали меню: ему возвращается фокус при
+     закрытии. Активный элемент для этого не годится — ни правый клик, ни
+     долгое нажатие фокус не переводят. */
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const handleContextMenu = useCallback((e: ReactMouseEvent | MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    const target = (e as ReactMouseEvent).currentTarget ?? e.target;
+    if (target instanceof HTMLElement) openerRef.current = target;
+
     setContextMenu({ open: true, x: e.clientX, y: e.clientY });
   }, []);
 
@@ -293,5 +324,6 @@ export function useContextMenu() {
     contextMenu,
     handleContextMenu,
     closeContextMenu,
+    openerRef,
   };
 }

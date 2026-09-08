@@ -30,15 +30,24 @@ export function MessageCheckbox({ isChecked, className }: Props) {
   return (
     <button
       type="button"
-      className={`size-6 flex items-center justify-center shrink-0 rounded-full
-        border-2 transition-colors ${isChecked ? 'border-accent bg-accent' : 'border-zinc-500 bg-transparent'} ${className}`}
+      className={cn(
+        'size-6 flex items-center justify-center shrink-0 rounded-full border-2 transition-colors cursor-pointer',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2',
+        isChecked
+          ? 'border-brand-fill bg-brand-fill text-on-brand'
+          : 'border-line bg-sheet-2 text-transparent hover:border-ink-3',
+        className
+      )}
       aria-pressed={!!isChecked}
       aria-label={
         isChecked ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать сообщение')
       }
     >
       <Check
-        className={`size-4 opacity-0 transition-opacity ${isChecked ? 'fill-accent opacity-100' : ''}`}
+        className={cn(
+          'size-3.5 transition-opacity',
+          isChecked ? 'opacity-100 text-on-brand' : 'opacity-0'
+        )}
       />
     </button>
   );

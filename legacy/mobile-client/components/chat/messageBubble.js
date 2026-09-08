@@ -27,7 +27,7 @@ export class MessageBubble {
     const bubble = document.createElement('div');
     bubble.id = this.id;
     bubble.className = `message-bubble ${this.isOutgoing ? 'outgoing' : 'incoming'}`;
-    
+
     Object.assign(bubble.style, {
       maxWidth: '70%',
       padding: '10px 12px',
@@ -36,11 +36,11 @@ export class MessageBubble {
       position: 'relative',
       cursor: 'pointer',
       alignSelf: this.isOutgoing ? 'flex-end' : 'flex-start',
-      background: this.isOutgoing 
+      background: this.isOutgoing
         ? `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`
         : colors.surfaceVariant,
       color: this.isOutgoing ? '#FFFFFF' : colors.textPrimary,
-      boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+      boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
     });
 
     // Reply preview
@@ -54,7 +54,7 @@ export class MessageBubble {
         padding: '6px 8px',
         background: this.isOutgoing ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)',
         borderRadius: '8px',
-        borderLeft: `3px solid ${this.isOutgoing ? '#FFFFFF' : colors.primary}`
+        borderLeft: `3px solid ${this.isOutgoing ? '#FFFFFF' : colors.primary}`,
       });
       replyPreview.textContent = this.replyTo;
       bubble.appendChild(replyPreview);
@@ -69,7 +69,7 @@ export class MessageBubble {
         maxWidth: '100%',
         borderRadius: '12px',
         marginBottom: '6px',
-        display: 'block'
+        display: 'block',
       });
       img.addEventListener('click', () => this.openMediaViewer());
       bubble.appendChild(img);
@@ -82,7 +82,7 @@ export class MessageBubble {
       Object.assign(text.style, {
         fontSize: '15px',
         lineHeight: '1.4',
-        wordBreak: 'break-word'
+        wordBreak: 'break-word',
       });
       text.textContent = this.content;
       bubble.appendChild(text);
@@ -98,7 +98,7 @@ export class MessageBubble {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'flex-end',
-      gap: '4px'
+      gap: '4px',
     });
 
     const time = document.createElement('span');
@@ -109,7 +109,7 @@ export class MessageBubble {
     if (this.isOutgoing) {
       const statusIcon = document.createElement('span');
       statusIcon.className = `message-status ${this.status}`;
-      
+
       if (this.status === 'sent') {
         statusIcon.textContent = '✓';
       } else if (this.status === 'delivered') {
@@ -118,7 +118,7 @@ export class MessageBubble {
         statusIcon.textContent = '✓✓';
         statusIcon.style.color = '#4FC3F7';
       }
-      
+
       metadata.appendChild(statusIcon);
     }
 
@@ -148,10 +148,10 @@ export class MessageBubble {
         display: 'flex',
         gap: '4px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-        border: `1px solid ${colors.border}`
+        border: `1px solid ${colors.border}`,
       });
 
-      this.reactions.forEach(reaction => {
+      this.reactions.forEach((reaction) => {
         const reactionEmoji = document.createElement('span');
         reactionEmoji.textContent = reaction.emoji;
         reactionEmoji.style.fontSize = '14px';

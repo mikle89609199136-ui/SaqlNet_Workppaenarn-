@@ -20,7 +20,7 @@ export class MessageInput {
     const container = document.createElement('div');
     container.id = this.id;
     container.className = 'message-input-container';
-    
+
     Object.assign(container.style, {
       height: '56px',
       background: colors.surface,
@@ -33,7 +33,7 @@ export class MessageInput {
       bottom: '0',
       left: '0',
       width: '100%',
-      zIndex: '100'
+      zIndex: '100',
     });
 
     // Attach button
@@ -51,7 +51,7 @@ export class MessageInput {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      transition: 'background 0.2s'
+      transition: 'background 0.2s',
     });
     attachBtn.addEventListener('mouseenter', () => {
       attachBtn.style.background = colors.surfaceVariant;
@@ -72,7 +72,7 @@ export class MessageInput {
     input.className = 'message-input-field';
     input.placeholder = this.placeholder;
     input.maxLength = this.maxLength;
-    
+
     Object.assign(input.style, {
       width: '100%',
       height: '40px',
@@ -83,7 +83,7 @@ export class MessageInput {
       padding: '0 16px',
       fontSize: '15px',
       outline: 'none',
-      transition: 'border-color 0.2s'
+      transition: 'border-color 0.2s',
     });
 
     input.addEventListener('focus', () => {
@@ -122,7 +122,7 @@ export class MessageInput {
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center'
+      justifyContent: 'center',
     });
     emojiBtn.addEventListener('click', () => this.onEmoji());
     container.appendChild(emojiBtn);
@@ -145,7 +145,7 @@ export class MessageInput {
       alignItems: 'center',
       justifyContent: 'center',
       transition: 'transform 0.2s, opacity 0.2s',
-      boxShadow: '0 2px 8px rgba(255, 0, 127, 0.3)'
+      boxShadow: '0 2px 8px rgba(255, 0, 127, 0.3)',
     });
     sendBtn.addEventListener('mouseenter', () => {
       sendBtn.style.transform = 'scale(1.1)';
@@ -207,7 +207,7 @@ export class MessageInput {
           top: '-20px',
           left: '12px',
           fontSize: '12px',
-          color: colors.textSecondary
+          color: colors.textSecondary,
         });
         this.container.appendChild(typing);
       }

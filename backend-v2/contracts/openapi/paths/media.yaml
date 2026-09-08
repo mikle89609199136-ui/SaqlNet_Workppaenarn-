@@ -21,7 +21,7 @@ x-secure: &secure [{ bearerAuth: [] }]
                 properties:
                   purpose: { type: string, enum: [message] }
                   file: { type: object, required: [ciphertext], additionalProperties: true }
-    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '413': { $ref: '../components/responses.yaml#/Error' }, '415': { $ref: '../components/responses.yaml#/Error' } }
+    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '413': { $ref: '../components/responses.yaml#/FileTooLarge' }, '415': { $ref: '../components/responses.yaml#/Error' } }
 /media/{uploadId}:
   parameters: [{ name: uploadId, in: path, required: true, schema: { type: string, format: uuid } }]
   get:

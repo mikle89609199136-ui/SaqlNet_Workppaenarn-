@@ -1,4 +1,6 @@
-export { calculateMenuPosition } from './calculateMenuPosition';
+export { applyReaction } from './applyReaction';
+export { isConversationStarted } from './isConversationStarted';
+export { formatChatListTime } from './chatListTime';
 export { formatCallDuration, formatCallPreview, parseCallContent } from './call';
 export { clearAuthSession } from './clearAuthSession';
 export { cn } from './cn';
@@ -23,3 +25,14 @@ export {
   hasMessageMedia,
 } from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';
+export { formatDateDivider, isDifferentDay } from './dateGroup';
+export {
+  clamp,
+  cloneEditorState,
+  createEditorId,
+  drawObject,
+  drawSelection,
+  findTextAtPoint,
+  splitPathByEraser,
+} from './editorCanvas';
+export { estimateMessageItemSize } from './estimateMessageSize';
