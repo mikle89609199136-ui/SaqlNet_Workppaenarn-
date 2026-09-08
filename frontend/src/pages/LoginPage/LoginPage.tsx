@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Icon, Input } from '@/components/ui';
-import { AuthLayout } from '@/components/layouts';
+import { AuthLayout } from '@/layouts';
 import { ROUTES } from '@/consts/routes';
 import { useToasts } from '@/hooks';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
