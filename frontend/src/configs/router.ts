@@ -235,13 +235,6 @@ export const router = createBrowserRouter([
                   })),
               },
               {
-                path: REACT_ROUTES.CONTACTS,
-                lazy: () =>
-                  import('../pages/ContactsPage/ContactsPage.js').then((m) => ({
-                    Component: m.ContactsPage,
-                  })),
-              },
-              {
                 path: REACT_ROUTES.SETTINGS,
                 lazy: () =>
                   import('../pages/SettingsPage/SettingsPage.js').then((m) => ({

@@ -7,7 +7,6 @@ export const REACT_ROUTES = {
   CHANNELS: '/channels',
   COMMUNITIES: '/communities',
   MEETINGS: '/meetings',
-  CONTACTS: '/contacts',
   SETTINGS: '/settings',
   /* Раздел настроек живёт в адресе, а не в состоянии: иначе на него нельзя
      дать ссылку, перезагрузка возвращает к первому разделу, а «назад» в
