@@ -91,14 +91,14 @@ export class ApiClient {
   }
 
   private buildUrl(endpoint: string, params: TQueryParams = {}): string {
-    if (/^https?:\/\//.test(String(endpoint))) {
+    if (/^https?:\/\//.test(endpoint)) {
       const url = new URL(endpoint);
       this.appendParams(url, params);
       return url.toString();
     }
 
     const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
-    let normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
+    let normalizedEndpoint = endpoint.replace(/^\/+/, '');
     // Относительная база разрешается от адреса страницы; вне браузера
     // подставляется любой корректный origin — важен только путь.
     const documentUrl = globalThis.location?.href ?? 'http://localhost/';
@@ -123,10 +123,9 @@ export class ApiClient {
 
   private async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
     const contentType = response.headers?.get?.('content-type') ?? '';
-    const payload: unknown =
-      contentType.includes('application/json') || typeof response.text !== 'function'
-        ? await response.json()
-        : await response.text();
+    const payload: unknown = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
 
     if (!response.ok) {
       const payloadObj = (payload && typeof payload === 'object' ? payload : {}) as {
