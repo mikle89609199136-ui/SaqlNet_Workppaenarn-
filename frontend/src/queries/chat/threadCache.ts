@@ -1,7 +1,7 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { getOutboxItem } from '@/store/outbox';
-import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
 
 /**
  * Форма кеша истории: страницы в том порядке, в каком их загрузили.

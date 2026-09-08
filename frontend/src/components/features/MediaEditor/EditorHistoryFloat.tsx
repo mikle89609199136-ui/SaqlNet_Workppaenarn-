@@ -1,4 +1,4 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 
 interface Props {
   canUndo: boolean;

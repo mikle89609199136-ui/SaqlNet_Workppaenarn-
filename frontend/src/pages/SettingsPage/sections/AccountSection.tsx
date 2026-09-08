@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
+import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/shared/ui';
 import { PasswordRequirements } from '@/components/features';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -12,7 +12,7 @@ import {
   type TPasswordForm,
   type TProfileForm,
 } from '../accountSchemas';
-import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
+import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { useToasts } from '@/hooks/useToasts';
 import { userKeys } from '@/queries/keys';

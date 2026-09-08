@@ -3,7 +3,7 @@ import { services } from '@/services/serviceContainer';
 import { chatKeys } from '../keys';
 import { flattenThread } from './threadCache';
 import { getChatOutbox } from '@/store/outbox';
-import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
 import type { IMessageDto } from '@/types';
 
 /** Размер страницы истории — тот же, что запрашивала страница чата до миграции. */

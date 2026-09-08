@@ -1,4 +1,4 @@
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import type { ReactNode } from 'react';
 
 interface Props {

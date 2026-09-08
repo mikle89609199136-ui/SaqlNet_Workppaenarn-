@@ -1,4 +1,4 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 

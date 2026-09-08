@@ -1,6 +1,6 @@
-import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/consts';
+import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/shared/config';
 import type { IEditorState } from '@/types';
-import { cloneEditorState } from '@/utils';
+import { cloneEditorState } from '@/shared/lib';
 import { useCallback, useState } from 'react';
 
 interface IHistoryState {

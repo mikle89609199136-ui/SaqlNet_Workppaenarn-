@@ -1,5 +1,5 @@
-import { Skeleton } from '@/components/ui/Skeleton';
-import { cn } from '@/utils';
+import { Skeleton } from '@/shared/ui/Skeleton';
+import { cn } from '@/shared/lib';
 
 /* Форма повторяет настоящий пузырь, включая срезанный угол с той стороны,
    откуда пришло сообщение: у своих он снизу справа, у чужих снизу слева.

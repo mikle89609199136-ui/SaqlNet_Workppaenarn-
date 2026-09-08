@@ -1,7 +1,7 @@
-import { Icon } from '@/components/ui/Icon';
+import { Icon } from '@/shared/ui/Icon';
 import { useChatUiStore } from '@/store';
 import type { IMediaItem, IMessageDto, TMediaMessageType } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 

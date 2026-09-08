@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, ConfirmDialog } from '@/components/ui';
-import { APP_VERSION } from '@/consts';
+import { Banner, Button, ConfirmDialog } from '@/shared/ui';
+import { APP_VERSION } from '@/shared/config';
 import { useTranslation } from 'react-i18next';
 import { useToasts } from '@/hooks/useToasts';
 import { services } from '@/services/serviceContainer';

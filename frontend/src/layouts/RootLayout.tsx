@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Outlet } from 'react-router-dom';
-import { AvatarShapeProvider, ToastStack } from '@/components/ui';
-import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
+import { AvatarShapeProvider, ToastStack } from '@/shared/ui';
+import { DEFAULT_PROFILE_SETTINGS } from '@/shared/config';
 import { useApplyPreferences } from '@/hooks/useApplyPreferences';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 

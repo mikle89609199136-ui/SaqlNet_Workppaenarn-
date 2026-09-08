@@ -1,6 +1,6 @@
-import { Avatar, Button, Icon } from '@/components/ui';
+import { Avatar, Button, Icon } from '@/shared/ui';
 import type { TCallKind, IUserDto } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

@@ -1,5 +1,5 @@
 import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from '@/types';
-import { drawObject, drawSelection } from '@/utils';
+import { drawObject, drawSelection } from '@/shared/lib';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface Params {

@@ -1,5 +1,5 @@
-import { Icon, Tooltip } from '@/components/ui';
-import { ROUTES } from '@/consts';
+import { Icon, Tooltip } from '@/shared/ui';
+import { ROUTES } from '@/shared/config';
 import { NavLink } from 'react-router-dom';
 import { NavTab } from './NavTab';
 import { sideNavItems } from './navItems';

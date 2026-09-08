@@ -1,14 +1,14 @@
-import { ROUTES } from '@/consts';
-import { useLongPress } from '@/hooks';
+import { ROUTES } from '@/shared/config';
+import { useLongPress } from '@/shared/lib';
 import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
 import { useTypingStore } from '@/store/typing';
-import { formatChatListTime, getLastMessageText } from '@/utils';
+import { formatChatListTime, getLastMessageText } from '@/shared/lib';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
-import { Avatar, Badge } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
-import { useContextMenu } from '@/components/ui/ContextMenu';
+import { Avatar, Badge } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
+import { useContextMenu } from '@/shared/ui/ContextMenu';
 import { ChatRowMenu } from './ChatRowMenu';
 import type { IChatDto } from '@/types';
 

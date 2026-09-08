@@ -1,5 +1,5 @@
-import { Badge } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
+import { Badge } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
 import type { IChatDto } from '@/types';
 import { useTranslation } from 'react-i18next';
 

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
+import { DEFAULT_PROFILE_SETTINGS } from '@/shared/config';
 import { useToasts } from '@/hooks/useToasts';
 import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
 import { settingsQuery } from '@/queries/users/settingsQuery';

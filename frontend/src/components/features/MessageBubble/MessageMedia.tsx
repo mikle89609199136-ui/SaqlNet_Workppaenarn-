@@ -1,8 +1,8 @@
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import { AudioPlayer } from '../AudioPlayer';
 import { VideoPlayer } from '../VideoPlayer';
 import type { IMessageDto } from '@/types';
-import { formatFileSize } from '@/utils';
+import { formatFileSize } from '@/shared/lib';
 import { type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 

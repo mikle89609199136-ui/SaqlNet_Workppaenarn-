@@ -1,5 +1,5 @@
 import type { IEditorCrop } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 
 interface Props {
   crop: IEditorCrop;

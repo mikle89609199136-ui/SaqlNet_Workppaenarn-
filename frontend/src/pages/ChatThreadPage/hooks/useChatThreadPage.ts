@@ -1,4 +1,4 @@
-import { describeApiError } from '@/api';
+import { describeApiError } from '@/shared/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
@@ -9,7 +9,7 @@ import {
   useProfilePanel,
   useRealtimeSocket,
 } from '@/hooks';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useEscapeKey } from '@/shared/lib/useEscapeKey';
 import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';

@@ -1,5 +1,5 @@
-import { Spinner } from '@/components/ui';
-import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/consts';
+import { Spinner } from '@/shared/ui';
+import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/shared/config';
 import {
   usePhotoEditorCanvas,
   usePhotoEditorCrop,
@@ -15,7 +15,7 @@ import type {
   TEditorTool,
   TTextFontId,
 } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EditorCropOverlay } from './EditorCropOverlay';

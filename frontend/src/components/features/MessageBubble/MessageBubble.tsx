@@ -1,8 +1,8 @@
-import { Button, Icon, Spinner } from '@/components/ui';
+import { Button, Icon, Spinner } from '@/shared/ui';
 import { useMessageLongPress } from '@/hooks';
 import { useChatUiStore } from '@/store';
 import type { IMediaItem, IMessageDto } from '@/types';
-import { cn, formatMessageTime, hasMessageMedia } from '@/utils';
+import { cn, formatMessageTime, hasMessageMedia } from '@/shared/lib';
 import { memo, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';

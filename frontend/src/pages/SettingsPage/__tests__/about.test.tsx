@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { APP_VERSION } from '@/consts';
+import { APP_VERSION } from '@/shared/config';
 import { services } from '@/services/serviceContainer';
 import { createTestQueryClient, renderSettings } from '@/test/harness/renderSettings';
 import { userKeys } from '@/queries/keys';

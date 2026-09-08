@@ -1,10 +1,10 @@
 import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/queries/users/searchUsersQuery';
 import type { IChatDto, ISearchUserDto } from '@/types';
-import { getLastMessageText } from '@/utils';
+import { getLastMessageText } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDebounce } from './useDebounce';
+import { useDebounce } from '@/shared/lib/useDebounce';
 
 interface Result {
   query: string;

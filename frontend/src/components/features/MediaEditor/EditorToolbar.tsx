@@ -1,4 +1,4 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 import type { TEditorTool } from '@/types';
 
 interface Props {

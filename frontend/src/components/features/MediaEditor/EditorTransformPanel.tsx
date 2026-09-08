@@ -1,5 +1,5 @@
-import { Button, Icon } from '@/components/ui';
-import { EDITOR_RATIOS } from '@/consts';
+import { Button, Icon } from '@/shared/ui';
+import { EDITOR_RATIOS } from '@/shared/config';
 import type { TCropRatioValue } from '@/types';
 import { PanelTitle } from './EditorControls';
 

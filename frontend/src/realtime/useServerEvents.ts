@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import {

@@ -1,4 +1,4 @@
-import { ROUTES } from '@/consts/routes';
+import { ROUTES } from '@/shared/config/routes';
 
 export interface ISettingsEntry {
   /** Как пункт называется на экране. */

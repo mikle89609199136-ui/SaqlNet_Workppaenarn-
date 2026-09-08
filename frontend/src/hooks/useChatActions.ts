@@ -1,4 +1,4 @@
-import { describeApiError } from '@/api';
+import { describeApiError } from '@/shared/api';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
