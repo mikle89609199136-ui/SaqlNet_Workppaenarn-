@@ -82,8 +82,7 @@ export function usePhotoEditorCanvas({
     if (!canvas) return undefined;
     const updateSize = () => setCanvasDisplayWidth(canvas.getBoundingClientRect().width || 1000);
     updateSize();
-    const observer =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateSize) : null;
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateSize) : null;
     observer?.observe(canvas);
     window.addEventListener('resize', updateSize);
     return () => {

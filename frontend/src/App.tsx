@@ -3,7 +3,7 @@ import { queryClient } from '@/queries/queryClient';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 
-import { NotificationManager } from './components/layouts/NotificationManager.js';
+import { NotificationManager } from './realtime/NotificationManager';
 import { RealtimeEvents } from './realtime/RealtimeEvents';
 import { CallOverlay, CallProvider } from './components/index.js';
 

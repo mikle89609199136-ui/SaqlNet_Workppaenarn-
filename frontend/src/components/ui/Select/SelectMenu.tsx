@@ -27,14 +27,21 @@ interface Rect {
   width: number;
 }
 
-export const SelectMenu = ({ menuRef, anchorRef, onClose, id, labelledBy, children }: PropsWithChildren<Props>) => {
+export const SelectMenu = ({
+  menuRef,
+  anchorRef,
+  onClose,
+  id,
+  labelledBy,
+  children,
+}: PropsWithChildren<Props>) => {
   const [rect, setRect] = useState<Rect | null>(null);
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
     const box = anchor.getBoundingClientRect();
-    
+
     const maxMenuHeight = 250; // max-h-61 + buffer
     const spaceBelow = window.innerHeight - box.bottom;
 

@@ -50,7 +50,7 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
         </div>
       );
     }
-    
+
     return (
       <div className="mt-1 mb-2 w-full">
         <AudioPlayer src={mediaUrl} />

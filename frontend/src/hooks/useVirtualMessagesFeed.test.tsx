@@ -23,10 +23,9 @@ describe('useVirtualMessagesFeed', () => {
       createdAt: '2026-05-11T12:00:00Z',
     });
 
-    const { result } = renderHook(
-      () => useVirtualMessagesFeed({ messages: [m1, m2] }),
-      { wrapper }
-    );
+    const { result } = renderHook(() => useVirtualMessagesFeed({ messages: [m1, m2] }), {
+      wrapper,
+    });
 
     // 2 даты + 2 сообщения = 4 элемента
     expect(result.current.feedItems).toHaveLength(4);
@@ -40,10 +39,9 @@ describe('useVirtualMessagesFeed', () => {
     const m1 = makeMessage({ id: 'msg-1', content: 'Привет' });
     const m2 = makeMessage({ id: 'msg-2', replyTo: 'msg-1', content: 'Ответ' });
 
-    const { result } = renderHook(
-      () => useVirtualMessagesFeed({ messages: [m1, m2] }),
-      { wrapper }
-    );
+    const { result } = renderHook(() => useVirtualMessagesFeed({ messages: [m1, m2] }), {
+      wrapper,
+    });
 
     expect(result.current.messagesById.get('msg-1')?.id).toBe('msg-1');
     expect(result.current.messagesById.get('msg-2')?.id).toBe('msg-2');

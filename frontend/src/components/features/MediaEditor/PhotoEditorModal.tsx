@@ -182,7 +182,10 @@ export function PhotoEditorModal({ file, onCancel, onSave }: IPhotoEditorModalPr
             onUndo={handleUndo}
           />
 
-          <div className="relative grid place-items-center max-w-full max-h-full overflow-hidden" ref={stageRef}>
+          <div
+            className="relative grid place-items-center max-w-full max-h-full overflow-hidden"
+            ref={stageRef}
+          >
             {!isReady && (
               <div className="absolute z-10 flex items-center gap-2 text-ink-3">
                 <Spinner size="md" />

@@ -133,9 +133,7 @@ export const MessagesList = memo(
                         onRetryMessage={onRetryMessage}
                         onCancelMessage={onCancelMessage}
                         onSelection={toggleMessageSelection}
-                        repliedMessage={
-                          replyId ? messagesById.get(replyId) : undefined
-                        }
+                        repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         translations={translations}
                       />
                     )}

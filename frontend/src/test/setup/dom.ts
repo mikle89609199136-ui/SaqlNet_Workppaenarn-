@@ -90,7 +90,6 @@ if (!globalThis.ResizeObserver) {
   };
 }
 
-
 if (!globalThis.requestAnimationFrame) {
   globalThis.requestAnimationFrame = (callback: FrameRequestCallback) =>
     setTimeout(() => callback(performance.now()), 0) as unknown as number;

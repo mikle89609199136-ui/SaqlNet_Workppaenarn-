@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { AuthLayout } from '@/components/layouts';
+import { AuthLayout } from '@/layouts';
 import { PasswordRequirements } from '@/components/features';
 import { Button, Icon, Input, SegmentedControl } from '@/components/ui';
 import { LANGUAGES, type TLanguage } from '@/consts';
