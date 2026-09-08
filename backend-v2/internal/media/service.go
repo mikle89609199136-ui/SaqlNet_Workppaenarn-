@@ -238,38 +238,48 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		default:
 			return ErrStorage
 		}
-		if options.Head {
-			w.Header().Set("Cache-Control", "private, max-age=86400")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			return nil
-		}
 
-		// Preserve the existing encrypted JSON/base64 response contract.
-		data, err := io.ReadAll(object.Body)
+		prefix, suffix, err := encryptedJSONEnvelope(
+			encryptionJSON,
+			contentType,
+			sizeBytes,
+		)
 		if err != nil {
-			return storageError(ctx, err)
+			return err
 		}
 
-		var encMeta map[string]any
-		if encryptionJSON.Valid && encryptionJSON.String != "" {
-			_ = json.Unmarshal([]byte(encryptionJSON.String), &encMeta)
-		} else {
-			encMeta = map[string]any{}
+		ciphertextSize := object.ContentLength
+		if ciphertextSize < 0 {
+			ciphertextSize = sizeBytes
 		}
-		encMeta["encrypted"] = true
-		encMeta["ciphertext"] = base64.StdEncoding.EncodeToString(data)
 
-		if encMeta["mimeType"] == nil {
-			encMeta["mimeType"] = contentType
-		}
-		if encMeta["sizeBytes"] == nil {
-			encMeta["sizeBytes"] = len(data)
-		}
+		encodedSize := int64(base64.StdEncoding.EncodedLen(int(ciphertextSize)))
+		responseSize := int64(len(prefix)) + encodedSize + int64(len(suffix))
 
 		w.Header().Set("Cache-Control", "private, max-age=86400")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(encMeta)
+		w.Header().Set("Content-Length", strconv.FormatInt(responseSize, 10))
+		w.WriteHeader(http.StatusOK)
+
+		if options.Head {
+			return nil
+		}
+
+		if _, err := w.Write(prefix); err != nil {
+			return responseStartedError(ctx, err)
+		}
+
+		encoder := base64.NewEncoder(base64.StdEncoding, w)
+		if _, err := io.Copy(encoder, object.Body); err != nil {
+			_ = encoder.Close()
+			return responseStartedError(ctx, err)
+		}
+		if err := encoder.Close(); err != nil {
+			return responseStartedError(ctx, err)
+		}
+		if _, err := w.Write(suffix); err != nil {
+			return responseStartedError(ctx, err)
+		}
 		return nil
 	}
 
@@ -327,6 +337,13 @@ func storageError(ctx context.Context, err error) error {
 	return fmt.Errorf("%w: %v", ErrStorage, err)
 }
 
+func responseStartedError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: %v", ErrResponseStarted, err)
+}
+
 func copyObjectHeader(header http.Header, name, value string) {
 	if value != "" {
 		header.Set(name, value)
@@ -339,4 +356,47 @@ func safeContentType(contentType string) string {
 		return "application/octet-stream"
 	}
 	return mediaType
+}
+
+func encryptedJSONEnvelope(
+	encryptionJSON sql.NullString,
+	contentType string,
+	sizeBytes int64,
+) ([]byte, []byte, error) {
+	meta := map[string]any{}
+
+	if encryptionJSON.Valid && encryptionJSON.String != "" {
+		if err := json.Unmarshal([]byte(encryptionJSON.String), &meta); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	delete(meta, "ciphertext")
+	meta["encrypted"] = true
+
+	if meta["mimeType"] == nil {
+		meta["mimeType"] = contentType
+	}
+	if meta["sizeBytes"] == nil {
+		meta["sizeBytes"] = sizeBytes
+	}
+
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(encoded) < 2 {
+		return nil, nil, errors.New("invalid encrypted metadata")
+	}
+
+	// Убираем закрывающую скобку, чтобы добавить ciphertext последним полем.
+	prefix := append([]byte(nil), encoded[:len(encoded)-1]...)
+	if len(prefix) > 1 {
+		prefix = append(prefix, ',')
+	}
+	prefix = append(prefix, `"ciphertext":"`...)
+
+	suffix := []byte(`"}`)
+
+	return prefix, suffix, nil
 }

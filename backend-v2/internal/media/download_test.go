@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -521,4 +522,177 @@ func TestMediaDownloadStillPropagatesRequestCancellation(t *testing.T) {
 	cancel()
 	waitForTestSignal(t, canceled)
 	waitForTestSignal(t, done)
+}
+
+func TestEncryptedDownloadWritesBeforeReadingWholeObject(t *testing.T) {
+	reader := &chunkedReadCloser{
+		data: []byte("encrypted-content"),
+	}
+
+	store := &downloadStore{
+		get: func(
+			context.Context,
+			string,
+			string,
+			GetOptions,
+		) (*ObjectResponse, error) {
+			return &ObjectResponse{
+				Body:          reader,
+				StatusCode:    http.StatusOK,
+				ContentLength: int64(len("encrypted-content")),
+			}, nil
+		},
+	}
+
+	handler, mock := newDownloadHandler(
+		t,
+		store,
+		"application/octet-stream",
+		int64(len("encrypted-content")),
+		true,
+		`{"version":1}`,
+	)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v2/media/"+testUploadID,
+		nil,
+	)
+
+	w := &streamingRecorder{
+		header: make(http.Header),
+		reader: reader,
+	}
+
+	handler.Serve(w, req)
+
+	if !w.firstWriteBeforeEOF {
+		t.Fatal("encrypted response was not written until the whole object had been read")
+	}
+
+	if !reader.closed {
+		t.Fatal("storage body was not closed")
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(w.body.Bytes(), &response); err != nil {
+		t.Fatalf("invalid encrypted JSON response: %v; body=%q", err, w.body.String())
+	}
+
+	wantCiphertext := base64.StdEncoding.EncodeToString(
+		[]byte("encrypted-content"),
+	)
+	if response["ciphertext"] != wantCiphertext {
+		t.Fatalf(
+			"ciphertext=%v, want %q",
+			response["ciphertext"],
+			wantCiphertext,
+		)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEncryptedHeadReturnsGetContentLength(t *testing.T) {
+	const ciphertext = "cipher"
+	const metadata = `{
+		"version": 1,
+		"mimeType": "application/pdf",
+		"sizeBytes": 42
+	}`
+
+	newStore := func() *downloadStore {
+		return &downloadStore{
+			get: func(
+				_ context.Context,
+				_ string,
+				_ string,
+				options GetOptions,
+			) (*ObjectResponse, error) {
+				body := ciphertext
+				if options.Head {
+					body = ""
+				}
+
+				return &ObjectResponse{
+					Body:          io.NopCloser(strings.NewReader(body)),
+					StatusCode:    http.StatusOK,
+					ContentLength: int64(len(ciphertext)),
+				}, nil
+			},
+		}
+	}
+
+	getHandler, getMock := newDownloadHandler(
+		t,
+		newStore(),
+		"application/pdf",
+		int64(len(ciphertext)),
+		true,
+		metadata,
+	)
+
+	getResponse := serveDownload(
+		t,
+		getHandler,
+		http.MethodGet,
+		nil,
+	)
+
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"GET status=%d body=%q",
+			getResponse.Code,
+			getResponse.Body.String(),
+		)
+	}
+
+	headHandler, headMock := newDownloadHandler(
+		t,
+		newStore(),
+		"application/pdf",
+		int64(len(ciphertext)),
+		true,
+		metadata,
+	)
+
+	headResponse := serveDownload(
+		t,
+		headHandler,
+		http.MethodHead,
+		nil,
+	)
+
+	if headResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"HEAD status=%d body=%q",
+			headResponse.Code,
+			headResponse.Body.String(),
+		)
+	}
+
+	wantLength := strconv.Itoa(getResponse.Body.Len())
+	if got := headResponse.Header().Get("Content-Length"); got != wantLength {
+		t.Fatalf(
+			"HEAD Content-Length=%q, want %q",
+			got,
+			wantLength,
+		)
+	}
+
+	if headResponse.Body.Len() != 0 {
+		t.Fatalf(
+			"HEAD returned body %q",
+			headResponse.Body.String(),
+		)
+	}
+
+	if err := getMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	if err := headMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }
