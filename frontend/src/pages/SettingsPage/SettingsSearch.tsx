@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import { searchSettings } from './settingsIndex';
 
 /**

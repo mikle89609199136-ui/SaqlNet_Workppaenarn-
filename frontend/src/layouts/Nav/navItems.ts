@@ -1,4 +1,4 @@
-import { ROUTES } from '@/consts';
+import { ROUTES } from '@/shared/config';
 import type { TIconTypes } from '@/types';
 
 export interface INavItem {

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
-import { DEFAULT_FILTERS } from '@/consts';
+import { DEFAULT_FILTERS } from '@/shared/config';
 import { EditorCropOverlay } from './EditorCropOverlay';
 import { EditorDrawPanel } from './EditorDrawPanel';
 import { EditorFiltersPanel } from './EditorFiltersPanel';

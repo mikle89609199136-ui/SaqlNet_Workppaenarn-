@@ -1,5 +1,5 @@
-import { Button, Icon } from '@/components/ui';
-import { EDITOR_FONTS } from '@/consts';
+import { Button, Icon } from '@/shared/ui';
+import { EDITOR_FONTS } from '@/shared/config';
 import type { IEditorTextObject, TTextFontId } from '@/types';
 import { ColorPicker, EditorRange, PanelTitle } from './EditorControls';
 

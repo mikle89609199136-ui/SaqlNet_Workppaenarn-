@@ -1,5 +1,5 @@
-import { Icon } from '@/components/ui';
-import { cn } from '@/utils';
+import { Icon } from '@/shared/ui';
+import { cn } from '@/shared/lib';
 import { NavLink } from 'react-router-dom';
 import type { INavItem } from './navItems';
 

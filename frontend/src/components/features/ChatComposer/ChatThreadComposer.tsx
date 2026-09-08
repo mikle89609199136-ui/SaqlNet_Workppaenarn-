@@ -9,7 +9,7 @@ import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IEncryptionState } from '@/crypto/encryptionStatus';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import {
   useEffect,
   useRef,

@@ -1,5 +1,5 @@
-import { ContextMenu, Icon } from '@/components/ui';
-import { cn } from '@/utils';
+import { ContextMenu, Icon } from '@/shared/ui';
+import { cn } from '@/shared/lib';
 import { useMessageActions } from '@/hooks';
 import { pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';

@@ -2,13 +2,13 @@ import { useCall, useConnectionStatus } from '@/hooks';
 import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/pages';
 import { chatQuery } from '@/queries/chat/threadQueries';
-import { cn, getChatSubtitle } from '@/utils';
+import { cn, getChatSubtitle } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, Icon } from '@/components/ui';
+import { Avatar, Icon } from '@/shared/ui';
 import { useTypingStore } from '@/store/typing';
 
 /**

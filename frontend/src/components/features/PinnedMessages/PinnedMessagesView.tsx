@@ -1,5 +1,5 @@
 import { ChatThreadHeader, MessageActionsPopover, MessagesList } from '../ChatThread';
-import { Button, ConfirmDialog } from '@/components/ui';
+import { Button, ConfirmDialog } from '@/shared/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/store';

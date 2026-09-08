@@ -9,9 +9,10 @@ import {
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { Icon } from '@/components/ui';
-import { useChatsSearch, useIsMobile, usePaneWidth } from '@/hooks';
-import { isConversationStarted } from '@/utils';
+import { Icon } from '@/shared/ui';
+import { useChatsSearch } from '@/hooks';
+import { useIsMobile, usePaneWidth } from '@/shared/lib';
+import { isConversationStarted } from '@/shared/lib';
 import { PaneResizer } from './PaneResizer';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';

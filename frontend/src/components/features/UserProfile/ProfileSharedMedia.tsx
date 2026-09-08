@@ -1,4 +1,4 @@
-import { Modal } from '@/components/ui';
+import { Modal } from '@/shared/ui';
 import { VideoPlayer } from '@/components/features/VideoPlayer';
 import type { IMediaItem, IMessageDto } from '@/types';
 import { useState } from 'react';

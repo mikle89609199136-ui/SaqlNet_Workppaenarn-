@@ -1,5 +1,5 @@
-import { Input } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
+import { Input } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

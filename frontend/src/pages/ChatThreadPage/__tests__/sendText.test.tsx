@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { STORAGE_KEYS } from '@/consts';
+import { STORAGE_KEYS } from '@/shared/config';
 import type { IChatDto } from '@/types';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';

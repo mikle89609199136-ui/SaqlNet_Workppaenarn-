@@ -1,5 +1,5 @@
-import { describeApiError } from '@/api';
-import { Avatar, Button, Icon, Modal } from '@/components/ui';
+import { describeApiError } from '@/shared/api';
+import { Avatar, Button, Icon, Modal } from '@/shared/ui';
 import { useToasts } from '@/hooks';
 import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';

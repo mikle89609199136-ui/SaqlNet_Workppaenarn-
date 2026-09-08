@@ -10,14 +10,14 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { testI18n } from '@/test/harness/i18n';
 import { makeUser } from '@/test/fixtures';
-import { ToastStack } from '@/components/ui';
+import { ToastStack } from '@/shared/ui';
 import { CreateGroupModal } from './CreateGroupModal';
 
 /**
  * Уменьшение картинки идёт через canvas, которого в jsdom нет. Оно вынесено
  * отдельным модулем и здесь подменяется: аватарка проверяется вживую.
  */
-vi.mock('@/utils/downscaleImage', () => ({
+vi.mock('@/shared/lib/downscaleImage', () => ({
   downscaleImage: async () => 'data:image/jpeg;base64,УМЕНЬШЕННАЯ',
 }));
 

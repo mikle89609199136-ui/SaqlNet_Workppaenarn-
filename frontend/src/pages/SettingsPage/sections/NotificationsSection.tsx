@@ -1,4 +1,4 @@
-import { Switch } from '@/components/ui';
+import { Switch } from '@/shared/ui';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
 import { useSettingsData } from './useSettingsData';

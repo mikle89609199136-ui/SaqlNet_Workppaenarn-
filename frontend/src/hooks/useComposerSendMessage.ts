@@ -1,4 +1,4 @@
-import { describeApiError } from '@/api';
+import { describeApiError } from '@/shared/api';
 import { chatKeys } from '@/queries/keys';
 import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
 import { retryOutboxMessage, sendOutboxItem } from '@/queries/chat/outboxSender';
@@ -6,7 +6,7 @@ import { services } from '@/services';
 import { useChatUiStore, useProfileStore } from '@/store';
 import { clearDraft } from '@/store/chatDrafts';
 import { addOutboxItem, type IOutboxItem } from '@/store/outbox';
-import { setComposerText } from '@/utils/setComposerText';
+import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {

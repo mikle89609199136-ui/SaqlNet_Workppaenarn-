@@ -91,7 +91,7 @@ export default tseslint.config(
      что правило выключат. Ошибками станут на последнем этапе (#628),
      когда долг разобран. */
   {
-    files: ['src/utils/**/*.{ts,tsx}', 'src/consts/**/*.{ts,tsx}', 'src/types/**/*.{ts,tsx}'],
+    files: ['src/shared/**/*.{ts,tsx}', 'src/utils/**/*.{ts,tsx}', 'src/types/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'warn',

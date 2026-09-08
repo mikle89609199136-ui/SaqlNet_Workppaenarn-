@@ -1,5 +1,5 @@
-import { Button, ConfirmDialog, Icon } from '@/components/ui';
-import { useEscapeKey, useIsMobile } from '@/hooks';
+import { Button, ConfirmDialog, Icon } from '@/shared/ui';
+import { useEscapeKey, useIsMobile } from '@/shared/lib';
 import { useChatUiStore, useToastStore } from '@/store';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

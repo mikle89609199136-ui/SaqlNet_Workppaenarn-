@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '@/consts';
+import { STORAGE_KEYS } from '@/shared/config';
 
 /**
  * Согласие на перевод сообщений.

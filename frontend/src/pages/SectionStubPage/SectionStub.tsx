@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
 import type { ReactNode } from 'react';
 

@@ -1,5 +1,5 @@
-import { Button, Icon } from '@/components/ui';
-import { EDITOR_BRUSHES } from '@/consts';
+import { Button, Icon } from '@/shared/ui';
+import { EDITOR_BRUSHES } from '@/shared/config';
 import type { TBrushType } from '@/types';
 import { ColorPicker, EditorRange, PanelTitle } from './EditorControls';
 

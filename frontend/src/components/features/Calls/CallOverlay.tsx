@@ -1,4 +1,4 @@
-import { Avatar } from '@/components/ui';
+import { Avatar } from '@/shared/ui';
 import { config } from '@/configs/app';
 import { useCall } from '@/hooks';
 import { useCallStore } from '@/store';
