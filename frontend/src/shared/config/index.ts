@@ -19,3 +19,6 @@ export {
   EDITOR_FONTS,
   EDITOR_RATIOS,
 } from './editor';
+
+/* Адреса API и сокета: вычисляются при обращении, не при импорте. */
+export { config } from './app';

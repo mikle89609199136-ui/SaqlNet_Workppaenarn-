@@ -1,5 +1,5 @@
-import { apiClient as defaultApiClient } from '@/shared/api/apiFactory';
-import type { ApiClient } from '@/shared/api/ApiClient';
+import { apiClient as defaultApiClient } from '@/shared/api';
+import type { ApiClient } from '@/shared/api';
 import { STORAGE_KEYS } from '@/shared/config/storageKeys';
 import { useProfileStore } from '@/store/profile';
 

@@ -1,5 +1,5 @@
 import { Avatar } from '@/shared/ui';
-import { config } from '@/configs/app';
+import { config } from '@/shared/config';
 import { useCall } from '@/hooks';
 import { useCallStore } from '@/store';
 import { useEffect, useRef } from 'react';

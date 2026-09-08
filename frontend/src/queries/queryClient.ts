@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import type { IApiError } from '@/shared/api/ApiClient';
+import type { IApiError } from '@/shared/api';
 
 /** Сколько кеш живёт после того, как перестал использоваться. */
 const THIRTY_MINUTES = 30 * 60 * 1000;

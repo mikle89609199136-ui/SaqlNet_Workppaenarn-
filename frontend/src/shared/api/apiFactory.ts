@@ -1,5 +1,4 @@
-import { config } from '@/configs/app';
-import { STORAGE_KEYS } from '@/shared/config';
+import { config, STORAGE_KEYS } from '@/shared/config';
 import { ApiClient } from './ApiClient';
 
 interface ICreateApiClientOptions {
@@ -8,8 +7,10 @@ interface ICreateApiClientOptions {
 }
 
 /**
- * Отдельный клиент со своими настройками. Нужен там, где общий синглтон
- * мешает: в тестах и в местах, которым требуется другой адрес или токен.
+ * Отдельный клиент со своими настройками.
+ *
+ * Нужен там, где общий синглтон мешает: сейчас это тесты, которым нужен
+ * свой клиент, не завязанный на localStorage и на общий адрес.
  */
 export function createApiClient(options: ICreateApiClientOptions = {}): ApiClient {
   return new ApiClient(options.baseUrl ?? config.apiBaseUrl, {
@@ -19,5 +20,3 @@ export function createApiClient(options: ICreateApiClientOptions = {}): ApiClien
 }
 
 export const apiClient = createApiClient();
-
-export default apiClient;

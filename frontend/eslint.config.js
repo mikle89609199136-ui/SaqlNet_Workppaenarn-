@@ -128,7 +128,7 @@ export default tseslint.config(
             {
               group: ['@/pages', '@/pages/*', '@/configs/router'],
               message:
-                'Компонент не знает о странице и о роутере: это кольцо. Общий тип выносится вниз — так уедут IProfileModal и IProfileState из ChatThreadPage. Адреса из configs/app трогать можно: на этапе #624 они уедут в shared/config.',
+                'Компонент не знает о странице и о роутере: это кольцо. Общий тип выносится вниз — так уедут IProfileModal и IProfileState из ChatThreadPage.',
             },
           ],
         },

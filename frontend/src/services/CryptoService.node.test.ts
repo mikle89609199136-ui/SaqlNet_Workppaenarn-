@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { ApiClient } from '@/shared/api/ApiClient';
+import type { ApiClient } from '@/shared/api';
 import { useMemoryKeyStore } from '@/crypto/keyStore';
 import type { IEncryptedMedia } from '@/types';
 import {
