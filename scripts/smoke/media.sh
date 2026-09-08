@@ -48,16 +48,13 @@ run_media_tests() {
 		tr -d '\r' |
 		head -n 1)
 
-	if [[ "$HTTP_CODE" == "307" && -n "$LOCATION" ]]; then
-		echo "✓ [$HTTP_CODE] GET $MEDIA_URL returns redirect"
+	if [[ "$HTTP_CODE" == "200" && "$HTTP_BODY" == "$file_content" ]]; then
+		echo "✓ [$HTTP_CODE] GET $MEDIA_URL returns media content"
 		PASS=$((PASS + 1))
-
-		if [[ "$LOCATION" == http://minio:* || "$LOCATION" == https://minio:* ]]; then
-			echo "⚠ Location uses internal Docker hostname: $LOCATION"
-		fi
 	else
-		echo "✗ [$HTTP_CODE] GET $MEDIA_URL — expected 307 with Location header"
+		echo "✗ [$HTTP_CODE] GET $MEDIA_URL — expected 200 with uploaded content"
 		echo "  ${HTTP_HEADERS:0:300}"
+		echo "  body: ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
 	fi
 }

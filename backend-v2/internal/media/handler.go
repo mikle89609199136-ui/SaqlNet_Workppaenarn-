@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/authctx"
@@ -32,6 +34,8 @@ const (
 type Handler struct {
 	service *Service
 }
+
+var uploadIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
@@ -325,7 +329,7 @@ func uploadResponse(up Upload) map[string]any {
 }
 
 func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
@@ -334,13 +338,30 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload id required")
 		return
 	}
+	if !uploadIDPattern.MatchString(uploadID) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload not found")
+		return
+	}
+	if err := httpx.DisableWriteDeadline(w); err != nil {
+		slog.Error("disable media download write deadline", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
 
-	// Delegate fully to Service to handle JSON encrypted response vs Redirect
-	err := h.service.ServeProxy(r.Context(), uploadID, w)
+	err := h.service.ServeProxy(r.Context(), uploadID, w, GetOptions{
+		Head:  r.Method == http.MethodHead,
+		Range: r.Header.Get("Range"),
+	})
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload not found")
+	case errors.Is(err, ErrObjectNotFound):
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "object_not_found", "media object not found")
+	case errors.Is(err, ErrStorage):
+		httpx.ErrorJSON(w, r, http.StatusBadGateway, "storage_unavailable", "media storage unavailable")
+	case errors.Is(err, ErrResponseStarted), err != nil && r.Context().Err() != nil:
+		return
 	case err != nil:
-		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", err.Error())
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

@@ -15,23 +15,27 @@ import (
 	"time"
 )
 
-// MinioStore is a minimal S3-compatible store that uses presigned URLs (AWS Signature V4).
+// MinioStore is a minimal S3-compatible store that uses AWS Signature V4.
 // No external SDK dependency — keeps the Go module lean.
 type MinioStore struct {
-	endpoint  string // e.g. "http://minio:9000"
-	accessKey string
-	secretKey string
-	region    string
-	client    *http.Client
+	endpoint       string // e.g. "http://minio:9000"
+	accessKey      string
+	secretKey      string
+	region         string
+	client         *http.Client
+	downloadClient *http.Client
 }
 
 func NewMinioStore(endpoint, accessKey, secretKey, region string) *MinioStore {
+	downloadTransport := http.DefaultTransport.(*http.Transport).Clone()
+	downloadTransport.ResponseHeaderTimeout = 30 * time.Second
 	return &MinioStore{
-		endpoint:  strings.TrimRight(endpoint, "/"),
-		accessKey: accessKey,
-		secretKey: secretKey,
-		region:    region,
-		client:    &http.Client{Timeout: 30 * time.Second},
+		endpoint:       strings.TrimRight(endpoint, "/"),
+		accessKey:      accessKey,
+		secretKey:      secretKey,
+		region:         region,
+		client:         &http.Client{Timeout: 30 * time.Second},
+		downloadClient: &http.Client{Transport: downloadTransport},
 	}
 }
 
@@ -92,6 +96,33 @@ func (m *MinioStore) Put(ctx context.Context, bucket, key string, r io.Reader, s
 		return fmt.Errorf("minio put: %s", resp.Status)
 	}
 	return nil
+}
+
+func (m *MinioStore) Get(ctx context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error) {
+	method := http.MethodGet
+	if options.Head {
+		method = http.MethodHead
+	}
+	reqURL := fmt.Sprintf("%s/%s/%s", m.endpoint, bucket, key)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	if options.Range != "" {
+		req.Header.Set("Range", options.Range)
+	}
+	m.signRequest(req, nil)
+	resp, err := m.downloadClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return &ObjectResponse{
+		Body:          resp.Body,
+		StatusCode:    resp.StatusCode,
+		ContentLength: resp.ContentLength,
+		ContentRange:  resp.Header.Get("Content-Range"),
+		AcceptRanges:  resp.Header.Get("Accept-Ranges"),
+	}, nil
 }
 
 func (m *MinioStore) PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
