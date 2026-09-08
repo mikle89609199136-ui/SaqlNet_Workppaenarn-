@@ -31,7 +31,7 @@ export class Input {
         color: colors.textSecondary,
         fontSize: '14px',
         marginBottom: '8px',
-        fontWeight: '500'
+        fontWeight: '500',
       });
       container.appendChild(label);
     }
@@ -49,7 +49,7 @@ export class Input {
         left: '14px',
         color: colors.textSecondary,
         fontSize: '18px',
-        zIndex: '1'
+        zIndex: '1',
       });
       wrapper.appendChild(iconSpan);
     }
@@ -59,7 +59,7 @@ export class Input {
     input.id = this.id;
     input.value = this.value;
     input.placeholder = this.placeholder;
-    
+
     Object.assign(input.style, {
       width: '100%',
       height: '48px',
@@ -71,7 +71,7 @@ export class Input {
       fontSize: '16px',
       outline: 'none',
       transition: 'border-color 0.2s, box-shadow 0.2s',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif',
     });
 
     input.addEventListener('focus', () => {
@@ -102,7 +102,7 @@ export class Input {
         color: '#FF4B4B',
         fontSize: '12px',
         marginTop: '4px',
-        display: 'block'
+        display: 'block',
       });
       container.appendChild(errorText);
     }
@@ -137,7 +137,7 @@ export class Input {
           color: '#FF4B4B',
           fontSize: '12px',
           marginTop: '4px',
-          display: 'block'
+          display: 'block',
         });
         container.appendChild(errorText);
       }

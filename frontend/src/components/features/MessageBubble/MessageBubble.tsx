@@ -97,9 +97,7 @@ export const MessageBubble = memo(
         >
           {!mine && message.senderStatusEmoji && (
             <div className="mb-[3px] text-brand text-xs font-semibold">
-              <span className="ml-1.5 inline-block">
-                {message.senderStatusEmoji}
-              </span>
+              <span className="ml-1.5 inline-block">{message.senderStatusEmoji}</span>
             </div>
           )}
 

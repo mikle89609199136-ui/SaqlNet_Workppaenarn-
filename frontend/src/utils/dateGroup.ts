@@ -42,9 +42,7 @@ export function formatDateDivider(
   const isSameYear = date.getFullYear() === now.getFullYear();
 
   const isToday =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    isSameYear;
+    date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && isSameYear;
 
   if (isToday) {
     return t('today', 'Сегодня');

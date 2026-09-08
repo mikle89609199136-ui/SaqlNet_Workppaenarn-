@@ -125,9 +125,7 @@ export const MessagesList = memo(
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onSelection={toggleMessageSelection}
-                        repliedMessage={
-                          replyId ? messagesById.get(replyId) : undefined
-                        }
+                        repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         translations={translations}
                       />
                     )}

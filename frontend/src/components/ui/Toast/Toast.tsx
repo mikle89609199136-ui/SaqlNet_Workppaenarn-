@@ -12,7 +12,10 @@ const kinds = {
   error: { icon: 'cross', color: 'text-danger', bar: 'bg-danger', role: 'alert' },
   warning: { icon: 'warning', color: 'text-warn', bar: 'bg-warn', role: 'alert' },
   info: { icon: 'info', color: 'text-brand', bar: 'bg-brand', role: 'status' },
-} as const satisfies Record<IToast['type'], { icon: TIconTypes; color: string; bar: string; role: 'status' | 'alert' }>;
+} as const satisfies Record<
+  IToast['type'],
+  { icon: TIconTypes; color: string; bar: string; role: 'status' | 'alert' }
+>;
 
 const LIFETIME = 3000;
 /* Столько уведомление живёт после решения закрыться — ровно чтобы
@@ -82,7 +85,10 @@ export const Toast = ({ toast, onHide }: Props) => {
           'animate-[toast-bar_linear_forwards] motion-reduce:animate-none',
           kind.bar
         )}
-        style={{ animationDuration: `${LIFETIME}ms`, animationPlayState: paused ? 'paused' : 'running' }}
+        style={{
+          animationDuration: `${LIFETIME}ms`,
+          animationPlayState: paused ? 'paused' : 'running',
+        }}
       />
     </div>
   );

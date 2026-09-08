@@ -1,10 +1,5 @@
 import { EDITOR_FONTS } from '@/consts';
-import type {
-  IEditorPathObject,
-  IEditorPoint,
-  IEditorTextObject,
-  TEditorObject,
-} from '@/types';
+import type { IEditorPathObject, IEditorPoint, IEditorTextObject, TEditorObject } from '@/types';
 
 export function createEditorId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
