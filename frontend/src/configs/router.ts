@@ -6,9 +6,8 @@ import { useProfileStore } from '@/store';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard';
-import { AppLayout } from '../components/layouts/AppLayout';
-import { RootLayout } from '../components/layouts/RootLayout';
-import { RouteLoadingFallback } from '../components/layouts/RouteLoadingFallback';
+import { AppLayout, RootLayout } from '@/layouts';
+import { RouteLoadingFallback } from '@/components/ui';
 import {
   DEFAULT_SETTINGS_SECTION,
   REACT_ROUTES,
