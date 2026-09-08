@@ -49,8 +49,9 @@
 
       const toast = document.createElement('div');
       toast.className = 'toast craneapp-greeting';
-      toast.innerHTML = '<div class="craneapp-greeting-header"><span>🤖 CraneApp</span></div>'
-        + `<div class="craneapp-greeting-body">${message.replace(/\n/g, '<br>')}</div>`;
+      toast.innerHTML =
+        '<div class="craneapp-greeting-header"><span>🤖 CraneApp</span></div>' +
+        `<div class="craneapp-greeting-body">${message.replace(/\n/g, '<br>')}</div>`;
 
       container.appendChild(toast);
       setTimeout(() => {

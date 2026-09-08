@@ -36,4 +36,3 @@ export {
   splitPathByEraser,
 } from './editorCanvas';
 export { estimateMessageItemSize } from './estimateMessageSize';
-

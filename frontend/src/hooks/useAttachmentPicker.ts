@@ -16,10 +16,7 @@ function getMediaMessageType(mimeType = '') {
   return 'file';
 }
 
-export function useAttachmentPicker({
-  setPendingAttachment,
-  attachmentInputRef,
-}: Params) {
+export function useAttachmentPicker({ setPendingAttachment, attachmentInputRef }: Params) {
   const { t } = useTranslation();
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const setError = useChatUiStore((state) => state.setError);

@@ -58,18 +58,19 @@ export function ProfileHeader({
       <p className="text-caption text-ink-2">@{profileUser.username}</p>
 
       {profileSubtitle && (
-        <p className={cn('mt-1 text-caption font-medium', isPeerOnline ? 'text-brand' : 'text-ink-2')}>
+        <p
+          className={cn(
+            'mt-1 text-caption font-medium',
+            isPeerOnline ? 'text-brand' : 'text-ink-2'
+          )}
+        >
           {profileSubtitle}
         </p>
       )}
 
       <div className="mt-4 flex items-center justify-center gap-3 w-full">
         {isMyProfile ? (
-          <Button
-            onClick={onStartEdit}
-            size="md"
-            variant="secondary"
-          >
+          <Button onClick={onStartEdit} size="md" variant="secondary">
             <Icon name="edit" />
             {t('editProfile', 'Редактировать')}
           </Button>

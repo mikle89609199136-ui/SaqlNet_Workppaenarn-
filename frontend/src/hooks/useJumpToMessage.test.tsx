@@ -45,9 +45,12 @@ describe('useJumpToMessage', () => {
 
   it('shows toast when message is not found and cannot load older', async () => {
     const onScrollToMessage = vi.fn().mockReturnValue(false);
-    const { result } = renderHook(() => useJumpToMessage({ onScrollToMessage, hasMoreOlder: false }), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useJumpToMessage({ onScrollToMessage, hasMoreOlder: false }),
+      {
+        wrapper,
+      }
+    );
 
     let success = true;
     await act(async () => {

@@ -99,7 +99,15 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
       preloadCountRef.current += 1;
       void loadOlder({ isPreload: true });
     }
-  }, [chatId, query.isPending, query.data, hasNextPage, isFetchingNextPage, hasUnresolvedReplies, loadOlder]);
+  }, [
+    chatId,
+    query.isPending,
+    query.data,
+    hasNextPage,
+    isFetchingNextPage,
+    hasUnresolvedReplies,
+    loadOlder,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;

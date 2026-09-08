@@ -148,7 +148,7 @@ export const ChatThreadHeader = ({
           >
             <button
               aria-label={chat.title}
-              className={"cursor-pointer"}
+              className={'cursor-pointer'}
               tabIndex={-1}
               type="button"
             >

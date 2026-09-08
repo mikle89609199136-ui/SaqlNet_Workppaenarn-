@@ -1,8 +1,7 @@
 import type { IMessageDto } from '@/types';
 
 export type TEstimatableFeedItem =
-  | { type: 'date'; label?: string }
-  | { type: 'message'; message: IMessageDto };
+  { type: 'date'; label?: string } | { type: 'message'; message: IMessageDto };
 
 const CHARS_PER_LINE = 42;
 const LINE_HEIGHT_PX = 20;

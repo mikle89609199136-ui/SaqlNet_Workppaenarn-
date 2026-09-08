@@ -117,9 +117,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
           {...rest}
         />
 
-        {addon && (
-          <span className={cn('absolute flex items-center', s.addon)}>{addon}</span>
-        )}
+        {addon && <span className={cn('absolute flex items-center', s.addon)}>{addon}</span>}
       </div>
 
       {caption && (
