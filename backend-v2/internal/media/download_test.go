@@ -55,7 +55,8 @@ func newDownloadHandler(t *testing.T, store Store, contentType string, size int6
 		WithArgs(testUploadID).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}).
 			AddRow("crane-media", "user/object", contentType, size, encrypted, encryptionJSON))
-	return NewHandler(NewService(db, store, "crane-media")), mock
+	service := NewService(db, store, "crane-media", defaultTestMaxUploadBytes)
+	return NewHandler(service), mock
 }
 
 func objectResponse(status int, body string) *ObjectResponse {
@@ -205,7 +206,8 @@ func TestDownloadMissingDatabaseRowIsNotFound(t *testing.T) {
 	mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").
 		WithArgs(testUploadID).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}))
-	handler := NewHandler(NewService(db, store, "crane-media"))
+	service := NewService(db, store, "crane-media", defaultTestMaxUploadBytes)
+	handler := NewHandler(service)
 
 	w := serveDownload(t, handler, http.MethodGet, nil)
 
