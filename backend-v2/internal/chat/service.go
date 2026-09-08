@@ -2459,27 +2459,87 @@ type MemberRemovedEvent struct {
 	Reason string `json:"reason"`
 }
 
+// The LeaveChat service method removes a user from a group chat,
+// provided the chat exists, is a group, and the user is not the owner.
 func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
+	// ------------------------------------------------------------------
+	// Step 1: Validate input
+	// ------------------------------------------------------------------
 	input := leaveChatInput{ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
 		return ErrInvalidInput
 	}
 
+	// ------------------------------------------------------------------
+	// Step 2: Verify chat exists and is a group (early validation)
+	//         – This avoids starting a transaction for invalid requests.
+	// ------------------------------------------------------------------
+	var chatType string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT type FROM chats.chats WHERE id = $1`, chatID,
+	).Scan(&chatType)
+	if err != nil {
+		slog.Error("failed to check chat type",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if chatType != "group" {
+		return ErrInvalidChatType // e.g., "only group chats support leave"
+	}
+
+	// ------------------------------------------------------------------
+	// Step 3: Determine user's role in the chat
+	// ------------------------------------------------------------------
 	role, err := s.memberRole(ctx, userID, chatID)
 	if err != nil {
+		slog.Error("failed to check user's role in chat",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		return err
 	}
 	if role == "owner" {
-		return ErrOwnershipTransferRequired
+		return ErrOwnershipTransferRequired // owner must transfer ownership first
 	}
 
+	// ------------------------------------------------------------------
+	// Step 4: Begin transaction – all deletions are atomic
+	// ------------------------------------------------------------------
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		slog.Error("failed to begin transaction",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		return err
 	}
 
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// ------------------------------------------------------------------
+	// Step 4a: Fetch all current members (to notify them later)
+	//          – We do this before deleting to have the full list.
+	// ------------------------------------------------------------------
 	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
+		slog.Error("failed to query current members",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		_ = tx.Rollback()
 		return err
 	}
@@ -2487,6 +2547,11 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
+			slog.Error("failed to scan member ID",
+				"chatID", chatID,
+				"userID", userID,
+				"error", err,
+			)
 			_ = rows.Close()
 			_ = tx.Rollback()
 			return err
@@ -2494,33 +2559,89 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		recipients = append(recipients, memberID)
 	}
 	if err := rows.Err(); err != nil {
+		slog.Error("rows iteration error",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		_ = rows.Close()
 		_ = tx.Rollback()
 		return err
 	}
 	_ = rows.Close()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
+	// ------------------------------------------------------------------
+	// Step 4b: Delete user's encryption keys for this chat
+	// ------------------------------------------------------------------
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
+		chatID, userID,
+	); err != nil {
+		slog.Error("failed to delete user's encryption keys",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		_ = tx.Rollback()
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
+
+	// ------------------------------------------------------------------
+	// Step 4c: Delete user's chat settings (preferences, etc.)
+	// ------------------------------------------------------------------
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`,
+		userID, chatID,
+	); err != nil {
+		slog.Error("failed to delete user's chat settings",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		_ = tx.Rollback()
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
+
+	// ------------------------------------------------------------------
+	// Step 4d: Remove the member row (only if role is NOT 'owner')
+	// ------------------------------------------------------------------
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`,
+		chatID, userID,
+	)
 	if err != nil {
+		slog.Error("failed to delete member row",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
 		_ = tx.Rollback()
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		_ = tx.Rollback()
-		return ErrForbidden
+		return ErrForbidden // e.g., user is not a member or is owner
 	}
+
+	// ------------------------------------------------------------------
+	// Step 4e: Commit transaction – all changes persist together
+	// ------------------------------------------------------------------
 	if err := tx.Commit(); err != nil {
+		slog.Error("failed to commit transaction",
+			"chatID", chatID,
+			"userID", userID,
+			"error", err,
+		)
+		_ = tx.Rollback()
 		return err
 	}
 
+	committed = true
+
+	// ------------------------------------------------------------------
+	// Step 5: Broadcast WebSocket event to remaining members
+	//         – Event notifies about the member removal.
+	// ------------------------------------------------------------------
 	if s.ws != nil {
 		event := MemberRemovedEvent{
 			Type:   "chat_member_removed",
@@ -2530,7 +2651,11 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
-			slog.Error("failed to marshal member_removed event", "err", err, "chatID", chatID, "userID", userID)
+			slog.Error("failed to marshal member_removed event",
+				"err", err,
+				"chatID", chatID,
+				"userID", userID,
+			)
 		} else {
 			s.ws.BroadcastToUsers(recipients, payload)
 		}
