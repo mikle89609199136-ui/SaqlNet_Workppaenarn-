@@ -30,7 +30,6 @@ export type TReactionsList = IReaction[];
 export type TMessageDeliveryStatus =
   | 'pending'
   | 'uploading'
-  | 'encrypting'
   | 'failed'
   | 'sent'
   | 'read';

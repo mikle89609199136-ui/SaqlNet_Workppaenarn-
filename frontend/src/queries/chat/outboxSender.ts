@@ -30,42 +30,8 @@ function isInFlight(tempId: string): boolean {
   return true;
 }
 
-/**
- * Проверяет, не появилось ли уже такое сообщение в кеше треда (пришло по WebSocket
- * или предыдущий запрос завершился успехом на бэкенде, но ответ потерялся).
- */
-function findExistingConfirmedMessage(
-  queryClient: QueryClient,
-  chatId: string,
-  item: IOutboxItem
-): boolean {
-  const data = queryClient.getQueryData<IThreadPages>(chatKeys.messages(chatId));
-  if (!data?.pages) return false;
-
-  const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
-
-  for (const page of data.pages) {
-    for (const msg of page) {
-      if (msg.id === item.tempId || msg.tempId === item.tempId) continue;
-      if (
-        msg.id.startsWith('temp-') ||
-        Boolean(msg.tempId) ||
-        msg.status === 'failed' ||
-        msg.status === 'pending' ||
-        msg.status === 'uploading'
-      ) {
-        continue;
-      }
-      if (msg.content === item.content && msg.type === item.type) {
-        const msgTime = new Date(msg.createdAt).getTime();
-        if (Math.abs(msgTime - itemTime) < 60_000) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
+export const MAX_AUTO_RETRIES = 3;
+export const BASE_RETRY_DELAY_MS = 1000;
 
 export interface ISendOutboxCallbacks {
   onError?: (err: unknown) => void;
@@ -92,13 +58,6 @@ export async function sendOutboxItem(
   inFlightTempIds.set(item.tempId, Date.now());
 
   try {
-    if (findExistingConfirmedMessage(queryClient, item.chatId, item)) {
-      dropThreadMessage(queryClient, item.chatId, item.tempId);
-      removeOutboxItem(item.tempId);
-      callbacks?.onSuccess?.();
-      return;
-    }
-
     if (item.file) {
       patchThreadMessage(queryClient, item.chatId, item.tempId, {
         status: 'uploading',
@@ -131,18 +90,14 @@ export async function sendOutboxItem(
     }
     callbacks?.onSuccess?.();
   } catch (err: unknown) {
-    if (findExistingConfirmedMessage(queryClient, item.chatId, item)) {
-      dropThreadMessage(queryClient, item.chatId, item.tempId);
-      removeOutboxItem(item.tempId);
-      callbacks?.onSuccess?.();
-      return;
-    }
-
+    const nextRetryCount = (item.retryCount ?? 0) + 1;
     patchThreadMessage(queryClient, item.chatId, item.tempId, {
       status: 'failed',
     });
     updateOutboxItem(item.tempId, {
       status: 'failed',
+      retryCount: nextRetryCount,
+      lastAttemptAt: Date.now(),
       error: err instanceof Error ? err.message : 'Send failed',
     });
     callbacks?.onError?.(err);
@@ -153,6 +108,7 @@ export async function sendOutboxItem(
 
 /**
  * Повторная отправка сообщения из очереди Outbox по клику на кнопку Retry.
+ * Сбрасывает счетчик попыток для ручного перезапуска.
  */
 export async function retryOutboxMessage(
   queryClient: QueryClient,
@@ -167,15 +123,19 @@ export async function retryOutboxMessage(
   });
   updateOutboxItem(item.tempId, {
     status: item.file ? 'uploading' : 'pending',
+    retryCount: 0,
+    lastAttemptAt: undefined,
     error: undefined,
   });
 
-  await sendOutboxItem(queryClient, item, callbacks);
+  const updatedItem = getOutboxItem(targetId) ?? item;
+  await sendOutboxItem(queryClient, updatedItem, callbacks);
 }
 
 /**
  * Автоматический перезапуск отправки всех зависших/ошибочных сообщений
- * последовательно для сохранения порядка сообщений.
+ * последовательно для сохранения порядка сообщений с учетом лимита попыток
+ * и экспоненциальной задержки.
  */
 export async function retryAllOutboxMessages(
   queryClient: QueryClient,
@@ -183,6 +143,20 @@ export async function retryAllOutboxMessages(
 ): Promise<void> {
   const retryable = getRetryableOutboxItems(chatId);
   for (const item of retryable) {
+    if ((item.retryCount ?? 0) >= MAX_AUTO_RETRIES) {
+      continue;
+    }
+
+    if (item.lastAttemptAt && item.retryCount) {
+      const backoffMs = Math.min(
+        BASE_RETRY_DELAY_MS * (2 ** (item.retryCount - 1)),
+        30_000
+      );
+      if (Date.now() - item.lastAttemptAt < backoffMs) {
+        continue;
+      }
+    }
+
     patchThreadMessage(queryClient, item.chatId, item.tempId, {
       status: item.file ? 'uploading' : 'pending',
     });
@@ -190,8 +164,22 @@ export async function retryAllOutboxMessages(
       status: item.file ? 'uploading' : 'pending',
       error: undefined,
     });
-    await sendOutboxItem(queryClient, item);
+    const updatedItem = getOutboxItem(item.tempId) ?? item;
+    await sendOutboxItem(queryClient, updatedItem);
   }
+}
+
+/**
+ * Отмена и удаление сообщения из очереди Outbox и кеша треда.
+ * Освобождает ресурсы вложений (отзыв Blob URL, освобождение File).
+ */
+export function cancelOutboxMessage(
+  queryClient: QueryClient,
+  chatId: string,
+  tempId: string
+): void {
+  removeOutboxItem(tempId);
+  dropThreadMessage(queryClient, chatId, tempId);
 }
 
 export function resetInFlightForTests(): void {

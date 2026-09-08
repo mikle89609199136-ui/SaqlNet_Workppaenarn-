@@ -10,11 +10,9 @@ import {
   useRealtimeSocket,
 } from '@/hooks';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
-import { retryOutboxMessage } from '@/queries/chat/outboxSender';
-import { dropThreadMessage } from '@/queries/chat/threadCacheActions';
+import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { removeOutboxItem } from '@/store/outbox';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
@@ -130,8 +128,7 @@ export function useChatThreadPage({
   const handleCancelMessage = useCallback(
     (message: IMessageDto) => {
       const id = message.tempId || message.id;
-      removeOutboxItem(id);
-      dropThreadMessage(queryClient, chatId, id);
+      cancelOutboxMessage(queryClient, chatId, id);
     },
     [chatId, queryClient]
   );

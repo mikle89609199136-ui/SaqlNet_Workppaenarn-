@@ -103,9 +103,7 @@ describe('useComposerSendMessage', () => {
     // 2. Композер не заблокирован
     expect(result.current.isSending).toBe(false);
 
-    // 3. В Outbox появилось сообщение
-    const outboxItems = getChatOutbox('chat-test-1');
-    // В фоне sendMessage может уже отработать, поэтому проверим sendMessage был вызван
+    // 3. Сообщение отправлено сервисом
     expect(services.messageService.sendMessage).toHaveBeenCalledWith(
       'chat-test-1',
       'Привет, мир!',

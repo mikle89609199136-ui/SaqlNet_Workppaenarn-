@@ -12,6 +12,8 @@ export interface IOutboxItem {
   blobUrl?: string;
   error?: string;
   createdAt: Date;
+  retryCount?: number;
+  lastAttemptAt?: number;
 }
 
 interface IOutboxState {

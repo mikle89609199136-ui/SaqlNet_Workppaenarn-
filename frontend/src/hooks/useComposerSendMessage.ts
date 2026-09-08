@@ -7,7 +7,7 @@ import { useChatUiStore, useProfileStore } from '@/store';
 import { clearDraft } from '@/store/chatDrafts';
 import { addOutboxItem, type IOutboxItem } from '@/store/outbox';
 import { setComposerText } from '@/utils/setComposerText';
-import type { IMessageDto, IPendingAttachment } from '@/types';
+import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
@@ -122,7 +122,7 @@ export function useComposerSendMessage({
 
     const now = new Date();
 
-    const optimisticMessage: IMessageDto = {
+    const optimisticMessage: IMediaItem = {
       id: tempId,
       tempId,
       chatId,

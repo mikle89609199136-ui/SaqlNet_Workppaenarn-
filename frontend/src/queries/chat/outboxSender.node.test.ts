@@ -7,6 +7,8 @@ import {
   getOutboxItem,
 } from '@/store/outbox';
 import {
+  cancelOutboxMessage,
+  MAX_AUTO_RETRIES,
   resetInFlightForTests,
   retryAllOutboxMessages,
   retryOutboxMessage,
@@ -141,7 +143,7 @@ describe('outboxSender', () => {
     const tempId = 'temp-media-1';
     const chatId = 'chat-1';
     const file = new File(['content'], 'test.png', { type: 'image/png' });
-    const serverMessage = makeMessage({ id: 'server-media-1', chatId, mediaUrl: '/media/1' });
+    const serverMessage = { ...makeMessage({ id: 'server-media-1', chatId }), mediaUrl: '/media/1' };
 
     vi.spyOn(services.messageService, 'sendMediaMessage').mockResolvedValue(serverMessage as any);
 
@@ -201,25 +203,24 @@ describe('outboxSender', () => {
     expect(services.messageService.sendMessage).toHaveBeenCalledTimes(2);
   });
 
-  it('should skip sending and deduplicate if message already arrived via server/ws', async () => {
+  it('should send duplicate text message without silently dropping it', async () => {
     const tempId = 'temp-dup-1';
     const chatId = 'chat-dup';
     const createdAt = new Date();
 
-    // В кеше уже есть подтверждённое серверное сообщение с таким же текстом
     const initialPages = {
       pages: [[
         makeMessage({
           id: 'server-confirmed-dup',
           chatId,
-          content: 'Дубликат',
+          content: 'ок',
           createdAt,
         }),
         makeMessage({
           id: tempId,
           chatId,
-          content: 'Дубликат',
-          status: 'failed',
+          content: 'ок',
+          status: 'pending',
           createdAt,
         }),
       ]],
@@ -230,22 +231,75 @@ describe('outboxSender', () => {
     addOutboxItem({
       tempId,
       chatId,
-      content: 'Дубликат',
+      content: 'ок',
       type: 'text',
-      status: 'failed',
+      status: 'pending',
       createdAt,
     });
 
-    const sendSpy = vi.spyOn(services.messageService, 'sendMessage');
+    const sendSpy = vi.spyOn(services.messageService, 'sendMessage').mockResolvedValue(
+      makeMessage({ id: 'server-second-dup', chatId, content: 'ок' })
+    );
 
     const item = getOutboxItem(tempId)!;
     await sendOutboxItem(queryClient, item);
 
-    // sendMessage НЕ должен вызываться
-    expect(sendSpy).not.toHaveBeenCalled();
-    // Элемент удалён из outbox
+    // sendMessage ОБЯЗАН вызываться — повтор сообщения не должен пропадать молча
+    expect(sendSpy).toHaveBeenCalledWith(chatId, 'ок', 'text', null);
     expect(getOutboxItem(tempId)).toBeUndefined();
-    // Временный пузырь удалён из кеша
+    const cached: any = queryClient.getQueryData(chatKeys.messages(chatId));
+    expect(cached.pages[0].some((m: any) => m.id === 'server-second-dup')).toBe(true);
+  });
+
+  it('should increment retryCount on failure and not auto-retry beyond MAX_AUTO_RETRIES', async () => {
+    const tempId = 'temp-fail-limit';
+    const chatId = 'chat-limit';
+
+    addOutboxItem({
+      tempId,
+      chatId,
+      content: 'Сообщение с лимитом',
+      type: 'text',
+      status: 'pending',
+      retryCount: MAX_AUTO_RETRIES,
+      lastAttemptAt: Date.now(),
+      createdAt: new Date(),
+    });
+
+    const sendSpy = vi.spyOn(services.messageService, 'sendMessage');
+
+    // Авто-повтор должен пропустить элемент, превысивший лимит
+    await retryAllOutboxMessages(queryClient, chatId);
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    // Ручной повтор сбрасывает retryCount и отправляет
+    sendSpy.mockResolvedValueOnce(makeMessage({ id: 'srv-1', chatId }));
+    await retryOutboxMessage(queryClient, tempId);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(getOutboxItem(tempId)).toBeUndefined();
+  });
+
+  it('cancelOutboxMessage should remove outbox item and drop thread message', () => {
+    const tempId = 'temp-cancel-1';
+    const chatId = 'chat-cancel';
+
+    queryClient.setQueryData(chatKeys.messages(chatId), {
+      pages: [[makeMessage({ id: tempId, chatId, status: 'failed' })]],
+      pageParams: [0],
+    });
+
+    addOutboxItem({
+      tempId,
+      chatId,
+      content: 'Отменяемое',
+      type: 'text',
+      status: 'failed',
+      createdAt: new Date(),
+    });
+
+    cancelOutboxMessage(queryClient, chatId, tempId);
+
+    expect(getOutboxItem(tempId)).toBeUndefined();
     const cached: any = queryClient.getQueryData(chatKeys.messages(chatId));
     expect(cached.pages[0].some((m: any) => m.id === tempId)).toBe(false);
   });

@@ -67,6 +67,28 @@ describe('useOutboxStore', () => {
     expect(revokeMock).toHaveBeenCalledWith('blob:http://localhost/abc-123');
   });
 
+  it('should store and update retryCount and lastAttemptAt', () => {
+    addOutboxItem({
+      tempId: 'temp-retry',
+      chatId: 'chat-1',
+      content: 'msg',
+      type: 'text',
+      status: 'pending',
+      createdAt: new Date(),
+    });
+
+    const now = Date.now();
+    updateOutboxItem('temp-retry', {
+      status: 'failed',
+      retryCount: 1,
+      lastAttemptAt: now,
+    });
+
+    const item = getOutboxItem('temp-retry');
+    expect(item?.retryCount).toBe(1);
+    expect(item?.lastAttemptAt).toBe(now);
+  });
+
   it('should filter items by chat and retryable status', () => {
     addOutboxItem({
       tempId: 'temp-1',
@@ -82,7 +104,7 @@ describe('useOutboxStore', () => {
       content: 'msg 2',
       type: 'text',
       status: 'sent',
-      createdAt: '2026-09-07T00:00:01Z',
+      createdAt: new Date('2026-09-07T00:00:01Z'),
     });
     addOutboxItem({
       tempId: 'temp-3',
@@ -90,7 +112,7 @@ describe('useOutboxStore', () => {
       content: 'msg 3',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:02Z',
+      createdAt: new Date('2026-09-07T00:00:02Z'),
     });
 
     expect(getChatOutbox('chat-1')).toHaveLength(2);

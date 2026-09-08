@@ -167,17 +167,13 @@ export const MessageBubble = memo(
             {message.isEdited && <span>{t('edited', 'изменено')}</span>}
             <time>{formatMessageTime(message.createdAt)}</time>
             {mine &&
-              (message.status === 'pending' ||
-                message.status === 'uploading' ||
-                message.status === 'encrypting') && (
+              (message.status === 'pending' || message.status === 'uploading') && (
                 <span
                   className="inline-flex items-center gap-1 text-ink-3"
                   title={
                     message.status === 'uploading'
                       ? t('uploading', 'Загрузка...')
-                      : message.status === 'encrypting'
-                        ? t('encrypting', 'Шифрование...')
-                        : t('sending', 'Отправка...')
+                      : t('sending', 'Отправка...')
                   }
                 >
                   <Spinner
@@ -185,9 +181,7 @@ export const MessageBubble = memo(
                     label={
                       message.status === 'uploading'
                         ? t('uploading', 'Загрузка...')
-                        : message.status === 'encrypting'
-                          ? t('encrypting', 'Шифрование...')
-                          : t('sending', 'Отправка...')
+                        : t('sending', 'Отправка...')
                     }
                   />
                 </span>
