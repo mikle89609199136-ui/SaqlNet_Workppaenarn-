@@ -1,7 +1,9 @@
 import { Icon } from '@/components/ui';
+import { AudioPlayer } from '../AudioPlayer';
+import { VideoPlayer } from '../VideoPlayer';
 import type { IMessageDto } from '@/types';
 import { formatFileSize } from '@/utils';
-import React, { type Dispatch, type SetStateAction } from 'react';
+import { type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -40,21 +42,26 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     );
   }
 
-  if (['video', 'audio'].includes(actualType)) {
-    return React.createElement(actualType, {
-      className: 'message-media',
-      controls: true,
-      src: mediaUrl,
-    });
-  }
-  if (actualType === 'voice') {
-    return <audio className="message-media" controls src={mediaUrl} />;
+  if (['video', 'audio'].includes(actualType) || actualType === 'voice') {
+    if (actualType === 'video') {
+      return (
+        <div className="mt-1 mb-2 w-full max-w-sm">
+          <VideoPlayer src={mediaUrl} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-1 mb-2 w-full">
+        <AudioPlayer src={mediaUrl} />
+      </div>
+    );
   }
 
   if (actualType === 'file') {
     return (
       <a className="message-media-file flex gap-x-1" download href={mediaUrl}>
-        <Icon name="file" className="size-9" />
+        <Icon name="file" size="xl" />
         <div className="flex flex-col">
           <span className="text-sm">{mediaEncryption.fileName}</span>
           <span className="text-xs text-[rgba(255,255,255,0.58)]">

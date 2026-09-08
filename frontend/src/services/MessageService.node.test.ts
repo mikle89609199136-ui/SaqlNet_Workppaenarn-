@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createApiClient } from '@/api/apiFactory';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
@@ -21,41 +21,20 @@ function message(id: string, chatId: string, content: string): IMessageDto {
   } as IMessageDto;
 }
 
-// Заглушка шифрования: контент проходит насквозь. Настоящая криптография
-// проверяется в CryptoService.node.test.ts — здесь важна работа с историей.
+// Заглушка шифрования: содержимое проходит насквозь. Настоящая
+// криптография проверяется в src/crypto/*.node.test.ts.
 const passthroughCrypto = {
-  decryptDM: async (content: string) => content,
-  decryptGroup: async (_chatId: string, content: string) => content,
-  encryptDM: async (content: string) => content,
-  encryptGroup: async (_chatId: string, content: string) => content,
+  decryptMessage: async (_chatId: string, content: string) => ({ text: content }),
+  encryptMessage: async (_chatId: string, content: string) => content,
+  ensureChatKey: async () => ({ chatKey: null, membersWithoutIdentity: [] }),
 } as unknown as CryptoService;
 
 function createService() {
   return new MessageService(createApiClient(), passthroughCrypto);
 }
 
-/** Сервер отдаёт заданную историю и подтверждает пересылку. */
-function serveHistory(history: IMessageDto[]) {
-  server.use(
-    http.get(api(`/messages/${TARGET_CHAT}`), () => HttpResponse.json({ messages: history })),
-    http.post(api('/messages/:messageId/forward'), () =>
-      HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') })
-    )
-  );
-}
-
-describe('MessageService: история чата', () => {
-  let service: MessageService;
-
-  beforeEach(() => {
-    serveHistory([
-      message('old-1', TARGET_CHAT, 'первое'),
-      message('old-2', TARGET_CHAT, 'второе'),
-    ]);
-    service = createService();
-  });
-
-  it('should request history from the server on first open', async () => {
+describe('MessageService: загрузка истории', () => {
+  it('should ask the server for the requested page', async () => {
     let requestedUrl = '';
     server.use(
       http.get(api(`/messages/${TARGET_CHAT}`), ({ request }) => {
@@ -64,68 +43,77 @@ describe('MessageService: история чата', () => {
       })
     );
 
-    await service.getMessages(TARGET_CHAT);
+    await createService().fetchMessagesPage(TARGET_CHAT, 50, 50);
 
-    expect(new URL(requestedUrl).searchParams.get('offset')).toBe('0');
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get('offset')).toBe('50');
+    expect(params.get('limit')).toBe('50');
   });
 
-  it('should keep the target chat history after forwarding into it', async () => {
-    // Регрессия #174: пересылка в чат, который в этой сессии не открывали,
-    // подменяла всю его историю одним пересланным сообщением.
-    await service.forwardMessage('source-message', TARGET_CHAT);
+  it('should return messages in chronological order', async () => {
+    server.use(
+      http.get(api(`/messages/${TARGET_CHAT}`), () =>
+        HttpResponse.json({
+          messages: [
+            { ...message('newer', TARGET_CHAT, 'позже'), createdAt: '2026-08-24T12:00:00Z' },
+            { ...message('older', TARGET_CHAT, 'раньше'), createdAt: '2026-08-24T10:00:00Z' },
+          ],
+        })
+      )
+    );
 
-    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
+    const messages = await createService().fetchMessagesPage(TARGET_CHAT);
 
-    expect(ids).toContain('old-1');
-    expect(ids).toContain('old-2');
+    expect(messages.map((item) => item.id)).toEqual(['older', 'newer']);
   });
 
-  it('should keep both history and the forwarded message when the chat was open', async () => {
-    await service.getMessages(TARGET_CHAT);
-    await service.forwardMessage('source-message', TARGET_CHAT);
+  it('should return an empty list when the server has nothing', async () => {
+    server.use(http.get(api(`/messages/${TARGET_CHAT}`), () => HttpResponse.json({})));
 
-    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
-
-    expect(ids).toContain('old-1');
-    expect(ids).toContain('old-2');
-    expect(ids).toContain('forwarded-1');
+    expect(await createService().fetchMessagesPage(TARGET_CHAT)).toEqual([]);
   });
 });
 
 describe('MessageService: пересылка', () => {
-  it('should send the target chat in the request body', async () => {
-    let body: unknown = null;
+  it('should send the message into the target chat as a new one', async () => {
+    // Серверная пересылка копировала шифртекст исходного чата, а ключи у
+    // чатов разные — в целевом такое сообщение не расшифровалось бы
+    // никогда. Поэтому текст шифруется заново, ключом целевого чата.
+    let body: Record<string, unknown> | null = null;
     server.use(
-      http.post(api('/messages/source-message/forward'), async ({ request }) => {
-        body = await request.json();
+      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
       })
     );
 
-    await createService().forwardMessage('source-message', TARGET_CHAT);
+    await createService().forwardMessage(
+      message('source', 'chat-source', 'переслано'),
+      TARGET_CHAT
+    );
 
-    expect(body).toEqual({ targetChatId: TARGET_CHAT });
+    expect(body).toMatchObject({ content: 'переслано', type: 'text' });
   });
-});
 
-describe('сторож открытого текста', () => {
-  it('should catch a plaintext body reaching the network', async () => {
-    // Проверка самого сторожа: он обязан замечать секрет в теле запроса.
-    // Если этот тест начнёт проходить молча, защита перестала работать.
-    const secret = secretText('пароль');
+  it('отказывается пересылать то, что не смог прочитать', async () => {
+    /* Пересылка идёт из ленты: если сообщение не расшифровалось, пересылать
+       нечего — уйдёт сама заглушка, и получатель увидит замок как текст.
 
-    server.use(http.post(api('/probe'), () => HttpResponse.json({ ok: true })));
-    await createApiClient().post('/probe', { note: secret });
+       Признак, а не текст: подпись заглушки переводится, и проверка по
+       ведущему замку сломалась бы вместе с переводом. */
+    const unreadable = {
+      ...message('source', 'chat-source', '🔒 Ключ шифрования недоступен'),
+      undecryptable: 'keyUnavailable' as const,
+    };
 
-    const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
-    expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+    await expect(createService().forwardMessage(unreadable, TARGET_CHAT)).rejects.toThrow(
+      /не удалось расшифровать/
+    );
   });
 });
 
 describe('MessageService: отметка о прочтении', () => {
   it('should confirm ids even when the chat was never loaded', async () => {
-    // При первом открытии чата внутренний кеш пуст. Раньше список
-    // подтверждённых строился из него — и отметка не доходила до интерфейса.
     server.use(http.post(api('/messages/read'), () => HttpResponse.json({ success: true })));
 
     const result = await createService().markAsRead(TARGET_CHAT, ['m-1', 'm-2']);
@@ -145,5 +133,19 @@ describe('MessageService: отметка о прочтении', () => {
     await createService().markAsRead(TARGET_CHAT, ['m-1']);
 
     expect(body).toEqual({ chatId: TARGET_CHAT, messageIds: ['m-1'] });
+  });
+});
+
+describe('сторож открытого текста', () => {
+  it('should catch a plaintext body reaching the network', async () => {
+    // Проверка самого сторожа: если он перестанет ловить утечку, это будет
+    // видно здесь, а не в тот день, когда утечка случится по-настоящему.
+    const secret = secretText('пароль');
+
+    server.use(http.post(api('/probe'), () => HttpResponse.json({ ok: true })));
+    await createApiClient().post('/probe', { note: secret });
+
+    const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
+    expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
   });
 });

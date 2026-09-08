@@ -5,4 +5,5 @@ export const DEFAULT_PROFILE_SETTINGS: ISettingsDto = {
   notifications: true,
   sounds: true,
   theme: 'dark',
+  avatarShape: 'letter',
 };

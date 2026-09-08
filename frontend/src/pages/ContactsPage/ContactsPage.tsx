@@ -1,14 +1,18 @@
+import { describeApiError } from '@/api';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Identicon } from '../../components/ui/Identicon.js';
+import { Avatar } from '../../components/ui/Avatar';
 import { useToasts } from '../../hooks/useToasts.js';
+import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer.js';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function ContactsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showToast } = useToasts();
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,7 +41,7 @@ export function ContactsPage() {
       }
     } catch (err) {
       setUsers([]);
-      setStatusText(`Ошибка: ${err.message}`);
+      setStatusText(describeApiError(err, t, t('searchFailed', 'Не удалось выполнить поиск')));
     } finally {
       setIsLoading(false);
     }
@@ -47,13 +51,15 @@ export function ContactsPage() {
     try {
       const data = await services.chatService.createChat('private', [userId]);
       if (data.chatId) {
-        showToast('success', 'Чат создан!', '✓');
+        // Без этого созданный чат появлялся в списке только после перезагрузки.
+        await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+        showToast('success', t('success', 'Чат создан!'));
         navigate(`/chats/${encodeURIComponent(data.chatId)}`);
       } else {
         throw new Error(data.error || 'Не удалось создать чат');
       }
     } catch (err) {
-      showToast('error', err.message, '❌');
+      showToast('error', describeApiError(err, t, t('chatCreateFailed', 'Не удалось открыть чат')));
     }
   }
 
@@ -104,13 +110,12 @@ export function ContactsPage() {
           return (
             <div key={user.id} className="contact-item-row" onClick={() => startChat(user.id)}>
               <div className="contact-left">
-                <div className="contact-avatar-circle">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="" />
-                  ) : (
-                    <Identicon userId={user.id} size={44} />
-                  )}
-                </div>
+                <Avatar
+                  id={user.id}
+                  name={user.firstName || user.username}
+                  size="lg"
+                  src={user.avatarUrl}
+                />
                 <div className="contact-details">
                   <span className="contact-name-title">{user.firstName || 'Пользователь'}</span>
                   <span className="contact-username-sub">@{user.username}</span>

@@ -1,7 +1,6 @@
 import type { IActionMenu } from '@/store';
 import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, useRef } from 'react';
-import { calculateMenuPosition } from '../utils/calculateMenuPosition';
 
 export const useMessageLongPress = (
   messageId: string,
@@ -25,10 +24,13 @@ export const useMessageLongPress = (
     }
   }, []);
 
+  /* Координаты уходят как есть: меню само не даёт себе вылезти за край
+     экрана и само раскрывается вверх, когда снизу нет места. Прежде это
+     считалось здесь, по числам 232×350 — размерам, которые меню давно
+     переросло. */
   const openMessageActions = useCallback(
     (clientX: number, clientY: number) => {
-      const { x, y } = calculateMenuPosition(clientX, clientY);
-      setActionMenu({ messageId, x, y });
+      setActionMenu({ messageId, x: clientX, y: clientY });
     },
     [messageId, setActionMenu]
   );

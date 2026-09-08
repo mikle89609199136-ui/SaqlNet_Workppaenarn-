@@ -19,21 +19,14 @@ interface ISendRequestBody {
   replyTo: string | null;
 }
 
-const PEER_PUBLIC_KEY = 'ключ-собеседника';
-
 /**
- * Приватный чат с ключом собеседника и перехватом POST /messages/:chatId.
- * Сервер отвечает тем, что получил: настоящий бэкенд хранит шифртекст
- * и не знает открытого текста.
+ * Приватный чат и перехват POST /messages/:chatId. Сервер отвечает тем,
+ * что получил: настоящий бэкенд хранит шифртекст и не знает открытого
+ * текста.
  */
 function setupChat(overrides: Partial<IChatDto> = {}) {
   const me = makeUser({ id: 'user-1', firstName: 'Я' });
-  const chat = makeChat({
-    ownerId: me.id,
-    peerId: 'user-2',
-    peerPublicKey: PEER_PUBLIC_KEY,
-    ...overrides,
-  });
+  const chat = makeChat({ ownerId: me.id, peerId: 'user-2', ...overrides });
   const sentBodies: ISendRequestBody[] = [];
 
   server.use(
@@ -96,19 +89,17 @@ describe('отправка текста', () => {
     expect(input).toHaveValue('');
   });
 
-  it('should send nothing when the chat has no peer key', async () => {
-    // Ключ собеседника — единственное, из чего собирается шифртекст.
-    // Без него отправлять нечего, кроме открытого текста, — значит нельзя
-    // отправлять вовсе.
-    const { me, chat, sentBodies } = setupChat({ peerPublicKey: undefined });
-    const text = secretText('открытый текст');
+  it('should not let the message be typed while the chat key is not ready', async () => {
+    // Пока ключа чата нет, шифровать нечем. Отправить открытым текстом
+    // хуже, чем не отправить, поэтому поле ввода закрыто, и человек видит
+    // почему.
+    const { me, chat, sentBodies } = setupChat();
 
-    renderChatThread({ chat, messages: [], currentUser: me });
-    await typeAndPressEnter(text);
+    renderChatThread({ chat, messages: [], currentUser: me, keyUnavailable: true });
 
-    expect(
-      await screen.findByText('У собеседника нет ключа шифрования — сообщение не отправлено')
-    ).toBeInTheDocument();
+    const input = await screen.findByPlaceholderText('Шифрование недоступно');
+
+    expect(input).toBeDisabled();
     expect(sentBodies).toHaveLength(0);
   });
 });

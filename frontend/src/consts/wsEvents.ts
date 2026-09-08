@@ -5,15 +5,6 @@ export const WS_EVENTS = {
     DELETED: 'message_deleted',
     PINNED: 'message_pinned',
     UNPINNED: 'message_unpinned',
-    // local events used global prefix like message and ":" symbol, example message:edited
-    LOCAL: {
-      EDITED: 'message:edited',
-      READ: 'message:read',
-      SENT: 'message:sent',
-      DELETED: 'message:deleted',
-      PIN: 'message:pin',
-      UNPIN: 'message:unpin',
-    },
   },
   SOCKET: {
     CONNECTED: 'socket:connected',
@@ -22,7 +13,11 @@ export const WS_EVENTS = {
     MESSAGE: 'socket:message',
   },
   CHAT: {
-    ADD_MEMBER: 'add_chat_member',
+    // Имена сверены с backend-v2/internal/chat/service.go: прежнее
+    // 'add_chat_member' сервер не присылал никогда.
+    MEMBER_ADDED: 'chat_member_added',
+    MEMBER_REMOVED: 'chat_member_removed',
+    MEMBER_ROLE_UPDATED: 'chat_member_role_updated',
     UPDATED: 'chat_updated',
   },
   REACTIONS: {

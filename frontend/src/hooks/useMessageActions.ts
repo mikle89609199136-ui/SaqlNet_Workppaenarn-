@@ -1,10 +1,15 @@
+import { describeApiError } from '@/api';
 import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
 import { useToasts } from './useToasts';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
+import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
 import { services } from '@/services/serviceContainer';
+import { applyReaction } from '@/utils';
 import { translateText } from '@/services/translatorApi';
-import { useChatStore, useProfileStore } from '@/store';
+import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
+import { useChatUiStore, useProfileStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,28 +22,43 @@ interface Props {
   draftRef?: RefObject<HTMLInputElement | null>;
 }
 
+/**
+ * Сколько раз нажимали на реакции каждого сообщения.
+ *
+ * Ответы сервера приходят в любом порядке, и ответ на первое нажатие,
+ * опоздав, возвращал бы картину, которую человек уже отменил вторым: два
+ * быстрых выбора подряд заканчивались прыжком к первому эмодзи. Ответ
+ * применяется, только если с момента отправки не было нового нажатия.
+ *
+ * Счёт ведётся вне React намеренно. Меню действий размонтируется сразу
+ * после нажатия, унося с собой всё, что жило в его состоянии, — счётчик
+ * в `useRef` обнулялся бы к каждому следующему нажатию и не защищал ни от
+ * чего.
+ */
+const reactionAttempts = new Map<string, number>();
+
 export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const [translatingIds, setTranslatingIds] = useState(new Set());
+
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
   const chatType = chat?.type;
   const chatRole = chat?.role;
-  const setError = useChatStore((state) => state.setError);
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
-  const selectedMessages = useChatStore((state) => state.selectedMessages);
-  const setSelectedMessages = useChatStore((state) => state.setSelectedMessages);
-  const selectionMode = useChatStore((state) => state.selectionMode);
-  const setSelectionMode = useChatStore((state) => state.setSelectionMode);
-  const translations = useChatStore((state) => state.translations);
-  const setTranslations = useChatStore((state) => state.setTranslations);
-  const setActionMenu = useChatStore((state) => state.setActionMenu);
+  const setError = useChatUiStore((state) => state.setError);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
+  const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
+  const selectedMessages = useChatUiStore((state) => state.selectedMessages);
+  const setSelectedMessages = useChatUiStore((state) => state.setSelectedMessages);
+  const selectionMode = useChatUiStore((state) => state.selectionMode);
+  const setSelectionMode = useChatUiStore((state) => state.setSelectionMode);
+  const translations = useChatUiStore((state) => state.translations);
+  const setTranslations = useChatUiStore((state) => state.setTranslations);
+  const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
   const { showToast } = useToasts();
 
@@ -52,6 +72,19 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       return;
     }
 
+    // Перевод отправляет расшифрованный текст в Google. Обещать сквозное
+    // шифрование и молча делать это — обман, поэтому спрашиваем. Один раз
+    // на аккаунт: вопрос на каждое сообщение приучил бы жать «да» не читая.
+    if (!hasTranslatorConsent()) {
+      const agreed = window.confirm(
+        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
+      );
+
+      if (!agreed) return;
+
+      rememberTranslatorConsent();
+    }
+
     setTranslatingIds((prev) => new Set(prev).add(message.id));
     try {
       const { translatedText, targetLanguage, detectedSourceLang } = await translateText(
@@ -59,13 +92,13 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       );
 
       if (detectedSourceLang && detectedSourceLang === targetLanguage) {
-        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'), 'ℹ️');
+        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'));
         return;
       }
 
       setTranslations((prev) => ({ ...prev, [message.id]: translatedText }));
     } catch (err) {
-      showToast('error', t('translateError', 'Не удалось перевести сообщение'), '❌');
+      showToast('error', t('translateError', 'Не удалось перевести сообщение'));
     } finally {
       setTranslatingIds((prev) => {
         const next = new Set(prev);
@@ -85,9 +118,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         // Именно возврат промиса делает ожидание настоящим: без него
         // Promise.all завершался мгновенно, а отказы становились
         // необработанными и не доходили до catch.
-        await Promise.all(
-          own.map((item) => services.messageService.deleteMessage(chatId, item.id))
-        );
+        await Promise.all(own.map((item) => services.messageService.deleteMessage(item.id)));
 
         own.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
         handleCancelSelection();
@@ -95,11 +126,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
-        await services.messageService.deleteMessage(chatId, message.id);
+        await services.messageService.deleteMessage(message.id);
         dropThreadMessage(queryClient, chatId, message.id);
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
-          setDraft('');
+          setComposerText(draftRef?.current ?? null, '');
         }
         if (replyToMessage?.id === message.id) {
           setReplyToMessage(null);
@@ -107,20 +138,69 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       }
       setError('');
     } catch (err: any) {
-      setError(err.message || t('messageDeleteError', 'Не удалось удалить сообщение(я)'));
+      setError(
+        describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
+      );
     }
   };
 
+  /**
+   * Поставить, снять или заменить реакцию.
+   *
+   * Сервер переключает сам: та же реакция от того же человека снимается,
+   * новая ставится. Прежде клиент до него не доходил — при любой уже
+   * поставленной реакции он молча возвращался, и шесть эмодзи в меню
+   * становились мёртвыми: ни снять, ни поменять.
+   *
+   * Без подписки реакция одна: выбор другого эмодзи сначала снимает
+   * прежний. С подпиской они копятся — это и есть всё её отличие здесь.
+   */
   const handleReact = async (message: IMessageDto, emoji: string) => {
-    if (message.reactions.find((reaction) => reaction.myReaction) && !currentUser?.isPremium)
-      return;
+    const previous = message.reactions ?? [];
+    const mine = previous.find((reaction) => reaction.myReaction);
+    const allowMultiple = Boolean(currentUser?.isPremium);
+
+    const attempt = (reactionAttempts.get(message.id) ?? 0) + 1;
+    reactionAttempts.set(message.id, attempt);
+    const isLatest = () => reactionAttempts.get(message.id) === attempt;
+
+    // Пока идёт замена, вести сервера по этому сообщению не применяются:
+    // между двумя запросами он рассылает состояние «реакции нет».
+    beginReactionChange(message.id);
+
+    /* Результат показывается сразу, до ответа сервера: реакция — жест
+       мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
+       При замене запросов и вовсе два, и ждать оба значит смотреть, как
+       эмодзи меняются по очереди. */
+    patchThreadMessage(queryClient, chatId, message.id, {
+      reactions: applyReaction(previous, emoji, { allowMultiple }),
+    });
 
     try {
+      // Своя же реакция снимается одним запросом: сервер переключает сам.
+      if (mine && mine.emoji !== emoji && !allowMultiple) {
+        await services.messageService.reactToMessage(message.id, mine.emoji);
+      }
+
       const result = await services.messageService.reactToMessage(message.id, emoji);
+
+      // Пока ходили на сервер, человек мог выбрать другое — тогда ответ
+      // устарел и показывать его нельзя.
+      if (!isLatest()) return;
+
       patchThreadMessage(queryClient, chatId, message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
-      setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
+      // Откат тоже только для последнего нажатия: иначе неудача старого
+      // запроса стёрла бы выбор, сделанный после него.
+      if (!isLatest()) return;
+
+      // Не вышло — возвращаем то, что было: показанное авансом должно
+      // исчезнуть, иначе человек уверен, что реакция стоит.
+      patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
+      setError(describeApiError(err, t, t('reactionError', 'Не удалось обновить реакцию')));
+    } finally {
+      if (isLatest()) endReactionChange(message.id);
     }
   };
 
@@ -135,7 +215,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.unpinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messageUnpinError', 'Не удалось открепить сообщение'));
+      setError(describeApiError(err, t, t('messageUnpinError', 'Не удалось открепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&
@@ -146,13 +226,12 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messageUnpinMemberError',
             'Не удалось открепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
+          )
         );
         return;
       }
 
-      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'), '❌');
+      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
     }
   };
 
@@ -167,7 +246,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.pinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messagePinError', 'Не удалось закрепить сообщение'));
+      setError(describeApiError(err, t, t('messagePinError', 'Не удалось закрепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&
@@ -178,13 +257,12 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messagePinMemberError',
             'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          ),
-          '❌'
+          )
         );
         return;
       }
 
-      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'), '❌');
+      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'));
     }
   };
 
@@ -224,9 +302,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const startEdit = (message: IMessageDto) => {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setDraft(message.content || '');
-    if (!draftRef || !draftRef.current) return;
-    draftRef.current.focus();
+    setComposerText(draftRef?.current ?? null, message.content || '');
+    draftRef?.current?.focus();
   };
 
   const closeMessageActions = () => {

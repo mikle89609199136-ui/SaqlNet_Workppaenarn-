@@ -1,33 +1,39 @@
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
-import { useChatStore, useProfileStore } from '@/store';
+import { useChatUiStore, useProfileStore } from '@/store';
+import { setComposerText } from '@/utils/setComposerText';
 import type { IMessageDto } from '@/types';
-import { useEffect, type RefObject } from 'react';
+import { useCallback, useEffect, type RefObject } from 'react';
 
 export function useComposerShortcuts(
   draftRef: RefObject<HTMLInputElement | null>,
   formRef: RefObject<HTMLFormElement | null>
 ) {
-  const draft = useChatStore((state) => state.draft);
-  const editingMessage = useChatStore((state) => state.editingMessage);
-  const replyToMessage = useChatStore((state) => state.replyToMessage);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const setEditingMessage = useChatStore((state) => state.setEditingMessage);
-  const setReplyToMessage = useChatStore((state) => state.setReplyToMessage);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  const replyToMessage = useChatUiStore((state) => state.replyToMessage);
+  const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
+  const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
   const user = useProfileStore((state) => state.user);
   const messages = useThreadMessagesData();
 
-  function startEdit(message: IMessageDto) {
-    setEditingMessage(message);
-    setReplyToMessage(null);
-    setDraft(message.content || '');
-    draftRef.current?.focus();
-  }
+  /* Обе обёрнуты в useCallback ради подписки ниже: без этого они новые
+     на каждый рендер, и слушатель клавиш пришлось бы переустанавливать
+     следом. Их собственные зависимости стабильны — сеттеры хранилища и
+     ссылка на поле. */
+  const startEdit = useCallback(
+    (message: IMessageDto) => {
+      setEditingMessage(message);
+      setReplyToMessage(null);
+      setComposerText(draftRef.current, message.content || '');
+      draftRef.current?.focus();
+    },
+    [draftRef, setEditingMessage, setReplyToMessage]
+  );
 
-  function cancelComposerMode() {
+  const cancelComposerMode = useCallback(() => {
     setEditingMessage(null);
     setReplyToMessage(null);
-    setDraft('');
-  }
+    setComposerText(draftRef.current, '');
+  }, [draftRef, setEditingMessage, setReplyToMessage]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -49,7 +55,11 @@ export function useComposerShortcuts(
         return;
       }
 
-      if (event.key !== 'ArrowUp' || draft.trim() || editingMessage || replyToMessage) return;
+      // Пустое поле читается из самого элемента: текста в состоянии React
+      // больше нет, и это к лучшему — раньше слушатель клавиш
+      // переустанавливался на каждый набранный символ.
+      const isEmpty = !draftRef.current?.value.trim();
+      if (event.key !== 'ArrowUp' || !isEmpty || editingMessage || replyToMessage) return;
       const lastOwnMessage = [...messages].reverse().find((m) => m.senderId === user?.id);
       if (!lastOwnMessage) return;
 
@@ -59,7 +69,16 @@ export function useComposerShortcuts(
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [draft, editingMessage, replyToMessage, messages, user?.id]);
+  }, [
+    cancelComposerMode,
+    draftRef,
+    editingMessage,
+    formRef,
+    messages,
+    replyToMessage,
+    startEdit,
+    user?.id,
+  ]);
 
   return { cancelComposerMode };
 }

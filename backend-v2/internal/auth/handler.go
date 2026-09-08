@@ -52,11 +52,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if !usernamePattern.MatchString(input.Username) || len(input.Password) < 6 || strings.TrimSpace(input.FirstName) == "" {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username, password or firstName is invalid")
+	if !usernamePattern.MatchString(input.Username) || strings.TrimSpace(input.FirstName) == "" {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username or firstName is invalid")
 		return
 	}
 	user, token, err := h.service.Register(r.Context(), input.Username, input.Password, input.FirstName, input.LastName, input.Language)
+	if errors.Is(err, ErrInvalidPassword) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
+		return
+	}
 	if errors.Is(err, ErrUsernameTaken) {
 		httpx.ErrorJSON(w, r, http.StatusConflict, "username_taken", "username already exists")
 		return
@@ -184,11 +188,11 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if len(input.NewPassword) < 10 {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "new password must be at least 10 characters")
+	err := h.service.ChangePassword(r.Context(), current.ID, input.CurrentPassword, input.NewPassword)
+	if errors.Is(err, ErrInvalidPassword) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
 		return
 	}
-	err := h.service.ChangePassword(r.Context(), current.ID, input.CurrentPassword, input.NewPassword)
 	if errors.Is(err, ErrWrongPassword) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "current password is incorrect")
 		return
@@ -227,11 +231,12 @@ func (h *Handler) TwoFAEnable(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if len(input.Password) < 6 {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "password too short")
+	err := h.service.TwoFAEnable(r.Context(), current.ID, input.Password)
+	if errors.Is(err, ErrInvalidPassword) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
 		return
 	}
-	if err := h.service.TwoFAEnable(r.Context(), current.ID, input.Password); err != nil {
+	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to enable 2fa")
 		return
 	}

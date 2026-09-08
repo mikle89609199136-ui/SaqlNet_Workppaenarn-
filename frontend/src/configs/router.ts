@@ -1,13 +1,21 @@
 import { chatQuery, messagesQuery } from '@/queries/chat/threadQueries';
 import { queryClient } from '@/queries/queryClient';
+import { meQuery } from '@/queries/users/meQuery';
+import { settingsQuery } from '@/queries/users/settingsQuery';
 import { useProfileStore } from '@/store';
+import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
-import { AuthGuard } from '../components/guards/AuthGuard.js';
-import { AppLayout } from '../components/layouts/AppLayout.js';
-import { RootLayout } from '../components/layouts/RootLayout.js';
-import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
-import { REACT_ROUTES } from '../consts/routes';
-import { services } from '../services/serviceContainer.js';
+import { AuthGuard } from '../components/guards/AuthGuard';
+import { AppLayout } from '../components/layouts/AppLayout';
+import { RootLayout } from '../components/layouts/RootLayout';
+import { RouteLoadingFallback } from '../components/layouts/RouteLoadingFallback';
+import {
+  DEFAULT_SETTINGS_SECTION,
+  REACT_ROUTES,
+  ROUTES,
+  SETTINGS_SECTIONS,
+  type TSettingsSection,
+} from '../consts/routes';
 import { clearAuthSession } from '../utils/clearAuthSession.js';
 
 async function requireSession({ request }: { request: Request }) {
@@ -18,9 +26,20 @@ async function requireSession({ request }: { request: Request }) {
   }
 
   try {
-    const setUser = useProfileStore.getState().setUser;
-    const user = await services.userService.getMe();
-    setUser(user);
+    // Профиль читается из кеша запросов: загрузчик срабатывает на каждой
+    // навигации, а данные, которые меняются раз в сессию, незачем
+    // перезапрашивать при каждом переходе.
+    //
+    // Именно fetchQuery, а не ensureQueryData: второй отдаёт что угодно,
+    // лишь бы оно было в кеше, и после инвалидации профиля навигация
+    // вернула бы прежние имя и аватар.
+    const user = await queryClient.fetchQuery(meQuery());
+    useProfileStore.getState().setUser(user);
+
+    // Тема и язык применяются ко всему приложению, поэтому настройки нужны
+    // не только на своей странице. Неудача здесь сессию не рушит: без них
+    // интерфейс работает на том, что записано в проекции.
+    void queryClient.fetchQuery(settingsQuery()).catch(() => {});
   } catch (error: any) {
     if (error?.name === 'AbortError') throw error;
 
@@ -63,10 +82,12 @@ function redirectHome() {
 const chatLoader = async ({ params }: { params: Params }) => {
   const { chatId = '' } = params;
   try {
-    await Promise.all([
-      queryClient.ensureQueryData(chatQuery(chatId)),
-      queryClient.ensureInfiniteQueryData(messagesQuery(chatId)),
-    ]);
+    // Историю запрашиваем сразу, но не ждём: пока она идёт, на её месте
+    // рисуется скелет, а шапка и поле ввода уже на экране. Ожидание обоих
+    // ответов означало белый экран на всё время самого медленного.
+    void queryClient.prefetchInfiniteQuery(messagesQuery(chatId));
+
+    await queryClient.ensureQueryData(chatQuery(chatId));
     return null;
   } catch (error: any) {
     throw new Response(error.message || 'Не удалось загрузить чат', {
@@ -74,6 +95,59 @@ const chatLoader = async ({ params }: { params: Params }) => {
     });
   }
 };
+
+/**
+ * Раздел настроек из адреса.
+ *
+ * Незнакомое имя раздела уводит на первый, а не показывает его содержимое
+ * под чужим адресом: расхождение между строкой адреса и тем, что на экране,
+ * хуже тихого перенаправления. Настройки открывают из меню, а не по внешним
+ * ссылкам, поэтому терять тут нечего.
+ */
+/**
+ * Разделы настроек — по маршруту на каждый.
+ *
+ * Список один и тот же и для меню, и для маршрутов: раздела, которого нет
+ * в `SETTINGS_SECTIONS`, не существует и для адреса. Тип `Record` не даст
+ * добавить раздел в список и забыть про его экран.
+ *
+ * Импорты записаны по одному, а не собраны выражением: сборщику нужно
+ * видеть каждый путь, иначе разделы не разъедутся по отдельным частям.
+ */
+const SECTION_COMPONENTS: Record<TSettingsSection, () => Promise<{ Component: ComponentType }>> = {
+  account: () =>
+    import('../pages/SettingsPage/sections/AccountSection.js').then((m) => ({
+      Component: m.AccountSection,
+    })),
+  notifications: () =>
+    import('../pages/SettingsPage/sections/NotificationsSection.js').then((m) => ({
+      Component: m.NotificationsSection,
+    })),
+  appearance: () =>
+    import('../pages/SettingsPage/sections/AppearanceSection.js').then((m) => ({
+      Component: m.AppearanceSection,
+    })),
+  privacy: () =>
+    import('../pages/SettingsPage/sections/PrivacySection.js').then((m) => ({
+      Component: m.PrivacySection,
+    })),
+  language: () =>
+    import('../pages/SettingsPage/sections/LanguageSection.js').then((m) => ({
+      Component: m.LanguageSection,
+    })),
+  about: () =>
+    import('../pages/SettingsPage/sections/AboutSection.js').then((m) => ({
+      Component: m.AboutSection,
+    })),
+};
+
+/* Подстраницы есть пока только у аккаунта, и разбирает их он сам. */
+const settingsSectionRoutes = SETTINGS_SECTIONS.flatMap((section) => {
+  const lazy = SECTION_COMPONENTS[section];
+  const route = { path: section, lazy };
+
+  return section === 'account' ? [route, { path: `${section}/:subsection`, lazy }] : [route];
+});
 
 export const router = createBrowserRouter([
   {
@@ -119,9 +193,11 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/features/EmptyChatPlaceholder.js').then((m) => ({
-                        Component: m.EmptyChatPlaceholder,
-                      })),
+                      import('../components/features/ChatThread/EmptyChatPlaceholder').then(
+                        (m) => ({
+                          Component: m.EmptyChatPlaceholder,
+                        })
+                      ),
                   },
                   {
                     path: REACT_ROUTES.CHAT_BY_ID,
@@ -148,19 +224,34 @@ export const router = createBrowserRouter([
                   import('../pages/SettingsPage/SettingsPage.js').then((m) => ({
                     Component: m.SettingsPage,
                   })),
-              },
-              {
-                path: REACT_ROUTES.CREATE_GROUP,
-                lazy: () =>
-                  import('../pages/CreateGroupChatPage/CreateGroupPage.js').then((m) => ({
-                    Component: m.CreateGroupPage,
-                  })),
+                children: [
+                  /* Без раздела в адресе показывать нечего: отправляем на
+                     первый, чтобы у открытого экрана всегда был свой адрес. */
+                  {
+                    index: true,
+                    loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
+                  },
+                  ...settingsSectionRoutes,
+                  /* Раздел, которого нет в списке, — не ошибка и не пустой
+                     экран: показываем первый, как и при заходе без раздела.
+
+                     Пустой Component обязателен, хотя маршрут ничего не
+                     рисует: без него роутер предупреждает о совпавшем
+                     маршруте без элемента — до редиректа он этого ещё не
+                     знает. */
+                  {
+                    path: '*',
+                    loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
+                    Component: () => null,
+                  },
+                ],
               },
             ],
           },
           {
             path: '*',
             loader: () => redirect(REACT_ROUTES.HOME),
+            Component: () => null,
           },
         ],
       },

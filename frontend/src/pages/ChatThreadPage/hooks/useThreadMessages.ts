@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { messagesQuery } from '@/queries/chat/threadQueries';
-import { flattenThread } from '@/queries/chat/threadCache';
+import { EMPTY_THREAD } from '@/queries/chat/threadCache';
 
 /** На каком расстоянии от верха начинать подгружать более старые сообщения. */
 const LOAD_MORE_THRESHOLD_PX = 50;
@@ -24,23 +24,90 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
   const query = useInfiniteQuery(messagesQuery(chatId));
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
+  const inFlightPromiseRef = useRef<Promise<unknown> | null>(null);
+  const preloadedChatIdRef = useRef<string | null>(null);
 
-  const loadOlder = useCallback(async () => {
-    const container = containerRef.current;
-    if (!container || !hasNextPage || isFetchingNextPage) return;
+  const loadOlder = useCallback(
+    async (options?: { isJump?: boolean; isPreload?: boolean }) => {
+      if (inFlightPromiseRef.current) {
+        await inFlightPromiseRef.current;
+        return;
+      }
+      if (!hasNextPage) return;
 
-    // Прокрутка отсчитывается от низа: после вставки более старых сообщений
-    // сверху высота вырастает, и без поправки лента прыгнула бы к началу.
-    const previousHeight = container.scrollHeight;
+      const container = containerRef.current;
+      const isJump = options?.isJump;
+      const previousHeight = container ? container.scrollHeight : 0;
 
-    await fetchNextPage();
+      const promise = (async () => {
+        try {
+          await fetchNextPage();
+        } finally {
+          inFlightPromiseRef.current = null;
+        }
+      })();
 
-    requestAnimationFrame(() => {
-      const current = containerRef.current;
-      if (!current) return;
-      current.scrollTop += current.scrollHeight - previousHeight;
+      inFlightPromiseRef.current = promise;
+      await promise;
+
+      // При переходе к сообщению (isJump) прокрутку настраивает jumpToMessage через virtualizer.
+      // Поправка scrollTop здесь сломала бы сглаживание перехода и вызвала рывок.
+      if (!isJump && container) {
+        requestAnimationFrame(() => {
+          const current = containerRef.current;
+          if (!current) return;
+          current.scrollTop += current.scrollHeight - previousHeight;
+        });
+      }
+    },
+    [containerRef, fetchNextPage, hasNextPage]
+  );
+
+  const preloadCountRef = useRef(0);
+
+  // Сброс отметки автоподгрузки при смене чата
+  useEffect(() => {
+    if (preloadedChatIdRef.current !== chatId) {
+      preloadedChatIdRef.current = chatId;
+      preloadCountRef.current = 0;
+    }
+  }, [chatId]);
+
+  // Проверяем, есть ли среди загруженных сообщений ответы на сообщения вне текущего среза
+  const hasUnresolvedReplies = useCallback(() => {
+    if (!query.data || query.data.length === 0) return false;
+    const knownIds = new Set(query.data.map((m) => m.id));
+    return query.data.some((msg) => {
+      const replyId = msg.replyTo || msg.replyToMessageId;
+      return Boolean(replyId && !knownIds.has(replyId));
     });
-  }, [containerRef, fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [query.data]);
+
+  // Подгрузка истории сразу при загрузке чата после показа первых 50 сообщений,
+  // если есть цитируемые сообщения, оставшиеся за пределами текущего среза (#553)
+  useEffect(() => {
+    if (
+      chatId &&
+      !query.isPending &&
+      query.data &&
+      query.data.length > 0 &&
+      hasNextPage &&
+      !isFetchingNextPage &&
+      preloadCountRef.current < 2 &&
+      hasUnresolvedReplies()
+    ) {
+      preloadCountRef.current += 1;
+      void loadOlder({ isPreload: true });
+    }
+  }, [
+    chatId,
+    query.isPending,
+    query.data,
+    hasNextPage,
+    isFetchingNextPage,
+    hasUnresolvedReplies,
+    loadOlder,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -58,7 +125,9 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
   }, [containerRef, loadOlder]);
 
   return {
-    messages: flattenThread(query.data),
+    // Общая пустая лента, а не новый литерал: до первой загрузки ссылка
+    // тоже обязана оставаться прежней.
+    messages: query.data ?? EMPTY_THREAD,
     isLoading: query.isPending,
     isLoadingOlder: isFetchingNextPage,
     hasOlder: Boolean(hasNextPage),
