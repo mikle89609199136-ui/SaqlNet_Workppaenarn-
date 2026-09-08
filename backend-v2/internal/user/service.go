@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -140,41 +141,107 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	return err
 }
 
+// Search performs a case‑insensitive substring search across user records.
+// It returns up to 50 results, excluding the current viewer.
+// The query may start with '@' which is stripped for convenience.
+// Special characters '%' and '_' are escaped to be treated literally.
 func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchResult, error) {
+	// Trim whitespace and log the incoming request (debug level).
 	query = strings.TrimSpace(query)
+	slog.DebugContext(ctx, "[Service-Search]:search request",
+		"viewerID", viewerID,
+		"query", query,
+	)
+
 	if query == "" {
+		// Empty query – return empty result without error.
+		slog.DebugContext(ctx, "[Service-Search]:empty query, returning empty result")
 		return []SearchResult{}, nil
 	}
 
+	// Remove optional leading '@'.
 	cleanQuery := strings.TrimPrefix(query, "@")
 
+	// Escape wildcard characters for SQL LIKE.
+	escaped := escapeLike(cleanQuery)
+	pattern := "%" + escaped + "%"
+
+	// Execute the SQL query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name), COALESCE(up.avatar_url, '')
+		       COALESCE(up.first_name, au.first_name),
+		       COALESCE(up.last_name, au.last_name),
+		       COALESCE(up.avatar_url, '')
 		FROM auth.users au
 		LEFT JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
-		  AND (au.username ILIKE $1 OR au.first_name ILIKE $1 OR au.last_name ILIKE $1 OR up.bio ILIKE $1)
+		  AND (au.username ILIKE $1 OR
+		       au.first_name ILIKE $1 OR
+		       au.last_name ILIKE $1 OR
+		       up.bio ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
-	`, "%"+cleanQuery+"%", viewerID)
+	`, pattern, viewerID)
 	if err != nil {
+		slog.ErrorContext(ctx, "[Service-Search]:failed to execute search query",
+			"viewerID", viewerID,
+			"pattern", pattern,
+			"error", err,
+		)
 		return nil, err
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "[Service-Search]:failed to close rows", "error", closeErr)
+		}
 	}()
 
+	// Iterate results.
 	var users []SearchResult
 	for rows.Next() {
 		var user SearchResult
-		if err := rows.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.AvatarURL); err != nil {
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
+		); err != nil {
+			slog.ErrorContext(ctx, "[Service-Search]:failed to scan row",
+				"viewerID", viewerID,
+				"error", err,
+			)
 			return nil, err
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+
+	// Check for iteration errors.
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "[Service-Search]:rows iteration error",
+			"viewerID", viewerID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	// Log successful result count.
+	slog.InfoContext(ctx, "[Service-Search]:search completed successfully",
+		"viewerID", viewerID,
+		"resultCount", len(users),
+	)
+
+	return users, nil
+}
+
+// escapeLike escapes special characters for SQL LIKE/ILIKE patterns.
+// It escapes backslash first, then percent and underscore.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }
 
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
