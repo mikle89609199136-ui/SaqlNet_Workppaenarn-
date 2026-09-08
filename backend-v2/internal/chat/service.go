@@ -1816,10 +1816,18 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 		RETURNING m.chat_id::text, m.created_at
 	`, messageID, userID).Scan(&chatID, &createdAt)
 
-	if err == sql.ErrNoRows {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		exists, existsErr := s.messageExistsForMember(ctx, userID, messageID)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if exists {
+			return nil, ErrForbidden
+		}
 		return nil, ErrNotFound
-	}
-	if err != nil {
+
+	case err != nil:
 		return nil, err
 	}
 
@@ -1947,6 +1955,19 @@ func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, ms
 		}
 	}
 	return nil
+}
+
+func (s *Service) messageExistsForMember(ctx context.Context, userID, messageID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM messages.messages m
+			JOIN chats.members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+			WHERE m.id = $1 AND m.deleted_at IS NULL
+		)
+	`, messageID, userID).Scan(&exists)
+	return exists, err
 }
 
 func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bool, error) {
