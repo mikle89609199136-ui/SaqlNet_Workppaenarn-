@@ -5,10 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/layouts';
 import { PasswordRequirements } from '@/components/features';
-import { Button, Icon, Input, SegmentedControl } from '@/shared/ui';
+import { Button, Icon, Input, SegmentedControl, showToast } from '@/shared/ui';
 import { LANGUAGES, type TLanguage } from '@/shared/config';
 import { ROUTES } from '@/shared/config/routes';
-import { useToasts } from '@/hooks';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store/profile';
@@ -25,7 +24,6 @@ import {
 export function RegisterPage() {
   const navigate = useNavigate();
   const token = useProfileStore((state) => state.token);
-  const { showToast } = useToasts();
   const { t, i18n } = useTranslation();
 
   const [step, setStep] = useState<TRegisterStep>('welcome');

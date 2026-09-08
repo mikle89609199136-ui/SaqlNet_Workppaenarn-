@@ -18,5 +18,6 @@ export { Slider } from './Slider';
 export { Spinner } from './Spinner';
 export { Switch } from './Switch';
 export { Textarea } from './Textarea';
-export { Toast, ToastStack } from './Toast';
+export { Toast, ToastStack, showToast, hideToast, clearToasts, getToasts } from './Toast';
+export type { IToast, TToastType } from './Toast';
 export { Tooltip } from './Tooltip';

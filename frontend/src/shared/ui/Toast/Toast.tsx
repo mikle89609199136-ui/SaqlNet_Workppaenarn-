@@ -2,7 +2,7 @@ import { Icon } from '@/shared/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import { useEffect, useRef, useState } from 'react';
-import type { IToast } from '@/store/toast';
+import type { IToast } from './toastQueue';
 
 /* Значок и цвет выводятся из вида, а не передаются вызывающим: иначе
    одна и та же ошибка в разных местах приходит то с крестиком, то с

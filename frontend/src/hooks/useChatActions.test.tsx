@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it } from 'vitest';
 import { MAX_PINNED_CHATS, useChatActions } from './useChatActions';
-import { useToastStore } from '@/store/toast';
+import { clearToasts, getToasts } from '@/shared/ui';
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -66,7 +66,7 @@ describe('действия над чатом', () => {
     const { result } = renderHook(() => useChatActions(), { wrapper });
     act(() => result.current.togglePin(makeChat({ isPinned: false }), MAX_PINNED_CHATS));
 
-    await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
+    await waitFor(() => expect(getToasts().length).toBeGreaterThan(0));
     expect(called).toBe(false);
   });
 
