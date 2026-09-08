@@ -9,32 +9,32 @@ import {
 } from './connectionStatus';
 
 let stopWatch: (() => void) | null = null;
-let сетевыеСлушатели: Map<string, Array<() => void>>;
+let networkListeners: Map<string, Array<() => void>>;
 
-function оборвать(): void {
+function dropConnection(): void {
   eventBus.emit(WS_EVENTS.SOCKET.DISCONNECTED as never, {} as never);
 }
 
-function восстановить(): void {
+function restoreConnection(): void {
   eventBus.emit(WS_EVENTS.SOCKET.CONNECTED as never, {} as never);
 }
 
-function сообщитьОСети(событие: 'online' | 'offline'): void {
-  for (const слушатель of сетевыеСлушатели.get(событие) ?? []) слушатель();
+function reportNetwork(event: 'online' | 'offline'): void {
+  for (const listener of networkListeners.get(event) ?? []) listener();
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
-  сетевыеСлушатели = new Map();
+  networkListeners = new Map();
 
   vi.stubGlobal('window', {
-    addEventListener: (тип: string, обработчик: () => void) => {
-      сетевыеСлушатели.set(тип, [...(сетевыеСлушатели.get(тип) ?? []), обработчик]);
+    addEventListener: (type: string, handler: () => void) => {
+      networkListeners.set(type, [...(networkListeners.get(type) ?? []), handler]);
     },
-    removeEventListener: (тип: string, обработчик: () => void) => {
-      сетевыеСлушатели.set(
-        тип,
-        (сетевыеСлушатели.get(тип) ?? []).filter((х) => х !== обработчик)
+    removeEventListener: (type: string, handler: () => void) => {
+      networkListeners.set(
+        type,
+        (networkListeners.get(type) ?? []).filter((fn) => fn !== handler)
       );
     },
   });
@@ -60,22 +60,22 @@ describe('состояние связи', () => {
     // Обычное переподключение занимает около секунды. Надпись, мигающая на
     // каждом моргании связи, приучает не обращать на себя внимания как раз
     // к тому случаю, ради которого заведена.
-    let сообщений = 0;
+    let notices = 0;
     subscribeToConnectionStatus(() => {
-      сообщений += 1;
+      notices += 1;
     });
 
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS - 1);
-    восстановить();
+    restoreConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     expect(readConnectionStatus()).toBe('connected');
-    expect(сообщений).toBe(0);
+    expect(notices).toBe(0);
   });
 
   it('should complain when the outage outlasts the delay', () => {
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     expect(readConnectionStatus()).toBe('connecting');
@@ -86,7 +86,7 @@ describe('состояние связи', () => {
     // чинить их человеку приходится по-разному.
     vi.stubGlobal('navigator', { onLine: false });
 
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     expect(readConnectionStatus()).toBe('offline');
@@ -97,7 +97,7 @@ describe('состояние связи', () => {
     // себя живым до самого таймаута, хотя сообщения через него не ходят.
     // Проверено вживую: без этого приложение молчало всё время обрыва.
     vi.stubGlobal('navigator', { onLine: false });
-    сообщитьОСети('offline');
+    reportNetwork('offline');
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     expect(readConnectionStatus()).toBe('offline');
@@ -105,24 +105,24 @@ describe('состояние связи', () => {
 
   it('should stop complaining when the network returns and the socket never dropped', () => {
     vi.stubGlobal('navigator', { onLine: false });
-    сообщитьОСети('offline');
+    reportNetwork('offline');
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     vi.stubGlobal('navigator', { onLine: true });
-    сообщитьОСети('online');
+    reportNetwork('online');
 
     expect(readConnectionStatus()).toBe('connected');
   });
 
   it('should rename the trouble when the network comes back but the server does not', () => {
     vi.stubGlobal('navigator', { onLine: false });
-    оборвать();
-    сообщитьОСети('offline');
+    dropConnection();
+    reportNetwork('offline');
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
     expect(readConnectionStatus()).toBe('offline');
 
     vi.stubGlobal('navigator', { onLine: true });
-    сообщитьОСети('online');
+    reportNetwork('online');
 
     // Сеть вернулась, связи всё ещё нет: жалоба остаётся, меняется текст.
     expect(readConnectionStatus()).toBe('connecting');
@@ -132,50 +132,50 @@ describe('состояние связи', () => {
     // Отсчитывать задержку заново значило бы на две секунды объявить, что
     // всё хорошо, когда это не так.
     vi.stubGlobal('navigator', { onLine: false });
-    сообщитьОСети('offline');
+    reportNetwork('offline');
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
-    оборвать();
+    dropConnection();
     vi.stubGlobal('navigator', { onLine: true });
-    сообщитьОСети('online');
+    reportNetwork('online');
 
     expect(readConnectionStatus()).toBe('connecting');
   });
 
   it('should clear the complaint the moment the connection returns', () => {
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
     expect(readConnectionStatus()).toBe('connecting');
 
-    восстановить();
+    restoreConnection();
 
     expect(readConnectionStatus()).toBe('connected');
   });
 
   it('should tell its subscriber once per outage', () => {
-    let сообщений = 0;
+    let notices = 0;
     subscribeToConnectionStatus(() => {
-      сообщений += 1;
+      notices += 1;
     });
 
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
     // Повторные обрывы, пока связи всё нет, ничего не меняют.
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS * 3);
 
-    expect(сообщений).toBe(1);
+    expect(notices).toBe(1);
   });
 
   it('should let go of everything when the session ends', () => {
-    оборвать();
+    dropConnection();
     vi.advanceTimersByTime(CONNECTION_NOTICE_DELAY_MS);
 
     stopWatch?.();
     stopWatch = null;
 
     expect(readConnectionStatus()).toBe('connected');
-    expect(сетевыеСлушатели.get('online')).toEqual([]);
-    expect(сетевыеСлушатели.get('offline')).toEqual([]);
+    expect(networkListeners.get('online')).toEqual([]);
+    expect(networkListeners.get('offline')).toEqual([]);
   });
 });

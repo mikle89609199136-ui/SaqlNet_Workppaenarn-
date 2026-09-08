@@ -4,6 +4,13 @@ import type { TFunction } from 'i18next';
 export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: TFunction) {
   if (!lastMessage) return t('noMessages', 'Нет сообщений');
 
+  /* Нечитаемое сообщение подписывается здесь: причину назвал слой
+     шифрования, а язык знает интерфейс. Запасное значение — тот самый
+     текст, что пришёл из сервиса. */
+  if (lastMessage.undecryptable) {
+    return `🔒 ${t(`undecryptable.${lastMessage.undecryptable}`, lastMessage.content)}`;
+  }
+
   if (lastMessage.content) return lastMessage.content;
 
   if (lastMessage.type === 'image') return t('lastMessage.image', 'Фотография');

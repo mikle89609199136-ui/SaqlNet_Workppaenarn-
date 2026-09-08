@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { chatKeys } from '@/queries/keys';
 import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
 import { services } from '@/services';
@@ -101,7 +102,7 @@ export function useComposerSendMessage({
       setComposerText(draftRef.current, '');
       setError('');
     } catch (err: any) {
-      setError(err.message || t('messageSendError', 'Не удалось отправить сообщение'));
+      setError(describeApiError(err, t, t('messageSendError', 'Не удалось отправить сообщение')));
     } finally {
       setIsSending(false);
     }

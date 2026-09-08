@@ -132,8 +132,8 @@ async function createParticipant(server: TKeyServer, accountId: string) {
 }
 
 /** base64 из ASCII-строки: в окружении node нет btoa. */
-function вБазу64(текст: string): string {
-  return Buffer.from(текст, 'utf8').toString('base64');
+function toBase64(text: string): string {
+  return Buffer.from(text, 'utf8').toString('base64');
 }
 
 /** Ключ чата в виде строки — сравнивать байты неудобно. */
@@ -255,8 +255,8 @@ describe('негодная строка на сервере', () => {
     const server = createKeyServer();
     const alice = await createParticipant(server, 'alice');
     // Правильный base64 и правильный JSON, но без половины полей.
-    const огрызок = вБазу64(JSON.stringify({ v: 2, iv: 'AAAA' }));
-    server.rows.set('alice', { userId: 'alice', encryptedKey: огрызок, keyEpoch: 3 });
+    const incomplete = toBase64(JSON.stringify({ v: 2, iv: 'AAAA' }));
+    server.rows.set('alice', { userId: 'alice', encryptedKey: incomplete, keyEpoch: 3 });
 
     expect(await alice.manager.acceptFromServer(CHAT)).toBeNull();
   });
@@ -272,17 +272,17 @@ describe('сверка эпохи', () => {
     const alice = await createParticipant(server, 'alice');
     const boris = await createParticipant(server, 'boris');
 
-    const первая = await alice.manager.ensure(CHAT);
-    const вторая = await boris.manager.rotate(CHAT);
-    expect(вторая.chatKey?.epoch).toBe((первая.chatKey?.epoch ?? 0) + 1);
+    const first = await alice.manager.ensure(CHAT);
+    const second = await boris.manager.rotate(CHAT);
+    expect(second.chatKey?.epoch).toBe((first.chatKey?.epoch ?? 0) + 1);
 
     // Сверка не чаще раза в тридцать секунд, поэтому проверяем через
     // свежий экземпляр — так же, как это выглядит при открытии чата.
     alice.manager.forget();
-    const после = await alice.manager.ensure(CHAT);
+    const after = await alice.manager.ensure(CHAT);
 
-    expect(после.chatKey?.epoch).toBe(вторая.chatKey?.epoch);
-    expect(keyText(после.chatKey?.key)).toBe(keyText(вторая.chatKey?.key));
+    expect(after.chatKey?.epoch).toBe(second.chatKey?.epoch);
+    expect(keyText(after.chatKey?.key)).toBe(keyText(second.chatKey?.key));
   });
 });
 
@@ -304,26 +304,26 @@ describe('собеседник сменил устройство', () => {
 
     // Борис входит с нового устройства: тот же аккаунт, другая связка,
     // пустое хранилище ключей.
-    const новыйБорис = {
+    const newBoris = {
       ...(await loadOrCreateIdentity('boris-vtoroye-ustroystvo')),
       accountId: 'boris',
     };
-    server.identities.set('boris', новыйБорис.bundle);
+    server.identities.set('boris', newBoris.bundle);
     await removeKeysWithPrefix('chatkey:boris:');
     await removeKeysWithPrefix('chatkey-latest:boris:');
-    const борисЗаново = new ChatKeyManager({
+    const borisAgain = new ChatKeyManager({
       apiClient: server.apiFor('boris'),
-      identity: async () => новыйБорис,
+      identity: async () => newBoris,
       members: async () => [...server.members],
     });
-    const после = await борисЗаново.ensure(CHAT);
+    const borisKey = await borisAgain.ensure(CHAT);
 
     // Алиса должна принять его ключ, хотя в памяти у неё прежняя связка.
     alice.manager.forget();
-    const уАлисы = await alice.manager.ensure(CHAT);
+    const aliceKey = await alice.manager.ensure(CHAT);
 
-    expect(уАлисы.chatKey?.epoch).toBe(после.chatKey?.epoch);
-    expect(keyText(уАлисы.chatKey?.key)).toBe(keyText(после.chatKey?.key));
+    expect(aliceKey.chatKey?.epoch).toBe(borisKey.chatKey?.epoch);
+    expect(keyText(aliceKey.chatKey?.key)).toBe(keyText(borisKey.chatKey?.key));
   });
 });
 

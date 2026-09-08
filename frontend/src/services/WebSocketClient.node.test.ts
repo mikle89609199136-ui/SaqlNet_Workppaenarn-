@@ -63,16 +63,16 @@ class FakeSocket {
 }
 
 /** Назначенная, но ещё не сработавшая попытка переподключиться. */
-interface Таймер {
-  задержка: number;
-  запустить: () => void;
-  отменён: boolean;
-  сработал: boolean;
+interface ScheduledTimer {
+  delay: number;
+  run: () => void;
+  cancelled: boolean;
+  fired: boolean;
 }
 
-let таймеры: Таймер[] = [];
-let слушатели: Map<string, Array<() => void>>;
-let видимость: 'visible' | 'hidden';
+let timers: ScheduledTimer[] = [];
+let listeners: Map<string, Array<() => void>>;
+let visibility: 'visible' | 'hidden';
 
 function makeClient(options: Record<string, unknown> = {}) {
   return new WebSocketClient('ws://localhost/ws', {
@@ -83,55 +83,55 @@ function makeClient(options: Record<string, unknown> = {}) {
 }
 
 /** Попытка, которая назначена и ещё ждёт своего часа. */
-function назначено(): Таймер | undefined {
-  return таймеры.filter((т) => !т.отменён && !т.сработал).at(-1);
+function scheduled(): ScheduledTimer | undefined {
+  return timers.filter((timer) => !timer.cancelled && !timer.fired).at(-1);
 }
 
-function разбудить(событие: 'online' | 'visibilitychange'): void {
-  for (const слушатель of слушатели.get(событие) ?? []) слушатель();
+function wake(event: 'online' | 'visibilitychange'): void {
+  for (const listener of listeners.get(event) ?? []) listener();
 }
 
 beforeEach(() => {
   FakeSocket.instances = [];
-  таймеры = [];
-  слушатели = new Map();
-  видимость = 'visible';
+  timers = [];
+  listeners = new Map();
+  visibility = 'visible';
 
-  const addEventListener = (тип: string, обработчик: () => void) => {
-    слушатели.set(тип, [...(слушатели.get(тип) ?? []), обработчик]);
+  const addEventListener = (type: string, handler: () => void) => {
+    listeners.set(type, [...(listeners.get(type) ?? []), handler]);
   };
 
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal('window', {
     location: { href: 'http://localhost/' },
-    setTimeout: (обработчик: () => void, задержка: number) => {
-      const таймер: Таймер = {
-        задержка,
-        отменён: false,
-        сработал: false,
-        запустить: () => {
-          таймер.сработал = true;
-          обработчик();
+    setTimeout: (handler: () => void, delay: number) => {
+      const timer: ScheduledTimer = {
+        delay,
+        cancelled: false,
+        fired: false,
+        run: () => {
+          timer.fired = true;
+          handler();
         },
       };
-      таймеры.push(таймер);
-      return таймеры.length;
+      timers.push(timer);
+      return timers.length;
     },
     clearTimeout: (id: number) => {
-      const таймер = таймеры[id - 1];
-      if (таймер) таймер.отменён = true;
+      const timer = timers[id - 1];
+      if (timer) timer.cancelled = true;
     },
     addEventListener,
-    removeEventListener: (тип: string, обработчик: () => void) => {
-      слушатели.set(
-        тип,
-        (слушатели.get(тип) ?? []).filter((х) => х !== обработчик)
+    removeEventListener: (type: string, handler: () => void) => {
+      listeners.set(
+        type,
+        (listeners.get(type) ?? []).filter((fn) => fn !== handler)
       );
     },
   });
   vi.stubGlobal('document', {
     get visibilityState() {
-      return видимость;
+      return visibility;
     },
     addEventListener,
     removeEventListener: () => {},
@@ -154,16 +154,16 @@ describe('смена соединения', () => {
     // закрыть его после этого было уже некому.
     const client = makeClient();
 
-    const первый = client.connect() as unknown as FakeSocket;
-    первый.open();
+    const first = client.connect() as unknown as FakeSocket;
+    first.open();
 
-    первый.close();
-    const второй = client.connect() as unknown as FakeSocket;
+    first.close();
+    const second = client.connect() as unknown as FakeSocket;
 
-    expect(второй).not.toBe(первый);
+    expect(second).not.toBe(first);
 
-    второй.open();
-    первый.finishClosing();
+    second.open();
+    first.finishClosing();
 
     // Клиент по-прежнему считает связь живой: закрылось не то соединение.
     expect(client.isConnected).toBe(true);
@@ -176,15 +176,15 @@ describe('смена соединения', () => {
     const received: unknown[] = [];
     eventBus.on('new_message' as never, (payload: unknown) => received.push(payload));
 
-    const первый = client.connect() as unknown as FakeSocket;
-    первый.open();
-    первый.close();
+    const first = client.connect() as unknown as FakeSocket;
+    first.open();
+    first.close();
 
-    const второй = client.connect() as unknown as FakeSocket;
-    второй.open();
+    const second = client.connect() as unknown as FakeSocket;
+    second.open();
 
-    первый.deliver({ type: 'new_message', payload: { id: 'из брошенного' } });
-    второй.deliver({ type: 'new_message', payload: { id: 'из текущего' } });
+    first.deliver({ type: 'new_message', payload: { id: 'из брошенного' } });
+    second.deliver({ type: 'new_message', payload: { id: 'из текущего' } });
 
     expect(received).toEqual([{ id: 'из текущего' }]);
   });
@@ -194,35 +194,35 @@ describe('смена соединения', () => {
     // на другое: без явного закрытия оно осталось бы жить без владельца.
     const client = makeClient();
 
-    const первый = client.connect() as unknown as FakeSocket;
-    первый.close();
+    const first = client.connect() as unknown as FakeSocket;
+    first.close();
 
-    const второй = client.connect() as unknown as FakeSocket;
-    второй.open();
+    const second = client.connect() as unknown as FakeSocket;
+    second.open();
 
-    первый.open();
+    first.open();
 
-    expect(первый.closeCalls).toBeGreaterThan(1);
+    expect(first.closeCalls).toBeGreaterThan(1);
     expect(client.isConnected).toBe(true);
   });
 
   it('should announce disconnect only for the socket in use', () => {
     const client = makeClient();
-    let объявлений = 0;
+    let announcements = 0;
     eventBus.on('socket:disconnected' as never, () => {
-      объявлений += 1;
+      announcements += 1;
     });
 
-    const первый = client.connect() as unknown as FakeSocket;
-    первый.open();
-    первый.close();
+    const first = client.connect() as unknown as FakeSocket;
+    first.open();
+    first.close();
 
-    const второй = client.connect() as unknown as FakeSocket;
-    второй.open();
+    const second = client.connect() as unknown as FakeSocket;
+    second.open();
 
-    первый.finishClosing();
+    first.finishClosing();
 
-    expect(объявлений).toBe(0);
+    expect(announcements).toBe(0);
   });
 });
 
@@ -242,16 +242,16 @@ describe('сердцебиение', () => {
 
   it('should not answer a ping from a socket it no longer owns', () => {
     const client = makeClient();
-    const первый = client.connect() as unknown as FakeSocket;
-    первый.open();
-    первый.close();
+    const first = client.connect() as unknown as FakeSocket;
+    first.open();
+    first.close();
 
-    const второй = client.connect() as unknown as FakeSocket;
-    второй.open();
+    const second = client.connect() as unknown as FakeSocket;
+    second.open();
 
-    первый.deliver({ type: 'ping' });
+    first.deliver({ type: 'ping' });
 
-    expect(первый.sent).toEqual([]);
+    expect(first.sent).toEqual([]);
   });
 
   it('should keep passing the ping to subscribers', () => {
@@ -260,14 +260,14 @@ describe('сердцебиение', () => {
     const socket = client.connect() as unknown as FakeSocket;
     socket.open();
 
-    let услышано = 0;
+    let heard = 0;
     eventBus.on('ping' as never, () => {
-      услышано += 1;
+      heard += 1;
     });
 
     socket.deliver({ type: 'ping' });
 
-    expect(услышано).toBe(1);
+    expect(heard).toBe(1);
   });
 });
 
@@ -280,9 +280,9 @@ describe('переподключение', () => {
     let socket = client.connect() as unknown as FakeSocket;
     socket.open();
 
-    for (let попытка = 0; попытка < 20; попытка += 1) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
       socket.finishClosing();
-      назначено()?.запустить();
+      scheduled()?.run();
       socket = FakeSocket.instances.at(-1) as FakeSocket;
     }
 
@@ -296,16 +296,16 @@ describe('переподключение', () => {
     let socket = client.connect() as unknown as FakeSocket;
     socket.open();
 
-    const паузы: number[] = [];
-    for (let попытка = 0; попытка < 7; попытка += 1) {
+    const pauses: number[] = [];
+    for (let attempt = 0; attempt < 7; attempt += 1) {
       socket.finishClosing();
-      const таймер = назначено();
-      паузы.push(таймер?.задержка ?? -1);
-      таймер?.запустить();
+      const timer = scheduled();
+      pauses.push(timer?.delay ?? -1);
+      timer?.run();
       socket = FakeSocket.instances.at(-1) as FakeSocket;
     }
 
-    expect(паузы).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+    expect(pauses).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
   });
 
   it('should start counting from scratch after a successful connection', () => {
@@ -313,16 +313,16 @@ describe('переподключение', () => {
     let socket = client.connect() as unknown as FakeSocket;
     socket.open();
 
-    for (let попытка = 0; попытка < 3; попытка += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       socket.finishClosing();
-      назначено()?.запустить();
+      scheduled()?.run();
       socket = FakeSocket.instances.at(-1) as FakeSocket;
     }
 
     socket.open();
     socket.finishClosing();
 
-    expect(назначено()?.задержка).toBe(1000);
+    expect(scheduled()?.delay).toBe(1000);
   });
 
   it('should not schedule a second attempt while one is pending', () => {
@@ -334,7 +334,7 @@ describe('переподключение', () => {
     socket.finishClosing();
     socket.finishClosing();
 
-    expect(таймеры.filter((т) => !т.отменён && !т.сработал)).toHaveLength(1);
+    expect(timers.filter((timer) => !timer.cancelled && !timer.fired)).toHaveLength(1);
   });
 
   it('should stop reconnecting after a deliberate disconnect', () => {
@@ -346,7 +346,7 @@ describe('переподключение', () => {
     client.disconnect();
     socket.finishClosing();
 
-    expect(назначено()).toBeUndefined();
+    expect(scheduled()).toBeUndefined();
   });
 
   it('should try at once when the network comes back', () => {
@@ -356,19 +356,19 @@ describe('переподключение', () => {
     let socket = client.connect() as unknown as FakeSocket;
     socket.open();
 
-    for (let попытка = 0; попытка < 6; попытка += 1) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
       socket.finishClosing();
-      назначено()?.запустить();
+      scheduled()?.run();
       socket = FakeSocket.instances.at(-1) as FakeSocket;
     }
     socket.finishClosing();
-    expect(назначено()?.задержка).toBe(30000);
+    expect(scheduled()?.delay).toBe(30000);
 
-    const былоСоединений = FakeSocket.instances.length;
-    разбудить('online');
+    const socketsBefore = FakeSocket.instances.length;
+    wake('online');
 
-    expect(FakeSocket.instances.length).toBe(былоСоединений + 1);
-    expect(назначено()).toBeUndefined();
+    expect(FakeSocket.instances.length).toBe(socketsBefore + 1);
+    expect(scheduled()).toBeUndefined();
   });
 
   it('should try at once when the tab comes back', () => {
@@ -377,10 +377,10 @@ describe('переподключение', () => {
     socket.open();
     socket.finishClosing();
 
-    const былоСоединений = FakeSocket.instances.length;
-    разбудить('visibilitychange');
+    const socketsBefore = FakeSocket.instances.length;
+    wake('visibilitychange');
 
-    expect(FakeSocket.instances.length).toBe(былоСоединений + 1);
+    expect(FakeSocket.instances.length).toBe(socketsBefore + 1);
   });
 
   it('should leave a hidden tab alone', () => {
@@ -390,11 +390,11 @@ describe('переподключение', () => {
     socket.open();
     socket.finishClosing();
 
-    видимость = 'hidden';
-    const былоСоединений = FakeSocket.instances.length;
-    разбудить('visibilitychange');
+    visibility = 'hidden';
+    const socketsBefore = FakeSocket.instances.length;
+    wake('visibilitychange');
 
-    expect(FakeSocket.instances.length).toBe(былоСоединений);
+    expect(FakeSocket.instances.length).toBe(socketsBefore);
   });
 
   it('should drop a connection still hanging from the outage', () => {
@@ -406,14 +406,14 @@ describe('переподключение', () => {
     socket.finishClosing();
 
     // Назначенная попытка сработала, но соединение так и висит.
-    назначено()?.запустить();
-    const зависшее = FakeSocket.instances.at(-1) as FakeSocket;
-    expect(зависшее.readyState).toBe(FakeSocket.CONNECTING);
+    scheduled()?.run();
+    const hanging = FakeSocket.instances.at(-1) as FakeSocket;
+    expect(hanging.readyState).toBe(FakeSocket.CONNECTING);
 
-    разбудить('online');
+    wake('online');
 
-    expect(зависшее.closeCalls).toBe(1);
-    expect(FakeSocket.instances.at(-1)).not.toBe(зависшее);
+    expect(hanging.closeCalls).toBe(1);
+    expect(FakeSocket.instances.at(-1)).not.toBe(hanging);
   });
 
   it('should not wake up after a deliberate disconnect', () => {
@@ -422,9 +422,9 @@ describe('переподключение', () => {
     socket.open();
     client.disconnect();
 
-    const былоСоединений = FakeSocket.instances.length;
-    разбудить('online');
+    const socketsBefore = FakeSocket.instances.length;
+    wake('online');
 
-    expect(FakeSocket.instances.length).toBe(былоСоединений);
+    expect(FakeSocket.instances.length).toBe(socketsBefore);
   });
 });

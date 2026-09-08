@@ -1,12 +1,12 @@
-import { ChatThreadHeader } from '../ChatThreadHeader';
-import { MessageActionsPopover } from '../Modals/MessageActionsPopover';
-import { ComposerWrapper } from '@/components/ui';
-import { MessagesList } from '../MessagesList';
-import { useMessageActions } from '@/hooks';
+import { ChatThreadHeader, MessageActionsPopover, MessagesList } from '../ChatThread';
+import { Button, ConfirmDialog } from '@/components/ui';
+import { useToasts } from '@/hooks';
+import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/store';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
-import { type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router-dom';
 
 interface Props {
   pinnedMessages: TPinnedList;
@@ -34,15 +34,39 @@ export const PinnedMessagesView = ({
   setPinnedMessagesOpen,
 }: Props) => {
   const { t } = useTranslation();
-  const { handleUnpinMessage } = useMessageActions({
-    setIsForwardModalOpen,
-  });
+  const { chatId = '' } = useParams<{ chatId: string }>();
+  const { showToast } = useToasts();
+  const [isUnpinAllOpen, setIsUnpinAllOpen] = useState(false);
+  const [isUnpinning, setIsUnpinning] = useState(false);
 
-  const handleUnpinAllMessages = () => {
-    for (const pinned of pinnedMessages) {
-      handleUnpinMessage(pinned.message);
+  // Закрывать страницу закреплений, когда закреплений не осталось
+  useEffect(() => {
+    if (!isLoading && pinnedMessages.length === 0) {
+      onClose();
     }
-    setPinnedMessagesOpen(false);
+  }, [isLoading, pinnedMessages.length, onClose]);
+
+  const handleUnpinAllMessages = async () => {
+    if (!pinnedMessages.length) return;
+    setIsUnpinning(true);
+    try {
+      const results = await Promise.allSettled(
+        pinnedMessages.map((pinned) =>
+          services.messageService.unpinMessage(chatId, pinned.messageId)
+        )
+      );
+
+      const rejected = results.filter((result) => result.status === 'rejected');
+      if (rejected.length > 0) {
+        showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
+      }
+      setIsUnpinAllOpen(false);
+      setPinnedMessagesOpen(false);
+    } catch {
+      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
+    } finally {
+      setIsUnpinning(false);
+    }
   };
 
   const selectedActionMessage = actionMenu
@@ -62,33 +86,11 @@ export const PinnedMessagesView = ({
       />
 
       {actionMenu && selectedActionMessage && (
-        <>
-          <div aria-hidden="true" className="message-actions-backdrop" />
-          <MessageActionsPopover
-            message={selectedActionMessage.message}
-            onSelection={onSelection}
-            setIsForwardModalOpen={setIsForwardModalOpen}
-          />
-          {openedImage && (
-            <div
-              aria-label={t('imageViewer', 'Просмотр изображения')}
-              aria-modal="true"
-              className="image-viewer"
-              onClick={() => setOpenedImage(null)}
-              role="dialog"
-            >
-              <button
-                aria-label={t('close', 'Закрыть')}
-                className="image-viewer-close"
-                onClick={() => setOpenedImage(null)}
-                type="button"
-              >
-                ×
-              </button>
-              <img alt="" onClick={(event) => event.stopPropagation()} src={openedImage} />
-            </div>
-          )}
-        </>
+        <MessageActionsPopover
+          message={selectedActionMessage.message}
+          onSelection={onSelection}
+          setIsForwardModalOpen={setIsForwardModalOpen}
+        />
       )}
 
       {openedImage && (
@@ -111,15 +113,31 @@ export const PinnedMessagesView = ({
         </div>
       )}
 
-      <ComposerWrapper>
-        <button
-          type="button"
-          onClick={handleUnpinAllMessages}
-          className="flex items-center gap-x-1 w-full px-3 bg-transparent text-[rgba(255,255,255,0.85)] font-normal hover:backdrop-blur-md rounded-4xl justify-center"
-        >
-          <span>{t('unpinAll', 'Открепить всё')}</span>
-        </button>
-      </ComposerWrapper>
+      {pinnedMessages.length > 0 && (
+        <div className="p-3 bg-panel border-t border-line flex shrink-0">
+          <Button
+            type="button"
+            variant="danger"
+            size="md"
+            onClick={() => setIsUnpinAllOpen(true)}
+            className="w-full"
+          >
+            {t('unpinAll', 'Открепить всё')}
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={isUnpinAllOpen}
+        title={t('unpinAllConfirmTitle', 'Открепить все сообщения?')}
+        confirmLabel={t('unpinAll', 'Открепить всё')}
+        danger
+        confirming={isUnpinning}
+        onConfirm={handleUnpinAllMessages}
+        onCancel={() => setIsUnpinAllOpen(false)}
+      >
+        {t('unpinAllConfirm', 'Закрепления пропадут у всех участников чата.')}
+      </ConfirmDialog>
     </main>
   );
 };

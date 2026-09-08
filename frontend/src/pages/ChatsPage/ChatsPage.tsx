@@ -1,17 +1,29 @@
 import {
+  ArchiveEntry,
+  ChatListItem,
+  ChatListItemSkeleton,
+  ChatsSearchField,
+  ChatsSearchResults,
   CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
   UserProfilePanel,
 } from '@/components/features';
-import { ChatListItem, ChatsSkeleton, Icon } from '@/components/ui';
-import { useIsMobile } from '@/hooks';
+import { Icon } from '@/components/ui';
+import { useChatsSearch, useIsMobile, usePaneWidth } from '@/hooks';
+import { isConversationStarted } from '@/utils';
+import { PaneResizer } from './PaneResizer';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, Outlet, useParams } from 'react-router-dom';
+import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '..';
+
+/* Границы ширины колонок. Ниже нижней строка чата перестаёт помещаться,
+   выше верхней колонка съедает переписку. */
+const SIDEBAR_LIMITS = { min: 280, max: 520, fallback: 360 };
+const PROFILE_LIMITS = { min: 300, max: 560, fallback: 380 };
 
 export function ChatsPage() {
   const {
@@ -22,9 +34,20 @@ export function ChatsPage() {
   } = useQuery(chatsQuery());
   const error = loadError ? (loadError as Error).message : '';
   const { chatId } = useParams();
+
+  /* Переписки, которые ещё не начались, в списке не показываются —
+     см. `isConversationStarted`. Фильтр стоит здесь, а не в запросе:
+     тем же запросом пользуется выбор участников группы, и там нужны все
+     собеседники. */
+  const visibleChats = useMemo(() => chats.filter(isConversationStarted), [chats]);
+  const pinnedCount = useMemo(
+    () => visibleChats.filter((chat) => chat.isPinned).length,
+    [visibleChats]
+  );
+  const search = useChatsSearch(visibleChats);
   const isMobile = useIsMobile();
-  const [sidebarWidth, setSidebarWidth] = useState(360);
-  const [profileWidth, setProfileWidth] = useState<number | null>(null);
+  const sidebar = usePaneWidth('sidebar', SIDEBAR_LIMITS);
+  const profile = usePaneWidth('profile', PROFILE_LIMITS);
   const [profileState, setProfileState] = useState<IProfileState>({
     isOpen: false,
     userId: null,
@@ -33,33 +56,43 @@ export function ChatsPage() {
   });
   const [profileCloseToken, setProfileCloseToken] = useState(0);
   const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
+  const [isArchiveOpen, setArchiveOpen] = useState(false);
+
+  /* Архив грузится всегда, даже когда закрыт: по нему решается, показывать
+     ли строку входа и сколько там непрочитанных. Запрос лёгкий и живёт в
+     том же кеше, что и основной список. */
+  const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
+
+  /* Опустевший архив закрывается сам: человек вернул оттуда последний чат
+     и остался бы смотреть в пустой экран, из которого надо выбираться
+     кнопкой. Состояние при этом не сбрасывается — архив снова наполнится,
+     и он откроется там же. */
+  const showArchive = isArchiveOpen && archivedChats.length > 0;
   const { t } = useTranslation();
 
-  function startResize(kind: string, event: PointerEvent) {
+  function startResize(kind: 'sidebar' | 'profile', event: PointerEvent) {
     event.preventDefault();
     const startX = event.clientX;
-    const startSidebarWidth = sidebarWidth;
-    const startProfileWidth = profileWidth || Math.round(window.innerWidth * 0.25);
+    const pane = kind === 'sidebar' ? sidebar : profile;
+    const limits = kind === 'sidebar' ? SIDEBAR_LIMITS : PROFILE_LIMITS;
+    const startWidth = pane.width;
+    let lastWidth = startWidth;
 
     function handleMove(moveEvent: PointerEvent) {
-      if (kind === 'sidebar') {
-        const nextWidth = Math.min(
-          Math.max(startSidebarWidth + moveEvent.clientX - startX, 280),
-          520
-        );
-        setSidebarWidth(nextWidth);
-      } else {
-        const nextWidth = Math.min(
-          Math.max(startProfileWidth - (moveEvent.clientX - startX), 300),
-          560
-        );
-        setProfileWidth(nextWidth);
-      }
+      const delta = moveEvent.clientX - startX;
+      // Панель профиля растёт влево, поэтому смещение у неё с обратным знаком.
+      const raw = kind === 'sidebar' ? startWidth + delta : startWidth - delta;
+
+      lastWidth = Math.min(Math.max(raw, limits.min), limits.max);
+      pane.setWidth(lastWidth);
     }
 
     function handleUp() {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      // Записывается один раз, по концу: иначе одно перетаскивание даёт
+      // несколько сотен обращений к хранилищу.
+      pane.remember(lastWidth);
     }
 
     window.addEventListener('pointermove', handleMove);
@@ -70,16 +103,35 @@ export function ChatsPage() {
     <CreateGroupModal onClose={() => setCreateGroupOpen(false)} />
   ) : null;
 
+  const archiveHeader = (
+    <section className="chats-toolbar">
+      <button
+        aria-label={t('back', 'Назад')}
+        className="chats-new-group"
+        onClick={() => setArchiveOpen(false)}
+        type="button"
+      >
+        <Icon name="chevronRight" className="rotate-180" />
+      </button>
+      <h1 className="text-section font-semibold text-ink">{t('archive', 'Архив')}</h1>
+    </section>
+  );
+
+  const archiveContent = (
+    <>
+      {archiveHeader}
+      <section className="chats-list styled-scrollbar">
+        {archivedChats.map((chat) => (
+          <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+        ))}
+      </section>
+    </>
+  );
+
   const listContent = (
     <>
       <section className="chats-toolbar">
-        <Link
-          className="chats-search"
-          to="/contacts"
-          aria-label={t('search', 'Поиск чатов и людей...')}
-        >
-          <span className="chats-search-placeholder">{t('search', 'Поиск чатов и людей...')}</span>
-        </Link>
+        <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
 
         <button
           aria-label={t('newGroup', 'Новая группа')}
@@ -93,12 +145,37 @@ export function ChatsPage() {
       </section>
 
       <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
-        {isLoading ? <ChatsSkeleton /> : null}
+        {isLoading ? <ChatListItemSkeleton /> : null}
         {!isLoading && error && (
           <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
         )}
-        {!isLoading && !error && chats.length === 0 && <EmptyChatListPlaceholder />}
-        {!isLoading && !error && chats.map((chat) => <ChatListItem chat={chat} key={chat.id} />)}
+
+        {/* Пока идёт поиск, список подменяется найденным — как в
+            привычных мессенджерах. Открытая переписка справа при этом
+            остаётся на месте: раньше поиск уводил на отдельную страницу
+            и закрывал её. */}
+        {!isLoading && !error && search.isSearching && (
+          <ChatsSearchResults
+            chats={search.chats}
+            isEmpty={search.isEmpty}
+            isLoadingPeople={search.isLoadingPeople}
+            people={search.people}
+          />
+        )}
+
+        {!isLoading && !error && !search.isSearching && (
+          <ArchiveEntry chats={archivedChats} onOpen={() => setArchiveOpen(true)} />
+        )}
+
+        {!isLoading && !error && !search.isSearching && visibleChats.length === 0 && (
+          <EmptyChatListPlaceholder />
+        )}
+        {!isLoading &&
+          !error &&
+          !search.isSearching &&
+          visibleChats.map((chat) => (
+            <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+          ))}
       </section>
     </>
   );
@@ -118,7 +195,7 @@ export function ChatsPage() {
     return (
       <>
         {createGroupModal}
-        <main className="chats-page">{listContent}</main>
+        <main className="chats-page">{showArchive ? archiveContent : listContent}</main>
       </>
     );
   }
@@ -129,15 +206,19 @@ export function ChatsPage() {
           делает position: fixed относительным ей, и окно оказывалось
           прижатым к узкой колонке вместо экрана. */}
       {createGroupModal}
-      <div className="app-sidebar-pane" style={{ flexBasis: sidebarWidth }}>
-        <main className="chats-page">{listContent}</main>
+      <div className="app-sidebar-pane" style={{ flexBasis: sidebar.width }}>
+        <main className="chats-page">{showArchive ? archiveContent : listContent}</main>
       </div>
 
-      <div
-        aria-label="Изменить ширину списка чатов"
+      <PaneResizer
         className="app-pane-resizer app-pane-resizer-sidebar"
+        label={t('resizeChatList', 'Изменить ширину списка чатов')}
+        max={SIDEBAR_LIMITS.max}
+        min={SIDEBAR_LIMITS.min}
         onPointerDown={(event) => startResize('sidebar', event.nativeEvent)}
-        role="separator"
+        onJump={sidebar.jump}
+        onNudge={sidebar.nudge}
+        width={sidebar.width}
       />
 
       <div className="app-chat-pane">
@@ -152,16 +233,17 @@ export function ChatsPage() {
 
       {profileState.isOpen && (
         <>
-          <div
-            aria-label="Изменить ширину профиля"
+          <PaneResizer
             className="app-pane-resizer app-pane-resizer-profile"
+            label={t('resizeProfile', 'Изменить ширину профиля')}
+            max={PROFILE_LIMITS.max}
+            min={PROFILE_LIMITS.min}
             onPointerDown={(event) => startResize('profile', event.nativeEvent)}
-            role="separator"
+            onJump={profile.jump}
+            onNudge={profile.nudge}
+            width={profile.width}
           />
-          <div
-            className="app-profile-pane"
-            style={profileWidth ? { flexBasis: profileWidth } : undefined}
-          >
+          <div className="app-profile-pane" style={{ flexBasis: profile.width }}>
             <UserProfilePanel
               onClose={() => {
                 setProfileState({ isOpen: false, userId: null, chat: null, messages: [] });
