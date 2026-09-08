@@ -210,6 +210,30 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
+              /* Разделы, которых ещё нет. Без своих маршрутов их ловил общий
+                 перехват и возвращал в чаты: адрес менялся, экран оставался
+                 прежним, и выходило, будто кнопка сломана. */
+              {
+                path: REACT_ROUTES.CHANNELS,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.ChannelsPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.COMMUNITIES,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.CommunitiesPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.MEETINGS,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.MeetingsPage,
+                  })),
+              },
               {
                 path: REACT_ROUTES.CONTACTS,
                 lazy: () =>
