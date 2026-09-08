@@ -82,6 +82,106 @@ export default tseslint.config(
     },
   },
 
+  /* Границы слоёв — подготовка к переезду на FSD (#623, эпик #622).
+     Правила описывают текущую раскладку, а не целевую: они должны
+     ловить то, что уже неверно, и не мешать работе до переезда.
+
+     Предупреждениями, по той же причине, что и всё выше: нарушения
+     существуют прямо сейчас, и красная сборка на старте кончится тем,
+     что правило выключат. Ошибками станут на последнем этапе (#628),
+     когда долг разобран. */
+  {
+    files: ['src/utils/**/*.{ts,tsx}', 'src/consts/**/*.{ts,tsx}', 'src/types/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: [
+                '@/store',
+                '@/store/*',
+                '@/services',
+                '@/services/*',
+                '@/queries/*',
+                '@/hooks',
+                '@/components/*',
+                '@/pages',
+                '@/pages/*',
+              ],
+              message:
+                'Нижний слой не знает о верхних. Если файлу нужен стор или сервис, он не утилита: место ему в features. Пример — utils/clearAuthSession.ts, он оркестрирует четыре стора.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/components/**/*.{ts,tsx}', 'src/layouts/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['@/pages', '@/pages/*', '@/configs/router'],
+              message:
+                'Компонент не знает о странице и о роутере: это кольцо. Общий тип выносится вниз — так уедут IProfileModal и IProfileState из ChatThreadPage. Адреса из configs/app трогать можно: на этапе #624 они уедут в shared/config.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/store/**/*.{ts,tsx}', 'src/queries/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              message: 'Слой данных не знает о разметке.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  /* Запросам обращаться к сервисам положено — так устроен слой данных
+     (docs/frontend-data-architecture.md). Хранилищам нет: состояние не
+     ходит в сеть само. */
+  {
+    files: ['src/store/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              message: 'Слой данных не знает о разметке.',
+            },
+            {
+              group: [
+                '@/services/serviceContainer',
+                '@/services/WebSocketClient',
+                '@/services/ringtone',
+              ],
+              message:
+                'Хранилище не дёргает сервисы напрямую. Если нужно — это не хранилище, а сценарий: место в features. Пример — store/call.ts.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   /* Проверка Tailwind вынесена отдельным блоком: правил немного, но
      каждое отвечает своему пункту из docs/frontend-style-system.md. */
   {
