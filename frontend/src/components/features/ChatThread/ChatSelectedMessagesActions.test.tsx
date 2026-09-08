@@ -1,4 +1,5 @@
-import { useChatUiStore, useToastStore } from '@/store';
+import { clearToasts, getToasts } from '@/shared/ui';
+import { useChatUiStore } from '@/store';
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -28,7 +29,7 @@ describe('ChatSelectedMessagesActions', () => {
     useChatUiStore.setState({
       selectedMessages: [makeMessage({ id: 'msg-1' }), makeMessage({ id: 'msg-2' })],
     });
-    useToastStore.setState({ toasts: [] });
+    clearToasts();
   });
 
   it('отображает количество выбранных сообщений и кнопки действий', () => {
@@ -126,7 +127,7 @@ describe('ChatSelectedMessagesActions', () => {
 
     await user.click(modalConfirmBtn);
 
-    expect(useToastStore.getState().toasts).toContainEqual(
+    expect(getToasts()).toContainEqual(
       expect.objectContaining({
         type: 'error',
         message: 'Не удалось удалить сообщение(я)',

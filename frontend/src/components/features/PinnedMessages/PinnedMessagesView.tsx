@@ -1,6 +1,5 @@
 import { ChatThreadHeader, MessageActionsPopover, MessagesList } from '../ChatThread';
-import { Button, ConfirmDialog } from '@/shared/ui';
-import { useToasts } from '@/hooks';
+import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/store';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
@@ -35,7 +34,6 @@ export const PinnedMessagesView = ({
 }: Props) => {
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
-  const { showToast } = useToasts();
   const [isUnpinAllOpen, setIsUnpinAllOpen] = useState(false);
   const [isUnpinning, setIsUnpinning] = useState(false);
 

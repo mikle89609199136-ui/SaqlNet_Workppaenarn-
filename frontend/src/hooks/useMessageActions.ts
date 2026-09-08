@@ -1,6 +1,6 @@
+import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
 import { CHAT_ROLES, CHAT_TYPES } from '@/shared/config';
-import { useToasts } from './useToasts';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
@@ -61,8 +61,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setTranslations = useChatUiStore((state) => state.setTranslations);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
-  const { showToast } = useToasts();
-
   const handleTranslateMessage = async (message: IMessageDto) => {
     if (translations[message.id]) {
       setTranslations((prev) => {
@@ -116,9 +114,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         // иначе в набор попадали undefined вместо идентификаторов.
         const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
 
-        const serverMessages = own.filter(
-          (item) => !item.tempId && !item.id.startsWith('temp-')
-        );
+        const serverMessages = own.filter((item) => !item.tempId && !item.id.startsWith('temp-'));
         const outboxMessages = own.filter(
           (item) => Boolean(item.tempId) || item.id.startsWith('temp-')
         );
@@ -133,7 +129,9 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           // Именно возврат промиса делает ожидание настоящим: без него
           // Promise.all завершался мгновенно, а отказы становились
           // необработанными и не доходили до catch.
-          await Promise.all(serverMessages.map((item) => services.messageService.deleteMessage(item.id)));
+          await Promise.all(
+            serverMessages.map((item) => services.messageService.deleteMessage(item.id))
+          );
           serverMessages.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
         }
 
