@@ -91,6 +91,19 @@ func TestUploadSignalKeysInvalidJSONDoesNotCallValidator(t *testing.T) {
 	}
 }
 
+func TestUploadSignalKeysWithoutValidatorReturnsServiceUnavailable(t *testing.T) {
+	handler := NewHandler(nil, nil)
+
+	response := serveSignalKeys(handler, validSignalRegistrationBody())
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d: %s", response.Code, response.Body.String())
+	}
+	if code := responseErrorCode(t, response); code != "crypto_unavailable" {
+		t.Fatalf("expected crypto_unavailable, got %q", code)
+	}
+}
+
 func assertSignalValidationFailure(t *testing.T, validator *signalRegistrationValidatorStub) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
