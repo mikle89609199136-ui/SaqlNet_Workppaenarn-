@@ -21,6 +21,8 @@ const minioEnsureRetries = 10
 const minioEnsureRetryDelay = 2 * time.Second
 
 func main() {
+	maxFileSize := config.RequiredPositiveInt64("MAX_FILE_SIZE")
+
 	pool, err := db.Open(config.Required("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
@@ -62,7 +64,7 @@ func main() {
 		log.Fatalf("media: failed to ensure bucket %q after %d retries: %v", bucket, minioEnsureRetries, ensureErr)
 	}
 
-	svc := media.NewService(pool, store, bucket)
+	svc := media.NewService(pool, store, bucket, maxFileSize)
 	handler := media.NewHandler(svc)
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))

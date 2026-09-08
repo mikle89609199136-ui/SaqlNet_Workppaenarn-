@@ -1,14 +1,32 @@
 package media
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
+)
+
+const (
+	// Request overhead covers multipart boundaries and bounded part headers/metadata.
+	multipartRequestOverheadBytes int64 = 64 << 10
+	// JSON overhead covers worst-case escaping of bounded metadata plus JSON syntax.
+	jsonRequestOverheadBytes      int64 = 64 << 10
+	multipartMemoryThresholdBytes int64 = 32 << 20
+
+	maxUploadPurposeBytes       = 32
+	maxUploadMIMETypeBytes      = 255
+	maxEncryptionVersionBytes   = 64
+	maxEncryptionAlgorithmBytes = 128
+	maxEncryptionIVBytes        = 4096
+	maxDataURLHeaderBytes       = maxUploadMIMETypeBytes + 32
+	maxJSONSafeInteger          = 1<<53 - 1
 )
 
 type Handler struct {
@@ -17,6 +35,94 @@ type Handler struct {
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+func base64EncodedSize(decodedBytes int64) int64 {
+	groups := decodedBytes / 3
+	if groups > math.MaxInt64/4 {
+		return math.MaxInt64
+	}
+	encodedBytes := groups * 4
+	if decodedBytes%3 != 0 {
+		if encodedBytes > math.MaxInt64-4 {
+			return math.MaxInt64
+		}
+		encodedBytes += 4
+	}
+	return encodedBytes
+}
+
+func addRequestOverhead(payloadBytes, overheadBytes int64) int64 {
+	if payloadBytes > math.MaxInt64-overheadBytes {
+		return math.MaxInt64
+	}
+	return payloadBytes + overheadBytes
+}
+
+func (h *Handler) jsonBodyLimit() int64 {
+	return addRequestOverhead(base64EncodedSize(h.service.maxUploadBytes), jsonRequestOverheadBytes)
+}
+
+func (h *Handler) multipartBodyLimit() int64 {
+	return addRequestOverhead(h.service.maxUploadBytes, multipartRequestOverheadBytes)
+}
+
+func (h *Handler) multipartMemoryLimit() int64 {
+	if h.service.maxUploadBytes < multipartMemoryThresholdBytes {
+		return h.service.maxUploadBytes
+	}
+	return multipartMemoryThresholdBytes
+}
+
+func decodeSingleJSON(reader io.Reader, value any) error {
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func isMaxBytesError(err error) bool {
+	var maxBytesError *http.MaxBytesError
+	return errors.As(err, &maxBytesError)
+}
+
+func uploadLimitMessage(maxBytes int64) string {
+	const mebibyte = 1 << 20
+	if maxBytes%mebibyte == 0 {
+		return fmt.Sprintf("file exceeds %d MB limit", maxBytes/mebibyte)
+	}
+	return fmt.Sprintf("file exceeds %d byte limit", maxBytes)
+}
+
+func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+		"error": httpx.Error{
+			Code:      "file_too_large",
+			Message:   uploadLimitMessage(h.service.maxUploadBytes),
+			RequestID: r.Header.Get("X-Request-ID"),
+		},
+	})
+}
+
+func (h *Handler) writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, ErrTooBig) {
+		h.writeFileTooLarge(w, r)
+		return
+	}
+	httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", "upload failed")
+}
+
+func metadataStringTooLong(values map[string]any, key string, maxBytes int) bool {
+	value, ok := values[key].(string)
+	return ok && len(value) > maxBytes
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -30,13 +136,22 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// JSON payload
 	if strings.HasPrefix(contentType, "application/json") {
+		r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 		var req struct {
 			Purpose  string `json:"purpose"`
 			File     any    `json:"file"`
 			FileName string `json:"fileName"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeSingleJSON(r.Body, &req); err != nil {
+			if isMaxBytesError(err) {
+				h.writeFileTooLarge(w, r)
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "failed to parse json")
+			return
+		}
+		if len(req.Purpose) > maxUploadPurposeBytes || len(req.FileName) > maxFilenameBytes {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 			return
 		}
 
@@ -44,6 +159,14 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			fileMap, ok := req.File.(map[string]any)
 			if !ok {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "file must be an object for message purpose")
+				return
+			}
+			if metadataStringTooLong(fileMap, "version", maxEncryptionVersionBytes) ||
+				metadataStringTooLong(fileMap, "algorithm", maxEncryptionAlgorithmBytes) ||
+				metadataStringTooLong(fileMap, "iv", maxEncryptionIVBytes) ||
+				metadataStringTooLong(fileMap, "mimeType", maxUploadMIMETypeBytes) ||
+				metadataStringTooLong(fileMap, "fileName", maxFilenameBytes) {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 				return
 			}
 
@@ -69,11 +192,11 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 			var originalSize int64
 			if sizeBytes, ok := fileMap["sizeBytes"].(float64); ok {
-				originalSize = int64(sizeBytes)
-				if sizeBytes < 0 || sizeBytes > maxUploadBytes || float64(originalSize) != sizeBytes {
-					httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_size", "sizeBytes must be a non-negative integer within the upload limit")
+				if sizeBytes < 0 || sizeBytes > maxJSONSafeInteger || math.Trunc(sizeBytes) != sizeBytes {
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_size", "sizeBytes must be a non-negative integer")
 					return
 				}
+				originalSize = int64(sizeBytes)
 				enc["sizeBytes"] = originalSize
 			}
 			fileName, _ := fileMap["fileName"].(string)
@@ -93,12 +216,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 			up, err := h.service.UploadEncrypted(r.Context(), current.ID, fileName, ciphertext, string(encJson), mimeType)
 			if err != nil {
-				status := http.StatusInternalServerError
-				code := "upload_failed"
-				if errors.Is(err, ErrTooBig) {
-					status, code = http.StatusRequestEntityTooLarge, "file_too_large"
-				}
-				httpx.ErrorJSON(w, r, status, code, err.Error())
+				h.writeUploadError(w, r, err)
 				return
 			}
 
@@ -131,25 +249,28 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 		mimeType := "application/octet-stream"
 		header := parts[0]
+		if len(header) > maxDataURLHeaderBytes {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
+			return
+		}
 		if strings.Contains(header, ";base64") {
 			mimeType = strings.TrimPrefix(header, "data:")
 			mimeType = strings.TrimSuffix(mimeType, ";base64")
 		}
 
-		data, err := base64.StdEncoding.DecodeString(parts[1])
+		data, err := decodeBase64Payload(parts[1], h.service.maxUploadBytes)
 		if err != nil {
+			if errors.Is(err, ErrTooBig) {
+				h.writeFileTooLarge(w, r)
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_base64", "failed to decode base64")
 			return
 		}
 
 		up, err := h.service.UploadRaw(r.Context(), current.ID, req.FileName, mimeType, data, false, "")
 		if err != nil {
-			status := http.StatusInternalServerError
-			code := "upload_failed"
-			if errors.Is(err, ErrTooBig) {
-				status, code = http.StatusRequestEntityTooLarge, "file_too_large"
-			}
-			httpx.ErrorJSON(w, r, status, code, err.Error())
+			h.writeUploadError(w, r, err)
 			return
 		}
 		httpx.JSON(w, http.StatusCreated, uploadResponse(up))
@@ -157,19 +278,33 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Multipart fallback
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, h.multipartBodyLimit())
+	parseErr := r.ParseMultipartForm(h.multipartMemoryLimit())
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if parseErr != nil {
+		if isMaxBytesError(parseErr) {
+			h.writeFileTooLarge(w, r)
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_form", "failed to parse multipart form")
 		return
 	}
-	_, fh, err := r.FormFile("file")
+	file, fh, err := r.FormFile("file")
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "missing_file", "field 'file' is required")
+		return
+	}
+	_ = file.Close()
+	if len(fh.Filename) > maxFilenameBytes || len(fh.Header.Get("Content-Type")) > maxUploadMIMETypeBytes {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 		return
 	}
 	up, err := h.service.Upload(r.Context(), current.ID, fh)
 	switch {
 	case errors.Is(err, ErrTooBig):
-		httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", "file exceeds 100 MB limit")
+		h.writeFileTooLarge(w, r)
 	case errors.Is(err, ErrBadType):
 		httpx.ErrorJSON(w, r, http.StatusUnsupportedMediaType, "unsupported_type", "file type not allowed")
 	case err != nil:
