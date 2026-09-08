@@ -8,6 +8,7 @@ import { CallMessageContent } from './CallMessageContent';
 import { MessageCheckbox } from './MessageCheckbox';
 import { MessageContentRenderer } from './MessageContent';
 import { MessageMedia } from './MessageMedia';
+import { MessageReplyPreview } from './MessageReplyPreview';
 
 interface Props {
   currentUserId: string;
@@ -34,6 +35,8 @@ interface Props {
    * подписка на всю ленту, от которой избавлялись в #298.
    */
   onReact: (message: IMessageDto, emoji: string) => void;
+  /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
+  onJumpToMessage?: (messageId: string) => void;
 }
 
 export const MessageBubble = memo(
@@ -45,6 +48,7 @@ export const MessageBubble = memo(
     onOpenImage,
     onReact,
     onSelection,
+    onJumpToMessage,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -66,11 +70,10 @@ export const MessageBubble = memo(
       message
     );
 
-    const replyText = repliedMessage?.content?.trim() || message.replyToContent?.trim() || '';
-    const replyImage = repliedMessage?.mediaUrl || message.replyToMediaUrl || null;
-
     const actualType = message.mediaType || message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
+    const targetReplyId = message.replyTo || message.replyToMessageId;
+    const hasReply = Boolean(targetReplyId || repliedMessage);
 
     return (
       <article
@@ -79,42 +82,37 @@ export const MessageBubble = memo(
         {...longPressHandlers}
       >
         <div
+          data-state={isSelected ? 'selected' : undefined}
           className={cn(
             'message-bubble',
             mine && 'is-mine',
             hasMessageMedia(message) && 'has-media',
-            isAudio && 'has-audio w-full',
+            isAudio && 'w-full',
             isActionTarget && 'is-action-target',
-            isSelected && 'is-selected bg-accent',
+            isSelected &&
+              'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
             isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-bg transition-all duration-300'
+              'ring-2 ring-brand ring-offset-2 ring-offset-ground bg-brand-soft/25 transition-all duration-500'
           )}
         >
           {!mine && message.senderStatusEmoji && (
-            <div className="message-sender">
-              <span className="sender-status-emoji" style={{ marginLeft: 6 }}>
-                {message.senderStatusEmoji}
-              </span>
+            <div className="mb-[3px] text-brand text-xs font-semibold">
+              <span className="ml-1.5 inline-block">{message.senderStatusEmoji}</span>
             </div>
           )}
 
-          {(replyText || replyImage) && (
-            <a
-              href={`#${message.replyTo}`}
-              className="message-reply-preview"
-              aria-label={t('goToMessage', 'Перейти к сообщению')}
-            >
-              {replyImage && (
-                <img src={replyImage} alt="" className="message-reply-preview-image" />
-              )}
-              {replyText && <span>{replyText}</span>}
-            </a>
+          {hasReply && (
+            <MessageReplyPreview
+              message={message}
+              onJumpToMessage={onJumpToMessage}
+              repliedMessage={repliedMessage}
+            />
           )}
 
           <MessageMedia message={message} onOpenImage={onOpenImage} />
 
           {message.senderVerified === false && (
-            <p className="message-unverified">
+            <p className="mb-1 text-xs text-warn">
               {t('senderNotConfirmed', '⚠️ Не удалось подтвердить отправителя')}
             </p>
           )}

@@ -3,12 +3,14 @@ import { cn } from '@/utils';
 import { forwardRef, type ButtonHTMLAttributes, type MouseEvent } from 'react';
 
 const sizes = {
+  xs: 'text-micro px-2 py-1 rounded-control gap-1',
   sm: 'text-caption px-3 py-1.5 rounded-control gap-1.5',
   md: 'text-body px-4.5 py-2.5 rounded-field gap-2',
   lg: 'text-title px-6 py-3.5 rounded-field gap-2',
 } as const;
 
 const iconOnlySizes = {
+  xs: 'p-0.5 rounded-control',
   sm: 'p-1.5 rounded-control',
   md: 'p-2.5 rounded-field',
   lg: 'p-3.5 rounded-field',
@@ -29,9 +31,20 @@ const variants = {
   danger: 'bg-transparent border-danger text-danger hover:bg-danger/10',
 } as const;
 
+/* Круг — не украшение, а отдельная роль: кнопка при иконке, которая
+   стоит в ряду других элементов и не должна выглядеть блоком. До этой
+   опции каждое такое место дописывало rounded-full через className, и
+   вместе с формой туда переезжали цвета — то есть вариант переставал
+   значить что-либо. */
+const shapes = {
+  default: '',
+  round: 'rounded-full',
+} as const;
+
 interface StyleProps {
   variant?: keyof typeof variants;
   size?: keyof typeof sizes;
+  shape?: keyof typeof shapes;
   iconOnly?: boolean;
   className?: string;
 }
@@ -42,6 +55,7 @@ interface StyleProps {
 export const buttonStyles = ({
   variant = 'primary',
   size = 'md',
+  shape = 'default',
   iconOnly = false,
   className,
 }: StyleProps = {}) =>
@@ -53,6 +67,8 @@ export const buttonStyles = ({
     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
     iconOnly ? iconOnlySizes[size] : sizes[size],
     variants[variant],
+    /* После размера: радиус приходит оттуда, и round обязан его перебить. */
+    shapes[shape],
     className
   );
 
@@ -64,6 +80,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
   {
     variant = 'primary',
     size = 'md',
+    shape = 'default',
     loading = false,
     iconOnly = false,
     disabled,
@@ -102,7 +119,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
       onClick={handleClick}
-      className={buttonStyles({ variant, size, iconOnly, className })}
+      className={buttonStyles({ variant, size, shape, iconOnly, className })}
       {...rest}
     >
       {loading && <Spinner size="text" tone="current" />}

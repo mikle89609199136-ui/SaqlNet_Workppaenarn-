@@ -24,6 +24,71 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
 
+const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+Element.prototype.getBoundingClientRect = function () {
+  const original = originalGetBoundingClientRect ? originalGetBoundingClientRect.call(this) : null;
+  if (!original || (original.width === 0 && original.height === 0)) {
+    return {
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => '',
+    };
+  }
+  return original;
+};
+
+if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get) {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    get() {
+      return this._clientHeight ?? 600;
+    },
+    set(val) {
+      this._clientHeight = val;
+    },
+    configurable: true,
+  });
+}
+
+if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')?.get) {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    get() {
+      return this._clientWidth ?? 800;
+    },
+    set(val) {
+      this._clientWidth = val;
+    },
+    configurable: true,
+  });
+}
+
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    private callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(target: Element) {
+      const rect = target.getBoundingClientRect();
+      const entry = {
+        target,
+        contentRect: rect,
+        borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        contentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        devicePixelContentBoxSize: [],
+      } as unknown as ResizeObserverEntry;
+      this.callback([entry], this);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 if (!globalThis.requestAnimationFrame) {
   globalThis.requestAnimationFrame = (callback: FrameRequestCallback) =>
     setTimeout(() => callback(performance.now()), 0) as unknown as number;

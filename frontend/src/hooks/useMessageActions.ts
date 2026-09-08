@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
 import { useToasts } from './useToasts';
 import { chatQuery } from '@/queries/chat/threadQueries';
@@ -137,7 +138,9 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       }
       setError('');
     } catch (err: any) {
-      setError(err.message || t('messageDeleteError', 'Не удалось удалить сообщение(я)'));
+      setError(
+        describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
+      );
     }
   };
 
@@ -195,7 +198,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       // Не вышло — возвращаем то, что было: показанное авансом должно
       // исчезнуть, иначе человек уверен, что реакция стоит.
       patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
-      setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
+      setError(describeApiError(err, t, t('reactionError', 'Не удалось обновить реакцию')));
     } finally {
       if (isLatest()) endReactionChange(message.id);
     }
@@ -212,7 +215,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.unpinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messageUnpinError', 'Не удалось открепить сообщение'));
+      setError(describeApiError(err, t, t('messageUnpinError', 'Не удалось открепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&
@@ -243,7 +246,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.pinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messagePinError', 'Не удалось закрепить сообщение'));
+      setError(describeApiError(err, t, t('messagePinError', 'Не удалось закрепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&

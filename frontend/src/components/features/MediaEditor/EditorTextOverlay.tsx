@@ -22,8 +22,7 @@ export function EditorTextOverlay({
   onDelete,
 }: Props) {
   const { t } = useTranslation();
-  const font =
-    EDITOR_FONTS.find((item) => item.id === selectedTextObject.font) || EDITOR_FONTS[0];
+  const font = EDITOR_FONTS.find((item) => item.id === selectedTextObject.font) || EDITOR_FONTS[0];
   const fontSize = Math.max(18, selectedTextObject.size * (canvasDisplayWidth / 1000));
 
   return (

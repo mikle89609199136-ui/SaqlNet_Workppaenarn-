@@ -96,9 +96,7 @@ describe('PinnedMessagesView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Открепить всё' }));
 
     expect(screen.getByText('Открепить все сообщения?')).toBeInTheDocument();
-    expect(
-      screen.getByText('Закрепления пропадут у всех участников чата.')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Закрепления пропадут у всех участников чата.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(setPinnedMessagesOpen).not.toHaveBeenCalled();

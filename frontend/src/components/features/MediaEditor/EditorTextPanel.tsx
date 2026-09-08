@@ -33,7 +33,12 @@ export function EditorTextPanel({
           Нажмите на изображение и вводите текст прямо поверх него.
         </p>
         <div className="flex items-center gap-2">
-          <Button className="flex-1 flex items-center justify-center gap-1.5" onClick={onAddText} size="md" variant="secondary">
+          <Button
+            className="flex-1 flex items-center justify-center gap-1.5"
+            onClick={onAddText}
+            size="md"
+            variant="secondary"
+          >
             <Icon name="plus" size="sm" />
             <span>Добавить по центру</span>
           </Button>
@@ -72,9 +77,7 @@ export function EditorTextPanel({
                 if (selectedTextObject) onUpdateSelectedText({ font: font.id }, true);
               }}
               style={{ fontFamily: font.family }}
-              variant={
-                (selectedTextObject?.font || textFont) === font.id ? 'primary' : 'secondary'
-              }
+              variant={(selectedTextObject?.font || textFont) === font.id ? 'primary' : 'secondary'}
             >
               {font.label}
             </Button>

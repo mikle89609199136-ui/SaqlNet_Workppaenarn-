@@ -11,12 +11,7 @@ interface Props {
   onOpenImage?: (url: string) => void;
 }
 
-export const AttachmentPreview = ({
-  attachment,
-  onRemove,
-  onEdit,
-  onOpenImage,
-}: Props) => {
+export const AttachmentPreview = ({ attachment, onRemove, onEdit, onOpenImage }: Props) => {
   const { t } = useTranslation();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 

@@ -6,9 +6,8 @@ import { useProfileStore } from '@/store';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from '../components/guards/AuthGuard';
-import { AppLayout } from '../components/layouts/AppLayout';
-import { RootLayout } from '../components/layouts/RootLayout';
-import { RouteLoadingFallback } from '../components/layouts/RouteLoadingFallback';
+import { AppLayout, RootLayout } from '@/layouts';
+import { RouteLoadingFallback } from '@/components/ui';
 import {
   DEFAULT_SETTINGS_SECTION,
   REACT_ROUTES,
@@ -193,9 +192,11 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/features/ChatThread/EmptyChatPlaceholder').then((m) => ({
-                        Component: m.EmptyChatPlaceholder,
-                      })),
+                      import('../components/features/ChatThread/EmptyChatPlaceholder').then(
+                        (m) => ({
+                          Component: m.EmptyChatPlaceholder,
+                        })
+                      ),
                   },
                   {
                     path: REACT_ROUTES.CHAT_BY_ID,
@@ -208,6 +209,30 @@ export const router = createBrowserRouter([
                       })),
                   },
                 ],
+              },
+              /* Разделы, которых ещё нет. Без своих маршрутов их ловил общий
+                 перехват и возвращал в чаты: адрес менялся, экран оставался
+                 прежним, и выходило, будто кнопка сломана. */
+              {
+                path: REACT_ROUTES.CHANNELS,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.ChannelsPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.COMMUNITIES,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.CommunitiesPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.MEETINGS,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.MeetingsPage,
+                  })),
               },
               {
                 path: REACT_ROUTES.CONTACTS,

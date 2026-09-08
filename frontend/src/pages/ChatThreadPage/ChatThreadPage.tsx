@@ -49,6 +49,8 @@ export function ChatThreadPage() {
     pinnedMessages,
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -117,14 +119,16 @@ export function ChatThreadPage() {
             setPinnedMessagesOpen={modals.setPinnedMessagesOpen}
           />
           <MessagesList
+            bottomRef={bottomRef}
             error={threadError}
+            hasOlder={hasOlder}
             isLoading={isLoading}
+            loadOlder={loadOlder}
             messages={messages}
+            messagesRef={messagesRef}
             onReact={handleReact}
             setOpenedImage={modals.setOpenedImage}
             toggleMessageSelection={toggleMessageSelection}
-            bottomRef={bottomRef}
-            messagesRef={messagesRef}
           />
 
           {actionMenu && selectedActionMessage && (
@@ -159,6 +163,17 @@ export function ChatThreadPage() {
           )}
 
           <SafetyCodeNotice chatId={chatId} />
+
+          {/* Отказ показывается у составителя, а не в ленте: там он виден
+              только в пустом чате, и в переписке с историей сообщение
+              молча не отправлялось — человек узнавал об этом, лишь
+              заметив, что его слов нет. Стиль для плашки существовал,
+              но в разметке её не было. */}
+          {threadError && messages.length > 0 && (
+            <div className="thread-inline-error" role="alert">
+              {threadError}
+            </div>
+          )}
 
           {!selectionMode && (
             <ChatThreadComposer

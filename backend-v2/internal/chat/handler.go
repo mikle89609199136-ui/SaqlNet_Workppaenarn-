@@ -726,24 +726,37 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		added, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if errors.Is(err, ErrInvalidInput) {
-			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
-			return
-		}
+		// Call the service layer to toggle the user's reaction on the target message.
+		// Returns the operation status, the current emoji after toggling, the updated reaction list, and any error.
+		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			// Handle known domain errors with appropriate HTTP status codes and user-friendly messages.
+			switch {
+			case errors.Is(err, ErrNotFound):
+				// The target message does not exist or was deleted.
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
+			case errors.Is(err, ErrForbidden):
+				// The current user is not a member of the chat, so they cannot react.
+				httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			case errors.Is(err, ErrInvalidInput):
+				// The provided emoji is empty or contains invalid characters.
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
+			default:
+				// Any unexpected error (e.g., database failures) is treated as internal server error.
+				log.Printf("[chat-handler-Messages]:unexpected error toggling reaction:%v", err)
+				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			}
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"added": added, "reactions": reactions})
+
+		// Success: return the action result, the current emoji (empty if removed), and the aggregated reaction list.
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"action":       status,       // "added", "removed", or "replaced"
+			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
+			"reactions":    reactions,    // full list of emoji counts with myReaction flags
+		})
+
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {

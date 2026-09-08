@@ -10,14 +10,7 @@ interface Props {
   onSave: () => void;
 }
 
-export function EditorToolbar({
-  tool,
-  isReady,
-  isSaving,
-  onSetTool,
-  onCancel,
-  onSave,
-}: Props) {
+export function EditorToolbar({ tool, isReady, isSaving, onSetTool, onCancel, onSave }: Props) {
   return (
     <nav className="grid grid-cols-6 gap-2 pt-3 md:pt-4 border-t border-line">
       <Button

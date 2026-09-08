@@ -45,4 +45,32 @@ describe('useThreadMessages', () => {
 
     expect(result.current.messages.map((message) => message.id)).toEqual(['m-1', 'm-2']);
   });
+
+  it('automatically preloads older history when an unresolved reply exists', async () => {
+    const queryClient = createTestQueryClient();
+    const chatKey = chatKeys.messages('chat-replies');
+    // 50 сообщений, одно из которых содержит ответ на msg-older
+    const initialPage = Array.from({ length: 50 }, (_, i) =>
+      makeMessage({
+        id: `m-${i}`,
+        replyTo: i === 49 ? 'msg-older-999' : null,
+      })
+    );
+
+    queryClient.setQueryData(chatKey, {
+      pages: [initialPage],
+      pageParams: [0],
+    });
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(
+      () => useThreadMessages({ chatId: 'chat-replies', containerRef: createRef<HTMLElement>() }),
+      { wrapper }
+    );
+
+    expect(result.current.hasOlder).toBe(true);
+  });
 });

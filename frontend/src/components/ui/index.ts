@@ -11,6 +11,7 @@ export { ConfirmDialog, Modal } from './Modal';
 export { Progress } from './Progress';
 export { Radio, RadioGroup } from './Radio';
 export { SegmentedControl } from './SegmentedControl';
+export { RouteLoadingFallback } from './RouteLoadingFallback';
 export { Select } from './Select';
 export { Skeleton } from './Skeleton';
 export { Slider } from './Slider';

@@ -1,7 +1,9 @@
-import { testI18n } from '@/test/harness/i18n';
 import { makeMessage } from '@/test/fixtures';
-import { render, screen } from '@testing-library/react';
+import { testI18n } from '@/test/harness/i18n';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
+import { useChatUiStore } from '@/store';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 
@@ -19,6 +21,7 @@ describe('MessageBubble', () => {
         currentUserId="user-1"
         message={reply}
         onOpenImage={vi.fn()}
+        onReact={vi.fn()}
         onSelection={vi.fn()}
         repliedMessage={replied}
         translations={{}}
@@ -41,6 +44,7 @@ describe('MessageBubble', () => {
           currentUserId="user-1"
           message={message}
           onOpenImage={vi.fn()}
+          onReact={vi.fn()}
           onSelection={vi.fn()}
           translations={{}}
         />
@@ -50,15 +54,12 @@ describe('MessageBubble', () => {
     expect(screen.getByText('просто сообщение')).toBeInTheDocument();
   });
 
-  it('берёт запасное превью из самого сообщения, когда исходное не найдено', () => {
-    /* Сообщение, на которое отвечают, может лежать за пределами
-       загруженных страниц — тогда сервер присылает его текст прямо в
-       ответе. */
+  it('показывает фоллбэк плашки ответа, когда исходное сообщение не найдено', () => {
     const reply = makeMessage({
       id: 'msg-2',
       content: 'ответ',
       replyTo: 'msg-0',
-      replyToContent: 'текст из ответа',
+      replyToSenderName: 'Борис',
     });
 
     renderBubble(
@@ -66,11 +67,74 @@ describe('MessageBubble', () => {
         currentUserId="user-1"
         message={reply}
         onOpenImage={vi.fn()}
+        onReact={vi.fn()}
         onSelection={vi.fn()}
         translations={{}}
       />
     );
 
-    expect(screen.getByText('текст из ответа')).toBeInTheDocument();
+    expect(screen.getByText('Борис')).toBeInTheDocument();
+    expect(screen.getByText('Сообщение')).toBeInTheDocument();
+  });
+
+  it('вызывает onJumpToMessage при клике и нажатии клавиш на плашке ответа (#553)', async () => {
+    const user = userEvent.setup();
+    const onJumpToMessage = vi.fn();
+    const reply = makeMessage({
+      id: 'msg-2',
+      content: 'ответ',
+      replyTo: 'msg-target-99',
+      replyToContent: 'текст цитаты',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={reply}
+        onJumpToMessage={onJumpToMessage}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const quoteButton = screen.getByRole('button', { name: /перейти к сообщению/i });
+    expect(quoteButton).toHaveAttribute('tabindex', '0');
+
+    // Клик мышью
+    await user.click(quoteButton);
+    expect(onJumpToMessage).toHaveBeenCalledWith('msg-target-99');
+
+    // Клавиатура: Enter
+    fireEvent.keyDown(quoteButton, { key: 'Enter' });
+    expect(onJumpToMessage).toHaveBeenCalledTimes(2);
+
+    // Клавиатура: Space
+    fireEvent.keyDown(quoteButton, { key: ' ' });
+    expect(onJumpToMessage).toHaveBeenCalledTimes(3);
+  });
+
+  it('применяет акцентный стиль при выделении сообщения', () => {
+    const message = makeMessage({ id: 'msg-select-1', content: 'выбранное сообщение' });
+    useChatUiStore.setState({
+      selectedMessages: [message],
+      selectionMode: true,
+    });
+
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const bubble = container.querySelector('.message-bubble');
+    expect(bubble).toHaveAttribute('data-state', 'selected');
+    expect(bubble).toHaveClass('is-selected');
   });
 });

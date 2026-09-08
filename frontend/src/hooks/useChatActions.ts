@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
@@ -37,7 +38,8 @@ export function useChatActions() {
   );
 
   const reportFailure = useCallback(
-    (error: Error) => showToast('error', error.message || t('actionFailed', 'Не получилось')),
+    (error: Error) =>
+      showToast('error', describeApiError(error, t, t('actionFailed', 'Не получилось'))),
     [showToast, t]
   );
 

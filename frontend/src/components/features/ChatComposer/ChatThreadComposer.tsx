@@ -147,7 +147,7 @@ export const ChatThreadComposer = ({
         <input
           ref={draftRef}
           aria-label={t('message', 'Сообщение')}
-          className="thread-composer-input"
+          className="thread-composer-input min-h-11"
           disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
           placeholder={composerPlaceholder(encryption, t)}

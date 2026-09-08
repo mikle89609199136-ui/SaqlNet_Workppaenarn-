@@ -10,12 +10,7 @@ interface Props {
   onSelectRatio: (ratio: TCropRatioValue) => void;
 }
 
-export function EditorTransformPanel({
-  cropRatio,
-  onRotate,
-  onFlip,
-  onSelectRatio,
-}: Props) {
+export function EditorTransformPanel({ cropRatio, onRotate, onFlip, onSelectRatio }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <div>
