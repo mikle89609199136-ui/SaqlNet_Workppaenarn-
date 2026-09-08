@@ -1,5 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMessagesList } from '@/types';
+import { getOutboxItem } from '@/store/outbox';
 import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
 
 /**
@@ -52,7 +53,38 @@ export function patchMessage(
   messageId: string,
   patch: Partial<Omit<IMessageDto, 'id'>>
 ): IThreadPages {
-  if (!hasMessage(data, messageId)) return data;
+  if (!hasMessage(data, messageId)) {
+    const outboxItem = getOutboxItem(messageId);
+    if (outboxItem) {
+      const restoredMessage: IMessageDto = {
+        id: outboxItem.tempId,
+        tempId: outboxItem.tempId,
+        chatId: outboxItem.chatId,
+        content: outboxItem.content,
+        type: outboxItem.type,
+        mediaType: outboxItem.type !== 'text' ? (outboxItem.type as any) : undefined,
+        mediaUrl: outboxItem.blobUrl,
+        replyTo: outboxItem.replyToId ?? null,
+        replyToMessageId: outboxItem.replyToId ?? null,
+        senderId: '',
+        senderFirstName: '',
+        senderName: '',
+        forwardedSenderName: '',
+        replySenderName: null,
+        replyToSenderName: null,
+        createdAt: outboxItem.createdAt,
+        updatedAt: outboxItem.createdAt,
+        isEdited: false,
+        isForwarded: false,
+        isPinned: false,
+        reactions: [],
+        status: patch.status ?? outboxItem.status,
+        ...patch,
+      };
+      return appendMessage(data, restoredMessage);
+    }
+    return data;
+  }
 
   return {
     ...data,
@@ -68,6 +100,27 @@ export function removeMessage(data: IThreadPages, messageId: string): IThreadPag
   return {
     ...data,
     pages: data.pages.map((page) => page.filter((message) => message.id !== messageId)),
+  };
+}
+
+export function replaceMessage(
+  data: IThreadPages,
+  targetId: string,
+  replacement: IMessageDto
+): IThreadPages {
+  if (!hasMessage(data, targetId)) {
+    return appendMessage(data, replacement);
+  }
+
+  if (targetId !== replacement.id && hasMessage(data, replacement.id)) {
+    return removeMessage(data, targetId);
+  }
+
+  return {
+    ...data,
+    pages: data.pages.map((page) =>
+      page.map((message) => (message.id === targetId ? replacement : message))
+    ),
   };
 }
 

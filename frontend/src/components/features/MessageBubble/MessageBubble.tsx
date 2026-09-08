@@ -1,3 +1,4 @@
+import { Button, Icon, Spinner } from '@/components/ui';
 import { useMessageLongPress } from '@/hooks';
 import { useChatUiStore } from '@/store';
 import type { IMediaItem, IMessageDto } from '@/types';
@@ -37,6 +38,10 @@ interface Props {
   onReact: (message: IMessageDto, emoji: string) => void;
   /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
   onJumpToMessage?: (messageId: string) => void;
+  /** Повторная отправка сообщения из Outbox при ошибке сети (#552). */
+  onRetryMessage?: (message: IMessageDto) => void;
+  /** Отмена/удаление неудачного сообщения из Outbox (#552). */
+  onCancelMessage?: (message: IMessageDto) => void;
 }
 
 export const MessageBubble = memo(
@@ -49,6 +54,8 @@ export const MessageBubble = memo(
     onReact,
     onSelection,
     onJumpToMessage,
+    onRetryMessage,
+    onCancelMessage,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -157,7 +164,70 @@ export const MessageBubble = memo(
           <div className="message-meta">
             {message.isEdited && <span>{t('edited', 'изменено')}</span>}
             <time>{formatMessageTime(message.createdAt)}</time>
+            {mine &&
+              (message.status === 'pending' || message.status === 'uploading') && (
+                <span
+                  className="inline-flex items-center gap-1 text-ink-3"
+                  title={
+                    message.status === 'uploading'
+                      ? t('uploading', 'Загрузка...')
+                      : t('sending', 'Отправка...')
+                  }
+                >
+                  <Spinner
+                    size="sm"
+                    label={
+                      message.status === 'uploading'
+                        ? t('uploading', 'Загрузка...')
+                        : t('sending', 'Отправка...')
+                    }
+                  />
+                </span>
+              )}
           </div>
+
+          {mine && message.status === 'failed' && (
+            <div className="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-danger/20 text-danger text-caption">
+              <span className="flex items-center gap-1 font-medium">
+                <Icon name="warning" size="sm" />
+                {t('sendFailed', 'Не удалось отправить')}
+              </span>
+              <div className="flex items-center gap-1">
+                {onRetryMessage && (
+                  <Button
+                    aria-label={t('retrySend', 'Повторить отправку')}
+                    className="text-danger border-danger/30 hover:bg-danger/10 text-micro px-2 py-0.5 h-auto min-h-0"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRetryMessage(message);
+                    }}
+                    size="xs"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Icon name="rotateCw" size="sm" />
+                    {t('retry', 'Повторить')}
+                  </Button>
+                )}
+                {onCancelMessage && (
+                  <Button
+                    aria-label={t('delete', 'Удалить')}
+                    className="text-danger border-transparent hover:bg-danger/10 text-micro p-1 h-auto min-h-0"
+                    iconOnly
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCancelMessage(message);
+                    }}
+                    size="xs"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Icon name="cross" size="sm" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         {selectionMode && <MessageCheckbox isChecked={isSelected} className="grow-0 self-end" />}
       </article>

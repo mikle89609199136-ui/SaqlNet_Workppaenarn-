@@ -59,14 +59,21 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
   }
 
   if (actualType === 'file') {
+    const meta = message.metadata && 'fileName' in message.metadata ? message.metadata : undefined;
+    const fileName =
+      mediaEncryption?.fileName ?? meta?.fileName ?? message.content ?? t('file', 'Файл');
+    const sizeBytes = mediaEncryption?.sizeBytes ?? meta?.sizeBytes;
+
     return (
-      <a className="message-media-file flex gap-x-1" download href={mediaUrl}>
+      <a className="message-media-file flex gap-x-1" download={fileName} href={mediaUrl}>
         <Icon name="file" size="xl" />
         <div className="flex flex-col">
-          <span className="text-sm">{mediaEncryption.fileName}</span>
-          <span className="text-xs text-[rgba(255,255,255,0.58)]">
-            {formatFileSize(mediaEncryption.sizeBytes)}
-          </span>
+          <span className="text-sm">{fileName}</span>
+          {typeof sizeBytes === 'number' && (
+            <span className="text-xs text-[rgba(255,255,255,0.58)]">
+              {formatFileSize(sizeBytes)}
+            </span>
+          )}
         </div>
       </a>
     );

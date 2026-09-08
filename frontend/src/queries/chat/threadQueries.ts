@@ -2,6 +2,9 @@ import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
 import { chatKeys } from '../keys';
 import { flattenThread } from './threadCache';
+import { getChatOutbox } from '@/store/outbox';
+import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import type { IMessageDto } from '@/types';
 
 /** Размер страницы истории — тот же, что запрашивала страница чата до миграции. */
 export const MESSAGES_PAGE_SIZE = 50;
@@ -32,7 +35,44 @@ export function messagesQuery(chatId: string) {
     // как склейка в теле хука давала бы новый массив на каждый рендер —
     // а лента служит зависимостью эффектов, и новая ссылка на ней
     // запускает их заново.
-    select: flattenThread,
+    select: (data) => {
+      const thread = flattenThread(data);
+      const outbox = getChatOutbox(chatId);
+      if (!outbox.length) return thread;
+
+      const existingIds = new Set(thread.map((m) => m.id));
+      const outboxMessages: IMessageDto[] = [];
+      for (const item of outbox) {
+        if (!existingIds.has(item.tempId)) {
+          outboxMessages.push({
+            id: item.tempId,
+            tempId: item.tempId,
+            chatId: item.chatId,
+            content: item.content,
+            type: item.type,
+            mediaType: item.type !== 'text' ? (item.type as any) : undefined,
+            mediaUrl: item.blobUrl,
+            replyTo: item.replyToId ?? null,
+            replyToMessageId: item.replyToId ?? null,
+            senderId: '',
+            senderFirstName: '',
+            senderName: '',
+            forwardedSenderName: '',
+            replySenderName: null,
+            replyToSenderName: null,
+            createdAt: item.createdAt,
+            updatedAt: item.createdAt,
+            isEdited: false,
+            isForwarded: false,
+            isPinned: false,
+            reactions: [],
+            status: item.status,
+          });
+        }
+      }
+      if (!outboxMessages.length) return thread;
+      return sortMessagesChronologically<IMessageDto>([...thread, ...outboxMessages]);
+    },
     // Свежесть приносит WebSocket, а не повторный опрос: перезапрос истории
     // сбрасывал бы позицию прокрутки и заново расшифровывал бы всю ленту.
     staleTime: Infinity,

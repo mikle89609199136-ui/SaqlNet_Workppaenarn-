@@ -137,4 +137,85 @@ describe('MessageBubble', () => {
     expect(bubble).toHaveAttribute('data-state', 'selected');
     expect(bubble).toHaveClass('is-selected');
   });
+
+  it('показывает индикатор отправки со спиннером для исходящего сообщения со статусом uploading', () => {
+    const message = makeMessage({
+      id: 'msg-uploading-1',
+      senderId: 'user-1',
+      content: 'фотография',
+      status: 'uploading',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const spinner = screen.getByRole('status');
+    expect(spinner).toBeInTheDocument();
+    expect(screen.getByText(/загрузка/i)).toBeInTheDocument();
+  });
+
+  it('отображает плашку ошибки и вызывает onRetryMessage по клику на кнопку повтора', async () => {
+    const user = userEvent.setup();
+    const onRetryMessage = vi.fn();
+    const message = makeMessage({
+      id: 'msg-failed-1',
+      senderId: 'user-1',
+      content: 'не ушло',
+      status: 'failed',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onRetryMessage={onRetryMessage}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText(/не удалось отправить/i)).toBeInTheDocument();
+    const retryButton = screen.getByRole('button', { name: /повторить отправку/i });
+    await user.click(retryButton);
+
+    expect(onRetryMessage).toHaveBeenCalledWith(message);
+  });
+
+  it('вызывает onCancelMessage по клику на кнопку отмены/удаления', async () => {
+    const user = userEvent.setup();
+    const onCancelMessage = vi.fn();
+    const message = makeMessage({
+      id: 'msg-failed-2',
+      senderId: 'user-1',
+      content: 'удалить ошибку',
+      status: 'failed',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onCancelMessage={onCancelMessage}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const cancelButton = screen.getByRole('button', { name: /удалить/i });
+    await user.click(cancelButton);
+
+    expect(onCancelMessage).toHaveBeenCalledWith(message);
+  });
 });

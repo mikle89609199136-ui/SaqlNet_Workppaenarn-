@@ -80,6 +80,8 @@ export function ChatThreadPage() {
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleRetryMessage,
+    handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
   return (
@@ -126,7 +128,9 @@ export function ChatThreadPage() {
             loadOlder={loadOlder}
             messages={messages}
             messagesRef={messagesRef}
+            onCancelMessage={handleCancelMessage}
             onReact={handleReact}
+            onRetryMessage={handleRetryMessage}
             setOpenedImage={modals.setOpenedImage}
             toggleMessageSelection={toggleMessageSelection}
           />

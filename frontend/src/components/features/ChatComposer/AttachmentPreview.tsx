@@ -1,7 +1,7 @@
 import { Button, Icon } from '@/components/ui';
+import { useObjectUrl } from '@/hooks';
 import type { IPendingAttachment } from '@/types';
 import { formatFileSize } from '@/utils';
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -13,19 +13,8 @@ interface Props {
 
 export const AttachmentPreview = ({ attachment, onRemove, onEdit, onOpenImage }: Props) => {
   const { t } = useTranslation();
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!attachment?.file || !attachment.file.type.startsWith('image/')) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(attachment.file);
-    setPreviewUrl(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [attachment?.file]);
+  const isImageFile = Boolean(attachment?.file && attachment.file.type.startsWith('image/'));
+  const previewUrl = useObjectUrl(isImageFile ? attachment?.file : null);
 
   if (!attachment) return null;
 
@@ -53,13 +42,15 @@ export const AttachmentPreview = ({ attachment, onRemove, onEdit, onOpenImage }:
           </div>
         )}
 
-        <div className="flex items-center min-w-0 gap-2">
-          <span className="text-body font-medium text-ink truncate leading-tight">
-            {attachment.file.name}
-          </span>
-          <span className="text-caption text-ink-3 font-normal shrink-0">
-            {formatFileSize(attachment.file.size)}
-          </span>
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-body font-medium text-ink truncate leading-tight">
+              {attachment.file.name}
+            </span>
+            <span className="text-caption text-ink-3 font-normal shrink-0">
+              {formatFileSize(attachment.file.size)}
+            </span>
+          </div>
         </div>
       </div>
 
