@@ -1,12 +1,7 @@
 import { describeApiError } from '@/api';
-import { eventBus } from '@/core';
 import { chatKeys } from '@/queries/keys';
 import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
-import {
-  retryAllOutboxMessages,
-  retryOutboxMessage,
-  sendOutboxItem,
-} from '@/queries/chat/outboxSender';
+import { retryOutboxMessage, sendOutboxItem } from '@/queries/chat/outboxSender';
 import { services } from '@/services';
 import { useChatUiStore, useProfileStore } from '@/store';
 import { clearDraft } from '@/store/chatDrafts';
@@ -16,7 +11,6 @@ import type { IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
-  useEffect,
   useState,
   type Dispatch,
   type RefObject,
@@ -60,30 +54,17 @@ export function useComposerSendMessage({
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }
 
-  // При восстановлении сети или reconnect WebSocket повторяем неотправленные сообщения
-  useEffect(() => {
-    if (!chatId) return undefined;
-
-    const handleReconnect = () => {
-      retryAllOutboxMessages(queryClient, chatId);
-    };
-
-    window.addEventListener('online', handleReconnect);
-    const unsub = eventBus.on('socket:connected', handleReconnect);
-
-    return () => {
-      window.removeEventListener('online', handleReconnect);
-      unsub();
-    };
-  }, [chatId, queryClient]);
-
   const handleRetryMessage = useCallback(
     (message: IMessageDto) => {
       setError('');
       void retryOutboxMessage(queryClient, message.tempId || message.id, {
         onError: (err) => {
           setError(
-            describeApiError(err as any, t, t('messageSendError', 'Не удалось отправить сообщение'))
+            describeApiError(
+              err as { code?: string; message?: string },
+              t,
+              t('messageSendError', 'Не удалось отправить сообщение')
+            )
           );
         },
         onSuccess: () => {
@@ -139,11 +120,13 @@ export function useComposerSendMessage({
       }
     }
 
+    const now = new Date();
+
     const optimisticMessage: IMessageDto = {
       id: tempId,
       tempId,
       chatId,
-      senderId: currentUser?.id ?? 'me',
+      senderId: currentUser?.id ?? '',
       content,
       type: pendingAttachment ? pendingAttachment.type : 'text',
       mediaType: pendingAttachment ? pendingAttachment.type : undefined,
@@ -151,8 +134,7 @@ export function useComposerSendMessage({
       replyTo: replyToMessage?.id,
       replyToMessageId: replyToMessage?.id,
       status: pendingAttachment ? 'uploading' : 'pending',
-      uploadProgress: pendingAttachment ? 0 : undefined,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       reactions: [],
     };
 
@@ -165,7 +147,7 @@ export function useComposerSendMessage({
       replyToId: replyToMessage?.id ?? null,
       status: pendingAttachment ? 'uploading' : 'pending',
       blobUrl,
-      createdAt: optimisticMessage.createdAt,
+      createdAt: now,
     };
 
     // 1. Помещаем в кеш TanStack Query и в Outbox store
@@ -185,7 +167,11 @@ export function useComposerSendMessage({
     void sendOutboxItem(queryClient, outboxItem, {
       onError: (err) => {
         setError(
-          describeApiError(err as any, t, t('messageSendError', 'Не удалось отправить сообщение'))
+          describeApiError(
+            err as { code?: string; message?: string },
+            t,
+            t('messageSendError', 'Не удалось отправить сообщение')
+          )
         );
       },
       onSuccess: () => {

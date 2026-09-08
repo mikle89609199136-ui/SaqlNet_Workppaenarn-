@@ -138,13 +138,12 @@ describe('MessageBubble', () => {
     expect(bubble).toHaveClass('is-selected');
   });
 
-  it('показывает индикатор отправки и прогресс для исходящего сообщения со статусом uploading', () => {
+  it('показывает индикатор отправки со спиннером для исходящего сообщения со статусом uploading', () => {
     const message = makeMessage({
       id: 'msg-uploading-1',
       senderId: 'user-1',
-      content: 'загрузка фото',
+      content: 'фотография',
       status: 'uploading',
-      uploadProgress: 45,
     });
 
     renderBubble(
@@ -158,9 +157,9 @@ describe('MessageBubble', () => {
       />
     );
 
-    const progressBar = screen.getByRole('progressbar');
-    expect(progressBar).toHaveAttribute('aria-valuenow', '45');
-    expect(screen.getByText('45%')).toBeInTheDocument();
+    const spinner = screen.getByRole('status');
+    expect(spinner).toBeInTheDocument();
+    expect(screen.getByText(/загрузка/i)).toBeInTheDocument();
   });
 
   it('отображает плашку ошибки и вызывает onRetryMessage по клику на кнопку повтора', async () => {
@@ -190,5 +189,33 @@ describe('MessageBubble', () => {
     await user.click(retryButton);
 
     expect(onRetryMessage).toHaveBeenCalledWith(message);
+  });
+
+  it('вызывает onCancelMessage по клику на кнопку отмены/удаления', async () => {
+    const user = userEvent.setup();
+    const onCancelMessage = vi.fn();
+    const message = makeMessage({
+      id: 'msg-failed-2',
+      senderId: 'user-1',
+      content: 'удалить ошибку',
+      status: 'failed',
+    });
+
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onCancelMessage={onCancelMessage}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    const cancelButton = screen.getByRole('button', { name: /удалить/i });
+    await user.click(cancelButton);
+
+    expect(onCancelMessage).toHaveBeenCalledWith(message);
   });
 });

@@ -23,7 +23,7 @@ describe('useOutboxStore', () => {
       content: 'hello',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     const item = getOutboxItem('temp-1');
@@ -39,7 +39,7 @@ describe('useOutboxStore', () => {
       content: 'hello',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     updateOutboxItem('temp-1', { status: 'failed', error: 'Network error' });
@@ -59,7 +59,7 @@ describe('useOutboxStore', () => {
       type: 'image',
       status: 'uploading',
       blobUrl: 'blob:http://localhost/abc-123',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     removeOutboxItem('temp-media');
@@ -74,7 +74,7 @@ describe('useOutboxStore', () => {
       content: 'msg 1',
       type: 'text',
       status: 'failed',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
       tempId: 'temp-2',
@@ -115,7 +115,7 @@ describe('useOutboxStore', () => {
       type: 'image',
       status: 'uploading',
       blobUrl: 'blob:http://localhost/1',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
       tempId: 'temp-media-2',
@@ -124,7 +124,7 @@ describe('useOutboxStore', () => {
       type: 'image',
       status: 'uploading',
       blobUrl: 'blob:http://localhost/2',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     clearOutbox();

@@ -9,7 +9,6 @@ interface Props {
   onRemove: () => void;
   onEdit?: (file: File) => void;
   onOpenImage?: (url: string) => void;
-  uploadProgress?: number;
 }
 
 export const AttachmentPreview = ({
@@ -17,7 +16,6 @@ export const AttachmentPreview = ({
   onRemove,
   onEdit,
   onOpenImage,
-  uploadProgress,
 }: Props) => {
   const { t } = useTranslation();
   const isImageFile = Boolean(attachment?.file && attachment.file.type.startsWith('image/'));
@@ -58,24 +56,6 @@ export const AttachmentPreview = ({
               {formatFileSize(attachment.file.size)}
             </span>
           </div>
-          {typeof uploadProgress === 'number' && uploadProgress >= 0 && (
-            <div className="flex items-center gap-2 mt-1 w-full">
-              <div
-                aria-label={t('uploadProgress', 'Прогресс загрузки')}
-                aria-valuemax={100}
-                aria-valuemin={0}
-                aria-valuenow={Math.round(uploadProgress)}
-                className="flex-1 bg-line rounded-full h-1 overflow-hidden"
-                role="progressbar"
-              >
-                <div
-                  className="bg-brand h-full rounded-full transition-all duration-200 ease-out"
-                  style={{ width: `${Math.max(5, Math.min(100, uploadProgress))}%` }}
-                />
-              </div>
-              <span className="text-micro text-ink-3 font-mono">{Math.round(uploadProgress)}%</span>
-            </div>
-          )}
         </div>
       </div>
 

@@ -69,11 +69,9 @@ export interface IMessageDto {
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   /** Статус доставки/отправки сообщения (#552 Outbox) */
-  status?: TMessageDeliveryStatus | string;
+  status?: TMessageDeliveryStatus;
   /** Временный ID для корреляции оптимистичного баббла с ответом сервера */
   tempId?: string;
-  /** Прогресс загрузки вложений (0–100%) */
-  uploadProgress?: number;
 }
 
 export type TMessagesList = IMessageDto[];

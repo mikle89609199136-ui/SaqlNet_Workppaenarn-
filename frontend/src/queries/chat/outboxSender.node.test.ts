@@ -47,7 +47,7 @@ describe('outboxSender', () => {
       content: 'Привет',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     const item = getOutboxItem(tempId)!;
@@ -86,7 +86,7 @@ describe('outboxSender', () => {
       content: 'Упадёт',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     const item = getOutboxItem(tempId)!;
@@ -123,7 +123,7 @@ describe('outboxSender', () => {
       type: 'text',
       status: 'failed',
       error: 'Previous failure',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     await retryOutboxMessage(queryClient, tempId);
@@ -158,7 +158,7 @@ describe('outboxSender', () => {
       type: 'image',
       file,
       status: 'uploading',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
 
     const item = getOutboxItem(tempId)!;
@@ -185,7 +185,7 @@ describe('outboxSender', () => {
       content: 'msg1',
       type: 'text',
       status: 'failed',
-      createdAt: '2026-09-07T00:00:00Z',
+      createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
       tempId: 'temp-b2',
@@ -193,14 +193,60 @@ describe('outboxSender', () => {
       content: 'msg2',
       type: 'text',
       status: 'pending',
-      createdAt: '2026-09-07T00:00:01Z',
+      createdAt: new Date('2026-09-07T00:00:01Z'),
     });
 
-    retryAllOutboxMessages(queryClient, chatId);
-
-    // Даём микротаскам выполниться
-    await new Promise((r) => setTimeout(r, 50));
+    await retryAllOutboxMessages(queryClient, chatId);
 
     expect(services.messageService.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('should skip sending and deduplicate if message already arrived via server/ws', async () => {
+    const tempId = 'temp-dup-1';
+    const chatId = 'chat-dup';
+    const createdAt = new Date();
+
+    // В кеше уже есть подтверждённое серверное сообщение с таким же текстом
+    const initialPages = {
+      pages: [[
+        makeMessage({
+          id: 'server-confirmed-dup',
+          chatId,
+          content: 'Дубликат',
+          createdAt,
+        }),
+        makeMessage({
+          id: tempId,
+          chatId,
+          content: 'Дубликат',
+          status: 'failed',
+          createdAt,
+        }),
+      ]],
+      pageParams: [0],
+    };
+    queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
+
+    addOutboxItem({
+      tempId,
+      chatId,
+      content: 'Дубликат',
+      type: 'text',
+      status: 'failed',
+      createdAt,
+    });
+
+    const sendSpy = vi.spyOn(services.messageService, 'sendMessage');
+
+    const item = getOutboxItem(tempId)!;
+    await sendOutboxItem(queryClient, item);
+
+    // sendMessage НЕ должен вызываться
+    expect(sendSpy).not.toHaveBeenCalled();
+    // Элемент удалён из outbox
+    expect(getOutboxItem(tempId)).toBeUndefined();
+    // Временный пузырь удалён из кеша
+    const cached: any = queryClient.getQueryData(chatKeys.messages(chatId));
+    expect(cached.pages[0].some((m: any) => m.id === tempId)).toBe(false);
   });
 });

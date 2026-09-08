@@ -1,3 +1,4 @@
+import { describeApiError } from '@/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
@@ -10,11 +11,14 @@ import {
 } from '@/hooks';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { retryOutboxMessage } from '@/queries/chat/outboxSender';
+import { dropThreadMessage } from '@/queries/chat/threadCacheActions';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
+import { removeOutboxItem } from '@/store/outbox';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import type { IProfileState } from '../ChatThreadPage';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -99,12 +103,37 @@ export function useChatThreadPage({
     handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
+
   const handleRetryMessage = useCallback(
     (message: IMessageDto) => {
-      void retryOutboxMessage(queryClient, message.tempId || message.id);
+      setError('');
+      void retryOutboxMessage(queryClient, message.tempId || message.id, {
+        onError: (err) => {
+          setError(
+            describeApiError(
+              err as { code?: string; message?: string },
+              t,
+              t('messageSendError', 'Не удалось отправить сообщение')
+            )
+          );
+        },
+        onSuccess: () => {
+          setError('');
+        },
+      });
     },
-    [queryClient]
+    [queryClient, setError, t]
+  );
+
+  const handleCancelMessage = useCallback(
+    (message: IMessageDto) => {
+      const id = message.tempId || message.id;
+      removeOutboxItem(id);
+      dropThreadMessage(queryClient, chatId, id);
+    },
+    [chatId, queryClient]
   );
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
@@ -185,5 +214,6 @@ export function useChatThreadPage({
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
+    handleCancelMessage,
   };
 }

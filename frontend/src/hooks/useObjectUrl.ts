@@ -6,21 +6,37 @@ import { useEffect, useState } from 'react';
  * для предотвращения утечек памяти.
  */
 export function useObjectUrl(object: Blob | File | null | undefined): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<{
+    object: Blob | File | null | undefined;
+    url: string | null;
+  }>(() => ({
+    object,
+    url: object && object instanceof Blob ? URL.createObjectURL(object) : null,
+  }));
+
+  if (state.object !== object) {
+    const newUrl = object && object instanceof Blob ? URL.createObjectURL(object) : null;
+    if (state.url) {
+      try {
+        URL.revokeObjectURL(state.url);
+      } catch {
+        // ignore
+      }
+    }
+    setState({ object, url: newUrl });
+  }
 
   useEffect(() => {
-    if (!object || !(object instanceof Blob)) {
-      setUrl(null);
-      return;
-    }
-
-    const objectUrl = URL.createObjectURL(object);
-    setUrl(objectUrl);
-
     return () => {
-      URL.revokeObjectURL(objectUrl);
+      if (state.url) {
+        try {
+          URL.revokeObjectURL(state.url);
+        } catch {
+          // ignore
+        }
+      }
     };
-  }, [object]);
+  }, [state.url]);
 
-  return url;
+  return state.url;
 }

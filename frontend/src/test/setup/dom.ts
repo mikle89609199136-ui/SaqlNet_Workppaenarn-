@@ -17,6 +17,7 @@ import { useCallStore } from '@/store/call';
 import { useChatUiStore } from '@/store/chatUi';
 import { useProfileStore } from '@/store/profile';
 import { useToastStore } from '@/store/toast';
+import { clearOutbox } from '@/store/outbox';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
@@ -206,6 +207,7 @@ afterEach(() => {
   useChatUiStore.setState(useChatUiStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   useToastStore.setState(useToastStore.getInitialState(), true);
+  clearOutbox();
 
   localStorage.clear();
 });

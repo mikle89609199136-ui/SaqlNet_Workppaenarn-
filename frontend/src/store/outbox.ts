@@ -9,10 +9,9 @@ export interface IOutboxItem {
   file?: File | Blob;
   replyToId?: string | null;
   status: TMessageDeliveryStatus;
-  progress?: number;
   blobUrl?: string;
   error?: string;
-  createdAt: string;
+  createdAt: Date;
 }
 
 interface IOutboxState {
