@@ -23,6 +23,10 @@ export function NavTab({ item, variant }: Props) {
 
   return (
     <NavLink
+      /* В рельсе подписи скрыты, и без имени ссылка остаётся для
+         скринридера безымянной: подсказка описывает кнопку, но не
+         называет её. В нижней панели имя даёт видимый текст. */
+      aria-label={bottom ? undefined : item.label}
       className={({ isActive }) =>
         cn(
           'flex items-center justify-center transition-colors duration-fast cursor-pointer',

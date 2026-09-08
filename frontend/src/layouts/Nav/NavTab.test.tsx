@@ -17,6 +17,18 @@ function renderAt(path: string) {
 }
 
 describe('пункт навигации', () => {
+  it('называет себя в рельсе, где подписи скрыты', () => {
+    /* На широком экране у пункта нет видимого текста, и без имени ссылка
+       остаётся для скринридера безымянной. */
+    render(
+      <MemoryRouter initialEntries={['/chats']}>
+        <NavTab item={chats} variant="side" />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: 'Чаты' })).toBeInTheDocument();
+  });
+
   it('отмечает раздел открытым на его собственном адресе', () => {
     renderAt('/chats');
 

@@ -28,6 +28,13 @@ type testStore struct {
 	lastPutSize int64
 }
 
+func (testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+	return &ObjectResponse{
+		Body:       io.NopCloser(bytes.NewReader(nil)),
+		StatusCode: http.StatusOK,
+	}, nil
+}
+
 func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, _ string) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
