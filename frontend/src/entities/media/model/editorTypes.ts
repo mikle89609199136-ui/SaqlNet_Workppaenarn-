@@ -1,4 +1,4 @@
-import type { TIconTypes } from './icons';
+import type { TIconTypes } from '@/types/icons';
 
 export type TEditorTool = 'draw' | 'text' | 'transform' | 'adjust';
 export type TBrushType = 'pen' | 'marker' | 'neon' | 'arrow' | 'blur' | 'eraser';
