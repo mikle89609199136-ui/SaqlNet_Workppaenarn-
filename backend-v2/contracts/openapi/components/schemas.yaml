@@ -33,8 +33,8 @@ RegisterRequest:
   type: object
   required: [username, password, firstName]
   properties:
-    username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
-    password: { $ref: '#/Password' }
+    username: { $ref: '#/Username' }
+    password: { type: string, format: password, minLength: 6 }
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
@@ -87,7 +87,12 @@ ChatMember:
         role: { type: string, enum: [owner, admin, member] }
         permissions: { type: object, additionalProperties: true }
         mutedUntil: { type: string, nullable: true }
-        mutedAt: { type: string, nullable: true, description: 'set when muted; mutedUntil null = permanent mute' }
+        mutedAt:
+          {
+            type: string,
+            nullable: true,
+            description: 'set when muted; mutedUntil null = permanent mute',
+          }
         joinedAt: { type: string }
 Message:
   type: object
@@ -138,3 +143,9 @@ UploadResponse:
 Object:
   type: object
   additionalProperties: true
+Username:
+  type: string
+  pattern: '^[a-zA-Z0-9_]{3,32}$'
+  minLength: 3
+  maxLength: 32
+  example: 'john_doe'
