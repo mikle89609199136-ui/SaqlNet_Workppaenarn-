@@ -172,7 +172,7 @@ func TestDeleteMessage_ForbiddenRollsBackWithoutBroadcast(t *testing.T) {
 		WithArgs(deletedMessageID, deleteMessageUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectRollback()
-	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, ErrForbidden)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
