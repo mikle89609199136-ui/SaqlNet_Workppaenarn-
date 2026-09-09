@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, ConfirmDialog } from '@/components/ui';
-import { APP_VERSION } from '@/consts';
+import { Banner, Button, ConfirmDialog, showToast } from '@/shared/ui';
+import { APP_VERSION } from '@/shared/config';
 import { useTranslation } from 'react-i18next';
-import { useToasts } from '@/hooks/useToasts';
 import { services } from '@/services/serviceContainer';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 
 export function AboutSection() {
   const { t } = useTranslation();
-  const { showToast } = useToasts();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [wipeAsked, setWipeAsked] = useState(false);

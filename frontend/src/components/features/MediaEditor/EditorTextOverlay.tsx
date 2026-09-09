@@ -1,5 +1,5 @@
-import { Button, Icon } from '@/components/ui';
-import { EDITOR_FONTS } from '@/consts';
+import { Button, Icon } from '@/shared/ui';
+import { EDITOR_FONTS } from '@/shared/config';
 import type { IEditorTextObject } from '@/types';
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,8 +22,7 @@ export function EditorTextOverlay({
   onDelete,
 }: Props) {
   const { t } = useTranslation();
-  const font =
-    EDITOR_FONTS.find((item) => item.id === selectedTextObject.font) || EDITOR_FONTS[0];
+  const font = EDITOR_FONTS.find((item) => item.id === selectedTextObject.font) || EDITOR_FONTS[0];
   const fontSize = Math.max(18, selectedTextObject.size * (canvasDisplayWidth / 1000));
 
   return (

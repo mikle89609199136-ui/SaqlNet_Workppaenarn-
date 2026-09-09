@@ -1,5 +1,5 @@
-import { Button, Icon } from '@/components/ui';
-import { EDITOR_RATIOS } from '@/consts';
+import { Button, Icon } from '@/shared/ui';
+import { EDITOR_RATIOS } from '@/shared/config';
 import type { TCropRatioValue } from '@/types';
 import { PanelTitle } from './EditorControls';
 
@@ -10,12 +10,7 @@ interface Props {
   onSelectRatio: (ratio: TCropRatioValue) => void;
 }
 
-export function EditorTransformPanel({
-  cropRatio,
-  onRotate,
-  onFlip,
-  onSelectRatio,
-}: Props) {
+export function EditorTransformPanel({ cropRatio, onRotate, onFlip, onSelectRatio }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <div>

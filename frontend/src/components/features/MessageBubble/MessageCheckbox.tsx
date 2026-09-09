@@ -1,4 +1,4 @@
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 
 const Check = ({ className }: { className?: string }) => {

@@ -1,4 +1,4 @@
-import { describeApiError } from '@/api';
+import { describeApiError } from '@/shared/api';
 import { services } from '@/services';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -1,11 +1,11 @@
-import { describeApiError } from '@/api';
+import { showToast } from '@/shared/ui';
+import { describeApiError } from '@/shared/api';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useToasts } from './useToasts';
 
 /**
  * Сколько чатов можно держать закреплёнными.
@@ -25,7 +25,6 @@ export const MAX_PINNED_CHATS = 5;
  */
 export function useChatActions() {
   const queryClient = useQueryClient();
-  const { showToast } = useToasts();
   const { t } = useTranslation();
 
   const refreshBothLists = useCallback(

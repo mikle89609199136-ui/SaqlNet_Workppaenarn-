@@ -1,5 +1,5 @@
 import { useChatUiStore } from '@/store';
-import { useToastStore } from '@/store/toast';
+import { clearToasts, getToasts } from '@/shared/ui';
 import { testI18n } from '@/test/harness/i18n';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -15,7 +15,7 @@ describe('useJumpToMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useChatUiStore.setState({ highlightedMessageId: null });
-    useToastStore.setState({ toasts: [] });
+    clearToasts();
     vi.useFakeTimers();
   });
 
@@ -45,9 +45,12 @@ describe('useJumpToMessage', () => {
 
   it('shows toast when message is not found and cannot load older', async () => {
     const onScrollToMessage = vi.fn().mockReturnValue(false);
-    const { result } = renderHook(() => useJumpToMessage({ onScrollToMessage, hasMoreOlder: false }), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useJumpToMessage({ onScrollToMessage, hasMoreOlder: false }),
+      {
+        wrapper,
+      }
+    );
 
     let success = true;
     await act(async () => {
@@ -55,7 +58,7 @@ describe('useJumpToMessage', () => {
     });
 
     expect(success).toBe(false);
-    expect(useToastStore.getState().toasts).toContainEqual(
+    expect(getToasts()).toContainEqual(
       expect.objectContaining({
         type: 'info',
         message: 'Сообщение находится выше в истории',

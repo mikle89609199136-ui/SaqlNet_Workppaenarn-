@@ -1,4 +1,4 @@
-import { Button, Input } from '@/components/ui';
+import { Button, Input } from '@/shared/ui';
 import type { IUserDto } from '@/types';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';

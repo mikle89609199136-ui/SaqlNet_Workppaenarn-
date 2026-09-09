@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, ApiClient } from '@/api';
+import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import type {
   IChatDto,
   IChatResponse,

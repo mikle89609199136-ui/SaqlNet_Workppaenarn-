@@ -6,6 +6,7 @@ import {
   flattenThread,
   patchMessage,
   removeMessage,
+  replaceMessage,
   type IThreadPages,
 } from './threadCache';
 
@@ -92,6 +93,39 @@ describe('удаление сообщения', () => {
     const data = pages([makeMessage()]);
 
     expect(removeMessage(data, 'нет-такого')).toBe(data);
+  });
+});
+
+describe('замена сообщения (Outbox оптимистичный ID -> серверный ID)', () => {
+  it('should replace optimistic message with confirmed server message', () => {
+    const tempMsg = makeMessage({ id: 'temp-123', content: 'отправка...', status: 'pending' });
+    const realMsg = makeMessage({ id: 'server-999', content: 'отправлено!', status: 'sent' });
+    const otherMsg = makeMessage();
+
+    const data = pages([tempMsg, otherMsg]);
+    const next = replaceMessage(data, 'temp-123', realMsg);
+
+    const ids = flattenThread(next).map((m) => m.id);
+    expect(ids).toContain('server-999');
+    expect(ids).not.toContain('temp-123');
+  });
+
+  it('should append message if target temp message was not found', () => {
+    const realMsg = makeMessage({ id: 'server-999' });
+    const data = pages([makeMessage()]);
+
+    const next = replaceMessage(data, 'non-existent', realMsg);
+    expect(flattenThread(next).map((m) => m.id)).toContain('server-999');
+  });
+
+  it('should remove temp message and avoid duplication if replacement already in cache', () => {
+    const tempMsg = makeMessage({ id: 'temp-123' });
+    const realMsg = makeMessage({ id: 'server-999' });
+    const data = pages([tempMsg, realMsg]);
+
+    const next = replaceMessage(data, 'temp-123', realMsg);
+    const ids = flattenThread(next).map((m) => m.id);
+    expect(ids).toEqual(['server-999']);
   });
 });
 

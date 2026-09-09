@@ -1,4 +1,4 @@
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import { forwardRef, type HTMLAttributes, type PropsWithChildren } from 'react';
 
 interface Props extends HTMLAttributes<HTMLFormElement> {

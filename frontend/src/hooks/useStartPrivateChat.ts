@@ -1,11 +1,11 @@
-import { describeApiError } from '@/api';
-import { ROUTES } from '@/consts';
+import { showToast } from '@/shared/ui';
+import { describeApiError } from '@/shared/api';
+import { ROUTES } from '@/shared/config';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useToasts } from './useToasts';
 
 /**
  * Открыть переписку с человеком, которого нашли поиском.
@@ -17,7 +17,6 @@ import { useToasts } from './useToasts';
 export function useStartPrivateChat() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { showToast } = useToasts();
   const { t } = useTranslation();
 
   return useMutation({

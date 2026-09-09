@@ -1,5 +1,5 @@
-import { ContextMenu } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
+import { ContextMenu } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
 import { useChatActions } from '@/hooks';
 import type { IChatDto } from '@/types';
 import type { RefObject } from 'react';

@@ -1,6 +1,6 @@
-import { Icon, Slider } from '@/components/ui';
-import { EDITOR_COLORS } from '@/consts';
-import { cn } from '@/utils';
+import { Icon, Slider } from '@/shared/ui';
+import { EDITOR_COLORS } from '@/shared/config';
+import { cn } from '@/shared/lib';
 import type { ReactNode } from 'react';
 
 interface PanelTitleProps {

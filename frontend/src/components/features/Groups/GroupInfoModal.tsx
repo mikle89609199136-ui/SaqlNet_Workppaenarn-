@@ -1,6 +1,5 @@
-import { describeApiError } from '@/api';
-import { Avatar, Button, Icon, Modal } from '@/components/ui';
-import { useToasts } from '@/hooks';
+import { describeApiError } from '@/shared/api';
+import { Avatar, Button, Icon, Modal, showToast } from '@/shared/ui';
 import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';
 import { chatQuery } from '@/queries/chat/threadQueries';
@@ -19,7 +18,6 @@ interface Props {
 }
 
 export function GroupInfoModal({ isOpen, onClose }: Props) {
-  const { showToast } = useToasts();
   const [isEditMode, setEditMode] = useState(false);
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);

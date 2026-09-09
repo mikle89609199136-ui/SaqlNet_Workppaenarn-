@@ -1,4 +1,4 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -14,7 +14,13 @@ export function ProfilePanelFallback({ ariaBusy, children, onClose }: Props) {
     <aside aria-busy={ariaBusy} className="h-full flex flex-col bg-sheet p-4" role="complementary">
       <div className="w-full flex items-center justify-between pb-3 border-b border-line">
         <h3 className="text-title font-semibold text-ink">{t('profile', 'Профиль')}</h3>
-        <Button aria-label={t('close', 'Закрыть')} iconOnly onClick={onClose} size="sm" variant="ghost">
+        <Button
+          aria-label={t('close', 'Закрыть')}
+          iconOnly
+          onClick={onClose}
+          size="sm"
+          variant="ghost"
+        >
           <Icon name="cross" />
         </Button>
       </div>

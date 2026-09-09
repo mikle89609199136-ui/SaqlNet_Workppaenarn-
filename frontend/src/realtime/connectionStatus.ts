@@ -1,4 +1,4 @@
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import { eventBus } from '@/core';
 
 /**

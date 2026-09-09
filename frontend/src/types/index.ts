@@ -33,6 +33,7 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
   TPinnedList,

@@ -1,3 +1,4 @@
+import { clearToasts } from '@/shared/ui';
 /**
  * Подготовка окружения `jsdom` для тестов хуков, компонентов и интеграции.
  *
@@ -16,7 +17,7 @@ import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
 import { useCallStore } from '@/store/call';
 import { useChatUiStore } from '@/store/chatUi';
 import { useProfileStore } from '@/store/profile';
-import { useToastStore } from '@/store/toast';
+import { clearOutbox } from '@/store/outbox';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
@@ -88,7 +89,6 @@ if (!globalThis.ResizeObserver) {
     disconnect() {}
   };
 }
-
 
 if (!globalThis.requestAnimationFrame) {
   globalThis.requestAnimationFrame = (callback: FrameRequestCallback) =>
@@ -205,7 +205,8 @@ afterEach(() => {
   useCallStore.setState(useCallStore.getInitialState(), true);
   useChatUiStore.setState(useChatUiStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
-  useToastStore.setState(useToastStore.getInitialState(), true);
+  clearToasts();
+  clearOutbox();
 
   localStorage.clear();
 });

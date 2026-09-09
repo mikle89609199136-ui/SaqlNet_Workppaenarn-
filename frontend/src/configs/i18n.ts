@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import Backend from 'i18next-http-backend';
 import { initReactI18next } from 'react-i18next';
-import { DEFAULT_LANGUAGE, detectLanguage, isSupportedLanguage } from '@/consts/languages';
+import { DEFAULT_LANGUAGE, detectLanguage, isSupportedLanguage } from '@/shared/config/languages';
 
 /**
  * Язык до того, как что-либо известно о человеке.

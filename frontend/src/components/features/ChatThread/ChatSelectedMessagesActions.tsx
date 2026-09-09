@@ -1,6 +1,6 @@
-import { Button, ConfirmDialog, Icon } from '@/components/ui';
-import { useEscapeKey, useIsMobile } from '@/hooks';
-import { useChatUiStore, useToastStore } from '@/store';
+import { Button, ConfirmDialog, Icon, showToast } from '@/shared/ui';
+import { useEscapeKey, useIsMobile } from '@/shared/lib';
+import { useChatUiStore } from '@/store';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow, ComposerWrapper } from '../ChatComposer';
@@ -26,7 +26,6 @@ export const ChatSelectedMessagesActions = ({
 }: Props) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const showToast = useToastStore((state) => state.showToast);
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const selectedCount = selectedMessages.length;
 

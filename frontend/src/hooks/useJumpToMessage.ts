@@ -1,4 +1,5 @@
-import { useChatUiStore, useToastStore } from '@/store';
+import { showToast } from '@/shared/ui';
+import { useChatUiStore } from '@/store';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -20,7 +21,6 @@ interface IUseJumpToMessageOptions {
  */
 export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
   const { t } = useTranslation();
-  const showToast = useToastStore((state) => state.showToast);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setHighlightedMessageId = useChatUiStore((state) => state.setHighlightedMessageId);
 
@@ -80,10 +80,7 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
       // 3. Если сообщение выше в истории и есть возможность догрузить (до 5 страниц)
       const initialOpts = optionsRef.current;
       if (initialOpts?.loadOlder && initialOpts?.hasMoreOlder) {
-        showToast(
-          'info',
-          t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...')
-        );
+        showToast('info', t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...'));
 
         pendingJumpTargetRef.current = messageId;
         let attempts = 0;

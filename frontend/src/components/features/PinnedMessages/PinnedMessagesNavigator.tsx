@@ -1,7 +1,7 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 import { usePinnedNavigator } from '@/hooks';
 import type { IMessageDto, TPinnedList } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import type { TFunction } from 'i18next';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';

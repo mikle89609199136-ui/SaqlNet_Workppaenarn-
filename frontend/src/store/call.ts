@@ -1,4 +1,4 @@
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { WebSocketClient } from '@/services/WebSocketClient';

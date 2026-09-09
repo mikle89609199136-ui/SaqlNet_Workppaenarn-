@@ -1,5 +1,5 @@
 import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from '@/types';
-import { drawObject, drawSelection } from '@/utils';
+import { drawObject, drawSelection } from '@/shared/lib';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface Params {
@@ -82,8 +82,7 @@ export function usePhotoEditorCanvas({
     if (!canvas) return undefined;
     const updateSize = () => setCanvasDisplayWidth(canvas.getBoundingClientRect().width || 1000);
     updateSize();
-    const observer =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateSize) : null;
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateSize) : null;
     observer?.observe(canvas);
     window.addEventListener('resize', updateSize);
     return () => {

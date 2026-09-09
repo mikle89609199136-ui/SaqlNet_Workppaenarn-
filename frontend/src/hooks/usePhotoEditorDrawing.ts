@@ -8,13 +8,7 @@ import type {
   TEditorTool,
   TTextFontId,
 } from '@/types';
-import {
-  clamp,
-  createEditorId,
-  drawObject,
-  findTextAtPoint,
-  splitPathByEraser,
-} from '@/utils';
+import { clamp, createEditorId, drawObject, findTextAtPoint, splitPathByEraser } from '@/shared/lib';
 import { useCallback, useRef, type RefObject } from 'react';
 
 interface PointerDrawState {
@@ -261,9 +255,7 @@ export function usePhotoEditorDrawing({
   const updateSelectedText = useCallback(
     (patch: Partial<IEditorTextObject>, shouldCommit = false) => {
       if (!selectedId) return;
-      const next = objects.map((item) =>
-        item.id === selectedId ? { ...item, ...patch } : item
-      );
+      const next = objects.map((item) => (item.id === selectedId ? { ...item, ...patch } : item));
       setObjects(next);
       if (shouldCommit) onCommit({ objects: next });
     },

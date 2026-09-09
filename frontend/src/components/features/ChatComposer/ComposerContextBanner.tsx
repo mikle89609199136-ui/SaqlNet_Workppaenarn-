@@ -1,6 +1,6 @@
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import { useChatUiStore } from '@/store';
-import { getMessagePreview } from '@/utils';
+import { getMessagePreview } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

@@ -1,6 +1,6 @@
-import { DEFAULT_CROP } from '@/consts';
+import { DEFAULT_CROP } from '@/shared/config';
 import type { IEditorCrop, TCropRatioValue } from '@/types';
-import { clamp } from '@/utils';
+import { clamp } from '@/shared/lib';
 import { useCallback, useRef, type RefObject } from 'react';
 
 interface Params {
@@ -96,38 +96,41 @@ export function usePhotoEditorCrop({
     [canvasRef, onCommit, setCrop, setCropRatio]
   );
 
-  const handleCropPointerMove = useCallback((event: PointerEvent) => {
-    const active = cropPointerRef.current;
-    const stage = stageRef.current;
-    if (!active || !stage) return;
-    const rect = stage.getBoundingClientRect();
-    const dx = (event.clientX - active.startX) / rect.width;
-    const dy = (event.clientY - active.startY) / rect.height;
-    const next = { ...active.initial };
-    const min = 0.08;
+  const handleCropPointerMove = useCallback(
+    (event: PointerEvent) => {
+      const active = cropPointerRef.current;
+      const stage = stageRef.current;
+      if (!active || !stage) return;
+      const rect = stage.getBoundingClientRect();
+      const dx = (event.clientX - active.startX) / rect.width;
+      const dy = (event.clientY - active.startY) / rect.height;
+      const next = { ...active.initial };
+      const min = 0.08;
 
-    if (active.handle === 'move') {
-      next.x = clamp(active.initial.x + dx, 0, 1 - active.initial.width);
-      next.y = clamp(active.initial.y + dy, 0, 1 - active.initial.height);
-    } else {
-      if (active.handle.includes('e')) {
-        next.width = clamp(active.initial.width + dx, min, 1 - active.initial.x);
+      if (active.handle === 'move') {
+        next.x = clamp(active.initial.x + dx, 0, 1 - active.initial.width);
+        next.y = clamp(active.initial.y + dy, 0, 1 - active.initial.height);
+      } else {
+        if (active.handle.includes('e')) {
+          next.width = clamp(active.initial.width + dx, min, 1 - active.initial.x);
+        }
+        if (active.handle.includes('s')) {
+          next.height = clamp(active.initial.height + dy, min, 1 - active.initial.y);
+        }
+        if (active.handle.includes('w')) {
+          next.x = clamp(active.initial.x + dx, 0, active.initial.x + active.initial.width - min);
+          next.width = active.initial.width + (active.initial.x - next.x);
+        }
+        if (active.handle.includes('n')) {
+          next.y = clamp(active.initial.y + dy, 0, active.initial.y + active.initial.height - min);
+          next.height = active.initial.height + (active.initial.y - next.y);
+        }
       }
-      if (active.handle.includes('s')) {
-        next.height = clamp(active.initial.height + dy, min, 1 - active.initial.y);
-      }
-      if (active.handle.includes('w')) {
-        next.x = clamp(active.initial.x + dx, 0, active.initial.x + active.initial.width - min);
-        next.width = active.initial.width + (active.initial.x - next.x);
-      }
-      if (active.handle.includes('n')) {
-        next.y = clamp(active.initial.y + dy, 0, active.initial.y + active.initial.height - min);
-        next.height = active.initial.height + (active.initial.y - next.y);
-      }
-    }
-    setCrop(next);
-    setCropRatio(null);
-  }, [setCrop, setCropRatio, stageRef]);
+      setCrop(next);
+      setCropRatio(null);
+    },
+    [setCrop, setCropRatio, stageRef]
+  );
 
   const handleCropPointerUp = useCallback(() => {
     window.removeEventListener('pointermove', handleCropPointerMove);

@@ -1,17 +1,17 @@
-import { useDebounce, useToasts } from '@/hooks';
+import { useDebounce } from '@/shared/lib';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services';
 import { useProfileStore } from '@/store';
 import type { ISearchUserDto } from '@/types';
-import { downscaleImage } from '@/utils/downscaleImage';
+import { downscaleImage } from '@/shared/lib/downscaleImage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon, Input, Modal, Textarea } from '@/components/ui';
-import { Avatar } from '@/components/ui/Avatar';
-import { Chip } from '@/components/ui/Chip';
+import { Icon, Input, Modal, Textarea, showToast } from '@/shared/ui';
+import { Avatar } from '@/shared/ui/Avatar';
+import { Chip } from '@/shared/ui/Chip';
 import { suggestedMembers } from './suggestedMembers';
 
 interface Props {
@@ -39,7 +39,6 @@ export function CreateGroupModal({ onClose }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { showToast } = useToasts();
 
   const meId = useProfileStore((state) => state.user?.id);
   const { data: chats = [] } = useQuery(chatsQuery());

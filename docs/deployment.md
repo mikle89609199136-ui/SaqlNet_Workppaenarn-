@@ -9,6 +9,8 @@
 - Hosting platform: Amvera (`amvera.yaml` at root builds `Dockerfile.prod`,
   container port 8080, persistence mounted at `/data`; per-service manifests
   in `deploy/amvera/`). `railway.json` also exists for Railway.
+- Production environment must define a positive `MAX_FILE_SIZE` in bytes for
+  the media service (`.env.example` uses `104857600`, or 100 MiB).
 - Health endpoint: `/api/v2/health`.
 - Merge/rollback process: follow `docs/prod-merge-runbook.md` — create a
   rollback tag before merging to `main`, smoke-check with

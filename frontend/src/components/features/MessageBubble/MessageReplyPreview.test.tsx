@@ -95,9 +95,7 @@ describe('MessageReplyPreview', () => {
       replyToContent: 'Привет',
     });
 
-    renderPreview(
-      <MessageReplyPreview message={message} onJumpToMessage={onJumpToMessage} />
-    );
+    renderPreview(<MessageReplyPreview message={message} onJumpToMessage={onJumpToMessage} />);
 
     const button = screen.getByRole('button', { name: /перейти к сообщению/i });
     expect(button).toHaveAttribute('tabindex', '0');
