@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,10 @@ func setupPostgres(t *testing.T) *sql.DB {
 			Image:        "postgres:16",
 			ExposedPorts: []string{"5432/tcp"},
 			Env:          map[string]string{"POSTGRES_PASSWORD": "test", "POSTGRES_DB": "test"},
-			WaitingFor:   wait.ForListeningPort("5432/tcp"),
+			WaitingFor: wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+				wait.ForListeningPort("5432/tcp"),
+			).WithDeadline(60 * time.Second),
 		},
 		Started: true,
 	})
@@ -37,6 +41,9 @@ func setupPostgres(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = pg.Terminate(ctx) })
 
 	host, _ := pg.Host(ctx)
+	if host == "localhost" {
+		host = "127.0.0.1"
+	}
 	port, _ := pg.MappedPort(ctx, "5432")
 	dsn := fmt.Sprintf("postgres://postgres:test@%s:%s/test?sslmode=disable", host, port.Port())
 	db, err := sql.Open("postgres", dsn)
@@ -44,6 +51,10 @@ func setupPostgres(t *testing.T) *sql.DB {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("ping db: %v", err)
+	}
 
 	applyMigrations(t, db)
 	return db
