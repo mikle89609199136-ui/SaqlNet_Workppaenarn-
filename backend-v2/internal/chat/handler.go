@@ -223,6 +223,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		default:
 			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 		}
+	// POST /api/v2/chats/{id}/transfer-ownership — передача владения чатом.
+	// Разрешена только для групповых чатов (type = 'group')
 	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:
 		var input struct {
 			UserID string `json:"userId"`
@@ -242,6 +244,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
 		case errors.Is(err, ErrOwnershipConflict):
 			httpx.ErrorJSON(w, r, http.StatusConflict, "ownership_conflict", err.Error())
+		// Операция применима только к group chat; private и channel отклоняются (CHAT-B006)
+		case errors.Is(err, ErrInvalidChatType):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
 		case err != nil:
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "transfer ownership failed")
 		default:

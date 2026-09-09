@@ -2194,7 +2194,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// 5. Now safely query the current reaction (with lock held)
 	var currentEmoji string
 	err = tx.QueryRowContext(ctx,
-		`SELECT emoji FROM messages.reactions 
+		`SELECT emoji FROM messages.reactions
 		 WHERE message_id = $1 AND user_id = $2`,
 		messageID, userID,
 	).Scan(&currentEmoji)
@@ -2224,7 +2224,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case !hasCurrent:
 		// No reaction yet – insert the new one
 		result, execErr := tx.ExecContext(ctx,
-			`INSERT INTO messages.reactions (message_id, user_id, emoji) 
+			`INSERT INTO messages.reactions (message_id, user_id, emoji)
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
@@ -2242,7 +2242,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case currentEmoji == emoji:
 		// Same emoji – remove the reaction (toggle off)
 		result, execErr := tx.ExecContext(ctx,
-			`DELETE FROM messages.reactions 
+			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
@@ -2260,7 +2260,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	default:
 		// Different emoji – update the existing one
 		result, execErr := tx.ExecContext(ctx,
-			`UPDATE messages.reactions SET emoji = $1 
+			`UPDATE messages.reactions SET emoji = $1
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
@@ -2826,9 +2826,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	var currentOwnerID string
+	var chatType string
 	err = tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
-		chatID).Scan(&currentOwnerID)
+		`SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID, &chatType)
 	if err == sql.ErrNoRows {
 		_ = tx.Rollback()
 		return ErrNotFound
@@ -2836,6 +2837,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if chatType != "group" {
+		_ = tx.Rollback()
+		return ErrInvalidChatType
 	}
 	if currentOwnerID != actorID {
 		_ = tx.Rollback()

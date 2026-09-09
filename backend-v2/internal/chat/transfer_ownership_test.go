@@ -45,7 +45,7 @@ func TestTransferOwnership_Success_ownerTransfers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -76,7 +76,7 @@ func TestTransferOwnership_OwnershipConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -96,7 +96,7 @@ func TestTransferOwnership_ChatNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -119,7 +119,7 @@ func TestTransferOwnership_TargetNotMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -142,7 +142,7 @@ func TestTransferOwnership_SelfTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -157,7 +157,7 @@ func TestTransferOwnership_InvalidUUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -173,7 +173,7 @@ func TestTransferOwnership_RollbackOnUpdateError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -198,7 +198,7 @@ func TestTransferOwnership_ChatDeletedMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -222,7 +222,7 @@ func TestTransferOwnership_TargetLeftMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -249,7 +249,7 @@ func TestTransferOwnership_ActorMembershipLostMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
 	svc := chat.NewService(db, nil)
 
@@ -290,7 +290,7 @@ func TestTransferOwnership_InvalidChatType(t *testing.T) {
 			if err != nil {
 				t.Fatalf("sqlmock: %v", err)
 			}
-			defer func() { _ = db.Close() }()
+			t.Cleanup(func() { _ = db.Close() })
 
 			svc := chat.NewService(db, nil)
 
