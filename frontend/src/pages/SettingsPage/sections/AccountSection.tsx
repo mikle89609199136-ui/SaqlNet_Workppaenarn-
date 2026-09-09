@@ -9,9 +9,10 @@ import {
   ConfirmDialog,
   Icon,
   Input,
-  PasswordRequirements,
   Textarea,
-} from '@/components/ui';
+  showToast,
+} from '@/shared/ui';
+import { PasswordRequirements } from '@/components/features';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -20,9 +21,8 @@ import {
   type TPasswordForm,
   type TProfileForm,
 } from '../accountSchemas';
-import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
+import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
-import { useToasts } from '@/hooks/useToasts';
 import { userKeys } from '@/queries/keys';
 import { meQuery } from '@/queries/users/meQuery';
 import { sessionsQuery } from '@/queries/users/securityQueries';
@@ -43,7 +43,6 @@ export function AccountSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { showToast } = useToasts();
   const params = useParams<{ subsection: string }>();
   const { data: user = {}, isPending } = useQuery(meQuery());
 
@@ -260,7 +259,7 @@ function AccountSettings({
       </h2>
       {/* Строки разделены линией внутри блока — line-soft, а не line:
           она делит содержимое, а не очерчивает элемент управления (#374). */}
-      <div className="mb-7 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mb-7 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.email', 'Электронная почта')}
           onClick={onOpenEmail}
@@ -276,7 +275,7 @@ function AccountSettings({
       <h2 className="text-caption mb-3 font-semibold text-ink-2">
         {t('settings.account.groupActions', 'Действия')}
       </h2>
-      <div className="divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.sessions', 'Активные сеансы')}
           onClick={onOpenSessions}
@@ -346,8 +345,21 @@ function PasswordSettings({ onBack, showToast }) {
     } catch (error) {
       /* Неверный текущий пароль — ошибка поля, а не всей формы: тост
          исчезнет, а подпись под полем останется и скажет, что править. */
-      if ((error as { data?: { code?: string } })?.data?.code === 'wrong_password') {
+      const code = (error as { data?: { code?: string } })?.data?.code;
+
+      if (code === 'wrong_password') {
         setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
+        return;
+      }
+
+      /* Сервер отверг пароль своей политикой. Наши правила её повторяют,
+         но могли отстать — тогда причину показываем у поля, а не тостом. */
+      if (code === 'weak_password') {
+        setError(
+          'newPassword',
+          { message: t('settings.password.weak', 'Пароль не отвечает требованиям') },
+          { shouldFocus: true }
+        );
         return;
       }
       showToast('error', t('toast.passwordChangeFailed', 'Не удалось изменить пароль'));
@@ -433,7 +445,7 @@ function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
         </Banner>
       )}
 
-      <div className="mt-4 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mt-4 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         {loading ? (
           <div className="text-body p-5 text-center text-ink-2">Загрузка…</div>
         ) : sessions.length > 0 ? (

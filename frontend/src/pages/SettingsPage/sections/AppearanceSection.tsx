@@ -1,4 +1,4 @@
-import { Avatar, SegmentedControl } from '@/components/ui';
+import { Avatar, SegmentedControl } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { meQuery } from '@/queries/users/meQuery';

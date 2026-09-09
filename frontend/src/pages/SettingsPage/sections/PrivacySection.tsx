@@ -1,4 +1,4 @@
-import { RadioGroup, Switch } from '@/components/ui';
+import { RadioGroup, Switch } from '@/shared/ui';
 import type { TLastSeenVisibility } from '@/types';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';

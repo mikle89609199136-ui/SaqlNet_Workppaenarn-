@@ -1,8 +1,5 @@
-import { ChatThreadHeader } from '../ChatThreadHeader';
-import { MessageActionsPopover } from '../Modals/MessageActionsPopover';
-import { Button, ConfirmDialog } from '@/components/ui';
-import { MessagesList } from '../MessagesList';
-import { useToasts } from '@/hooks';
+import { ChatThreadHeader, MessageActionsPopover, MessagesList } from '../ChatThread';
+import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/store';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
@@ -37,7 +34,6 @@ export const PinnedMessagesView = ({
 }: Props) => {
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
-  const { showToast } = useToasts();
   const [isUnpinAllOpen, setIsUnpinAllOpen] = useState(false);
   const [isUnpinning, setIsUnpinning] = useState(false);
 
@@ -88,14 +84,11 @@ export const PinnedMessagesView = ({
       />
 
       {actionMenu && selectedActionMessage && (
-        <>
-          <div aria-hidden="true" className="message-actions-backdrop" />
-          <MessageActionsPopover
-            message={selectedActionMessage.message}
-            onSelection={onSelection}
-            setIsForwardModalOpen={setIsForwardModalOpen}
-          />
-        </>
+        <MessageActionsPopover
+          message={selectedActionMessage.message}
+          onSelection={onSelection}
+          setIsForwardModalOpen={setIsForwardModalOpen}
+        />
       )}
 
       {openedImage && (

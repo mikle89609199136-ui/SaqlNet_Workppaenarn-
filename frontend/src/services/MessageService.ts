@@ -1,6 +1,6 @@
-import { API_ENDPOINTS } from '@/api/endpoints';
+import { API_ENDPOINTS } from '@/shared/api/endpoints';
 import { resolveMediaObjectUrl } from './mediaObjectUrls';
-import { ApiClient } from '@/api/ApiClient';
+import { ApiClient } from '@/shared/api/ApiClient';
 import { resolveChat } from '@/core/chatResolver';
 import type {
   IChatContext,
@@ -21,7 +21,7 @@ import type {
   TMessagesList,
   TMessageType,
 } from '@/types';
-import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
 import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);

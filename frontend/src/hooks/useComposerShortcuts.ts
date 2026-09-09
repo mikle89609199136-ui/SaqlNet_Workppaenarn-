@@ -1,8 +1,8 @@
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { setComposerText } from '@/utils/setComposerText';
+import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
-import { useEffect, type RefObject } from 'react';
+import { useCallback, useEffect, type RefObject } from 'react';
 
 export function useComposerShortcuts(
   draftRef: RefObject<HTMLInputElement | null>,
@@ -15,18 +15,25 @@ export function useComposerShortcuts(
   const user = useProfileStore((state) => state.user);
   const messages = useThreadMessagesData();
 
-  function startEdit(message: IMessageDto) {
-    setEditingMessage(message);
-    setReplyToMessage(null);
-    setComposerText(draftRef.current, message.content || '');
-    draftRef.current?.focus();
-  }
+  /* Обе обёрнуты в useCallback ради подписки ниже: без этого они новые
+     на каждый рендер, и слушатель клавиш пришлось бы переустанавливать
+     следом. Их собственные зависимости стабильны — сеттеры хранилища и
+     ссылка на поле. */
+  const startEdit = useCallback(
+    (message: IMessageDto) => {
+      setEditingMessage(message);
+      setReplyToMessage(null);
+      setComposerText(draftRef.current, message.content || '');
+      draftRef.current?.focus();
+    },
+    [draftRef, setEditingMessage, setReplyToMessage]
+  );
 
-  function cancelComposerMode() {
+  const cancelComposerMode = useCallback(() => {
     setEditingMessage(null);
     setReplyToMessage(null);
     setComposerText(draftRef.current, '');
-  }
+  }, [draftRef, setEditingMessage, setReplyToMessage]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -62,7 +69,16 @@ export function useComposerShortcuts(
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingMessage, replyToMessage, messages, user?.id]);
+  }, [
+    cancelComposerMode,
+    draftRef,
+    editingMessage,
+    formRef,
+    messages,
+    replyToMessage,
+    startEdit,
+    user?.id,
+  ]);
 
   return { cancelComposerMode };
 }

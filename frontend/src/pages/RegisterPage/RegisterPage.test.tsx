@@ -83,6 +83,54 @@ describe('регистрация', () => {
     expect(screen.getByLabelText('Повторите пароль')).not.toHaveAttribute('aria-invalid');
   });
 
+  it('отправляет фамилию и язык', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(api('/auth/register'), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1' } });
+      })
+    );
+
+    renderAuth({ page: 'register' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+    await userEvent.type(screen.getByLabelText('Имя'), 'Максим');
+    await userEvent.type(screen.getByLabelText('Фамилия'), 'Донской');
+    await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+
+    await screen.findByText('Список чатов');
+    expect(body.lastName).toBe('Донской');
+    // Язык — тот, на котором человек сейчас видит мастер.
+    expect(body.language).toBe('ru');
+  });
+
+  it('фамилию можно не заполнять', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(api('/auth/register'), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1' } });
+      })
+    );
+
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+
+    await screen.findByText('Список чатов');
+    expect(body.lastName).toBe('');
+  });
+
   it('проверяет имя пользователя по формату', async () => {
     renderAuth({ page: 'register' });
 
@@ -125,6 +173,30 @@ describe('регистрация', () => {
     expect(await screen.findByText('Это имя пользователя занято')).toBeInTheDocument();
     // И человек остался на шаге, где это поле есть.
     expect(screen.getByLabelText('Имя пользователя')).toHaveValue('maximdon');
+  });
+
+  it('отказ сервера по паролю показывает у поля пароля', async () => {
+    // Наши правила повторяют серверную политику, но могут отстать: её
+    // меняют на сервере, а клиент узнаёт об этом позже. Тогда причина
+    // должна встать у поля, а не улететь общим тостом.
+    server.use(
+      http.post(api('/auth/register'), () =>
+        HttpResponse.json(
+          { code: 'weak_password', error: 'password does not meet security requirements' },
+          { status: 400 }
+        )
+      )
+    );
+
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'Parol123456!');
+    await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
+
+    expect(await screen.findByText('Пароль не отвечает требованиям')).toBeInTheDocument();
   });
 
   it('после успеха уводит в чаты', async () => {

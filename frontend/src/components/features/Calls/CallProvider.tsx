@@ -1,4 +1,4 @@
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/hooks';
 import { useCallStore } from '@/store';
 import type { ICallCancelledPayload, ICallInviteResponsePayload, IIncomingCall } from '@/types';
