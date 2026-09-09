@@ -1,5 +1,5 @@
 import { config } from '@/configs/app';
-import { STORAGE_KEYS } from '@/consts';
+import { STORAGE_KEYS } from '@/shared/config';
 import { eventBus } from '@/core/EventBus';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import { useEffect } from 'react';

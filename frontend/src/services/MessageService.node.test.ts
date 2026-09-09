@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { createApiClient } from '@/api/apiFactory';
+import { createApiClient } from '@/shared/api/apiFactory';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
@@ -95,10 +95,16 @@ describe('MessageService: пересылка', () => {
     expect(body).toMatchObject({ content: 'переслано', type: 'text' });
   });
 
-  it('should refuse to forward what it could not read', async () => {
-    // Пересылка идёт из ленты: если сообщение не расшифровалось, пересылать
-    // нечего — уйдёт сама заглушка, и получатель увидит замок как текст.
-    const unreadable = message('source', 'chat-source', '🔒 Ключ шифрования недоступен');
+  it('отказывается пересылать то, что не смог прочитать', async () => {
+    /* Пересылка идёт из ленты: если сообщение не расшифровалось, пересылать
+       нечего — уйдёт сама заглушка, и получатель увидит замок как текст.
+
+       Признак, а не текст: подпись заглушки переводится, и проверка по
+       ведущему замку сломалась бы вместе с переводом. */
+    const unreadable = {
+      ...message('source', 'chat-source', '🔒 Ключ шифрования недоступен'),
+      undecryptable: 'keyUnavailable' as const,
+    };
 
     await expect(createService().forwardMessage(unreadable, TARGET_CHAT)).rejects.toThrow(
       /не удалось расшифровать/

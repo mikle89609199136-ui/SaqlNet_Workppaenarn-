@@ -33,12 +33,14 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
   TPinnedList,
   TReactionsList,
 } from './message.types';
 export type {
+  IAuthResponse,
   IChatResponse,
   IChatsResponse,
   ICreateGroupChatResponse,
@@ -55,7 +57,15 @@ export type {
   ISuccessResponse,
   IUploadResponse,
 } from './response.types';
-export type { ISearchUserDto, ISettingsDto, IUserDto, TSearchUsersList } from './user.types';
+export type {
+  IPrivacyDto,
+  ISearchUserDto,
+  ISettingsDto,
+  ISettingsPayloadDto,
+  IUserDto,
+  TLastSeenVisibility,
+  TSearchUsersList,
+} from './user.types';
 export type {
   ICallAnswerEvent,
   ICallCenceledEvent,
@@ -83,3 +93,20 @@ export type {
   IWsEventMap,
   TWsEventType,
 } from './wsEvents.types';
+export type {
+  IBrushOption,
+  IEditorCrop,
+  IEditorFilter,
+  IEditorPathObject,
+  IEditorPoint,
+  IEditorState,
+  IEditorTextObject,
+  IFontOption,
+  IPhotoEditorModalProps,
+  IRatioOption,
+  TBrushType,
+  TCropRatioValue,
+  TEditorObject,
+  TEditorTool,
+  TTextFontId,
+} from './editor.types';

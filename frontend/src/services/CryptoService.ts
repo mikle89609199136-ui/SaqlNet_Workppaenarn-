@@ -1,5 +1,5 @@
-import type { ApiClient } from '@/api';
-import { STORAGE_KEYS } from '@/consts';
+import type { ApiClient } from '@/shared/api';
+import { STORAGE_KEYS } from '@/shared/config';
 import { resolveMembers } from '@/core/chatResolver';
 import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
 import { base64ToBytes } from '@/crypto/encoding';
@@ -39,6 +39,12 @@ import type { IEncryptedMedia } from '@/types';
  * интерфейсе это видно: обещать защиту тысяче читателей нечестно.
  */
 
+/*
+ * Тексты заглушек остаются здесь как запасные: показывать их должен тот,
+ * кто рисует, — он знает язык. Сервису язык неизвестен, поэтому вместе с
+ * текстом он возвращает причину (`undecryptable`), а интерфейс подставляет
+ * перевод по ней.
+ */
 export const LEGACY_MESSAGE_PLACEHOLDER = '🔒 Сообщение в устаревшем формате';
 export const KEY_UNAVAILABLE_PLACEHOLDER = '🔒 Ключ шифрования недоступен';
 export const BEFORE_JOIN_PLACEHOLDER = '🔒 Сообщение написано до вашего появления в чате';
@@ -73,8 +79,19 @@ function isEncryptedMediaV2(payload: unknown): payload is IEncryptedMedia {
   );
 }
 
+export type TUndecryptableReason = 'keyUnavailable' | 'beforeJoin' | 'legacy';
+
 export interface IDecryptedMessage {
   text: string;
+  /**
+   * Почему сообщение не прочиталось. `undefined` — прочиталось.
+   *
+   * Раньше об этом говорил сам текст, и остальной код узнавал заглушку по
+   * ведущему замку: `content.startsWith('🔒')`. Стоило перевести подпись —
+   * и проверка переставала работать, а запрет пересылать нечитаемое
+   * молча исчезал.
+   */
+  undecryptable?: TUndecryptableReason;
   /**
    * Удалось ли подтвердить, что сообщение написал тот, кто указан.
    *
@@ -227,12 +244,15 @@ export class CryptoService {
     senderId: string
   ): Promise<IDecryptedMessage> {
     if (!content) return { text: content };
-    if (!this.hasWebCrypto()) return { text: KEY_UNAVAILABLE_PLACEHOLDER };
+    if (!this.hasWebCrypto())
+      return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
 
     const envelope = parseEnvelope(content);
 
     if (!envelope) {
-      return { text: isLegacyContent(content) ? LEGACY_MESSAGE_PLACEHOLDER : content };
+      return isLegacyContent(content)
+        ? { text: LEGACY_MESSAGE_PLACEHOLDER, undecryptable: 'legacy' }
+        : { text: content };
     }
 
     try {
@@ -245,7 +265,9 @@ export class CryptoService {
         const earliest = await this.chatKeys.earliestEpoch(chatId);
         const beforeUs = earliest !== null && envelope.epoch < earliest;
 
-        return { text: beforeUs ? BEFORE_JOIN_PLACEHOLDER : KEY_UNAVAILABLE_PLACEHOLDER };
+        return beforeUs
+          ? { text: BEFORE_JOIN_PLACEHOLDER, undecryptable: 'beforeJoin' }
+          : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
       }
 
       const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
@@ -263,7 +285,7 @@ export class CryptoService {
       return { text, senderVerified };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
-      return { text: KEY_UNAVAILABLE_PLACEHOLDER };
+      return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
     }
   }
 

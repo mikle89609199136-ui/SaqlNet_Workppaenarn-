@@ -109,6 +109,7 @@ Start from `.env.example` and set production-safe values before deployment:
 - `CRYPTO_SIGNING_SECRET`
 - `CRYPTO_ENCRYPTION_SECRET`
 - `ALLOWED_ORIGINS`
+- `MAX_FILE_SIZE` — positive media upload limit in bytes
 
 Crypto secrets must be at least 32 random characters. Do not commit real
 secrets.

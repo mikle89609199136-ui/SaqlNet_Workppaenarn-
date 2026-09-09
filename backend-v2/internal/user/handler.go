@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,12 +15,17 @@ import (
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
-type Handler struct {
-	service *Service
+type SignalRegistrationValidator interface {
+	ValidateSignalRegistration(ctx context.Context, identityKey, signedPreKey, signature string) (bool, error)
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type Handler struct {
+	service *Service
+	crypto  SignalRegistrationValidator
+}
+
+func NewHandler(service *Service, crypto SignalRegistrationValidator) *Handler {
+	return &Handler{service: service, crypto: crypto}
 }
 
 func (h *Handler) SubscribePremium(w http.ResponseWriter, r *http.Request) {

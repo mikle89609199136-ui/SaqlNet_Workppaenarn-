@@ -18,7 +18,14 @@ function lastActivityAt(chat: IChatDto): number {
  * изменение и рендерятся снова — до исчерпания лимита вложенных обновлений.
  */
 const selectSortedChats = (chats: IChatDto[]) =>
-  [...chats].sort((a, b) => lastActivityAt(b) - lastActivityAt(a));
+  [...chats].sort((a, b) => {
+    /* Закреплённые сверху. Сервер отдаёт их первыми и сам
+       (`ORDER BY is_pinned DESC` в chat/service.go), но клиент
+       пересортировывал всё по времени и это затирал: закреплённый чат
+       опускался вниз, как обычный. */
+    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+    return lastActivityAt(b) - lastActivityAt(a);
+  });
 
 /**
  * Список чатов.
@@ -28,11 +35,11 @@ const selectSortedChats = (chats: IChatDto[]) =>
  * поднимал наверх обработчик события, и то, как выглядит список, зависело
  * от того, кто и когда его подвинул.
  */
-export function chatsQuery() {
+export function chatsQuery({ archived = false } = {}) {
   return queryOptions({
-    queryKey: chatKeys.list(),
+    queryKey: archived ? chatKeys.archived() : chatKeys.list(),
     queryFn: async () => {
-      const chats = await services.chatService.getChats();
+      const chats = await services.chatService.getChats(archived);
 
       return Promise.all(
         chats.map(async (chat) => ({

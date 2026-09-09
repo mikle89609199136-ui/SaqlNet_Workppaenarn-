@@ -1,141 +1,50 @@
-// components/Settings/SettingsSidebar.jsx
-import '../../styles/SettingsPage.css';
-import '../../styles/SettingsSidebar.css';
-export function SettingsSidebar({ activeTab, onSelectTab, t }) {
-  const menuItems = [
-    {
-      id: 'account',
-      label: t ? t('settings.account', 'Аккаунт') : 'Аккаунт',
-      icon: (
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
-        </svg>
-      ),
-    },
-    {
-      id: 'notifications',
-      label: t ? t('settings.notifications', 'Уведомления') : 'Уведомления',
-      icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-      ),
-    },
-    {
-      id: 'appearance',
-      label: t ? t('settings.appearance', 'Внешний вид') : 'Внешний вид',
-      icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="5"></circle>
-          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
-        </svg>
-      ),
-    },
-    {
-      id: 'privacy',
-      label: t ? t('settings.privacy', 'Конфиденциальность') : 'Конфиденциальность',
-      icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-        </svg>
-      ),
-    },
-    {
-      id: 'language',
-      label: t ? t('settings.language', 'Язык') : 'Язык',
-      icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-      ),
-    },
-    {
-      id: 'about',
-      label: t ? t('settings.about', 'О приложении') : 'О приложении',
-      icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-      ),
-    },
-  ];
+import type { TFunction } from 'i18next';
+import { SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
+import type { TIconTypes } from '@/types';
+import { SettingsMenuItem } from './SettingsMenuItem';
 
+/* Порядок пунктов задаётся списком разделов, значок и подпись — здесь.
+   Ключи меню отдельные от заголовков разделов: в меню «Уведомления», а
+   заголовком — «Уведомления и звуки», и подписи должны быть короче.
+   Список один на меню и на проверку адреса: раздела, которого в нём нет,
+   не существует и для маршрута. */
+const SECTION_VIEW: Record<TSettingsSection, { icon: TIconTypes; fallback: string; key: string }> =
+  {
+    account: { icon: 'user', fallback: 'Аккаунт', key: 'settings.menu.account' },
+    notifications: { icon: 'bell', fallback: 'Уведомления', key: 'settings.menu.notifications' },
+    appearance: { icon: 'palette', fallback: 'Внешний вид', key: 'settings.menu.appearance' },
+    privacy: { icon: 'lock', fallback: 'Конфиденциальность', key: 'settings.menu.privacy' },
+    language: { icon: 'language', fallback: 'Язык', key: 'settings.menu.language' },
+    about: { icon: 'info', fallback: 'О приложении', key: 'settings.menu.about' },
+  };
+
+interface Props {
+  t?: TFunction;
+}
+
+export function SettingsSidebar({ t }: Props) {
   return (
-    <aside className="settings-sidebar">
-      <div className="settings-sidebar-header">
-        <h2>Настройки</h2>
+    <aside className="flex min-h-0 flex-1 flex-col pb-4">
+      <div className="flex items-center gap-2.5 px-8 pt-2 pb-5">
+        <h2 className="text-body font-bold text-ink">
+          {t ? t('settings.menu.title', 'Настройки') : 'Настройки'}
+        </h2>
       </div>
 
-      <nav className="settings-sidebar-menu">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            className={`settings-menu-item ${activeTab === item.id ? 'active' : ''}`}
-            onClick={() => onSelectTab(item.id)}
-          >
-            <span className="menu-icon">{item.icon}</span>
-            <span className="menu-label">{item.label}</span>
-          </button>
-        ))}
+      {/* На узком экране меню ложится в строку и прокручивается вбок:
+          вертикальный список занял бы весь экран до содержимого. */}
+      <nav className="flex flex-row overflow-x-auto md:flex-col md:overflow-x-visible md:overflow-y-auto">
+        {SETTINGS_SECTIONS.map((section) => {
+          const view = SECTION_VIEW[section];
+          return (
+            <SettingsMenuItem
+              icon={view.icon}
+              key={section}
+              label={t ? t(view.key, view.fallback) : view.fallback}
+              section={section}
+            />
+          );
+        })}
       </nav>
     </aside>
   );

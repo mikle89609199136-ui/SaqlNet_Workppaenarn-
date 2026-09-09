@@ -1,14 +1,18 @@
-import { CHAT_ROLES, CHAT_TYPES } from '@/consts';
-import { useToasts } from './useToasts';
+import { showToast } from '@/shared/ui';
+import { describeApiError } from '@/shared/api';
+import { CHAT_ROLES, CHAT_TYPES } from '@/shared/config';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
+import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
 import { services } from '@/services/serviceContainer';
+import { applyReaction } from '@/shared/lib';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { setComposerText } from '@/utils/setComposerText';
+import { removeOutboxItem } from '@/store/outbox';
+import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
-import { sortMessagesChronologically } from '@/utils/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,11 +23,27 @@ interface Props {
   draftRef?: RefObject<HTMLInputElement | null>;
 }
 
+/**
+ * Сколько раз нажимали на реакции каждого сообщения.
+ *
+ * Ответы сервера приходят в любом порядке, и ответ на первое нажатие,
+ * опоздав, возвращал бы картину, которую человек уже отменил вторым: два
+ * быстрых выбора подряд заканчивались прыжком к первому эмодзи. Ответ
+ * применяется, только если с момента отправки не было нового нажатия.
+ *
+ * Счёт ведётся вне React намеренно. Меню действий размонтируется сразу
+ * после нажатия, унося с собой всё, что жило в его состоянии, — счётчик
+ * в `useRef` обнулялся бы к каждому следующему нажатию и не защищал ни от
+ * чего.
+ */
+const reactionAttempts = new Map<string, number>();
+
 export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
   const [translatingIds, setTranslatingIds] = useState(new Set());
+
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
   const chatType = chat?.type;
@@ -40,8 +60,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const translations = useChatUiStore((state) => state.translations);
   const setTranslations = useChatUiStore((state) => state.setTranslations);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
-
-  const { showToast } = useToasts();
 
   const handleTranslateMessage = async (message: IMessageDto) => {
     if (translations[message.id]) {
@@ -96,19 +114,43 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         // иначе в набор попадали undefined вместо идентификаторов.
         const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
 
-        // Именно возврат промиса делает ожидание настоящим: без него
-        // Promise.all завершался мгновенно, а отказы становились
-        // необработанными и не доходили до catch.
-        await Promise.all(own.map((item) => services.messageService.deleteMessage(item.id)));
+        const serverMessages = own.filter((item) => !item.tempId && !item.id.startsWith('temp-'));
+        const outboxMessages = own.filter(
+          (item) => Boolean(item.tempId) || item.id.startsWith('temp-')
+        );
 
-        own.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
+        outboxMessages.forEach((item) => {
+          const id = item.tempId || item.id;
+          removeOutboxItem(id);
+          dropThreadMessage(queryClient, chatId, id);
+        });
+
+        if (serverMessages.length > 0) {
+          // Именно возврат промиса делает ожидание настоящим: без него
+          // Promise.all завершался мгновенно, а отказы становились
+          // необработанными и не доходили до catch.
+          await Promise.all(
+            serverMessages.map((item) => services.messageService.deleteMessage(item.id))
+          );
+          serverMessages.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
+        }
+
         handleCancelSelection();
       }
 
       if (!selectionMode) {
         if (message.senderId !== currentUser?.id) return;
-        await services.messageService.deleteMessage(message.id);
-        dropThreadMessage(queryClient, chatId, message.id);
+        const id = message.tempId || message.id;
+        const isOutbox = Boolean(message.tempId) || message.id.startsWith('temp-');
+
+        if (isOutbox) {
+          removeOutboxItem(id);
+          dropThreadMessage(queryClient, chatId, id);
+        } else {
+          await services.messageService.deleteMessage(message.id);
+          dropThreadMessage(queryClient, chatId, message.id);
+        }
+
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
           setComposerText(draftRef?.current ?? null, '');
@@ -118,21 +160,70 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
         }
       }
       setError('');
-    } catch (err: any) {
-      setError(err.message || t('messageDeleteError', 'Не удалось удалить сообщение(я)'));
+    } catch (err: unknown) {
+      setError(
+        describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
+      );
     }
   };
 
+  /**
+   * Поставить, снять или заменить реакцию.
+   *
+   * Сервер переключает сам: та же реакция от того же человека снимается,
+   * новая ставится. Прежде клиент до него не доходил — при любой уже
+   * поставленной реакции он молча возвращался, и шесть эмодзи в меню
+   * становились мёртвыми: ни снять, ни поменять.
+   *
+   * Без подписки реакция одна: выбор другого эмодзи сначала снимает
+   * прежний. С подпиской они копятся — это и есть всё её отличие здесь.
+   */
   const handleReact = async (message: IMessageDto, emoji: string) => {
-    if (message.reactions.find((reaction) => reaction.myReaction) && !currentUser?.isPremium)
-      return;
+    const previous = message.reactions ?? [];
+    const mine = previous.find((reaction) => reaction.myReaction);
+    const allowMultiple = Boolean(currentUser?.isPremium);
+
+    const attempt = (reactionAttempts.get(message.id) ?? 0) + 1;
+    reactionAttempts.set(message.id, attempt);
+    const isLatest = () => reactionAttempts.get(message.id) === attempt;
+
+    // Пока идёт замена, вести сервера по этому сообщению не применяются:
+    // между двумя запросами он рассылает состояние «реакции нет».
+    beginReactionChange(message.id);
+
+    /* Результат показывается сразу, до ответа сервера: реакция — жест
+       мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
+       При замене запросов и вовсе два, и ждать оба значит смотреть, как
+       эмодзи меняются по очереди. */
+    patchThreadMessage(queryClient, chatId, message.id, {
+      reactions: applyReaction(previous, emoji, { allowMultiple }),
+    });
 
     try {
+      // Своя же реакция снимается одним запросом: сервер переключает сам.
+      if (mine && mine.emoji !== emoji && !allowMultiple) {
+        await services.messageService.reactToMessage(message.id, mine.emoji);
+      }
+
       const result = await services.messageService.reactToMessage(message.id, emoji);
+
+      // Пока ходили на сервер, человек мог выбрать другое — тогда ответ
+      // устарел и показывать его нельзя.
+      if (!isLatest()) return;
+
       patchThreadMessage(queryClient, chatId, message.id, { reactions: result.reactions || [] });
       setError('');
     } catch (err: any) {
-      setError(err.message || t('reactionError', 'Не удалось обновить реакцию'));
+      // Откат тоже только для последнего нажатия: иначе неудача старого
+      // запроса стёрла бы выбор, сделанный после него.
+      if (!isLatest()) return;
+
+      // Не вышло — возвращаем то, что было: показанное авансом должно
+      // исчезнуть, иначе человек уверен, что реакция стоит.
+      patchThreadMessage(queryClient, chatId, message.id, { reactions: previous });
+      setError(describeApiError(err, t, t('reactionError', 'Не удалось обновить реакцию')));
+    } finally {
+      if (isLatest()) endReactionChange(message.id);
     }
   };
 
@@ -147,7 +238,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.unpinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messageUnpinError', 'Не удалось открепить сообщение'));
+      setError(describeApiError(err, t, t('messageUnpinError', 'Не удалось открепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&
@@ -158,7 +249,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messageUnpinMemberError',
             'Не удалось открепить сообщение. У вас нет прав администратора.'
-          ));
+          )
+        );
         return;
       }
 
@@ -177,7 +269,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
       await services.messageService.pinMessage(chatId, message.id);
     } catch (err: any) {
-      setError(err.message || t('messagePinError', 'Не удалось закрепить сообщение'));
+      setError(describeApiError(err, t, t('messagePinError', 'Не удалось закрепить сообщение')));
       if (
         chatType === CHAT_TYPES.GROUP &&
         chatRole !== CHAT_ROLES.ADMIN &&
@@ -188,7 +280,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           t(
             'messagePinMemberError',
             'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          ));
+          )
+        );
         return;
       }
 
