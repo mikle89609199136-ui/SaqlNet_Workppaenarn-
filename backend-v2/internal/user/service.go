@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -183,7 +184,6 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 
 // IsUsernameAvailable checks whether the given username is available for registration.
 // It performs the following validations:
-//   - Trims leading/trailing spaces.
 //   - Ensures the username is not empty.
 //   - Validates the username against the allowed pattern (^[a-zA-Z0-9_]{3,32}$).
 //   - Queries the database case‑insensitively to check for existing users.
@@ -191,18 +191,28 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 // Returns:
 //   - (true, nil)  if the username is syntactically valid and does not exist in DB.
 //   - (false, nil) if the username is valid but already exists.
-//   - (false, ErrInvalidInput) if the username is empty or does not match the pattern.
+//   - (false, ErrInvalidInput) if the username is empty.
+//   - (false, ErrInvalidUsernameFormat) if the username does not match the pattern.
 //   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
-	// Trim whitespace and check for empty input
-	username = strings.TrimSpace(username)
+	// Log incoming request (debug level)
+	slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:checking username availability",
+		"username", username,
+	)
+
+	// Check for empty input
 	if username == "" {
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:empty username, returning invalid input")
 		return false, ErrInvalidInput
 	}
 
 	// Validate username against the allowed pattern
 	if !usernamePattern.MatchString(username) {
-		return false, ErrInvalidInput
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:username does not match pattern",
+			"username", username,
+			"pattern", usernamePattern.String(),
+		)
+		return false, ErrInvalidUsernameFormat
 	}
 
 	// Case‑insensitive existence check in the database
@@ -211,8 +221,21 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
 		username).Scan(&exists)
 
-	// Available if no existing record is found
-	return !exists, err
+	if err != nil {
+		slog.ErrorContext(ctx, "[Service-IsUsernameAvailable]:database query failed",
+			"username", username,
+			"error", err,
+		)
+		return false, err
+	}
+
+	available := !exists
+	slog.InfoContext(ctx, "[Service-IsUsernameAvailable]:availability check completed",
+		"username", username,
+		"available", available,
+	)
+
+	return available, nil
 }
 
 func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {
