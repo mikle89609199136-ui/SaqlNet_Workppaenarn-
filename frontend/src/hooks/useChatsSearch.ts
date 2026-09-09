@@ -1,4 +1,4 @@
-import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/queries/users/searchUsersQuery';
+import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/entities/user';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { getLastMessageText } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';

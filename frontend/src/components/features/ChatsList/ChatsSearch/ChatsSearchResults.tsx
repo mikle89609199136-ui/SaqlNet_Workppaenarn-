@@ -2,7 +2,7 @@ import { Avatar, Spinner } from '@/shared/ui';
 import { useStartPrivateChat } from '@/hooks';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ChatListItem } from '../ChatListItem';
+import { ChatListItem } from '@/entities/chat';
 
 interface Props {
   chats: IChatDto[];

@@ -1,5 +1,5 @@
 import { Modal } from '@/shared/ui';
-import { VideoPlayer } from '@/components/features/VideoPlayer';
+import { VideoPlayer } from '@/entities/media';
 import type { IMediaItem, IMessageDto } from '@/types';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -3,7 +3,7 @@ import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { UserProfilePanel } from './UserProfilePanel';
-import type { IProfileModal } from '@/pages';
+import type { IProfileModal } from '@/entities/user';
 
 interface Props {
   onClose: () => void;

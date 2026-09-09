@@ -19,7 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
-import type { IProfileState } from '..';
+import type { IProfileState } from '@/entities/user';
 
 /* Границы ширины колонок. Ниже нижней строка чата перестаёт помещаться,
    выше верхней колонка съедает переписку. */

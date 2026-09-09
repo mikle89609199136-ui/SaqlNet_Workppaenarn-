@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_PROFILE_SETTINGS } from '@/shared/config';
 import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
-import { settingsQuery } from '@/queries/users/settingsQuery';
+import { settingsQuery } from '@/entities/user';
 import type { IPrivacyDto, ISettingsDto } from '@/types';
 
 /**
