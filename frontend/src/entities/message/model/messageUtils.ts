@@ -1,4 +1,4 @@
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TMessagesList } from './types';
 
 export const hasMessageMedia = (msg: IMessageDto) => !!(msg.mediaUrl || msg.mediaUnavailable);
 

@@ -5,7 +5,7 @@ import { chatQuery } from '@/queries/chat/threadQueries';
 import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
 import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
 import { services } from '@/services/serviceContainer';
-import { applyReaction } from '@/shared/lib';
+import { applyReaction } from '@/entities/message';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore, useProfileStore } from '@/store';

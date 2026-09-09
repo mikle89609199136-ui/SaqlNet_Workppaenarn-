@@ -1,4 +1,4 @@
-import type { IChatDto } from '@/types';
+import type { IChatDto } from './types';
 
 /**
  * Началась ли переписка.

@@ -1,4 +1,4 @@
-import type { TReactionsList } from '@/types';
+import type { TReactionsList } from './types';
 
 /**
  * Как изменится набор реакций от нажатия на эмодзи.

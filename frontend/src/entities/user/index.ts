@@ -1,5 +1,6 @@
-﻿export * from './model/types';
+export * from './model/types';
 export * from './model/profileStore';
+export * from './model/defaultProfileSettings';
 export * from './model/meQuery';
 export * from './model/userProfileQuery';
 export * from './model/searchUsersQuery';

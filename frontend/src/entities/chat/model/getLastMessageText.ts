@@ -1,4 +1,4 @@
-import type { ILastMessageDto } from '@/types';
+import type { ILastMessageDto } from './types';
 import type { TFunction } from 'i18next';
 
 export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: TFunction) {

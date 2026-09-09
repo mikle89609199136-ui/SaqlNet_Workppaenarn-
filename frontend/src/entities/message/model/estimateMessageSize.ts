@@ -1,4 +1,4 @@
-import type { IMessageDto } from '@/types';
+import type { IMessageDto } from './types';
 
 export type TEstimatableFeedItem =
   { type: 'date'; label?: string } | { type: 'message'; message: IMessageDto };

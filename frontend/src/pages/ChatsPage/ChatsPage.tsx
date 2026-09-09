@@ -12,7 +12,7 @@ import {
 import { Icon } from '@/shared/ui';
 import { useChatsSearch } from '@/hooks';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
-import { isConversationStarted } from '@/shared/lib';
+import { isConversationStarted } from '@/entities/chat';
 import { PaneResizer } from './PaneResizer';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';

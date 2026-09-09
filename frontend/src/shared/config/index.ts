@@ -1,6 +1,5 @@
 export { APP_VERSION } from './appVersion';
 export { CHAT_ROLES, CHAT_TYPES } from './chat';
-export { DEFAULT_PROFILE_SETTINGS } from './defaultProfileSettings';
 export {
   DEFAULT_LANGUAGE,
   detectLanguage,

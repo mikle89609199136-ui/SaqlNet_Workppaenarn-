@@ -1,4 +1,4 @@
-﻿export * from './model/types';
+export * from './model/types';
 export * from './model/threadCache';
 export * from './model/threadCacheActions';
 export * from './model/threadQueries';
@@ -6,4 +6,7 @@ export * from './model/outboxSender';
 export * from './model/pendingReactions';
 export * from './model/useThreadMessagesData';
 export * from './model/outboxStore';
+export * from './model/messageUtils';
+export * from './model/applyReaction';
+export * from './model/estimateMessageSize';
 export * from './ui/MessageBubble';
