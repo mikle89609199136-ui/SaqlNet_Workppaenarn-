@@ -1,0 +1,24 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    # Ignore conventional cleanup errors such as deferred Close calls. These are
+    # covered by golangci-lint's maintained standard-library exclusion preset.
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # QF checks propose optional rewrites and do not identify correctness bugs.
+      - linters:
+          - staticcheck
+        text: "QF1003:"
+
+run:
+  timeout: 5m
