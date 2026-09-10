@@ -34,7 +34,7 @@ RegisterRequest:
   required: [username, password, firstName]
   properties:
     username: { $ref: '#/Username' }
-    password: { type: string, format: password, minLength: 6 }
+    password: { $ref: '#/Password' }
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
