@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -34,54 +35,69 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-// List handles GET /api/v2/chats. It returns the list of chats for the authenticated user.
-// The optional query parameter "archived" must be a boolean (true/false).
+// List handles GET /api/v2/chats and returns the chats of the
+// authenticated user.
+//
+// The optional "archived" query parameter accepts exactly "true" or
+// "false". Any other value, an empty value, or a duplicated parameter
+// results in 400 with code "validation_failed".
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	// Enforce HTTP method – only GET is allowed.
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r)
 		return
 	}
 
-	// Retrieve the authenticated user from the request context.
-	// MustUser panics if the user is not present, which is fine because
-	// the route is protected by the authenticated middleware.
+	// Safe to call: the route is registered behind the authentication
+	// middleware, so the user is always present in the request context.
 	current := authctx.MustUser(r)
 
-	// Read the "archived" query parameter as a string.
-	archivedStr := r.URL.Query().Get("archived")
-	archived := false // default to false when the parameter is absent
-
-	// If the parameter is provided, validate that it is a proper boolean literal.
-	if archivedStr != "" {
-		var err error
-		// strconv.ParseBool accepts "true", "false", "1", "0", "t", "f", "T", "F".
-		// This matches the OpenAPI "boolean" type and rejects any other value.
-		archived, err = strconv.ParseBool(archivedStr)
-		if err != nil {
-			// Return 400 Bad Request with a clear error message.
-			// This ensures the client knows the value is invalid, rather than
-			// silently defaulting to false.
-			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_parameter", "archived must be a boolean (true/false)")
-			return
-		}
+	archived, err := parseArchived(r.URL.Query())
+	if err != nil {
+		slog.ErrorContext(r.Context(), "[Handler - List]:error in parsing archived parameter", "err", err, "user_id", current.ID, "archived", archived)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "wrong parameter")
+		return
 	}
 
-	// Call the service layer with the correctly parsed boolean.
 	chats, err := h.service.List(r.Context(), current.ID, archived)
 	if err != nil {
-		// Internal server error – the service may fail due to database issues.
+		slog.ErrorContext(r.Context(), "[Handler - List]:list chats failed", "err", err, "user_id", current.ID, "archived", archived)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
 
-	// Ensure we always return a JSON array, even when the list is empty.
+	// Return a JSON array even when the list is empty, so the client
+	// never has to distinguish between null and [].
 	if chats == nil {
 		chats = []Chat{}
 	}
 
-	// Respond with 200 OK and the chats list.
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+// parseArchived extracts and validates the optional "archived" query
+// parameter. It returns false when the parameter is absent.
+//
+// Only the exact lowercase literals "true" and "false" are accepted,
+// matching the OpenAPI contract. Alternative boolean representations
+// understood by strconv.ParseBool ("1", "t", "TRUE", ...) are rejected
+// to keep the contract unambiguous.
+func parseArchived(q url.Values) (bool, error) {
+	values, ok := q["archived"]
+	if !ok {
+		return false, nil
+	}
+	if len(values) != 1 {
+		return false, errors.New(`query parameter "archived" must be specified exactly once`)
+	}
+
+	switch values[0] {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf(`query parameter "archived" must be "true" or "false", got %q`, values[0])
+	}
 }
 
 func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
