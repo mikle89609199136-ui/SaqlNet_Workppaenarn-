@@ -12,6 +12,7 @@
 export const chatKeys = {
   all: ['chat'] as const,
   list: () => [...chatKeys.all, 'list'] as const,
+  archived: () => [...chatKeys.all, 'archived'] as const,
   detail: (chatId: string) => [...chatKeys.all, chatId] as const,
   messages: (chatId: string) => [...chatKeys.detail(chatId), 'messages'] as const,
   pins: (chatId: string) => [...chatKeys.detail(chatId), 'pins'] as const,
@@ -24,5 +25,5 @@ export const userKeys = {
   profile: (userId: string) => [...userKeys.all, 'profile', userId] as const,
   settings: () => [...userKeys.all, 'settings'] as const,
   sessions: () => [...userKeys.all, 'sessions'] as const,
-  twoFA: () => [...userKeys.all, '2fa'] as const,
+  search: (query: string) => [...userKeys.all, 'search', query] as const,
 };

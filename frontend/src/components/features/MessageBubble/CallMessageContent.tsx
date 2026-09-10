@@ -1,6 +1,6 @@
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import type { IMessageDto } from '@/types';
-import { formatCallDuration, parseCallContent } from '@/utils';
+import { formatCallDuration, parseCallContent } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

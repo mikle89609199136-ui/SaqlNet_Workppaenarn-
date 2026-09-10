@@ -1,6 +1,6 @@
-import { apiClient as defaultApiClient } from '@/api/apiFactory';
-import type { ApiClient } from '@/api/ApiClient';
-import { STORAGE_KEYS } from '@/consts/storageKeys';
+import { apiClient as defaultApiClient } from '@/shared/api/apiFactory';
+import type { ApiClient } from '@/shared/api/ApiClient';
+import { STORAGE_KEYS } from '@/shared/config/storageKeys';
 import { useProfileStore } from '@/store/profile';
 
 import { AdminService } from './AdminService';

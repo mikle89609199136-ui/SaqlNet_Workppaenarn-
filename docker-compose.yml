@@ -181,6 +181,7 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MEDIA_BUCKET=craneapp-media
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:?MAX_FILE_SIZE is required}
     depends_on:
       migrate:
         condition: service_completed_successfully

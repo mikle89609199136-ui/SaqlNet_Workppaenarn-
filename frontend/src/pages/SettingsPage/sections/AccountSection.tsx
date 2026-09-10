@@ -2,23 +2,30 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Banner, Button, ConfirmDialog, Icon, Input, Textarea } from '@/components/ui';
+import {
+  Avatar,
+  Banner,
+  Button,
+  ConfirmDialog,
+  Icon,
+  Input,
+  Textarea,
+  showToast,
+} from '@/shared/ui';
+import { PasswordRequirements } from '@/components/features';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
   passwordFormSchema,
   profileFormSchema,
-  twoFAFormSchema,
   type TPasswordForm,
   type TProfileForm,
-  type TTwoFAForm,
 } from '../accountSchemas';
-import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/consts/routes';
+import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
-import { useToasts } from '@/hooks/useToasts';
 import { userKeys } from '@/queries/keys';
 import { meQuery } from '@/queries/users/meQuery';
-import { sessionsQuery, twoFAStatusQuery } from '@/queries/users/securityQueries';
+import { sessionsQuery } from '@/queries/users/securityQueries';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store';
 
@@ -36,16 +43,13 @@ export function AccountSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { showToast } = useToasts();
   const params = useParams<{ subsection: string }>();
   const { data: user = {}, isPending } = useQuery(meQuery());
 
   const view = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
 
-  /* Статус второй ступени и список устройств спрашиваются у сервера.
-     Прежде они брались из useState — «отключена» и «сеансов нет»
-     независимо от действительности (#478). */
-  const twoFA = useQuery(twoFAStatusQuery());
+  /* Список устройств спрашивается у сервера. Прежде он брался из
+     useState — «сеансов нет» независимо от действительности (#478). */
   const sessions = useQuery(sessionsQuery());
   /* Какое действие ждёт подтверждения. Оба уводят из аккаунта, но одно из
      них вдобавок стирает ключи, поэтому спрашиваются они по-разному. */
@@ -120,18 +124,6 @@ export function AccountSection() {
       return <EmailSettings onBack={() => openView('overview')} user={user} />;
     }
 
-    if (view === 'twoFA') {
-      return (
-        <TwoFASettings
-          enabled={twoFA.data}
-          loading={twoFA.isPending}
-          onBack={() => openView('overview')}
-          onEnabledChange={() => void twoFA.refetch()}
-          showToast={showToast}
-        />
-      );
-    }
-
     if (view === 'sessions') {
       return (
         <SessionsSettings
@@ -152,9 +144,7 @@ export function AccountSection() {
         onOpenEmail={() => openView('email')}
         onOpenPassword={() => openView('password')}
         onOpenSessions={() => openView('sessions')}
-        onOpenTwoFA={() => openView('twoFA')}
         sessionsCount={sessions.data?.length}
-        twoFAEnabled={twoFA.data}
         user={user}
       />
     );
@@ -231,12 +221,10 @@ function AccountSettings({
   t,
   user,
   sessionsCount,
-  twoFAEnabled,
   onLogout,
   onEditProfile,
   onOpenEmail,
   onOpenPassword,
-  onOpenTwoFA,
   onOpenSessions,
 }) {
   const name =
@@ -271,7 +259,7 @@ function AccountSettings({
       </h2>
       {/* Строки разделены линией внутри блока — line-soft, а не line:
           она делит содержимое, а не очерчивает элемент управления (#374). */}
-      <div className="mb-7 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mb-7 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.email', 'Электронная почта')}
           onClick={onOpenEmail}
@@ -282,25 +270,12 @@ function AccountSettings({
           onClick={onOpenPassword}
           value="••••••••••"
         />
-        {/* Пока ответ не пришёл — прочерк, а не «отключена»: в разделе
-            безопасности выдуманное значение хуже отсутствия ответа. */}
-        <OverviewRow
-          label={t('settings.account.twoFA', 'Двухфакторная аутентификация')}
-          onClick={onOpenTwoFA}
-          value={
-            twoFAEnabled === undefined
-              ? '—'
-              : twoFAEnabled
-                ? t('settings.account.twoFAOn', 'включена')
-                : t('settings.account.twoFAOff', 'отключена')
-          }
-        />
       </div>
 
       <h2 className="text-caption mb-3 font-semibold text-ink-2">
         {t('settings.account.groupActions', 'Действия')}
       </h2>
-      <div className="divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         <OverviewRow
           label={t('settings.account.sessions', 'Активные сеансы')}
           onClick={onOpenSessions}
@@ -349,6 +324,7 @@ function PasswordSettings({ onBack, showToast }) {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<TPasswordForm>({
     resolver: zodResolver(passwordFormSchema),
@@ -359,6 +335,8 @@ function PasswordSettings({ onBack, showToast }) {
     mode: 'onTouched',
   });
 
+  const newPassword = watch('newPassword');
+
   async function submit(values: TPasswordForm) {
     try {
       await services.authService.changePassword(values.currentPassword, values.newPassword);
@@ -367,8 +345,21 @@ function PasswordSettings({ onBack, showToast }) {
     } catch (error) {
       /* Неверный текущий пароль — ошибка поля, а не всей формы: тост
          исчезнет, а подпись под полем останется и скажет, что править. */
-      if ((error as { data?: { code?: string } })?.data?.code === 'wrong_password') {
+      const code = (error as { data?: { code?: string } })?.data?.code;
+
+      if (code === 'wrong_password') {
         setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
+        return;
+      }
+
+      /* Сервер отверг пароль своей политикой. Наши правила её повторяют,
+         но могли отстать — тогда причину показываем у поля, а не тостом. */
+      if (code === 'weak_password') {
+        setError(
+          'newPassword',
+          { message: t('settings.password.weak', 'Пароль не отвечает требованиям') },
+          { shouldFocus: true }
+        );
         return;
       }
       showToast('error', t('toast.passwordChangeFailed', 'Не удалось изменить пароль'));
@@ -389,13 +380,18 @@ function PasswordSettings({ onBack, showToast }) {
           type="password"
           {...register('currentPassword')}
         />
-        <Input
-          autoComplete="new-password"
-          error={errors.newPassword?.message}
-          label={t('settings.password.new', 'Новый пароль')}
-          type="password"
-          {...register('newPassword')}
-        />
+        <div>
+          <Input
+            autoComplete="new-password"
+            error={errors.newPassword?.message}
+            label={t('settings.password.new', 'Новый пароль')}
+            type="password"
+            {...register('newPassword')}
+          />
+          {/* Требования те же, что при регистрации, и показаны так же:
+              иначе человек узнаёт о них по одному, из сообщений об ошибке. */}
+          {newPassword.length > 0 && <PasswordRequirements value={newPassword} />}
+        </div>
         <Input
           autoComplete="new-password"
           error={errors.confirmation?.message}
@@ -410,100 +406,6 @@ function PasswordSettings({ onBack, showToast }) {
           </Button>
           <Button loading={isSubmitting} type="submit">
             {t('settings.password.action', 'Изменить пароль')}
-          </Button>
-        </div>
-      </form>
-    </AccountSubpage>
-  );
-}
-
-function TwoFASettings({ enabled, loading, onBack, onEnabledChange, showToast }) {
-  const { t } = useTranslation();
-  const {
-    register,
-    handleSubmit,
-    setError,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<TTwoFAForm>({
-    resolver: zodResolver(twoFAFormSchema),
-    defaultValues: { password: '' },
-    mode: 'onTouched',
-  });
-
-  async function submit(values: TTwoFAForm) {
-    try {
-      await services.authService.setTwoFA(!enabled, values.password);
-      onEnabledChange();
-      showToast(
-        'success',
-        enabled
-          ? t('toast.twoFADisabled', 'Вторая ступень отключена')
-          : t('toast.twoFAEnabled', 'Вторая ступень включена')
-      );
-      onBack();
-    } catch (error) {
-      const code = (error as { data?: { code?: string } })?.data?.code;
-      /* Отключение проверяет пароль на сервере — и неверный это ошибка
-         поля, а не всей формы. */
-      if (code === 'wrong_password' || code === 'invalid_2fa') {
-        setError('password', { message: 'Неверный пароль' }, { shouldFocus: true });
-        return;
-      }
-      reset();
-      showToast('error', t('toast.twoFAFailed', 'Не удалось изменить настройки'));
-    }
-  }
-
-  return (
-    <AccountSubpage
-      description={t(
-        'settings.twoFA.description',
-        'Дополнительный пароль, который спрашивают при входе.'
-      )}
-      onBack={onBack}
-      title={t('settings.account.twoFA', 'Двухфакторная аутентификация')}
-    >
-      {/* Пока ответ не пришёл, состояние неизвестно — и говорится именно
-          это. Написать «отключена» значило бы успокоить человека, который
-          пришёл проверить, защищён ли его аккаунт. */}
-      <Banner icon="shield" tone={enabled ? 'success' : 'info'}>
-        {loading
-          ? 'Проверяем состояние защиты…'
-          : enabled === undefined
-            ? 'Состояние защиты неизвестно: сервер не ответил.'
-            : enabled
-              ? 'Защита включена: при входе спросят второй пароль.'
-              : 'Защита отключена: для входа достаточно основного пароля.'}
-      </Banner>
-
-      <form className="mt-4 grid gap-4" onSubmit={handleSubmit(submit)}>
-        <Input
-          autoComplete="off"
-          error={errors.password?.message}
-          hint={
-            enabled
-              ? t('settings.twoFA.hint', 'Введите второй пароль, чтобы отключить защиту')
-              : undefined
-          }
-          label={t('settings.twoFA.password', 'Второй пароль')}
-          type="password"
-          {...register('password')}
-        />
-
-        <div className="mt-2 flex justify-end gap-2">
-          <Button onClick={onBack} type="button" variant="ghost">
-            {t('cancel', 'Отмена')}
-          </Button>
-          <Button
-            disabled={enabled === undefined}
-            loading={isSubmitting}
-            type="submit"
-            variant={enabled ? 'danger' : 'primary'}
-          >
-            {enabled
-              ? t('settings.twoFA.disable', 'Отключить')
-              : t('settings.twoFA.enable', 'Включить')}
           </Button>
         </div>
       </form>
@@ -543,7 +445,7 @@ function SessionsSettings({ sessions, loading, error, onLogoutAll, onBack }) {
         </Banner>
       )}
 
-      <div className="mt-4 divide-y divide-line-soft overflow-hidden rounded-bubble border border-line bg-sheet">
+      <div className="mt-4 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
         {loading ? (
           <div className="text-body p-5 text-center text-ink-2">Загрузка…</div>
         ) : sessions.length > 0 ? (

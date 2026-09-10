@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query';
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import { chatKeys } from '@/queries/keys';
 
 /**

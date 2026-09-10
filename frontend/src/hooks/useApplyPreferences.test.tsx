@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
-import { STORAGE_KEYS } from '@/consts';
+import { STORAGE_KEYS } from '@/shared/config';
 import { testI18n } from '@/test/harness/i18n';
 import { userKeys } from '@/queries/keys';
 import { useApplyPreferences } from './useApplyPreferences';

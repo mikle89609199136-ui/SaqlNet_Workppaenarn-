@@ -1,5 +1,5 @@
 import { HttpResponse, http } from 'msw';
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   resolveChat,
   resolveMembers,
@@ -14,7 +14,11 @@ import { registerChatResolver } from './chatResolverBridge';
 
 const CHAT_ID = 'chat-1';
 
-afterEach(() => {
+/* Сброс — перед тестом, а не после. Первая проверка требует, чтобы
+   источник не был зарегистрирован, и раньше это обеспечивалось тем, что
+   файл выполнялся в собственном окружении. Окружение теперь общее:
+   состояние, на котором тест стоит, он обязан готовить сам. */
+beforeEach(() => {
   setChatResolver(null);
   setMembersResolver(null);
   queryClient.clear();

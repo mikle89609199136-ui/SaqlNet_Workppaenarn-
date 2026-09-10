@@ -27,7 +27,7 @@ export class Avatar {
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: '0',
-      cursor: this.onClick ? 'pointer' : 'default'
+      cursor: this.onClick ? 'pointer' : 'default',
     });
 
     if (this.onClick) {
@@ -41,7 +41,7 @@ export class Avatar {
       Object.assign(img.style, {
         width: '100%',
         height: '100%',
-        objectFit: 'cover'
+        objectFit: 'cover',
       });
       container.appendChild(img);
     } else if (this.name) {
@@ -51,7 +51,7 @@ export class Avatar {
         .join('')
         .toUpperCase()
         .substring(0, 2);
-      
+
       const text = document.createElement('span');
       text.textContent = initials;
       Object.assign(text.style, {
@@ -63,7 +63,7 @@ export class Avatar {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: this.getColorFromString(this.name)
+        background: this.getColorFromString(this.name),
       });
       container.appendChild(text);
     }
@@ -78,7 +78,7 @@ export class Avatar {
         height: '25%',
         borderRadius: '50%',
         background: '#00FF00',
-        border: `2px solid ${colors.background}`
+        border: `2px solid ${colors.background}`,
       });
       container.appendChild(status);
     }

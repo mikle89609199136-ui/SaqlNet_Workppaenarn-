@@ -1,4 +1,4 @@
-import { ROUTES } from '@/consts/routes';
+import { ROUTES } from '@/shared/config/routes';
 
 export interface ISettingsEntry {
   /** Как пункт называется на экране. */
@@ -44,12 +44,6 @@ export const SETTINGS_INDEX: ISettingsEntry[] = [
     section: 'Аккаунт',
     path: ROUTES.SETTINGS_SUBSECTION('account', 'password'),
     synonyms: ['сменить пароль', 'изменить пароль'],
-  },
-  {
-    title: 'Двухфакторная аутентификация',
-    section: 'Аккаунт',
-    path: ROUTES.SETTINGS_SUBSECTION('account', 'twoFA'),
-    synonyms: ['2fa', 'двухфакторная', 'второй пароль', 'защита', 'безопасность'],
   },
   {
     title: 'Активные сеансы',

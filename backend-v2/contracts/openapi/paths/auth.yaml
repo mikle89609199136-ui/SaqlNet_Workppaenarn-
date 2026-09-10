@@ -88,7 +88,7 @@
     security: [{ bearerAuth: [] }]
     requestBody:
       required: true
-      content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { type: string, format: password, minLength: 10 } } } } }
+      content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { $ref: '../components/schemas.yaml#/Password' } } } } }
     responses: { '200': { description: Password changed }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/status:
   get:
@@ -103,7 +103,7 @@
     summary: Enable 2FA
     operationId: enableTwoFactor
     security: [{ bearerAuth: [] }]
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
+    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { $ref: '../components/schemas.yaml#/Password' } } } } } }
     responses: { '200': { description: 2FA enabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/disable:
   post:

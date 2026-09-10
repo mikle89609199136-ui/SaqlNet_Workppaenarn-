@@ -96,14 +96,16 @@
     }
 
     function showNotificationNow(message, chatInfo) {
-      const senderName = message.senderFirstName
-        || message.sender?.firstName
-        || message.senderName
-        || 'Пользователь';
+      const senderName =
+        message.senderFirstName ||
+        message.sender?.firstName ||
+        message.senderName ||
+        'Пользователь';
       const notificationContent = getMessageNotificationContent(message);
-      const title = chatInfo.type === 'group' || chatInfo.type === 'channel'
-        ? `${chatInfo.name} • ${senderName}`
-        : senderName;
+      const title =
+        chatInfo.type === 'group' || chatInfo.type === 'channel'
+          ? `${chatInfo.name} • ${senderName}`
+          : senderName;
 
       showBrowserNotification(title, {
         body: notificationContent.body,
@@ -152,10 +154,12 @@
       file: { body: '📎 Файл', icon: '/logo.png' },
     };
 
-    return contentByType[message.type] || {
-      body: message.content || 'Новое сообщение',
-      icon: '/logo.png',
-    };
+    return (
+      contentByType[message.type] || {
+        body: message.content || 'Новое сообщение',
+        icon: '/logo.png',
+      }
+    );
   }
 
   global.CraneBrowserNotifications = {

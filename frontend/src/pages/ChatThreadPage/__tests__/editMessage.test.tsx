@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { STORAGE_KEYS } from '@/consts';
+import { STORAGE_KEYS } from '@/shared/config';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { api } from '@/test/msw/handlers';
@@ -49,7 +49,7 @@ function setupChat() {
 /** Правый клик по пузырю и выбор «Изменить» в меню действий. */
 async function chooseEditAction(user: ReturnType<typeof userEvent.setup>) {
   await user.pointer({ keys: '[MouseRight]', target: await screen.findByText(ORIGINAL_TEXT) });
-  await user.click(await screen.findByRole('button', { name: 'Изменить' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Изменить' }));
 
   return screen.getByLabelText('Сообщение');
 }

@@ -47,7 +47,7 @@ function collectDeletedIds(): string[] {
 async function openDeleteAction(messageText: string): Promise<HTMLElement> {
   fireEvent.contextMenu(screen.getByText(messageText));
 
-  return screen.findByRole('button', { name: 'Удалить' });
+  return screen.findByRole('menuitem', { name: 'Удалить' });
 }
 
 describe('удаление своего сообщения', () => {

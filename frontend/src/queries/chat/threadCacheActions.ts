@@ -6,6 +6,7 @@ import {
   canAppendToThread,
   patchMessage,
   removeMessage,
+  replaceMessage,
   type IThreadPages,
 } from './threadCache';
 
@@ -64,6 +65,18 @@ export function patchThreadMessage(
   markChatListStale(queryClient);
 }
 
+export function replaceThreadMessage(
+  queryClient: QueryClient,
+  chatId: string,
+  targetId: string,
+  replacement: IMessageDto
+): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? replaceMessage(current, targetId, replacement) : current
+  );
+  markChatListStale(queryClient);
+}
+
 /**
  * Отметка сообщений прочитанными.
  *
@@ -114,6 +127,7 @@ export function putPinnedMessage(
   queryClient.setQueryData<IPinnedDto[]>(chatKeys.pins(chatId), (current) =>
     current ? [...current.filter((item) => item.id !== pinned.id), pinned] : [pinned]
   );
+  patchThreadMessage(queryClient, chatId, pinned.messageId, { isPinned: true });
 }
 
 export function dropPinnedMessage(
@@ -124,6 +138,7 @@ export function dropPinnedMessage(
   queryClient.setQueryData<IPinnedDto[]>(chatKeys.pins(chatId), (current) =>
     current ? current.filter((item) => item.messageId !== messageId) : current
   );
+  patchThreadMessage(queryClient, chatId, messageId, { isPinned: false });
 }
 
 /** Полный сброс данных чата — например, когда сменились ключи шифрования. */

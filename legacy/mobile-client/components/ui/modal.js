@@ -65,18 +65,18 @@ export class Modal {
       onClick: () => {
         this.close();
         this.onClose();
-      }
+      },
     });
     actionsContainer.appendChild(closeBtn.render());
 
-    this.actions.forEach(action => {
+    this.actions.forEach((action) => {
       const btn = new Button({
         label: action.label,
         type: action.type || 'primary',
         onClick: () => {
           action.onClick();
           this.close();
-        }
+        },
       });
       actionsContainer.appendChild(btn.render());
     });

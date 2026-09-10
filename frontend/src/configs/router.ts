@@ -5,18 +5,17 @@ import { settingsQuery } from '@/queries/users/settingsQuery';
 import { useProfileStore } from '@/store';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
-import { AuthGuard } from '../components/guards/AuthGuard.js';
-import { AppLayout } from '../components/layouts/AppLayout.js';
-import { RootLayout } from '../components/layouts/RootLayout.js';
-import { RouteLoadingFallback } from '../components/ui/RouteLoadingFallback.js';
+import { AuthGuard } from '../components/guards/AuthGuard';
+import { AppLayout, RootLayout } from '@/layouts';
+import { RouteLoadingFallback } from '@/shared/ui';
 import {
   DEFAULT_SETTINGS_SECTION,
   REACT_ROUTES,
   ROUTES,
   SETTINGS_SECTIONS,
   type TSettingsSection,
-} from '../consts/routes';
-import { clearAuthSession } from '../utils/clearAuthSession.js';
+} from '@/shared/config/routes';
+import { clearAuthSession } from '@/utils/clearAuthSession';
 
 async function requireSession({ request }: { request: Request }) {
   const token = useProfileStore.getState().token;
@@ -193,9 +192,11 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/features/EmptyChatPlaceholder.js').then((m) => ({
-                        Component: m.EmptyChatPlaceholder,
-                      })),
+                      import('../components/features/ChatThread/EmptyChatPlaceholder').then(
+                        (m) => ({
+                          Component: m.EmptyChatPlaceholder,
+                        })
+                      ),
                   },
                   {
                     path: REACT_ROUTES.CHAT_BY_ID,
@@ -209,11 +210,28 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
+              /* Разделы, которых ещё нет. Без своих маршрутов их ловил общий
+                 перехват и возвращал в чаты: адрес менялся, экран оставался
+                 прежним, и выходило, будто кнопка сломана. */
               {
-                path: REACT_ROUTES.CONTACTS,
+                path: REACT_ROUTES.CHANNELS,
                 lazy: () =>
-                  import('../pages/ContactsPage/ContactsPage.js').then((m) => ({
-                    Component: m.ContactsPage,
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.ChannelsPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.COMMUNITIES,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.CommunitiesPage,
+                  })),
+              },
+              {
+                path: REACT_ROUTES.MEETINGS,
+                lazy: () =>
+                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                    Component: m.MeetingsPage,
                   })),
               },
               {
