@@ -29,7 +29,6 @@ func main() {
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto)
 	svc := chat.NewService(pool, wsServer)
-	wsServer.SetService(svc)
 	handler := chat.NewHandler(svc)
 
 	// In production NATS is required. In other environments it is optional

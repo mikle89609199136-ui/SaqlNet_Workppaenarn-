@@ -1,11 +1,13 @@
 //go:build integration
 
-package chat_test
+package integration
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,75 +35,49 @@ func (stubTokenVerifier) VerifyToken(_ context.Context, token string) (cryptocli
 	return cryptoclient.TokenClaims{Subject: token}, nil
 }
 
-// TestWSChatMessage_Mute — real WebSocket integration test (CHAT-B011):
-// muted-участник (member и admin) не может отправить сообщение по WS,
-// после истечения mute — может. PostgreSQL 16 в testcontainers, миграции — источник схемы.
-func TestWSChatMessage_Mute(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration test")
-	}
+// TestWSChatMessage_Unsupported проверяет регрессионный контракт CHAT-B011:
+// входящая команда chat_message более не поддерживается сервером и игнорируется в readPump.
+//
+// Инварианты:
+// 1. Сообщение не сохраняется в messages.messages (БД пуста).
+// 2. Broadcast-сообщение не рассылается другим участникам (owner получает timeout в requireNoFrame).
+// 3. Отправитель не получает chat_message_error или иных кадров, отличных от ответа на ping.
+//
+// Детерминизм: после отправки chat_message отправляется ping; получение pong гарантирует,
+// что предыдущий кадр chat_message уже был прочитан и обработан в readPump без гонки с проверкой БД.
+func TestWSChatMessage_Unsupported(t *testing.T) {
 	db := setupPostgres(t)
-
-	ownerID := seedUser(t, db, "owner1")
-	memberID := seedUser(t, db, "member1")
+	ownerID := seedUser(t, db, "owner")
+	memberID := seedUser(t, db, "member")
 	chatID := seedGroupChat(t, db, ownerID, memberID)
 
 	ws := chat.NewWSServer(db, stubTokenVerifier{})
-	svc := chat.NewService(db, ws)
-	ws.SetService(svc)
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 
-	t.Run("MutedMember", func(t *testing.T) {
-		setMute(t, db, chatID, memberID, time.Now().Add(time.Hour))
-
-		owner := dialWS(t, srv, ownerID)
-		member := dialWS(t, srv, memberID)
-		defer func() { _ = owner.Close() }()
-		defer func() { _ = member.Close() }()
-
-		sendChatMessage(t, member, chatID, "ws-muted-bypass")
-
-		errFrame := readFrame(t, member)
-		require.Equal(t, "chat_message_error", errFrame["type"])
-		require.Equal(t, "member_muted", errFrame["code"])
-		require.Equal(t, chatID, errFrame["chatId"])
-		requireNoFrame(t, owner)
-		require.Equal(t, 0, countMessages(t, db, chatID))
+	owner := dialWS(t, srv, ownerID)
+	member := dialWS(t, srv, memberID)
+	t.Cleanup(func() {
+		_ = owner.Close()
+	})
+	t.Cleanup(func() {
+		_ = member.Close()
 	})
 
-	t.Run("MutedAdmin", func(t *testing.T) {
-		setRole(t, db, chatID, memberID, "admin")
-		setMute(t, db, chatID, memberID, time.Now().Add(time.Hour))
+	sendChatMessage(t, member, chatID, "ws-unsupported-payload")
+	sendPing(t, member)
 
-		owner := dialWS(t, srv, ownerID)
-		member := dialWS(t, srv, memberID)
-		defer func() { _ = owner.Close() }()
-		defer func() { _ = member.Close() }()
+	pongFrame := readFrame(t, member)
+	require.Equal(t, "pong", pongFrame["type"], "ожидали ответ pong на ping, подтверждающий обработку предыдущего кадра")
+	requireNoFrame(t, owner)
+	require.Equal(t, 0, countMessages(t, db, chatID), "сообщение не должно быть сохранено в базе данных")
+}
 
-		sendChatMessage(t, member, chatID, "ws-muted-admin-bypass")
-
-		errFrame := readFrame(t, member)
-		require.Equal(t, "chat_message_error", errFrame["type"])
-		require.Equal(t, "member_muted", errFrame["code"])
-		requireNoFrame(t, owner)
-		require.Equal(t, 0, countMessages(t, db, chatID))
-	})
-
-	t.Run("MuteExpired", func(t *testing.T) {
-		setMute(t, db, chatID, memberID, time.Now().Add(-time.Hour))
-
-		owner := dialWS(t, srv, ownerID)
-		member := dialWS(t, srv, memberID)
-		defer func() { _ = owner.Close() }()
-		defer func() { _ = member.Close() }()
-
-		sendChatMessage(t, member, chatID, "after-expiry")
-
-		frame := readFrame(t, owner)
-		require.Equal(t, "new_message", frame["type"])
-		require.Equal(t, 1, countMessages(t, db, chatID))
-	})
+func sendPing(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	require.NoError(t, conn.WriteJSON(map[string]any{
+		"type": "ping",
+	}))
 }
 
 func setupPostgres(t *testing.T) *sql.DB {
@@ -146,9 +122,12 @@ func setupPostgres(t *testing.T) *sql.DB {
 // applyMigrations применяет backend-v2/migrations/*.sql по порядку — схема из миграций.
 func applyMigrations(t *testing.T, db *sql.DB) {
 	t.Helper()
-	files, err := filepath.Glob("../../migrations/*.sql")
+	files, err := filepath.Glob("../../../../migrations/*.sql")
 	if err != nil {
 		t.Fatalf("glob migrations: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no migration files found")
 	}
 	sort.Strings(files)
 	for _, f := range files {
@@ -194,23 +173,6 @@ func seedGroupChat(t *testing.T, db *sql.DB, ownerID, memberID string) string {
 	return chatID
 }
 
-// setMute выставляет member-у muted_at=NOW() и заданный muted_until (прошлое = истёкший mute).
-func setMute(t *testing.T, db *sql.DB, chatID, userID string, until time.Time) {
-	t.Helper()
-	_, err := db.Exec(
-		`UPDATE chats.members SET muted_at = NOW(), muted_until = $3 WHERE chat_id = $1 AND user_id = $2`,
-		chatID, userID, until)
-	require.NoError(t, err)
-}
-
-func setRole(t *testing.T, db *sql.DB, chatID, userID, role string) {
-	t.Helper()
-	_, err := db.Exec(
-		`UPDATE chats.members SET role = $3 WHERE chat_id = $1 AND user_id = $2`,
-		chatID, userID, role)
-	require.NoError(t, err)
-}
-
 func countMessages(t *testing.T, db *sql.DB, chatID string) int {
 	t.Helper()
 	var n int
@@ -248,12 +210,13 @@ func readFrame(t *testing.T, conn *websocket.Conn) map[string]any {
 	return frame
 }
 
-// requireNoFrame проверяет, что за 300 мс соединение ничего не получило.
+// requireNoFrame проверяет, что за 300 мс соединение ничего не получило (ожидается сетевой таймаут).
 func requireNoFrame(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(300*time.Millisecond)))
 	var frame map[string]any
-	if err := conn.ReadJSON(&frame); err == nil {
-		t.Fatalf("не ожидали фрейм, получили: %v", frame)
-	}
+	err := conn.ReadJSON(&frame)
+	require.Error(t, err, "не ожидали фрейм, получили: %v", frame)
+	var netErr net.Error
+	require.True(t, errors.As(err, &netErr) && netErr.Timeout(), "ожидали сетевой таймаут, получили: %v", err)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -38,12 +37,6 @@ type tokenVerifier interface {
 	VerifyToken(context.Context, string) (cryptoclient.TokenClaims, error)
 }
 
-// messageSender — узкий интерфейс Service.SendMessage для обработки
-// WS-сообщений без циклической зависимости Service ↔ WSServer.
-type messageSender interface {
-	SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string, metadata map[string]any) (Message, error)
-}
-
 type Client struct {
 	UserID     string
 	Conn       *websocket.Conn
@@ -62,7 +55,6 @@ type WSServer struct {
 	callRooms      *CallRoomManager
 	pendingInvites map[string]json.RawMessage
 	inviteMu       sync.Mutex
-	svc            messageSender
 }
 
 func NewWSServer(db *sql.DB, crypto tokenVerifier) *WSServer {
@@ -77,12 +69,6 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier) *WSServer {
 	}
 	go ws.run()
 	return ws
-}
-
-// SetService внедряет Service после создания обеих сторон
-// (Service получает WSServer в NewService, поэтому конструктором нельзя).
-func (ws *WSServer) SetService(svc messageSender) {
-	ws.svc = svc
 }
 
 func (ws *WSServer) CallRooms() *CallRoomManager {
@@ -211,9 +197,6 @@ func (ws *WSServer) readPump(client *Client) {
 		case "ping", "pong":
 			client.Send <- []byte(`{"type":"pong"}`)
 
-		case "chat_message":
-			ws.HandleChatMessage(client, msg)
-
 		case "typing":
 			chatID, _ := msg["chatId"].(string)
 			if chatID != "" {
@@ -271,45 +254,6 @@ func (ws *WSServer) readPump(client *Client) {
 			}
 		}
 	}
-}
-
-// HandleChatMessage обрабатывает входящее WS-сообщение chat_message через
-// Service.SendMessage — единый flow авторизации (mute, membership) для HTTP и WS.
-// При ошибке отправителю возвращается адресный фрейм chat_message_error.
-func (ws *WSServer) HandleChatMessage(client *Client, msg map[string]interface{}) {
-	chatID, _ := msg["chatId"].(string)
-	if chatID == "" {
-		return
-	}
-	content, _ := msg["content"].(string)
-	mType, _ := msg["messageType"].(string)
-	if mType == "" {
-		mType = "text"
-	}
-	if ws.svc == nil {
-		return
-	}
-	if _, err := ws.svc.SendMessage(context.Background(), client.UserID, chatID, content, mType, nil, nil); err != nil {
-		ws.sendChatMessageError(client, chatID, err)
-	}
-}
-
-// sendChatMessageError маппит ошибку SendMessage в документированный код
-// и отправляет отправителю фрейм {"type":"chat_message_error","code":...,"chatId":...}.
-func (ws *WSServer) sendChatMessageError(client *Client, chatID string, err error) {
-	code := "internal_error"
-	switch {
-	case errors.Is(err, ErrMemberMuted):
-		code = "member_muted"
-	case errors.Is(err, ErrForbidden):
-		code = "access_denied"
-	}
-	frame, _ := json.Marshal(map[string]any{
-		"type":   "chat_message_error",
-		"code":   code,
-		"chatId": chatID,
-	})
-	client.Send <- frame
 }
 
 func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
