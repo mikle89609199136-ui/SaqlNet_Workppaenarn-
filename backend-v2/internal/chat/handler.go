@@ -40,6 +40,8 @@ func NewHandler(service *Service) *Handler {
 // "false". Any other value, an empty value, or a duplicated parameter
 // results in 400 with code "validation_failed".
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	const method = "List"
+
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r)
 		return
@@ -51,14 +53,26 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	archived, err := parseArchived(r.URL.Query())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[Handler - List]:error in parsing archived parameter", "err", err, "user_id", current.ID, "archived", archived)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "wrong parameter")
+		slog.WarnContext(r.Context(), "invalid archived parameter",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"raw_query", r.URL.RawQuery,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid archived parameter")
 		return
 	}
 
 	chats, err := h.service.List(r.Context(), current.ID, archived)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[Handler - List]:list chats failed", "err", err, "user_id", current.ID, "archived", archived)
+		slog.ErrorContext(r.Context(), "list chats failed",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"archived", archived,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
