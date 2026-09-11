@@ -560,101 +560,139 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 	return chatID, false, tx.Commit()
 }
 
-// CreateGroup creates a new group chat with the specified owner and members.
-// Parameters:
-//   - ownerID: ID of the user who will be the owner of the group.
-//   - title: group title (must be non-empty after trimming).
-//   - description, avatarURL: optional group description and avatar URL.
-//   - members: list of user IDs to be added as members (must not be empty).
+// CreateGroup creates a new group chat owned by ownerID and adds the
+// given members. The owner is inserted with role "owner"; other members
+// with role "member".
 //
-// Returns:
-//   - chatID: the ID of the newly created group chat.
-//   - error: ErrInvalidInput if title is empty or members list is empty,
-//     database errors otherwise.
+// All text fields (title, description, avatarURL) are trimmed of
+// surrounding whitespace before validation and storage. An
+// all-whitespace title, a title longer than maxTitleLen runes, or an
+// empty members list results in ErrInvalidInput.
+//
+// All inserts run in a single transaction. On success it returns the ID
+// of the newly created chat.
 func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, avatarURL string, members []string) (string, error) {
-	// NOTE: title, description, and avatarURL are already trimmed by the handler.
-	// We keep defensive trimming for safety, but it's not strictly necessary.
+	const method = "CreateGroup"
+
 	title = strings.TrimSpace(title)
 	description = strings.TrimSpace(description)
 	avatarURL = strings.TrimSpace(avatarURL)
 
-	// Validate input: title must be non-empty and at least one member (besides owner) must be provided.
+	// Duplicated in the handler, but kept here because the service is a
+	// public boundary: callers other than the HTTP handler must not be
+	// able to create a group with an invalid title or no members.
 	if title == "" || len(members) == 0 {
 		return "", ErrInvalidInput
 	}
+	if utf8.RuneCountInString(title) > maxTitleLen {
+		return "", ErrInvalidInput
+	}
 
-	// Start a database transaction to ensure atomicity.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		slog.Error("[Service-CreateGroup]:failed to begin transaction", "ownerID", ownerID, "error", err)
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
+	// Rollback is a no-op after Commit, so an explicit error check is
+	// not useful here.
 	defer func() { _ = tx.Rollback() }()
+
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
 		VALUES ('group', $1, $2, $3, $4)
 		RETURNING id::text
 	`, title, description, avatarURL, ownerID).Scan(&chatID); err != nil {
-		slog.Error("[Service-CreateGroup]:failed to insert group chat", "ownerID", ownerID, "title", title, "error", err)
+		slog.ErrorContext(ctx, "failed to insert group chat",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
 
-	// Track seen user IDs to avoid duplicate insertion.
+	// The owner is always a member; tracking seen IDs here prevents
+	// duplicates and lets the loop below skip ownerID if it appears in
+	// the members slice.
 	seen := map[string]bool{ownerID: true}
 
-	// Insert the owner as a member with role 'owner'.
-	if _, err := tx.ExecContext(ctx, `INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, 'owner')`, chatID, ownerID); err != nil {
-		slog.Error("[Service-CreateGroup]:failed to insert owner as member", "chatID", chatID, "ownerID", ownerID, "error", err)
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, $3)`,
+		chatID, ownerID, "owner",
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to insert owner as member",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
 
-	// Insert all other members (skip empty or duplicate IDs).
-	// Only existing users with disabled_at IS NULL are inserted.
+	// The SELECT filters out unknown and disabled users; ON CONFLICT
+	// covers a race with a concurrent insert of the same membership.
 	for _, memberID := range members {
 		if memberID == "" || seen[memberID] {
 			continue
 		}
 		seen[memberID] = true
+
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO chats.members (chat_id, user_id, role)
-			SELECT $1, id, 'member' FROM auth.users WHERE id = $2 AND disabled_at IS NULL
+			SELECT $1, id, $3 FROM auth.users WHERE id = $2 AND disabled_at IS NULL
 			ON CONFLICT DO NOTHING
-		`, chatID, memberID); err != nil {
-			slog.Error("[Service-CreateGroup]:failed to insert member into group", "chatID", chatID, "memberID", memberID, "error", err)
+		`, chatID, memberID, "member"); err != nil {
+			slog.ErrorContext(ctx, "failed to insert member into group",
+				"layer", "service",
+				"method", method,
+				"err", err,
+				"chat_id", chatID,
+				"member_id", memberID,
+			)
 			return "", err
 		}
 	}
 
-	// Commit the transaction.
 	if err := tx.Commit(); err != nil {
-		slog.Error("[Service-CreateGroup]:failed to commit transaction", "chatID", chatID, "ownerID", ownerID, "error", err)
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
 
 	return chatID, nil
 }
 
-// UpdateGroup updates the title, description, and/or avatar URL of an existing group chat.
-// Only allowed for owners and admins of the chat. All fields are optional;
-// nil means "do not update", non‑nil means update to the provided value.
-// Parameters:
-//   - actorID: the user performing the update (must be owner or admin).
-//   - chatID: the ID of the group chat to update.
-//   - title, description, avatarURL: pointers to new values (nil = no update).
+// UpdateGroup updates the title, description, and/or avatar URL of a group
+// chat. Nil arguments mean "leave unchanged"; non-nil values overwrite the
+// stored value.
 //
-// Returns:
-//   - Chat: the updated chat object after applying the changes.
-//   - error: ErrNotFound if chat does not exist or actor is not a member,
-//     ErrInvalidChatType if chat is not a group,
-//     ErrForbidden if actor lacks sufficient permissions,
-//     ErrInvalidInput if any provided field is invalid (e.g., empty title),
-//     or database error.
+// The caller must be the chat owner or an admin. Returns ErrNotFound if the
+// chat does not exist or the actor is not a member, ErrInvalidChatType if
+// the chat is not a group, ErrForbidden if the actor lacks permission, and
+// ErrInvalidInput if a provided field fails validation.
+//
+// On success it broadcasts a "chat_updated" event to all chat members when
+// the WebSocket hub is configured.
 func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title, description, avatarURL *string) (Chat, error) {
-	var chatType string
-	var role string
+	const method = "UpdateGroup"
 
-	// Retrieve chat type and the actor's role in one query.
+	var chatType, role string
+
+	// Fetch chat type and the actor's role in a single round trip: both
+	// are needed before any mutation, and combining them avoids a second
+	// query that could race against concurrent membership changes.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT c.type, m.role
 		FROM chats.chats c
@@ -664,40 +702,52 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 	`, chatID, actorID).Scan(&chatType, &role)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// Chat not found or user is not a member.
+		// The join yields no rows both when the chat is missing and when
+		// the actor is not a member; both cases map to ErrNotFound so we
+		// do not leak chat existence to non-members.
 		return Chat{}, ErrNotFound
 	}
 
 	if err != nil {
-		slog.Error("[Service-UpdateGroup]:failed to query chat and role", "chatID", chatID, "actorID", actorID, "error", err)
+		slog.ErrorContext(ctx, "failed to query chat and role",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
-	// Ensure at least one field is provided for update.
 	if title == nil && description == nil && avatarURL == nil {
 		return Chat{}, ErrInvalidInput
 	}
 
-	// Validate and trim title if provided.
-	if title != nil {
-		trimmedTitle := strings.TrimSpace(*title)
-		if trimmedTitle == "" {
-			return Chat{}, ErrInvalidInput
-		}
-		title = &trimmedTitle
+	// Normalize before validating. The handler already does this for
+	// its own length check, but the service is a public boundary:
+	// workers and scripts may call it directly and must not bypass
+	// the invariant "no stored value has surrounding whitespace".
+	title = trimString(title)
+	description = trimString(description)
+	avatarURL = trimString(avatarURL)
+
+	if title != nil && *title == "" {
+		return Chat{}, ErrInvalidInput
+	}
+	if title != nil && utf8.RuneCountInString(*title) > maxTitleLen {
+		return Chat{}, ErrInvalidInput
 	}
 
-	// The chat must be a group.
 	if chatType != "group" {
 		return Chat{}, ErrInvalidChatType
 	}
-
-	// Only owner or admin can update the group.
 	if role != "owner" && role != "admin" {
 		return Chat{}, ErrForbidden
 	}
 
-	// Perform the update using COALESCE to conditionally set each field.
+	// COALESCE keeps the update idempotent for absent fields without
+	// building dynamic SQL: a nil pointer becomes SQL NULL, which makes
+	// COALESCE fall back to the existing column value.
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE chats.chats
 		SET title = COALESCE($1::text, title),
@@ -707,20 +757,29 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 		WHERE id = $4
 		AND type = 'group'
 	`, title, description, avatarURL, chatID)
-
 	if err != nil {
-		slog.Error("[Service-UpdateGroup]:failed to update group chat", "chatID", chatID, "actorID", actorID, "error", err)
+		slog.ErrorContext(ctx, "failed to update group chat",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
-	// Retrieve the updated chat object.
 	updatedChat, err := s.Get(ctx, actorID, chatID)
 	if err != nil {
-		slog.Error("[Service-UpdateGroup]:failed to retrieve updated chat after update", "chatID", chatID, "actorID", actorID, "error", err)
+		slog.ErrorContext(ctx, "failed to reload chat after update",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
-	// Broadcast WebSocket event to all members if WS hub is present.
 	if s.ws != nil {
 		payload, err := json.Marshal(map[string]any{
 			"type":   "chat_updated",
@@ -728,8 +787,15 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 			"chat":   updatedChat,
 		})
 		if err != nil {
-			// Log the marshaling error as a warning, but do not fail the request.
-			slog.Warn("[Service-UpdateGroup]:failed to marshal chat_updated event", "chatID", chatID, "error", err)
+			// Marshaling failure is non-fatal: the DB is already updated,
+			// and rolling back here would only hide the real problem.
+			// The event is dropped and the error is logged for visibility.
+			slog.WarnContext(ctx, "failed to marshal chat_updated event",
+				"layer", "service",
+				"method", method,
+				"err", err,
+				"chat_id", chatID,
+			)
 		} else {
 			s.ws.BroadcastToChat(chatID, payload, "")
 		}
