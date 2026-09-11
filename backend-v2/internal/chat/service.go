@@ -511,7 +511,7 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 	if err != nil {
 		return "", false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var peerExists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1 AND disabled_at IS NULL)`, peerID).Scan(&peerExists); err != nil {
@@ -569,7 +569,7 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
@@ -984,7 +984,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var lockDummy any
 	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
@@ -1140,7 +1140,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Согласованная блокировка пары (chat, user): AddMember берёт тот же
 	// lock до проверок membership/ban — гонка add/ban исключена.
@@ -1631,7 +1631,9 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 			msg.DeletedAt = &deletedAt.String
 		}
 		if metadataBytes != nil {
-			json.Unmarshal(metadataBytes, &msg.Metadata)
+			if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		messages = append(messages, msg)
 	}
@@ -1707,7 +1709,9 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		msg.DeletedAt = &deletedAt.String
 	}
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
@@ -1773,7 +1777,9 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		msg.DeletedAt = &deletedAt.String
 	}
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
@@ -1804,7 +1810,7 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Require sender to be a current member to prevent deletion after being kicked.
 	err = tx.QueryRowContext(ctx, `

@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -910,14 +908,6 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 		return false
 	}
 	return true
-}
-
-func randomID() string {
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
-		return "room"
-	}
-	return hex.EncodeToString(bytes[:])
 }
 
 func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
