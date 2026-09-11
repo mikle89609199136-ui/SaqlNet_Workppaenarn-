@@ -26,22 +26,23 @@ type testStore struct {
 	putCalls    int
 	deleteCalls int
 	lastPutSize int64
+	lastPutType string
+	lastPutData []byte
 }
 
-func (testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
-	return &ObjectResponse{
-		Body:       io.NopCloser(bytes.NewReader(nil)),
-		StatusCode: http.StatusOK,
-	}, nil
+func (s *testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+	return objectResponse(http.StatusOK, string(s.lastPutData)), nil
 }
 
-func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, _ string) error {
+func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, contentType string) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 	s.putCalls++
 	s.lastPutSize = int64(len(data))
+	s.lastPutType = contentType
+	s.lastPutData = data
 	return nil
 }
 
