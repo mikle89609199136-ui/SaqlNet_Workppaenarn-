@@ -1,5 +1,5 @@
-import { Avatar, Button, Icon, Modal } from '@/components/ui';
-import { useToasts } from '@/hooks';
+import { describeApiError } from '@/shared/api';
+import { Avatar, Button, Icon, Modal, showToast } from '@/shared/ui';
 import { services } from '@/services';
 import { membersQuery } from '@/queries/chat/membersQuery';
 import { chatQuery } from '@/queries/chat/threadQueries';
@@ -18,7 +18,6 @@ interface Props {
 }
 
 export function GroupInfoModal({ isOpen, onClose }: Props) {
-  const { showToast } = useToasts();
   const [isEditMode, setEditMode] = useState(false);
   const navigate = useNavigate();
   const currentUserData = useProfileStore((state) => state.user);
@@ -72,7 +71,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       // только в состоянии модалки и пропадало при переоткрытии.
       await queryClient.invalidateQueries({ queryKey: chatKeys.members(chatId) });
     } catch (err: any) {
-      showToast('error', err.message || t('toast.actionFailed', 'Ошибка выполнения действия'));
+      showToast(
+        'error',
+        describeApiError(err, t, t('toast.actionFailed', 'Ошибка выполнения действия'))
+      );
     }
   }
 
@@ -106,7 +108,10 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       onClose();
       navigate('/chats');
     } catch (err: any) {
-      showToast('error', err?.message || t('toast.leaveChatFailed', 'Не удалось покинуть чат'));
+      showToast(
+        'error',
+        describeApiError(err, t, t('toast.leaveChatFailed', 'Не удалось покинуть чат'))
+      );
     }
   };
 
@@ -121,7 +126,11 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     } catch (err: any) {
       showToast(
         'error',
-        err.message || t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+        describeApiError(
+          err,
+          t,
+          t('toast.chatDeleteFailed', 'Не удалось удалить чат, попробуйте ещё раз')
+        )
       );
     }
   };
@@ -208,7 +217,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
         {isLoading ? (
           <div className="text-center py-6 text-ink-3">{t('loading', 'Загрузка...')}</div>
         ) : (
-          <ul className="divide-y divide-line rounded-window border border-line bg-sheet-2">
+          <ul className="divide-y divide-divider rounded-window border border-line bg-sheet-2">
             {members.map((member) => {
               const memberId = member.id;
               const avatarUrl = member.avatarUrl;

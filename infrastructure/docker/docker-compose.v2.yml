@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: craneapp
       POSTGRES_PASSWORD: craneapp-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U craneapp -d craneapp"]
+      test: [ 'CMD-SHELL', 'pg_isready -U craneapp -d craneapp' ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -15,24 +15,24 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    command: ["-js", "-sd", "/data"]
+    command: [ '-js', '-sd', '/data' ]
     volumes:
       - nats_v2:/data
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: [ 'redis-server', '--appendonly', 'yes' ]
     volumes:
       - redis_v2:/data
 
   minio:
     image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+    command: [ 'server', '/data', '--console-address', ':9001' ]
     environment:
       MINIO_ROOT_USER: craneapp
       MINIO_ROOT_PASSWORD: craneapp-local-secret
     ports:
-      - "9001:9001"
+      - '9001:9001'
     volumes:
       - minio_v2:/data
 
@@ -47,8 +47,8 @@ services:
     environment:
       PGPASSWORD: craneapp-local
     volumes:
-      - ../../backend-v2/migrations:/migrations:ro,z
-    command: ["/bin/sh", "-c", "set -e; for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done"]
+      - ../../backend-v2/migrations:/migrations:ro
+    command: [ '/bin/sh', '-c', 'set -e; for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done' ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +112,7 @@ services:
       MINIO_SECRET_KEY: craneapp-local-secret
       MINIO_REGION: us-east-1
       MEDIA_BUCKET: crane-media
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:?MAX_FILE_SIZE is required}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -148,7 +149,7 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
       CRANE_ENV: production
     ports:
-      - "8080:8080"
+      - '8080:8080'
     depends_on:
       - auth
       - user

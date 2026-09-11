@@ -1,4 +1,8 @@
-export { ChatThreadPage, type IProfileModal, type IProfileState } from './ChatPage/ChatThreadPage';
+export {
+  ChatThreadPage,
+  type IProfileModal,
+  type IProfileState,
+} from './ChatThreadPage/ChatThreadPage';
 export { ChatsPage } from './ChatsPage/ChatsPage';
 export { LoginPage } from './LoginPage/LoginPage';
 export { RegisterPage } from './RegisterPage/RegisterPage';

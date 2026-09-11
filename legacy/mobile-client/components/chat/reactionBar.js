@@ -4,226 +4,403 @@
  */
 
 class ReactionBar {
-    constructor(options = {}) {
-        this.options = {
-            messageId: options.messageId || null,
-            existingReactions: options.existingReactions || [],
-            onReact: options.onReact || null,
-            onRemove: options.onRemove || null,
-            position: options.position || 'top', // top, bottom
-            className: options.className || '',
-            ...options
-        };
-        
-        this.element = null;
-        this.selectedEmoji = null;
-        this.render();
-    }
+  constructor(options = {}) {
+    this.options = {
+      messageId: options.messageId || null,
+      existingReactions: options.existingReactions || [],
+      onReact: options.onReact || null,
+      onRemove: options.onRemove || null,
+      position: options.position || 'top', // top, bottom
+      className: options.className || '',
+      ...options,
+    };
 
-    render() {
-        this.element = document.createElement('div');
-        this.element.className = this.getClasses();
-        
-        // Quick reactions
-        const quickReactions = document.createElement('div');
-        quickReactions.className = 'reaction-quick';
-        
-        const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👎'];
-        
-        quickEmojis.forEach(emoji => {
-            const btn = this.createReactionButton(emoji, false);
-            quickReactions.appendChild(btn);
-        });
-        
-        this.element.appendChild(quickReactions);
-        
-        // More reactions button
-        const moreBtn = document.createElement('button');
-        moreBtn.className = 'reaction-more-btn';
-        moreBtn.innerHTML = `
+    this.element = null;
+    this.selectedEmoji = null;
+    this.render();
+  }
+
+  render() {
+    this.element = document.createElement('div');
+    this.element.className = this.getClasses();
+
+    // Quick reactions
+    const quickReactions = document.createElement('div');
+    quickReactions.className = 'reaction-quick';
+
+    const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👎'];
+
+    quickEmojis.forEach((emoji) => {
+      const btn = this.createReactionButton(emoji, false);
+      quickReactions.appendChild(btn);
+    });
+
+    this.element.appendChild(quickReactions);
+
+    // More reactions button
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'reaction-more-btn';
+    moreBtn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="1"></circle>
                 <circle cx="19" cy="12" r="1"></circle>
                 <circle cx="5" cy="12" r="1"></circle>
             </svg>
         `;
-        moreBtn.addEventListener('click', () => this.showEmojiPicker());
-        this.element.appendChild(moreBtn);
-        
-        return this.element;
+    moreBtn.addEventListener('click', () => this.showEmojiPicker());
+    this.element.appendChild(moreBtn);
+
+    return this.element;
+  }
+
+  createReactionButton(emoji, isFromPicker = false) {
+    const btn = document.createElement('button');
+    btn.className = 'reaction-btn';
+
+    // Check if user already reacted with this emoji
+    const existingReaction = this.options.existingReactions.find(
+      (r) => r.emoji === emoji && r.reacted
+    );
+
+    if (existingReaction) {
+      btn.classList.add('reacted');
     }
 
-    createReactionButton(emoji, isFromPicker = false) {
-        const btn = document.createElement('button');
-        btn.className = 'reaction-btn';
-        
-        // Check if user already reacted with this emoji
-        const existingReaction = this.options.existingReactions.find(
-            r => r.emoji === emoji && r.reacted
+    btn.textContent = emoji;
+
+    btn.addEventListener('click', () => {
+      if (existingReaction) {
+        // Remove reaction
+        this.options.onRemove?.(this.options.messageId, emoji);
+      } else {
+        // Add reaction
+        this.options.onReact?.(this.options.messageId, emoji);
+      }
+
+      // Dispatch custom event
+      window.dispatchEvent(
+        new CustomEvent('reaction-selected', {
+          detail: {
+            messageId: this.options.messageId,
+            emoji,
+            action: existingReaction ? 'remove' : 'add',
+          },
+        })
+      );
+    });
+
+    return btn;
+  }
+
+  showEmojiPicker() {
+    // Create emoji picker popup
+    const picker = document.createElement('div');
+    picker.className = 'emoji-picker-popup';
+
+    // Emoji categories
+    const categories = {
+      Smileys: [
+        '😀',
+        '😃',
+        '😄',
+        '😁',
+        '😅',
+        '😂',
+        '🤣',
+        '😊',
+        '😇',
+        '🙂',
+        '😉',
+        '😌',
+        '😍',
+        '🥰',
+        '😘',
+        '😗',
+        '😙',
+        '😚',
+        '😋',
+        '😛',
+        '😜',
+        '🤪',
+        '😝',
+        '🤑',
+        '🤗',
+        '🤭',
+        '🤫',
+        '🤔',
+        '🤐',
+        '🤨',
+        '😐',
+        '😑',
+        '😶',
+        '😏',
+        '😒',
+        '🙄',
+        '😬',
+        '🤥',
+        '😌',
+        '😔',
+        '😪',
+        '🤤',
+        '😴',
+        '😷',
+        '🤒',
+        '🤕',
+        '🤢',
+        '🤮',
+        '🤧',
+        '🥵',
+        '🥶',
+        '🥴',
+        '😵',
+        '🤯',
+        '🤠',
+        '🥳',
+        '😎',
+        '🤓',
+        '🧐',
+      ],
+      Gestures: [
+        '👍',
+        '👎',
+        '👌',
+        '✌️',
+        '🤞',
+        '🤟',
+        '🤘',
+        '🤙',
+        '👈',
+        '👉',
+        '👆',
+        '👇',
+        '☝️',
+        '✋',
+        '🤚',
+        '🖐',
+        '🖖',
+        '👋',
+        '🤝',
+        '✊',
+        '👊',
+        '🤛',
+        '🤜',
+        '👏',
+        '🙌',
+        '👐',
+        '🤲',
+        '🙏',
+        '💪',
+        '🦾',
+      ],
+      Hearts: [
+        '❤️',
+        '🧡',
+        '💛',
+        '💚',
+        '💙',
+        '💜',
+        '🖤',
+        '🤍',
+        '🤎',
+        '💔',
+        '❣️',
+        '💕',
+        '💞',
+        '💓',
+        '💗',
+        '💖',
+        '💘',
+        '💝',
+        '💟',
+        '♥️',
+      ],
+      Objects: [
+        '🔥',
+        '✨',
+        '💫',
+        '🎉',
+        '🎊',
+        '🎁',
+        '🏆',
+        '⚽',
+        '🏀',
+        '🎮',
+        '🎯',
+        '🎨',
+        '🎬',
+        '📷',
+        '📱',
+        '💻',
+        '💡',
+        '📌',
+        '📎',
+        '✏️',
+        '📝',
+        '📖',
+        '📚',
+        '🔔',
+        '🔑',
+        '🔒',
+        '💎',
+        '💰',
+        '💵',
+      ],
+      Nature: [
+        '🌸',
+        '🌺',
+        '🌻',
+        '🌼',
+        '🌷',
+        '🌹',
+        '💐',
+        '🌾',
+        '🍀',
+        '🌲',
+        '🌳',
+        '🌴',
+        '🌵',
+        '🍃',
+        '🍂',
+        '🍁',
+        '🌈',
+        '⭐',
+        '🌟',
+        '✨',
+        '🌙',
+        '☀️',
+        '🌤',
+        '⛅',
+        '🌧',
+        '❄️',
+        '🌊',
+        '🔥',
+        '💧',
+        '🌸',
+      ],
+    };
+
+    // Category tabs
+    const tabs = document.createElement('div');
+    tabs.className = 'emoji-picker-tabs';
+
+    const tabIcons = {
+      Smileys: '😀',
+      Gestures: '👍',
+      Hearts: '❤️',
+      Objects: '🎉',
+      Nature: '🌸',
+    };
+
+    Object.keys(categories).forEach((category, index) => {
+      const tab = document.createElement('button');
+      tab.className = `emoji-tab ${index === 0 ? 'active' : ''}`;
+      tab.textContent = tabIcons[category];
+      tab.dataset.category = category;
+
+      tab.addEventListener('click', () => {
+        tabs.querySelectorAll('.emoji-tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        this.showCategory(picker, category, categories[category]);
+      });
+
+      tabs.appendChild(tab);
+    });
+
+    picker.appendChild(tabs);
+
+    // Emoji grid
+    const grid = document.createElement('div');
+    grid.className = 'emoji-picker-grid';
+    grid.id = 'emoji-grid';
+    picker.appendChild(grid);
+
+    // Show first category
+    this.showCategory(picker, 'Smileys', categories['Smileys']);
+
+    // Position popup
+    document.body.appendChild(picker);
+
+    const rect = this.element.getBoundingClientRect();
+    picker.style.position = 'fixed';
+
+    if (this.options.position === 'top') {
+      picker.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+    } else {
+      picker.style.top = `${rect.bottom + 8}px`;
+    }
+
+    picker.style.left = `${Math.min(rect.left, window.innerWidth - 300)}px`;
+
+    // Close on click outside
+    const closePicker = (e) => {
+      if (!picker.contains(e.target) && !this.element.contains(e.target)) {
+        picker.remove();
+        document.removeEventListener('click', closePicker);
+      }
+    };
+
+    setTimeout(() => document.addEventListener('click', closePicker), 100);
+  }
+
+  showCategory(picker, category, emojis) {
+    const grid = picker.querySelector('#emoji-grid');
+    grid.innerHTML = '';
+
+    emojis.forEach((emoji) => {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-picker-btn';
+      btn.textContent = emoji;
+
+      btn.addEventListener('click', () => {
+        this.options.onReact?.(this.options.messageId, emoji);
+        picker.remove();
+
+        window.dispatchEvent(
+          new CustomEvent('reaction-selected', {
+            detail: {
+              messageId: this.options.messageId,
+              emoji,
+              action: 'add',
+            },
+          })
         );
-        
-        if (existingReaction) {
-            btn.classList.add('reacted');
-        }
-        
-        btn.textContent = emoji;
-        
-        btn.addEventListener('click', () => {
-            if (existingReaction) {
-                // Remove reaction
-                this.options.onRemove?.(this.options.messageId, emoji);
-            } else {
-                // Add reaction
-                this.options.onReact?.(this.options.messageId, emoji);
-            }
-            
-            // Dispatch custom event
-            window.dispatchEvent(new CustomEvent('reaction-selected', {
-                detail: {
-                    messageId: this.options.messageId,
-                    emoji,
-                    action: existingReaction ? 'remove' : 'add'
-                }
-            }));
-        });
-        
-        return btn;
+      });
+
+      grid.appendChild(btn);
+    });
+  }
+
+  getClasses() {
+    const classes = ['reaction-bar', `reaction-bar-${this.options.position}`];
+
+    if (this.options.className) {
+      classes.push(this.options.className);
     }
 
-    showEmojiPicker() {
-        // Create emoji picker popup
-        const picker = document.createElement('div');
-        picker.className = 'emoji-picker-popup';
-        
-        // Emoji categories
-        const categories = {
-            'Smileys': ['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐'],
-            'Gestures': ['👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐', '🖖', '👋', '🤝', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏', '💪', '🦾'],
-            'Hearts': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️'],
-            'Objects': ['🔥', '✨', '💫', '🎉', '🎊', '🎁', '🏆', '⚽', '🏀', '🎮', '🎯', '🎨', '🎬', '📷', '📱', '💻', '💡', '📌', '📎', '✏️', '📝', '📖', '📚', '🔔', '🔑', '🔒', '💎', '💰', '💵'],
-            'Nature': ['🌸', '🌺', '🌻', '🌼', '🌷', '🌹', '💐', '🌾', '🍀', '🌲', '🌳', '🌴', '🌵', '🍃', '🍂', '🍁', '🌈', '⭐', '🌟', '✨', '🌙', '☀️', '🌤', '⛅', '🌧', '❄️', '🌊', '🔥', '💧', '🌸']
-        };
-        
-        // Category tabs
-        const tabs = document.createElement('div');
-        tabs.className = 'emoji-picker-tabs';
-        
-        const tabIcons = {
-            'Smileys': '😀',
-            'Gestures': '👍',
-            'Hearts': '❤️',
-            'Objects': '🎉',
-            'Nature': '🌸'
-        };
-        
-        Object.keys(categories).forEach((category, index) => {
-            const tab = document.createElement('button');
-            tab.className = `emoji-tab ${index === 0 ? 'active' : ''}`;
-            tab.textContent = tabIcons[category];
-            tab.dataset.category = category;
-            
-            tab.addEventListener('click', () => {
-                tabs.querySelectorAll('.emoji-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                this.showCategory(picker, category, categories[category]);
-            });
-            
-            tabs.appendChild(tab);
-        });
-        
-        picker.appendChild(tabs);
-        
-        // Emoji grid
-        const grid = document.createElement('div');
-        grid.className = 'emoji-picker-grid';
-        grid.id = 'emoji-grid';
-        picker.appendChild(grid);
-        
-        // Show first category
-        this.showCategory(picker, 'Smileys', categories['Smileys']);
-        
-        // Position popup
-        document.body.appendChild(picker);
-        
-        const rect = this.element.getBoundingClientRect();
-        picker.style.position = 'fixed';
-        
-        if (this.options.position === 'top') {
-            picker.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-        } else {
-            picker.style.top = `${rect.bottom + 8}px`;
-        }
-        
-        picker.style.left = `${Math.min(rect.left, window.innerWidth - 300)}px`;
-        
-        // Close on click outside
-        const closePicker = (e) => {
-            if (!picker.contains(e.target) && !this.element.contains(e.target)) {
-                picker.remove();
-                document.removeEventListener('click', closePicker);
-            }
-        };
-        
-        setTimeout(() => document.addEventListener('click', closePicker), 100);
-    }
+    return classes.join(' ');
+  }
 
-    showCategory(picker, category, emojis) {
-        const grid = picker.querySelector('#emoji-grid');
-        grid.innerHTML = '';
-        
-        emojis.forEach(emoji => {
-            const btn = document.createElement('button');
-            btn.className = 'emoji-picker-btn';
-            btn.textContent = emoji;
-            
-            btn.addEventListener('click', () => {
-                this.options.onReact?.(this.options.messageId, emoji);
-                picker.remove();
-                
-                window.dispatchEvent(new CustomEvent('reaction-selected', {
-                    detail: {
-                        messageId: this.options.messageId,
-                        emoji,
-                        action: 'add'
-                    }
-                }));
-            });
-            
-            grid.appendChild(btn);
-        });
-    }
+  updateReactions(reactions) {
+    this.options.existingReactions = reactions;
+    // Re-render buttons
+    const buttons = this.element?.querySelectorAll('.reaction-btn');
+    buttons?.forEach((btn) => {
+      const emoji = btn.textContent;
+      const existingReaction = reactions.find((r) => r.emoji === emoji && r.reacted);
+      btn.classList.toggle('reacted', !!existingReaction);
+    });
+  }
 
-    getClasses() {
-        const classes = ['reaction-bar', `reaction-bar-${this.options.position}`];
-        
-        if (this.options.className) {
-            classes.push(this.options.className);
-        }
-        
-        return classes.join(' ');
-    }
+  getElement() {
+    return this.element;
+  }
 
-    updateReactions(reactions) {
-        this.options.existingReactions = reactions;
-        // Re-render buttons
-        const buttons = this.element?.querySelectorAll('.reaction-btn');
-        buttons?.forEach(btn => {
-            const emoji = btn.textContent;
-            const existingReaction = reactions.find(r => r.emoji === emoji && r.reacted);
-            btn.classList.toggle('reacted', !!existingReaction);
-        });
+  destroy() {
+    if (this.element) {
+      this.element.remove();
+      this.element = null;
     }
-
-    getElement() {
-        return this.element;
-    }
-
-    destroy() {
-        if (this.element) {
-            this.element.remove();
-            this.element = null;
-        }
-    }
+  }
 }
 
 // CSS for ReactionBar
@@ -383,10 +560,10 @@ const reactionBarStyles = `
 `;
 
 if (!document.getElementById('reaction-bar-styles')) {
-    const style = document.createElement('style');
-    style.id = 'reaction-bar-styles';
-    style.textContent = reactionBarStyles;
-    document.head.appendChild(style);
+  const style = document.createElement('style');
+  style.id = 'reaction-bar-styles';
+  style.textContent = reactionBarStyles;
+  document.head.appendChild(style);
 }
 
 window.ReactionBar = ReactionBar;

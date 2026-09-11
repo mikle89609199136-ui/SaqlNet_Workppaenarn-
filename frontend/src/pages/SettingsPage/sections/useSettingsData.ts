@@ -1,7 +1,7 @@
+import { showToast } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
-import { useToasts } from '@/hooks/useToasts';
+import { DEFAULT_PROFILE_SETTINGS } from '@/shared/config';
 import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
 import { settingsQuery } from '@/queries/users/settingsQuery';
 import type { IPrivacyDto, ISettingsDto } from '@/types';
@@ -20,7 +20,6 @@ import type { IPrivacyDto, ISettingsDto } from '@/types';
  */
 export function useSettingsData() {
   const { t } = useTranslation();
-  const { showToast } = useToasts();
   const { data, isPending } = useQuery(settingsQuery());
   const updateSettings = useUpdateSettings();
   const updatePrivacy = useUpdatePrivacy();

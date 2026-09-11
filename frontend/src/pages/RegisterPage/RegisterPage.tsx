@@ -3,17 +3,16 @@ import { useRef, useState } from 'react';
 import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { AuthLayout } from '@/components/layouts';
+import { AuthLayout } from '@/layouts';
 import { PasswordRequirements } from '@/components/features';
-import { Button, Icon, Input, SegmentedControl } from '@/components/ui';
-import { LANGUAGES, type TLanguage } from '@/consts';
-import { ROUTES } from '@/consts/routes';
-import { useToasts } from '@/hooks';
+import { Button, Icon, Input, SegmentedControl, showToast } from '@/shared/ui';
+import { LANGUAGES, type TLanguage } from '@/shared/config';
+import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store/profile';
 import type { IAuthResponse } from '@/types';
-import { getPasswordScore, PASSWORD_RULES } from '@/utils/passwordRules';
+import { getPasswordScore, PASSWORD_RULES } from '@/shared/lib/passwordRules';
 import {
   registerFormSchema,
   REGISTER_STEPS,
@@ -25,7 +24,6 @@ import {
 export function RegisterPage() {
   const navigate = useNavigate();
   const token = useProfileStore((state) => state.token);
-  const { showToast } = useToasts();
   const { t, i18n } = useTranslation();
 
   const [step, setStep] = useState<TRegisterStep>('welcome');

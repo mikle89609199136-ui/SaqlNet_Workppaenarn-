@@ -17,8 +17,9 @@ interface Props {
  * остаётся за человеком, а приложение обязано о смене сказать — молчание
  * здесь и есть та дыра, ради которой подмену затевают.
  *
- * Прочитать код безопасности и сверить его с собеседником можно в его
- * профиле.
+ * Куда идти дальше, отметка не говорит: кода безопасности в профиле
+ * больше нет, и отправлять человека искать несуществующее хуже, чем
+ * промолчать. Сам факт смены ключа сказать всё равно надо.
  */
 export function SafetyCodeNotice({ chatId }: Props) {
   const { t } = useTranslation();
@@ -34,11 +35,7 @@ export function SafetyCodeNotice({ chatId }: Props) {
 
   return (
     <div className="safety-code-notice" role="status">
-      <span>
-        {t('safetyCodeChanged', '{{name}} сменил ключи шифрования', { name })}
-        {' — '}
-        {t('safetyCodeHint', 'сверьте код безопасности в профиле, если разговор важный')}
-      </span>
+      <span>{t('safetyCodeChanged', '{{name}} сменил ключи шифрования', { name })}</span>
 
       <button onClick={() => void acknowledgeIdentityChange(notice.userId)} type="button">
         {t('understood', 'Понятно')}

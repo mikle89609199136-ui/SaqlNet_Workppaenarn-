@@ -9,7 +9,7 @@ import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IEncryptionState } from '@/crypto/encryptionStatus';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import {
   useEffect,
   useRef,
@@ -52,6 +52,7 @@ interface Props {
   draftRef: RefObject<HTMLInputElement | null>;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
+  setOpenedImage?: Dispatch<SetStateAction<string | null>>;
 }
 
 export const ChatThreadComposer = ({
@@ -62,6 +63,7 @@ export const ChatThreadComposer = ({
   attachmentInputRef,
   draftRef,
   setPhotoEditorFile,
+  setOpenedImage,
 }: Props) => {
   const { t } = useTranslation();
 
@@ -129,7 +131,12 @@ export const ChatThreadComposer = ({
   return (
     <ComposerForm onSubmit={handleSubmit} ref={formRef}>
       <ComposerContextBanner onCancel={cancelComposerMode} />
-      <AttachmentPreview attachment={pendingAttachment} onRemove={removePendingAttachment} />
+      <AttachmentPreview
+        attachment={pendingAttachment}
+        onEdit={setPhotoEditorFile}
+        onOpenImage={setOpenedImage ? (url) => setOpenedImage(url) : undefined}
+        onRemove={removePendingAttachment}
+      />
       <ComposerRow>
         <AttachmentControl
           isSending={isSending}
@@ -140,7 +147,7 @@ export const ChatThreadComposer = ({
         <input
           ref={draftRef}
           aria-label={t('message', 'Сообщение')}
-          className="thread-composer-input"
+          className="thread-composer-input min-h-11"
           disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
           placeholder={composerPlaceholder(encryption, t)}

@@ -1,3 +1,4 @@
+import { describeApiError } from '@/shared/api';
 import { services } from '@/services';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -45,7 +46,7 @@ export const useProfileEdit = (profileUser, displayName: string) => {
       setEditableUser(updated);
       setIsEditing(false);
     } catch (err) {
-      setEditError(err.message || t('profileSaveError', 'Не удалось сохранить профиль'));
+      setEditError(describeApiError(err, t, t('profileSaveError', 'Не удалось сохранить профиль')));
     } finally {
       setIsSaving(false);
     }

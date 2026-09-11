@@ -1,6 +1,6 @@
 import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { setComposerText } from '@/utils/setComposerText';
+import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, type RefObject } from 'react';
 

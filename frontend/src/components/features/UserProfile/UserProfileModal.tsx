@@ -19,8 +19,19 @@ export const UserProfileModal = ({ onClose, profileModal }: Props) => {
   if (!profileModal.isOpen) return null;
 
   return (
-    <div className="user-profile-modal" onClick={onClose} role="presentation">
-      <UserProfilePanel profileState={{ ...profileModal, chat, messages }} onClose={onClose} />
+    <div
+      className="fixed inset-0 z-[1300] flex items-center justify-center p-0 md:p-4 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        aria-modal="true"
+        className="w-full h-full h-[100dvh] md:h-auto md:max-h-[650px] md:max-w-[420px] rounded-none md:rounded-window overflow-hidden border-0 md:border md:border-line bg-sheet shadow-none md:shadow-[var(--elev-3)]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+      >
+        <UserProfilePanel profileState={{ ...profileModal, chat, messages }} onClose={onClose} />
+      </div>
     </div>
   );
 };

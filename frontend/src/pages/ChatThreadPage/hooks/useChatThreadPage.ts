@@ -1,3 +1,4 @@
+import { describeApiError } from '@/shared/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
@@ -8,11 +9,14 @@ import {
   useProfilePanel,
   useRealtimeSocket,
 } from '@/hooks';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useEscapeKey } from '@/shared/lib/useEscapeKey';
+import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
 import { useChatUiStore, useProfileStore } from '@/store';
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import type { IMessageDto } from '@/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import type { IProfileState } from '../ChatThreadPage';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -61,6 +65,8 @@ export function useChatThreadPage({
   const {
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     error: messagesError,
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
@@ -92,7 +98,40 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
+
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const handleRetryMessage = useCallback(
+    (message: IMessageDto) => {
+      setError('');
+      void retryOutboxMessage(queryClient, message.tempId || message.id, {
+        onError: (err) => {
+          setError(
+            describeApiError(
+              err as { code?: string; message?: string },
+              t,
+              t('messageSendError', 'Не удалось отправить сообщение')
+            )
+          );
+        },
+        onSuccess: () => {
+          setError('');
+        },
+      });
+    },
+    [queryClient, setError, t]
+  );
+
+  const handleCancelMessage = useCallback(
+    (message: IMessageDto) => {
+      const id = message.tempId || message.id;
+      cancelOutboxMessage(queryClient, chatId, id);
+    },
+    [chatId, queryClient]
+  );
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
   // при переходе в соседний они не должны переезжать вместе с окном.
@@ -136,6 +175,8 @@ export function useChatThreadPage({
     pinnedMessages,
     messages,
     isLoading,
+    hasOlder,
+    loadOlder,
     threadError,
     setError,
     setEditingMessage,
@@ -160,6 +201,7 @@ export function useChatThreadPage({
     setProfileModal,
 
     toggleMessageSelection,
+    handleReact,
     selectedActionMessage,
 
     handleCancelSelection,
@@ -168,5 +210,7 @@ export function useChatThreadPage({
     handleDelete,
     handleForward,
     handleCloseForwardModal,
+    handleRetryMessage,
+    handleCancelMessage,
   };
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from '@/consts';
+import { DEFAULT_PROFILE_SETTINGS, STORAGE_KEYS } from '@/shared/config';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { create } from 'zustand';
 

@@ -150,9 +150,29 @@ func TestDeleteMessage_NotFoundRollsBackWithoutBroadcast(t *testing.T) {
 	ws := &recordingRealtime{}
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE messages\.messages AS m`).WithArgs(deletedMessageID, deleteMessageUserID).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`SELECT EXISTS`).
+		WithArgs(deletedMessageID, deleteMessageUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectRollback()
 	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, ErrNotFound)
+	require.Empty(t, ws.broadcasts)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteMessage_ForbiddenRollsBackWithoutBroadcast(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	ws := &recordingRealtime{}
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE messages\.messages AS m`).WithArgs(deletedMessageID, deleteMessageUserID).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`SELECT EXISTS`).
+		WithArgs(deletedMessageID, deleteMessageUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	require.ErrorIs(t, err, ErrForbidden)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

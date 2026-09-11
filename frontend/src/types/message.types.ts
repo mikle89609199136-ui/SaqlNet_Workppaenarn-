@@ -27,6 +27,8 @@ export interface IReaction {
 
 export type TReactionsList = IReaction[];
 
+export type TMessageDeliveryStatus = 'pending' | 'uploading' | 'failed' | 'sent' | 'read';
+
 export interface IMessageDto {
   id: string;
   chatId: string;
@@ -60,7 +62,10 @@ export interface IMessageDto {
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
-  status?: string;
+  /** Статус доставки/отправки сообщения (#552 Outbox) */
+  status?: TMessageDeliveryStatus;
+  /** Временный ID для корреляции оптимистичного баббла с ответом сервера */
+  tempId?: string;
 }
 
 export type TMessagesList = IMessageDto[];

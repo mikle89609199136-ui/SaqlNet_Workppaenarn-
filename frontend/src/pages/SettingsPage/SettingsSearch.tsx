@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon } from '@/components/ui';
+import { Icon } from '@/shared/ui';
 import { searchSettings } from './settingsIndex';
 
 /**
@@ -82,7 +82,7 @@ export function SettingsSearch() {
               {t('settings.search.empty', 'Ничего не нашлось')}
             </p>
           ) : (
-            <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
+            <ul className="max-h-80 divide-y divide-divider overflow-y-auto">
               {results.map((entry, index) => (
                 <li key={`${entry.path}-${entry.title}`}>
                   <button

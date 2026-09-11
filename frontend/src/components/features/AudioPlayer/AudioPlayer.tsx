@@ -1,7 +1,7 @@
-import { Button, Slider } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
-import { useAudio } from '@/hooks/useAudio';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { Button, Slider } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
+import { useAudio } from '@/shared/lib/useAudio';
+import { useIsMobile } from '@/shared/lib/useIsMobile';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {

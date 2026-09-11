@@ -28,7 +28,7 @@ func main() {
 	defer pool.Close()
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
-	handler := user.NewHandler(user.NewService(pool))
+	handler := user.NewHandler(user.NewService(pool), crypto)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -73,6 +73,7 @@ func main() {
 	mux.Handle("/api/v2/encryption/chat-keys/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/rotate-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/my-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	registerSignalRoutes(mux, authenticated, handler)
 	mux.Handle("/api/v2/users/", authenticated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/profile") {
 			handler.PublicProfile(w, r)
@@ -98,4 +99,10 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdown)
+}
+
+func registerSignalRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {
+	mux.Handle("/api/v2/encryption/signal/keys", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/signal/bundle/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/signal/prekeys", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 }

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"net/url"
 	"testing"
 	"time"
 
@@ -606,240 +606,28 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestHandler_CreateGroup tests the CreateGroup handler method.
-// It covers:
-//   - successful group creation with valid input
-//   - validation errors (title too long, empty title, empty members)
-//   - service errors (database failure)
-//   - HTTP method not allowed
-//
-// The test uses sqlmock with regexp matcher to verify database interactions
-// and the handler's error mapping logic.
-// TestHandler_CreateGroup tests the CreateGroup handler method.
-func TestHandler_CreateGroup(t *testing.T) {
-	// Fixed user IDs used across test cases.
-	actorID := "c923612a-bcac-455f-8f9b-5243687537c3"
-	memberID1 := "550e8400-e29b-41d4-a716-446655440002"
-	memberID2 := "550e8400-e29b-41d4-a716-446655440003"
+// newTestHandler builds a Handler backed by a fresh sqlmock instance and
+// registers cleanup for the underlying DB. Creating the mock per subtest
+// keeps test cases independent: a failure in one case cannot leak
+// expectations into the next.
+func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
+	t.Helper()
 
-	tests := []struct {
-		name          string
-		method        string
-		requestBody   map[string]any
-		setupMock     func(*sqlmock.Sqlmock)
-		wantStatus    int
-		wantErrorCode string
-		wantChatID    bool
-	}{
-		{
-			name:   "success_valid_input",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"title":       "My Group",
-				"description": "A test group",
-				"avatarUrl":   "https://example.com/avatar.png",
-				"members":     []string{memberID1, memberID2},
-			},
-			setupMock: func(mock *sqlmock.Sqlmock) {
-				// Expect a transaction to be started.
-				(*mock).ExpectBegin()
-
-				// Insert the chat and return an ID.
-				(*mock).ExpectQuery(`INSERT INTO chats\.chats`).
-					WithArgs("My Group", "A test group", "https://example.com/avatar.png", actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("bffb425d-8903-40ef-b864-30250f882375"))
-
-				// Insert the owner as a member.
-				(*mock).ExpectExec(`INSERT INTO chats\.members`).
-					WithArgs("bffb425d-8903-40ef-b864-30250f882375", actorID).
-					WillReturnResult(sqlmock.NewResult(1, 1))
-
-				// Insert member1 with SELECT subquery.
-				(*mock).ExpectExec(`INSERT INTO chats\.members`).
-					WithArgs("bffb425d-8903-40ef-b864-30250f882375", memberID1).
-					WillReturnResult(sqlmock.NewResult(1, 1))
-
-				// Insert member2 with SELECT subquery.
-				(*mock).ExpectExec(`INSERT INTO chats\.members`).
-					WithArgs("bffb425d-8903-40ef-b864-30250f882375", memberID2).
-					WillReturnResult(sqlmock.NewResult(1, 1))
-
-				// Expect commit.
-				(*mock).ExpectCommit()
-			},
-			wantStatus: http.StatusCreated,
-			wantChatID: true,
-		},
-		{
-			name:   "title_too_long_400",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"title":   strings.Repeat("a", 129), // 129 characters
-				"members": []string{memberID1},
-			},
-			setupMock: func(mock *sqlmock.Sqlmock) {
-				// No database calls should be made because validation fails
-				// before reaching the service.
-			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
-		},
-		{
-			name:   "empty_title_400",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"title":   "",
-				"members": []string{memberID1},
-			},
-			setupMock: func(mock *sqlmock.Sqlmock) {
-				// Service will return ErrInvalidInput
-				// No DB expectations needed
-			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
-		},
-		{
-			name:   "empty_members_400",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"title":   "Group",
-				"members": []string{},
-			},
-			setupMock: func(mock *sqlmock.Sqlmock) {
-				// Service returns ErrInvalidInput before any DB operations.
-			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
-		},
-		{
-			name:   "service_error_500",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"title":   "Group",
-				"members": []string{memberID1},
-			},
-			setupMock: func(mock *sqlmock.Sqlmock) {
-				// Simulate a database error during chat insertion.
-				(*mock).ExpectBegin()
-				(*mock).ExpectQuery(`INSERT INTO chats\.chats`).
-					WillReturnError(sql.ErrConnDone)
-				(*mock).ExpectRollback()
-			},
-			wantStatus:    http.StatusInternalServerError,
-			wantErrorCode: "internal_error",
-		},
-		{
-			name:          "method_not_allowed_405",
-			method:        http.MethodPatch,
-			requestBody:   nil,
-			setupMock:     func(mock *sqlmock.Sqlmock) {},
-			wantStatus:    http.StatusMethodNotAllowed,
-			wantErrorCode: "method_not_allowed",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Создаем новый мок для каждого тестового случая
-			db, mock, err := sqlmock.New(
-				sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp),
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer db.Close()
-
-			// Instantiate the service with the mock DB
-			svc := NewService(db, nil)
-			h := NewHandler(svc)
-
-			// Set up the mock expectations для этого теста
-			tt.setupMock(&mock)
-
-			// Build the request body as JSON.
-			var bodyBytes []byte
-			if tt.requestBody != nil {
-				bodyBytes, err = json.Marshal(tt.requestBody)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			req := httptest.NewRequest(tt.method, "/api/v2/chats/groups", bytes.NewReader(bodyBytes))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Request-ID", "test-request-id")
-
-			user := authctx.User{ID: actorID, Username: "testuser"}
-
-			ctx := authctx.WithUser(req.Context(), user)
-			req = req.WithContext(ctx)
-
-			rr := httptest.NewRecorder()
-			h.CreateGroup(rr, req)
-
-			// Validate status code.
-			if rr.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d, body: %s", rr.Code, tt.wantStatus, rr.Body.String())
-			}
-
-			// For error cases, check the error code in the JSON response.
-			if tt.wantErrorCode != "" {
-				var resp map[string]any
-				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-					t.Fatal(err)
-				}
-				if got, ok := resp["code"].(string); !ok || got != tt.wantErrorCode {
-					t.Errorf("error code = %v, want %q", resp["code"], tt.wantErrorCode)
-				}
-			}
-
-			// For success case, verify that chatId is present.
-			if tt.wantChatID {
-				var resp map[string]any
-				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-					t.Fatal(err)
-				}
-				if _, ok := resp["chatId"]; !ok {
-					t.Errorf("expected chatId in response, got %v", resp)
-				}
-				if _, ok := resp["title"]; !ok {
-					t.Errorf("expected title in response, got %v", resp)
-				}
-			}
-
-			// Verify that all mock expectations were met.
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("mock expectations not met: %v", err)
-			}
-		})
-	}
-}
-
-// TestHandler_UpdateGroup tests the UpdateGroup handler method.
-// It covers:
-//   - successful updates with all fields or partial fields
-//   - validation errors (title too long, empty body)
-//   - service errors (not found, forbidden, invalid chat type, database failure)
-//   - HTTP method not allowed
-//
-// The test uses sqlmock with regexp matcher to verify database interactions.
-func TestHandler_UpdateGroup(t *testing.T) {
-	// Setup mock database with regexp query matcher.
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
-	// Create service and handler with the mock DB.
-	svc := NewService(db, nil)
-	h := NewHandler(svc)
+	return NewHandler(NewService(db, nil)), mock
+}
 
-	// Fixed IDs for testing.
-	actorID := "c923612a-bcac-455f-8f9b-5243687537c3"
-	chatID := "bffb425d-8903-40ef-b864-30250f882375"
+func TestHandler_List(t *testing.T) {
+	const userID = "550e8400-e29b-41d4-a716-446655440000"
 
-	// Columns returned by scanChats (used by service.Get after update).
-	chatCols := []string{
+	// Column set returned by scanChats. Must match the SELECT list
+	// exactly; otherwise sqlmock fails with a column-count mismatch.
+	cols := []string{
 		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
@@ -849,170 +637,165 @@ func TestHandler_UpdateGroup(t *testing.T) {
 	tests := []struct {
 		name          string
 		method        string
-		chatID        string // path parameter
-		requestBody   map[string]any
-		setupMock     func()
+		rawQuery      string // raw query string, without leading "?"
+		setupMock     func(mock sqlmock.Sqlmock)
 		wantStatus    int
 		wantErrorCode string
 	}{
+		// --- positive ---
 		{
-			name:   "success_update_all_fields",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title":       "Updated Group",
-				"description": "New description",
-				"avatarUrl":   "https://example.com/new-avatar.png",
-			},
-			setupMock: func() {
-				// 1. SELECT c.type, m.role for permission check.
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs(chatID, actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
-
-				// 2. UPDATE chats.chats.
-				mock.ExpectExec(`UPDATE chats\.chats SET title = COALESCE\(\$1::text, title\), description = COALESCE\(\$2::text, description\), avatar_url = COALESCE\(\$3::text, avatar_url\), updated_at = NOW\(\) WHERE id = \$4 AND type = 'group'`).
-					WithArgs("Updated Group", "New description", "https://example.com/new-avatar.png", chatID).
-					WillReturnResult(sqlmock.NewResult(0, 1))
-
-				// 3. service.Get – fetches the updated chat.
-				mock.ExpectQuery(`SELECT c\.id::text, c\.type, .+ FROM chats\.chats c`).
-					WithArgs(actorID, chatID).
-					WillReturnRows(sqlmock.NewRows(chatCols).AddRow(
-						chatID, "group", "Updated Group", "New description",
-						"https://example.com/new-avatar.png", actorID, "owner",
-						false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-						3, "", "", false, "", 0, "", "", "", "", "",
-					))
+			name:     "no_archived_defaults_to_false",
+			method:   http.MethodGet,
+			rawQuery: "",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:   "success_update_only_title",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title": "New Title Only",
-			},
-			setupMock: func() {
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs(chatID, actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "admin"))
-
-				mock.ExpectExec(`UPDATE chats\.chats SET title = COALESCE\(\$1::text, title\), description = COALESCE\(\$2::text, description\), avatar_url = COALESCE\(\$3::text, avatar_url\), updated_at = NOW\(\) WHERE id = \$4 AND type = 'group'`).
-					WithArgs("New Title Only", nil, nil, chatID).
-					WillReturnResult(sqlmock.NewResult(0, 1))
-
-				mock.ExpectQuery(`SELECT c\.id::text, c\.type, .+ FROM chats\.chats c`).
-					WithArgs(actorID, chatID).
-					WillReturnRows(sqlmock.NewRows(chatCols).AddRow(
-						chatID, "group", "New Title Only", "Old description",
-						"", actorID, "admin",
-						false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-						3, "", "", false, "", 0, "", "", "", "", "",
-					))
+			name:     "archived_true",
+			method:   http.MethodGet,
+			rawQuery: "archived=true",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, true).
+					WillReturnRows(sqlmock.NewRows(cols))
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:   "title_too_long_400",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title": string(make([]byte, 129)), // 129 characters
+			name:     "archived_false",
+			method:   http.MethodGet,
+			rawQuery: "archived=false",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
 			},
-			setupMock: func() {
-				// No database calls – validation fails before service.
-			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantStatus: http.StatusOK,
 		},
 		{
-			name:        "empty_body_all_nil_400",
-			method:      http.MethodPatch,
-			chatID:      chatID,
-			requestBody: map[string]any{}, // empty JSON -> all fields nil
-			setupMock: func() {
-				// Service returns ErrInvalidInput, so we expect no DB calls.
-				// (The handler calls the service, which will return error without queries.)
+			name:     "other_params_ignored",
+			method:   http.MethodGet,
+			rawQuery: "limit=10&archived=true",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, true).
+					WillReturnRows(sqlmock.NewRows(cols))
 			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantStatus: http.StatusOK,
 		},
-		{
-			name:   "chat_not_found_404",
-			method: http.MethodPatch,
-			chatID: "non-existent-id",
-			requestBody: map[string]any{
-				"title": "New Title",
-			},
-			setupMock: func() {
-				// First query returns no rows -> ErrNotFound.
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs("non-existent-id", actorID).
-					WillReturnError(sql.ErrNoRows)
-			},
-			wantStatus:    http.StatusNotFound,
-			wantErrorCode: "chat_not_found",
-		},
-		{
-			name:   "forbidden_member_role_403",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title": "New Title",
-			},
-			setupMock: func() {
-				// User is a member, not owner/admin.
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs(chatID, actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "member"))
-				// No update attempt because service returns ErrForbidden.
-			},
-			wantStatus:    http.StatusForbidden,
-			wantErrorCode: "access_denied",
-		},
-		{
-			name:   "not_a_group_400",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title": "New Title",
-			},
-			setupMock: func() {
-				// Chat type is 'private', not 'group'.
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs(chatID, actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("private", "owner"))
-			},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "invalid_chat_type",
-		},
-		{
-			name:   "database_error_500",
-			method: http.MethodPatch,
-			chatID: chatID,
-			requestBody: map[string]any{
-				"title": "New Title",
-			},
-			setupMock: func() {
-				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs(chatID, actorID).
-					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 
-				mock.ExpectExec(`UPDATE chats\.chats SET title = COALESCE\(\$1::text, title\)`).
-					WithArgs("New Title", nil, nil, chatID).
-					WillReturnError(sql.ErrConnDone)
-			},
-			wantStatus:    http.StatusInternalServerError,
-			wantErrorCode: "internal_error",
+		// --- negative: invalid literals ---
+		{
+			name:          "invalid_not_a_bool",
+			method:        http.MethodGet,
+			rawQuery:      "archived=not-a-bool",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
 		},
 		{
-			name:          "method_not_allowed_405",
-			method:        http.MethodPost, // Not PATCH
-			chatID:        chatID,
-			requestBody:   nil,
-			setupMock:     func() {},
+			name:          "invalid_yes",
+			method:        http.MethodGet,
+			rawQuery:      "archived=yes",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_on",
+			method:        http.MethodGet,
+			rawQuery:      "archived=on",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_number_two",
+			method:        http.MethodGet,
+			rawQuery:      "archived=2",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_trailing_space",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true%20",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- negative: strictness of the literals ---
+		{
+			name:          "strict_rejects_uppercase_true",
+			method:        http.MethodGet,
+			rawQuery:      "archived=TRUE",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_capitalized_true",
+			method:        http.MethodGet,
+			rawQuery:      "archived=True",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_numeric_one",
+			method:        http.MethodGet,
+			rawQuery:      "archived=1",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_single_t",
+			method:        http.MethodGet,
+			rawQuery:      "archived=t",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- negative: shape ---
+		{
+			name:          "empty_value_rejected",
+			method:        http.MethodGet,
+			rawQuery:      "archived=",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "duplicated_conflicting",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true&archived=false",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "duplicated_same",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true&archived=true",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- method ---
+		{
+			name:          "method_not_allowed",
+			method:        http.MethodPost,
+			rawQuery:      "",
+			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusMethodNotAllowed,
 			wantErrorCode: "method_not_allowed",
 		},
@@ -1020,61 +803,79 @@ func TestHandler_UpdateGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setupMock()
+			h, mock := newTestHandlerQueryMatcher(t)
+			tt.setupMock(mock)
 
-			// Build request.
-			var bodyBytes []byte
-			if tt.requestBody != nil {
-				bodyBytes, err = json.Marshal(tt.requestBody)
-				if err != nil {
-					t.Fatal(err)
-				}
+			path := "/api/v2/chats"
+			if tt.rawQuery != "" {
+				path += "?" + tt.rawQuery
 			}
-			req := httptest.NewRequest(tt.method, "/api/v2/chats/"+tt.chatID, bytes.NewReader(bodyBytes))
+			req := httptest.NewRequest(tt.method, path, nil)
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Request-ID", "test-request-id")
 
-			// Set up route parameter
-			req.SetPathValue("chatID", tt.chatID)
-
-			user := authctx.User{ID: actorID, Username: "testuser"}
-			ctx := authctx.WithUser(req.Context(), user)
+			ctx := authctx.WithUser(req.Context(), authctx.User{ID: userID, Username: "testuser"})
 			req = req.WithContext(ctx)
 
-			// Execute request.
 			rr := httptest.NewRecorder()
-			h.UpdateGroup(rr, req)
+			h.List(rr, req)
 
-			// Assert status code.
 			if rr.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d, body: %s", rr.Code, tt.wantStatus, rr.Body.String())
 			}
 
-			// For error cases, check error code.
 			if tt.wantErrorCode != "" {
 				var resp map[string]any
 				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-					t.Fatal(err)
+					t.Fatalf("response is not valid JSON: %v, body: %s", err, rr.Body.String())
 				}
-				if got, ok := resp["code"].(string); !ok || got != tt.wantErrorCode {
+				if got, _ := resp["code"].(string); got != tt.wantErrorCode {
 					t.Errorf("error code = %v, want %q", resp["code"], tt.wantErrorCode)
 				}
 			}
 
-			// For success cases, verify chat object is returned.
-			if tt.wantStatus == http.StatusOK {
-				var resp map[string]any
-				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-					t.Fatal(err)
-				}
-				if _, ok := resp["chat"]; !ok {
-					t.Errorf("expected 'chat' field in response, got %v", resp)
-				}
-			}
-
-			// Check mock expectations.
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("mock expectations not met: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseArchived(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		want    bool
+		wantErr bool
+	}{
+		{"absent", "", false, false},
+		{"true", "archived=true", true, false},
+		{"false", "archived=false", false, false},
+
+		{"empty", "archived=", false, true},
+		{"uppercase TRUE", "archived=TRUE", false, true},
+		{"capitalized True", "archived=True", false, true},
+		{"numeric one", "archived=1", false, true},
+		{"single t", "archived=t", false, true},
+		{"yes", "archived=yes", false, true},
+		{"trailing space", "archived=true%20", false, true},
+		{"duplicated conflicting", "archived=true&archived=false", false, true},
+		{"duplicated same", "archived=true&archived=true", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q, err := url.ParseQuery(tt.query)
+			if err != nil {
+				t.Fatalf("bad test query %q: %v", tt.query, err)
+			}
+
+			got, err := parseArchived(q)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
 			}
 		})
 	}
