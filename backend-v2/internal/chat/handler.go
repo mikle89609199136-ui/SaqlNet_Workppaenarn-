@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -144,79 +145,98 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// CreateGroup handles POST /api/v2/chats/groups.
-// On success, it returns 201 Created with the chat ID and trimmed title.
-// On validation errors, it returns 400 Bad Request with a descriptive error code.
-// On internal errors, it returns 500 Internal Server Error.
+// CreateGroup handles POST /api/v2/chats/groups. It creates a new group
+// chat owned by the authenticated user.
+//
+// The title is trimmed of leading and trailing whitespace before
+// validation and storage; an all-whitespace title is rejected. The
+// maxTitleLen limit applies to the trimmed value, and the members list
+// must not be empty.
+//
+// On success it returns 201 with the new chat ID and the stored title.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
-	// Only POST is allowed.
+	const method = "CreateGroup"
+
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r)
 		return
 	}
 
-	// Retrieve the authenticated user from the request context.
 	current := authctx.MustUser(r)
 
-	// Define the expected JSON request body structure.
 	var input struct {
-		Title       string   `json:"title"`       // group name, required, max 128 chars
-		Description string   `json:"description"` // optional group description
-		AvatarURL   string   `json:"avatarUrl"`   // optional avatar URL
-		Members     []string `json:"members"`     // array of user IDs, required non-empty
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		AvatarURL   string   `json:"avatarUrl"`
+		Members     []string `json:"members"`
 	}
 
-	// Decode the JSON body into the input struct.
 	if !decode(w, r, &input) {
+		return // decode logs internally
+	}
+
+	// Trim before validating: a value that is only too long because of
+	// surrounding whitespace must be accepted, and the service must
+	// receive the same value that was validated.
+	title := strings.TrimSpace(input.Title)
+	description := strings.TrimSpace(input.Description)
+	avatarUrl := strings.TrimSpace(input.AvatarURL)
+
+	if title == "" {
+		slog.WarnContext(r.Context(), "group title is empty after trimming",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title is required")
 		return
 	}
 
-	// ------------------------------------------------------------------
-	// Trim whitespace from all string fields before validation.
-	// ------------------------------------------------------------------
-	input.Title = strings.TrimSpace(input.Title)
-	input.Description = strings.TrimSpace(input.Description)
-	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
-
-	// ------------------------------------------------------------------
-	// Validation: enforce the database column limit for "title". Count runes.
-	// ------------------------------------------------------------------
-	const maxTitleLen = 128
-
-	if utf8.RuneCountInString(input.Title) > maxTitleLen {
+	if utf8.RuneCountInString(title) > maxTitleLen {
+		slog.WarnContext(r.Context(), "group title exceeds maximum length",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"length", utf8.RuneCountInString(title),
+			"max", maxTitleLen,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
-			"title exceeds maximum length of 128 characters")
+			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
 		return
 	}
 
-	// Delegate the creation logic to the service layer.
-	chatID, err := h.service.CreateGroup(r.Context(), current.ID, input.Title, input.Description, input.AvatarURL, input.Members)
-
-	// ------------------------------------------------------------------
-	// Error mapping: convert domain errors to appropriate HTTP responses.
-	// ------------------------------------------------------------------
-
-	if errors.Is(err, ErrInvalidInput) {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
-			"title and members are required")
+	if len(input.Members) == 0 {
+		slog.WarnContext(r.Context(), "group members list is empty",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "members must not be empty")
 		return
 	}
 
-	// Any other unexpected error (database connection failure, constraint violation,
-	// etc.) is treated as an internal server error.
-	if err != nil {
+	chatID, err := h.service.CreateGroup(
+		r.Context(),
+		current.ID,
+		title,
+		description,
+		avatarUrl,
+		input.Members,
+	)
+
+	switch {
+	case errors.Is(err, ErrInvalidInput):
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+	case err != nil:
+		// The service logs the underlying error with full context;
+		// logging here would duplicate the entry.
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "group creation failed")
-		return
+	default:
+		httpx.JSON(w, http.StatusCreated, map[string]any{
+			"chatId": chatID,
+			"title":  title,
+		})
 	}
-
-	// ------------------------------------------------------------------
-	// Success: respond with 201 Created and return the newly created chat ID
-	// and the trimmed title (to remove accidental leading/trailing whitespace).
-	// ------------------------------------------------------------------
-	httpx.JSON(w, http.StatusCreated, map[string]any{
-		"chatId": chatID,
-		"title":  input.Title,
-	})
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
@@ -965,11 +985,41 @@ func parseMemberAction(suffix string) (string, string) {
 	return parts[0], "/" + parts[1]
 }
 
+// decode reads and validates a JSON request body into value.
+// It returns true if the body is valid, correctly formed, contains no
+// extra data, and contains no unknown fields (strict mode).
+// If an error occurs, decode writes an error response and returns false.
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(value); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	const helper = "decode"
+	// Limit the request body to 256 KiB to prevent memory exhaustion.
+	const maxBodySize = 256 << 10 // 256 KiB
+	body := http.MaxBytesReader(w, r.Body, maxBodySize)
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "invalid request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "request body is invalid")
 		return false
 	}
+
+	// Ensure there is no trailing data after the first JSON value.
+	if _, err := dec.Token(); err != io.EOF {
+		slog.WarnContext(r.Context(), "trailing data in request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "request body is invalid")
+		return false
+	}
+
 	return true
 }
 
