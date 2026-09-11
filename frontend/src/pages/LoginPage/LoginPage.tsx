@@ -3,10 +3,9 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Icon, Input } from '@/components/ui';
-import { AuthLayout } from '@/components/layouts';
-import { ROUTES } from '@/consts/routes';
-import { useToasts } from '@/hooks';
+import { Button, Icon, Input, showToast } from '@/shared/ui';
+import { AuthLayout } from '@/layouts';
+import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { useProfileStore } from '@/store/profile';
@@ -17,7 +16,6 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = useProfileStore((state) => state.token);
-  const { showToast } = useToasts();
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
 

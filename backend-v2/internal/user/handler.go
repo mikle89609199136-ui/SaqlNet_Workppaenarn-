@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,12 +15,17 @@ import (
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
-type Handler struct {
-	service *Service
+type SignalRegistrationValidator interface {
+	ValidateSignalRegistration(ctx context.Context, identityKey, signedPreKey, signature string) (bool, error)
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type Handler struct {
+	service *Service
+	crypto  SignalRegistrationValidator
+}
+
+func NewHandler(service *Service, crypto SignalRegistrationValidator) *Handler {
+	return &Handler{service: service, crypto: crypto}
 }
 
 func (h *Handler) SubscribePremium(w http.ResponseWriter, r *http.Request) {
@@ -130,20 +136,40 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"users": users})
 }
 
+// CheckUsername handles GET /api/v2/users/check-username endpoint.
+// It validates the provided username against the allowed pattern and checks
+// its availability in the database. Returns:
+//   - 200 OK with {"available": true/false} on success
+//   - 400 Bad Request with "validation_failed" for empty or malformed username
+//   - 405 Method Not Allowed for non-GET requests
+//   - 500 Internal Server Error for unexpected failures
 func (h *Handler) CheckUsername(w http.ResponseWriter, r *http.Request) {
+	// Ensure only GET method is allowed
 	if r.Method != http.MethodGet {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
+
+	// Delegate to service for availability check
 	available, err := h.service.IsUsernameAvailable(r.Context(), r.URL.Query().Get("username"))
+
+	// Handle specific validation errors with 400 Bad Request
 	if errors.Is(err, ErrInvalidInput) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username is required")
 		return
 	}
+	if errors.Is(err, ErrInvalidUsernameFormat) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username - wrong format")
+		return
+	}
+
+	// Handle unexpected errors as 500 Internal Server Error
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "username check failed")
 		return
 	}
+
+	// Return successful response with availability flag
 	httpx.JSON(w, http.StatusOK, map[string]bool{"available": available})
 }
 

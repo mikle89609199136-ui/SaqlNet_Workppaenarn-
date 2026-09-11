@@ -1,10 +1,10 @@
 package chat
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -34,21 +34,83 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+// List handles GET /api/v2/chats and returns the chats of the
+// authenticated user.
+//
+// The optional "archived" query parameter accepts exactly "true" or
+// "false". Any other value, an empty value, or a duplicated parameter
+// results in 400 with code "validation_failed".
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	const method = "List"
+
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	// Safe to call: the route is registered behind the authentication
+	// middleware, so the user is always present in the request context.
 	current := authctx.MustUser(r)
-	chats, err := h.service.List(r.Context(), current.ID, r.URL.Query().Get("archived") == "true")
+
+	archived, err := parseArchived(r.URL.Query())
 	if err != nil {
+		slog.WarnContext(r.Context(), "invalid archived parameter",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"raw_query", r.URL.RawQuery,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid archived parameter")
+		return
+	}
+
+	chats, err := h.service.List(r.Context(), current.ID, archived)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "list chats failed",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"archived", archived,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
+
+	// Return a JSON array even when the list is empty, so the client
+	// never has to distinguish between null and [].
 	if chats == nil {
 		chats = []Chat{}
 	}
+
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+// parseArchived extracts and validates the optional "archived" query
+// parameter. It returns false when the parameter is absent.
+//
+// Only the exact lowercase literals "true" and "false" are accepted,
+// matching the OpenAPI contract. Alternative boolean representations
+// understood by strconv.ParseBool ("1", "t", "TRUE", ...) are rejected
+// to keep the contract unambiguous.
+func parseArchived(q url.Values) (bool, error) {
+	values, ok := q["archived"]
+	if !ok {
+		return false, nil
+	}
+	if len(values) != 1 {
+		return false, errors.New(`query parameter "archived" must be specified exactly once`)
+	}
+
+	switch values[0] {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf(`query parameter "archived" must be "true" or "false", got %q`, values[0])
+	}
 }
 
 func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
@@ -774,24 +836,37 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		added, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if errors.Is(err, ErrInvalidInput) {
-			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
-			return
-		}
+		// Call the service layer to toggle the user's reaction on the target message.
+		// Returns the operation status, the current emoji after toggling, the updated reaction list, and any error.
+		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			// Handle known domain errors with appropriate HTTP status codes and user-friendly messages.
+			switch {
+			case errors.Is(err, ErrNotFound):
+				// The target message does not exist or was deleted.
+				httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
+			case errors.Is(err, ErrForbidden):
+				// The current user is not a member of the chat, so they cannot react.
+				httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+			case errors.Is(err, ErrInvalidInput):
+				// The provided emoji is empty or contains invalid characters.
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
+			default:
+				// Any unexpected error (e.g., database failures) is treated as internal server error.
+				log.Printf("[chat-handler-Messages]:unexpected error toggling reaction:%v", err)
+				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
+			}
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"added": added, "reactions": reactions})
+
+		// Success: return the action result, the current emoji (empty if removed), and the aggregated reaction list.
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"action":       status,       // "added", "removed", or "replaced"
+			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
+			"reactions":    reactions,    // full list of emoji counts with myReaction flags
+		})
+
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
@@ -896,14 +971,6 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 		return false
 	}
 	return true
-}
-
-func randomID() string {
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
-		return "room"
-	}
-	return hex.EncodeToString(bytes[:])
 }
 
 func methodNotAllowed(w http.ResponseWriter, r *http.Request) {

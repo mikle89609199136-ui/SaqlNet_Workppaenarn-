@@ -1,4 +1,4 @@
-import type { WS_EVENTS } from '@/consts';
+import type { WS_EVENTS } from '@/shared/config';
 import type {
   IChatDto,
   IMemberDto,

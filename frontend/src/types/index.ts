@@ -33,6 +33,7 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
   TPinnedList,
@@ -92,3 +93,20 @@ export type {
   IWsEventMap,
   TWsEventType,
 } from './wsEvents.types';
+export type {
+  IBrushOption,
+  IEditorCrop,
+  IEditorFilter,
+  IEditorPathObject,
+  IEditorPoint,
+  IEditorState,
+  IEditorTextObject,
+  IFontOption,
+  IPhotoEditorModalProps,
+  IRatioOption,
+  TBrushType,
+  TCropRatioValue,
+  TEditorObject,
+  TEditorTool,
+  TTextFontId,
+} from './editor.types';

@@ -1,10 +1,10 @@
-import { Button, Slider, Spinner } from '@/components/ui';
-import { Icon } from '@/components/ui/Icon';
-import { useIsMobile } from '@/hooks/useIsMobile';
-import { useVideo, type VideoSource } from '@/hooks/useVideo';
+import { Button, Slider, Spinner } from '@/shared/ui';
+import { Icon } from '@/shared/ui/Icon';
+import { useIsMobile } from '@/shared/lib/useIsMobile';
+import { useVideo, type VideoSource } from '@/shared/lib/useVideo';
 import { type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 
 export type { VideoSource };
 

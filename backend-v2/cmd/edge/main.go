@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,6 +27,8 @@ type rateLimitConfig struct {
 	globalRate  float64
 	globalBurst int
 }
+
+var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func loadRateLimitConfig() rateLimitConfig {
 	return rateLimitConfig{
@@ -116,6 +119,24 @@ func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimi
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func withoutWriteDeadline(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && mediaDownloadPath.MatchString(r.URL.Path) {
+			if err := httpx.DisableWriteDeadline(w); err != nil {
+				log.Printf("disable media download write deadline: %v", err)
+				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func registerMediaRoutes(mux *http.ServeMux, mediaProxy http.Handler) {
+	mux.Handle("/api/v2/media", mediaProxy)
+	mux.Handle("/api/v2/media/", withoutWriteDeadline(mediaProxy))
 }
 
 func main() {
@@ -213,8 +234,7 @@ func main() {
 	mux.Handle("/ws", chatProxy)
 
 	// Media service
-	mux.Handle("/api/v2/media", mediaProxy)
-	mux.Handle("/api/v2/media/", mediaProxy)
+	registerMediaRoutes(mux, mediaProxy)
 
 	// Admin service
 	mux.Handle("/api/v2/admin/", adminProxy)

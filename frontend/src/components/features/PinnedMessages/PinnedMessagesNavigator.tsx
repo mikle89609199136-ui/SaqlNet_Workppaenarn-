@@ -1,7 +1,7 @@
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon } from '@/shared/ui';
 import { usePinnedNavigator } from '@/hooks';
 import type { IMessageDto, TPinnedList } from '@/types';
-import { cn } from '@/utils';
+import { cn } from '@/shared/lib';
 import type { TFunction } from 'i18next';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,9 @@ export function renderMessageSnippet(message: IMessageDto, t: TFunction) {
     case 'file': {
       const fileName =
         message.mediaEncryption?.fileName ||
-        (message.metadata && 'fileName' in message.metadata ? message.metadata.fileName : undefined) ||
+        (message.metadata && 'fileName' in message.metadata
+          ? message.metadata.fileName
+          : undefined) ||
         t('media.file', 'Файл');
       return (
         <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
@@ -132,16 +134,14 @@ export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Pro
             {t('pinnedMessages', 'Закреплённое сообщение')} #{currentMessageNumber}
             {senderTitle ? ` • ${senderTitle}` : ''}
           </span>
-          <div className="min-w-0 truncate">
-            {renderMessageSnippet(currentMessage, t)}
-          </div>
+          <div className="min-w-0 truncate">{renderMessageSnippet(currentMessage, t)}</div>
         </div>
       </Button>
       <Button
         size="sm"
         variant="ghost"
         iconOnly
-        className="shrink-0 rounded-control text-ink-2 hover:text-ink hover:bg-sheet-2 transition-colors cursor-pointer rotate-45"
+        className="shrink-0 rotate-45"
         aria-label={t('pinnedMessages.viewAll', 'Показать все закреплённые сообщения')}
         onClick={() => setPinnedMessagesOpen(true)}
       >
