@@ -19,24 +19,27 @@ x-secure: &secure [{ bearerAuth: [] }]
             schema: { type: boolean },
           },
         ],
-      responses: { '200': { description: Chats } },
-      '400':
+      responses:
         {
-          description: Validation_failed,
-          content:
-            { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
-        },
-      '405':
-        {
-          description: Method not allowed,
-          content:
-            { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
-        },
-      '500':
-        {
-          description: Internal server error,
-          content:
-            { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+          '200': { description: Chats },
+          '400':
+            {
+              description: Validation_failed,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '405':
+            {
+              description: Method not allowed,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '500':
+            {
+              description: Internal server error,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
         },
     }
 /chats/private:
