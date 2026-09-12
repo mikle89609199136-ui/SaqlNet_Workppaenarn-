@@ -114,7 +114,7 @@ SendMessageRequest:
   type: object
   properties:
     content: { type: string }
-    type: { type: string, default: text }
+    type: { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
     replyTo: { type: string, format: uuid, nullable: true }
     mediaUrl: { type: string }
     mediaType: { type: string }
@@ -123,6 +123,11 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+EditMessageRequest:
+  type: object
+  required: [content]
+  properties:
+    content: { type: string }
 Reaction:
   type: object
   properties:
