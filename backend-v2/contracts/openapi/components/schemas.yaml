@@ -171,8 +171,6 @@ CreateGroupRequest:
       example: 'Daily sync at 10:00'
     avatarUrl:
       type: string
-      format: uri
-      pattern: '^https?://'
       description: |
         Optional avatar URL. Trimmed of leading and trailing whitespace
         before storage.
@@ -208,9 +206,7 @@ UpdateGroupRequest:
       example: 'Daily sync at 10:00'
     avatarUrl:
       type: string
-      format: uri
-      pattern: '^https?://'
       description: |
-        New avatar URL. Trimmed of leading and trailing whitespace before
-        storage.
+        Optional avatar URL. Trimmed of leading and trailing whitespace
+        before storage.
       example: 'https://cdn.example.com/avatars/team.png'
