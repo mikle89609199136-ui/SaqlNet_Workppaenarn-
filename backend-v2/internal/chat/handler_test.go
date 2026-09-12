@@ -441,9 +441,10 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 
 			body, _ := json.Marshal(map[string]string{"content": "hello"})
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
+			req.SetPathValue("chatId", handlerChatID)
 
 			rr := httptest.NewRecorder()
-			h.Messages(rr, req)
+			h.SendMessage(rr, req)
 
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
 			if err := mock.ExpectationsWereMet(); err != nil {

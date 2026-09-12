@@ -33,6 +33,7 @@ var (
 	ErrStateUnchanged            = errors.New("state unchanged")
 	ErrMemberMuted               = errors.New("member is muted")
 	ErrCannotModerateTarget      = errors.New("cannot moderate target")
+	ErrStickerCannotBeEdited     = errors.New("sticker cannot be edited")
 )
 
 type Chat struct {
@@ -1737,9 +1738,39 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+	var msgType string
 
-	// Require sender to be a current member of the chat to prevent editing after being kicked.
+	// Require the sender to still be a chat member both when validating
+	// the message type and when applying the update.
 	err := s.db.QueryRowContext(ctx, `
+		SELECT m.type
+		FROM messages.messages m
+		JOIN chats.members cm
+		ON cm.chat_id = m.chat_id
+		AND cm.user_id = $2
+		WHERE m.id = $1
+		AND m.sender_id = $2
+		AND m.deleted_at IS NULL`,
+		messageID, userID,
+	).Scan(&msgType)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+
+	if err != nil {
+		return Message{}, err
+	}
+
+	if msgType == "sticker" {
+		return Message{}, ErrStickerCannotBeEdited
+	}
+
+	if msgType == "text" && strings.TrimSpace(content) == "" {
+		return Message{}, ErrInvalidInput
+	}
+
+	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
 			SET content = $1, updated_at = NOW()
@@ -1767,20 +1798,25 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
 	}
+
 	if err != nil {
 		return Message{}, err
 	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
 		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
 			return Message{}, err
 		}
 	}
+
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
 	}
