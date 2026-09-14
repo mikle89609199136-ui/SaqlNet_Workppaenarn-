@@ -6,7 +6,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/layouts';
 import { PasswordRequirements } from '@/components/features';
 import { Button, Icon, Input, SegmentedControl, showToast } from '@/shared/ui';
-import { LANGUAGES, type TLanguage } from '@/shared/config';
+import { LANGUAGES, type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
@@ -27,7 +27,7 @@ export function RegisterPage() {
   const { t, i18n } = useTranslation();
 
   const [step, setStep] = useState<TRegisterStep>('welcome');
-  /* Язык уже определён по браузеру при запуске (configs/i18n) — здесь
+  /* Язык уже определён по браузеру при запуске (shared/i18n) — здесь
      его только показывают и дают поправить. Выбранный тут же меняет
      интерфейс мастера и вместе с ним уходит на сервер. */
   const language = (i18n.language.split('-')[0] as TLanguage) ?? 'ru';
