@@ -118,12 +118,18 @@ func DialNATS(url string) (NATSConn, error) {
 	}
 	// read INFO line
 	buf := make([]byte, 1024)
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	if _, err := conn.Read(buf); err != nil {
 		conn.Close()
 		return nil, err
 	}
-	conn.SetReadDeadline(time.Time{})
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	// send CONNECT
 	if _, err := conn.Write([]byte("CONNECT {}\r\n")); err != nil {
 		conn.Close()
