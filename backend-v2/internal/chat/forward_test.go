@@ -27,15 +27,6 @@ var content = "{\"e2e\":true,\"iv\":\"8VZfjQjsdoW7yEo9\",\"data\":\"hhBWdrsJCapQ
 var message = TMessages{
 	MessageID: "00000000-0000-0000-0000-000000000003",
 	SenderID:  userID,
-	Type:      "text",
-	Metadata: &TMessageForwardMetadata{
-		Forwarded: true,
-		ForwardedFrom: &TForwardedFrom{
-			MessageID:  "00000000-0000-0000-0000-000000000003",
-			SenderID:   "00000000-0000-0000-0000-000000000004",
-			SenderName: "Alice",
-		},
-	},
 }
 
 var messageIDS = []string{
@@ -163,15 +154,6 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 						MessageID: "",
 						SenderID:  "",
 						Content:   "",
-						Type:      "text",
-						Metadata: &TMessageForwardMetadata{
-							Forwarded: false,
-							ForwardedFrom: &TForwardedFrom{
-								MessageID:  "1",
-								SenderID:   "",
-								SenderName: "MAGOMED",
-							},
-						},
 					},
 				},
 			},
@@ -201,15 +183,6 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 								FileName:       "",
 								FileSize:       0,
 								MediaEncrypted: false,
-							},
-						},
-						Type: "text",
-						Metadata: &TMessageForwardMetadata{
-							Forwarded: true,
-							ForwardedFrom: &TForwardedFrom{
-								MessageID:  "550e8400-e29b-41d4-a716-446655440005",
-								SenderID:   "550e8400-e29b-41d4-a716-446655440006",
-								SenderName: "MAGOMED",
 							},
 						},
 					},
@@ -388,7 +361,7 @@ func TestSendForwardMessages(t *testing.T) {
 
 	mock.ExpectCommit()
 
-	result, err := NewService(db, nil).sendForwardMessages(context.Background(), messages, caption, targetChatID, userID)
+	result, err := NewService(db, nil).sendForwardMessages(context.Background(), messages, caption, targetChatID, chatID, userID)
 
 	require.NoError(t, err)
 	require.Len(t, result, 3)

@@ -659,7 +659,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.URL.Path == "/api/v2/messages/bulk-forward" && r.Method == http.MethodPost {
+	if r.URL.Path == "/api/v2/messages/forward" && r.Method == http.MethodPost {
 		var input ForwardMessageInput
 		if !decode(w, r, &input) {
 			return

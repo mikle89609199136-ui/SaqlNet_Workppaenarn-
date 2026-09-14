@@ -2119,19 +2119,6 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
-func (s *Service) isMessagesCheck(ctx context.Context, chatID string, message []TMessages) (bool, error) {
-	count := len(message)
-	var messageIDS []string = make([]string, count)
-	var ok bool
-
-	for i, msg := range message {
-		messageIDS[i] = msg.MessageID
-	}
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages.messages WHERE chat_id = $1 AND id = ANY($2) 
-	AND deleted_at IS NULL HAVING COUNT(DISTINCT id) = $3)`, chatID, pq.Array(messageIDS), count).Scan(&ok)
-	return ok, err
-}
-
 // Функция проверяет, что пользователь находится во всех чатов по массиву chatIDS. Дубликаты вернут false
 func (s *Service) isMemberOfChats(ctx context.Context, userID string, chatIDS []string) (bool, error) {
 	count := len(chatIDS)
@@ -2144,8 +2131,9 @@ func (s *Service) isMemberOfChats(ctx context.Context, userID string, chatIDS []
 	return ok, err
 }
 
-func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages, caption string, targetChatID, userID string) ([]ResForwardMessage, error) {
+func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages, caption string, targetChatID, chatID, userID string) ([]ResForwardMessage, error) {
 	totalLength := len(messages)
+	count := len(messages)
 
 	hasCaption := caption != ""
 
@@ -2161,11 +2149,62 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 
 	defer tx.Rollback()
 
+	var oldMessageIDS []string = make([]string, count)
+
+	for i, msg := range messages {
+		oldMessageIDS[i] = msg.MessageID
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT m.id, m.type, m.sender_id, COALESCE(up.first_name, au.first_name, au.username, '')  FROM messages.messages m
+	LEFT JOIN auth.users au ON au.id = m.sender_id
+    LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+	WHERE m.chat_id = $1 AND m.id = ANY($2) 
+	AND deleted_at IS NULL`, chatID, pq.Array(oldMessageIDS))
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	metadatas := make([]string, totalLength)
+	messageTypes := make([]string, totalLength)
+
+	type sourceMessage struct {
+		ID         string
+		Type       string
+		SenderID   string
+		SenderName string
+	}
+
+	sourceMessages := make(map[string]sourceMessage, count)
+
+	for rows.Next() {
+		var msg sourceMessage
+
+		if err := rows.Scan(
+			&msg.ID,
+			&msg.Type,
+			&msg.SenderID,
+			&msg.SenderName,
+		); err != nil {
+			return nil, err
+		}
+
+		sourceMessages[msg.ID] = msg
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(sourceMessages) != count {
+		return nil, ErrNotFound
+	}
+
 	// Messages
 	messageIDS := make([]string, totalLength)
 	content := make([]string, totalLength)
-	metadata := make([]string, totalLength)
-	messageType := make([]string, totalLength)
 
 	// Attachments
 	attachmentMessageIDs := make([]string, 0)
@@ -2188,13 +2227,19 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 
 		messageIDS[0] = uuid.NewString()
 		content[0] = captionJSON
-		metadata[0] = `{}`
-		messageType[0] = "text"
+		metadatas[0] = `{}`
+		messageTypes[0] = "text"
 		startIDX = 1
 	}
 
 	// Подготавливаем messages + attachments.
 	for i, m := range messages {
+		source, ok := sourceMessages[m.MessageID]
+
+		if !ok {
+			return nil, ErrNotFound
+		}
+
 		id := uuid.NewString()
 		idx := startIDX + i
 
@@ -2207,18 +2252,24 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 		}
 
 		messageIDS[idx] = id
-		messageType[idx] = m.Type
+		messageTypes[idx] = source.Type
 
-		if m.Metadata != nil {
-			b, err := json.Marshal(m.Metadata)
-			if err != nil {
-				return nil, err
-			}
-
-			metadata[idx] = string(b)
-		} else {
-			metadata[idx] = `{}`
+		metadata := TMessageForwardMetadata{
+			Forwarded: true,
+			ForwardedFrom: TForwardedFrom{
+				MessageID:  source.ID,
+				SenderID:   source.SenderID,
+				SenderName: source.SenderName,
+			},
 		}
+
+		metadataJSON, err := json.Marshal(metadata)
+
+		if err != nil {
+			return nil, err
+		}
+
+		metadatas[idx] = string(metadataJSON)
 
 		for position, attachment := range m.Attachments {
 			attachmentMessageIDs = append(attachmentMessageIDs, id)
@@ -2237,7 +2288,7 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 	SELECT u.id, $2, $3, u.content, u.metadata, u.type FROM unnest($1::uuid[], $4::text[], $5::jsonb[], $6::text[])
 	AS u(id, content, metadata, type)`
 
-	if _, err := tx.ExecContext(ctx, messagesQuery, pq.Array(messageIDS), targetChatID, userID, pq.Array(content), pq.Array(metadata), pq.Array(messageType)); err != nil {
+	if _, err := tx.ExecContext(ctx, messagesQuery, pq.Array(messageIDS), targetChatID, userID, pq.Array(content), pq.Array(metadatas), pq.Array(messageTypes)); err != nil {
 		return nil, err
 	}
 
@@ -2288,22 +2339,22 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 		ORDER BY array_position($1::uuid[], m.id)
 	`
 
-	rows, err := tx.QueryContext(ctx, selectQuery, pq.Array(messageIDS))
+	resultRows, err := tx.QueryContext(ctx, selectQuery, pq.Array(messageIDS))
 
 	if err != nil {
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer resultRows.Close()
 
 	result := make([]ResForwardMessage, 0, totalLength)
 
-	for rows.Next() {
+	for resultRows.Next() {
 		var message ResForwardMessage
 		var attachmentsJSON []byte
 		var metadataJSON []byte
 
-		if err := rows.Scan(
+		if err := resultRows.Scan(
 			&message.ID,
 			&message.ChatID,
 			&message.SenderID,
@@ -2327,12 +2378,21 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 		result = append(result, message)
 	}
 
-	if err := rows.Err(); err != nil {
+	if err := resultRows.Err(); err != nil {
 		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+
+	if s.ws != nil {
+		payload, _ := json.Marshal(map[string]any{
+			"type":     "new_messages",
+			"chatId":   targetChatID,
+			"messages": result,
+		})
+		s.ws.BroadcastToChat(targetChatID, payload, userID)
 	}
 
 	return result, nil
@@ -2349,14 +2409,7 @@ func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetCha
 		return nil, ErrForbidden
 	}
 
-	if ok, err := s.isMessagesCheck(ctx, chatID, messages); err != nil || !ok {
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrForbidden
-	}
-
-	return s.sendForwardMessages(ctx, messages, caption, targetChatID, userID)
+	return s.sendForwardMessages(ctx, messages, caption, targetChatID, chatID, userID)
 }
 
 // Reaction types.

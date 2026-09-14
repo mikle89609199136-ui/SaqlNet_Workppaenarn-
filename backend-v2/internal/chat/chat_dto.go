@@ -41,8 +41,8 @@ type ResForwardMessage struct {
 }
 
 type TMessageForwardMetadata struct {
-	Forwarded     bool            `json:"forwarded" validate:"eq=true"`
-	ForwardedFrom *TForwardedFrom `json:"forwardedFrom" validate:"required"`
+	Forwarded     bool           `json:"forwarded" validate:"eq=true"`
+	ForwardedFrom TForwardedFrom `json:"forwardedFrom" validate:"required"`
 }
 
 type TE2EContent struct {
@@ -56,13 +56,10 @@ type TE2EContent struct {
 }
 
 type TMessages struct {
-	MessageID   string                   `json:"messageId" validate:"required,uuid"`
-	SenderID    string                   `json:"senderId" validate:"required,uuid"`
-	Content     string                   `json:"content,omitempty" validate:"omitempty"`
-	Attachments []TAttachment            `json:"attachments,omitempty" validate:"omitempty,max=10,dive"`
-	Type        string                   `json:"type" validate:"required"`
-	ReplyTo     *string                  `json:"replyTo,omitempty" validate:"omitempty,uuid"`
-	Metadata    *TMessageForwardMetadata `json:"metadata,omitempty"`
+	MessageID   string        `json:"messageId" validate:"required,uuid"`
+	SenderID    string        `json:"senderId" validate:"required,uuid"`
+	Content     string        `json:"content,omitempty" validate:"omitempty"`
+	Attachments []TAttachment `json:"attachments,omitempty" validate:"omitempty,max=10,dive"`
 }
 
 type ForwardMessageInput struct {
