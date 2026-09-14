@@ -13,7 +13,7 @@ import {
   SETTINGS_SECTIONS,
   type TSettingsSection,
 } from '@/shared/config/routes';
-import { clearAuthSession } from '@/utils/clearAuthSession';
+import { clearAuthSession } from '@/features/auth';
 
 async function requireSession({ request }: { request: Request }) {
   const token = useProfileStore.getState().token;

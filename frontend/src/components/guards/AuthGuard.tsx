@@ -1,6 +1,6 @@
 import { REACT_ROUTES } from '@/shared/config';
 import { useProfileStore } from '@/store';
-import { clearAuthSession } from '@/utils/clearAuthSession';
+import { clearAuthSession } from '@/features/auth';
 import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 

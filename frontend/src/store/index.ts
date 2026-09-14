@@ -1,5 +1,4 @@
 export { useProfileStore } from '@/entities/user';
-export { useCallStore } from './call';
 export { useChatUiStore, type IActionMenu } from './chatUi';
 export {
   useOutboxStore,

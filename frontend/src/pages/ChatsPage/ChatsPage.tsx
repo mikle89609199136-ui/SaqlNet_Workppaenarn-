@@ -1,16 +1,13 @@
 import {
   ArchiveEntry,
-  ChatListItem,
-  ChatListItemSkeleton,
-  ChatsSearchField,
-  ChatsSearchResults,
-  CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
-  UserProfilePanel,
 } from '@/components/features';
+import { ChatListItem, ChatListItemSkeleton } from '@/entities/chat';
+import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
+import { CreateGroupModal } from '@/features/group-management';
+import { UserProfilePanel } from '@/features/user-profile';
 import { Icon } from '@/shared/ui';
-import { useChatsSearch } from '@/hooks';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
 import { isConversationStarted } from '@/entities/chat';
 import { PaneResizer } from './PaneResizer';

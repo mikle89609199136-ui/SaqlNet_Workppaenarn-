@@ -1,6 +1,6 @@
 import { ContextMenu } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
-import { useChatActions } from '@/hooks/useChatActions';
+import { useChatActions } from '@/features/chat-actions';
 import type { IChatDto } from '../../model/types';
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
