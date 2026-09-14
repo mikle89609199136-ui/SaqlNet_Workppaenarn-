@@ -1,11 +1,11 @@
 import { ContextMenu } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
-import { useChatActions } from '@/features/chat-actions';
-import type { IChatDto } from '../../model/types';
+import { useChatActions } from '../model/useChatActions';
+import type { IChatDto } from '@/types';
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
-interface Props {
+export interface IChatRowMenuProps {
   chat: IChatDto;
   /** Сколько чатов уже закреплено — от этого зависит, можно ли ещё один. */
   pinnedCount: number;
@@ -24,7 +24,7 @@ interface Props {
  * умеет и что менялось молча, без единого способа управлять этим из
  * интерфейса.
  */
-export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }: Props) {
+export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }: IChatRowMenuProps) {
   const { t } = useTranslation();
   const { togglePin, toggleArchive } = useChatActions();
 

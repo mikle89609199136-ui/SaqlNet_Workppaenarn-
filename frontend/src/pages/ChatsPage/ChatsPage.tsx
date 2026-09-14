@@ -6,6 +6,7 @@ import {
 import { ChatListItem, ChatListItemSkeleton } from '@/entities/chat';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { CreateGroupModal } from '@/features/group-management';
+import { ChatRowMenu } from '@/features/chat-actions';
 import { UserProfilePanel } from '@/features/user-profile';
 import { Icon } from '@/shared/ui';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
@@ -120,7 +121,12 @@ export function ChatsPage() {
       {archiveHeader}
       <section className="chats-list styled-scrollbar">
         {archivedChats.map((chat) => (
-          <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+          <ChatListItem
+            chat={chat}
+            key={chat.id}
+            pinnedCount={pinnedCount}
+            renderMenu={(props) => <ChatRowMenu {...props} />}
+          />
         ))}
       </section>
     </>
@@ -172,7 +178,12 @@ export function ChatsPage() {
           !error &&
           !search.isSearching &&
           visibleChats.map((chat) => (
-            <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+            <ChatListItem
+              chat={chat}
+              key={chat.id}
+              pinnedCount={pinnedCount}
+              renderMenu={(props) => <ChatRowMenu {...props} />}
+            />
           ))}
       </section>
     </>
