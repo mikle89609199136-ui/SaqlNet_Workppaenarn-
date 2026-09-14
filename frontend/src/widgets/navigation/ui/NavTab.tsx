@@ -1,7 +1,7 @@
 import { Icon } from '@/shared/ui';
 import { cn } from '@/shared/lib';
 import { NavLink } from 'react-router-dom';
-import type { INavItem } from './navItems';
+import type { INavItem } from '../model/navItems';
 
 interface Props {
   item: INavItem;

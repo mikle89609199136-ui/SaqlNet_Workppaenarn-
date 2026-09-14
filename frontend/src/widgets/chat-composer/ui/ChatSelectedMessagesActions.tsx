@@ -3,7 +3,8 @@ import { useEscapeKey, useIsMobile } from '@/shared/lib';
 import { useChatUiStore } from '@/store';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ComposerRow, ComposerWrapper } from '@/components/features/ChatComposer';
+import { ComposerRow } from './ComposerRow';
+import { ComposerWrapper } from './ComposerWrapper';
 
 interface Props {
   handleCancelSelection: () => void;

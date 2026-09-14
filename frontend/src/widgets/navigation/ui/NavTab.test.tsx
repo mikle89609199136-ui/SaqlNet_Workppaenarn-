@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { NavTab } from './NavTab';
-import { navItems } from './navItems';
+import { navItems } from '../model/navItems';
 
 const chats = navItems.find((item) => item.key === 'chats')!;
 const channels = navItems.find((item) => item.key === 'channels')!;

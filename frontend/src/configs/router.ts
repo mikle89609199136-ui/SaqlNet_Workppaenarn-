@@ -191,11 +191,9 @@ export const router = createBrowserRouter([
                   {
                     index: true,
                     lazy: () =>
-                      import('../components/features/ChatThread/EmptyChatPlaceholder').then(
-                        (m) => ({
-                          Component: m.EmptyChatPlaceholder,
-                        })
-                      ),
+                      import('@/widgets/chat-messages').then((m) => ({
+                        Component: m.EmptyChatPlaceholder,
+                      })),
                   },
                   {
                     path: REACT_ROUTES.CHAT_BY_ID,

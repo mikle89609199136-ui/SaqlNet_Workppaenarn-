@@ -105,6 +105,8 @@ export default tseslint.config(
                 '@/services/*',
                 '@/queries/*',
                 '@/hooks',
+                '@/widgets',
+                '@/widgets/*',
                 '@/components/*',
                 '@/pages',
                 '@/pages/*',
@@ -119,7 +121,11 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/components/**/*.{ts,tsx}', 'src/layouts/**/*.{ts,tsx}'],
+    files: [
+      'src/widgets/**/*.{ts,tsx}',
+      'src/components/**/*.{ts,tsx}',
+      'src/layouts/**/*.{ts,tsx}',
+    ],
     rules: {
       'no-restricted-imports': [
         'warn',
@@ -144,7 +150,14 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/components/*',
+                '@/pages',
+                '@/pages/*',
+                '@/layouts/*',
+              ],
               message: 'Слой данных не знает о разметке.',
             },
           ],
@@ -164,7 +177,14 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/components/*',
+                '@/pages',
+                '@/pages/*',
+                '@/layouts/*',
+              ],
               message: 'Слой данных не знает о разметке.',
             },
             {

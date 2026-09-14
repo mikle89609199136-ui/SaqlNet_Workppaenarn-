@@ -75,7 +75,6 @@ describe('ChatThreadComposer', () => {
   });
 
   it('активирует кнопку отправки при вводе текста и отправляет сообщение по клику', async () => {
-    const user = userEvent.setup();
     const props = setupProps();
     const serverMessage = makeMessage({ id: 'srv-1', chatId: 'chat-test-1', content: 'Привет' });
     vi.spyOn(services.messageService, 'sendMessage').mockResolvedValue(serverMessage);
