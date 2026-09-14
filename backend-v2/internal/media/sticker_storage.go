@@ -73,7 +73,9 @@ func BackfillStickerStorageIdentities(ctx context.Context, db *sql.DB, endpoint,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('media.sticker_storage_backfill'))`); err != nil {
 		return err

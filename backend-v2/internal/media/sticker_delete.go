@@ -18,7 +18,9 @@ func (s *Service) DeleteSticker(ctx context.Context, userID, stickerID string) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var bucket, objectKey sql.NullString
 	err = tx.QueryRowContext(ctx, `
@@ -71,7 +73,9 @@ func (s *Service) DeleteStickerPack(ctx context.Context, userID, packID string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var iconBucket, iconObjectKey sql.NullString
 	err = tx.QueryRowContext(ctx, `
