@@ -12,7 +12,7 @@ import {
   Textarea,
   showToast,
 } from '@/shared/ui';
-import { PasswordRequirements } from '@/components/features';
+import { PasswordRequirements } from '@/features/auth';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {

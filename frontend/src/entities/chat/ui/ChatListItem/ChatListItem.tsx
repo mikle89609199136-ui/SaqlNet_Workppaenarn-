@@ -10,13 +10,23 @@ import { NavLink } from 'react-router-dom';
 import { Avatar, Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
-import { ChatRowMenu } from './ChatRowMenu';
 import type { IChatDto } from '../../model/types';
+import type { RefObject } from 'react';
+
+export interface IChatListItemMenuProps {
+  chat: IChatDto;
+  pinnedCount: number;
+  x: number;
+  y: number;
+  returnFocusRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+}
 
 interface Props {
   chat: IChatDto;
   /** Сколько чатов уже закреплено: больше пяти держать не даём. */
   pinnedCount?: number;
+  renderMenu?: (props: IChatListItemMenuProps) => React.ReactNode;
 }
 
 export function ChatListItem({ chat, pinnedCount = 0 }: Props) {
@@ -115,16 +125,15 @@ export function ChatListItem({ chat, pinnedCount = 0 }: Props) {
         узел в конец документа, но события React всплывают по дереву
         компонентов, а не по DOM: пункт меню, лежащий внутри ссылки,
         открывал чат при каждом нажатии. */}
-      {contextMenu?.open && (
-        <ChatRowMenu
-          chat={chat}
-          onClose={closeContextMenu}
-          pinnedCount={pinnedCount}
-          returnFocusRef={openerRef}
-          x={contextMenu.x}
-          y={contextMenu.y}
-        />
-      )}
+      {contextMenu?.open &&
+        renderMenu?.({
+          chat,
+          onClose: closeContextMenu,
+          pinnedCount,
+          returnFocusRef: openerRef,
+          x: contextMenu.x,
+          y: contextMenu.y,
+        })}
     </>
   );
 }

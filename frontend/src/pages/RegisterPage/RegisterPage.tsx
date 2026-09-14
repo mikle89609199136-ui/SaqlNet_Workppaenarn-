@@ -4,7 +4,7 @@ import { useForm, type UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/layouts';
-import { PasswordRequirements } from '@/components/features';
+import { PasswordRequirements } from '@/features/auth';
 import { Button, Icon, Input, SegmentedControl, showToast } from '@/shared/ui';
 import { LANGUAGES, type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';

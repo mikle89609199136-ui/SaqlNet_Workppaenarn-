@@ -1,16 +1,14 @@
 import {
-  ChatSelectedMessagesActions,
   ChatThreadComposer,
   ChatThreadHeader,
-  ForwardChatMessagesModal,
-  GroupInfoModal,
-  MessageActionsPopover,
-  PinnedMessagesNavigator,
-  PinnedMessagesView,
   MessagesList,
   SafetyCodeNotice,
-  UserProfileModal,
 } from '@/components/features';
+import { ForwardChatMessagesModal } from '@/features/forward-messages';
+import { GroupInfoModal } from '@/features/group-management';
+import { ChatSelectedMessagesActions, MessageActionsPopover } from '@/features/message-actions';
+import { PinnedMessagesNavigator, PinnedMessagesView } from '@/features/pinned-messages';
+import { UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/entities/media';
 
 import '@/styles/ChatThreadPage.css';

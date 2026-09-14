@@ -1,2 +1,2 @@
-export { ChatListItem } from './ChatListItem';
+export { ChatListItem, type IChatListItemMenuProps } from './ChatListItem';
 export { ChatListItemSkeleton } from './ChatListItemSkeleton';

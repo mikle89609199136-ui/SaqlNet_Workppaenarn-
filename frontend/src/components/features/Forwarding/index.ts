@@ -1,1 +1,0 @@
-export { ForwardChatMessagesModal } from './ForwardChatMessagesModal';

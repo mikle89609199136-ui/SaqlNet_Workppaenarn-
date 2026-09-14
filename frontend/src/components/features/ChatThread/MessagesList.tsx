@@ -1,4 +1,5 @@
-import { useJumpToMessage, useVirtualMessagesFeed } from '@/hooks';
+import { useVirtualMessagesFeed } from '@/hooks';
+import { useJumpToMessage } from '@/features/jump-to-message';
 import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
