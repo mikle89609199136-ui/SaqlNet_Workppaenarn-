@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE_SETTINGS } from '@/shared/config';
+import { DEFAULT_PROFILE_SETTINGS } from '@/entities/user';
 import { useProfileStore } from '@/store/profile';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { services } from '@/services/serviceContainer';

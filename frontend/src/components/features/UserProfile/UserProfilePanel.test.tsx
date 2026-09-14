@@ -11,7 +11,7 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { useProfileStore } from '@/store';
 import { ProfileDetails } from './ProfileDetails';
-import { ProfileHeader } from './ProfileHeader';
+import { ProfileHeader } from '@/entities/user';
 import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 import { UserProfilePanel } from './UserProfilePanel';
 

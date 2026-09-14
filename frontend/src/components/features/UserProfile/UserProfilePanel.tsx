@@ -1,15 +1,17 @@
 import { Spinner } from '@/shared/ui';
 import { useCall, useProfileEdit } from '@/hooks';
-import type { IProfileState } from '@/pages';
-import { userProfileQuery } from '@/queries/users/userProfileQuery';
+import {
+  type IProfileState,
+  userProfileQuery,
+  ProfileHeader,
+  ProfilePanelFallback,
+} from '@/entities/user';
 import { useProfileStore } from '@/store';
 import { useQuery } from '@tanstack/react-query';
 import { getChatSubtitle } from '@/shared/lib';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
-import { ProfileHeader } from './ProfileHeader';
-import { ProfilePanelFallback } from './ProfilePanelFallback';
 import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 
 interface Props {

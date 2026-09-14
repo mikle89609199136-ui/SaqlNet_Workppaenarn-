@@ -1,6 +1,5 @@
 export { UserProfilePanel } from './UserProfilePanel';
 export { UserProfileModal } from './UserProfileModal';
-export { ProfileHeader } from './ProfileHeader';
+export { ProfileHeader, ProfilePanelFallback } from '@/entities/user';
 export { ProfileDetails } from './ProfileDetails';
 export { ProfileSharedMedia } from './ProfileSharedMedia';
-export { ProfilePanelFallback } from './ProfilePanelFallback';

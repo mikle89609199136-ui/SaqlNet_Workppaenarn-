@@ -1,4 +1,4 @@
-import type { IProfileModal, IProfileState } from '@/pages/ChatThreadPage/ChatThreadPage';
+import type { IProfileModal, IProfileState } from '@/entities/user';
 import type { IChatDto, TMessagesList } from '@/types';
 import { useEffect, useState } from 'react';
 

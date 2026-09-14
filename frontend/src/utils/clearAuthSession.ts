@@ -1,13 +1,13 @@
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { forgetEncryptionStates } from '@/crypto/encryptionStatus';
 import { forgetSecurityNotices } from '@/crypto/securityNotices';
-import { clearMediaObjectUrls } from '@/services/mediaObjectUrls';
+import { clearMediaObjectUrls } from '@/entities/media/model/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
 import { clearAllDrafts } from '@/store/chatDrafts';
 import { clearOutbox } from '@/store/outbox';
 import { useChatUiStore } from '@/store/chatUi';
 import { queryClient } from '@/queries/queryClient';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 
 export function clearAuthSession() {
   const { token, clearProfile } = useProfileStore.getState();

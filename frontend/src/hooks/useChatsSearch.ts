@@ -1,6 +1,6 @@
-import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/queries/users/searchUsersQuery';
+import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/entities/user';
 import type { IChatDto, ISearchUserDto } from '@/types';
-import { getLastMessageText } from '@/shared/lib';
+import { getLastMessageText } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
