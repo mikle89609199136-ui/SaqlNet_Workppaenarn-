@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import i18n from 'i18next';
 import { describe, expect, it } from 'vitest';
 
-const ruPath = resolve(import.meta.dirname, '../../public/locales/ru/translation.json');
-const enPath = resolve(import.meta.dirname, '../../public/locales/en/translation.json');
+const ruPath = resolve(import.meta.dirname, '../../../public/locales/ru/translation.json');
+const enPath = resolve(import.meta.dirname, '../../../public/locales/en/translation.json');
 
 const ruTranslations = JSON.parse(readFileSync(ruPath, 'utf-8')) as Record<string, string>;
 const enTranslations = JSON.parse(readFileSync(enPath, 'utf-8')) as Record<string, string>;
@@ -79,5 +79,58 @@ describe('конфигурация i18n и поддержка плоских к�
       expect(ruValue).toBe(ruTranslations[key]);
       expect(ruValue).not.toBe(key);
     }
+  });
+
+  it('все ключи errors.* присутствуют и корректно переводятся', async () => {
+    const testInstance = i18n.createInstance();
+    await testInstance.init({
+      lng: 'en',
+      fallbackLng: 'ru',
+      keySeparator: false,
+      resources: {
+        en: { translation: enTranslations },
+        ru: { translation: ruTranslations },
+      },
+    });
+
+    const expectedErrorKeys = [
+      'errors.accessDenied',
+      'errors.blockedByUser',
+      'errors.chatNotFound',
+      'errors.fileTooLarge',
+      'errors.generic',
+      'errors.invalid2fa',
+      'errors.invalidCredentials',
+      'errors.invalidFile',
+      'errors.memberMuted',
+      'errors.memberNotFound',
+      'errors.notFound',
+      'errors.rateLimited',
+      'errors.unsupportedType',
+      'errors.userNotFound',
+      'errors.usernameTaken',
+      'errors.validationFailed',
+      'errors.weakPassword',
+      'errors.wrongPassword',
+    ];
+
+    for (const key of expectedErrorKeys) {
+      expect(enTranslations[key]).toBeDefined();
+      expect(ruTranslations[key]).toBeDefined();
+      expect(testInstance.t(key)).toBe(enTranslations[key]);
+    }
+
+    await testInstance.changeLanguage('ru');
+    for (const key of expectedErrorKeys) {
+      expect(testInstance.t(key)).toBe(ruTranslations[key]);
+    }
+  });
+
+  it('ключи в обоих словарях отсортированы строго по алфавиту', () => {
+    const ruKeys = Object.keys(ruTranslations);
+    const enKeys = Object.keys(enTranslations);
+
+    expect(ruKeys).toEqual([...ruKeys].sort());
+    expect(enKeys).toEqual([...enKeys].sort());
   });
 });
