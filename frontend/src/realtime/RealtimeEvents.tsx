@@ -1,4 +1,4 @@
-import { useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
 import { useServerEvents } from './useServerEvents';
 
 /**

@@ -3,16 +3,19 @@ import {
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
 } from '@/components/features';
-import { ChatListItem, ChatListItemSkeleton } from '@/entities/chat';
+import {
+  ChatListItem,
+  ChatListItemSkeleton,
+  chatsQuery,
+  isConversationStarted,
+} from '@/entities/chat';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { CreateGroupModal } from '@/features/group-management';
 import { ChatRowMenu } from '@/features/chat-actions';
 import { UserProfilePanel } from '@/features/user-profile';
 import { Icon } from '@/shared/ui';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
-import { isConversationStarted } from '@/entities/chat';
 import { PaneResizer } from './PaneResizer';
-import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

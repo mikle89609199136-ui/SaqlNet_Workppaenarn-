@@ -1,5 +1,5 @@
-import { chatQuery } from '@/queries/chat/threadQueries';
-import { useThreadMessagesData } from '@/queries/chat/useThreadMessagesData';
+import { chatQuery } from '@/entities/chat';
+import { useThreadMessagesData } from '@/entities/message';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { UserProfilePanel } from './UserProfilePanel';

@@ -1,6 +1,6 @@
 import { acknowledgeIdentityChange } from '@/crypto/securityNotices';
 import { useSecurityNotice } from '@/hooks';
-import { membersQuery } from '@/queries/chat/membersQuery';
+import { membersQuery } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 

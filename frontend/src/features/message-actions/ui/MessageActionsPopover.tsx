@@ -1,8 +1,9 @@
 import { ContextMenu, Icon } from '@/shared/ui';
 import { cn } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
-import { pinsQuery } from '@/queries/chat/threadQueries';
-import { useChatUiStore, useProfileStore } from '@/store';
+import { pinsQuery } from '@/entities/message';
+import { useProfileStore } from '@/entities/user';
+import { useChatUiStore } from '@/store';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';

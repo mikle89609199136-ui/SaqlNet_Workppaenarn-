@@ -1,6 +1,7 @@
 import { useVirtualMessagesFeed } from '@/hooks';
 import { useJumpToMessage } from '@/features/jump-to-message';
-import { useChatUiStore, useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
+import { useChatUiStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';

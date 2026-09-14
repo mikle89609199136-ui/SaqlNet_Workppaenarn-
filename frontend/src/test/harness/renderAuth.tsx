@@ -6,7 +6,7 @@ import { ToastStack } from '@/shared/ui';
 import { ROUTES } from '@/shared/config/routes';
 import { LoginPage } from '@/pages/LoginPage/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage/RegisterPage';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import { testI18n } from './i18n';
 
 interface IRenderAuthOptions {

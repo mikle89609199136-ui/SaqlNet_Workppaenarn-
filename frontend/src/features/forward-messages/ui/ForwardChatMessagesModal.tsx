@@ -1,6 +1,6 @@
 import { useDebounce } from '@/shared/lib';
 import { services } from '@/services';
-import { chatsQuery } from '@/queries/chats/chatsQuery';
+import { chatsQuery } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';

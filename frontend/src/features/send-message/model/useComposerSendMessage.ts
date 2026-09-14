@@ -1,11 +1,17 @@
 import { describeApiError } from '@/shared/api';
 import { chatKeys } from '@/queries/keys';
-import { patchThreadMessage, putThreadMessage } from '@/queries/chat/threadCacheActions';
-import { retryOutboxMessage, sendOutboxItem } from '@/queries/chat/outboxSender';
+import {
+  addOutboxItem,
+  patchThreadMessage,
+  putThreadMessage,
+  retryOutboxMessage,
+  sendOutboxItem,
+  type IOutboxItem,
+} from '@/entities/message';
+import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { useChatUiStore, useProfileStore } from '@/store';
+import { useChatUiStore } from '@/store';
 import { clearDraft } from '@/store/chatDrafts';
-import { addOutboxItem, type IOutboxItem } from '@/store/outbox';
 import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';

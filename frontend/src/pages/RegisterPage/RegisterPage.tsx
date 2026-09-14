@@ -10,7 +10,7 @@ import { LANGUAGES, type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import { getPasswordScore, PASSWORD_RULES } from '@/shared/lib/passwordRules';
 import {
