@@ -5,7 +5,7 @@ import { registerChatResolver } from './queries/chat/chatResolverBridge';
 import { startCryptoAutoInit } from './services/serviceContainer';
 
 // Global Scripts
-import './configs/i18n.js';
+import './shared/i18n';
 
 // Styles
 import './styles/tailwind.css';
