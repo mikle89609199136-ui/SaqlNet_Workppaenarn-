@@ -29,7 +29,7 @@ interface Props {
   renderMenu?: (props: IChatListItemMenuProps) => React.ReactNode;
 }
 
-export function ChatListItem({ chat, pinnedCount = 0 }: Props) {
+export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
   const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);

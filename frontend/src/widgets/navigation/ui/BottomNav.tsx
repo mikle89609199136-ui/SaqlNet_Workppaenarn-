@@ -1,5 +1,5 @@
 import { NavTab } from './NavTab';
-import { navItems } from './navItems';
+import { navItems } from '../model/navItems';
 
 /**
  * Панель разделов внизу экрана телефона.

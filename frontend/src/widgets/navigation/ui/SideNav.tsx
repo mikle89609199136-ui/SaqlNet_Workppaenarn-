@@ -2,7 +2,7 @@ import { Icon, Tooltip } from '@/shared/ui';
 import { ROUTES } from '@/shared/config';
 import { NavLink } from 'react-router-dom';
 import { NavTab } from './NavTab';
-import { sideNavItems } from './navItems';
+import { sideNavItems } from '../model/navItems';
 
 const railButton =
   'flex size-11 items-center justify-center rounded-field text-ink-2 transition-colors duration-fast cursor-pointer hover:bg-sheet-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2';

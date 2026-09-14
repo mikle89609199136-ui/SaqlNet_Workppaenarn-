@@ -1,6 +1,6 @@
 import { useIsMobile } from '@/shared/lib';
 import { Outlet, useParams } from 'react-router-dom';
-import { BottomNav, SideNav } from './Nav';
+import { BottomNav, SideNav } from '@/widgets/navigation';
 
 export function AppLayout() {
   const { chatId } = useParams();

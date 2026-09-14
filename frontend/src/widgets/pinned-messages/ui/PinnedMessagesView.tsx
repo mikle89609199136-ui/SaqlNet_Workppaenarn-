@@ -1,4 +1,5 @@
-import { ChatThreadHeader, MessagesList } from '@/components/features/ChatThread';
+import { ChatThreadHeader } from '@/widgets/chat-header';
+import { MessagesList } from '@/widgets/chat-messages';
 import { MessageActionsPopover } from '@/features/message-actions';
 import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';

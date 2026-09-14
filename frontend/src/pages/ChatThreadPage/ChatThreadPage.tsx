@@ -1,13 +1,11 @@
-import {
-  ChatThreadComposer,
-  ChatThreadHeader,
-  MessagesList,
-  SafetyCodeNotice,
-} from '@/components/features';
+import { ChatThreadHeader, SafetyCodeNotice } from '@/widgets/chat-header';
+import { MessagesList } from '@/widgets/chat-messages';
+import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-composer';
+import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
 import { GroupInfoModal } from '@/features/group-management';
-import { ChatSelectedMessagesActions, MessageActionsPopover } from '@/features/message-actions';
-import { PinnedMessagesNavigator, PinnedMessagesView } from '@/features/pinned-messages';
+import { MessageActionsPopover } from '@/features/message-actions';
+import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/entities/media';
 
