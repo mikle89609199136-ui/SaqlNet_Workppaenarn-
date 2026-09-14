@@ -17,6 +17,7 @@ const testI18n = i18n.createInstance();
 testI18n.use(initReactI18next).init({
   lng: 'ru',
   fallbackLng: 'ru',
+  keySeparator: false,
   resources: { ru: { translation: {} } },
   interpolation: { escapeValue: false },
   react: { useSuspense: false },

@@ -32,6 +32,7 @@ i18n
   .init({
     lng: initialLanguage(),
     fallbackLng: DEFAULT_LANGUAGE,
+    keySeparator: false,
 
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',
