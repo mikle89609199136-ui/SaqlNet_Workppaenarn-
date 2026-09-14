@@ -4,8 +4,8 @@ import { queryClient } from '@/queries/queryClient';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
-import { AuthGuard } from '../components/guards/AuthGuard';
-import { AppLayout, RootLayout } from '@/layouts';
+import { AuthGuard } from './AuthGuard';
+import { AppLayout, RootLayout } from '@/app/layouts';
 import { RouteLoadingFallback } from '@/shared/ui';
 import {
   DEFAULT_SETTINGS_SECTION,
@@ -114,27 +114,27 @@ const chatLoader = async ({ params }: { params: Params }) => {
  */
 const SECTION_COMPONENTS: Record<TSettingsSection, () => Promise<{ Component: ComponentType }>> = {
   account: () =>
-    import('../pages/SettingsPage/sections/AccountSection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/AccountSection.js').then((m) => ({
       Component: m.AccountSection,
     })),
   notifications: () =>
-    import('../pages/SettingsPage/sections/NotificationsSection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/NotificationsSection.js').then((m) => ({
       Component: m.NotificationsSection,
     })),
   appearance: () =>
-    import('../pages/SettingsPage/sections/AppearanceSection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/AppearanceSection.js').then((m) => ({
       Component: m.AppearanceSection,
     })),
   privacy: () =>
-    import('../pages/SettingsPage/sections/PrivacySection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/PrivacySection.js').then((m) => ({
       Component: m.PrivacySection,
     })),
   language: () =>
-    import('../pages/SettingsPage/sections/LanguageSection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/LanguageSection.js').then((m) => ({
       Component: m.LanguageSection,
     })),
   about: () =>
-    import('../pages/SettingsPage/sections/AboutSection.js').then((m) => ({
+    import('@/pages/SettingsPage/sections/AboutSection.js').then((m) => ({
       Component: m.AboutSection,
     })),
 };
@@ -159,7 +159,7 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.LOGIN,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('../pages/LoginPage/LoginPage.js').then((m) => ({
+          import('@/pages/LoginPage/LoginPage.js').then((m) => ({
             Component: m.LoginPage,
           })),
       },
@@ -167,7 +167,7 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.REGISTER,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('../pages/RegisterPage/RegisterPage.js').then((m) => ({
+          import('@/pages/RegisterPage/RegisterPage.js').then((m) => ({
             Component: m.RegisterPage,
           })),
       },
@@ -184,7 +184,7 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHATS,
                 lazy: () =>
-                  import('../pages/ChatsPage/ChatsPage.js').then((m) => ({
+                  import('@/pages/ChatsPage/ChatsPage.js').then((m) => ({
                     Component: m.ChatsPage,
                   })),
                 children: [
@@ -201,7 +201,7 @@ export const router = createBrowserRouter([
                     shouldRevalidate: ({ currentParams, nextParams }) =>
                       currentParams.chatId !== nextParams.chatId,
                     lazy: () =>
-                      import('../pages/ChatThreadPage/ChatThreadPage.js').then((m) => ({
+                      import('@/pages/ChatThreadPage/ChatThreadPage.js').then((m) => ({
                         Component: m.ChatThreadPage,
                       })),
                   },
@@ -213,28 +213,28 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHANNELS,
                 lazy: () =>
-                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
                     Component: m.ChannelsPage,
                   })),
               },
               {
                 path: REACT_ROUTES.COMMUNITIES,
                 lazy: () =>
-                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
                     Component: m.CommunitiesPage,
                   })),
               },
               {
                 path: REACT_ROUTES.MEETINGS,
                 lazy: () =>
-                  import('../pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
                     Component: m.MeetingsPage,
                   })),
               },
               {
                 path: REACT_ROUTES.SETTINGS,
                 lazy: () =>
-                  import('../pages/SettingsPage/SettingsPage.js').then((m) => ({
+                  import('@/pages/SettingsPage/SettingsPage.js').then((m) => ({
                     Component: m.SettingsPage,
                   })),
                 children: [

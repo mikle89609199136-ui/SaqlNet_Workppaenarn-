@@ -23,3 +23,4 @@ export { Toast, ToastStack, showToast, hideToast, clearToasts, getToasts } from 
 export type { IToast, TToastType } from './Toast';
 export { Tooltip } from './Tooltip';
 export { VideoPlayer } from './VideoPlayer';
+export { AuthLayout } from './AuthLayout';

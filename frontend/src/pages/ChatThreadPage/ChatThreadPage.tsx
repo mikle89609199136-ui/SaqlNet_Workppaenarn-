@@ -9,7 +9,7 @@ import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/entities/media';
 
-import '@/styles/ChatThreadPage.css';
+import './ChatThreadPage.css';
 import { useOutletContext } from 'react-router-dom';
 
 import type { Dispatch, SetStateAction } from 'react';

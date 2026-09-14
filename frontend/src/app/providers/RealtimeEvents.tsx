@@ -1,5 +1,5 @@
 import { useProfileStore } from '@/entities/user';
-import { useServerEvents } from './useServerEvents';
+import { useServerEvents } from '@/realtime/useServerEvents';
 
 /**
  * Точка подключения событий сервера к кешу запросов.
