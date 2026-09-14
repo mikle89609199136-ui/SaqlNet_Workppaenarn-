@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import Backend from 'i18next-http-backend';
 import { initReactI18next } from 'react-i18next';
-import { DEFAULT_LANGUAGE, detectLanguage, isSupportedLanguage } from '@/shared/config/languages';
+import { DEFAULT_LANGUAGE, detectLanguage, isSupportedLanguage } from './languages';
 
 /**
  * Язык до того, как что-либо известно о человеке.
@@ -32,6 +32,7 @@ i18n
   .init({
     lng: initialLanguage(),
     fallbackLng: DEFAULT_LANGUAGE,
+    keySeparator: false,
 
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',

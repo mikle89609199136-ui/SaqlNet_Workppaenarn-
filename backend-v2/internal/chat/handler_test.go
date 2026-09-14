@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -461,9 +462,10 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 
 			body, _ := json.Marshal(map[string]string{"content": "hello"})
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
+			req.SetPathValue("chatId", handlerChatID)
 
 			rr := httptest.NewRecorder()
-			h.Messages(rr, req)
+			h.SendMessage(rr, req)
 
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
 			if err := mock.ExpectationsWereMet(); err != nil {
@@ -624,4 +626,279 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 
 	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// newTestHandler builds a Handler backed by a fresh sqlmock instance and
+// registers cleanup for the underlying DB. Creating the mock per subtest
+// keeps test cases independent: a failure in one case cannot leak
+// expectations into the next.
+func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
+	t.Helper()
+
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	return NewHandler(NewService(db, nil)), mock
+}
+
+func TestHandler_List(t *testing.T) {
+	const userID = "550e8400-e29b-41d4-a716-446655440000"
+
+	// Column set returned by scanChats. Must match the SELECT list
+	// exactly; otherwise sqlmock fails with a column-count mismatch.
+	cols := []string{
+		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
+		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
+		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+	}
+
+	tests := []struct {
+		name          string
+		method        string
+		rawQuery      string // raw query string, without leading "?"
+		setupMock     func(mock sqlmock.Sqlmock)
+		wantStatus    int
+		wantErrorCode string
+	}{
+		// --- positive ---
+		{
+			name:     "no_archived_defaults_to_false",
+			method:   http.MethodGet,
+			rawQuery: "",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:     "archived_true",
+			method:   http.MethodGet,
+			rawQuery: "archived=true",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, true).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:     "archived_false",
+			method:   http.MethodGet,
+			rawQuery: "archived=false",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, false).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:     "other_params_ignored",
+			method:   http.MethodGet,
+			rawQuery: "limit=10&archived=true",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(`SELECT .+ FROM chats\.chats c .+`).
+					WithArgs(userID, true).
+					WillReturnRows(sqlmock.NewRows(cols))
+			},
+			wantStatus: http.StatusOK,
+		},
+
+		// --- negative: invalid literals ---
+		{
+			name:          "invalid_not_a_bool",
+			method:        http.MethodGet,
+			rawQuery:      "archived=not-a-bool",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_yes",
+			method:        http.MethodGet,
+			rawQuery:      "archived=yes",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_on",
+			method:        http.MethodGet,
+			rawQuery:      "archived=on",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_number_two",
+			method:        http.MethodGet,
+			rawQuery:      "archived=2",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "invalid_trailing_space",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true%20",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- negative: strictness of the literals ---
+		{
+			name:          "strict_rejects_uppercase_true",
+			method:        http.MethodGet,
+			rawQuery:      "archived=TRUE",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_capitalized_true",
+			method:        http.MethodGet,
+			rawQuery:      "archived=True",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_numeric_one",
+			method:        http.MethodGet,
+			rawQuery:      "archived=1",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "strict_rejects_single_t",
+			method:        http.MethodGet,
+			rawQuery:      "archived=t",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- negative: shape ---
+		{
+			name:          "empty_value_rejected",
+			method:        http.MethodGet,
+			rawQuery:      "archived=",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "duplicated_conflicting",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true&archived=false",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+		{
+			name:          "duplicated_same",
+			method:        http.MethodGet,
+			rawQuery:      "archived=true&archived=true",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+
+		// --- method ---
+		{
+			name:          "method_not_allowed",
+			method:        http.MethodPost,
+			rawQuery:      "",
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusMethodNotAllowed,
+			wantErrorCode: "method_not_allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, mock := newTestHandlerQueryMatcher(t)
+			tt.setupMock(mock)
+
+			path := "/api/v2/chats"
+			if tt.rawQuery != "" {
+				path += "?" + tt.rawQuery
+			}
+			req := httptest.NewRequest(tt.method, path, nil)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Request-ID", "test-request-id")
+
+			ctx := authctx.WithUser(req.Context(), authctx.User{ID: userID, Username: "testuser"})
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			h.List(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d, body: %s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+
+			if tt.wantErrorCode != "" {
+				var resp map[string]any
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("response is not valid JSON: %v, body: %s", err, rr.Body.String())
+				}
+				if got, _ := resp["code"].(string); got != tt.wantErrorCode {
+					t.Errorf("error code = %v, want %q", resp["code"], tt.wantErrorCode)
+				}
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("mock expectations not met: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseArchived(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		want    bool
+		wantErr bool
+	}{
+		{"absent", "", false, false},
+		{"true", "archived=true", true, false},
+		{"false", "archived=false", false, false},
+
+		{"empty", "archived=", false, true},
+		{"uppercase TRUE", "archived=TRUE", false, true},
+		{"capitalized True", "archived=True", false, true},
+		{"numeric one", "archived=1", false, true},
+		{"single t", "archived=t", false, true},
+		{"yes", "archived=yes", false, true},
+		{"trailing space", "archived=true%20", false, true},
+		{"duplicated conflicting", "archived=true&archived=false", false, true},
+		{"duplicated same", "archived=true&archived=true", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q, err := url.ParseQuery(tt.query)
+			if err != nil {
+				t.Fatalf("bad test query %q: %v", tt.query, err)
+			}
+
+			got, err := parseArchived(q)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

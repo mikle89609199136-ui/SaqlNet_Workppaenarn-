@@ -137,11 +137,20 @@ npm run build:react
 
 Проверки Go backend v2:
 
+Установите зафиксированную для CI версию `golangci-lint`:
+
+```bash
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.2
+```
+
+Затем запустите проверки:
+
 ```bash
 (
   cd backend-v2
   test -z "$(gofmt -l .)"
   go vet ./...
+  golangci-lint run ./...
   go test ./...
   go build ./...
 )

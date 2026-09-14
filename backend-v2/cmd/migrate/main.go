@@ -80,12 +80,12 @@ func main() {
 		}
 
 		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			log.Fatalf("failed to execute migration %s: %v", file, err)
 		}
 
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, file); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			log.Fatalf("failed to record migration %s: %v", file, err)
 		}
 
