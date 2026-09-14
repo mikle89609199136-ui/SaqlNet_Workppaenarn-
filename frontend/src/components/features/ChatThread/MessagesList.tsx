@@ -1,10 +1,10 @@
-import { useJumpToMessage, useVirtualMessagesFeed } from '@/hooks';
+import { useVirtualMessagesFeed } from '@/hooks';
+import { useJumpToMessage } from '@/features/jump-to-message';
 import { useChatUiStore, useProfileStore } from '@/store';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageBubble } from '../MessageBubble/MessageBubble';
-import { MessageBubbleSkeleton } from '../MessageBubble/MessageBubbleSkeleton';
+import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
 import { DateDivider } from './DateDivider';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThreadState } from './ThreadState';

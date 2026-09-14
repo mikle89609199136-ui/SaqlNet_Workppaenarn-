@@ -1,5 +1,4 @@
-export { useProfileStore } from './profile';
-export { useCallStore } from './call';
+export { useProfileStore } from '@/entities/user';
 export { useChatUiStore, type IActionMenu } from './chatUi';
 export {
   useOutboxStore,
@@ -11,4 +10,4 @@ export {
   getChatOutbox,
   getRetryableOutboxItems,
   clearOutbox,
-} from './outbox';
+} from '@/entities/message/model/outboxStore';

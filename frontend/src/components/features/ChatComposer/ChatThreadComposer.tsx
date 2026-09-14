@@ -1,10 +1,9 @@
+import { useEncryptionState, useTypingIndicator } from '@/hooks';
 import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
-  useEncryptionState,
-  useTypingIndicator,
-} from '@/hooks';
+} from '@/features/send-message';
 import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
 import type { IEncryptionState } from '@/crypto/encryptionStatus';
 import type { TFunction } from 'i18next';

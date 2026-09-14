@@ -2,13 +2,12 @@ import { describeApiError } from '@/shared/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
-  useChatModals,
-  useMessageActions,
-  useMessageSelection,
   usePhotoEditor,
-  useProfilePanel,
   useRealtimeSocket,
 } from '@/hooks';
+import { useChatModals } from '@/features/chat-actions';
+import { useMessageActions, useMessageSelection } from '@/features/message-actions';
+import { useProfilePanel } from '@/features/user-profile';
 import { useEscapeKey } from '@/shared/lib/useEscapeKey';
 import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
 import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';

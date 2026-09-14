@@ -1,36 +1,25 @@
 import {
-  ChatSelectedMessagesActions,
   ChatThreadComposer,
   ChatThreadHeader,
-  ForwardChatMessagesModal,
-  GroupInfoModal,
-  MessageActionsPopover,
-  PhotoEditorModal,
-  PinnedMessagesNavigator,
-  PinnedMessagesView,
   MessagesList,
   SafetyCodeNotice,
-  UserProfileModal,
 } from '@/components/features';
+import { ForwardChatMessagesModal } from '@/features/forward-messages';
+import { GroupInfoModal } from '@/features/group-management';
+import { ChatSelectedMessagesActions, MessageActionsPopover } from '@/features/message-actions';
+import { PinnedMessagesNavigator, PinnedMessagesView } from '@/features/pinned-messages';
+import { UserProfileModal } from '@/features/user-profile';
+import { PhotoEditorModal } from '@/entities/media';
 
 import '@/styles/ChatThreadPage.css';
 import { useOutletContext } from 'react-router-dom';
 
-import type { IChatDto, TMessagesList } from '@/types';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from './hooks/useChatThreadPage';
 
-export interface IProfileModal {
-  isOpen: boolean;
-  /** Чей профиль показывать. Сами данные читает панель — по этому идентификатору. */
-  userId: string | null;
-}
-
-export interface IProfileState extends IProfileModal {
-  chat: IChatDto | null;
-  messages: TMessagesList;
-}
+import type { IProfileModal, IProfileState } from '@/entities/user';
+export type { IProfileModal, IProfileState };
 
 interface IOutletContext {
   onProfileStateChange: Dispatch<SetStateAction<IProfileState>>;

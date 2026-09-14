@@ -1,14 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { describeApiError } from './describeApiError';
 
-/** Переводчик тестов: отдаёт запасной текст, как настоящий при пустом словаре. */
-const t = ((_key: string, fallback: string) => fallback) as never;
+const ruPath = resolve(import.meta.dirname, '../../../public/locales/ru/translation.json');
+const ruTranslations = JSON.parse(readFileSync(ruPath, 'utf-8')) as Record<string, string>;
+
+/** Переводчик тестов: отдаёт строку из словаря или запасной текст */
+const t = ((key: string, fallback?: string) => ruTranslations[key] ?? fallback ?? key) as never;
 
 describe('объяснение ошибки сервера', () => {
-  it('переводит известный код', () => {
+  it('переводит известный код через ключ словаря', () => {
     const результат = describeApiError({ code: 'member_muted', message: 'member is muted' }, t);
 
     expect(результат).toBe('В этом чате вам запрещено писать');
+  });
+
+  it('переводит код invalid_2fa', () => {
+    const результат = describeApiError({ code: 'invalid_2fa', message: 'invalid 2fa code' }, t);
+
+    expect(результат).toBe('Неверный код');
   });
 
   it('никогда не показывает английский текст сервера', () => {
@@ -19,6 +30,7 @@ describe('объяснение ошибки сервера', () => {
     );
 
     expect(результат).not.toContain('terribly');
+    expect(результат).toBe('Не получилось. Попробуйте ещё раз');
   });
 
   it('берёт запасной текст места вызова, когда код незнаком', () => {

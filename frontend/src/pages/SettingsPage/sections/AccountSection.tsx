@@ -12,7 +12,7 @@ import {
   Textarea,
   showToast,
 } from '@/shared/ui';
-import { PasswordRequirements } from '@/components/features';
+import { PasswordRequirements } from '@/features/auth';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
@@ -24,10 +24,8 @@ import {
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
 import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import { userKeys } from '@/queries/keys';
-import { meQuery } from '@/queries/users/meQuery';
-import { sessionsQuery } from '@/queries/users/securityQueries';
+import { meQuery, sessionsQuery, useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/store';
 
 /**
  * Раздел «Аккаунт»: обзор и подстраницы.
