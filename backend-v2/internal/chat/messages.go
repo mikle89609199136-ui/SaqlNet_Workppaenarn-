@@ -131,6 +131,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata)
+
 	if errors.Is(err, ErrMemberMuted) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
 		return
@@ -138,6 +139,26 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(err, ErrForbidden) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+		return
+	}
+
+	if errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid replyTo",
+		)
+		return
+	}
+
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusNotFound,
+			"reply_not_found",
+			"reply message not found",
+		)
 		return
 	}
 

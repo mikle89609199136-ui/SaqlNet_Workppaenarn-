@@ -74,6 +74,117 @@ func TestSendMessageRejectsInvalidPayloadWithoutDatabaseWrites(t *testing.T) {
 	}
 }
 
+func TestSendMessageRejectsMalformedReplyToWithoutInsert(t *testing.T) {
+	handler, mock := messageValidationHandler(t)
+	mock.ExpectQuery(`SELECT cm\.role`).
+		WithArgs(messageValidationChatID, messageValidationUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+
+	recorder := httptest.NewRecorder()
+	req := messageValidationRequest(
+		http.MethodPost,
+		"/api/v2/messages/"+messageValidationChatID,
+		`{"type":"text","content":"reply","replyTo":"not-a-uuid"}`,
+		"chatId",
+		messageValidationChatID,
+	)
+
+	handler.SendMessage(recorder, req)
+
+	assertErrorResponse(t, recorder, http.StatusBadRequest, "validation_failed")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{name: "missing reply"},
+		{name: "deleted reply"},
+		{name: "reply from another chat"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := messageValidationHandler(t)
+			mock.ExpectQuery(`SELECT cm\.role`).
+				WithArgs(messageValidationChatID, messageValidationUserID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+			mock.ExpectBegin()
+			mock.ExpectQuery(`SELECT id::text`).
+				WithArgs(messageValidationMessageID, messageValidationChatID).
+				WillReturnError(sql.ErrNoRows)
+			mock.ExpectRollback()
+
+			recorder := httptest.NewRecorder()
+			req := messageValidationRequest(
+				http.MethodPost,
+				"/api/v2/messages/"+messageValidationChatID,
+				`{"type":"text","content":"reply","replyTo":"`+messageValidationMessageID+`"}`,
+				"chatId",
+				messageValidationChatID,
+			)
+
+			handler.SendMessage(recorder, req)
+
+			assertErrorResponse(t, recorder, http.StatusNotFound, "reply_not_found")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestSendMessageValidateReply(t *testing.T) {
+	handler, mock := messageValidationHandler(t)
+	mock.ExpectQuery(`SELECT cm\.role`).
+		WithArgs(messageValidationChatID, messageValidationUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`WITH inserted AS`).
+		WithArgs(
+			messageValidationChatID,
+			messageValidationUserID,
+			"some message",
+			"text",
+			sql.NullString{},
+			[]byte("null"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
+			"content", "type", "reply_to", "metadata", "is_pinned", "is_edited",
+			"created_at", "updated_at", "deleted_at",
+		}).AddRow(
+			messageValidationMessageID,
+			messageValidationChatID,
+			messageValidationUserID,
+			"Alice",
+			"",
+			"some message",
+			"text",
+			nil,
+			[]byte("null"),
+			false,
+			false,
+			"2026-09-14T00:00:00Z",
+			"2026-09-14T00:00:00Z",
+			nil,
+		))
+	mock.ExpectCommit()
+
+	recorder := httptest.NewRecorder()
+	req := messageValidationRequest(
+		http.MethodPost,
+		"/api/v2/messages/"+messageValidationChatID,
+		`{"type":"text","content":"some message","replyTo":""}`,
+		"chatId",
+		messageValidationChatID,
+	)
+
+	handler.SendMessage(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestEditMessageRequiresContentFieldWithoutDatabaseWrites(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	recorder := httptest.NewRecorder()
