@@ -1,5 +1,4 @@
-import { config } from '@/configs/app';
-import { STORAGE_KEYS } from '@/shared/config';
+import { STORAGE_KEYS, config } from '@/shared/config';
 import { ApiClient } from './ApiClient';
 
 interface ICreateApiClientOptions {

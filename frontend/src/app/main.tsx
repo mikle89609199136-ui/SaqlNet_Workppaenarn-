@@ -1,11 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { registerChatResolver } from './queries/chat/chatResolverBridge';
-import { startCryptoAutoInit } from './services/serviceContainer';
+import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
+import { startCryptoAutoInit } from '@/services/serviceContainer';
 
 // Global Scripts
-import './shared/i18n';
+import '@/shared/i18n';
 
 // Styles
 import './styles/tailwind.css';

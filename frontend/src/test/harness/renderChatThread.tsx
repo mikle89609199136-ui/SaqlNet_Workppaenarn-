@@ -5,7 +5,7 @@ import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ChatThreadPage } from '@/pages/ChatThreadPage/ChatThreadPage';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { chatKeys } from '@/queries/keys';
-import { RealtimeEvents } from '@/realtime/RealtimeEvents';
+import { RealtimeEvents } from '@/app/providers';
 import { useProfileStore } from '@/entities/user';
 import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
