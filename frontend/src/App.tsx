@@ -5,7 +5,7 @@ import { RouterProvider } from 'react-router-dom';
 
 import { NotificationManager } from './realtime/NotificationManager';
 import { RealtimeEvents } from './realtime/RealtimeEvents';
-import { CallOverlay, CallProvider } from './components/index.js';
+import { CallOverlay, CallProvider } from '@/features/call';
 
 export function App() {
   return (

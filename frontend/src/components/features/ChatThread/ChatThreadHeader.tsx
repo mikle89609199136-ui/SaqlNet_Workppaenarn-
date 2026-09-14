@@ -1,6 +1,7 @@
-import { useCall, useConnectionStatus } from '@/hooks';
+import { useConnectionStatus } from '@/hooks';
+import { useCall } from '@/features/call';
 import type { TConnectionStatus } from '@/realtime/connectionStatus';
-import type { IProfileModal } from '@/pages';
+import type { IProfileModal } from '@/entities/user';
 import { chatQuery } from '@/queries/chat/threadQueries';
 import { cn, getChatSubtitle } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';

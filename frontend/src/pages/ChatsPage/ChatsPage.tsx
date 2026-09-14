@@ -1,25 +1,23 @@
 import {
   ArchiveEntry,
-  ChatListItem,
-  ChatListItemSkeleton,
-  ChatsSearchField,
-  ChatsSearchResults,
-  CreateGroupModal,
   EmptyChatListPlaceholder,
   ErrorChatListPlaceholder,
-  UserProfilePanel,
 } from '@/components/features';
+import { ChatListItem, ChatListItemSkeleton } from '@/entities/chat';
+import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
+import { CreateGroupModal } from '@/features/group-management';
+import { ChatRowMenu } from '@/features/chat-actions';
+import { UserProfilePanel } from '@/features/user-profile';
 import { Icon } from '@/shared/ui';
-import { useChatsSearch } from '@/hooks';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
-import { isConversationStarted } from '@/shared/lib';
+import { isConversationStarted } from '@/entities/chat';
 import { PaneResizer } from './PaneResizer';
 import { chatsQuery } from '@/queries/chats/chatsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
-import type { IProfileState } from '..';
+import type { IProfileState } from '@/entities/user';
 
 /* Границы ширины колонок. Ниже нижней строка чата перестаёт помещаться,
    выше верхней колонка съедает переписку. */
@@ -123,7 +121,12 @@ export function ChatsPage() {
       {archiveHeader}
       <section className="chats-list styled-scrollbar">
         {archivedChats.map((chat) => (
-          <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+          <ChatListItem
+            chat={chat}
+            key={chat.id}
+            pinnedCount={pinnedCount}
+            renderMenu={(props) => <ChatRowMenu {...props} />}
+          />
         ))}
       </section>
     </>
@@ -175,7 +178,12 @@ export function ChatsPage() {
           !error &&
           !search.isSearching &&
           visibleChats.map((chat) => (
-            <ChatListItem chat={chat} key={chat.id} pinnedCount={pinnedCount} />
+            <ChatListItem
+              chat={chat}
+              key={chat.id}
+              pinnedCount={pinnedCount}
+              renderMenu={(props) => <ChatRowMenu {...props} />}
+            />
           ))}
       </section>
     </>

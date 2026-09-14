@@ -1,12 +1,10 @@
-import type { TChatRole, TChatType } from '@/types';
-
-export const CHAT_ROLES: Record<Uppercase<TChatRole>, TChatRole> = {
+export const CHAT_ROLES = {
   ADMIN: 'admin',
   MEMBER: 'member',
   OWNER: 'owner',
 } as const;
 
-export const CHAT_TYPES: Record<Uppercase<TChatType>, TChatType> = {
+export const CHAT_TYPES = {
   GROUP: 'group',
   PRIVATE: 'private',
 } as const;
