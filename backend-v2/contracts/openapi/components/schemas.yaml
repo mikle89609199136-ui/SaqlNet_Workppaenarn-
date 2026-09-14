@@ -114,7 +114,8 @@ SendMessageRequest:
   type: object
   properties:
     content: { type: string }
-    type: { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
+    type:
+      { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
     replyTo: { type: string, format: uuid, nullable: true }
     mediaUrl: { type: string }
     mediaType: { type: string }
@@ -156,7 +157,6 @@ Username:
   example: 'john_doe'
 CreateGroupRequest:
   type: object
-  additionalProperties: false
   required: [title, members]
   properties:
     title:

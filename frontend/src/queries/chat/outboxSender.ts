@@ -1,1 +1,1 @@
-﻿export * from '@/entities/message/model/outboxSender';
+export * from '@/entities/message/model/outboxSender';
