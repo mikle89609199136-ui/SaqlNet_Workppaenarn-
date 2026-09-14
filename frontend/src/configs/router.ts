@@ -1,4 +1,5 @@
-import { chatQuery, messagesQuery } from '@/queries/chat/threadQueries';
+import { chatQuery } from '@/entities/chat';
+import { messagesQuery } from '@/entities/message';
 import { queryClient } from '@/queries/queryClient';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
 import type { ComponentType } from 'react';

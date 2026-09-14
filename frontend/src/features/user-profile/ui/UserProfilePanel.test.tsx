@@ -9,9 +9,8 @@ import type { IMediaItem } from '@/types';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import { useProfileStore } from '@/store';
 import { ProfileDetails } from './ProfileDetails';
-import { ProfileHeader } from '@/entities/user';
+import { ProfileHeader, useProfileStore } from '@/entities/user';
 import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 import { UserProfilePanel } from './UserProfilePanel';
 

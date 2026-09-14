@@ -1,6 +1,6 @@
 import { useRealtimeSocket } from '@/hooks';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
-import { useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
 import type { ILastMessageDto } from '@/types';
 import { useEffect } from 'react';
 

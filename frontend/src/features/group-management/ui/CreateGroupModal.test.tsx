@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { testI18n } from '@/test/harness/i18n';

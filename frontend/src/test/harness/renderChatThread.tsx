@@ -6,7 +6,7 @@ import { ChatThreadPage } from '@/pages/ChatThreadPage/ChatThreadPage';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { chatKeys } from '@/queries/keys';
 import { RealtimeEvents } from '@/realtime/RealtimeEvents';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
 import { stubCrypto } from './stubCrypto';

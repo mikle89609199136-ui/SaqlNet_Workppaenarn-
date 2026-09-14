@@ -5,7 +5,7 @@ import {
   addOutboxItem,
   clearOutbox,
   getOutboxItem,
-} from '@/store/outbox';
+} from './outboxStore';
 import {
   cancelOutboxMessage,
   MAX_AUTO_RETRIES,
@@ -14,7 +14,7 @@ import {
   retryOutboxMessage,
   sendOutboxItem,
 } from './outboxSender';
-import { chatKeys } from '../keys';
+import { chatKeys } from '@/queries/keys';
 import { makeMessage } from '@/test/fixtures';
 
 describe('outboxSender', () => {

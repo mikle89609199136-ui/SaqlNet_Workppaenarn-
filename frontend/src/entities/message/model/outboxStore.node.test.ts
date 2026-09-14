@@ -8,7 +8,7 @@ import {
   removeOutboxItem,
   updateOutboxItem,
   useOutboxStore,
-} from './outbox';
+} from './outboxStore';
 
 describe('useOutboxStore', () => {
   beforeEach(() => {

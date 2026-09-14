@@ -1,7 +1,7 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
-import { flattenThread, type IThreadPages } from '@/queries/chat/threadCache';
+import { flattenThread, type IThreadPages } from '@/entities/message';
 import { chatKeys } from '@/queries/keys';
 import { makeMessage } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';

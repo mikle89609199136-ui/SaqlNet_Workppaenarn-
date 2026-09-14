@@ -5,8 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ChatThreadComposer } from './ChatThreadComposer';
-import { clearOutbox } from '@/store/outbox';
-import { useProfileStore } from '@/store';
+import { clearOutbox } from '@/entities/message';
+import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { makeMessage } from '@/test/fixtures';
 

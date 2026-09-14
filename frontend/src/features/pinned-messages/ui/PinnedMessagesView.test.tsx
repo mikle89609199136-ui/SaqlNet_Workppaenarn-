@@ -7,7 +7,7 @@ import { makeChat, makeMessage, makePin, makeUser } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import { PinnedMessagesView } from './PinnedMessagesView';
 
 const CHAT_ID = 'chat-1';

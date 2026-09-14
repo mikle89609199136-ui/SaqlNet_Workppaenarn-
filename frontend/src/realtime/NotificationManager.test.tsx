@@ -1,7 +1,7 @@
 import { render, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import { makeChat, makeMessage } from '@/test/fixtures';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { api } from '@/test/msw/handlers';

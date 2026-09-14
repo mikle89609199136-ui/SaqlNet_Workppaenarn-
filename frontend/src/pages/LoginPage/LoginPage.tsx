@@ -8,7 +8,7 @@ import { AuthLayout } from '@/layouts';
 import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import { loginFormSchema, type TLoginForm } from './loginSchema';
 

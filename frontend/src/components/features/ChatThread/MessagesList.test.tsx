@@ -1,4 +1,4 @@
-import { useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
 import { makeMessage, makeUser } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { render, screen } from '@testing-library/react';
