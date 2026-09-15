@@ -2912,9 +2912,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	var currentOwnerID string
+	var chatType string
 	err = tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
-		chatID).Scan(&currentOwnerID)
+		`SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID, &chatType)
 	if err == sql.ErrNoRows {
 		_ = tx.Rollback()
 		return ErrNotFound
@@ -2922,6 +2923,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if chatType != "group" {
+		_ = tx.Rollback()
+		return ErrInvalidChatType
 	}
 	if currentOwnerID != actorID {
 		_ = tx.Rollback()
