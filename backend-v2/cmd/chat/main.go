@@ -14,6 +14,7 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
+
 	_ "github.com/lib/pq"
 )
 
@@ -27,7 +28,8 @@ func main() {
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto)
-	handler := chat.NewHandler(chat.NewService(pool, wsServer))
+	svc := chat.NewService(pool, wsServer)
+	handler := chat.NewHandler(svc)
 
 	// In production NATS is required. In other environments it is optional
 	// but outbox events will accumulate until NATS becomes available.
