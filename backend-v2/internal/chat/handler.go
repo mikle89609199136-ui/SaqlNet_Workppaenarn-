@@ -685,13 +685,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
-	case suffix == "/reactions" && r.Method == http.MethodGet:
-		reactions, err := h.service.ListReactions(r.Context(), current.ID, targetID)
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list reactions")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"reactions": reactions})
 	case suffix == "/reactions" && r.Method == http.MethodPost:
 		var input struct {
 			Emoji string `json:"emoji"`

@@ -2158,6 +2158,32 @@ type ChangeResponse struct {
 }
 
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
+	var chatID string
+
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
@@ -2167,8 +2193,6 @@ type Querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-// listReactionsInternal executes the aggregation query using any Querier
-// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
@@ -2178,20 +2202,19 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
-		log.Printf("[chat-service-listReactionsInternal]:(error during DB request): %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []Reaction
+	result := make([]Reaction, 0)
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
-			log.Printf("[chat-service-listReactionsInternal]:(error during rows scan): %v", err)
 			return nil, err
 		}
 		result = append(result, r)
 	}
+
 	return result, rows.Err()
 }
 
