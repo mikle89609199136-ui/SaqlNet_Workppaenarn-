@@ -108,14 +108,15 @@ func TestHeartbeat_ExtendsLease(t *testing.T) {
 	require.Equal(t, []string{}, online)
 }
 
-// Heartbeat несуществующего connectionID не воскрешает пользователя.
-func TestHeartbeat_UnknownConnectionNoResurrect(t *testing.T) {
+// Heartbeat восстанавливает потерянную lease активного соединения (например, после рестарта хранилища),
+// создавая запись со сроком LeaseTTL и делая пользователя online.
+func TestHeartbeat_RestoresLease(t *testing.T) {
 	store := presence.NewMemoryStore(time.Now)
 	err := store.Heartbeat(context.Background(), testUserID, testConnectionID)
 	require.NoError(t, err)
 	online, err := store.OnlineUsers(context.Background(), []string{testUserID})
 	require.NoError(t, err)
-	require.Equal(t, []string{}, online)
+	require.Equal(t, []string{testUserID}, online)
 }
 
 // Конкурентный доступ к MemoryStore из нескольких горутин не вызывает data race и паник.
