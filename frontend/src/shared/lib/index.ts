@@ -1,5 +1,3 @@
-export { applyReaction } from './applyReaction';
-export { isConversationStarted } from './isConversationStarted';
 export { formatChatListTime } from './chatListTime';
 export { formatCallDuration, formatCallPreview, parseCallContent } from './call';
 export { cn } from './cn';
@@ -16,13 +14,6 @@ export {
   passwordSchema,
   type IPasswordRule,
 } from './passwordRules';
-export { getLastMessageText } from './getLastMessageText';
-export {
-  appendUniqueMessage,
-  formatMessageTime,
-  getMessagePreview,
-  hasMessageMedia,
-} from './message';
 export { sortMessagesChronologically } from './sortMessagesChronologically';
 export { formatDateDivider, isDifferentDay } from './dateGroup';
 export {
@@ -34,7 +25,6 @@ export {
   findTextAtPoint,
   splitPathByEraser,
 } from './editorCanvas';
-export { estimateMessageItemSize } from './estimateMessageSize';
 
 /* Хуки без домена: не знают ни о сообщении, ни о чате, ни о профиле. */
 export { useAudio } from './useAudio';

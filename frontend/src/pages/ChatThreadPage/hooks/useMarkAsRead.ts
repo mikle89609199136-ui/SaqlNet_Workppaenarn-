@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { markThreadRead } from '@/queries/chat/threadCacheActions';
+import { markThreadRead } from '@/entities/message';
 import { services } from '@/services/serviceContainer';
 import type { TMessagesList } from '@/types';
 

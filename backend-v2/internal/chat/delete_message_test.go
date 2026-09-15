@@ -214,8 +214,9 @@ func TestDeleteMessage_CommitErrorDoesNotBroadcast(t *testing.T) {
 
 func deleteMessageRequest(svc *Service, messageID string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodDelete, "/api/v2/messages/"+messageID, nil)
+	req.SetPathValue("messageId", messageID)
 	req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: deleteMessageUserID}))
 	recorder := httptest.NewRecorder()
-	NewHandler(svc).Messages(recorder, req)
+	NewHandler(svc).DeleteMessage(recorder, req)
 	return recorder
 }

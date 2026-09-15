@@ -1,10 +1,9 @@
 package chat
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -34,21 +33,83 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+// List handles GET /api/v2/chats and returns the chats of the
+// authenticated user.
+//
+// The optional "archived" query parameter accepts exactly "true" or
+// "false". Any other value, an empty value, or a duplicated parameter
+// results in 400 with code "validation_failed".
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	const method = "List"
+
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r)
 		return
 	}
+
+	// Safe to call: the route is registered behind the authentication
+	// middleware, so the user is always present in the request context.
 	current := authctx.MustUser(r)
-	chats, err := h.service.List(r.Context(), current.ID, r.URL.Query().Get("archived") == "true")
+
+	archived, err := parseArchived(r.URL.Query())
 	if err != nil {
+		slog.WarnContext(r.Context(), "invalid archived parameter",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"raw_query", r.URL.RawQuery,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid archived parameter")
+		return
+	}
+
+	chats, err := h.service.List(r.Context(), current.ID, archived)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "list chats failed",
+			"layer", "handler",
+			"method", method,
+			"err", err,
+			"user_id", current.ID,
+			"archived", archived,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "chat list failed")
 		return
 	}
+
+	// Return a JSON array even when the list is empty, so the client
+	// never has to distinguish between null and [].
 	if chats == nil {
 		chats = []Chat{}
 	}
+
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+// parseArchived extracts and validates the optional "archived" query
+// parameter. It returns false when the parameter is absent.
+//
+// Only the exact lowercase literals "true" and "false" are accepted,
+// matching the OpenAPI contract. Alternative boolean representations
+// understood by strconv.ParseBool ("1", "t", "TRUE", ...) are rejected
+// to keep the contract unambiguous.
+func parseArchived(q url.Values) (bool, error) {
+	values, ok := q["archived"]
+	if !ok {
+		return false, nil
+	}
+	if len(values) != 1 {
+		return false, errors.New(`query parameter "archived" must be specified exactly once`)
+	}
+
+	switch values[0] {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf(`query parameter "archived" must be "true" or "false", got %q`, values[0])
+	}
 }
 
 func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +284,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		default:
 			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 		}
+	// POST /api/v2/chats/{id}/transfer-ownership — передача владения чатом.
+	// Разрешена только для групповых чатов (type = 'group')
 	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:
 		var input struct {
 			UserID string `json:"userId"`
@@ -242,6 +305,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
 		case errors.Is(err, ErrOwnershipConflict):
 			httpx.ErrorJSON(w, r, http.StatusConflict, "ownership_conflict", err.Error())
+		// Операция применима только к group chat; private и channel отклоняются (CHAT-B006)
+		case errors.Is(err, ErrInvalidChatType):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
 		case err != nil:
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "transfer ownership failed")
 		default:
@@ -598,99 +664,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case targetID == "":
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
-	case suffix == "" && r.Method == http.MethodGet:
-		limit := 50
-		offset := 0
-		if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-			limit = l
-		}
-		if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
-			offset = o
-		}
-		msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
-	case suffix == "" && r.Method == http.MethodPost:
-		var input struct {
-			Content         string         `json:"content"`
-			Type            string         `json:"type"`
-			ReplyTo         *string        `json:"replyTo"`
-			MediaURL        string         `json:"mediaUrl"`
-			MediaType       string         `json:"mediaType"`
-			FileName        string         `json:"fileName"`
-			SizeBytes       int64          `json:"sizeBytes"`
-			MediaEncrypted  bool           `json:"mediaEncrypted"`
-			MediaEncryption map[string]any `json:"mediaEncryption"`
-			IsEncrypted     bool           `json:"isEncrypted"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		if input.Type == "" {
-			input.Type = "text"
-		}
-		var metadata map[string]any
-		if input.MediaURL != "" {
-			fileName, sizeBytes, err := h.service.ValidateMediaMetadata(r.Context(), input.MediaURL, input.FileName, input.SizeBytes, input.MediaEncrypted)
-			if errors.Is(err, ErrInvalidInput) {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_media_metadata", "fileName or sizeBytes does not match the uploaded file")
-				return
-			}
-			if err != nil {
-				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to validate media metadata")
-				return
-			}
-			metadata = map[string]any{
-				"mediaUrl":        input.MediaURL,
-				"mediaType":       input.MediaType,
-				"fileName":        fileName,
-				"sizeBytes":       sizeBytes,
-				"mediaEncrypted":  input.MediaEncrypted,
-				"mediaEncryption": input.MediaEncryption,
-				"isEncrypted":     input.IsEncrypted,
-			}
-		}
-		msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, input.Content, input.Type, input.ReplyTo, metadata)
-		if errors.Is(err, ErrMemberMuted) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if err != nil {
-			slog.Error("send message failed", "err", err, "chatId", targetID, "userId", current.ID, "type", input.Type)
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to send message")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
-	case suffix == "" && r.Method == http.MethodPut:
-		var input struct {
-			Content string `json:"content"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		msg, err := h.service.EditMessage(r.Context(), current.ID, targetID, input.Content)
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to edit message")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, msg)
-	case suffix == "" && r.Method == http.MethodDelete:
-		lastMessage, err := h.service.DeleteMessage(r.Context(), current.ID, targetID)
-		if err != nil {
-			respondSuccess(w, r, err)
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{
-			"success":     true,
-			"lastMessage": lastMessage,
-		})
 	case suffix == "/forward" && r.Method == http.MethodPost:
 		var input struct {
 			TargetChatID string `json:"targetChatId"`
@@ -861,14 +834,6 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 		return false
 	}
 	return true
-}
-
-func randomID() string {
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
-		return "room"
-	}
-	return hex.EncodeToString(bytes[:])
 }
 
 func methodNotAllowed(w http.ResponseWriter, r *http.Request) {

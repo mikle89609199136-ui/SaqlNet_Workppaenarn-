@@ -14,10 +14,10 @@ import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
-import { useCallStore } from '@/store/call';
+import { useCallStore } from '@/features/call';
 import { useChatUiStore } from '@/store/chatUi';
-import { useProfileStore } from '@/store/profile';
-import { clearOutbox } from '@/store/outbox';
+import { useProfileStore } from '@/entities/user';
+import { clearOutbox } from '@/entities/message';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 

@@ -25,10 +25,13 @@ func TestForwardMessagePreservesMediaMetadata(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery("SELECT cm.role").WithArgs("target-chat", "user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
+
+	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO messages\\.messages").
 		WithArgs("target-chat", "user-id", "", "file", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}).
 			AddRow("forward-id", "target-chat", "user-id", "User", "", "", "file", nil, []byte(`{"mediaUrl":"/api/v2/media/upload-id","mediaType":"application/pdf","fileName":"document.pdf","sizeBytes":245760,"forwardedFrom":"message-id","forwardedSenderName":"Anna"}`), false, false, "created", "updated", nil))
+	mock.ExpectCommit()
 
 	msg, err := NewService(db, nil, nil).ForwardMessage(context.Background(), "user-id", "message-id", "target-chat")
 	if err != nil {

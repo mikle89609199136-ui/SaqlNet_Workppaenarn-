@@ -43,7 +43,9 @@ func TestWSServer_Signaling(t *testing.T) {
 	select {
 	case received := <-client2.Send:
 		var parsed map[string]interface{}
-		json.Unmarshal(received, &parsed)
+		if err := json.Unmarshal(received, &parsed); err != nil {
+			t.Fatalf("decode received message: %v", err)
+		}
 		if parsed["type"] != "call_invite" {
 			t.Errorf("Expected call_invite, got %v", parsed["type"])
 		}

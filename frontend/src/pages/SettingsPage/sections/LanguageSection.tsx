@@ -1,5 +1,5 @@
 import { Select } from '@/shared/ui';
-import { DEFAULT_LANGUAGE, isSupportedLanguage, LANGUAGES } from '@/shared/config';
+import { DEFAULT_LANGUAGE, isSupportedLanguage, LANGUAGES } from '@/shared/i18n/languages';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
 import { useSettingsData } from './useSettingsData';

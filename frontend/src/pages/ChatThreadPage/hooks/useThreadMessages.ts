@@ -1,7 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
-import { messagesQuery } from '@/queries/chat/threadQueries';
-import { EMPTY_THREAD } from '@/queries/chat/threadCache';
+import { EMPTY_THREAD, messagesQuery } from '@/entities/message';
 
 /** На каком расстоянии от верха начинать подгружать более старые сообщения. */
 const LOAD_MORE_THRESHOLD_PX = 50;

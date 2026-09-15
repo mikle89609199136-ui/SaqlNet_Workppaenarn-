@@ -34,6 +34,7 @@ var (
 	ErrStateUnchanged            = errors.New("state unchanged")
 	ErrMemberMuted               = errors.New("member is muted")
 	ErrCannotModerateTarget      = errors.New("cannot moderate target")
+	ErrStickerCannotBeEdited     = errors.New("sticker cannot be edited")
 )
 
 type Chat struct {
@@ -189,12 +190,12 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 		msg.ReplyToMessageID = msg.ReplyTo
 		var name string
 		err := s.db.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
-			FROM messages.messages m
-			LEFT JOIN auth.users au ON au.id = m.sender_id
-			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-			WHERE m.id = $1
-		`, *msg.ReplyTo).Scan(&name)
+				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				FROM messages.messages m
+				LEFT JOIN auth.users au ON au.id = m.sender_id
+				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+			`, *msg.ReplyTo, msg.ChatID).Scan(&name)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -514,7 +515,7 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 	if err != nil {
 		return "", false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var peerExists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1 AND disabled_at IS NULL)`, peerID).Scan(&peerExists); err != nil {
@@ -572,7 +573,7 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
@@ -987,7 +988,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var lockDummy any
 	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
@@ -1143,7 +1144,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Согласованная блокировка пары (chat, user): AddMember берёт тот же
 	// lock до проверок membership/ban — гонка add/ban исключена.
@@ -1634,7 +1635,9 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 			msg.DeletedAt = &deletedAt.String
 		}
 		if metadataBytes != nil {
-			json.Unmarshal(metadataBytes, &msg.Metadata)
+			if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		messages = append(messages, msg)
 	}
@@ -1663,24 +1666,60 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		}
 		return Message{}, err
 	}
+
 	if isMuted.Valid && isMuted.Bool {
 		return Message{}, ErrMemberMuted
-	}
-
-	var replyToSQL sql.NullString
-	if replyTo != nil && *replyTo != "" {
-		replyToSQL = sql.NullString{String: *replyTo, Valid: true}
 	}
 
 	var msg Message
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return Message{}, err
 	}
-	err = s.db.QueryRowContext(ctx, `
+
+	var replyToSQL sql.NullString
+
+	if replyTo != nil && *replyTo != "" {
+		if err := validate.Var(*replyTo, "uuid"); err != nil {
+			return Message{}, ErrInvalidInput
+		}
+
+		replyToSQL = sql.NullString{
+			String: *replyTo,
+			Valid:  true,
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if replyToSQL.Valid {
+		var replyID string
+		err = tx.QueryRowContext(ctx, `
+        SELECT id::text
+        FROM messages.messages
+        WHERE id = $1
+          AND chat_id = $2
+          AND deleted_at IS NULL
+        FOR SHARE
+    `, replyToSQL.String, chatID).Scan(&replyID)
+
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrNotFound
+		}
+		if err != nil {
+			return Message{}, err
+		}
+	}
+
+	err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
 			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
 			VALUES ($1, $2, $3, $4, $5, $6)
@@ -1700,17 +1739,27 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
 		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+
 	if err != nil {
 		return Message{}, err
 	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, err
+	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
@@ -1736,9 +1785,39 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+	var msgType string
 
-	// Require sender to be a current member of the chat to prevent editing after being kicked.
+	// Require the sender to still be a chat member both when validating
+	// the message type and when applying the update.
 	err := s.db.QueryRowContext(ctx, `
+		SELECT m.type
+		FROM messages.messages m
+		JOIN chats.members cm
+		ON cm.chat_id = m.chat_id
+		AND cm.user_id = $2
+		WHERE m.id = $1
+		AND m.sender_id = $2
+		AND m.deleted_at IS NULL`,
+		messageID, userID,
+	).Scan(&msgType)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+
+	if err != nil {
+		return Message{}, err
+	}
+
+	if msgType == "sticker" {
+		return Message{}, ErrStickerCannotBeEdited
+	}
+
+	if msgType == "text" && strings.TrimSpace(content) == "" {
+		return Message{}, ErrInvalidInput
+	}
+
+	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
 			SET content = $1, updated_at = NOW()
@@ -1766,18 +1845,25 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
 	}
+
 	if err != nil {
 		return Message{}, err
 	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
+
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
 	}
@@ -1807,7 +1893,7 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Require sender to be a current member to prevent deletion after being kicked.
 	err = tx.QueryRowContext(ctx, `
@@ -2197,7 +2283,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// 5. Now safely query the current reaction (with lock held)
 	var currentEmoji string
 	err = tx.QueryRowContext(ctx,
-		`SELECT emoji FROM messages.reactions 
+		`SELECT emoji FROM messages.reactions
 		 WHERE message_id = $1 AND user_id = $2`,
 		messageID, userID,
 	).Scan(&currentEmoji)
@@ -2227,7 +2313,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case !hasCurrent:
 		// No reaction yet – insert the new one
 		result, execErr := tx.ExecContext(ctx,
-			`INSERT INTO messages.reactions (message_id, user_id, emoji) 
+			`INSERT INTO messages.reactions (message_id, user_id, emoji)
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
@@ -2245,7 +2331,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case currentEmoji == emoji:
 		// Same emoji – remove the reaction (toggle off)
 		result, execErr := tx.ExecContext(ctx,
-			`DELETE FROM messages.reactions 
+			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
@@ -2263,7 +2349,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	default:
 		// Different emoji – update the existing one
 		result, execErr := tx.ExecContext(ctx,
-			`UPDATE messages.reactions SET emoji = $1 
+			`UPDATE messages.reactions SET emoji = $1
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
@@ -2829,9 +2915,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	var currentOwnerID string
+	var chatType string
 	err = tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
-		chatID).Scan(&currentOwnerID)
+		`SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID, &chatType)
 	if err == sql.ErrNoRows {
 		_ = tx.Rollback()
 		return ErrNotFound
@@ -2839,6 +2926,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if chatType != "group" {
+		_ = tx.Rollback()
+		return ErrInvalidChatType
 	}
 	if currentOwnerID != actorID {
 		_ = tx.Rollback()

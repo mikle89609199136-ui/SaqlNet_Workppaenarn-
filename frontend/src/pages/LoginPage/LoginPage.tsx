@@ -3,12 +3,11 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Icon, Input, showToast } from '@/shared/ui';
-import { AuthLayout } from '@/layouts';
+import { AuthLayout, Button, Icon, Input, showToast } from '@/shared/ui';
 import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import { loginFormSchema, type TLoginForm } from './loginSchema';
 

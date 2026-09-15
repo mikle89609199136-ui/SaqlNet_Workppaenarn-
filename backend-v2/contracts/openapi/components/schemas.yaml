@@ -33,7 +33,7 @@ RegisterRequest:
   type: object
   required: [username, password, firstName]
   properties:
-    username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
+    username: { $ref: '#/Username' }
     password: { $ref: '#/Password' }
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
@@ -87,7 +87,12 @@ ChatMember:
         role: { type: string, enum: [owner, admin, member] }
         permissions: { type: object, additionalProperties: true }
         mutedUntil: { type: string, nullable: true }
-        mutedAt: { type: string, nullable: true, description: 'set when muted; mutedUntil null = permanent mute' }
+        mutedAt:
+          {
+            type: string,
+            nullable: true,
+            description: 'set when muted; mutedUntil null = permanent mute',
+          }
         joinedAt: { type: string }
 Message:
   type: object
@@ -109,7 +114,7 @@ SendMessageRequest:
   type: object
   properties:
     content: { type: string }
-    type: { type: string, default: text }
+    type: { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
     replyTo: { type: string, format: uuid, nullable: true }
     mediaUrl: { type: string }
     mediaType: { type: string }
@@ -118,6 +123,11 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+EditMessageRequest:
+  type: object
+  required: [content]
+  properties:
+    content: { type: string }
 Reaction:
   type: object
   properties:
@@ -138,3 +148,9 @@ UploadResponse:
 Object:
   type: object
   additionalProperties: true
+Username:
+  type: string
+  pattern: '^[a-zA-Z0-9_]{3,32}$'
+  minLength: 3
+  maxLength: 32
+  example: 'john_doe'

@@ -82,35 +82,37 @@ export default tseslint.config(
     },
   },
 
-  /* Границы слоёв — подготовка к переезду на FSD (#623, эпик #622).
-     Правила описывают текущую раскладку, а не целевую: они должны
-     ловить то, что уже неверно, и не мешать работе до переезда.
-
-     Предупреждениями, по той же причине, что и всё выше: нарушения
-     существуют прямо сейчас, и красная сборка на старте кончится тем,
-     что правило выключат. Ошибками станут на последнем этапе (#628),
-     когда долг разобран. */
+  /* Границы слоёв — Feature-Sliced Design (#623, #628, эпик #622).
+     Зависимости направлены строго сверху вниз:
+     app -> pages -> widgets -> features -> entities -> shared.
+     Нижние слои не знают о верхних. */
   {
-    files: ['src/shared/**/*.{ts,tsx}', 'src/utils/**/*.{ts,tsx}', 'src/types/**/*.{ts,tsx}'],
+    files: ['src/shared/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             {
               group: [
+                '@/entities',
+                '@/entities/*',
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
                 '@/store',
                 '@/store/*',
                 '@/services',
                 '@/services/*',
                 '@/queries/*',
                 '@/hooks',
-                '@/components/*',
-                '@/pages',
-                '@/pages/*',
               ],
-              message:
-                'Нижний слой не знает о верхних. Если файлу нужен стор или сервис, он не утилита: место ему в features. Пример — utils/clearAuthSession.ts, он оркестрирует четыре стора.',
+              message: 'Нижний слой не знает о верхних.',
             },
           ],
         },
@@ -119,16 +121,114 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/components/**/*.{ts,tsx}', 'src/layouts/**/*.{ts,tsx}'],
+    files: ['src/types/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             {
-              group: ['@/pages', '@/pages/*', '@/configs/router'],
-              message:
-                'Компонент не знает о странице и о роутере: это кольцо. Общий тип выносится вниз — так уедут IProfileModal и IProfileState из ChatThreadPage. Адреса из configs/app трогать можно: на этапе #624 они уедут в shared/config.',
+              group: [
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+                '@/store',
+                '@/store/*',
+                '@/services',
+                '@/services/*',
+                '@/queries/*',
+                '@/hooks',
+              ],
+              message: 'Слой типов не знает о фичах, виджетах, страницах и сторах.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/entities/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Сущности не знают о фичах, виджетах, страницах и приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/features/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Фичи не знают о виджетах, страницах и приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/widgets/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/pages', '@/pages/*', '@/app', '@/app/*'],
+              message: 'Виджет не знает о странице и о приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/pages/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/app', '@/app/*'],
+              message: 'Страница не знает о слое приложения.',
             },
           ],
         },
@@ -140,11 +240,18 @@ export default tseslint.config(
     files: ['src/store/**/*.{ts,tsx}', 'src/queries/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             {
-              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
               message: 'Слой данных не знает о разметке.',
             },
           ],
@@ -160,11 +267,18 @@ export default tseslint.config(
     files: ['src/store/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             {
-              group: ['@/components/*', '@/pages', '@/pages/*', '@/layouts/*'],
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
               message: 'Слой данных не знает о разметке.',
             },
             {
@@ -193,7 +307,7 @@ export default tseslint.config(
         // `bg-sheet-2` и прочая семантика окажется «неизвестной».
         // Параметр называется cssConfigPath: по умолчанию плагин ищет
         // src/style.css, которого у нас нет.
-        cssConfigPath: 'src/styles/tailwind.css',
+        cssConfigPath: 'src/app/styles/tailwind.css',
       },
     },
     rules: {

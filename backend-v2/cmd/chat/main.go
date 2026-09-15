@@ -16,6 +16,7 @@ import (
 	"craneapp/backend-v2/internal/platform/httpx"
 	"craneapp/backend-v2/internal/presence"
 
+
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
@@ -37,7 +38,8 @@ func main() {
 	presenceStore := presence.NewRedisStore(redisClient)
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
-	handler := chat.NewHandler(chat.NewService(pool, wsServer, presenceStore))
+	svc := chat.NewService(pool, wsServer, presenceStore)
+	handler := chat.NewHandler(svc)
 
 	// In production NATS is required. In other environments it is optional
 	// but outbox events will accumulate until NATS becomes available.
@@ -78,9 +80,15 @@ func main() {
 
 	chat.RegisterRoutes(mux, handler, authenticated)
 
-	mux.Handle("/api/v2/messages/read", authenticated(http.HandlerFunc(handler.MessagesRead)))
-	mux.Handle("/api/v2/messages/search", authenticated(http.HandlerFunc(handler.Messages)))
-	mux.Handle("/api/v2/messages/favorites", authenticated(http.HandlerFunc(handler.Messages)))
+	mux.Handle("POST /api/v2/messages/read", authenticated(http.HandlerFunc(handler.MessagesRead)))
+	mux.Handle("GET /api/v2/messages/search", authenticated(http.HandlerFunc(handler.Messages)))
+	mux.Handle("GET /api/v2/messages/favorites", authenticated(http.HandlerFunc(handler.Messages)))
+
+	mux.Handle("GET /api/v2/messages/{chatId}", authenticated(http.HandlerFunc(handler.ListMessages)))
+	mux.Handle("POST /api/v2/messages/{chatId}", authenticated(http.HandlerFunc(handler.SendMessage)))
+	mux.Handle("PUT /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.EditMessage)))
+	mux.Handle("DELETE /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.DeleteMessage)))
+
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
 	mux.Handle("GET /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.ListRooms)))
