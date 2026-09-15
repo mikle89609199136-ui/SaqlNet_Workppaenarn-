@@ -15,6 +15,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("chatId")
 
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid chatId",
+		)
+		return
+	}
+
 	limit := 50
 	offset := 0
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
@@ -34,6 +44,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("chatId")
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid chatId",
+		)
+		return
+	}
 
 	var input struct {
 		Content         *string        `json:"content"`
@@ -174,6 +194,16 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("messageId")
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid messageId",
+		)
+		return
+	}
 
 	var input struct {
 		Content *string `json:"content"`
