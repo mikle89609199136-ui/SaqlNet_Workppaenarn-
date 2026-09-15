@@ -1105,9 +1105,9 @@ func TestHandler_CreateGroup(t *testing.T) {
 }
 
 // TestHandler_UpdateGroup covers UpdateGroup: successful updates (full
-// and partial), field trimming, validation failures, domain errors
-// (not found, forbidden, invalid chat type, DB failure), and method
-// rejection.
+// and partial), field trimming, validation failures, strict JSON decoding
+// (unknown fields and trailing data), domain errors (not found, forbidden,
+// invalid chat type, DB failure), and method rejection.
 func TestHandler_UpdateGroup(t *testing.T) {
 	const (
 		actorID = "550e8400-e29b-41d4-a716-446655440001"
@@ -1132,10 +1132,14 @@ func TestHandler_UpdateGroup(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		method        string
-		path          string
-		requestBody   map[string]any
+		name        string
+		method      string
+		path        string
+		requestBody map[string]any
+		// rawBody is used when the request body cannot be produced via
+		// json.Marshal, e.g. malformed payloads or bodies with trailing
+		// data. When set, it takes precedence over requestBody.
+		rawBody       []byte
 		setupMock     func(mock sqlmock.Sqlmock)
 		wantStatus    int
 		wantErrorCode string
@@ -1256,6 +1260,34 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			wantErrorCode: "validation_failed",
 		},
 		{
+			// Guards decodeStrict's DisallowUnknownFields in the PATCH path.
+			// A valid title is present so the request fails specifically
+			// because of the unknown field, not because of a missing value.
+			// The service must never be called.
+			name:   "unknown_field_patch_400",
+			method: http.MethodPatch,
+			path:   "/api/v2/chats/" + chatID,
+			requestBody: map[string]any{
+				"title":        "New Title",
+				"unknownField": "x",
+			},
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_json",
+		},
+		{
+			// Guards decodeStrict's trailing-data check in the PATCH path.
+			// The first JSON object is valid; the second one is extra data
+			// and must be rejected. The service must never be called.
+			name:          "trailing_second_json_object_patch_400",
+			method:        http.MethodPatch,
+			path:          "/api/v2/chats/" + chatID,
+			rawBody:       []byte(`{"title":"New Title"}{"title":"Second"}`),
+			setupMock:     func(sqlmock.Sqlmock) {},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_json",
+		},
+		{
 			name:   "chat_not_found_404",
 			method: http.MethodPatch,
 			path:   "/api/v2/chats/non-existent-id",
@@ -1336,7 +1368,10 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			tt.setupMock(mock)
 
 			var bodyBytes []byte
-			if tt.requestBody != nil {
+			switch {
+			case tt.rawBody != nil:
+				bodyBytes = tt.rawBody
+			case tt.requestBody != nil:
 				var err error
 				bodyBytes, err = json.Marshal(tt.requestBody)
 				if err != nil {
