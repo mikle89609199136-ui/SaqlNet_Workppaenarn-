@@ -78,12 +78,15 @@ func main() {
 	mux.Handle("POST /api/v2/messages/{chatId}", authenticated(http.HandlerFunc(handler.SendMessage)))
 	mux.Handle("PUT /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.EditMessage)))
 	mux.Handle("DELETE /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.DeleteMessage)))
+	mux.Handle("GET /api/v2/messages/{messageId}/reactions", authenticated(http.HandlerFunc(handler.ListReactions)))
 
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
+
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
 	mux.Handle("GET /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.ListRooms)))
 	mux.Handle("POST /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.CallRoom)))
 	mux.Handle("GET /api/v2/calls/rooms/{id}", authenticated(http.HandlerFunc(handler.GetRoom)))
+
 	mux.Handle("/api/v2/mls/keypackages", authenticated(http.HandlerFunc(handler.MLSRoutes)))
 	mux.Handle("/api/v2/mls/keypackages/", authenticated(http.HandlerFunc(handler.MLSRoutes)))
 	mux.Handle("/api/v2/mls/group/", authenticated(http.HandlerFunc(handler.MLSRoutes)))
