@@ -12,7 +12,7 @@ import { LanguageSection } from '@/pages/SettingsPage/sections/LanguageSection';
 import { NotificationsSection } from '@/pages/SettingsPage/sections/NotificationsSection';
 import { PrivacySection } from '@/pages/SettingsPage/sections/PrivacySection';
 import { userKeys } from '@/queries/keys';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
 import { testI18n } from './i18n';

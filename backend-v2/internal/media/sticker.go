@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,13 +30,19 @@ type Sticker struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (string, error) {
+type uploadedStickerObject struct {
+	URL       string
+	Bucket    string
+	ObjectKey string
+}
+
+func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (uploadedStickerObject, error) {
 	if !strings.HasPrefix(b64, "data:") {
-		return "", fmt.Errorf("invalid data url")
+		return uploadedStickerObject{}, fmt.Errorf("invalid data url")
 	}
 	parts := strings.SplitN(b64, ",", 2)
 	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid data url")
+		return uploadedStickerObject{}, fmt.Errorf("invalid data url")
 	}
 	header := parts[0]
 	b64Data := parts[1]
@@ -48,16 +55,20 @@ func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (
 
 	data, err := base64.StdEncoding.DecodeString(b64Data)
 	if err != nil {
-		return "", err
+		return uploadedStickerObject{}, err
 	}
 
 	objectKey := fmt.Sprintf("%s/stickers/%d", userID, time.Now().UnixNano())
 	if err := h.service.store.Put(ctx, h.service.bucket, objectKey, bytes.NewReader(data), int64(len(data)), mimeType); err != nil {
-		return "", err
+		return uploadedStickerObject{}, err
 	}
 
-	url, _ := h.service.store.PresignGet(ctx, h.service.bucket, objectKey, 365*24*time.Hour)
-	return url, nil
+	url, err := h.service.store.PresignGet(ctx, h.service.bucket, objectKey, 365*24*time.Hour)
+	if err != nil {
+		_ = h.service.store.Delete(ctx, h.service.bucket, objectKey)
+		return uploadedStickerObject{}, err
+	}
+	return uploadedStickerObject{URL: url, Bucket: h.service.bucket, ObjectKey: objectKey}, nil
 }
 
 func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
@@ -110,23 +121,31 @@ func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var iconUrl string
+	var icon uploadedStickerObject
+	var err error
 	if req.Icon != "" {
-		url, err := h.uploadBase64(r.Context(), user.ID, req.Icon)
+		icon, err = h.uploadBase64(r.Context(), user.ID, req.Icon)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 			return
 		}
-		iconUrl = url
+	}
+	var iconBucket, iconObjectKey any
+	if icon.ObjectKey != "" {
+		iconBucket = icon.Bucket
+		iconObjectKey = icon.ObjectKey
 	}
 
 	var p StickerPack
-	err := h.service.db.QueryRowContext(r.Context(), `
-		INSERT INTO media.sticker_packs (user_id, name, description, icon_url)
-		VALUES ($1, $2, $3, $4)
+	err = h.service.db.QueryRowContext(r.Context(), `
+		INSERT INTO media.sticker_packs (user_id, name, description, icon_url, icon_bucket, icon_object_key)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id::text, name, description, COALESCE(icon_url, ''), created_at::text
-	`, user.ID, name, req.Description, iconUrl).Scan(&p.ID, &p.Name, &p.Description, &p.IconUrl, &p.CreatedAt)
+	`, user.ID, name, req.Description, icon.URL, iconBucket, iconObjectKey).Scan(&p.ID, &p.Name, &p.Description, &p.IconUrl, &p.CreatedAt)
 	if err != nil {
+		if icon.ObjectKey != "" {
+			_ = h.service.store.Delete(r.Context(), icon.Bucket, icon.ObjectKey)
+		}
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
 		return
 	}
@@ -172,8 +191,8 @@ func (h *Handler) GetStickers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")
 		return
 	}
@@ -199,7 +218,7 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imageUrl, err := h.uploadBase64(r.Context(), user.ID, req.Image)
+	image, err := h.uploadBase64(r.Context(), user.ID, req.Image)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 		return
@@ -207,11 +226,12 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 
 	var s Sticker
 	err = h.service.db.QueryRowContext(r.Context(), `
-		INSERT INTO media.stickers (pack_id, image_url)
-		VALUES ($1, $2)
+		INSERT INTO media.stickers (pack_id, image_url, bucket, object_key)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id::text, image_url, created_at::text
-	`, packID, imageUrl).Scan(&s.ID, &s.ImageUrl, &s.CreatedAt)
+	`, packID, image.URL, image.Bucket, image.ObjectKey).Scan(&s.ID, &s.ImageUrl, &s.CreatedAt)
 	if err != nil {
+		_ = h.service.store.Delete(r.Context(), image.Bucket, image.ObjectKey)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
 		return
 	}
@@ -228,21 +248,11 @@ func (h *Handler) DeleteSticker(w http.ResponseWriter, r *http.Request) {
 	}
 	stickerID := parts[4]
 
-	// check ownership
-	var ownerID string
-	err := h.service.db.QueryRowContext(r.Context(), `
-		SELECT sp.user_id::text
-		FROM media.stickers s
-		JOIN media.sticker_packs sp ON s.pack_id = sp.id
-		WHERE s.id = $1
-	`, stickerID).Scan(&ownerID)
-
-	if err != nil || ownerID != user.ID {
+	err := h.service.DeleteSticker(r.Context(), user.ID, stickerID)
+	if errors.Is(err, errStickerNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "sticker not found")
 		return
 	}
-
-	_, err = h.service.db.ExecContext(r.Context(), `DELETE FROM media.stickers WHERE id = $1`, stickerID)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
 		return
@@ -252,14 +262,18 @@ func (h *Handler) DeleteSticker(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteStickerPack(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")
 		return
 	}
 	packID := parts[4]
 
-	_, err := h.service.db.ExecContext(r.Context(), `DELETE FROM media.sticker_packs WHERE id = $1 AND user_id = $2`, packID, user.ID)
+	err := h.service.DeleteStickerPack(r.Context(), user.ID, packID)
+	if errors.Is(err, errPackNotFound) {
+		httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
 		return

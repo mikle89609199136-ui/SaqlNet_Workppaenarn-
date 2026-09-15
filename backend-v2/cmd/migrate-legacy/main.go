@@ -43,7 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var legacySchemaExists bool
 	if err := tx.QueryRowContext(ctx, `SELECT to_regclass('public.users') IS NOT NULL`).Scan(&legacySchemaExists); err != nil {

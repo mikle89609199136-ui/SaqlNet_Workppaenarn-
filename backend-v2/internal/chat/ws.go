@@ -147,7 +147,10 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
+	if err := conn.SetReadDeadline(time.Now().Add(wsReadDeadline)); err != nil {
+		_ = conn.Close()
+		return
+	}
 
 	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{})}
 	ws.register <- client
@@ -185,7 +188,9 @@ func (ws *WSServer) readPump(client *Client) {
 		if err != nil {
 			break
 		}
-		client.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
+		if err := client.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline)); err != nil {
+			break
+		}
 
 		var msg map[string]interface{}
 		if err := json.Unmarshal(message, &msg); err != nil {
@@ -201,7 +206,9 @@ func (ws *WSServer) readPump(client *Client) {
 			chatID, _ := msg["chatId"].(string)
 			if chatID != "" {
 				var isMember bool
-				ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember)
+				if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember); err != nil {
+					break
+				}
 				if isMember {
 					msg["userId"] = client.UserID
 					msg["senderId"] = client.UserID
@@ -460,11 +467,15 @@ func (ws *WSServer) writePump(client *Client) {
 	for {
 		message, ok := <-client.Send
 		if !ok {
-			client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
-			client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+				return
+			}
+			_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		}
-		client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
+		if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+			return
+		}
 		if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			return
 		}

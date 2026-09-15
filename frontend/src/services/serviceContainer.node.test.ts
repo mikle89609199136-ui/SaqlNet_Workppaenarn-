@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from '@/shared/config';
-import { useProfileStore } from '@/store/profile';
+import { useProfileStore } from '@/entities/user/model/profileStore';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServices, services, startCryptoAutoInit } from './serviceContainer';
 

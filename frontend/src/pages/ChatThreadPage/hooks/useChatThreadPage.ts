@@ -2,17 +2,17 @@ import { describeApiError } from '@/shared/api';
 import {
   useAutoScrollToBottom,
   useChatEncryption,
-  useChatModals,
-  useMessageActions,
-  useMessageSelection,
   usePhotoEditor,
-  useProfilePanel,
   useRealtimeSocket,
 } from '@/hooks';
+import { useChatModals } from '@/features/chat-actions';
+import { useMessageActions, useMessageSelection } from '@/features/message-actions';
+import { useProfilePanel } from '@/features/user-profile';
 import { useEscapeKey } from '@/shared/lib/useEscapeKey';
-import { cancelOutboxMessage, retryOutboxMessage } from '@/queries/chat/outboxSender';
-import { chatQuery, pinsQuery } from '@/queries/chat/threadQueries';
-import { useChatUiStore, useProfileStore } from '@/store';
+import { chatQuery } from '@/entities/chat';
+import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
+import { useProfileStore } from '@/entities/user';
+import { useChatUiStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
