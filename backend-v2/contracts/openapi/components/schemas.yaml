@@ -134,6 +134,48 @@ Reaction:
     emoji: { type: string }
     count: { type: integer }
     myReaction: { type: boolean }
+EncryptedMediaUploadRequest:
+  type: object
+  required: [purpose, file]
+  description: |
+    Encrypted media envelope v2. Unknown fields are ignored for server-first
+    format rollouts. Missing required fields return validation_failed.
+    Invalid sizeBytes returns invalid_size; invalid ciphertext returns
+    invalid_ciphertext. Other invalid envelope fields return validation_failed.
+  properties:
+    purpose: { type: string, enum: [message] }
+    fileName: { type: string, maxLength: 255, description: Fallback filename; at most 255 UTF-8 bytes. }
+    file:
+      type: object
+      required: [encrypted, version, algorithm, iv, keyEpoch, sizeBytes, ciphertext]
+      properties:
+        encrypted: { type: boolean, enum: [true] }
+        version: { type: integer, enum: [2] }
+        algorithm: { type: string, enum: [AES-GCM] }
+        iv:
+          type: string
+          maxLength: 4096
+          pattern: '^[A-Za-z0-9+/]{16}$'
+          description: Canonical standard base64 encoding of exactly 12 bytes; at most 4096 UTF-8 bytes.
+        keyEpoch: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        sizeBytes:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Client plaintext size, preserved on upload and download; not the stored ciphertext size.
+        ciphertext:
+          type: string
+          format: byte
+          description: Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+        mimeType:
+          type: string
+          maxLength: 255
+          default: application/octet-stream
+          description: At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies.
+        fileName:
+          type: string
+          maxLength: 255
+          description: At most 255 UTF-8 bytes. Empty or absent uses the request filename, then filename sanitization applies.
 UploadResponse:
   type: object
   required: [success, url]

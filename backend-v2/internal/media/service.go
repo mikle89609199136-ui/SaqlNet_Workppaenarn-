@@ -24,13 +24,14 @@ import (
 )
 
 var (
-	ErrTooBig          = errors.New("file too large")
-	ErrBadType         = errors.New("unsupported content type")
-	ErrNotFound        = errors.New("upload not found")
-	ErrForbidden       = errors.New("access denied")
-	ErrObjectNotFound  = errors.New("media object not found")
-	ErrStorage         = errors.New("media storage failure")
-	ErrResponseStarted = errors.New("media response stream failed")
+	ErrTooBig            = errors.New("file too large")
+	ErrInvalidCiphertext = errors.New("invalid ciphertext base64")
+	ErrBadType           = errors.New("unsupported content type")
+	ErrNotFound          = errors.New("upload not found")
+	ErrForbidden         = errors.New("access denied")
+	ErrObjectNotFound    = errors.New("media object not found")
+	ErrStorage           = errors.New("media storage failure")
+	ErrResponseStarted   = errors.New("media response stream failed")
 )
 
 const maxFilenameBytes = 255
@@ -152,7 +153,7 @@ func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64C
 		if errors.Is(err, ErrTooBig) {
 			return Upload{}, err
 		}
-		return Upload{}, fmt.Errorf("invalid ciphertext base64: %w", err)
+		return Upload{}, fmt.Errorf("%w: %w", ErrInvalidCiphertext, err)
 	}
 	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
 }
@@ -397,6 +398,8 @@ func encryptedJSONEnvelope(
 		meta["mimeType"] = contentType
 	}
 	if meta["sizeBytes"] == nil {
+		// Legacy fallback: media.uploads.size_bytes is ciphertext size, not plaintext.
+		// Valid v2 uploads always carry the client's required sizeBytes.
 		meta["sizeBytes"] = sizeBytes
 	}
 
