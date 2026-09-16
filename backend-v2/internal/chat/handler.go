@@ -681,6 +681,26 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 
 	targetID, suffix := parseMessagePath(r.URL.Path)
 
+	if targetID == "" {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusNotFound,
+			"route_not_found",
+			"route not found",
+		)
+		return
+	}
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid messageId",
+		)
+		return
+	}
+
 	switch {
 	case targetID == "":
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
