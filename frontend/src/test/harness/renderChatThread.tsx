@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { ChatThreadPage } from '@/pages/ChatThreadPage/ChatThreadPage';
+import { ChatThreadPage } from '@/pages/chat-thread';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { chatKeys } from '@/queries/keys';
 import { RealtimeEvents } from '@/app/providers';
