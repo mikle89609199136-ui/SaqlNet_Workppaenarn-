@@ -2,19 +2,17 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { AuthLayout, Button, Icon, Input, showToast } from '@/shared/ui';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button, Icon, Input, showToast } from '@/shared/ui';
 import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
-import { useProfileStore } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
-import { loginFormSchema, type TLoginForm } from './loginSchema';
+import { loginFormSchema, type TLoginForm } from '../model/loginSchema';
 
-export function LoginPage() {
+export function LoginForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = useProfileStore((state) => state.token);
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -30,11 +28,6 @@ export function LoginPage() {
        встретить его формой в ошибках. */
     mode: 'onTouched',
   });
-
-  /* Уже вошли — на странице входа делать нечего. Раньше здесь стоял
-     `window.location.href` прямо в теле компонента: перезагрузка всего
-     приложения посреди отрисовки. */
-  if (token) return <Navigate replace to={ROUTES.CHATS} />;
 
   /* Схема проверяет оба поля разом, поэтому набор в одном показывал бы
      претензию ко второму, ещё пустому. Ошибка появляется там, где
@@ -91,57 +84,44 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout
-      footer={
-        <>
-          {t('noAccount', 'Нет аккаунта?')}{' '}
-          <Link className="text-brand hover:underline" to={ROUTES.REGISTER}>
-            {t('registerAction', 'Зарегистрироваться')}
-          </Link>
-        </>
-      }
-      subtitle={t('loginSubtitle', 'Войдите в аккаунт')}
-      title="CraneApp"
-    >
-      <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
-        <Input
-          autoCapitalize="none"
-          autoComplete="username"
-          autoCorrect="off"
-          error={errorOf('username')}
-          label={t('username', 'Имя пользователя')}
-          placeholder="@username.123"
-          {...register('username')}
-        />
+    <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
+      <Input
+        autoCapitalize="none"
+        autoComplete="username"
+        autoCorrect="off"
+        error={errorOf('username')}
+        label={t('username', 'Имя пользователя')}
+        placeholder="@username.123"
+        {...register('username')}
+      />
 
-        <Input
-          addon={
-            <button
-              aria-label={
-                showPassword
-                  ? t('hidePassword', 'Скрыть пароль')
-                  : t('showPassword', 'Показать пароль')
-              }
-              className="text-ink-2 transition-colors hover:text-ink"
-              onClick={() => setShowPassword((value) => !value)}
-              type="button"
-            >
-              <Icon name={showPassword ? 'eyeOff' : 'eye'} size="md" />
-            </button>
-          }
-          autoComplete="current-password"
-          error={errorOf('password')}
-          label={t('password', 'Пароль')}
-          placeholder="••••••••"
-          type={showPassword ? 'text' : 'password'}
-          {...register('password')}
-        />
+      <Input
+        addon={
+          <button
+            aria-label={
+              showPassword
+                ? t('hidePassword', 'Скрыть пароль')
+                : t('showPassword', 'Показать пароль')
+            }
+            className="text-ink-2 transition-colors hover:text-ink"
+            onClick={() => setShowPassword((value) => !value)}
+            type="button"
+          >
+            <Icon name={showPassword ? 'eyeOff' : 'eye'} size="md" />
+          </button>
+        }
+        autoComplete="current-password"
+        error={errorOf('password')}
+        label={t('password', 'Пароль')}
+        placeholder="••••••••"
+        type={showPassword ? 'text' : 'password'}
+        {...register('password')}
+      />
 
-        <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
-          {isSubmitting ? t('loginLoading', 'Вход...') : t('login', 'Войти')}
-        </Button>
-      </form>
-    </AuthLayout>
+      <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+        {isSubmitting ? t('loginLoading', 'Вход...') : t('login', 'Войти')}
+      </Button>
+    </form>
   );
 }
 

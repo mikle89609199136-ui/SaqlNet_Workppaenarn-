@@ -159,7 +159,7 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.LOGIN,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('@/pages/LoginPage/LoginPage.js').then((m) => ({
+          import('@/pages/login').then((m) => ({
             Component: m.LoginPage,
           })),
       },
@@ -167,7 +167,7 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.REGISTER,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('@/pages/RegisterPage/RegisterPage.js').then((m) => ({
+          import('@/pages/register').then((m) => ({
             Component: m.RegisterPage,
           })),
       },
