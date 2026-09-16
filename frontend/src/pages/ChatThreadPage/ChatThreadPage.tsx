@@ -9,15 +9,13 @@ import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/entities/media';
 
-import './ChatThreadPage.css';
 import { useOutletContext } from 'react-router-dom';
 
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from './hooks/useChatThreadPage';
 
-import type { IProfileModal, IProfileState } from '@/entities/user';
-export type { IProfileModal, IProfileState };
+import type { IProfileState } from '@/entities/user';
 
 interface IOutletContext {
   onProfileStateChange: Dispatch<SetStateAction<IProfileState>>;
