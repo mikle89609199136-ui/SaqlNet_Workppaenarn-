@@ -202,40 +202,6 @@ func (ws *WSServer) readPump(client *Client) {
 		case "ping", "pong":
 			client.Send <- []byte(`{"type":"pong"}`)
 
-		case "chat_message":
-			chatID, _ := msg["chatId"].(string)
-			if chatID != "" {
-				content, _ := msg["content"].(string)
-				content = sanitizeMessageContent(content)
-				msg["content"] = content
-				mType, _ := msg["messageType"].(string)
-				if mType == "" {
-					mType = "text"
-				}
-				var isMember bool
-				if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember); err != nil {
-					break
-				}
-				if isMember {
-					var msgID string
-					err := ws.db.QueryRow(`
-						INSERT INTO messages.messages (chat_id, sender_id, content, type)
-						VALUES ($1, $2, $3, $4) RETURNING id`,
-						chatID, client.UserID, content, mType).Scan(&msgID)
-					if err == nil {
-						msg["id"] = msgID
-						msg["senderId"] = client.UserID
-						msg["createdAt"] = time.Now().Format(time.RFC3339Nano)
-						// Attach sender display name for client-side notifications.
-						var senderName string
-						_ = ws.db.QueryRow(`SELECT username FROM auth.users WHERE id = $1`, client.UserID).Scan(&senderName)
-						msg["senderName"] = senderName
-						newMessage, _ := json.Marshal(msg)
-						ws.BroadcastToChat(chatID, newMessage, client.UserID)
-					}
-				}
-			}
-
 		case "typing":
 			chatID, _ := msg["chatId"].(string)
 			if chatID != "" {

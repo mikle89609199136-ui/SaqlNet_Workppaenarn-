@@ -4,7 +4,7 @@ import { forgetSecurityNotices } from '@/crypto/securityNotices';
 import { clearMediaObjectUrls } from '@/entities/media/model/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
 import { clearAllDrafts } from '@/store/chatDrafts';
-import { clearOutbox } from '@/store/outbox';
+import { clearOutbox } from '@/entities/message';
 import { useChatUiStore } from '@/store/chatUi';
 import { queryClient } from '@/queries/queryClient';
 import { useProfileStore } from '@/entities/user';

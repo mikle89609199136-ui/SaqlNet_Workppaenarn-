@@ -32,7 +32,7 @@ const (
 	actorChatInfoQuery = `SELECT c.type, cm.role
 		FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`
 	memberRoleLockQuery   = `SELECT role FROM chats.members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`
-	ownerLockQuery        = `SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`
+	ownerLockQuery        = `SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
@@ -103,7 +103,7 @@ func assertErrorResponse(t *testing.T, rr *httptest.ResponseRecorder, wantStatus
 func expectOwnerLock(mock sqlmock.Sqlmock, ownerID string) {
 	mock.ExpectQuery(ownerLockQuery).
 		WithArgs(handlerChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"owner_id"}).AddRow(ownerID))
+		WillReturnRows(sqlmock.NewRows([]string{"owner_id", "type"}).AddRow(ownerID, "group"))
 }
 
 // expectTargetLock мокирует SELECT ... FOR UPDATE по membership-строке target (роль member).
@@ -306,6 +306,14 @@ func TestHandler_LeaveChat(t *testing.T) {
 	}
 }
 
+// TestHandler_TransferOwnership проверяет HTTP-контракт эндпоинта POST /api/v2/chats/{chatId}/transfer-ownership:
+// - Success: успешная передача владения в групповом чате возвращает 200 OK;
+// - ActorNotOwner_409: актор не является владельцем чата — возвращает 409 Conflict (ownership_conflict);
+// - ChatNotFound_404: чат не существует — возвращает 404 Not Found (chat_not_found);
+// - TargetNotMember_400: целевой пользователь не состоит в чате — возвращает 400 Bad Request (not_member);
+// - SelfTransfer_400: попытка передачи владения самому себе — отклоняется с 400 Bad Request (validation_failed);
+// - InvalidUUID_400: невалидный формат UUID — отклоняется с 400 Bad Request (validation_failed);
+// - PrivateChat_400: попытка передачи владения в приватном чате — отклоняется с 400 Bad Request (invalid_chat_type, CHAT-B006).
 func TestHandler_TransferOwnership(t *testing.T) {
 	h, mock := newTestHandler(t)
 
@@ -385,6 +393,19 @@ func TestHandler_TransferOwnership(t *testing.T) {
 			func() {},
 			http.StatusBadRequest,
 			"validation_failed",
+		},
+		{
+			"PrivateChat_400",
+			handlerTargetID,
+			func() {
+				mock.ExpectBegin()
+				mock.ExpectQuery(ownerLockQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"owner_id", "type"}).AddRow(handlerActorID, "private"))
+				mock.ExpectRollback()
+			},
+			http.StatusBadRequest,
+			"invalid_chat_type",
 		},
 	}
 

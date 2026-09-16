@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -177,10 +178,19 @@ func (m *MinioStore) Delete(ctx context.Context, bucket, key string) error {
 	m.signRequest(req, nil)
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("object storage delete request failed")
 	}
 	defer resp.Body.Close()
-	return nil
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return fmt.Errorf("object storage delete failed with status %d", resp.StatusCode)
 }
 
 func (m *MinioStore) signRequest(req *http.Request, body []byte) {

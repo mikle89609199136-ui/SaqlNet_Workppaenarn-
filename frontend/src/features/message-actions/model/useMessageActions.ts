@@ -1,15 +1,20 @@
 import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
 import { CHAT_ROLES, CHAT_TYPES } from '@/shared/config';
-import { chatQuery } from '@/queries/chat/threadQueries';
-import { dropThreadMessage, patchThreadMessage } from '@/queries/chat/threadCacheActions';
-import { beginReactionChange, endReactionChange } from '@/queries/chat/pendingReactions';
+import { chatQuery } from '@/entities/chat';
+import {
+  applyReaction,
+  beginReactionChange,
+  dropThreadMessage,
+  endReactionChange,
+  patchThreadMessage,
+  removeOutboxItem,
+} from '@/entities/message';
+import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { applyReaction } from '@/entities/message';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
-import { useChatUiStore, useProfileStore } from '@/store';
-import { removeOutboxItem } from '@/store/outbox';
+import { useChatUiStore } from '@/store';
 import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';

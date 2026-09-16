@@ -11,3 +11,4 @@ export {
   EDITOR_FONTS,
   EDITOR_RATIOS,
 } from './editor';
+export { config } from './app';

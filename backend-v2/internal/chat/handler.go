@@ -352,6 +352,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		default:
 			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 		}
+	// POST /api/v2/chats/{id}/transfer-ownership — передача владения чатом.
+	// Разрешена только для групповых чатов (type = 'group')
 	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:
 		var input struct {
 			UserID string `json:"userId"`
@@ -371,6 +373,9 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", err.Error())
 		case errors.Is(err, ErrOwnershipConflict):
 			httpx.ErrorJSON(w, r, http.StatusConflict, "ownership_conflict", err.Error())
+		// Операция применима только к group chat; private и channel отклоняются (CHAT-B006)
+		case errors.Is(err, ErrInvalidChatType):
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
 		case err != nil:
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "transfer ownership failed")
 		default:
@@ -723,10 +728,27 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetID, suffix := parseMessagePath(r.URL.Path)
+	if targetID == "" {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusNotFound,
+			"route_not_found",
+			"route not found",
+		)
+		return
+	}
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid messageId",
+		)
+		return
+	}
 
 	switch {
-	case targetID == "":
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
 	case suffix == "/forward" && r.Method == http.MethodPost:
 		var input struct {
 			TargetChatID string `json:"targetChatId"`
@@ -748,13 +770,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
-	case suffix == "/reactions" && r.Method == http.MethodGet:
-		reactions, err := h.service.ListReactions(r.Context(), current.ID, targetID)
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list reactions")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"reactions": reactions})
 	case suffix == "/reactions" && r.Method == http.MethodPost:
 		var input struct {
 			Emoji string `json:"emoji"`

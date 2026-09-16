@@ -15,6 +15,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("chatId")
 
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid chatId",
+		)
+		return
+	}
+
 	limit := 50
 	offset := 0
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
@@ -34,6 +44,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("chatId")
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid chatId",
+		)
+		return
+	}
 
 	var input struct {
 		Content         *string        `json:"content"`
@@ -131,6 +151,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata)
+
 	if errors.Is(err, ErrMemberMuted) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
 		return
@@ -138,6 +159,26 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	if errors.Is(err, ErrForbidden) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+		return
+	}
+
+	if errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid replyTo",
+		)
+		return
+	}
+
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusNotFound,
+			"reply_not_found",
+			"reply message not found",
+		)
 		return
 	}
 
@@ -153,6 +194,16 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("messageId")
+
+	if err := validate.Var(targetID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid messageId",
+		)
+		return
+	}
 
 	var input struct {
 		Content *string `json:"content"`
@@ -226,5 +277,54 @@ func (h *Handler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"success":     true,
 		"lastMessage": lastMessage,
+	})
+}
+
+func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
+	current := authctx.MustUser(r)
+	targetID := r.PathValue("messageId")
+
+	reactions, err := h.service.ListReactions(
+		r.Context(),
+		current.ID,
+		targetID,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusNotFound,
+				"not_found",
+				"message not found",
+			)
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusForbidden,
+				"access_denied",
+				"access denied",
+			)
+		case errors.Is(err, ErrInvalidInput):
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid messageId",
+			)
+		default:
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusInternalServerError,
+				"internal_error",
+				"failed to list reactions",
+			)
+		}
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"reactions": reactions,
 	})
 }

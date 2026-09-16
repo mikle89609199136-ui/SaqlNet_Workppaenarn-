@@ -3,11 +3,11 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useComposerSendMessage } from './useComposerSendMessage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { services } from '@/services';
-import { useChatUiStore, useProfileStore } from '@/store';
-import { clearOutbox, getChatOutbox, useOutboxStore } from '@/store/outbox';
+import { useChatUiStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
+import { clearOutbox, getChatOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
 import { chatKeys } from '@/queries/keys';
 import { makeMessage } from '@/test/fixtures';
-import type { IThreadPages } from '@/queries/chat/threadCache';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 

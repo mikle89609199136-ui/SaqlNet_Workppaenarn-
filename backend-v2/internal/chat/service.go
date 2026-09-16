@@ -187,12 +187,12 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 		msg.ReplyToMessageID = msg.ReplyTo
 		var name string
 		err := s.db.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
-			FROM messages.messages m
-			LEFT JOIN auth.users au ON au.id = m.sender_id
-			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-			WHERE m.id = $1
-		`, *msg.ReplyTo).Scan(&name)
+				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				FROM messages.messages m
+				LEFT JOIN auth.users au ON au.id = m.sender_id
+				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+			`, *msg.ReplyTo, msg.ChatID).Scan(&name)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -1801,24 +1801,60 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		}
 		return Message{}, err
 	}
+
 	if isMuted.Valid && isMuted.Bool {
 		return Message{}, ErrMemberMuted
-	}
-
-	var replyToSQL sql.NullString
-	if replyTo != nil && *replyTo != "" {
-		replyToSQL = sql.NullString{String: *replyTo, Valid: true}
 	}
 
 	var msg Message
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return Message{}, err
 	}
-	err = s.db.QueryRowContext(ctx, `
+
+	var replyToSQL sql.NullString
+
+	if replyTo != nil && *replyTo != "" {
+		if err := validate.Var(*replyTo, "uuid"); err != nil {
+			return Message{}, ErrInvalidInput
+		}
+
+		replyToSQL = sql.NullString{
+			String: *replyTo,
+			Valid:  true,
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if replyToSQL.Valid {
+		var replyID string
+		err = tx.QueryRowContext(ctx, `
+        SELECT id::text
+        FROM messages.messages
+        WHERE id = $1
+          AND chat_id = $2
+          AND deleted_at IS NULL
+        FOR SHARE
+    `, replyToSQL.String, chatID).Scan(&replyID)
+
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrNotFound
+		}
+		if err != nil {
+			return Message{}, err
+		}
+	}
+
+	err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
 			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
 			VALUES ($1, $2, $3, $4, $5, $6)
@@ -1838,15 +1874,23 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
 		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+
 	if err != nil {
 		return Message{}, err
 	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, err
+	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
 		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
 			return Message{}, err
@@ -2252,6 +2296,32 @@ type ChangeResponse struct {
 }
 
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
+	var chatID string
+
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
@@ -2261,8 +2331,6 @@ type Querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-// listReactionsInternal executes the aggregation query using any Querier
-// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
@@ -2272,20 +2340,19 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
-		log.Printf("[chat-service-listReactionsInternal]:(error during DB request): %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []Reaction
+	result := make([]Reaction, 0)
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
-			log.Printf("[chat-service-listReactionsInternal]:(error during rows scan): %v", err)
 			return nil, err
 		}
 		result = append(result, r)
 	}
+
 	return result, rows.Err()
 }
 
@@ -2374,7 +2441,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// 5. Now safely query the current reaction (with lock held)
 	var currentEmoji string
 	err = tx.QueryRowContext(ctx,
-		`SELECT emoji FROM messages.reactions 
+		`SELECT emoji FROM messages.reactions
 		 WHERE message_id = $1 AND user_id = $2`,
 		messageID, userID,
 	).Scan(&currentEmoji)
@@ -2404,7 +2471,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case !hasCurrent:
 		// No reaction yet – insert the new one
 		result, execErr := tx.ExecContext(ctx,
-			`INSERT INTO messages.reactions (message_id, user_id, emoji) 
+			`INSERT INTO messages.reactions (message_id, user_id, emoji)
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
@@ -2422,7 +2489,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	case currentEmoji == emoji:
 		// Same emoji – remove the reaction (toggle off)
 		result, execErr := tx.ExecContext(ctx,
-			`DELETE FROM messages.reactions 
+			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
@@ -2440,7 +2507,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	default:
 		// Different emoji – update the existing one
 		result, execErr := tx.ExecContext(ctx,
-			`UPDATE messages.reactions SET emoji = $1 
+			`UPDATE messages.reactions SET emoji = $1
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
@@ -3006,9 +3073,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	var currentOwnerID string
+	var chatType string
 	err = tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
-		chatID).Scan(&currentOwnerID)
+		`SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID, &chatType)
 	if err == sql.ErrNoRows {
 		_ = tx.Rollback()
 		return ErrNotFound
@@ -3016,6 +3084,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if chatType != "group" {
+		_ = tx.Rollback()
+		return ErrInvalidChatType
 	}
 	if currentOwnerID != actorID {
 		_ = tx.Rollback()

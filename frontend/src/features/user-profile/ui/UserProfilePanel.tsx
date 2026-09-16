@@ -6,8 +6,8 @@ import {
   userProfileQuery,
   ProfileHeader,
   ProfilePanelFallback,
+  useProfileStore,
 } from '@/entities/user';
-import { useProfileStore } from '@/store';
 import { useQuery } from '@tanstack/react-query';
 import { getChatSubtitle } from '@/shared/lib';
 import { memo, useMemo } from 'react';
