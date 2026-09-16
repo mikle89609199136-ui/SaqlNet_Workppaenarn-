@@ -8,7 +8,13 @@ import type {
   TEditorTool,
   TTextFontId,
 } from '@/types';
-import { clamp, createEditorId, drawObject, findTextAtPoint, splitPathByEraser } from '@/utils';
+import {
+  clamp,
+  createEditorId,
+  drawObject,
+  findTextAtPoint,
+  splitPathByEraser,
+} from '@/shared/lib';
 import { useCallback, useRef, type RefObject } from 'react';
 
 interface PointerDrawState {

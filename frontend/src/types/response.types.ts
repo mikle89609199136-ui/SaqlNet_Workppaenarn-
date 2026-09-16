@@ -1,12 +1,12 @@
-import type { IChatDto, TChatsList, TMembersList } from './chat.types';
+import type { IChatDto, TChatsList, TMembersList } from '@/entities/chat';
 import type {
   IMessageDto,
   TEmojisList,
   TMessagesList,
   TPinnedList,
   TReactionsList,
-} from './message.types';
-import type { IUserDto, TSearchUsersList } from './user.types';
+} from '@/entities/message';
+import type { IUserDto, TSearchUsersList } from '@/entities/user';
 
 /**
  * Ответ входа и регистрации.

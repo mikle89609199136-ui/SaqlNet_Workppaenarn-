@@ -60,7 +60,7 @@ func (s *Service) CreateRequest(ctx context.Context, userID, subject, firstMessa
 	if err != nil {
 		return Request{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var r Request
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO support.requests (user_id, subject) VALUES ($1, $2)

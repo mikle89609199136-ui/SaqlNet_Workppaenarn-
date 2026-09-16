@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { ApiClient } from '@/api/ApiClient';
+import type { ApiClient } from '@/shared/api/ApiClient';
 import { bytesToBase64 } from './encoding';
 import {
   decodeBundle,

@@ -1,4 +1,4 @@
-import { useProfileStore } from '@/store';
+import { useProfileStore } from '@/entities/user';
 import { useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRealtimeSocket } from './useRealtimeSocket';
