@@ -2,13 +2,8 @@ import { z } from 'zod';
 import { passwordSchema } from '@/shared/lib/passwordRules';
 
 /**
- * Правила форм аккаунта.
- *
- * Собраны отдельно от разметки: их видно целиком, они проверяются тестом
- * без отрисовки формы и не расползаются по обработчикам отправки, где
- * раньше жили вперемешку с запросами.
+ * Правила смены пароля.
  */
-
 export const passwordFormSchema = z
   .object({
     currentPassword: z.string().min(1, 'Введите текущий пароль'),
@@ -26,13 +21,4 @@ export const passwordFormSchema = z
     path: ['newPassword'],
   });
 
-export const profileFormSchema = z.object({
-  firstName: z.string().trim().min(1, 'Имя не может быть пустым').max(64, 'Слишком длинное имя'),
-  lastName: z.string().trim().max(64, 'Слишком длинная фамилия'),
-  /* Столько же, сколько считает счётчик под полем: разойдись они — человек
-     увидит «0 / 160» и запрет одновременно. */
-  bio: z.string().trim().max(160, 'Не больше 160 символов'),
-});
-
 export type TPasswordForm = z.infer<typeof passwordFormSchema>;
-export type TProfileForm = z.infer<typeof profileFormSchema>;

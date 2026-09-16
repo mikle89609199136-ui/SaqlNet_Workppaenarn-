@@ -4,4 +4,4 @@ export {
   type IProfileState,
 } from './ChatThreadPage/ChatThreadPage';
 export { ChatsPage } from './ChatsPage/ChatsPage';
-export { SettingsPage } from './SettingsPage/SettingsPage';
+
