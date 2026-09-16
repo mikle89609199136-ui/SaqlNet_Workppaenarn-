@@ -162,21 +162,21 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHANNELS,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/channels').then((m) => ({
                     Component: m.ChannelsPage,
                   })),
               },
               {
                 path: REACT_ROUTES.COMMUNITIES,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/communities').then((m) => ({
                     Component: m.CommunitiesPage,
                   })),
               },
               {
                 path: REACT_ROUTES.MEETINGS,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/meetings').then((m) => ({
                     Component: m.MeetingsPage,
                   })),
               },
