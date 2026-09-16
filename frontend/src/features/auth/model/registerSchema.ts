@@ -41,10 +41,10 @@ export type TRegisterForm = z.infer<typeof registerFormSchema>;
  */
 export const STEP_FIELDS = {
   welcome: [],
-  name: ['firstName', 'lastName'],
+  about: ['firstName', 'lastName'],
   credentials: ['username', 'password', 'passwordRepeat'],
 } as const satisfies Record<string, readonly (keyof TRegisterForm)[]>;
 
 export type TRegisterStep = keyof typeof STEP_FIELDS;
 
-export const REGISTER_STEPS: TRegisterStep[] = ['welcome', 'name', 'credentials'];
+export const REGISTER_STEPS: TRegisterStep[] = ['welcome', 'about', 'credentials'];
