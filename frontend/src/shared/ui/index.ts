@@ -25,3 +25,4 @@ export { Tooltip } from './Tooltip';
 export { VideoPlayer } from './VideoPlayer';
 export { AuthLayout } from './AuthLayout';
 export { PaneResizer } from './PaneResizer';
+export { SectionStub } from './SectionStub';
