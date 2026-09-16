@@ -1,5 +1,5 @@
-import type { ApiClient } from '@/api';
-import { STORAGE_KEYS } from '@/consts';
+import type { ApiClient } from '@/shared/api';
+import { STORAGE_KEYS } from '@/shared/config';
 import { resolveMembers } from '@/core/chatResolver';
 import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
 import { base64ToBytes } from '@/crypto/encoding';

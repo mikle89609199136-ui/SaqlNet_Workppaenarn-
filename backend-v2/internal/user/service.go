@@ -17,13 +17,16 @@ import (
 	"time"
 )
 
+var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
+
 var (
-	ErrNotFound       = errors.New("user not found")
-	ErrSelfBlock      = errors.New("cannot block yourself")
-	ErrAlreadyBlocked = errors.New("user already blocked")
-	ErrInvalidInput   = errors.New("invalid input")
-	ErrWrongPasscode  = errors.New("wrong passcode")
-	ErrNoPasscodeSet  = errors.New("no passcode set")
+	ErrNotFound              = errors.New("user not found")
+	ErrSelfBlock             = errors.New("cannot block yourself")
+	ErrAlreadyBlocked        = errors.New("user already blocked")
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidUsernameFormat = errors.New("wrong username format")
+	ErrWrongPasscode         = errors.New("wrong passcode")
+	ErrNoPasscodeSet         = errors.New("no passcode set")
 )
 
 type Profile struct {
@@ -244,14 +247,60 @@ func escapeLike(s string) string {
 	return s
 }
 
+// IsUsernameAvailable checks whether the given username is available for registration.
+// It performs the following validations:
+//   - Ensures the username is not empty.
+//   - Validates the username against the allowed pattern (^[a-zA-Z0-9_]{3,32}$).
+//   - Queries the database case‑insensitively to check for existing users.
+//
+// Returns:
+//   - (true, nil)  if the username is syntactically valid and does not exist in DB.
+//   - (false, nil) if the username is valid but already exists.
+//   - (false, ErrInvalidInput) if the username is empty.
+//   - (false, ErrInvalidUsernameFormat) if the username does not match the pattern.
+//   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
-	username = strings.TrimSpace(username)
+	// Log incoming request (debug level)
+	slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:checking username availability",
+		"username", username,
+	)
+
+	// Check for empty input
 	if username == "" {
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:empty username, returning invalid input")
 		return false, ErrInvalidInput
 	}
+
+	// Validate username against the allowed pattern
+	if !usernamePattern.MatchString(username) {
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:username does not match pattern",
+			"username", username,
+			"pattern", usernamePattern.String(),
+		)
+		return false, ErrInvalidUsernameFormat
+	}
+
+	// Case‑insensitive existence check in the database
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`, username).Scan(&exists)
-	return !exists, err
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
+		username).Scan(&exists)
+
+	if err != nil {
+		slog.ErrorContext(ctx, "[Service-IsUsernameAvailable]:database query failed",
+			"username", username,
+			"error", err,
+		)
+		return false, err
+	}
+
+	available := !exists
+	slog.InfoContext(ctx, "[Service-IsUsernameAvailable]:availability check completed",
+		"username", username,
+		"available", available,
+	)
+
+	return available, nil
 }
 
 func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {

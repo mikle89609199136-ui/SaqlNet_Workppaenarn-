@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from '@/api';
+import { API_ENDPOINTS } from '@/shared/api';
 
 export class AuthService {
   constructor(apiClient, authStorage) {

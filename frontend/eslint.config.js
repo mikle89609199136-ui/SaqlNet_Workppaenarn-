@@ -82,6 +82,220 @@ export default tseslint.config(
     },
   },
 
+  /* Границы слоёв — Feature-Sliced Design (#623, #628, эпик #622).
+     Зависимости направлены строго сверху вниз:
+     app -> pages -> widgets -> features -> entities -> shared.
+     Нижние слои не знают о верхних. */
+  {
+    files: ['src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/entities',
+                '@/entities/*',
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+                '@/store',
+                '@/store/*',
+                '@/services',
+                '@/services/*',
+                '@/queries/*',
+                '@/hooks',
+              ],
+              message: 'Нижний слой не знает о верхних.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/types/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+                '@/store',
+                '@/store/*',
+                '@/services',
+                '@/services/*',
+                '@/queries/*',
+                '@/hooks',
+              ],
+              message: 'Слой типов не знает о фичах, виджетах, страницах и сторах.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/entities/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/features',
+                '@/features/*',
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Сущности не знают о фичах, виджетах, страницах и приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/features/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Фичи не знают о виджетах, страницах и приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/widgets/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/pages', '@/pages/*', '@/app', '@/app/*'],
+              message: 'Виджет не знает о странице и о приложении.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/pages/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/app', '@/app/*'],
+              message: 'Страница не знает о слое приложения.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/store/**/*.{ts,tsx}', 'src/queries/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Слой данных не знает о разметке.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  /* Запросам обращаться к сервисам положено — так устроен слой данных
+     (docs/frontend-data-architecture.md). Хранилищам нет: состояние не
+     ходит в сеть само. */
+  {
+    files: ['src/store/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@/widgets',
+                '@/widgets/*',
+                '@/pages',
+                '@/pages/*',
+                '@/app',
+                '@/app/*',
+              ],
+              message: 'Слой данных не знает о разметке.',
+            },
+            {
+              group: [
+                '@/services/serviceContainer',
+                '@/services/WebSocketClient',
+                '@/services/ringtone',
+              ],
+              message:
+                'Хранилище не дёргает сервисы напрямую. Если нужно — это не хранилище, а сценарий: место в features. Пример — store/call.ts.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   /* Проверка Tailwind вынесена отдельным блоком: правил немного, но
      каждое отвечает своему пункту из docs/frontend-style-system.md. */
   {
@@ -93,7 +307,7 @@ export default tseslint.config(
         // `bg-sheet-2` и прочая семантика окажется «неизвестной».
         // Параметр называется cssConfigPath: по умолчанию плагин ищет
         // src/style.css, которого у нас нет.
-        cssConfigPath: 'src/styles/tailwind.css',
+        cssConfigPath: 'src/app/styles/tailwind.css',
       },
     },
     rules: {

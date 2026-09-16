@@ -93,7 +93,7 @@ func (s *Service) MLSFetchKeyPackage(ctx context.Context, requesterID, targetUse
 	if err != nil {
 		return MLSKeyPackage{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var kp MLSKeyPackage
 	var id string
@@ -148,7 +148,7 @@ func (s *Service) MLSCommit(ctx context.Context, userID, chatID string, commitBy
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var dbEpoch int64
 	errScan := tx.QueryRowContext(ctx,

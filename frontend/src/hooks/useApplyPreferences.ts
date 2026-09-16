@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { STORAGE_KEYS } from '@/consts';
-import { settingsQuery } from '@/queries/users/settingsQuery';
+import { STORAGE_KEYS } from '@/shared/config';
+import { settingsQuery } from '@/entities/user';
 import type { ISettingsDto } from '@/types';
 
 /**

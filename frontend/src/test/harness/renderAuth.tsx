@@ -2,11 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { ToastStack } from '@/components/ui';
-import { ROUTES } from '@/consts/routes';
-import { LoginPage } from '@/pages/LoginPage/LoginPage';
-import { RegisterPage } from '@/pages/RegisterPage/RegisterPage';
-import { useProfileStore } from '@/store/profile';
+import { ToastStack } from '@/shared/ui';
+import { ROUTES } from '@/shared/config/routes';
+import { LoginPage } from '@/pages/login';
+import { RegisterPage } from '@/pages/register';
+import { useProfileStore } from '@/entities/user';
 import { testI18n } from './i18n';
 
 interface IRenderAuthOptions {
