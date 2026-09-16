@@ -1,8 +1,12 @@
 import { showToast } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_PROFILE_SETTINGS, settingsQuery } from '@/entities/user';
-import { useUpdatePrivacy, useUpdateSettings } from '@/queries/users/settingsMutations';
+import {
+  DEFAULT_PROFILE_SETTINGS,
+  settingsQuery,
+  useUpdatePrivacy,
+  useUpdateSettings,
+} from '@/entities/user';
 import type { IPrivacyDto, ISettingsDto } from '@/types';
 
 /**

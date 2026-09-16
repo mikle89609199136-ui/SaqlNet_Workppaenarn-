@@ -49,7 +49,7 @@ export function SettingsMenuItem({ icon, label, section }: Props) {
   return (
     <Link
       ref={ref}
-      className="text-caption flex min-h-[52px] shrink-0 items-center gap-3 border-b-2 border-transparent px-4 py-2.5 text-left font-semibold text-ink-2 transition-colors duration-fast not-data-[state=active]:hover:bg-sheet-2 not-data-[state=active]:hover:text-ink focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand data-[state=active]:border-brand data-[state=active]:bg-brand-soft data-[state=active]:text-brand md:w-full md:border-b-0 md:border-l-2 md:px-8"
+      className="text-caption flex min-h-[52px] shrink-0 items-center gap-3 border-b-2 border-transparent px-4 py-2.5 text-left font-semibold text-ink-2 transition-colors duration-fast not-data-[state=active]:hover:bg-sheet-2 not-data-[state=active]:hover:text-ink focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand data-[state=active]:border-brand data-[state=active]:bg-brand-soft data-[state=active]:text-brand md:w-full md:border-b-0 md:border-l-2 md:px-8"
       data-state={isActive ? 'active' : undefined}
       to={path}
     >

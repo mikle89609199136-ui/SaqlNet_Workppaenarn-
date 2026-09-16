@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SETTINGS_INDEX, searchSettings } from '../settingsIndex';
+import { SETTINGS_INDEX, searchSettings } from '../model/settingsIndex';
 
 /**
  * Поиск по настройкам.

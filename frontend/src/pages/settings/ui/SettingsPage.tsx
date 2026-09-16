@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Outlet } from 'react-router-dom';
 import { SettingsSearch } from './SettingsSearch';
-import { SettingsSidebar } from './SettingsSidebar.js';
+import { SettingsSidebar } from './SettingsSidebar';
 
 /**
  * Раскладка настроек: меню слева, раздел справа.
