@@ -95,11 +95,11 @@ type PasscodeState struct {
 }
 
 type Service struct {
-	db *sql.DB
+	Db *sql.DB
 }
 
 func NewService(db *sql.DB) *Service {
-	return &Service{db: db}
+	return &Service{Db: db}
 }
 
 func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
@@ -117,7 +117,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return Profile{}, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.profiles SET
 			first_name = COALESCE(NULLIF($2, ''), first_name),
 			last_name = COALESCE($3, last_name),
@@ -136,7 +136,7 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.profiles SET
 			is_premium = TRUE,
 			updated_at = NOW()
@@ -145,33 +145,51 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	return err
 }
 
-// Search performs a case‑insensitive substring search across user records.
+// Search performs a case-insensitive substring search across user records.
 // It returns up to 50 results, excluding the current viewer.
-// The query may start with '@' which is stripped for convenience.
+// The query may start with '@', which is stripped for convenience.
 // Special characters '%' and '_' are escaped to be treated literally.
+//
+// The search uses the same logic as the SELECT output:
+//   - first_name and last_name are taken from users.profiles if present,
+//     otherwise from auth.users (via COALESCE). This ensures that search
+//     results match what is displayed in the response.
 func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchResult, error) {
-	// Trim whitespace and log the incoming request (debug level).
+	const method = "Search"
+
 	query = strings.TrimSpace(query)
-	slog.DebugContext(ctx, "[Service-Search]:search request",
-		"viewerID", viewerID,
+	slog.DebugContext(ctx, "search request",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
 		"query", query,
 	)
 
 	if query == "" {
-		// Empty query – return empty result without error.
-		slog.DebugContext(ctx, "[Service-Search]:empty query, returning empty result")
+		slog.DebugContext(ctx, "empty query, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
 		return []SearchResult{}, nil
 	}
 
-	// Remove optional leading '@'.
 	cleanQuery := strings.TrimPrefix(query, "@")
+	// If the query consisted only of '@', treat it as empty to avoid
+	// listing all users via the '%%' pattern.
+	if cleanQuery == "" {
+		slog.DebugContext(ctx, "query after stripping '@' is empty, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
+		return []SearchResult{}, nil
+	}
 
-	// Escape wildcard characters for SQL LIKE.
-	escaped := escapeLike(cleanQuery)
+	escaped := EscapeLike(cleanQuery)
 	pattern := "%" + escaped + "%"
 
-	// Execute the SQL query.
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.Db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
 		       COALESCE(up.first_name, au.first_name),
 		       COALESCE(up.last_name, au.last_name),
@@ -181,15 +199,17 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
 		  AND (au.username ILIKE $1 OR
-		       au.first_name ILIKE $1 OR
-		       au.last_name ILIKE $1 OR
+		       COALESCE(up.first_name, au.first_name) ILIKE $1 OR
+		       COALESCE(up.last_name, au.last_name) ILIKE $1 OR
 		       up.bio ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
 	`, pattern, viewerID)
 	if err != nil {
-		slog.ErrorContext(ctx, "[Service-Search]:failed to execute search query",
-			"viewerID", viewerID,
+		slog.ErrorContext(ctx, "search query failed",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
 			"pattern", pattern,
 			"error", err,
 		)
@@ -197,11 +217,15 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			slog.WarnContext(ctx, "[Service-Search]:failed to close rows", "error", closeErr)
+			slog.WarnContext(ctx, "failed to close rows",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
+				"error", closeErr,
+			)
 		}
 	}()
 
-	// Iterate results.
 	var users []SearchResult
 	for rows.Next() {
 		var user SearchResult
@@ -212,8 +236,10 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 			&user.LastName,
 			&user.AvatarURL,
 		); err != nil {
-			slog.ErrorContext(ctx, "[Service-Search]:failed to scan row",
-				"viewerID", viewerID,
+			slog.ErrorContext(ctx, "failed to scan row",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
 				"error", err,
 			)
 			return nil, err
@@ -221,27 +247,29 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 		users = append(users, user)
 	}
 
-	// Check for iteration errors.
 	if err := rows.Err(); err != nil {
-		slog.ErrorContext(ctx, "[Service-Search]:rows iteration error",
-			"viewerID", viewerID,
+		slog.ErrorContext(ctx, "rows iteration error",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
 			"error", err,
 		)
 		return nil, err
 	}
 
-	// Log successful result count.
-	slog.InfoContext(ctx, "[Service-Search]:search completed successfully",
-		"viewerID", viewerID,
-		"resultCount", len(users),
+	slog.InfoContext(ctx, "search completed successfully",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
+		"result_count", len(users),
 	)
 
 	return users, nil
 }
 
-// escapeLike escapes special characters for SQL LIKE/ILIKE patterns.
+// EscapeLike escapes special characters for SQL LIKE/ILIKE patterns.
 // It escapes backslash first, then percent and underscore.
-func escapeLike(s string) string {
+func EscapeLike(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "%", "\\%")
 	s = strings.ReplaceAll(s, "_", "\\_")
@@ -283,7 +311,7 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 
 	// Case‑insensitive existence check in the database
 	var exists bool
-	err := s.db.QueryRowContext(ctx,
+	err := s.Db.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
 		username).Scan(&exists)
 
@@ -310,7 +338,7 @@ func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, erro
 
 func (s *Service) Status(ctx context.Context, userID string) (map[string]any, error) {
 	var privacyJSON []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT privacy_settings FROM users.settings WHERE user_id = $1`, userID).Scan(&privacyJSON); err != nil {
+	if err := s.Db.QueryRowContext(ctx, `SELECT privacy_settings FROM users.settings WHERE user_id = $1`, userID).Scan(&privacyJSON); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -326,7 +354,7 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 	}
 
 	var lastActive sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	err := s.Db.QueryRowContext(ctx, `
 		SELECT last_active::text FROM public.user_sessions
 		WHERE user_id = $1 ORDER BY last_active DESC LIMIT 1
 	`, userID).Scan(&lastActive)
@@ -337,7 +365,7 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 		return nil, err
 	}
 	var online bool
-	if err := s.db.QueryRowContext(ctx, `
+	if err := s.Db.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM public.user_sessions WHERE user_id = $1 AND last_active > NOW() - INTERVAL '5 minutes')
 	`, userID).Scan(&online); err != nil {
 		return nil, err
@@ -355,7 +383,7 @@ func (s *Service) Settings(ctx context.Context, userID string) (map[string]any, 
 		return nil, nil, err
 	}
 	var settings, privacy map[string]any
-	err := s.db.QueryRowContext(ctx, `
+	err := s.Db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings FROM users.settings WHERE user_id = $1
 	`, userID).Scan((*jsonMap)(&settings), (*jsonMap)(&privacy))
 	return settings, privacy, err
@@ -367,7 +395,7 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 	}
 	var out AllSettings
 	var folders jsonArray
-	err := s.db.QueryRowContext(ctx, `
+	err := s.Db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings, notification_settings, sound_settings,
 		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
 		FROM users.settings WHERE user_id = $1
@@ -412,7 +440,7 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 	if input.Folders != nil {
 		current.Folders = input.Folders
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET
 			settings = $2::jsonb,
 			privacy_settings = $3::jsonb,
@@ -431,7 +459,7 @@ func (s *Service) UpdateSettings(ctx context.Context, userID string, settings ma
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET settings = settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
 	`, userID, jsonMap(settings))
 	if err != nil {
@@ -445,7 +473,7 @@ func (s *Service) UpdatePrivacy(ctx context.Context, userID string, privacy map[
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET privacy_settings = privacy_settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
 	`, userID, jsonMap(privacy))
 	if err != nil {
@@ -488,7 +516,7 @@ func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
 		return nil, err
 	}
 	var raw []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT folders FROM users.settings WHERE user_id = $1`, userID).Scan(&raw); err != nil {
+	if err := s.Db.QueryRowContext(ctx, `SELECT folders FROM users.settings WHERE user_id = $1`, userID).Scan(&raw); err != nil {
 		return nil, err
 	}
 	var folders []any
@@ -508,7 +536,7 @@ func (s *Service) UpdateFolders(ctx context.Context, userID string, folders []an
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE users.settings SET folders = $2::jsonb, updated_at = NOW() WHERE user_id = $1`, userID, jsonArray(folders))
+	_, err := s.Db.ExecContext(ctx, `UPDATE users.settings SET folders = $2::jsonb, updated_at = NOW() WHERE user_id = $1`, userID, jsonArray(folders))
 	return err
 }
 
@@ -517,7 +545,7 @@ func (s *Service) Storage(ctx context.Context, userID string) (StorageUsage, map
 		return StorageUsage{}, nil, err
 	}
 	var usage StorageUsage
-	if err := s.db.QueryRowContext(ctx, `
+	if err := s.Db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(LENGTH(content)), 0)::bigint
 		FROM messages.messages
 		WHERE sender_id = $1 AND deleted_at IS NULL
@@ -540,7 +568,7 @@ func (s *Service) ClearCache(ctx context.Context, userID string) error {
 }
 
 func (s *Service) DeleteAllData(ctx context.Context, userID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.Db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -574,7 +602,7 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 	if err != nil {
 		return ExportData{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.Db.QueryContext(ctx, `
 		SELECT c.id::text, c.title, c.type, c.created_at::text
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id
@@ -599,7 +627,7 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 }
 
 func (s *Service) Blocked(ctx context.Context, userID string) ([]BlockedUser, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.Db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
 		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
 		       COALESCE(up.avatar_url, ''), bu.blocked_at::text
@@ -631,13 +659,13 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 		return ErrSelfBlock
 	}
 	var exists bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, blockedUserID).Scan(&exists); err != nil {
+	if err := s.Db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, blockedUserID).Scan(&exists); err != nil {
 		return err
 	}
 	if !exists {
 		return ErrNotFound
 	}
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.Db.ExecContext(ctx, `
 		INSERT INTO users.blocked_users (user_id, blocked_user_id)
 		VALUES ($1, $2)
 		ON CONFLICT (user_id, blocked_user_id) DO NOTHING
@@ -653,14 +681,14 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 }
 
 func (s *Service) Unblock(ctx context.Context, userID, blockedUserID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2`, userID, blockedUserID)
+	_, err := s.Db.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2`, userID, blockedUserID)
 	return err
 }
 
 func (s *Service) profileByID(ctx context.Context, userID string) (Profile, error) {
 	var profile Profile
 	var badges pqStringArray
-	err := s.db.QueryRowContext(ctx, `
+	err := s.Db.QueryRowContext(ctx, `
 		SELECT au.id::text, au.username,
 		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
 		       COALESCE(up.bio, ''), COALESCE(up.avatar_url, ''), COALESCE(up.badges, '{}'), COALESCE(up.is_premium, FALSE)
@@ -696,7 +724,7 @@ func contains(slice []string, val string) bool {
 }
 
 func (s *Service) ensureProfile(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		INSERT INTO users.profiles (user_id, first_name, last_name)
 		SELECT id, first_name, last_name FROM auth.users WHERE id = $1
 		ON CONFLICT (user_id) DO NOTHING
@@ -705,7 +733,7 @@ func (s *Service) ensureProfile(ctx context.Context, userID string) error {
 }
 
 func (s *Service) ensureSettings(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		INSERT INTO users.settings (user_id) SELECT id FROM auth.users WHERE id = $1 ON CONFLICT (user_id) DO NOTHING
 	`, userID)
 	return err
@@ -726,7 +754,7 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	default:
 		return nil, ErrInvalidInput
 	}
-	err := s.db.QueryRowContext(ctx, q, userID).Scan((*jsonMap)(&current))
+	err := s.Db.QueryRowContext(ctx, q, userID).Scan((*jsonMap)(&current))
 	return current, err
 }
 
@@ -744,7 +772,7 @@ func (s *Service) updateJsonColumn(ctx context.Context, userID, column string, v
 	default:
 		return ErrInvalidInput
 	}
-	_, err := s.db.ExecContext(ctx, q, userID, jsonMap(value))
+	_, err := s.Db.ExecContext(ctx, q, userID, jsonMap(value))
 	return err
 }
 
@@ -762,13 +790,13 @@ type Session struct {
 
 func (s *Service) RegisterDevice(ctx context.Context, userID, deviceName, deviceType, ipAddress, location, userAgent string) (string, error) {
 	var sessionID string
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
+	err := s.Db.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
 	if err == nil {
-		_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET last_active = NOW(), is_current = TRUE WHERE id = $1`, sessionID)
-		_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
+		_, _ = s.Db.ExecContext(ctx, `UPDATE public.user_sessions SET last_active = NOW(), is_current = TRUE WHERE id = $1`, sessionID)
+		_, _ = s.Db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
 		return sessionID, nil
 	}
-	err = s.db.QueryRowContext(ctx, `
+	err = s.Db.QueryRowContext(ctx, `
 		INSERT INTO public.user_sessions (id, user_id, device_name, device_type, ip_address, location, user_agent, last_active, first_login, is_current)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW(), TRUE)
 		RETURNING id
@@ -776,12 +804,12 @@ func (s *Service) RegisterDevice(ctx context.Context, userID, deviceName, device
 	if err != nil {
 		return "", err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
+	_, _ = s.Db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
 	return sessionID, nil
 }
 
 func (s *Service) Devices(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.Db.QueryContext(ctx, `
 		SELECT id, COALESCE(device_name, ''), COALESCE(device_type, ''), COALESCE(ip_address, ''), COALESCE(location, ''), COALESCE(user_agent, ''), last_active::text, first_login::text, COALESCE(is_current, false)
 		FROM public.user_sessions
 		WHERE user_id = $1
@@ -806,7 +834,7 @@ func (s *Service) Devices(ctx context.Context, userID string) ([]Session, error)
 
 func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID string) error {
 	var isCurrent bool
-	err := s.db.QueryRowContext(ctx, `SELECT is_current FROM public.user_sessions WHERE id = $1 AND user_id = $2`, sessionID, userID).Scan(&isCurrent)
+	err := s.Db.QueryRowContext(ctx, `SELECT is_current FROM public.user_sessions WHERE id = $1 AND user_id = $2`, sessionID, userID).Scan(&isCurrent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -816,12 +844,12 @@ func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID string) er
 	if isCurrent {
 		return errors.New("cannot terminate current session")
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE id = $1`, sessionID)
+	_, err = s.Db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE id = $1`, sessionID)
 	return err
 }
 
 func (s *Service) TerminateAllDevices(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1 AND is_current = FALSE`, userID)
+	_, err := s.Db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1 AND is_current = FALSE`, userID)
 	return err
 }
 
@@ -830,7 +858,7 @@ func (s *Service) Passcode(ctx context.Context, userID string) (PasscodeState, e
 		return PasscodeState{}, err
 	}
 	var state PasscodeState
-	err := s.db.QueryRowContext(ctx, `
+	err := s.Db.QueryRowContext(ctx, `
 		SELECT passcode_enabled, passcode_timeout FROM users.settings WHERE user_id = $1
 	`, userID).Scan(&state.Enabled, &state.Timeout)
 	return state, err
@@ -847,7 +875,7 @@ func (s *Service) SetPasscode(ctx context.Context, userID, passcode string) erro
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET passcode_hash = $2, passcode_enabled = TRUE, updated_at = NOW() WHERE user_id = $1
 	`, userID, hash)
 	return err
@@ -875,7 +903,7 @@ func (s *Service) DisablePasscode(ctx context.Context, userID, passcode string) 
 	if err := s.VerifyPasscode(ctx, userID, passcode); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET passcode_hash = NULL, passcode_enabled = FALSE, updated_at = NOW() WHERE user_id = $1
 	`, userID)
 	return err
@@ -888,7 +916,7 @@ func (s *Service) UpdatePasscodeTimeout(ctx context.Context, userID string, time
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.Db.ExecContext(ctx, `
 		UPDATE users.settings SET passcode_timeout = $2, updated_at = NOW() WHERE user_id = $1
 	`, userID, timeout)
 	return err
@@ -899,7 +927,7 @@ func (s *Service) passcodeHash(ctx context.Context, userID string) (string, erro
 		return "", err
 	}
 	var hash sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT passcode_hash FROM users.settings WHERE user_id = $1`, userID).Scan(&hash)
+	err := s.Db.QueryRowContext(ctx, `SELECT passcode_hash FROM users.settings WHERE user_id = $1`, userID).Scan(&hash)
 	if err != nil || !hash.Valid {
 		return "", err
 	}
