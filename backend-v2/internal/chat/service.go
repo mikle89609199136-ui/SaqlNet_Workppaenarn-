@@ -2157,6 +2157,32 @@ type ChangeResponse struct {
 }
 
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
+	var chatID string
+
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
@@ -2225,6 +2251,11 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		)
 		return nil, err
 	}
+
+	if result == nil {
+		result = []Reaction{}
+	}
+
 	return result, nil
 }
 
