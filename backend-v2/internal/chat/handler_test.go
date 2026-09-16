@@ -1016,7 +1016,7 @@ func TestHandler_CreateGroup(t *testing.T) {
 			wantErrorCode: "validation_failed",
 		},
 		{
-			name:   "unknown_field_400",
+			name:   "misspelled_title_is_missing_400",
 			method: http.MethodPost,
 			requestBody: map[string]any{
 				"titel":   "Group",
