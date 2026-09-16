@@ -824,26 +824,120 @@
   .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
   .thread-composer {
-    @apply grid gap-[10px];
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--color-line);
-    grid-template-columns: 44px minmax(0,1fr) 44px;
-    background: var(--color-sheet-2);
-    & input { @apply min-w-0 min-h-[44px] outline-none text-white text-[15px]; padding: 0 14px; border: 1px solid var(--color-sheet-2); border-radius: 14px; background: var(--color-line-soft); &:focus { border-color: var(--color-brand-fill); } }
-    & .thread-composer-action-btn { @apply w-11 min-h-[44px] border-0 rounded-[14px] bg-[var(--color-warn)] text-[var(--color-sheet)] text-[18px] font-extrabold cursor-pointer; &:disabled { opacity: 0.45; cursor: not-allowed; } }
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px)) 11px;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
   }
-  .thread-file-input { display: none !important; }
-  .thread-composer .thread-attach-button {
-    background: var(--color-sheet-2);
+
+  .thread-composer-card {
+    background: var(--color-sheet);
+    border-radius: 28px;
+    border: 1px solid var(--color-line);
+    box-shadow: var(--elev-2);
+    padding: 6px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .thread-composer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .thread-composer-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
     color: var(--color-ink);
-    font-size: 20px;
+    font-size: 15px;
+    padding: 8px 4px;
+
+    &::placeholder {
+      color: var(--color-ink-3);
+    }
   }
-  .thread-composer .thread-attach-button:hover { background: var(--color-line); }
+
+  .thread-composer-action-btn {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--color-ink);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s, transform 0.2s;
+
+    &:hover:not(:disabled) {
+      background-color: var(--color-sheet-2);
+      color: var(--color-ink);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.is-active {
+      color: var(--color-brand);
+    }
+  }
+
   .thread-composer-context {
-    @apply col-span-full flex items-center justify-between gap-3 rounded-[12px] text-[13px];
-    min-height: 34px; padding: 6px 8px 6px 11px; background: var(--color-sheet-2); color: var(--color-ink-2);
-    & span { @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap; }
-    & button { width: 28px; min-height: 28px; border-radius: 9px; background: var(--color-line); color: var(--color-ink); font-size: 18px; border: 0; }
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    min-height: 34px;
+    padding: 6px 8px 6px 11px;
+    background: var(--color-sheet-2);
+    color: var(--color-ink-2);
+
+    & span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .thread-composer-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-ink-2);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background-color 0.2s;
+
+    &:hover {
+      color: var(--color-ink);
+      background-color: var(--color-sheet-2);
+    }
+  }
+
+  .thread-file-input {
+    display: none !important;
   }
 
   @media (max-width: 768px) {

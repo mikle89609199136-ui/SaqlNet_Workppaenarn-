@@ -2,7 +2,7 @@ import { ChatsList } from '@/widgets/chats-list';
 import { CreateGroupModal } from '@/features/group-management';
 import { UserProfilePanel } from '@/features/user-profile';
 import { useIsMobile, usePaneWidth } from '@/shared/lib';
-import { PaneResizer } from './PaneResizer';
+import { PaneResizer } from '@/shared/ui';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
