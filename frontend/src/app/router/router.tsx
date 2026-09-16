@@ -133,7 +133,7 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHATS,
                 lazy: () =>
-                  import('@/pages/ChatsPage/ChatsPage.js').then((m) => ({
+                  import('@/pages/chats').then((m) => ({
                     Component: m.ChatsPage,
                   })),
                 children: [
@@ -150,7 +150,7 @@ export const router = createBrowserRouter([
                     shouldRevalidate: ({ currentParams, nextParams }) =>
                       currentParams.chatId !== nextParams.chatId,
                     lazy: () =>
-                      import('@/pages/ChatThreadPage/ChatThreadPage.js').then((m) => ({
+                      import('@/pages/chat-thread').then((m) => ({
                         Component: m.ChatThreadPage,
                       })),
                   },

@@ -13,7 +13,7 @@ import { useOutletContext } from 'react-router-dom';
 
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useChatThreadPage } from './hooks/useChatThreadPage';
+import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
 import type { IProfileState } from '@/entities/user';
 
