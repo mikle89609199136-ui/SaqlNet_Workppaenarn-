@@ -34,37 +34,38 @@ COPY server/crypto-rust/Cargo.toml server/crypto-rust/Cargo.lock ./
 COPY server/crypto-rust/src ./src
 RUN cargo build --release --locked
 
-# Stage 4: Download NATS server and MinIO
-FROM debian:bookworm-slim AS infra-download
+# Stage 4: Build MinIO
+FROM golang:1.24-alpine AS miniobuilder
 
-ARG NATS_VERSION=2.10.22
-ARG MINIO_VERSION=RELEASE.2025-09-07T16-13-09Z
+RUN CGO_ENABLED=0 go install \
+    github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z
+
+# Stage 5: Download NATS
+FROM debian:bookworm-slim AS natsdownload
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL \
-    "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" \
+    curl -fsSL \
+    "https://github.com/nats-io/nats-server/releases/download/v2.10.22/nats-server-v2.10.22-linux-amd64.tar.gz" \
     | tar -xz \
         --strip-components=1 \
         -C /usr/local/bin \
-        "nats-server-v${NATS_VERSION}-linux-amd64/nats-server"
+        nats-server-v2.10.22-linux-amd64/nats-server
 
-RUN curl -fsSL \
-    "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" \
-    -o /usr/local/bin/minio \
-    && chmod +x /usr/local/bin/minio
-
-# Stage 5: Final image
+# Stage 6: Final image
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=infra-download /usr/local/bin/nats-server /usr/local/bin/nats-server
-COPY --from=infra-download /usr/local/bin/minio /usr/local/bin/minio
+COPY --from=natsdownload \
+    /usr/local/bin/nats-server \
+    /usr/local/bin/nats-server
+
+COPY --from=miniobuilder \
+    /go/bin/minio \
+    /usr/local/bin/minio
 
 RUN echo "gobins-v2"
 COPY --from=gobuilder   /binaries/auth     /usr/local/bin/auth
