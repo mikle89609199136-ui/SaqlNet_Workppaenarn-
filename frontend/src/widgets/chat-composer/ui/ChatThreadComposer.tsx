@@ -1,7 +1,4 @@
-import {
-  useEncryptionState,
-  useTypingIndicator,
-} from '@/hooks';
+import { useEncryptionState, useTypingIndicator } from '@/hooks';
 import {
   useAttachmentPicker,
   useComposerSendMessage,

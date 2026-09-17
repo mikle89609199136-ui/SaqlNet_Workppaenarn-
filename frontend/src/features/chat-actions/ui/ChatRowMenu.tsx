@@ -24,7 +24,14 @@ export interface IChatRowMenuProps {
  * умеет и что менялось молча, без единого способа управлять этим из
  * интерфейса.
  */
-export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }: IChatRowMenuProps) {
+export function ChatRowMenu({
+  chat,
+  pinnedCount,
+  x,
+  y,
+  returnFocusRef,
+  onClose,
+}: IChatRowMenuProps) {
   const { t } = useTranslation();
   const { togglePin, toggleArchive } = useChatActions();
 

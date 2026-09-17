@@ -62,10 +62,7 @@ export function patchMessage(
         chatId: outboxItem.chatId,
         content: outboxItem.content,
         type: outboxItem.type,
-        mediaType:
-          outboxItem.type !== 'text'
-            ? (outboxItem.type as TMediaMessageType)
-            : undefined,
+        mediaType: outboxItem.type !== 'text' ? (outboxItem.type as TMediaMessageType) : undefined,
         mediaUrl: outboxItem.blobUrl,
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,

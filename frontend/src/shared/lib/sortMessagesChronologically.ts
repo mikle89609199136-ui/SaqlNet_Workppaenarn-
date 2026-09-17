@@ -1,6 +1,5 @@
 export type TTimestampedItem =
-  | { createdAt: Date | string | number }
-  | { pinnedAt: Date | string | number };
+  { createdAt: Date | string | number } | { pinnedAt: Date | string | number };
 
 export function sortMessagesChronologically<T extends TTimestampedItem>(messages: T[]): T[] {
   return [...messages].sort((left, right) => messageTime(left) - messageTime(right));

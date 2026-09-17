@@ -107,7 +107,13 @@ export function useComposerSendMessage({
         setComposerText(draftRef.current, '');
         setError('');
       } catch (err: unknown) {
-        setError(describeApiError(err as { code?: string; message?: string }, t, t('messageSendError', 'Не удалось отправить сообщение')));
+        setError(
+          describeApiError(
+            err as { code?: string; message?: string },
+            t,
+            t('messageSendError', 'Не удалось отправить сообщение')
+          )
+        );
       } finally {
         setIsSending(false);
       }

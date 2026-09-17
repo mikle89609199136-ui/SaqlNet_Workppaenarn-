@@ -165,26 +165,25 @@ export const MessageBubble = memo(
           <div className="message-meta">
             {message.isEdited && <span>{t('edited', 'изменено')}</span>}
             <time>{formatMessageTime(message.createdAt)}</time>
-            {mine &&
-              (message.status === 'pending' || message.status === 'uploading') && (
-                <span
-                  className="inline-flex items-center gap-1 text-ink-3"
-                  title={
+            {mine && (message.status === 'pending' || message.status === 'uploading') && (
+              <span
+                className="inline-flex items-center gap-1 text-ink-3"
+                title={
+                  message.status === 'uploading'
+                    ? t('uploading', 'Загрузка...')
+                    : t('sending', 'Отправка...')
+                }
+              >
+                <Spinner
+                  size="sm"
+                  label={
                     message.status === 'uploading'
                       ? t('uploading', 'Загрузка...')
                       : t('sending', 'Отправка...')
                   }
-                >
-                  <Spinner
-                    size="sm"
-                    label={
-                      message.status === 'uploading'
-                        ? t('uploading', 'Загрузка...')
-                        : t('sending', 'Отправка...')
-                    }
-                  />
-                </span>
-              )}
+                />
+              </span>
+            )}
           </div>
 
           {mine && message.status === 'failed' && (

@@ -145,41 +145,135 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	return err
 }
 
+// Search performs a case-insensitive substring search across user records.
+// It returns up to 50 results, excluding the current viewer.
+// The query may start with '@', which is stripped for convenience.
+// Special characters '%' and '_' are escaped to be treated literally.
+//
+// The search uses the same logic as the SELECT output:
+//   - first_name and last_name are taken from users.profiles if present,
+//     otherwise from auth.users (via COALESCE). This ensures that search
+//     results match what is displayed in the response.
 func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchResult, error) {
+	const method = "Search"
+
 	query = strings.TrimSpace(query)
+	slog.DebugContext(ctx, "search request",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
+		"query", query,
+	)
+
 	if query == "" {
+		slog.DebugContext(ctx, "empty query, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
 		return []SearchResult{}, nil
 	}
 
 	cleanQuery := strings.TrimPrefix(query, "@")
+	// If the query consisted only of '@', treat it as empty to avoid
+	// listing all users via the '%%' pattern.
+	if cleanQuery == "" {
+		slog.DebugContext(ctx, "query after stripping '@' is empty, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
+		return []SearchResult{}, nil
+	}
+
+	escaped := EscapeLike(cleanQuery)
+	pattern := "%" + escaped + "%"
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name), COALESCE(up.avatar_url, '')
+		       COALESCE(up.first_name, au.first_name),
+		       COALESCE(up.last_name, au.last_name),
+		       COALESCE(up.avatar_url, '')
 		FROM auth.users au
 		LEFT JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
-		  AND (au.username ILIKE $1 OR au.first_name ILIKE $1 OR au.last_name ILIKE $1 OR up.bio ILIKE $1)
+		  AND (au.username ILIKE $1 OR
+		       COALESCE(up.first_name, au.first_name) ILIKE $1 OR
+		       COALESCE(up.last_name, au.last_name) ILIKE $1 OR
+		       up.bio ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
-	`, "%"+cleanQuery+"%", viewerID)
+	`, pattern, viewerID)
 	if err != nil {
+		slog.ErrorContext(ctx, "search query failed",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+			"pattern", pattern,
+			"error", err,
+		)
 		return nil, err
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "failed to close rows",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
+				"error", closeErr,
+			)
+		}
 	}()
 
 	var users []SearchResult
 	for rows.Next() {
 		var user SearchResult
-		if err := rows.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.AvatarURL); err != nil {
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
+		); err != nil {
+			slog.ErrorContext(ctx, "failed to scan row",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
+				"error", err,
+			)
 			return nil, err
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "search completed successfully",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
+		"result_count", len(users),
+	)
+
+	return users, nil
+}
+
+// EscapeLike escapes special characters for SQL LIKE/ILIKE patterns.
+// It escapes backslash first, then percent and underscore.
+func EscapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }
 
 // IsUsernameAvailable checks whether the given username is available for registration.

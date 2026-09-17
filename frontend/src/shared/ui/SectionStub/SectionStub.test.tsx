@@ -10,7 +10,9 @@ describe('SectionStub', () => {
       </SectionStub>
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Тестовый заголовок' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Тестовый заголовок' })
+    ).toBeInTheDocument();
     expect(screen.getByText('Тестовое описание заглушки')).toBeInTheDocument();
   });
 });

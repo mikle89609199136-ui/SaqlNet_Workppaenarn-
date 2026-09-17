@@ -126,7 +126,9 @@ describe('useComposerSendMessage', () => {
     };
     queryClient.setQueryData(chatKeys.messages('chat-test-1'), initialPages);
 
-    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(new Error('Network offline'));
+    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(
+      new Error('Network offline')
+    );
 
     const { result } = renderHook(
       () =>
@@ -161,8 +163,7 @@ describe('useComposerSendMessage', () => {
   });
 
   it('позволяет повторить отправку failed сообщения через handleRetryMessage', async () => {
-    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } =
-      setupRefs('');
+    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } = setupRefs('');
 
     const initialPages: IThreadPages = {
       pages: [[]],
