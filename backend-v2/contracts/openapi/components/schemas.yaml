@@ -114,7 +114,8 @@ SendMessageRequest:
   type: object
   properties:
     content: { type: string }
-    type: { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
+    type:
+      { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
     replyTo: { type: string, format: uuid, nullable: true }
     mediaUrl: { type: string }
     mediaType: { type: string }
@@ -154,3 +155,63 @@ Username:
   minLength: 3
   maxLength: 32
   example: 'john_doe'
+CreateGroupRequest:
+  type: object
+  required: [title, members]
+  properties:
+    title:
+      type: string
+      maxLength: 128
+      minLength: 1
+      description: |
+        Group title. Trimmed of leading and trailing whitespace before
+        validation and storage. The 128-character limit applies to the
+        trimmed value; an all-whitespace title is rejected.
+      example: 'Team standup'
+    description:
+      type: string
+      description: |
+        Optional group description. Trimmed of leading and trailing
+        whitespace before storage.
+      example: 'Daily sync at 10:00'
+    avatarUrl:
+      type: string
+      description: |
+        Optional avatar URL. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'https://cdn.example.com/avatars/team.png'
+    members:
+      type: array
+      minItems: 1
+      description: |
+        User IDs to add as members. The owner is added automatically
+        and does not need to be listed. Unknown or disabled users are
+        silently skipped.
+      items: { type: string, format: uuid }
+      example: ['550e8400-e29b-41d4-a716-446655440002']
+UpdateGroupRequest:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    title:
+      type: string
+      maxLength: 128
+      pattern: '\S'
+      description: |
+        New chat title. Trimmed of leading and trailing whitespace before
+        validation and storage. The 128-character limit applies to the
+        trimmed value. An all-whitespace value is rejected.
+      example: 'Team standup'
+    description:
+      type: string
+      description: |
+        New chat description. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'Daily sync at 10:00'
+    avatarUrl:
+      type: string
+      description: |
+        Optional avatar URL. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'https://cdn.example.com/avatars/team.png'
