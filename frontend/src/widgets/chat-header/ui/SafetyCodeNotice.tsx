@@ -34,10 +34,17 @@ export function SafetyCodeNotice({ chatId }: Props) {
   const name = who?.firstName || who?.username || t('interlocutor', 'Собеседник');
 
   return (
-    <div className="safety-code-notice" role="status">
+    <div
+      className="mx-3 mb-1.5 flex items-center justify-between gap-3 rounded-[10px] border border-[color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_14%,transparent)] px-3 py-2 text-xs text-ink"
+      role="status"
+    >
       <span>{t('safetyCodeChanged', '{{name}} сменил ключи шифрования', { name })}</span>
 
-      <button onClick={() => void acknowledgeIdentityChange(notice.userId)} type="button">
+      <button
+        className="shrink-0 cursor-pointer rounded-lg border-0 bg-sheet-2 px-2.5 py-1 text-inherit hover:bg-sheet-2"
+        onClick={() => void acknowledgeIdentityChange(notice.userId)}
+        type="button"
+      >
         {t('understood', 'Понятно')}
       </button>
     </div>
