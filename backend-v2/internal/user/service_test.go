@@ -586,7 +586,7 @@ func TestSearch(t *testing.T) {
 
 			tt.mockExpect(mock)
 
-			s := &user.Service{Db: db}
+			s := user.NewService(db)
 
 			got, err := s.Search(context.Background(), tt.viewerID, tt.query)
 

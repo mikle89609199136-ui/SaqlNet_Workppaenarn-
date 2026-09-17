@@ -63,7 +63,7 @@ func (s *Service) UpsertPublicKey(ctx context.Context, userID string, data Publi
 	if !isValidBase64(data.PublicKey) || len(data.KeyID) < 16 || len(data.KeyID) > 128 {
 		return errors.New("invalid publicKey or keyId")
 	}
-	_, err := s.Db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO crypto.user_public_keys (user_id, public_key, key_id, pq_public_key, updated_at)
 		VALUES ($1, $2, $3, $4, NOW())
 		ON CONFLICT (user_id) DO UPDATE
@@ -77,7 +77,7 @@ func (s *Service) GetPublicKey(ctx context.Context, requesterID, targetUserID st
 	// Requester must share a chat with target (or be the same user).
 	if requesterID != targetUserID {
 		var dummy int
-		err := s.Db.QueryRowContext(ctx, `
+		err := s.db.QueryRowContext(ctx, `
 			SELECT 1 FROM chats.members a
 			JOIN chats.members b ON a.chat_id = b.chat_id
 			WHERE a.user_id = $1 AND b.user_id = $2 LIMIT 1
@@ -90,7 +90,7 @@ func (s *Service) GetPublicKey(ctx context.Context, requesterID, targetUserID st
 		}
 	}
 	var d PublicKeyData
-	err := s.Db.QueryRowContext(ctx,
+	err := s.db.QueryRowContext(ctx,
 		`SELECT public_key, key_id, pq_public_key FROM crypto.user_public_keys WHERE user_id = $1`,
 		targetUserID,
 	).Scan(&d.PublicKey, &d.KeyID, &d.PQPublicKey)
@@ -104,7 +104,7 @@ func (s *Service) GetChatKeys(ctx context.Context, userID, chatID string) ([]Cha
 	if err := s.assertChatMember(ctx, chatID, userID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT cek.user_id::text, cek.encrypted_key, cek.sender_key_id, cek.pq_ciphertext, cek.key_epoch
 		FROM chats.members cm
 		JOIN crypto.chat_encryption_keys cek ON cm.user_id = cek.user_id AND cek.chat_id = cm.chat_id
@@ -133,7 +133,7 @@ func (s *Service) SaveChatKeys(ctx context.Context, userID, chatID string, keys 
 		if err := s.assertChatMember(ctx, chatID, k.UserID); err != nil {
 			continue // skip non-members silently
 		}
-		_, err := s.Db.ExecContext(ctx, `
+		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO crypto.chat_encryption_keys
 			    (chat_id, user_id, encrypted_key, sender_key_id, pq_ciphertext, key_epoch, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -158,7 +158,7 @@ func (s *Service) RotateChatKey(ctx context.Context, userID, chatID string, keys
 	}
 	// Rate limit: max 10 rotations per hour.
 	var count int
-	if err := s.Db.QueryRowContext(ctx, `
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM crypto.audit_log
 		WHERE event_type = 'key_rotation' AND chat_id = $1 AND created_at > NOW() - INTERVAL '1 hour'
 	`, chatID).Scan(&count); err != nil {
@@ -170,7 +170,7 @@ func (s *Service) RotateChatKey(ctx context.Context, userID, chatID string, keys
 	if err := s.SaveChatKeys(ctx, userID, chatID, keys, epoch); err != nil {
 		return err
 	}
-	_, _ = s.Db.ExecContext(ctx, `
+	_, _ = s.db.ExecContext(ctx, `
 		INSERT INTO crypto.audit_log (user_id, chat_id, event_type, created_at)
 		VALUES ($1, $2, 'key_rotation', NOW())
 	`, userID, chatID)
@@ -179,7 +179,7 @@ func (s *Service) RotateChatKey(ctx context.Context, userID, chatID string, keys
 
 func (s *Service) GetMyKey(ctx context.Context, userID, chatID string) (ChatEncryptedKey, error) {
 	var k ChatEncryptedKey
-	err := s.Db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT encrypted_key, sender_key_id, pq_ciphertext, key_epoch
 		FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2
 	`, chatID, userID).Scan(&k.EncryptedKey, &k.SenderKeyID, &k.PQCiphertext, &k.KeyEpoch)
@@ -192,7 +192,7 @@ func (s *Service) GetMyKey(ctx context.Context, userID, chatID string) (ChatEncr
 
 func (s *Service) assertChatMember(ctx context.Context, chatID, userID string) error {
 	var dummy int
-	err := s.Db.QueryRowContext(ctx,
+	err := s.db.QueryRowContext(ctx,
 		`SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2`,
 		chatID, userID,
 	).Scan(&dummy)
@@ -203,7 +203,7 @@ func (s *Service) assertChatMember(ctx context.Context, chatID, userID string) e
 }
 
 func (s *Service) UpsertSignalKeys(ctx context.Context, userID string, identity SignalIdentityKey, signed SignalSignedPreKey, onetime []SignalOneTimePreKey) error {
-	tx, err := s.Db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (s *Service) UpsertSignalKeys(ctx context.Context, userID string, identity 
 
 func (s *Service) GetSignalBundle(ctx context.Context, targetUserID string) (SignalPreKeyBundle, error) {
 	var bundle SignalPreKeyBundle
-	err := s.Db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT identity_key, registration_id FROM crypto.signal_identity_keys WHERE user_id = $1
 	`, targetUserID).Scan(&bundle.IdentityKey, &bundle.RegistrationID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -254,7 +254,7 @@ func (s *Service) GetSignalBundle(ctx context.Context, targetUserID string) (Sig
 		return bundle, err
 	}
 
-	err = s.Db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT key_id, public_key, signature FROM crypto.signal_signed_prekeys WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
 	`, targetUserID).Scan(&bundle.SignedPreKey.KeyID, &bundle.SignedPreKey.PublicKey, &bundle.SignedPreKey.Signature)
 	if err != nil {
@@ -262,7 +262,7 @@ func (s *Service) GetSignalBundle(ctx context.Context, targetUserID string) (Sig
 	}
 
 	var otpk SignalOneTimePreKey
-	err = s.Db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		DELETE FROM crypto.signal_onetime_prekeys
 		WHERE ctid IN (
 			SELECT ctid FROM crypto.signal_onetime_prekeys WHERE user_id = $1 LIMIT 1 FOR UPDATE SKIP LOCKED
@@ -278,7 +278,7 @@ func (s *Service) GetSignalBundle(ctx context.Context, targetUserID string) (Sig
 
 func (s *Service) ReplenishSignalPreKeys(ctx context.Context, userID string, onetime []SignalOneTimePreKey) error {
 	for _, k := range onetime {
-		_, err := s.Db.ExecContext(ctx, `
+		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO crypto.signal_onetime_prekeys (user_id, key_id, public_key, created_at)
 			VALUES ($1, $2, $3, NOW())
 			ON CONFLICT (user_id, key_id) DO NOTHING
