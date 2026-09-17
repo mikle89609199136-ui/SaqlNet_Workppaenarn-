@@ -13,11 +13,17 @@ import (
 // Пользователь online, пока в его множестве есть хотя бы один member со score > now.
 type RedisStore struct {
 	client *redis.Client
+	now    func() time.Time
 }
 
 // NewRedisStore создаёт Redis-реализацию Store поверх переданного клиента.
-func NewRedisStore(client *redis.Client) *RedisStore {
-	return &RedisStore{client: client}
+// Опциональный параметр now задаёт источник времени (по умолчанию time.Now).
+func NewRedisStore(client *redis.Client, now ...func() time.Time) *RedisStore {
+	clock := time.Now
+	if len(now) > 0 && now[0] != nil {
+		clock = now[0]
+	}
+	return &RedisStore{client: client, now: clock}
 }
 
 // redisKey возвращает ключ Sorted Set с lease соединений пользователя.
@@ -29,7 +35,7 @@ func redisKey(userID string) string {
 func (s *RedisStore) Connect(ctx context.Context, userID, connectionID string) error {
 	return s.client.ZAdd(ctx, redisKey(userID), redis.Z{
 		Member: connectionID,
-		Score:  float64(time.Now().Add(LeaseTTL).UnixNano()),
+		Score:  float64(s.now().Add(LeaseTTL).UnixNano()),
 	}).Err()
 }
 
@@ -37,7 +43,7 @@ func (s *RedisStore) Connect(ctx context.Context, userID, connectionID string) e
 func (s *RedisStore) Heartbeat(ctx context.Context, userID, connectionID string) error {
 	return s.client.ZAdd(ctx, redisKey(userID), redis.Z{
 		Member: connectionID,
-		Score:  float64(time.Now().Add(LeaseTTL).UnixNano()),
+		Score:  float64(s.now().Add(LeaseTTL).UnixNano()),
 	}).Err()
 }
 
@@ -88,7 +94,7 @@ func (s *RedisStore) OnlineUsers(ctx context.Context, userIDs []string) ([]strin
 		return []string{}, nil
 	}
 
-	now := strconv.FormatInt(time.Now().UnixNano(), 10)
+	now := strconv.FormatInt(s.now().UnixNano(), 10)
 	pipe := s.client.Pipeline()
 	cmds := queuePresenceQueries(ctx, pipe, userIDs, now)
 
