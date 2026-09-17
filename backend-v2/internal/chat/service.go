@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"hash/fnv"
+	"log"
 	"log/slog"
 	"path"
 	"strings"
@@ -30,6 +33,7 @@ var (
 	ErrStateUnchanged            = errors.New("state unchanged")
 	ErrMemberMuted               = errors.New("member is muted")
 	ErrCannotModerateTarget      = errors.New("cannot moderate target")
+	ErrStickerCannotBeEdited     = errors.New("sticker cannot be edited")
 )
 
 type Chat struct {
@@ -183,12 +187,12 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 		msg.ReplyToMessageID = msg.ReplyTo
 		var name string
 		err := s.db.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
-			FROM messages.messages m
-			LEFT JOIN auth.users au ON au.id = m.sender_id
-			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-			WHERE m.id = $1
-		`, *msg.ReplyTo).Scan(&name)
+				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				FROM messages.messages m
+				LEFT JOIN auth.users au ON au.id = m.sender_id
+				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+			`, *msg.ReplyTo, msg.ChatID).Scan(&name)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -508,7 +512,7 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 	if err != nil {
 		return "", false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var peerExists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1 AND disabled_at IS NULL)`, peerID).Scan(&peerExists); err != nil {
@@ -566,7 +570,7 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
@@ -981,7 +985,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var lockDummy any
 	if err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2))`, chatID, userID).Scan(&lockDummy); err != nil {
@@ -1137,7 +1141,7 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Согласованная блокировка пары (chat, user): AddMember берёт тот же
 	// lock до проверок membership/ban — гонка add/ban исключена.
@@ -1628,7 +1632,9 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 			msg.DeletedAt = &deletedAt.String
 		}
 		if metadataBytes != nil {
-			json.Unmarshal(metadataBytes, &msg.Metadata)
+			if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		messages = append(messages, msg)
 	}
@@ -1657,24 +1663,60 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		}
 		return Message{}, err
 	}
+
 	if isMuted.Valid && isMuted.Bool {
 		return Message{}, ErrMemberMuted
-	}
-
-	var replyToSQL sql.NullString
-	if replyTo != nil && *replyTo != "" {
-		replyToSQL = sql.NullString{String: *replyTo, Valid: true}
 	}
 
 	var msg Message
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return Message{}, err
 	}
-	err = s.db.QueryRowContext(ctx, `
+
+	var replyToSQL sql.NullString
+
+	if replyTo != nil && *replyTo != "" {
+		if err := validate.Var(*replyTo, "uuid"); err != nil {
+			return Message{}, ErrInvalidInput
+		}
+
+		replyToSQL = sql.NullString{
+			String: *replyTo,
+			Valid:  true,
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if replyToSQL.Valid {
+		var replyID string
+		err = tx.QueryRowContext(ctx, `
+        SELECT id::text
+        FROM messages.messages
+        WHERE id = $1
+          AND chat_id = $2
+          AND deleted_at IS NULL
+        FOR SHARE
+    `, replyToSQL.String, chatID).Scan(&replyID)
+
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrNotFound
+		}
+		if err != nil {
+			return Message{}, err
+		}
+	}
+
+	err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
 			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
 			VALUES ($1, $2, $3, $4, $5, $6)
@@ -1694,17 +1736,27 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
 		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+
 	if err != nil {
 		return Message{}, err
 	}
+
+	if err := tx.Commit(); err != nil {
+		return Message{}, err
+	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
@@ -1730,9 +1782,39 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	var replyToStr sql.NullString
 	var deletedAt sql.NullString
 	var metadataBytes []byte
+	var msgType string
 
-	// Require sender to be a current member of the chat to prevent editing after being kicked.
+	// Require the sender to still be a chat member both when validating
+	// the message type and when applying the update.
 	err := s.db.QueryRowContext(ctx, `
+		SELECT m.type
+		FROM messages.messages m
+		JOIN chats.members cm
+		ON cm.chat_id = m.chat_id
+		AND cm.user_id = $2
+		WHERE m.id = $1
+		AND m.sender_id = $2
+		AND m.deleted_at IS NULL`,
+		messageID, userID,
+	).Scan(&msgType)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+
+	if err != nil {
+		return Message{}, err
+	}
+
+	if msgType == "sticker" {
+		return Message{}, ErrStickerCannotBeEdited
+	}
+
+	if msgType == "text" && strings.TrimSpace(content) == "" {
+		return Message{}, ErrInvalidInput
+	}
+
+	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
 			SET content = $1, updated_at = NOW()
@@ -1760,18 +1842,25 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
 	}
+
 	if err != nil {
 		return Message{}, err
 	}
+
 	if replyToStr.Valid {
 		msg.ReplyTo = &replyToStr.String
 	}
+
 	if deletedAt.Valid {
 		msg.DeletedAt = &deletedAt.String
 	}
+
 	if metadataBytes != nil {
-		json.Unmarshal(metadataBytes, &msg.Metadata)
+		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+			return Message{}, err
+		}
 	}
+
 	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
 		return Message{}, err
 	}
@@ -1801,7 +1890,7 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Require sender to be a current member to prevent deletion after being kicked.
 	err = tx.QueryRowContext(ctx, `
@@ -1813,10 +1902,18 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 		RETURNING m.chat_id::text, m.created_at
 	`, messageID, userID).Scan(&chatID, &createdAt)
 
-	if err == sql.ErrNoRows {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		exists, existsErr := s.messageExistsForMember(ctx, userID, messageID)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if exists {
+			return nil, ErrForbidden
+		}
 		return nil, ErrNotFound
-	}
-	if err != nil {
+
+	case err != nil:
 		return nil, err
 	}
 
@@ -1946,6 +2043,19 @@ func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, ms
 	return nil
 }
 
+func (s *Service) messageExistsForMember(ctx context.Context, userID, messageID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM messages.messages m
+			JOIN chats.members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+			WHERE m.id = $1 AND m.deleted_at IS NULL
+		)
+	`, messageID, userID).Scan(&exists)
+	return exists, err
+}
+
 func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bool, error) {
 	var exists bool
 	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1
@@ -2016,8 +2126,75 @@ type Reaction struct {
 	MyReaction bool   `json:"myReaction"`
 }
 
+// ReactionStatus represents the outcome of a reaction toggle operation.
+// It is returned only when the operation succeeds (error == nil).
+type ReactionStatus string
+
+const (
+	// StatusAdded indicates that a new reaction was successfully inserted
+	// for the user and message.
+	StatusAdded ReactionStatus = "added"
+
+	// StatusRemoved indicates that an existing reaction was successfully
+	// deleted (the user toggled off the same emoji).
+	StatusRemoved ReactionStatus = "removed"
+
+	// StatusReplaced indicates that the user changed their reaction from
+	// one emoji to another (update of the existing record).
+	StatusReplaced ReactionStatus = "replaced"
+)
+
+// ReactionResponse – reaction without myReaction flag for WebSocket payload
+type ReactionResponse struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+}
+
+// ChangeResponse – information about the reaction change
+type ChangeResponse struct {
+	Action        string  `json:"action"`        // "added", "removed", "replaced"
+	Emoji         *string `json:"emoji"`         // current emoji (nil if removed)
+	PreviousEmoji *string `json:"previousEmoji"` // previous emoji (nil if none)
+}
+
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	var chatID string
+
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
+	return s.listReactionsInternal(ctx, s.db, messageID, userID)
+}
+
+// Querier is an interface that both *sql.DB and *sql.Tx implement.
+type Querier interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+}
+
+func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
 		FROM messages.reactions
 		WHERE message_id = $1
@@ -2028,7 +2205,8 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 		return nil, err
 	}
 	defer rows.Close()
-	var result []Reaction
+
+	result := make([]Reaction, 0)
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
@@ -2036,64 +2214,258 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 		}
 		result = append(result, r)
 	}
+
 	return result, rows.Err()
 }
 
-// ToggleReaction adds or removes a reaction (toggle semantics).
-// Returns (added bool, updated reactions, error).
-func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (bool, []Reaction, error) {
-	if emoji == "" {
-		return false, nil, ErrInvalidInput
-	}
-	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		return false, nil, ErrInvalidInput
-	}
-
-	var chatID string
-	if err := s.db.QueryRowContext(ctx, `SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`, messageID).Scan(&chatID); errors.Is(err, sql.ErrNoRows) {
-		return false, nil, ErrNotFound
-	} else if err != nil {
-		return false, nil, err
-	}
-
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
-		if err != nil {
-			return false, nil, err
-		}
-		return false, nil, ErrForbidden
-	}
-
-	var existingID string
-	err := s.db.QueryRowContext(ctx, `SELECT id::text FROM messages.reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3`, messageID, userID, emoji).Scan(&existingID)
-	added := errors.Is(err, sql.ErrNoRows)
-	if added {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO messages.reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)`, messageID, userID, emoji); err != nil {
-			return false, nil, err
-		}
-	} else if err == nil {
-		if _, err := s.db.ExecContext(ctx, `DELETE FROM messages.reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3`, messageID, userID, emoji); err != nil {
-			return false, nil, err
-		}
-	} else {
-		return false, nil, err
-	}
-
-	reactions, err := s.ListReactions(ctx, userID, messageID)
+// isMemberWithQuerier executes the query using any Querier
+// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
+	var exists bool
+	err := q.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
+		userID, chatID,
+	).Scan(&exists)
 	if err != nil {
-		return added, nil, err
+		return false, err
+	}
+	return exists, nil
+}
+
+// ToggleReaction adds or removes a reaction (toggle semantics).
+// Returns:
+//   - ReactionStatus: "added", "removed", "replaced"
+//   - string: current emoji for response
+//   - []Reaction: aggregated reactions with the myReaction flag.
+//   - error: if we have error.
+func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
+	// check - if emoji not empty
+	if emoji == "" {
+		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		return "", "", nil, ErrInvalidInput
+	}
+	// check the length of emoji and symbols
+	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
+		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		return "", "", nil, ErrInvalidInput
 	}
 
+	// 1. Start transaction with READ COMMITTED isolation level
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to begin transaction: %v", err)
+		return "", "", nil, fmt.Errorf("begin tx: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 2. Check message existence and get chatID inside transaction
+	var chatID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		log.Printf("[chat-service-ToggleReaction]:chat was not found: %v", err)
+		return "", "", nil, ErrNotFound
+	} else if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to get chatID: %v", err)
+		return "", "", nil, fmt.Errorf("get chatID: %w", err)
+	}
+
+	// 3. Check membership inside transaction
+	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
+			return "", "", nil, fmt.Errorf("check membership: %w", err)
+		}
+		log.Printf("[chat-service-ToggleReaction]:user not a member: %v", userID)
+		return "", "", nil, ErrForbidden
+	}
+
+	// 4. Acquire advisory lock for the (message_id, user_id) pair
+	// pg_advisory_xact_lock blocks until lock is available or timeout occurs
+	_, err = tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock($1)`,
+		getAdvisoryKey(messageID, userID),
+	)
+	if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
+		return "", "", nil, fmt.Errorf("acquire lock: %w", err)
+	}
+
+	// 5. Now safely query the current reaction (with lock held)
+	var currentEmoji string
+	err = tx.QueryRowContext(ctx,
+		`SELECT emoji FROM messages.reactions
+		 WHERE message_id = $1 AND user_id = $2`,
+		messageID, userID,
+	).Scan(&currentEmoji)
+
+	hasCurrent := true
+	if errors.Is(err, sql.ErrNoRows) {
+		hasCurrent = false
+	} else if err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to get current reaction: %v", err)
+		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
+	}
+
+	// Store the previous emoji (if any) as a pointer
+	var previousEmoji *string
+	if hasCurrent {
+		prev := currentEmoji
+		previousEmoji = &prev
+	} else {
+		previousEmoji = nil
+	}
+
+	// create status variable
+	var status ReactionStatus
+
+	// 6. Perform the appropriate action based on the current state
+	switch {
+	case !hasCurrent:
+		// No reaction yet – insert the new one
+		result, execErr := tx.ExecContext(ctx,
+			`INSERT INTO messages.reactions (message_id, user_id, emoji)
+			 VALUES ($1, $2, $3)`,
+			messageID, userID, emoji,
+		)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("insert reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "insert reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = emoji
+		status = StatusAdded
+
+	case currentEmoji == emoji:
+		// Same emoji – remove the reaction (toggle off)
+		result, execErr := tx.ExecContext(ctx,
+			`DELETE FROM messages.reactions
+			 WHERE message_id = $1 AND user_id = $2`,
+			messageID, userID,
+		)
+		if execErr != nil {
+			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", execErr)
+			return "", "", nil, fmt.Errorf("delete reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "delete reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = ""
+		status = StatusRemoved
+
+	default:
+		// Different emoji – update the existing one
+		result, execErr := tx.ExecContext(ctx,
+			`UPDATE messages.reactions SET emoji = $1
+			 WHERE message_id = $2 AND user_id = $3`,
+			emoji, messageID, userID,
+		)
+		if execErr != nil {
+			return "", "", nil, fmt.Errorf("update reaction: %w", execErr)
+		}
+		if err := requireOneAffectedRow(result, "update reaction"); err != nil {
+			return "", "", nil, err
+		}
+
+		currentEmoji = emoji
+		status = StatusReplaced
+	}
+
+	// 7. Fetch the aggregated counts per emoji for the message
+	reactions, err := s.listReactionsInternal(ctx, tx, messageID, userID)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("get aggregates: %w", err)
+	}
+
+	// 8. Commit transaction (automatically releases advisory lock)
+	if err = tx.Commit(); err != nil {
+		log.Printf("[chat-service-ToggleReaction]:failed to commit transaction: %v", err)
+		return "", "", nil, fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+
+	// 9. Build the change response
+	change := ChangeResponse{
+		Action: string(status),
+	}
+
+	switch status {
+	case StatusAdded:
+		change.Emoji = &emoji
+		change.PreviousEmoji = nil
+	case StatusRemoved:
+		change.Emoji = nil
+		change.PreviousEmoji = previousEmoji
+	case StatusReplaced:
+		change.Emoji = &emoji                // new emoji
+		change.PreviousEmoji = previousEmoji // old emoji
+	}
+
+	// 10. Convert reactions to response format without myReaction flag
+	reactionResponses := make([]ReactionResponse, len(reactions))
+	for i, r := range reactions {
+		reactionResponses[i] = ReactionResponse{
+			Emoji: r.Emoji,
+			Count: r.Count,
+		}
+	}
+
+	// 11. Send WebSocket notification
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{
+		payload, err := json.Marshal(map[string]any{
 			"type":      "reaction_updated",
 			"chatId":    chatID,
 			"messageId": messageID,
-			"reactions": reactions,
+			"actorId":   userID,
+			"change":    change,
+			"reactions": reactionResponses,
 		})
-		s.ws.BroadcastToChat(chatID, payload, "")
+		if err != nil {
+			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
 	}
 
-	return added, reactions, nil
+	return status, currentEmoji, reactions, nil
+}
+
+func requireOneAffectedRow(result sql.Result, operation string) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s rows affected: %w", operation, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("%s: expected 1 affected row, got %d", operation, affected)
+	}
+	return nil
+}
+
+// getAdvisoryKey generates a 64-bit key for advisory lock from messageID and userID
+func getAdvisoryKey(messageID, userID string) int64 {
+	// Combine both IDs into a single string and hash to 64-bit
+	// Using FNV-1a 64-bit hash for good distribution and low collision rate
+	h := fnv.New64a()
+	h.Write([]byte(messageID))
+	h.Write([]byte(":"))
+	h.Write([]byte(userID))
+
+	// FNV-1a returns uint64, convert to int64
+	// PostgreSQL advisory locks work with signed 64-bit integers
+	return int64(h.Sum64())
 }
 
 // Message pin types.
@@ -2563,9 +2935,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	}
 
 	var currentOwnerID string
+	var chatType string
 	err = tx.QueryRowContext(ctx,
-		`SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`,
-		chatID).Scan(&currentOwnerID)
+		`SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`,
+		chatID).Scan(&currentOwnerID, &chatType)
 	if err == sql.ErrNoRows {
 		_ = tx.Rollback()
 		return ErrNotFound
@@ -2573,6 +2946,10 @@ func (s *Service) TransferOwnership(ctx context.Context, actorID, chatID, target
 	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if chatType != "group" {
+		_ = tx.Rollback()
+		return ErrInvalidChatType
 	}
 	if currentOwnerID != actorID {
 		_ = tx.Rollback()

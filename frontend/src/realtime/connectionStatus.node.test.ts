@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import { eventBus } from '@/core';
 import {
   CONNECTION_NOTICE_DELAY_MS,

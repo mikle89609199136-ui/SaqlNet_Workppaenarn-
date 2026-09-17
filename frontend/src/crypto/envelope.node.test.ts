@@ -87,7 +87,13 @@ describe('конверт сообщения', () => {
   it('should notice a tampered ciphertext', async () => {
     const key = chatKey();
     const envelope = parseEnvelope(await encryptMessage(key, CHAT, EPOCH, SENDER, 'привет'))!;
-    const broken = { ...envelope, data: `A${envelope.data.slice(1)}` };
+    /* Символ подменяется на заведомо другой, а не всегда на «A»: у
+       случайного шифротекста первый символ и сам оказывается «A»
+       примерно в одном прогоне из шестидесяти четырёх — тогда конверт
+       остаётся целым, расшифровка честно проходит, и падает тест, а не
+       проверяемый код. */
+    const head = envelope.data[0] === 'A' ? 'B' : 'A';
+    const broken = { ...envelope, data: `${head}${envelope.data.slice(1)}` };
 
     await expect(decryptMessage(key, CHAT, SENDER, broken)).rejects.toThrow();
   });

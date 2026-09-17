@@ -1,3 +1,4 @@
+import { clearToasts } from '@/shared/ui';
 /**
  * Подготовка окружения `jsdom` для тестов хуков, компонентов и интеграции.
  *
@@ -8,19 +9,85 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { testI18n } from '@/test/harness/i18n';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
-import { useCallStore } from '@/store/call';
+import { useCallStore } from '@/features/call';
 import { useChatUiStore } from '@/store/chatUi';
-import { useProfileStore } from '@/store/profile';
-import { useToastStore } from '@/store/toast';
+import { useProfileStore } from '@/entities/user';
+import { clearOutbox } from '@/entities/message';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
+}
+
+const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+Element.prototype.getBoundingClientRect = function () {
+  const original = originalGetBoundingClientRect ? originalGetBoundingClientRect.call(this) : null;
+  if (!original || (original.width === 0 && original.height === 0)) {
+    return {
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => '',
+    };
+  }
+  return original;
+};
+
+if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get) {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    get() {
+      return this._clientHeight ?? 600;
+    },
+    set(val) {
+      this._clientHeight = val;
+    },
+    configurable: true,
+  });
+}
+
+if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')?.get) {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    get() {
+      return this._clientWidth ?? 800;
+    },
+    set(val) {
+      this._clientWidth = val;
+    },
+    configurable: true,
+  });
+}
+
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    private callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(target: Element) {
+      const rect = target.getBoundingClientRect();
+      const entry = {
+        target,
+        contentRect: rect,
+        borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        contentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        devicePixelContentBoxSize: [],
+      } as unknown as ResizeObserverEntry;
+      this.callback([entry], this);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
 }
 
 if (!globalThis.requestAnimationFrame) {
@@ -83,6 +150,14 @@ function assertExpected(kind: 'error' | 'warn', args: unknown[]) {
 }
 
 beforeEach(() => {
+  /* Связь шифрования с кешем запросов ставится перед каждым тестом, а не
+     только восстанавливается после. Её снимает `chatResolverBridge`, где
+     проверяется поведение незарегистрированного источника, и без общей
+     изоляции этот `null` доставался следующему файлу: расшифровка
+     превью падала, а уведомление показывало запасной текст вместо
+     сообщения. */
+  registerChatResolver();
+
   console.error = (...args: unknown[]) => {
     originalError(...args);
     assertExpected('error', args);
@@ -113,10 +188,25 @@ afterEach(() => {
   // Кеш чатов живёт на уровне модуля: без сброса в нём остаются промисы
   // предыдущего теста, и расшифровка ждёт ответа, которого не будет.
 
+  /* Язык — такой же синглтон на модуль, как сторы: тесты настроек
+     переключают его на английский через `useApplyPreferences`, а форма
+     регистрации потом берёт язык из i18n и отправляет на сервер. Пока
+     файлы шли в отдельных окружениях, чужой язык не доживал до
+     следующего; теперь модули общие, и сброс нужен явный. */
+  if (testI18n.language !== 'ru') void testI18n.changeLanguage('ru');
+
+  /* Подменённые таймеры и глобальные объекты возвращаются на место по
+     той же причине: без изоляции они переживают файл, в котором их
+     подменили. */
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+
   useCallStore.setState(useCallStore.getInitialState(), true);
   useChatUiStore.setState(useChatUiStore.getInitialState(), true);
   useProfileStore.setState(useProfileStore.getInitialState(), true);
-  useToastStore.setState(useToastStore.getInitialState(), true);
+  clearToasts();
+  clearOutbox();
 
   localStorage.clear();
 });

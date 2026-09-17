@@ -26,9 +26,9 @@ export function isSameDay(firstDate, secondDate) {
   const second = toDate(secondDate);
 
   return (
-    first.getFullYear() === second.getFullYear()
-    && first.getMonth() === second.getMonth()
-    && first.getDate() === second.getDate()
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
   );
 }
 

@@ -1,6 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { putThreadMessage } from '@/queries/chat/threadCacheActions';
-import { MESSAGES_PAGE_SIZE } from '@/queries/chat/threadQueries';
+import {
+  MESSAGES_PAGE_SIZE,
+  putThreadMessage,
+  retryAllOutboxMessages,
+} from '@/entities/message';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services/serviceContainer';
 
@@ -50,4 +53,12 @@ export async function resyncAfterReconnect(queryClient: QueryClient): Promise<vo
       }
     })
   );
+
+  // Переотправляем сообщения из Outbox после того, как догнали пропущенные
+  // (чтобы исключить повторную отправку того, что сервер успел сохранить).
+  try {
+    await retryAllOutboxMessages(queryClient);
+  } catch (error) {
+    console.warn('Не удалось повторить отправку очереди outbox', error);
+  }
 }

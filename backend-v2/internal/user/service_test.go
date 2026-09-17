@@ -72,7 +72,7 @@ func TestIsUsernameAvailable_ReturnsErrInvalidInputOnEmpty(t *testing.T) {
 	svc := user.NewService(db)
 
 	_, err = svc.IsUsernameAvailable(context.Background(), "    ")
-	if !errors.Is(err, user.ErrInvalidInput) {
+	if !errors.Is(err, user.ErrInvalidUsernameFormat) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

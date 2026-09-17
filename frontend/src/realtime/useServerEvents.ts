@@ -1,16 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { WS_EVENTS } from '@/consts';
+import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/hooks/useRealtimeSocket';
 import {
   dropPinnedMessage,
+  isReactionChangePending,
+  patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
-} from '@/queries/chat/threadCacheActions';
+} from '@/entities/message';
+import { useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { resolveChat } from '@/core/chatResolver';
-import { useTypingStore } from '@/store/typing';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
@@ -72,6 +74,26 @@ export function useServerEvents(enabled: boolean): void {
               console.warn('Не удалось обработать закрепление', error);
               invalidate(eventType, payload);
             });
+          return;
+        }
+
+        /* Реакции приходят в самом событии — их достаточно положить в
+           нужное сообщение. Прежде здесь помечалась устаревшей вся
+           история чата: чужой лайк в переписке на пятьсот сообщений
+           перекачивал её целиком, а своя реакция успевала мигнуть, пока
+           лента ходила на сервер. */
+        if (
+          eventType === WS_EVENTS.REACTIONS.REACTION_UPDATED &&
+          payload?.chatId &&
+          payload?.messageId
+        ) {
+          // Своя же операция ещё идёт — её промежуточные состояния
+          // показывать нельзя, окончательное принесёт наш ответ.
+          if (!isReactionChangePending(payload.messageId)) {
+            patchThreadMessage(queryClient, payload.chatId, payload.messageId, {
+              reactions: payload.reactions ?? [],
+            });
+          }
           return;
         }
 
