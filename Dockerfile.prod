@@ -35,14 +35,26 @@ COPY server/crypto-rust/src ./src
 RUN cargo build --release --locked
 
 # Stage 4: Download NATS server and MinIO
-FROM debian:bookworm-slim AS natsdownload
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 15 --max-time 180 \
-      https://github.com/nats-io/nats-server/releases/download/v2.10.22/nats-server-v2.10.22-linux-amd64.tar.gz \
-      | tar -xz --strip-components=1 -C /usr/local/bin nats-server-v2.10.22-linux-amd64/nats-server && \
-    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 15 --max-time 180 \
-      https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio && \
-    chmod +x /usr/local/bin/minio
+FROM debian:bookworm-slim AS infra-download
+
+ARG NATS_VERSION=2.10.22
+ARG MINIO_VERSION=RELEASE.2025-10-15T17-29-55Z
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL \
+    "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" \
+    | tar -xz \
+        --strip-components=1 \
+        -C /usr/local/bin \
+        "nats-server-v${NATS_VERSION}-linux-amd64/nats-server"
+
+RUN curl -fsSL \
+    "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_VERSION}" \
+    -o /usr/local/bin/minio \
+    && chmod +x /usr/local/bin/minio
 
 # Stage 5: Final image
 FROM debian:bookworm-slim
@@ -51,8 +63,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=natsdownload /usr/local/bin/nats-server /usr/local/bin/nats-server
-COPY --from=natsdownload /usr/local/bin/minio /usr/local/bin/minio
+COPY --from=infra-download /usr/local/bin/nats-server /usr/local/bin/nats-server
+COPY --from=infra-download /usr/local/bin/minio /usr/local/bin/minio
 
 RUN echo "gobins-v2"
 COPY --from=gobuilder   /binaries/auth     /usr/local/bin/auth
