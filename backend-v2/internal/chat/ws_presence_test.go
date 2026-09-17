@@ -21,11 +21,14 @@ import (
 
 // recordingStore регистрирует вызовы presence-методов для assertions.
 type recordingStore struct {
-	mu          sync.Mutex
-	connects    []string // connID каждого Connect-вызова
-	heartbeats  []string
-	disconnects []string
-	connectErr  error
+	mu                       sync.Mutex
+	connects                 []string // connID каждого Connect-вызова
+	heartbeats               []string
+	disconnects              []string
+	connectErr               error
+	heartbeatAfterDisconnect bool
+	blockDisconnect          chan struct{}
+	heartbeatCalled          chan struct{}
 }
 
 func (s *recordingStore) Connect(_ context.Context, _ string, connID string) error {
@@ -37,15 +40,36 @@ func (s *recordingStore) Connect(_ context.Context, _ string, connID string) err
 
 func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) error {
 	s.mu.Lock()
+
+	for _, d := range s.disconnects {
+		if d == connID {
+			s.heartbeatAfterDisconnect = true
+			break
+		}
+	}
+
 	s.heartbeats = append(s.heartbeats, connID)
+	ch := s.heartbeatCalled
 	s.mu.Unlock()
+
+	if ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+
 	return nil
 }
 
 func (s *recordingStore) Disconnect(_ context.Context, _ string, connID string) error {
 	s.mu.Lock()
 	s.disconnects = append(s.disconnects, connID)
+	block := s.blockDisconnect
 	s.mu.Unlock()
+	if block != nil {
+		<-block
+	}
 	return nil
 }
 
@@ -145,4 +169,63 @@ func TestWSPresence_StoreErrorDoesNotBreakWS(t *testing.T) {
 		defer rec.mu.Unlock()
 		return len(rec.connects) == 1
 	}, 500*time.Millisecond, 5*time.Millisecond, "Connect не пытался выполниться")
+}
+
+// TestWSPresence_DisconnectPreventsLateHeartbeat проверяет, что после вызова Disconnect
+// последующие тики heartbeat гарантированно не отправляются в Store, исключая воскрешение закрытого соединения.
+func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
+	block := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-block:
+		default:
+			close(block)
+		}
+	})
+	hbCalled := make(chan struct{}, 1)
+	rec := &recordingStore{
+		blockDisconnect: block,
+		heartbeatCalled: hbCalled,
+	}
+	srv, ws := newPresenceTestServer(t, rec)
+	conn := dialWS(t, srv)
+	require.Eventually(t, func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return len(rec.connects) == 1
+	}, 500*time.Millisecond, 5*time.Millisecond, "Connect не пытался выполниться")
+
+	var client *Client
+	require.Eventually(t, func() bool {
+		ws.mu.RLock()
+		defer ws.mu.RUnlock()
+		for _, m := range ws.clients {
+			for c := range m {
+				client = c
+				return true
+			}
+		}
+		return false
+	}, 500*time.Millisecond, 5*time.Millisecond, "Клиент не зарегистрирован в WSServer")
+
+	select {
+	case <-hbCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Heartbeat не начал выполняться")
+	}
+
+	_ = conn.Close()
+	require.Eventually(t, func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return len(rec.disconnects) == 1
+	}, 500*time.Millisecond, 5*time.Millisecond, "Disconnect не был вызван")
+	select {
+	case <-client.done:
+	case <-hbCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Таймаут ожидания реакции heartbeat")
+	}
+	close(block)
+	require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat был вызван после Disconnect")
 }

@@ -45,8 +45,17 @@ type Client struct {
 	Conn         *websocket.Conn
 	Send         chan []byte
 	done         chan struct{}
+	closeOnce    sync.Once
 	CallRoomID   string // non-empty while in a call room
 	ConnectionID string // уникальный ID WS-соединения для presence
+}
+
+// close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
+// горутинам (включая heartbeat) о завершении жизненного цикла клиента.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
 }
 
 type WSServer struct {
@@ -110,7 +119,7 @@ func (ws *WSServer) run() {
 			if conns, ok := ws.clients[client.UserID]; ok {
 				if _, ok := conns[client]; ok {
 					delete(conns, client)
-					close(client.done)
+					client.close()
 					close(client.Send)
 					if len(conns) == 0 {
 						delete(ws.clients, client.UserID)
@@ -211,6 +220,7 @@ func newConnectionID() string {
 // из presence.Store и отправляет клиента на отмену регистрации.
 func (ws *WSServer) readPump(client *Client) {
 	defer func() {
+		client.close()
 		ws.handleCallDisconnect(client)
 		if ws.presence != nil && client.ConnectionID != "" {
 			// Горутина долгоживущая — r.Context() к этому моменту отменён.
@@ -495,6 +505,11 @@ func (ws *WSServer) heartbeat(client *Client) {
 		case <-client.done:
 			return
 		case <-ticker.C:
+			select {
+			case <-client.done:
+				return
+			default:
+			}
 			if ws.presence != nil && client.ConnectionID != "" {
 				if err := ws.presence.Heartbeat(context.Background(), client.UserID, client.ConnectionID); err != nil {
 					slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
