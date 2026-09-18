@@ -15,7 +15,7 @@ import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
 import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
 import { useCallStore } from '@/features/call';
-import { useChatUiStore } from '@/store/chatUi';
+import { useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
 

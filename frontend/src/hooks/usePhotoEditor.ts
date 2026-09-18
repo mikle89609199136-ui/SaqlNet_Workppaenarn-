@@ -1,4 +1,4 @@
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import type { IPendingAttachment } from '@/types';
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
 

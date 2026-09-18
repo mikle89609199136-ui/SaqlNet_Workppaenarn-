@@ -14,7 +14,7 @@ import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
 import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';

@@ -1,6 +1,6 @@
 import { Button, ConfirmDialog, Icon, showToast } from '@/shared/ui';
 import { useEscapeKey, useIsMobile } from '@/shared/lib';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow } from './ComposerRow';

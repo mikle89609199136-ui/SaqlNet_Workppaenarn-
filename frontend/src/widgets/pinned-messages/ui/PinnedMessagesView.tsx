@@ -3,7 +3,7 @@ import { MessagesList } from '@/widgets/chat-messages';
 import { MessageActionsPopover } from '@/features/message-actions';
 import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
-import { type IActionMenu } from '@/store';
+import { type IActionMenu } from '@/entities/chat';
 import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
