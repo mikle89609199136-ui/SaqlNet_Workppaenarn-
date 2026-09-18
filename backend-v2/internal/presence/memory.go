@@ -41,18 +41,10 @@ func (s *MemoryStore) Connect(ctx context.Context, userID, connectionID string) 
 	return nil
 }
 
-// Heartbeat продлевает или восстанавливает lease конкретного соединения на LeaseTTL.
+// Heartbeat продлевает или восстанавливает lease конкретного соединения на LeaseTTL,
+// делегируя операцию методу Connect.
 func (s *MemoryStore) Heartbeat(ctx context.Context, userID, connectionID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	conns, ok := s.leases[userID]
-	if !ok {
-		conns = make(map[string]time.Time)
-		s.leases[userID] = conns
-	}
-	conns[connectionID] = s.now().Add(LeaseTTL)
-	return nil
+	return s.Connect(ctx, userID, connectionID)
 }
 
 // Disconnect удаляет lease соединения; отсутствующий lease — no-op.
