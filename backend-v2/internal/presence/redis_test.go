@@ -68,3 +68,65 @@ func TestRedisStore_Heartbeat_RestoresLease(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, online, "пользователь должен стать offline после Disconnect")
 }
+
+// TestRedisStore_Disconnect_OtherConnectionKeepsOnline проверяет на miniredis,
+// что отключение одного соединения оставляет пользователя online при наличии второго активного соединения.
+func TestRedisStore_Disconnect_OtherConnectionKeepsOnline(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(mr.Close)
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	store := presence.NewRedisStore(client)
+	ctx := context.Background()
+	userID := "user-multi"
+	conn1 := "conn-1"
+	conn2 := "conn-2"
+
+	err = store.Connect(ctx, userID, conn1)
+	require.NoError(t, err)
+	err = store.Connect(ctx, userID, conn2)
+	require.NoError(t, err)
+
+	err = store.Disconnect(ctx, userID, conn1)
+	require.NoError(t, err)
+
+	online, err := store.OnlineUsers(ctx, []string{userID})
+	require.NoError(t, err)
+	require.Equal(t, []string{userID}, online)
+	err = store.Disconnect(ctx, userID, conn2)
+	require.NoError(t, err)
+	online, err = store.OnlineUsers(ctx, []string{userID})
+	require.NoError(t, err)
+	require.Empty(t, online)
+}
+
+// TestRedisStore_OnlineUsers_MultipleUsersOrderAndUnknown проверяет на miniredis,
+// что OnlineUsers сохраняет порядок входного среза и фильтрует неизвестных пользователей.
+func TestRedisStore_OnlineUsers_MultipleUsersOrderAndUnknown(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(mr.Close)
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx := context.Background()
+	store := presence.NewRedisStore(client)
+	user1 := "550e8400-e29b-41d4-a716-446655440011"
+	user2 := "550e8400-e29b-41d4-a716-446655440012"
+	userUnknown := "550e8400-e29b-41d4-a716-446655440013"
+	conn1 := "conn-1"
+	conn2 := "conn-2"
+
+	err = store.Connect(ctx, user1, conn1)
+	require.NoError(t, err)
+	err = store.Connect(ctx, user2, conn2)
+	require.NoError(t, err)
+
+	online, err := store.OnlineUsers(ctx, []string{userUnknown, user1, user2})
+	require.NoError(t, err)
+	require.Equal(t, []string{user1, user2}, online)
+}
