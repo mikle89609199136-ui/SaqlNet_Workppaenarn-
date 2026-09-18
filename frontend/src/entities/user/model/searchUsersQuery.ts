@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import { userKeys } from '@/queries/keys';
+import { userKeys } from './userKeys';
 
 /** Короче двух знаков сервер ничего осмысленного не вернёт. */
 export const MIN_SEARCH_LENGTH = 2;

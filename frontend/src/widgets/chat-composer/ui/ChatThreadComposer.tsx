@@ -1,11 +1,12 @@
-import { useEncryptionState, useTypingIndicator } from '@/hooks';
+import { useEncryptionState } from '@/features/chat-encryption';
+import { useTypingIndicator } from '@/features/typing-indicator';
 import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
 import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
-import type { IEncryptionState } from '@/crypto/encryptionStatus';
+import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/shared/lib';

@@ -3,10 +3,9 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useComposerSendMessage } from './useComposerSendMessage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { services } from '@/services';
-import { useChatUiStore } from '@/entities/chat';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox, getChatOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
-import { chatKeys } from '@/queries/keys';
 import { makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';

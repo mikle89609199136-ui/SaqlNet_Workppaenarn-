@@ -5,11 +5,11 @@ import {
   resolveMembers,
   setChatResolver,
   setMembersResolver,
-} from '@/core/chatResolver';
+} from './chatResolver';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import { queryClient } from '../queryClient';
-import { chatKeys } from '../keys';
+import { queryClient } from '@/shared/api';
+import { chatKeys } from './chatKeys';
 import { registerChatResolver } from './chatResolverBridge';
 
 const CHAT_ID = 'chat-1';

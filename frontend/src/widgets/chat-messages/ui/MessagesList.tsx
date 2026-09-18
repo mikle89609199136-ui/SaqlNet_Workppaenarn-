@@ -1,4 +1,4 @@
-import { useVirtualMessagesFeed } from '@/hooks';
+import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';

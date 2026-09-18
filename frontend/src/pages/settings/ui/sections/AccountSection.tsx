@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import { meQuery, sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { ProfileEditForm } from '@/features/user-profile-edit';

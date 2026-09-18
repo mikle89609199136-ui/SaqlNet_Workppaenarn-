@@ -1,4 +1,4 @@
-import { eventBus } from '@/core';
+import { eventBus } from '@/shared/lib/event-bus';
 
 /**
  * Потолок паузы между попытками. Дальше растить нечего: полминуты — предел

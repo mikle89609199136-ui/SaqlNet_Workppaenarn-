@@ -1,7 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { setChatResolver, setMembersResolver } from '@/core/chatResolver';
-import { queryClient as appQueryClient } from '../queryClient';
-import { chatQuery, membersQuery } from '@/entities/chat';
+import { setChatResolver, setMembersResolver } from './chatResolver';
+import { queryClient as appQueryClient } from '@/shared/api';
+import { chatQuery } from './chatQuery';
+import { membersQuery } from './membersQuery';
 
 /**
  * Связывает крипто-слой с кешем запросов.

@@ -10,7 +10,7 @@ import {
   retryOutboxMessage,
   sendOutboxItem,
 } from './outboxSender';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 
 describe('outboxSender', () => {

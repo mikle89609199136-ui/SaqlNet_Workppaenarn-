@@ -9,4 +9,5 @@ export * from './model/outboxStore';
 export * from './model/messageUtils';
 export * from './model/applyReaction';
 export * from './model/estimateMessageSize';
+export * from './model/messageKeys';
 export * from './ui/MessageBubble';

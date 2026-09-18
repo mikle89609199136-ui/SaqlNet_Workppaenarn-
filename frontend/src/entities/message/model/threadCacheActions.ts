@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { IMessageDto, IPinnedDto } from './types';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import {
   appendMessage,
   canAppendToThread,

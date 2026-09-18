@@ -1,5 +1,5 @@
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import {
   addOutboxItem,
   patchThreadMessage,
@@ -11,7 +11,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { clearDraft, useChatUiStore } from '@/entities/chat';
-import { setComposerText } from '@/shared/lib/setComposerText';
+import { setComposerText } from '@/shared/lib';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
