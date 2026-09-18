@@ -1,9 +1,10 @@
 import { STORAGE_KEYS, config } from '@/shared/config';
-import { ApiClient } from './ApiClient';
+import { ApiClient, type IApiError } from './ApiClient';
 
 interface ICreateApiClientOptions {
   baseUrl?: string;
   getToken?: () => string | null;
+  onUnauthorized?: (error: IApiError) => void;
 }
 
 /**
@@ -14,6 +15,7 @@ export function createApiClient(options: ICreateApiClientOptions = {}): ApiClien
   return new ApiClient(options.baseUrl ?? config.apiBaseUrl, {
     getToken:
       options.getToken ?? (() => globalThis.localStorage?.getItem(STORAGE_KEYS.TOKEN) ?? null),
+    onUnauthorized: options.onUnauthorized,
   });
 }
 
