@@ -64,7 +64,7 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
 
-  async request<T = unknown>(
+  private async request<T = unknown>(
     endpoint: string,
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
@@ -90,7 +90,7 @@ export class ApiClient {
     return this.parseResponse<T>(response);
   }
 
-  buildUrl(endpoint: string, params: TQueryParams = {}): string {
+  private buildUrl(endpoint: string, params: TQueryParams = {}): string {
     if (/^https?:\/\//.test(String(endpoint))) {
       const url = new URL(endpoint);
       this.appendParams(url, params);
@@ -113,7 +113,7 @@ export class ApiClient {
     return url.toString();
   }
 
-  appendParams(url: URL, params: TQueryParams = {}): void {
+  private appendParams(url: URL, params: TQueryParams = {}): void {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
         url.searchParams.set(key, String(value));
@@ -121,7 +121,7 @@ export class ApiClient {
     });
   }
 
-  async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
+  private async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
     const contentType = response.headers?.get?.('content-type') ?? '';
     const payload: unknown =
       contentType.includes('application/json') || typeof response.text !== 'function'

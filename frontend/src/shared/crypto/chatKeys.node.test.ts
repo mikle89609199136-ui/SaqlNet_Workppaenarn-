@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { ApiClient } from '@/shared/api/ApiClient';
+import type { ApiClient } from '@/shared/api';
 import { ChatKeyManager } from './chatKeys';
 import { bytesToBase64 } from './encoding';
 import { forgetPeerIdentities, loadOrCreateIdentity } from './identity';
