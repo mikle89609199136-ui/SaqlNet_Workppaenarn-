@@ -64,7 +64,6 @@ export const API_ENDPOINTS = {
   ENCRYPTION_MY_KEY: (chatId: string) => `/encryption/my-key/${chatId}`,
 
   MEDIA_UPLOAD: '/media',
-  MEDIA_GET: (uploadId: string) => `/media/${uploadId}`,
 
   ADMIN_USERS: '/admin/users',
   ADMIN_USER_DISABLE: (userId: string) => `/admin/users/${userId}/disable`,
@@ -75,5 +74,3 @@ export const API_ENDPOINTS = {
   CALL_ROOMS: '/calls/rooms',
   EMOJIS: '/emojis',
 };
-
-export default API_ENDPOINTS;

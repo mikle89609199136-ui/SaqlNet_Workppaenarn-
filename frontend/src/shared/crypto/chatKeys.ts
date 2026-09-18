@@ -1,5 +1,4 @@
-import type { ApiClient } from '@/shared/api/ApiClient';
-import { API_ENDPOINTS } from '@/shared/api/endpoints';
+import { API_ENDPOINTS, type ApiClient } from '@/shared/api';
 import { base64ToBytes, bytesToBase64, bytesToUtf8, utf8ToBytes } from './encoding';
 import { deriveWrapKey } from './envelope';
 import { fetchPeerIdentity, type ILocalIdentity, type IPublicIdentity } from './identity';

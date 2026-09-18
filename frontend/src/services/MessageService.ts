@@ -1,6 +1,5 @@
-import { API_ENDPOINTS } from '@/shared/api/endpoints';
+import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
-import { ApiClient } from '@/shared/api/ApiClient';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
