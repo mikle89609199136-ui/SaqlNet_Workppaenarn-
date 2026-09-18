@@ -60,7 +60,12 @@ func (s *MemoryStore) Disconnect(ctx context.Context, userID, connectionID strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.leases[userID], connectionID)
+	if conns, ok := s.leases[userID]; ok {
+		delete(conns, connectionID)
+		if len(conns) == 0 {
+			delete(s.leases, userID)
+		}
+	}
 	return nil
 }
 
