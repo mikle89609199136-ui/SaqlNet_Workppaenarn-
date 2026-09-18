@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { APP_VERSION } from '@/shared/config';
 import { services } from '@/services/serviceContainer';
 import { createTestQueryClient, renderSettings } from '@/test/harness/renderSettings';
-import { userKeys } from '@/queries/keys';
+import { userKeys } from '@/entities/user';
 
 /**
  * Раздел «О приложении».

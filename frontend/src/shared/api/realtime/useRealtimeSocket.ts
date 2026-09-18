@@ -1,5 +1,5 @@
 import { STORAGE_KEYS, config } from '@/shared/config';
-import { eventBus } from '@/core/EventBus';
+import { eventBus } from '@/shared/lib/event-bus';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import { useEffect } from 'react';
 

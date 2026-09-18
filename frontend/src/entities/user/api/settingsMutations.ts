@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
 import type { IPrivacyDto, ISettingsDto, ISettingsPayloadDto } from '@/types';
-import { userKeys } from '@/queries/keys';
+import { userKeys } from '../model/userKeys';
 
 /**
  * Сохранение настроек и приватности.

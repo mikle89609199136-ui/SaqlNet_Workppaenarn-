@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chatKeys, userKeys } from './keys';
+import { chatKeys } from './chatKeys';
+import { userKeys } from '@/entities/user';
 
 describe('ключи запросов', () => {
   it('should nest chat data under the chat key', () => {

@@ -1,11 +1,9 @@
-import { disconnectRealtimeSocket } from '@/shared/api';
-import { forgetEncryptionStates } from '@/crypto/encryptionStatus';
-import { forgetSecurityNotices } from '@/crypto/securityNotices';
+import { disconnectRealtimeSocket, queryClient } from '@/shared/api';
+import { forgetEncryptionStates, forgetSecurityNotices } from '@/shared/crypto';
 import { clearMediaObjectUrls } from '@/entities/media/model/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
 import { clearAllDrafts, useChatUiStore } from '@/entities/chat';
 import { clearOutbox } from '@/entities/message';
-import { queryClient } from '@/queries/queryClient';
 import { useProfileStore } from '@/entities/user';
 
 export function clearAuthSession() {

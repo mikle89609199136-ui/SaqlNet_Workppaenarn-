@@ -1,7 +1,7 @@
 import { API_ENDPOINTS } from '@/shared/api/endpoints';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { ApiClient } from '@/shared/api/ApiClient';
-import { resolveChat } from '@/core/chatResolver';
+import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,

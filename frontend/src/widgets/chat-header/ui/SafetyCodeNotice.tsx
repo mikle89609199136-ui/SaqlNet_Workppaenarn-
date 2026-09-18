@@ -1,4 +1,4 @@
-import { acknowledgeIdentityChange } from '@/crypto/securityNotices';
+import { acknowledgeIdentityChange } from '@/shared/crypto';
 import { useSecurityNotice } from '@/shared/lib';
 import { membersQuery } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';

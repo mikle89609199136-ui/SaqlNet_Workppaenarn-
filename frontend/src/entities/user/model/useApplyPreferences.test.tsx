@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { STORAGE_KEYS } from '@/shared/config';
 import { testI18n } from '@/test/harness/i18n';
-import { userKeys } from '@/queries/keys';
+import { userKeys } from './userKeys';
 import { useApplyPreferences } from './useApplyPreferences';
 
 function Probe() {
