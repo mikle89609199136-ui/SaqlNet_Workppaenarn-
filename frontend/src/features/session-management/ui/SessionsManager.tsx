@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import type { ISessionDto } from '@/types';
 
 interface Props {

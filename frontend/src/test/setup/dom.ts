@@ -13,7 +13,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
 import { queryClient } from '@/queries/queryClient';
 import { eventBus } from '@/core/EventBus';
-import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
+import { resetRealtimeSocketForTests } from '@/shared/api';
 import { useCallStore } from '@/features/call';
 import { useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';

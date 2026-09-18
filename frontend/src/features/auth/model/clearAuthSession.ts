@@ -1,4 +1,4 @@
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import { forgetEncryptionStates } from '@/crypto/encryptionStatus';
 import { forgetSecurityNotices } from '@/crypto/securityNotices';
 import { clearMediaObjectUrls } from '@/entities/media/model/mediaObjectUrls';

@@ -1,4 +1,5 @@
-import { useEncryptionState, useTypingIndicator } from '@/hooks';
+import { useEncryptionState } from '@/features/chat-encryption';
+import { useTypingIndicator } from '@/features/typing-indicator';
 import {
   useAttachmentPicker,
   useComposerSendMessage,

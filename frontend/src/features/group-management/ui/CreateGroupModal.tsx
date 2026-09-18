@@ -1,10 +1,9 @@
-import { useDebounce } from '@/shared/lib';
+import { downscaleImage, useDebounce } from '@/shared/lib';
 import { chatsQuery } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { chatKeys } from '@/queries/keys';
 import { services } from '@/services';
 import type { ISearchUserDto } from '@/types';
-import { downscaleImage } from '@/shared/lib/downscaleImage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

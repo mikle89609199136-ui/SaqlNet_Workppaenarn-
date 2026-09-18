@@ -1,4 +1,4 @@
-import { PASSWORD_RULES } from '@/shared/lib/passwordRules';
+import { PASSWORD_RULES } from '@/shared/lib';
 
 interface Props {
   score: number;

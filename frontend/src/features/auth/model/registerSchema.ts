@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { passwordSchema } from '@/shared/lib/passwordRules';
+import { passwordSchema } from '@/shared/lib';
 
 /**
  * Правила регистрации.

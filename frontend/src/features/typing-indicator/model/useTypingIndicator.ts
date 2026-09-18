@@ -1,7 +1,7 @@
 import { useProfileStore } from '@/entities/user';
 import { useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { useRealtimeSocket } from './useRealtimeSocket';
+import { useRealtimeSocket } from '@/shared/api';
 
 export function useTypingIndicator() {
   const lastSentAtRef = useRef(0);

@@ -4,7 +4,7 @@ import { getLastMessageText } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDebounce } from '@/shared/lib/useDebounce';
+import { useDebounce } from '@/shared/lib';
 
 interface Result {
   query: string;
