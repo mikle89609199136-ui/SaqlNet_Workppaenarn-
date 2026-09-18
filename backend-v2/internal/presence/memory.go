@@ -15,14 +15,15 @@ type MemoryStore struct {
 	leases map[string]map[string]time.Time
 }
 
-// NewMemoryStore создаёт MemoryStore с заданным источником текущего времени.
-// Если now == nil, по умолчанию используется time.Now.
-func NewMemoryStore(now func() time.Time) *MemoryStore {
-	if now == nil {
-		now = time.Now
+// NewMemoryStore создаёт MemoryStore.
+// Опциональный параметр now задаёт источник времени (по умолчанию time.Now).
+func NewMemoryStore(now ...func() time.Time) *MemoryStore {
+	clock := time.Now
+	if len(now) > 0 && now[0] != nil {
+		clock = now[0]
 	}
 	return &MemoryStore{
-		now:    now,
+		now:    clock,
 		leases: make(map[string]map[string]time.Time),
 	}
 }

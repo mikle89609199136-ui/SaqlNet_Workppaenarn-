@@ -226,3 +226,15 @@ func TestNewMemoryStore_NilNowDefaultsToTimeNow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{testUserID}, online)
 }
+
+// TestNewMemoryStore_DefaultClockNoArgs проверяет, что NewMemoryStore без аргументов использует time.Now по умолчанию
+// и корректно переводит пользователя в online.
+func TestNewMemoryStore_DefaultClockNoArgs(t *testing.T) {
+	store := presence.NewMemoryStore()
+	ctx := context.Background()
+	err := store.Connect(ctx, testUserID, testConnectionID)
+	require.NoError(t, err)
+	online, err := store.OnlineUsers(ctx, []string{testUserID})
+	require.NoError(t, err)
+	require.Equal(t, []string{testUserID}, online)
+}
