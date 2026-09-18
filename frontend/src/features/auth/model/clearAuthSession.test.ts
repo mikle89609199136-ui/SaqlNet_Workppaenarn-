@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { chatKeys } from '@/queries/keys';
 import { queryClient } from '@/queries/queryClient';
-import { useChatUiStore } from '@/store/chatUi';
+import { useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearAuthSession } from './clearAuthSession';
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
-import { useChatUiStore } from './chatUi';
+import { useChatUiStore } from './chatUiStore';
 
 // Данные чата переехали в кеш запросов, здесь осталось только состояние
 // интерфейса. Проверки отметки о прочтении и обновления закреплённых теперь

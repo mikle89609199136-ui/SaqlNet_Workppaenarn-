@@ -1,6 +1,6 @@
 import { Button, Icon, Spinner } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';

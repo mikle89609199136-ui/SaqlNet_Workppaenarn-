@@ -1,5 +1,5 @@
 import { Icon } from '@/shared/ui/Icon';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto, TMediaMessageType } from '../../model/types';
 import { cn } from '@/shared/lib';
 import { memo } from 'react';

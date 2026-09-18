@@ -1,6 +1,6 @@
 import { useThreadMessagesData } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, type RefObject } from 'react';

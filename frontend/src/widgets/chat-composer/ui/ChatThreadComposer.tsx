@@ -4,7 +4,7 @@ import {
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/store/chatDrafts';
+import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
 import type { IEncryptionState } from '@/crypto/encryptionStatus';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
