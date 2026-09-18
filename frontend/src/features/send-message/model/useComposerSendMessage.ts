@@ -10,8 +10,7 @@ import {
 } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { useChatUiStore } from '@/store';
-import { clearDraft } from '@/store/chatDrafts';
+import { clearDraft, useChatUiStore } from '@/entities/chat';
 import { setComposerText } from '@/shared/lib/setComposerText';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
@@ -107,7 +106,13 @@ export function useComposerSendMessage({
         setComposerText(draftRef.current, '');
         setError('');
       } catch (err: unknown) {
-        setError(describeApiError(err as { code?: string; message?: string }, t, t('messageSendError', 'Не удалось отправить сообщение')));
+        setError(
+          describeApiError(
+            err as { code?: string; message?: string },
+            t,
+            t('messageSendError', 'Не удалось отправить сообщение')
+          )
+        );
       } finally {
         setIsSending(false);
       }

@@ -69,35 +69,58 @@ x-secure: &secure [{ bearerAuth: [] }]
     }
 /chats/groups:
   post:
-    {
-      tags: [Chats],
-      summary: Create a group chat,
-      operationId: createGroupChat,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [title, members],
-                      properties:
-                        {
-                          title: { type: string },
-                          description: { type: string },
-                          avatarUrl: { type: string },
-                          members: { type: array, items: { type: string, format: uuid } },
-                        },
-                    },
-                },
-            },
-        },
-      responses: { '201': { description: Created chat } },
-    }
+    tags: [Chats]
+    summary: Create a group chat
+    description: |
+      Creates a new group chat owned by the authenticated user.
+
+      Text fields (title, description, avatarUrl) are trimmed of leading
+      and trailing whitespace before validation and storage. The 128-character
+      limit for title applies to the trimmed value; an all-whitespace title
+      is rejected.
+    operationId: createGroupChat
+    security: *secure
+    requestBody:
+      required: true
+      description: Group creation payload.
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/CreateGroupRequest' }
+    responses:
+      {
+        '201':
+          {
+            description: Created chat,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [chatId, title],
+                        properties:
+                          {
+                            chatId: { type: string, format: uuid },
+                            title: { type: string, maxLength: 128 },
+                          },
+                      },
+                  },
+              },
+          },
+        '400':
+          {
+            description: 'Invalid request (validation_failed)',
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '500':
+          {
+            description: Internal server error,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+      }
 /chats/{chatId}:
   parameters: [*chatId]
   get:
@@ -110,33 +133,105 @@ x-secure: &secure [{ bearerAuth: [] }]
         { '200': { description: Chat }, '404': { $ref: '../components/responses.yaml#/Error' } },
     }
   patch:
-    {
-      tags: [Chats],
-      summary: Update a group chat,
-      operationId: updateGroupChat,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      properties:
-                        {
-                          title: { type: string },
-                          description: { type: string },
-                          avatarUrl: { type: string },
-                        },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Updated chat } },
-    }
+    tags: [Chats]
+    summary: Update a group chat
+    description: |
+      Updates the title, description, and/or avatar URL of a group chat.
+      All fields are optional, but at least one must be present.
+
+      Text fields are trimmed of leading and trailing whitespace before
+      validation and storage. The 128-character limit for title applies
+      to the trimmed value; an all-whitespace title is rejected.
+
+      Only the chat owner or an admin may perform this operation.
+      Direct (non-group) chats cannot be updated through this endpoint.
+    operationId: updateGroupChat
+    security: *secure
+    requestBody:
+      required: true
+      description: Fields to update. At least one field must be present.
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/UpdateGroupRequest' }
+    responses:
+      {
+        '200':
+          {
+            description: Updated chat,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [chat],
+                        properties: { chat: { $ref: '../components/schemas.yaml#/Chat' } },
+                      },
+                  },
+              },
+          },
+        '400':
+          {
+            description: 'Invalid request (validation_failed, invalid_chat_type)',
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: '../components/schemas.yaml#/Error' },
+                    examples:
+                      {
+                        titleEmpty:
+                          {
+                            value: { code: validation_failed, message: 'title must not be empty' },
+                          },
+                        titleTooLong:
+                          {
+                            value:
+                              {
+                                code: validation_failed,
+                                message: 'title exceeds maximum length of 128 characters',
+                              },
+                          },
+                        emptyBody:
+                          {
+                            value:
+                              {
+                                code: validation_failed,
+                                message: 'at least one field is required',
+                              },
+                          },
+                        invalidChatType:
+                          {
+                            value:
+                              {
+                                code: invalid_chat_type,
+                                message: 'only group chats can be updated',
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+        '403':
+          {
+            description: Access denied,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '404':
+          {
+            description: Chat not found,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '500':
+          {
+            description: Internal server error,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+      }
   delete:
     {
       tags: [Chats],

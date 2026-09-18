@@ -1,5 +1,5 @@
 import { clearToasts, getToasts } from '@/shared/ui';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';

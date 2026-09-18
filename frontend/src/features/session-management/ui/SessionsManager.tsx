@@ -63,10 +63,7 @@ export function SessionsManager({ onBack }: Props) {
           {t('settings.account.sessions', 'Активные сеансы')}
         </h1>
         <p className="text-caption text-ink-2">
-          {t(
-            'settings.sessions.description',
-            'Устройства, на которых выполнен вход в аккаунт.'
-          )}
+          {t('settings.sessions.description', 'Устройства, на которых выполнен вход в аккаунт.')}
         </p>
       </header>
 
@@ -129,7 +126,8 @@ export function SessionsManager({ onBack }: Props) {
         open={asked}
         title="Завершить все сеансы?"
       >
-        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Прошлая переписка здесь больше не откроется — восстановить её нечем.
+        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Прошлая
+        переписка здесь больше не откроется — восстановить её нечем.
       </ConfirmDialog>
     </section>
   );

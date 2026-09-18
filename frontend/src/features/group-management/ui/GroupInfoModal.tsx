@@ -1,9 +1,8 @@
 import { describeApiError } from '@/shared/api';
 import { Avatar, Button, Icon, Modal, showToast } from '@/shared/ui';
 import { services } from '@/services';
-import { chatQuery, membersQuery } from '@/entities/chat';
+import { chatQuery, clearDraft, membersQuery } from '@/entities/chat';
 import { chatKeys } from '@/queries/keys';
-import { clearDraft } from '@/store/chatDrafts';
 import { useProfileStore } from '@/entities/user';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TChatRole } from '@/types';

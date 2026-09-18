@@ -1,6 +1,6 @@
 import { ROUTES } from '@/shared/config';
 import { useLongPress } from '@/shared/lib';
-import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
+import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
 import { useTypingStore } from '../../model/typingStore';
 import { formatChatListTime } from '@/shared/lib/chatListTime';
 import { getLastMessageText } from '../../model/getLastMessageText';

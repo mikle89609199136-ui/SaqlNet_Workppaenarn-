@@ -1,11 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { services } from '@/services';
 import type { TMediaMessageType } from '@/types';
-import {
-  dropThreadMessage,
-  patchThreadMessage,
-  replaceThreadMessage,
-} from './threadCacheActions';
+import { dropThreadMessage, patchThreadMessage, replaceThreadMessage } from './threadCacheActions';
 import {
   type IOutboxItem,
   removeOutboxItem,
@@ -146,10 +142,7 @@ export async function retryAllOutboxMessages(
     }
 
     if (item.lastAttemptAt && item.retryCount) {
-      const backoffMs = Math.min(
-        BASE_RETRY_DELAY_MS * (2 ** (item.retryCount - 1)),
-        30_000
-      );
+      const backoffMs = Math.min(BASE_RETRY_DELAY_MS * 2 ** (item.retryCount - 1), 30_000);
       if (Date.now() - item.lastAttemptAt < backoffMs) {
         continue;
       }

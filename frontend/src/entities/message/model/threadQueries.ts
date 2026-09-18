@@ -9,7 +9,6 @@ import type { IMessageDto, TMediaMessageType } from './types';
 /** Размер страницы истории — тот же, что запрашивала страница чата до миграции. */
 export const MESSAGES_PAGE_SIZE = 50;
 
-
 export function messagesQuery(chatId: string) {
   return infiniteQueryOptions({
     queryKey: chatKeys.messages(chatId),
@@ -41,8 +40,7 @@ export function messagesQuery(chatId: string) {
             chatId: item.chatId,
             content: item.content,
             type: item.type,
-            mediaType:
-          item.type !== 'text' ? (item.type as TMediaMessageType) : undefined,
+            mediaType: item.type !== 'text' ? (item.type as TMediaMessageType) : undefined,
             mediaUrl: item.blobUrl,
             replyTo: item.replyToId ?? null,
             replyToMessageId: item.replyToId ?? null,
