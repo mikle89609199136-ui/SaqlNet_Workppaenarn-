@@ -91,34 +91,19 @@ export class ApiClient {
   }
 
   private buildUrl(endpoint: string, params: TQueryParams = {}): string {
-    if (/^https?:\/\//.test(String(endpoint))) {
-      const url = new URL(endpoint);
-      this.appendParams(url, params);
-      return url.toString();
-    }
-
-    const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
-    let normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
-    // Относительная база разрешается от адреса страницы; вне браузера
-    // подставляется любой корректный origin — важен только путь.
-    const documentUrl = globalThis.location?.href ?? 'http://localhost/';
-    const absoluteBase = new URL(normalizedBase, documentUrl);
-    const basePath = absoluteBase.pathname.replace(/\/+$/, '').replace(/^\/+/, '');
-    if (basePath && normalizedEndpoint.startsWith(`${basePath}/`)) {
-      normalizedEndpoint = normalizedEndpoint.slice(basePath.length + 1);
-    }
-    const url = new URL(normalizedEndpoint, absoluteBase);
-
-    this.appendParams(url, params);
-    return url.toString();
-  }
-
-  private appendParams(url: URL, params: TQueryParams = {}): void {
+    const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
-        url.searchParams.set(key, String(value));
+        query.set(key, String(value));
       }
     });
+
+    const path = /^https?:\/\//.test(endpoint)
+      ? endpoint
+      : `${this.baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+
+    const qs = query.toString();
+    return qs ? `${path}?${qs}` : path;
   }
 
   private async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
