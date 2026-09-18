@@ -1,6 +1,6 @@
-﻿import { queryOptions } from '@tanstack/react-query';
+import { queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from './chatKeys';
 
 export function chatQuery(chatId: string) {
   return queryOptions({

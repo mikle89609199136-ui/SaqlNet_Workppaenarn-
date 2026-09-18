@@ -1,5 +1,5 @@
 /**
- * Ключи запросов.
+ * Ключи запросов чатов.
  *
  * Иерархия здесь не украшение: сброс по префиксу `chatKeys.detail(id)`
  * инвалидирует и сам чат, и его историю, и закреплённые — одной строкой.
@@ -17,13 +17,4 @@ export const chatKeys = {
   messages: (chatId: string) => [...chatKeys.detail(chatId), 'messages'] as const,
   pins: (chatId: string) => [...chatKeys.detail(chatId), 'pins'] as const,
   members: (chatId: string) => [...chatKeys.detail(chatId), 'members'] as const,
-};
-
-export const userKeys = {
-  all: ['user'] as const,
-  me: () => [...userKeys.all, 'me'] as const,
-  profile: (userId: string) => [...userKeys.all, 'profile', userId] as const,
-  settings: () => [...userKeys.all, 'settings'] as const,
-  sessions: () => [...userKeys.all, 'sessions'] as const,
-  search: (query: string) => [...userKeys.all, 'search', query] as const,
 };

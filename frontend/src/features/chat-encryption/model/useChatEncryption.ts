@@ -3,7 +3,7 @@ import {
   setEncryptionState,
   subscribeToEncryptionState,
   type IEncryptionState,
-} from '@/crypto/encryptionStatus';
+} from '@/shared/crypto';
 import { services } from '@/services/serviceContainer';
 import { useEffect, useSyncExternalStore } from 'react';
 

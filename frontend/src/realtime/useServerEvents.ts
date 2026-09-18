@@ -10,9 +10,8 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/entities/message';
-import { useTypingStore } from '@/entities/chat';
+import { useTypingStore, resolveChat } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
-import { resolveChat } from '@/core/chatResolver';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';

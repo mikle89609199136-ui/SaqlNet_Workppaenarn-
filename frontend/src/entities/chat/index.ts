@@ -7,4 +7,7 @@ export * from './model/chatUiStore';
 export * from './model/chatDraftsStore';
 export * from './model/isConversationStarted';
 export * from './model/getLastMessageText';
+export * from './model/chatResolver';
+export * from './model/chatResolverBridge';
+export * from './model/chatKeys';
 export * from './ui/ChatListItem';

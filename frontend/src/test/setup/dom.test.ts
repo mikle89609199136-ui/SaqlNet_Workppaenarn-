@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventBus } from '@/core/EventBus';
+import { eventBus } from '@/shared/lib/event-bus';
 import { useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 

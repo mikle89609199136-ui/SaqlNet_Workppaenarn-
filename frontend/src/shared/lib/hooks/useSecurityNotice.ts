@@ -2,7 +2,7 @@ import {
   readFirstSecurityNotice,
   subscribeToSecurityNotices,
   type ISecurityNotice,
-} from '@/crypto/securityNotices';
+} from '@/shared/crypto';
 import { useSyncExternalStore } from 'react';
 
 /**

@@ -1,5 +1,5 @@
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import {
   addOutboxItem,
   patchThreadMessage,

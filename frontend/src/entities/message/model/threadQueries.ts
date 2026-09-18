@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { flattenThread } from './threadCache';
 import { getChatOutbox } from './outboxStore';
 import { sortMessagesChronologically } from '@/shared/lib';
