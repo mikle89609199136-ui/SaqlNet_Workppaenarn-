@@ -21,7 +21,7 @@ import type {
   TMessagesList,
   TMessageType,
 } from '@/types';
-import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib';
 import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);

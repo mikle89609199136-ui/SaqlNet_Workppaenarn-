@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Outlet } from 'react-router-dom';
 import { AvatarShapeProvider, ToastStack } from '@/shared/ui';
-import { useApplyPreferences } from '@/hooks/useApplyPreferences';
-import { DEFAULT_PROFILE_SETTINGS, settingsQuery } from '@/entities/user';
+import { DEFAULT_PROFILE_SETTINGS, settingsQuery, useApplyPreferences } from '@/entities/user';
 
 export const RootLayout = () => {
   // Тема и язык — свойства всего приложения, а не страницы настроек:
