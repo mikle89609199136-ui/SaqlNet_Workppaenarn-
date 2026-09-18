@@ -1,4 +1,9 @@
 export { clearAuthSession } from './model/clearAuthSession';
+export { isUserFacingAuthError } from './model/authErrors';
+export {
+  handleAuthUnauthorized,
+  registerAuthInterceptor,
+} from './model/registerAuthInterceptor';
 export { loginFormSchema, type TLoginForm } from './model/loginSchema';
 export {
   registerFormSchema,

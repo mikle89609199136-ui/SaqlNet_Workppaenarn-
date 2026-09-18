@@ -1,6 +1,6 @@
 export interface IApiClientOptions {
   getToken?: () => string | null;
-  headers?: Record<string, string>;
+  onUnauthorized?: (error: IApiError) => void;
 }
 
 export type TQueryParamValue = string | number | boolean | null | undefined;
@@ -33,15 +33,20 @@ export interface IApiError extends Error {
 export class ApiClient {
   private baseUrl: string;
   private getToken: () => string | null;
+  private onUnauthorized?: (error: IApiError) => void;
   private defaultHeaders: Record<string, string>;
 
   constructor(baseUrl: string, options: IApiClientOptions = {}) {
     this.baseUrl = baseUrl;
     this.getToken = options.getToken ?? (() => null);
+    this.onUnauthorized = options.onUnauthorized;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
-      ...options.headers,
     };
+  }
+
+  setOnUnauthorized(handler: ((error: IApiError) => void) | undefined): void {
+    this.onUnauthorized = handler;
   }
 
   get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
@@ -120,11 +125,6 @@ export class ApiClient {
         message?: string;
       };
 
-      if (response.status === 401 && !isUserFacingAuthError(payloadObj.code)) {
-        // Слушатель живёт в AuthGuard. Вне браузера событию некуда идти,
-        // но и падать из-за этого запрос не должен.
-        globalThis.dispatchEvent?.(new CustomEvent('craneapp:unauthorized'));
-      }
       const message =
         payloadObj?.error ||
         payloadObj?.message ||
@@ -134,6 +134,11 @@ export class ApiClient {
       error.status = response.status;
       error.data = payload;
       error.code = payloadObj?.code;
+
+      if (response.status === 401) {
+        this.onUnauthorized?.(error);
+      }
+
       throw error;
     }
 
@@ -143,17 +148,4 @@ export class ApiClient {
       headers: response.headers,
     };
   }
-}
-
-/**
- * Ошибки со статусом 401, которые говорят не о сессии, а о том, что
- * человек ввёл неверный пароль.
- *
- * Раньше любой 401 считался протухшей сессией и выбрасывал на страницу
- * входа. Из-за этого ошибка «неверный текущий пароль» при его смене
- * выкидывала из аккаунта вместе с введённым: сессия была цела, а человек
- * оказывался на форме входа и не понимал почему.
- */
-function isUserFacingAuthError(code: string | undefined): boolean {
-  return code === 'wrong_password' || code === 'invalid_2fa' || code === 'invalid_credentials';
 }
