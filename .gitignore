@@ -62,6 +62,8 @@ Thumbs.db
 
 # AI
 AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
 GEMINI.md
 .serena
 .agents
