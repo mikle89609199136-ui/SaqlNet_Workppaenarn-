@@ -1,4 +1,7 @@
+import i18n from 'i18next';
 import { describe, expect, it } from 'vitest';
+import enTranslations from '../../../../public/locales/en/translation.json';
+import ruTranslations from '../../../../public/locales/ru/translation.json';
 import {
   checkPassword,
   getPasswordScore,
@@ -83,5 +86,42 @@ describe('требования к паролю', () => {
     // пробелов» выполнены по умолчанию, и в списке были бы двумя
     // зелёными галочками ни о чём — их проверяет схема.
     expect(PASSWORD_RULES.map((rule) => rule.id)).toEqual(['length', 'digit', 'special']);
+  });
+});
+
+/**
+ * Подсказка в поле пароля.
+ *
+ * Её текст живёт в переводах, а число — в правиле, и связь между ними
+ * ничем не держалась: подсказка обещала шесть символов, тогда как список
+ * требований, полоска и схема требовали десяти (#691). Расхождение
+ * пережило даже перевод на английский — там стояло «At least 6 characters».
+ *
+ * Поэтому проверяется не текст, а то, что числа в нём нет вовсе: оно
+ * подставляется из MIN_PASSWORD_LENGTH. Вписанное руками снова разойдётся
+ * при первой же правке политики, и заметить это будет нечем.
+ */
+describe('подсказка в поле пароля', () => {
+  it.each([
+    ['русский', 'ru', ruTranslations],
+    ['английский', 'en', enTranslations],
+  ])('%s: число подставляется из правила', async (_language, language, translations) => {
+    const hint = (translations as Record<string, string>).passwordMin;
+
+    expect(hint).not.toMatch(/\d/);
+
+    // И число действительно подставляется — тем же способом, что в форме.
+    // Без этого проверка шаблона прошла бы и на «{{min}}», который
+    // i18next не знает, чем заполнить.
+    const instance = i18n.createInstance();
+    await instance.init({
+      lng: language,
+      resources: { [language]: { translation: translations } },
+      interpolation: { escapeValue: false },
+    });
+
+    expect(instance.t('passwordMin', { min: MIN_PASSWORD_LENGTH })).toContain(
+      String(MIN_PASSWORD_LENGTH)
+    );
   });
 });
