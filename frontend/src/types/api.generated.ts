@@ -865,6 +865,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/encryption/signal/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Signal identity, signed pre-key and one-time pre-keys */
+        post: operations["uploadSignalKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/signal/bundle/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get and consume a Signal pre-key bundle
+         * @description When available, one one-time pre-key is atomically consumed by this request.
+         */
+        get: operations["getSignalBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/signal/prekeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replenish Signal one-time pre-keys */
+        post: operations["replenishSignalPreKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/support/requests": {
         parameters: {
             query?: never;
@@ -1279,7 +1333,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark messages read */
+        /**
+         * Mark a chat as read
+         * @description The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+         */
         post: operations["markMessagesRead"];
         delete?: never;
         options?: never;
@@ -1326,7 +1383,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
@@ -1392,9 +1449,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add message to favorites */
+        /**
+         * Toggle favorite state
+         * @description The current backend toggles the state for both POST and DELETE and returns the resulting state.
+         */
         post: operations["favoriteMessage"];
-        /** Remove message from favorites */
+        /**
+         * Toggle favorite state
+         * @description The current backend toggles the state for both POST and DELETE and returns the resulting state.
+         */
         delete: operations["unfavoriteMessage"];
         options?: never;
         head?: never;
@@ -1533,7 +1596,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List call rooms */
+        /** List active in-memory call rooms */
         get: operations["listCallRooms"];
         put?: never;
         /** Create a call room */
@@ -1551,7 +1614,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a call room */
+        /** Get an active call room */
         get: operations["getCallRoom"];
         put?: never;
         post?: never;
@@ -1926,7 +1989,10 @@ export interface components {
             code: string;
             /** @example invalid input */
             message: string;
-            requestId: string;
+            /** @description Present when the request passed through request ID middleware. */
+            requestId?: string;
+            /** @description Optional structured error details. */
+            details?: unknown;
         };
         User: {
             /** Format: uuid */
@@ -1945,19 +2011,32 @@ export interface components {
             chatId: string;
             /** Format: uuid */
             senderId: string;
+            senderName?: string;
+            senderFirstName: string;
+            senderAvatar?: string;
             content: string;
-            type: string;
+            /** @enum {string} */
+            type: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file" | "call";
             /** Format: uuid */
             replyTo?: string | null;
+            /** Format: uuid */
+            replyToMessageId?: string | null;
+            replySenderName?: string;
+            replyToSenderName?: string;
+            reactions: components["schemas"]["Reaction"][];
             metadata?: {
                 [key: string]: unknown;
             };
-            isForwarded?: boolean;
-            isPinned?: boolean;
-            isEdited?: boolean;
+            isForwarded: boolean;
+            forwardedSenderName?: string;
+            isPinned: boolean;
+            isEdited: boolean;
             createdAt: string;
-            updatedAt?: string;
+            updatedAt: string;
+            deletedAt?: string | null;
         };
+        /** @example john_doe */
+        Username: string;
         /**
          * Format: password
          * @description At least 10 and at most 64 characters, counted in runes. Must contain a digit and one of !@#$%^&*()_+-=[]{}|;:'",.<>/?`~ Whitespace is not allowed anywhere in the value.
@@ -1965,7 +2044,7 @@ export interface components {
          */
         Password: string;
         RegisterRequest: {
-            username: string;
+            username: components["schemas"]["Username"];
             password: components["schemas"]["Password"];
             firstName: string;
             lastName?: string;
@@ -1991,10 +2070,93 @@ export interface components {
         Object: {
             [key: string]: unknown;
         };
+        PublicEncryptionKey: {
+            /** Format: byte */
+            publicKey: string;
+            keyId: string;
+            pqPublicKey?: string | null;
+        };
+        OkResponse: {
+            /** @enum {boolean} */
+            ok: true;
+        };
+        ChatEncryptedKey: {
+            /** Format: uuid */
+            userId: string;
+            encryptedKey: string;
+            senderKeyId?: string | null;
+            pqCiphertext?: string | null;
+            keyEpoch: number;
+        };
+        ChatKeysResponse: {
+            keys: components["schemas"]["ChatEncryptedKey"][];
+        };
+        SaveChatKeysRequest: {
+            encryptedKeys: components["schemas"]["ChatEncryptedKey"][];
+            keyEpoch: number;
+        };
+        KeyEpochResponse: {
+            /** @enum {boolean} */
+            ok: true;
+            keyEpoch: number;
+        };
+        SignalIdentityKey: {
+            identityKey: string;
+            registrationId: number;
+        };
+        SignalSignedPreKey: {
+            keyId: number;
+            publicKey: string;
+            signature: string;
+        };
+        SignalOneTimePreKey: {
+            keyId: number;
+            publicKey: string;
+        };
+        SignalKeysRequest: {
+            identityKey: components["schemas"]["SignalIdentityKey"];
+            signedPreKey: components["schemas"]["SignalSignedPreKey"];
+            oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
+        };
+        SignalPreKeyBundle: {
+            identityKey: string;
+            registrationId: number;
+            signedPreKey: components["schemas"]["SignalSignedPreKey"];
+            oneTimePreKey?: components["schemas"]["SignalOneTimePreKey"] | null;
+        };
+        SignalPreKeysRequest: {
+            oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
+        };
+        /** @description Request failed */
+        responses_Error: unknown;
+        MarkMessagesReadRequest: {
+            /** Format: uuid */
+            chatId: string;
+            /** @description Accepted for client compatibility; the current backend marks the whole chat as read. */
+            messageIds?: string[];
+        };
+        Success: {
+            /** @enum {boolean} */
+            success: true;
+        };
+        Reaction: {
+            emoji: string;
+            count: number;
+            myReaction: boolean;
+        };
+        MessageListResponse: {
+            messages: components["schemas"]["Message"][];
+        };
+        EditMessageRequest: {
+            content: string;
+        };
         SendMessageRequest: {
             content?: string;
-            /** @default text */
-            type: string;
+            /**
+             * @description Defaults to text when omitted.
+             * @enum {string}
+             */
+            type?: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file";
             /** Format: uuid */
             replyTo?: string | null;
             mediaUrl?: string;
@@ -2007,6 +2169,85 @@ export interface components {
                 [key: string]: unknown;
             };
             isEncrypted?: boolean;
+        };
+        MessageResponse: {
+            message: components["schemas"]["Message"];
+        };
+        DeleteMessageResponse: {
+            /** @enum {boolean} */
+            success: true;
+            lastMessage: components["schemas"]["Message"] | null;
+        };
+        ReactionListResponse: {
+            reactions: components["schemas"]["Reaction"][];
+        };
+        ReactionToggleResponse: {
+            /** @enum {string} */
+            action: "added" | "removed" | "replaced";
+            /** @description Empty when the reaction was removed. */
+            currentEmoji: string;
+            reactions: components["schemas"]["Reaction"][];
+        };
+        FavoriteStateResponse: {
+            favorited: boolean;
+        };
+        IceServer: {
+            urls: string | string[];
+            username?: string;
+            credential?: string;
+        };
+        IceConfiguration: {
+            servers: components["schemas"]["IceServer"][];
+            hasTurn: boolean;
+            meteredConfigured: boolean;
+            meteredTest: unknown;
+        };
+        CallParticipant: {
+            /** Format: uuid */
+            userId: string;
+            displayName?: string;
+            avatarUrl?: string;
+        };
+        CallRoom: {
+            id: string;
+            /** @enum {string} */
+            type: "p2p" | "group";
+            /** @enum {string} */
+            callKind: "audio" | "video";
+            /** Format: uuid */
+            chatId: string;
+            title: string;
+            /** Format: uuid */
+            hostId: string;
+            participants?: components["schemas"]["CallParticipant"][];
+        };
+        CallRoomListResponse: {
+            /** @enum {boolean} */
+            success: true;
+            rooms: components["schemas"]["CallRoom"][];
+        };
+        CallRoomCreateRequest: {
+            /**
+             * @description Defaults to group when omitted.
+             * @enum {string}
+             */
+            type?: "p2p" | "group";
+            /** Format: uuid */
+            chatId: string;
+            title?: string;
+            /**
+             * @description Defaults to video when omitted.
+             * @enum {string}
+             */
+            callKind?: "audio" | "video";
+        };
+        CallRoomResponse: {
+            /** @enum {boolean} */
+            success: true;
+            room: components["schemas"]["CallRoom"];
+            iceServers: components["schemas"]["IceServer"][];
+            /** @enum {integer} */
+            maxParticipants: 5;
         };
         UploadResponse: {
             success: boolean;
@@ -2044,12 +2285,9 @@ export interface components {
                  *     }
                  */
                 "application/json": {
-                    error: {
+                    error: components["schemas"]["Error"] & {
                         /** @enum {string} */
-                        code: "file_too_large";
-                        /** @example file exceeds 100 MB limit */
-                        message: string;
-                        requestId?: string;
+                        code?: "file_too_large";
                     };
                 };
             };
@@ -2454,7 +2692,7 @@ export interface operations {
     checkUsername: {
         parameters: {
             query: {
-                username: string;
+                username: components["schemas"]["Username"];
             };
             header?: never;
             path?: never;
@@ -3207,11 +3445,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    publicKey: string;
-                    keyId: string;
-                    pqPublicKey?: string;
-                };
+                "application/json": components["schemas"]["PublicEncryptionKey"];
             };
         };
         responses: {
@@ -3220,7 +3454,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
             };
             400: components["responses"]["Error"];
         };
@@ -3241,7 +3477,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublicEncryptionKey"];
+                };
             };
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
@@ -3258,13 +3496,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Chat keys */
+            /** @description Encrypted keys for chat members */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChatKeysResponse"];
+                };
             };
+            403: components["responses"]["Error"];
         };
     };
     saveChatKeys: {
@@ -3278,7 +3519,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["SaveChatKeysRequest"];
             };
         };
         responses: {
@@ -3287,8 +3528,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
     rotateChatKey: {
@@ -3300,9 +3545,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["SaveChatKeysRequest"];
             };
         };
         responses: {
@@ -3311,8 +3556,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["KeyEpochResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getMyChatKey: {
@@ -3326,14 +3576,94 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description User chat key */
+            /** @description Current user's encrypted chat key */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChatEncryptedKey"];
+                };
             };
             404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    uploadSignalKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description Signal keys saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getSignalBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signal pre-key bundle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalPreKeyBundle"];
+                };
+            };
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    replenishSignalPreKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalPreKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description One-time pre-keys saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listSupportRequests: {
@@ -3451,6 +3781,7 @@ export interface operations {
     listChats: {
         parameters: {
             query?: {
+                /** @description Filter chats by archived status. Accepts exactly "true" or "false" (lowercase). Absence equals "false". Any other value, empty value, or duplicated parameter results in 400 with code "validation_failed". */
                 archived?: boolean;
             };
             header?: never;
@@ -3465,6 +3796,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation_failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
             };
         };
     };
@@ -4049,21 +4407,21 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uuid */
-                    chatId: string;
-                    messageIds?: string[];
-                };
+                "application/json": components["schemas"]["MarkMessagesReadRequest"];
             };
         };
         responses: {
-            /** @description Marked read */
+            /** @description Chat marked as read */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
     searchMessages: {
@@ -4078,13 +4436,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Matching messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteMessages: {
@@ -4099,13 +4461,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Favorite messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     listMessages: {
@@ -4116,20 +4481,24 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Chat messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     editMessage: {
@@ -4137,16 +4506,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": {
-                    content: string;
-                };
+                "application/json": components["schemas"]["EditMessageRequest"];
             };
         };
         responses: {
@@ -4155,8 +4522,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     sendMessage: {
@@ -4164,7 +4536,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
@@ -4180,8 +4552,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     deleteMessage: {
@@ -4189,25 +4567,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Message deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        success: boolean;
-                        lastMessage: components["schemas"]["Message"] | null;
-                    };
+                    "application/json": components["schemas"]["DeleteMessageResponse"];
                 };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     forwardMessage: {
@@ -4233,8 +4612,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listMessageReactions: {
@@ -4248,13 +4633,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Reactions */
+            /** @description Aggregated reactions */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReactionListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     toggleMessageReaction: {
@@ -4274,13 +4665,19 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Reaction state */
+            /** @description Updated reaction state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     favoriteMessage: {
@@ -4294,13 +4691,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorite state */
+            /** @description Resulting favorite state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     unfavoriteMessage: {
@@ -4314,13 +4714,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorite state */
+            /** @description Resulting favorite state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     uploadMlsKeyPackages: {
@@ -4515,7 +4918,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["IceConfiguration"];
+                };
             };
         };
     };
@@ -4528,12 +4933,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Call rooms */
+            /** @description Active call rooms */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomListResponse"];
+                };
             };
         };
     };
@@ -4546,17 +4953,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    type?: string;
-                    /** Format: uuid */
-                    chatId: string;
-                    title?: string;
-                    /**
-                     * @default video
-                     * @enum {string}
-                     */
-                    callKind?: "audio" | "video";
-                };
+                "application/json": components["schemas"]["CallRoomCreateRequest"];
             };
         };
         responses: {
@@ -4565,9 +4962,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomResponse"];
+                };
             };
             403: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     getCallRoom: {
@@ -4581,12 +4981,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Call room */
+            /** @description Call room and ICE configuration */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomResponse"];
+                };
             };
             404: components["responses"]["Error"];
         };
