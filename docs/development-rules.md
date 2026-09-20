@@ -1,6 +1,8 @@
-# CLAUDE.md
+# CraneApp — правила разработки
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Документ для всех, кто работает с репозиторием: и для людей, и для агентов.
+Раньше это содержимое лежало в `CLAUDE.md` в корне — файл был артефактом
+конкретного инструмента и в репозитории больше не хранится (см. `.gitignore`).
 
 ## Как здесь принято работать
 
