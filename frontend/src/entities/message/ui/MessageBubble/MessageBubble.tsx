@@ -43,6 +43,15 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /**
+   * Показывать ли статус доставки у своих сообщений.
+   *
+   * Только личные чаты: в группе у «прочитано» нет одного значения —
+   * непонятно, прочитал один участник или все, — и галочка начинала бы
+   * врать. Спиннер отправки и ошибка показываются в любом чате: это про
+   * судьбу моего сообщения, а не про чужие глаза.
+   */
+  showDeliveryStatus?: boolean;
 }
 
 export const MessageBubble = memo(
@@ -57,6 +66,7 @@ export const MessageBubble = memo(
     onJumpToMessage,
     onRetryMessage,
     onCancelMessage,
+    showDeliveryStatus = false,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -182,6 +192,16 @@ export const MessageBubble = memo(
                       : t('sending', 'Отправка...')
                   }
                 />
+              </span>
+            )}
+
+            {/* Статус доставки: галочка — «сервер принял». Двойной она не
+                станет, пока сервер не начнёт отдавать, до какого сообщения
+                прочитал собеседник: такого поля нет ни в контракте, ни в
+                схеме, ни в событиях. */}
+            {mine && showDeliveryStatus && message.status === 'sent' && (
+              <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
+                <Icon name="check" size="sm" />
               </span>
             )}
           </div>

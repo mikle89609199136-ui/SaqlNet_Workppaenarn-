@@ -26,6 +26,12 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /**
+   * Показывать ли статус доставки у своих сообщений. Только личные чаты:
+   * в группе у «прочитано» нет одного значения — непонятно, прочитал один
+   * участник или все.
+   */
+  showDeliveryStatus?: boolean;
 }
 
 export const MessagesList = memo(
@@ -42,6 +48,7 @@ export const MessagesList = memo(
     messagesRef,
     onRetryMessage,
     onCancelMessage,
+    showDeliveryStatus = false,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -135,6 +142,7 @@ export const MessagesList = memo(
                         onCancelMessage={onCancelMessage}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
+                        showDeliveryStatus={showDeliveryStatus}
                         translations={translations}
                       />
                     )}
