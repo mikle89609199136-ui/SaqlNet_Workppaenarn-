@@ -301,7 +301,14 @@
     }
   }
   .app-sidebar-pane .chats-page {
-    @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 flex flex-col overflow-hidden; }
+    @media (min-width: 768px) {
+      /* Горизонтальный и нижний отступы здесь лишние — их задают тулбар и
+         список, — а верхний нужен. `p-0` снимал и его, и панель начиналась
+         вплотную к краю окна: поле поиска упиралось в самый верх. На
+         телефоне отступ оставался (там панели нет), поэтому прилипало
+         только на настольном. */
+      @apply w-full max-w-full h-full min-h-full flex flex-col overflow-hidden px-0 pb-0;
+    }
   }
   .app-sidebar-pane .chats-toolbar {
     @media (min-width: 768px) { @apply px-4 mb-4; }
