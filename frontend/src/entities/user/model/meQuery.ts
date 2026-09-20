@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import { userKeys } from '@/queries/keys';
+import { userKeys } from './userKeys';
 
 /**
  * Профиль текущего пользователя.

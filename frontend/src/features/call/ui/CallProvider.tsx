@@ -1,5 +1,5 @@
 import { WS_EVENTS } from '@/shared/config';
-import { useRealtimeSocket } from '@/hooks';
+import { useRealtimeSocket } from '@/shared/api';
 import { useCallStore } from '../model/callStore';
 import type { ICallCancelledPayload, ICallInviteResponsePayload, IIncomingCall } from '@/types';
 import { useEffect, type PropsWithChildren } from 'react';

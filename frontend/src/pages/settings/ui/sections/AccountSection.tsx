@@ -2,15 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Avatar,
-  Banner,
-  Button,
-  ConfirmDialog,
-  Icon,
-} from '@/shared/ui';
+import { Avatar, Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import { meQuery, sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { ProfileEditForm } from '@/features/user-profile-edit';
@@ -237,10 +231,7 @@ function EmailSettings({ user, onBack }: { user: Partial<IUserDto>; onBack: () =
           {t('settings.account.email', 'Электронная почта')}
         </h1>
         <p className="text-caption text-ink-2">
-          {t(
-            'settings.email.description',
-            'Адрес для уведомлений и восстановления доступа.'
-          )}
+          {t('settings.email.description', 'Адрес для уведомлений и восстановления доступа.')}
         </p>
       </header>
 

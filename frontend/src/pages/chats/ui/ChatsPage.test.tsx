@@ -55,7 +55,9 @@ describe('ChatsPage', () => {
     );
 
     expect(screen.getByTestId('chats-list')).toBeInTheDocument();
-    expect(screen.getByRole('separator', { name: /изменить ширину списка чатов/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('separator', { name: /изменить ширину списка чатов/i })
+    ).toBeInTheDocument();
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
   });
 

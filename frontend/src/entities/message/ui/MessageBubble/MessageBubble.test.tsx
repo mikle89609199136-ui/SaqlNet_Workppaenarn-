@@ -3,7 +3,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 

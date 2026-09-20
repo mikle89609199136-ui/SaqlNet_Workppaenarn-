@@ -1,4 +1,4 @@
-import { useRealtimeSocket } from '@/hooks';
+import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
 import type { ILastMessageDto } from '@/types';

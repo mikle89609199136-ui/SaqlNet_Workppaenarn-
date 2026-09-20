@@ -1,10 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
-import {
-  MESSAGES_PAGE_SIZE,
-  putThreadMessage,
-  retryAllOutboxMessages,
-} from '@/entities/message';
-import { chatKeys } from '@/queries/keys';
+import { MESSAGES_PAGE_SIZE, putThreadMessage, retryAllOutboxMessages } from '@/entities/message';
+import { chatKeys } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 
 /**

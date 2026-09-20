@@ -3,7 +3,7 @@ import { cn } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
 import { pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
