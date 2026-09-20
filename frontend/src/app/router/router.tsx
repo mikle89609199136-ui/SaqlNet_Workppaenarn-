@@ -1,6 +1,6 @@
 import { chatQuery } from '@/entities/chat';
 import { messagesQuery } from '@/entities/message';
-import { queryClient } from '@/queries/queryClient';
+import { queryClient } from '@/shared/api';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from './AuthGuard';

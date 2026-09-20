@@ -1,4 +1,4 @@
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import type { ChangeEvent, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 

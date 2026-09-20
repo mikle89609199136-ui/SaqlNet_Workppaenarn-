@@ -1,6 +1,6 @@
 import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';

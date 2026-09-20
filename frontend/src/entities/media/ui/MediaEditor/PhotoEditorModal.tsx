@@ -1,9 +1,9 @@
 import { Spinner } from '@/shared/ui';
 import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/shared/config';
-import { usePhotoEditorCanvas } from '@/hooks/usePhotoEditorCanvas';
-import { usePhotoEditorCrop } from '@/hooks/usePhotoEditorCrop';
-import { usePhotoEditorDrawing } from '@/hooks/usePhotoEditorDrawing';
-import { usePhotoEditorHistory } from '@/hooks/usePhotoEditorHistory';
+import { usePhotoEditorCanvas } from '../../model/usePhotoEditorCanvas';
+import { usePhotoEditorCrop } from '../../model/usePhotoEditorCrop';
+import { usePhotoEditorDrawing } from '../../model/usePhotoEditorDrawing';
+import { usePhotoEditorHistory } from '../../model/usePhotoEditorHistory';
 import type {
   IEditorState,
   IPhotoEditorModalProps,

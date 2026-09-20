@@ -3,37 +3,108 @@ package chat
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
-type UpdateGroupInput struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	AvatarURL   *string `json:"avatarUrl"`
-}
+// maxTitleLen is the maximum allowed length of a chat title, in runes,
+// measured after trimming surrounding whitespace.
+const maxTitleLen = 128
 
+// UpdateGroup handles PATCH /api/v2/chats/{chatID}. It updates a group
+// chat's title, description, and avatar URL. All fields are optional;
+// only the fields present in the request body are updated.
+//
+// Text fields are trimmed of leading and trailing whitespace before
+// validation and before being passed to the service. Length limits
+// apply to the trimmed value.
+//
+// The authenticated user must be the chat owner or an admin. On success
+// it returns 200 with the updated chat object.
 func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
-	current := authctx.MustUser(r)
-	chatID := r.PathValue("chatID")
+	const method = "UpdateGroup"
 
-	var input UpdateGroupInput
-	if !decodeUpdateGroup(w, r, &input) {
+	if r.Method != http.MethodPatch {
+		methodNotAllowed(w, r)
 		return
 	}
 
+	current := authctx.MustUser(r)
+
+	chatID := r.PathValue("chatID")
+	if chatID == "" {
+		slog.WarnContext(r.Context(), "missing chat ID in path",
+			"layer", "handler",
+			"method", method,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
+		return
+	}
+
+	// Pointers distinguish "field absent" (nil, do not update) from
+	// "field present with empty value" (update to empty).
+	var input struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+		AvatarURL   *string `json:"avatarUrl"`
+	}
+
+	if !decodeStrict(w, r, &input) {
+		return // decode logs internally
+	}
+
 	if input.Title == nil && input.Description == nil && input.AvatarURL == nil {
+		slog.WarnContext(r.Context(), "empty update request",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"chat_id", chatID,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "at least one field is required")
 		return
 	}
 
-	trimString(input.Title)
-	trimString(input.Description)
-	trimString(input.AvatarURL)
+	// Normalize every provided field before validating, so that length
+	// checks see the same value the service will persist. A title of
+	// 128 runes with a stray leading space must pass, not fail.
+	input.Title = trimString(input.Title)
+	input.Description = trimString(input.Description)
+	input.AvatarURL = trimString(input.AvatarURL)
+
+	if input.Title != nil && *input.Title == "" {
+		// Caught here rather than in the service so the client gets a
+		// specific message instead of the generic "invalid input".
+		slog.WarnContext(r.Context(), "title is empty after trimming",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"chat_id", chatID,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title must not be empty")
+		return
+	}
+
+	if input.Title != nil && utf8.RuneCountInString(*input.Title) > maxTitleLen {
+		slog.WarnContext(r.Context(), "title exceeds maximum length",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"chat_id", chatID,
+			"length", utf8.RuneCountInString(*input.Title),
+			"max", maxTitleLen,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
+		return
+	}
 
 	updatedChat, err := h.service.UpdateGroup(
 		r.Context(),
@@ -46,66 +117,68 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case errors.Is(err, ErrInvalidInput):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusBadRequest,
-			"validation_failed",
-			"invalid group data",
-		)
-	case errors.Is(err, ErrForbidden):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusForbidden,
-			"access_denied",
-			"access denied",
-		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
 	case errors.Is(err, ErrNotFound):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusNotFound,
-			"chat_not_found",
-			"chat not found",
-		)
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat not found")
+	case errors.Is(err, ErrForbidden):
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 	case errors.Is(err, ErrInvalidChatType):
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_chat_type",
-			"only group chats can be updated",
-		)
+		// This endpoint updates groups only; direct chats are rejected.
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "only group chats can be updated")
 	case err != nil:
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusInternalServerError,
-			"internal_error",
-			"group update failed",
-		)
+		// The service already logged this error with full context.
+		// Logging again here would duplicate the entry in the aggregated logs.
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "update failed")
 	default:
-		httpx.JSON(w, http.StatusOK, map[string]any{
-			"chat": updatedChat,
-		})
+		httpx.JSON(w, http.StatusOK, map[string]any{"chat": updatedChat})
 	}
 }
 
-func decodeUpdateGroup(w http.ResponseWriter, r *http.Request, input *UpdateGroupInput) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
-	decoder.DisallowUnknownFields()
+// trimString trims leading and trailing whitespace from s.
+// It returns nil if s is nil, preserving the "absent vs empty" distinction
+// that PATCH semantics rely on.
+func trimString(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	v := strings.TrimSpace(*s)
+	return &v
+}
 
-	if err := decoder.Decode(input); err != nil {
+// decode reads and validates a JSON request body into value.
+// It returns true if the body is valid, correctly formed, contains no
+// extra data, and contains no unknown fields (strict mode).
+// If an error occurs, decode writes an error response and returns false.
+func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
+	const helper = "decode"
+	// Limit the request body to 256 KiB to prevent memory exhaustion.
+	const maxBodySize = 256 << 10 // 256 KiB
+	body := http.MaxBytesReader(w, r.Body, maxBodySize)
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "invalid request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
 
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	// Ensure there is no trailing data after the first JSON value.
+	if _, err := dec.Token(); err != io.EOF {
+		slog.WarnContext(r.Context(), "trailing data in request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
 
 	return true
-}
-
-func trimString(value *string) {
-	if value != nil {
-		*value = strings.TrimSpace(*value)
-	}
 }

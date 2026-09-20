@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/shared/ui';
-import { getPasswordScore } from '@/shared/lib/passwordRules';
+import { getPasswordScore } from '@/shared/lib';
 import { PasswordRequirements } from '../PasswordRequirements';
 import { PasswordStrength } from './PasswordStrength';
 import { PasswordToggle } from './PasswordToggle';

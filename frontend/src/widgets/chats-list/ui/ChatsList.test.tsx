@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
 import { makeChat, makeMessage } from '@/test/fixtures';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { ChatsList } from './ChatsList';
 
 function renderChatsList(

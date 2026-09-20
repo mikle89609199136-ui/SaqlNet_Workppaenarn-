@@ -12,13 +12,7 @@ interface Props {
   register: UseFormRegister<TRegisterForm>;
 }
 
-export function AboutStep({
-  avatar,
-  avatarInputRef,
-  errorOf,
-  onAvatarChange,
-  register,
-}: Props) {
+export function AboutStep({ avatar, avatarInputRef, errorOf, onAvatarChange, register }: Props) {
   const { t } = useTranslation();
 
   return (

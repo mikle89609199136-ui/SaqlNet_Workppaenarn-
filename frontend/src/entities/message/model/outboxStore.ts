@@ -43,9 +43,7 @@ export const useOutboxStore = create<IOutboxState>((set, get) => ({
 
   updateItem: (tempId, patch) =>
     set((state) => ({
-      items: state.items.map((item) =>
-        item.tempId === tempId ? { ...item, ...patch } : item
-      ),
+      items: state.items.map((item) => (item.tempId === tempId ? { ...item, ...patch } : item)),
     })),
 
   removeItem: (tempId) => {
@@ -86,7 +84,8 @@ export const useOutboxStore = create<IOutboxState>((set, get) => ({
 export const addOutboxItem = (item: IOutboxItem): void => useOutboxStore.getState().addItem(item);
 export const updateOutboxItem = (tempId: string, patch: Partial<IOutboxItem>): void =>
   useOutboxStore.getState().updateItem(tempId, patch);
-export const removeOutboxItem = (tempId: string): void => useOutboxStore.getState().removeItem(tempId);
+export const removeOutboxItem = (tempId: string): void =>
+  useOutboxStore.getState().removeItem(tempId);
 export const getOutboxItem = (tempId: string): IOutboxItem | undefined =>
   useOutboxStore.getState().getItem(tempId);
 export const getChatOutbox = (chatId: string): IOutboxItem[] =>

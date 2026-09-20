@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { services } from '@/services';
-import {
-  addOutboxItem,
-  clearOutbox,
-  getOutboxItem,
-} from './outboxStore';
+import { addOutboxItem, clearOutbox, getOutboxItem } from './outboxStore';
 import {
   cancelOutboxMessage,
   MAX_AUTO_RETRIES,
@@ -14,7 +10,7 @@ import {
   retryOutboxMessage,
   sendOutboxItem,
 } from './outboxSender';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 
 describe('outboxSender', () => {
@@ -143,7 +139,10 @@ describe('outboxSender', () => {
     const tempId = 'temp-media-1';
     const chatId = 'chat-1';
     const file = new File(['content'], 'test.png', { type: 'image/png' });
-    const serverMessage = { ...makeMessage({ id: 'server-media-1', chatId }), mediaUrl: '/media/1' };
+    const serverMessage = {
+      ...makeMessage({ id: 'server-media-1', chatId }),
+      mediaUrl: '/media/1',
+    };
 
     vi.spyOn(services.messageService, 'sendMediaMessage').mockResolvedValue(serverMessage as any);
 
@@ -209,21 +208,23 @@ describe('outboxSender', () => {
     const createdAt = new Date();
 
     const initialPages = {
-      pages: [[
-        makeMessage({
-          id: 'server-confirmed-dup',
-          chatId,
-          content: 'ок',
-          createdAt,
-        }),
-        makeMessage({
-          id: tempId,
-          chatId,
-          content: 'ок',
-          status: 'pending',
-          createdAt,
-        }),
-      ]],
+      pages: [
+        [
+          makeMessage({
+            id: 'server-confirmed-dup',
+            chatId,
+            content: 'ок',
+            createdAt,
+          }),
+          makeMessage({
+            id: tempId,
+            chatId,
+            content: 'ок',
+            status: 'pending',
+            createdAt,
+          }),
+        ],
+      ],
       pageParams: [0],
     };
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
@@ -237,9 +238,9 @@ describe('outboxSender', () => {
       createdAt,
     });
 
-    const sendSpy = vi.spyOn(services.messageService, 'sendMessage').mockResolvedValue(
-      makeMessage({ id: 'server-second-dup', chatId, content: 'ок' })
-    );
+    const sendSpy = vi
+      .spyOn(services.messageService, 'sendMessage')
+      .mockResolvedValue(makeMessage({ id: 'server-second-dup', chatId, content: 'ок' }));
 
     const item = getOutboxItem(tempId)!;
     await sendOutboxItem(queryClient, item);
