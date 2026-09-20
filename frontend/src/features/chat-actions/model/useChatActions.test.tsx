@@ -10,6 +10,8 @@ import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it } from 'vitest';
 import { MAX_PINNED_CHATS, useChatActions } from './useChatActions';
 import { clearToasts, getToasts } from '@/shared/ui';
+import { chatKeys } from '@/entities/chat';
+import type { IChatDto } from '@/types';
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -19,6 +21,22 @@ function wrapper({ children }: { children: ReactNode }) {
       <I18nextProvider i18n={testI18n}>{children}</I18nextProvider>
     </QueryClientProvider>
   );
+}
+
+/** Тот же провайдер, но с клиентом наружу: тесту нужно смотреть в кеш. */
+function wrapperWith(queryClient: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={testI18n}>{children}</I18nextProvider>
+      </QueryClientProvider>
+    );
+  };
+}
+
+/** Непрочитанных в списке — то, что видит человек на бейдже. */
+function unreadInList(queryClient: QueryClient): number | undefined {
+  return queryClient.getQueryData<IChatDto[]>(chatKeys.list())?.[0]?.unreadCount;
 }
 
 describe('действия над чатом', () => {
@@ -90,5 +108,55 @@ describe('действия над чатом', () => {
 
     act(() => result.current.toggleArchive(makeChat({ isArchived: true })));
     await waitFor(() => expect(calls).toContain('DELETE'));
+  });
+});
+
+describe('отметка чата прочитанным', () => {
+  it('гасит счётчик сразу, не дожидаясь сервера', async () => {
+    /* Иначе бейдж мигает прежним числом до конца запроса, а на медленной
+       связи это видно глазом. */
+    let answerServer: (() => void) | undefined;
+    const holdRequest = new Promise<void>((resolve) => {
+      answerServer = resolve;
+    });
+
+    server.use(
+      http.post(api('/chats/:chatId/read'), async () => {
+        await holdRequest;
+        return HttpResponse.json({});
+      })
+    );
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const chat = makeChat({ unreadCount: 3 });
+    queryClient.setQueryData(chatKeys.list(), [chat]);
+
+    const { result } = renderHook(() => useChatActions(), { wrapper: wrapperWith(queryClient) });
+    act(() => result.current.markRead(chat));
+
+    await waitFor(() => expect(unreadInList(queryClient)).toBe(0));
+
+    answerServer?.();
+  });
+
+  it('возвращает счётчик, если сервер отказал', async () => {
+    clearToasts();
+    server.use(
+      http.post(api('/chats/:chatId/read'), () =>
+        HttpResponse.json({ code: 'access_denied', error: 'nope' }, { status: 403 })
+      )
+    );
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const chat = makeChat({ unreadCount: 3 });
+    queryClient.setQueryData(chatKeys.list(), [chat]);
+
+    const { result } = renderHook(() => useChatActions(), { wrapper: wrapperWith(queryClient) });
+    act(() => result.current.markRead(chat));
+
+    // Отказ виден человеку…
+    await waitFor(() => expect(getToasts().length).toBeGreaterThan(0));
+    // …и счётчик возвращается: непрочитанные никуда не делись.
+    expect(unreadInList(queryClient)).toBe(3);
   });
 });
