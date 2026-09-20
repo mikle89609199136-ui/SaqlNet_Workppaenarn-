@@ -1,8 +1,9 @@
 import { Avatar, Spinner } from '@/shared/ui';
 import { useStartPrivateChat } from '@/features/chat-actions';
+import { cn } from '@/shared/lib';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ChatListItem } from '@/entities/chat';
+import { ChatListItem, chatRowStyles } from '@/entities/chat';
 
 interface Props {
   chats: IChatDto[];
@@ -57,19 +58,19 @@ export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: 
 
             return (
               <button
-                className="chat-row w-full text-left disabled:opacity-42"
+                className={cn(chatRowStyles, 'w-full text-left disabled:opacity-42')}
                 disabled={startChat.isPending}
                 key={user.id}
                 onClick={() => startChat.mutate(user.id)}
                 type="button"
               >
                 <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />
-                <div className="chat-main">
-                  <div className="chat-topline">
-                    <span className="chat-title">{name}</span>
+                <div className="flex min-w-0 flex-col justify-center gap-1.5">
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <span className="truncate text-base font-semibold text-ink">{name}</span>
                   </div>
-                  <div className="chat-subline">
-                    <span>@{user.username}</span>
+                  <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-ink-2">
+                    <span className="truncate">@{user.username}</span>
                   </div>
                 </div>
               </button>
