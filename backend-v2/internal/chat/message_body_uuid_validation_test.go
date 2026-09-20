@@ -18,7 +18,7 @@ func TestReadMessages_InvalidChatIDReturns400WithoutSQL(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 
-	handler.ReadMessages(recorder, req)
+	handler.MarkMessagesRead(recorder, req)
 
 	assertErrorResponse(t, recorder, http.StatusBadRequest, "validation_failed")
 	require.NoError(t, mock.ExpectationsWereMet())
