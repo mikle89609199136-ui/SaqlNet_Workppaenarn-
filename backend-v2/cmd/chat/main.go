@@ -70,7 +70,7 @@ func main() {
 
 	chat.RegisterRoutes(mux, handler, authenticated)
 
-	mux.Handle("POST /api/v2/messages/read", authenticated(http.HandlerFunc(handler.MessagesRead)))
+	mux.Handle("POST /api/v2/messages/read", authenticated(http.HandlerFunc(handler.MarkMessagesRead)))
 	mux.Handle("GET /api/v2/messages/search", authenticated(http.HandlerFunc(handler.Messages)))
 	mux.Handle("GET /api/v2/messages/favorites", authenticated(http.HandlerFunc(handler.Messages)))
 

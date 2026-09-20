@@ -328,3 +328,31 @@ func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		"reactions": reactions,
 	})
 }
+
+func (h *Handler) MarkMessagesRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, r)
+		return
+	}
+	current := authctx.MustUser(r)
+	var input struct {
+		ChatID     string   `json:"chatId"`
+		MessageIDs []string `json:"messageIds"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+
+	if err := validate.Var(input.ChatID, "required,uuid"); err != nil {
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusBadRequest,
+			"validation_failed",
+			"invalid chatId",
+		)
+		return
+	}
+
+	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
+	respondSuccess(w, r, err)
+}
