@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { MIN_PASSWORD_LENGTH } from '@/shared/lib';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { renderAuth } from '@/test/harness/renderAuth';
@@ -23,6 +24,22 @@ describe('регистрация', () => {
     expect(await screen.findByText('Введите имя')).toBeInTheDocument();
     // Остались на том же шаге: поле имени никуда не делось.
     expect(screen.getByLabelText('Имя')).toBeInTheDocument();
+  });
+
+  it('называет в подсказке тот же минимум, что и список требований', async () => {
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    await userEvent.type(screen.getByLabelText('Пароль'), 'a');
+
+    // Подсказка обещала шесть символов, а список требований под полем и
+    // схема требовали десяти: человек видел два разных числа на одном
+    // экране и не понимал, какому верить (#691).
+    expect(screen.getByLabelText('Пароль')).toHaveAttribute(
+      'placeholder',
+      `Минимум ${MIN_PASSWORD_LENGTH} символов`
+    );
+    expect(screen.getByText(`Не менее ${MIN_PASSWORD_LENGTH} символов`)).toBeInTheDocument();
   });
 
   it('сохраняет введённое при возврате назад', async () => {

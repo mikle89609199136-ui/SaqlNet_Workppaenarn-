@@ -168,7 +168,7 @@
   "optional": "Optional",
   "participants": "members",
   "password": "Password",
-  "passwordMin": "At least 6 characters",
+  "passwordMin": "At least {{min}} characters",
   "peerNeedsUpdate": "Your contact will read this after updating the app",
   "people": "People",
   "photoEditor": "Photo editor",

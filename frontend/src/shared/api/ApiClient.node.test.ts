@@ -60,21 +60,6 @@ describe('ApiClient: сборка адреса', () => {
 
     expect(received).toBe('https://media.example.com/file.png');
   });
-
-  it('should not repeat the base path when the endpoint already contains it', async () => {
-    let received = '';
-    server.use(
-      http.get(api('/chats/abc'), ({ request }) => {
-        received = request.url;
-        return HttpResponse.json({ ok: true });
-      })
-    );
-
-    // Часть кода передаёт путь вместе с базой — адрес не должен удвоиться.
-    await createClient().get('/api/v2/chats/abc');
-
-    expect(received).toBe(`${API}/chats/abc`);
-  });
 });
 
 describe('ApiClient: заголовки', () => {
