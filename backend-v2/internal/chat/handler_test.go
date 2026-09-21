@@ -643,50 +643,28 @@ func kindName(k bodyKind) string {
 	}
 }
 
-// TestDecodeNegativeScenarios ensures that all API endpoints using the common
-// decode() function properly reject requests with malformed or extraneous data.
-// It verifies that the decode function correctly enforces three key constraints:
+// TestDecodeNegativeScenarios verifies that endpoints using decode() reject
+// malformed request bodies with 400 Bad Request and "invalid_json" error code.
 //
-// 1. A single JSON value is expected (no multiple concatenated objects).
-// 2. No trailing garbage (non‑whitespace characters after the JSON value).
-// 3. The request body does not exceed the size limit (256 KB) and has valid syntax.
+// It tests each endpoint with the following invalid bodies:
+//   - multiple JSON values
+//   - trailing garbage after JSON
+//   - body exceeding 256 KiB limit
+//   - empty (whitespace-only) body
+//   - malformed JSON syntax
 //
-// The test covers the following endpoints:
-//   - POST /api/v2/chats/private       (CreatePrivate)
-//   - POST /api/v2/chats/groups        (CreateGroup)
-//   - PATCH /api/v2/chats/{chatID}     (UpdateGroup)
-//   - POST /api/v2/chats/{chatID}/transfer-ownership (via Chat handler)
-//   - POST /api/v2/messages/{chatID}   (SendMessage, via Messages handler)
-//   - PUT /api/v2/messages/{messageID} (EditMessage, via Messages handler)
-//   - POST /api/v2/messages/read       (MessagesRead)
-//   - POST /api/v2/messages/{messageID}/forward (ForwardMessage, via Messages handler)
-//   - POST /api/v2/messages/{messageID}/reactions (ToggleReaction, via Messages handler)
-//
-// For each endpoint, a set of negative body variants is tested:
-//   - secondJSON      – valid first object followed by a second JSON value.
-//   - trailingGarbage – valid first object followed by arbitrary text.
-//   - oversized       – body larger than 256 KiB (exceeds MaxBytesReader limit).
-//   - emptyBody       – only whitespace (no JSON).
-//   - invalidSyntax   – malformed JSON (missing closing brace).
-//
-// All such requests must be rejected with HTTP 400 Bad Request and an error code
-// "invalid_json". The test uses a service with nil database – any call to the
-// service layer would panic, confirming that validation happens before business logic.
+// A nil-database service is used: if validation fails to short-circuit,
+// the handler will panic on nil pointer dereference, failing the test.
 func TestDecodeNegativeScenarios(t *testing.T) {
-	// Create a service with a nil database. Since the decode() validation
-	// should intercept all invalid requests, the service methods should never
-	// be invoked. If they are, the test will panic (nil pointer dereference),
-	// indicating that the handler did not properly abort after a decode failure.
 	svc := NewService(nil, nil)
 	h := NewHandler(svc)
 
-	// Fixed UUIDs used in request paths and bodies.
+	// Fixed UUIDs for request paths and bodies.
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	chatID := "550e8400-e29b-41d4-a716-446655440001"
 	messageID := "550e8400-e29b-41d4-a716-446655440003"
 	memberID := "550e8400-e29b-41d4-a716-446655440002"
 
-	// Define test cases for each endpoint.
 	type testCase struct {
 		name     string
 		method   string
@@ -712,7 +690,7 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 				case emptyBody:
 					return []byte("   ")
 				case invalidSyntax:
-					return []byte(`{"userId": "` + memberID + `"`) // missing closing '}'
+					return []byte(`{"userId": "` + memberID + `"`) // missing closing brace
 				default:
 					return nil
 				}
@@ -811,7 +789,6 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 			},
 			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
 		},
-		// New endpoints from specification
 		{
 			name:   "EditMessage",
 			method: http.MethodPut,
@@ -932,11 +909,9 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 		return rr
 	}
 
-	// Execute the test cases.
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, kind := range tc.kinds {
-				// Use kindName for a readable subtest name.
 				t.Run(kindName(kind), func(t *testing.T) {
 					body := tc.bodyFunc(kind)
 					req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
@@ -944,16 +919,12 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 					req.Header.Set("X-Request-ID", "test-request-id")
 
 					user := authctx.User{ID: userID, Username: "testuser"}
-
-					// add user into context
 					ctx := authctx.WithUser(req.Context(), user)
-					// ВАЖНО: Добавляем chatID в контекст
 					ctx = context.WithValue(ctx, "chatID", chatID)
 					req = req.WithContext(ctx)
 
 					rr := callHandler(h, tc.method, tc.path, body, req)
 
-					// Assert status 400 Bad Request.
 					if rr.Code != http.StatusBadRequest {
 						t.Errorf("status = %d, expected %d, body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
 					}
