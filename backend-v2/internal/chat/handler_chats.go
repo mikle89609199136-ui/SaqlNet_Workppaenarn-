@@ -1,10 +1,8 @@
 package chat
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -150,42 +148,4 @@ func trimString(s *string) *string {
 	}
 	v := strings.TrimSpace(*s)
 	return &v
-}
-
-// decode reads and validates a JSON request body into value.
-// It returns true if the body is valid, correctly formed, contains no
-// extra data, and contains no unknown fields (strict mode).
-// If an error occurs, decode writes an error response and returns false.
-func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
-	const helper = "decode"
-	// Limit the request body to 256 KiB to prevent memory exhaustion.
-	const maxBodySize = 256 << 10 // 256 KiB
-	body := http.MaxBytesReader(w, r.Body, maxBodySize)
-	dec := json.NewDecoder(body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(value); err != nil {
-		slog.WarnContext(r.Context(), "invalid request body",
-			"layer", "handler",
-			"helperFunc", helper,
-			"err", err,
-			"path", r.URL.Path,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		return false
-	}
-
-	// Ensure there is no trailing data after the first JSON value.
-	if _, err := dec.Token(); err != io.EOF {
-		slog.WarnContext(r.Context(), "trailing data in request body",
-			"layer", "handler",
-			"helperFunc", helper,
-			"err", err,
-			"path", r.URL.Path,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		return false
-	}
-
-	return true
 }
