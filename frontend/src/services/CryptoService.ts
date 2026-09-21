@@ -1,9 +1,10 @@
-import type { ApiClient } from '@/api';
-import { STORAGE_KEYS } from '@/consts';
-import { resolveMembers } from '@/core/chatResolver';
-import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
-import { base64ToBytes } from '@/crypto/encoding';
+import type { ApiClient } from '@/shared/api';
+import { STORAGE_KEYS } from '@/shared/config';
+import { resolveMembers } from '@/entities/chat/model/chatResolver';
 import {
+  ChatKeyManager,
+  type IKeyDistribution,
+  base64ToBytes,
   decryptMediaBytes,
   decryptMessage,
   encryptMediaBytes,
@@ -11,8 +12,6 @@ import {
   forgetDerivedKeys,
   isLegacyContent,
   parseEnvelope,
-} from '@/crypto/envelope';
-import {
   fetchPeerIdentity,
   forgetPeerIdentities,
   knownPeerIdentities,
@@ -20,9 +19,12 @@ import {
   PEER_BUNDLES_PREFIX,
   publishIdentity,
   type ILocalIdentity,
-} from '@/crypto/identity';
-import { removeKey, removeKeysWithPrefix } from '@/crypto/keyStore';
-import { signParts, verifyParts, type ISignedParts } from '@/crypto/signing';
+  removeKey,
+  removeKeysWithPrefix,
+  signParts,
+  verifyParts,
+  type ISignedParts,
+} from '@/shared/crypto';
 import type { IEncryptedMedia } from '@/types';
 
 /**

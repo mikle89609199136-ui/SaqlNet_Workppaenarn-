@@ -18,7 +18,7 @@ export type {
   TChatsList,
   TChatType,
   TMembersList,
-} from './chat.types';
+} from '@/entities/chat';
 export type { IEncryptedMedia } from './encryption.types';
 export type { TIconTypes } from './icons';
 export type {
@@ -33,11 +33,12 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
   TPinnedList,
   TReactionsList,
-} from './message.types';
+} from '@/entities/message';
 export type {
   IAuthResponse,
   IChatResponse,
@@ -64,7 +65,9 @@ export type {
   IUserDto,
   TLastSeenVisibility,
   TSearchUsersList,
-} from './user.types';
+  IProfileModal,
+  IProfileState,
+} from '@/entities/user';
 export type {
   ICallAnswerEvent,
   ICallCenceledEvent,
@@ -108,4 +111,4 @@ export type {
   TEditorObject,
   TEditorTool,
   TTextFontId,
-} from './editor.types';
+} from '@/entities/media';

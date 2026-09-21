@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { WS_EVENTS } from '@/consts';
-import { eventBus } from '@/core/EventBus';
+import { WS_EVENTS } from '@/shared/config';
+import { eventBus } from '@/shared/lib/event-bus';
 import { makeChatScenario, makeMessage, makePin } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';

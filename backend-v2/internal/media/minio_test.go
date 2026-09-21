@@ -89,3 +89,83 @@ func TestMinioStoreGetHonorsCanceledContext(t *testing.T) {
 		t.Fatalf("expected context cancellation, got %v", err)
 	}
 }
+
+func TestMinioStoreDeleteStatusSemantics(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		wantError  bool
+	}{
+		{name: "no content", statusCode: http.StatusNoContent},
+		{name: "ok", statusCode: http.StatusOK},
+		{name: "missing object", statusCode: http.StatusNotFound},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantError: true},
+		{name: "server error", statusCode: http.StatusInternalServerError, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewMinioStore("http://minio:9000", "access", "secret", "us-east-1")
+			body := &trackingReadCloser{Reader: strings.NewReader("internal storage details")}
+			store.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.Method != http.MethodDelete {
+					t.Fatalf("method=%q", request.Method)
+				}
+				if request.Context() == nil {
+					t.Fatal("request has no context")
+				}
+				return &http.Response{StatusCode: tt.statusCode, Body: body, Header: make(http.Header)}, nil
+			})
+
+			err := store.Delete(context.Background(), "bucket", "object")
+			if (err != nil) != tt.wantError {
+				t.Fatalf("Delete() error=%v, wantError=%v", err, tt.wantError)
+			}
+			if !body.closed {
+				t.Fatal("response body was not closed")
+			}
+			if err != nil && strings.Contains(err.Error(), "internal storage details") {
+				t.Fatalf("storage response details leaked: %v", err)
+			}
+		})
+	}
+}
+
+func TestMinioStoreDeleteTransportFailureIsSanitized(t *testing.T) {
+	store := NewMinioStore("http://minio:9000", "access", "secret", "us-east-1")
+	store.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("dial http://minio:9000?token=secret: connection refused")
+	})
+
+	err := store.Delete(context.Background(), "bucket", "object")
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if strings.Contains(err.Error(), "minio:9000") || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("transport details leaked: %v", err)
+	}
+}
+
+func TestMinioStoreDeleteHonorsCanceledContext(t *testing.T) {
+	store := NewMinioStore("http://minio:9000", "access", "secret", "us-east-1")
+	store.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, request.Context().Err()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := store.Delete(ctx, "bucket", "object")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+type trackingReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (body *trackingReadCloser) Close() error {
+	body.closed = true
+	return nil
+}

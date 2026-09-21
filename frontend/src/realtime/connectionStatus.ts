@@ -1,5 +1,5 @@
-import { WS_EVENTS } from '@/consts';
-import { eventBus } from '@/core';
+import { WS_EVENTS } from '@/shared/config';
+import { eventBus } from '@/shared/lib/event-bus';
 
 /**
  * Состояние связи для интерфейса.

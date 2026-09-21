@@ -13,12 +13,11 @@ FileTooLarge:
         required: [error]
         properties:
           error:
-            type: object
-            required: [code, message]
-            properties:
-              code: { type: string, enum: [file_too_large] }
-              message: { type: string, example: file exceeds 100 MB limit }
-              requestId: { type: string }
+            allOf:
+              - { $ref: './schemas.yaml#/Error' }
+              - type: object
+                properties:
+                  code: { type: string, enum: [file_too_large] }
       example:
         error:
           code: file_too_large
