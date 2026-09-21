@@ -26,11 +26,13 @@ type recordingStore struct {
 	heartbeats               []string
 	disconnects              []string
 	connectErr               error
+	heartbeatErr             error
 	heartbeatAfterDisconnect bool
 	blockDisconnect          chan struct{}
 	heartbeatCalled          chan struct{}
 	blockHeartbeat           chan struct{}
 	disconnectCalled         chan struct{}
+	heartbeatHadDeadline     bool
 }
 
 func (s *recordingStore) Connect(_ context.Context, _ string, connID string) error {
@@ -44,7 +46,7 @@ func (s *recordingStore) Connect(_ context.Context, _ string, connID string) err
 // При наличии blockHeartbeat имитирует долгий сетевой I/O к Redis:
 // сначала сигнализирует в heartbeatCalled о начале выполнения, затем ждёт
 // разблокировки канала и проверяет, не вызывался ли Disconnect во время ожидания.
-func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) error {
+func (s *recordingStore) Heartbeat(ctx context.Context, _ string, connID string) error {
 	s.mu.Lock()
 
 	for _, d := range s.disconnects {
@@ -55,6 +57,8 @@ func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) e
 	}
 
 	s.heartbeats = append(s.heartbeats, connID)
+	_, hasDeadline := ctx.Deadline()
+	s.heartbeatHadDeadline = hasDeadline
 	ch := s.heartbeatCalled
 	block := s.blockHeartbeat
 	s.mu.Unlock()
@@ -78,9 +82,10 @@ func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) e
 			break
 		}
 	}
+	err := s.heartbeatErr
 	s.mu.Unlock()
 
-	return nil
+	return err
 }
 
 func (s *recordingStore) Disconnect(_ context.Context, _ string, connID string) error {
@@ -166,6 +171,11 @@ func TestWSPresence_Heartbeat(t *testing.T) {
 		defer rec.mu.Unlock()
 		return len(rec.heartbeats) >= 1
 	}, 500*time.Millisecond, 5*time.Millisecond, "Heartbeat не был вызван")
+
+	rec.mu.Lock()
+	hadDeadline := rec.heartbeatHadDeadline
+	rec.mu.Unlock()
+	require.True(t, hadDeadline, "Контекст вызова Heartbeat должен иметь дедлайн (таймаут)")
 }
 
 // TestWSPresence_Disconnect проверяет, что при закрытии WebSocket-соединения
@@ -198,6 +208,58 @@ func TestWSPresence_StoreErrorDoesNotBreakWS(t *testing.T) {
 		defer rec.mu.Unlock()
 		return len(rec.connects) == 1
 	}, 500*time.Millisecond, 5*time.Millisecond, "Connect не пытался выполниться")
+}
+
+// TestWSPresence_HeartbeatStoreErrorDoesNotBreakWS проверяет, что ошибка presence-store
+// при Heartbeat логируется, но не прерывает цикл heartbeat и не разрывает соединение WS.
+func TestWSPresence_HeartbeatStoreErrorDoesNotBreakWS(t *testing.T) {
+	rec := &recordingStore{heartbeatErr: errors.New("redis timeout")}
+	srv, _ := newPresenceTestServer(t, rec)
+
+	conn := dialWS(t, srv)
+	require.NotNil(t, conn)
+
+	require.Eventually(t, func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+
+		return len(rec.heartbeats) >= 2
+	}, 500*time.Millisecond, 5*time.Millisecond, "Цикл Heartbeat должен продолжать работу после ошибки Store")
+
+	err := conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	require.NoError(t, err)
+
+	_, p, err := conn.ReadMessage()
+	require.NoError(t, err, "Соединение разорвано после ошибки Heartbeat")
+	require.JSONEq(t, `{"type":"ping"}`, string(p), "Сервер должен продолжать отправлять ping после сбоя Heartbeat")
+}
+
+// TestWSPresence_EmptyConnectionIDSkipsHeartbeat проверяет, что при пустом ConnectionID
+// вызов presence.Heartbeat не выполняется в цикле heartbeat.
+func TestWSPresence_EmptyConnectionIDSkipsHeartbeat(t *testing.T) {
+	rec := &recordingStore{}
+	_, ws := newPresenceTestServer(t, rec)
+	client := &Client{
+		UserID:        "user-1",
+		ConnectionID:  "",
+		Send:          make(chan []byte, 10),
+		done:          make(chan struct{}),
+		heartbeatDone: make(chan struct{}),
+	}
+
+	go ws.heartbeat(client)
+
+	select {
+	case <-client.Send:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Таймаут ожидания отправки ping из heartbeat")
+	}
+	client.close()
+	<-client.heartbeatDone
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Empty(t, rec.heartbeats, "При пустом ConnectionID вызовы Heartbeat не должны отправляться в Store")
 }
 
 // TestWSPresence_DisconnectPreventsLateHeartbeat проверяет, что при наличии in-flight
