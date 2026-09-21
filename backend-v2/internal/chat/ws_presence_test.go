@@ -29,6 +29,8 @@ type recordingStore struct {
 	heartbeatAfterDisconnect bool
 	blockDisconnect          chan struct{}
 	heartbeatCalled          chan struct{}
+	blockHeartbeat           chan struct{}
+	disconnectCalled         chan struct{}
 }
 
 func (s *recordingStore) Connect(_ context.Context, _ string, connID string) error {
@@ -38,6 +40,10 @@ func (s *recordingStore) Connect(_ context.Context, _ string, connID string) err
 	return s.connectErr
 }
 
+// Heartbeat фиксирует вызов heartbeat в тестовом хранилище.
+// При наличии blockHeartbeat имитирует долгий сетевой I/O к Redis:
+// сначала сигнализирует в heartbeatCalled о начале выполнения, затем ждёт
+// разблокировки канала и проверяет, не вызывался ли Disconnect во время ожидания.
 func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) error {
 	s.mu.Lock()
 
@@ -50,6 +56,7 @@ func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) e
 
 	s.heartbeats = append(s.heartbeats, connID)
 	ch := s.heartbeatCalled
+	block := s.blockHeartbeat
 	s.mu.Unlock()
 
 	if ch != nil {
@@ -59,6 +66,20 @@ func (s *recordingStore) Heartbeat(_ context.Context, _ string, connID string) e
 		}
 	}
 
+	if block != nil {
+		<-block
+	}
+
+	s.mu.Lock()
+
+	for _, d := range s.disconnects {
+		if d == connID {
+			s.heartbeatAfterDisconnect = true
+			break
+		}
+	}
+	s.mu.Unlock()
+
 	return nil
 }
 
@@ -67,6 +88,14 @@ func (s *recordingStore) Disconnect(_ context.Context, _ string, connID string) 
 	s.disconnects = append(s.disconnects, connID)
 	block := s.blockDisconnect
 	s.mu.Unlock()
+
+	if s.disconnectCalled != nil {
+		select {
+		case s.disconnectCalled <- struct{}{}:
+		default:
+		}
+	}
+
 	if block != nil {
 		<-block
 	}
@@ -171,21 +200,24 @@ func TestWSPresence_StoreErrorDoesNotBreakWS(t *testing.T) {
 	}, 500*time.Millisecond, 5*time.Millisecond, "Connect не пытался выполниться")
 }
 
-// TestWSPresence_DisconnectPreventsLateHeartbeat проверяет, что после вызова Disconnect
-// последующие тики heartbeat гарантированно не отправляются в Store, исключая воскрешение закрытого соединения.
+// TestWSPresence_DisconnectPreventsLateHeartbeat проверяет, что при наличии in-flight
+// вызова Heartbeat вызов Disconnect блокируется до полного завершения Heartbeat,
+// исключая воскрешение закрытого соединения.
 func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
-	block := make(chan struct{})
+	blockHeartbeat := make(chan struct{})
 	t.Cleanup(func() {
 		select {
-		case <-block:
+		case <-blockHeartbeat:
 		default:
-			close(block)
+			close(blockHeartbeat)
 		}
 	})
 	hbCalled := make(chan struct{}, 1)
+	disconnCalled := make(chan struct{}, 1)
 	rec := &recordingStore{
-		blockDisconnect: block,
-		heartbeatCalled: hbCalled,
+		blockHeartbeat:   blockHeartbeat,
+		heartbeatCalled:  hbCalled,
+		disconnectCalled: disconnCalled,
 	}
 	srv, ws := newPresenceTestServer(t, rec)
 	conn := dialWS(t, srv)
@@ -195,13 +227,11 @@ func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
 		return len(rec.connects) == 1
 	}, 500*time.Millisecond, 5*time.Millisecond, "Connect не пытался выполниться")
 
-	var client *Client
 	require.Eventually(t, func() bool {
 		ws.mu.RLock()
 		defer ws.mu.RUnlock()
 		for _, m := range ws.clients {
-			for c := range m {
-				client = c
+			if len(m) > 0 {
 				return true
 			}
 		}
@@ -215,17 +245,24 @@ func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
 	}
 
 	_ = conn.Close()
-	require.Eventually(t, func() bool {
-		rec.mu.Lock()
-		defer rec.mu.Unlock()
-		return len(rec.disconnects) == 1
-	}, 500*time.Millisecond, 5*time.Millisecond, "Disconnect не был вызван")
+
 	select {
-	case <-client.done:
-	case <-hbCalled:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Таймаут ожидания реакции heartbeat")
+	case <-disconnCalled:
+		close(blockHeartbeat)
+		require.Eventually(t, func() bool {
+			rec.mu.Lock()
+			defer rec.mu.Unlock()
+			return rec.heartbeatAfterDisconnect
+		}, 500*time.Millisecond, 5*time.Millisecond)
+		require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat завершился после вызова Disconnect (воскрешение lease)")
+	case <-time.After(100 * time.Millisecond):
+		close(blockHeartbeat)
+		require.Eventually(t, func() bool {
+			rec.mu.Lock()
+			defer rec.mu.Unlock()
+			return len(rec.disconnects) == 1
+		}, 500*time.Millisecond, 5*time.Millisecond, "Disconnect не был вызван после завершения Heartbeat")
+		require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat не должен завершаться после Disconnect")
 	}
-	close(block)
-	require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat был вызван после Disconnect")
+
 }

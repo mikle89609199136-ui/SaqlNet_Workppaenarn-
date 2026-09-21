@@ -41,13 +41,14 @@ type tokenVerifier interface {
 }
 
 type Client struct {
-	UserID       string
-	Conn         *websocket.Conn
-	Send         chan []byte
-	done         chan struct{}
-	closeOnce    sync.Once
-	CallRoomID   string // non-empty while in a call room
-	ConnectionID string // уникальный ID WS-соединения для presence
+	UserID        string
+	Conn          *websocket.Conn
+	Send          chan []byte
+	done          chan struct{}
+	heartbeatDone chan struct{}
+	closeOnce     sync.Once
+	CallRoomID    string // non-empty while in a call room
+	ConnectionID  string // уникальный ID WS-соединения для presence
 }
 
 // close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
@@ -175,7 +176,7 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connID := newConnectionID()
-	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), ConnectionID: connID}
+	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
 	if ws.presence != nil {
 		if err := ws.presence.Connect(r.Context(), client.UserID, client.ConnectionID); err != nil {
 			slog.Error("presence connect error", "userID", client.UserID, "err", err)
@@ -202,6 +203,7 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go ws.writePump(client)
 	go ws.readPump(client)
+	// #nosec - горутина долгоживущая, r.Context() отменяется после завершения HTTP-upgrade
 	go ws.heartbeat(client)
 }
 
@@ -222,6 +224,9 @@ func (ws *WSServer) readPump(client *Client) {
 	defer func() {
 		client.close()
 		ws.handleCallDisconnect(client)
+		if client.heartbeatDone != nil {
+			<-client.heartbeatDone
+		}
 		if ws.presence != nil && client.ConnectionID != "" {
 			// Горутина долгоживущая — r.Context() к этому моменту отменён.
 			if err := ws.presence.Disconnect(context.Background(), client.UserID, client.ConnectionID); err != nil {
@@ -229,7 +234,7 @@ func (ws *WSServer) readPump(client *Client) {
 			}
 		}
 		ws.unreg <- client
-		client.Conn.Close()
+		_ = client.Conn.Close()
 	}()
 	for {
 		_, message, err := client.Conn.ReadMessage()
@@ -493,6 +498,9 @@ func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {
 // heartbeat периодически отправляет ping-сообщение клиенту и продлевает
 // TTL его lease в presence.Store. Останавливается при закрытии client.done.
 func (ws *WSServer) heartbeat(client *Client) {
+	if client.heartbeatDone != nil {
+		defer close(client.heartbeatDone)
+	}
 	interval := wsPingInterval
 	if ws.pingInterval > 0 {
 		interval = ws.pingInterval
@@ -511,7 +519,10 @@ func (ws *WSServer) heartbeat(client *Client) {
 			default:
 			}
 			if ws.presence != nil && client.ConnectionID != "" {
-				if err := ws.presence.Heartbeat(context.Background(), client.UserID, client.ConnectionID); err != nil {
+				hbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				err := ws.presence.Heartbeat(hbCtx, client.UserID, client.ConnectionID)
+				cancel()
+				if err != nil {
 					slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
 				}
 			}
