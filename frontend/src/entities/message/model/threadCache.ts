@@ -1,7 +1,7 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMediaMessageType, TMessagesList } from './types';
 import { getOutboxItem } from './outboxStore';
-import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib';
 
 /**
  * Форма кеша истории: страницы в том порядке, в каком их загрузили.
@@ -62,10 +62,7 @@ export function patchMessage(
         chatId: outboxItem.chatId,
         content: outboxItem.content,
         type: outboxItem.type,
-        mediaType:
-          outboxItem.type !== 'text'
-            ? (outboxItem.type as TMediaMessageType)
-            : undefined,
+        mediaType: outboxItem.type !== 'text' ? (outboxItem.type as TMediaMessageType) : undefined,
         mediaUrl: outboxItem.blobUrl,
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,

@@ -1,4 +1,4 @@
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { clearToasts, getToasts } from '@/shared/ui';
 import { testI18n } from '@/test/harness/i18n';
 import { act, renderHook } from '@testing-library/react';

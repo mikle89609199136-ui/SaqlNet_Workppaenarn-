@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import {
   dropPinnedMessage,
   dropThreadMessage,

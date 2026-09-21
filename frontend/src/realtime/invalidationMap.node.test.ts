@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WS_EVENTS } from '@/shared/config';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 
 /** Все объявленные типы событий — плоским списком. */

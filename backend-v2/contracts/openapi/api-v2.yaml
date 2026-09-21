@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CraneApp API v2
-  version: 0.2.0
+  version: 0.3.0
   description: Public REST API exposed by the CraneApp edge gateway.
 servers:
   - url: /api/v2
@@ -69,6 +69,9 @@ paths:
   /encryption/chat-keys/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1chat-keys~1{chatId}' }
   /encryption/rotate-key/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1rotate-key~1{chatId}' }
   /encryption/my-key/{chatId}: { $ref: './paths/encryption.yaml#/~1encryption~1my-key~1{chatId}' }
+  /encryption/signal/keys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1keys' }
+  /encryption/signal/bundle/{userId}: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1bundle~1{userId}' }
+  /encryption/signal/prekeys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1prekeys' }
 
   /support/requests: { $ref: './paths/support.yaml#/~1support~1requests' }
   /support/requests/{requestId}: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}' }

@@ -1,6 +1,6 @@
 import type { QueryKey } from '@tanstack/react-query';
 import { WS_EVENTS } from '@/shared/config';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 
 /**
  * Что устаревает при каждом событии сервера.

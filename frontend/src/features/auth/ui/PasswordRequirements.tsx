@@ -1,6 +1,5 @@
 import { Icon } from '@/shared/ui';
-import { cn } from '@/shared/lib';
-import { PASSWORD_RULES, checkPassword } from '@/shared/lib/passwordRules';
+import { PASSWORD_RULES, checkPassword, cn } from '@/shared/lib';
 
 interface Props {
   value: string;

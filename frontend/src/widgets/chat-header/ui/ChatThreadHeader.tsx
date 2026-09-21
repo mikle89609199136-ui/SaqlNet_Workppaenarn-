@@ -1,9 +1,8 @@
-import { useConnectionStatus } from '@/hooks';
 import { useCall } from '@/features/call';
 import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/entities/user';
 import { chatQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle } from '@/shared/lib';
+import { cn, getChatSubtitle, useConnectionStatus } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';

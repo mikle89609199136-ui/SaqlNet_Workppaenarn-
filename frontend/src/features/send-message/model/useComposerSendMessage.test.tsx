@@ -3,10 +3,9 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useComposerSendMessage } from './useComposerSendMessage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { services } from '@/services';
-import { useChatUiStore } from '@/store';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox, getChatOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
-import { chatKeys } from '@/queries/keys';
 import { makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -126,7 +125,9 @@ describe('useComposerSendMessage', () => {
     };
     queryClient.setQueryData(chatKeys.messages('chat-test-1'), initialPages);
 
-    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(new Error('Network offline'));
+    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(
+      new Error('Network offline')
+    );
 
     const { result } = renderHook(
       () =>
@@ -161,8 +162,7 @@ describe('useComposerSendMessage', () => {
   });
 
   it('позволяет повторить отправку failed сообщения через handleRetryMessage', async () => {
-    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } =
-      setupRefs('');
+    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } = setupRefs('');
 
     const initialPages: IThreadPages = {
       pages: [[]],

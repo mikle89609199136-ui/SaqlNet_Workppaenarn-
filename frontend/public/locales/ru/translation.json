@@ -168,7 +168,7 @@
   "optional": "Необязательно",
   "participants": "участников",
   "password": "Пароль",
-  "passwordMin": "Минимум 6 символов",
+  "passwordMin": "Минимум {{min}} символов",
   "peerNeedsUpdate": "Собеседник прочтёт после обновления приложения",
   "people": "Люди",
   "photoEditor": "Редактор фотографии",

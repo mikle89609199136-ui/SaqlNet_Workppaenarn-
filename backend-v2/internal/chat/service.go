@@ -562,48 +562,139 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 	return chatID, false, tx.Commit()
 }
 
+// CreateGroup creates a new group chat owned by ownerID and adds the
+// given members. The owner is inserted with role "owner"; other members
+// with role "member".
+//
+// All text fields (title, description, avatarURL) are trimmed of
+// surrounding whitespace before validation and storage. An
+// all-whitespace title, a title longer than maxTitleLen runes, or an
+// empty members list results in ErrInvalidInput.
+//
+// All inserts run in a single transaction. On success it returns the ID
+// of the newly created chat.
 func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, avatarURL string, members []string) (string, error) {
+	const method = "CreateGroup"
+
 	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+	avatarURL = strings.TrimSpace(avatarURL)
+
+	// Duplicated in the handler, but kept here because the service is a
+	// public boundary: callers other than the HTTP handler must not be
+	// able to create a group with an invalid title or no members.
 	if title == "" || len(members) == 0 {
 		return "", ErrInvalidInput
 	}
+	if utf8.RuneCountInString(title) > maxTitleLen {
+		return "", ErrInvalidInput
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
+	// Rollback is a no-op after Commit, so an explicit error check is
+	// not useful here.
 	defer func() { _ = tx.Rollback() }()
+
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
 		VALUES ('group', $1, $2, $3, $4)
 		RETURNING id::text
 	`, title, description, avatarURL, ownerID).Scan(&chatID); err != nil {
+		slog.ErrorContext(ctx, "failed to insert group chat",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
+
+	// The owner is always a member; tracking seen IDs here prevents
+	// duplicates and lets the loop below skip ownerID if it appears in
+	// the members slice.
 	seen := map[string]bool{ownerID: true}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, 'owner')`, chatID, ownerID); err != nil {
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO chats.members (chat_id, user_id, role) VALUES ($1, $2, $3)`,
+		chatID, ownerID, "owner",
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to insert owner as member",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"owner_id", ownerID,
+		)
 		return "", err
 	}
+
+	// The SELECT filters out unknown and disabled users; ON CONFLICT
+	// covers a race with a concurrent insert of the same membership.
 	for _, memberID := range members {
 		if memberID == "" || seen[memberID] {
 			continue
 		}
 		seen[memberID] = true
+
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO chats.members (chat_id, user_id, role)
-			SELECT $1, id, 'member' FROM auth.users WHERE id = $2 AND disabled_at IS NULL
+			SELECT $1, id, $3 FROM auth.users WHERE id = $2 AND disabled_at IS NULL
 			ON CONFLICT DO NOTHING
-		`, chatID, memberID); err != nil {
+		`, chatID, memberID, "member"); err != nil {
+			slog.ErrorContext(ctx, "failed to insert member into group",
+				"layer", "service",
+				"method", method,
+				"err", err,
+				"chat_id", chatID,
+				"member_id", memberID,
+			)
 			return "", err
 		}
 	}
-	return chatID, tx.Commit()
+
+	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"owner_id", ownerID,
+		)
+		return "", err
+	}
+
+	return chatID, nil
 }
 
+// UpdateGroup updates the title, description, and/or avatar URL of a group
+// chat. Nil arguments mean "leave unchanged"; non-nil values overwrite the
+// stored value.
+//
+// The caller must be the chat owner or an admin. Returns ErrNotFound if the
+// chat does not exist or the actor is not a member, ErrInvalidChatType if
+// the chat is not a group, ErrForbidden if the actor lacks permission, and
+// ErrInvalidInput if a provided field fails validation.
+//
+// On success it broadcasts a "chat_updated" event to all chat members when
+// the WebSocket hub is configured.
 func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title, description, avatarURL *string) (Chat, error) {
-	var chatType string
-	var role string
+	const method = "UpdateGroup"
 
+	var chatType, role string
+
+	// Fetch chat type and the actor's role in a single round trip: both
+	// are needed before any mutation, and combining them avoids a second
+	// query that could race against concurrent membership changes.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT c.type, m.role
 		FROM chats.chats c
@@ -613,31 +704,52 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 	`, chatID, actorID).Scan(&chatType, &role)
 
 	if errors.Is(err, sql.ErrNoRows) {
+		// The join yields no rows both when the chat is missing and when
+		// the actor is not a member; both cases map to ErrNotFound so we
+		// do not leak chat existence to non-members.
 		return Chat{}, ErrNotFound
 	}
+
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to query chat and role",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
 	if title == nil && description == nil && avatarURL == nil {
 		return Chat{}, ErrInvalidInput
 	}
-	if title != nil {
-		trimmedTitle := strings.TrimSpace(*title)
-		if trimmedTitle == "" {
-			return Chat{}, ErrInvalidInput
-		}
-		title = &trimmedTitle
+
+	// Normalize before validating. The handler already does this for
+	// its own length check, but the service is a public boundary:
+	// workers and scripts may call it directly and must not bypass
+	// the invariant "no stored value has surrounding whitespace".
+	title = trimString(title)
+	description = trimString(description)
+	avatarURL = trimString(avatarURL)
+
+	if title != nil && *title == "" {
+		return Chat{}, ErrInvalidInput
+	}
+	if title != nil && utf8.RuneCountInString(*title) > maxTitleLen {
+		return Chat{}, ErrInvalidInput
 	}
 
 	if chatType != "group" {
 		return Chat{}, ErrInvalidChatType
 	}
-
 	if role != "owner" && role != "admin" {
 		return Chat{}, ErrForbidden
 	}
 
+	// COALESCE keeps the update idempotent for absent fields without
+	// building dynamic SQL: a nil pointer becomes SQL NULL, which makes
+	// COALESCE fall back to the existing column value.
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE chats.chats
 		SET title = COALESCE($1::text, title),
@@ -648,21 +760,47 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 		AND type = 'group'
 	`, title, description, avatarURL, chatID)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to update group chat",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
 	updatedChat, err := s.Get(ctx, actorID, chatID)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to reload chat after update",
+			"layer", "service",
+			"method", method,
+			"err", err,
+			"chat_id", chatID,
+			"actor_id", actorID,
+		)
 		return Chat{}, err
 	}
 
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{
+		payload, err := json.Marshal(map[string]any{
 			"type":   "chat_updated",
 			"chatId": chatID,
 			"chat":   updatedChat,
 		})
-		s.ws.BroadcastToChat(chatID, payload, "")
+		if err != nil {
+			// Marshaling failure is non-fatal: the DB is already updated,
+			// and rolling back here would only hide the real problem.
+			// The event is dropped and the error is logged for visibility.
+			slog.WarnContext(ctx, "failed to marshal chat_updated event",
+				"layer", "service",
+				"method", method,
+				"err", err,
+				"chat_id", chatID,
+			)
+		} else {
+			s.ws.BroadcastToChat(chatID, payload, "")
+		}
 	}
 
 	return updatedChat, nil
@@ -2452,6 +2590,32 @@ type ChangeResponse struct {
 }
 
 func (s *Service) ListReactions(ctx context.Context, userID, messageID string) ([]Reaction, error) {
+	var chatID string
+
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
+		messageID,
+	).Scan(&chatID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
@@ -2461,8 +2625,6 @@ type Querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-// listReactionsInternal executes the aggregation query using any Querier
-// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
 func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
@@ -2472,20 +2634,19 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
-		log.Printf("[chat-service-listReactionsInternal]:(error during DB request): %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []Reaction
+	result := make([]Reaction, 0)
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
-			log.Printf("[chat-service-listReactionsInternal]:(error during rows scan): %v", err)
 			return nil, err
 		}
 		result = append(result, r)
 	}
+
 	return result, rows.Err()
 }
 

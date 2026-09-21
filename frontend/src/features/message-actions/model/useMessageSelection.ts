@@ -1,4 +1,4 @@
-import { useChatUiStore, type IActionMenu } from '@/store';
+import { useChatUiStore, type IActionMenu } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
 import { useCallback, useMemo } from 'react';
 

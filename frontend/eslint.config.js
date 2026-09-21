@@ -186,14 +186,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: [
-                '@/widgets',
-                '@/widgets/*',
-                '@/pages',
-                '@/pages/*',
-                '@/app',
-                '@/app/*',
-              ],
+              group: ['@/widgets', '@/widgets/*', '@/pages', '@/pages/*', '@/app', '@/app/*'],
               message: 'Фичи не знают о виджетах, страницах и приложении.',
             },
           ],
@@ -244,14 +237,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: [
-                '@/widgets',
-                '@/widgets/*',
-                '@/pages',
-                '@/pages/*',
-                '@/app',
-                '@/app/*',
-              ],
+              group: ['@/widgets', '@/widgets/*', '@/pages', '@/pages/*', '@/app', '@/app/*'],
               message: 'Слой данных не знает о разметке.',
             },
           ],
@@ -271,14 +257,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: [
-                '@/widgets',
-                '@/widgets/*',
-                '@/pages',
-                '@/pages/*',
-                '@/app',
-                '@/app/*',
-              ],
+              group: ['@/widgets', '@/widgets/*', '@/pages', '@/pages/*', '@/app', '@/app/*'],
               message: 'Слой данных не знает о разметке.',
             },
             {

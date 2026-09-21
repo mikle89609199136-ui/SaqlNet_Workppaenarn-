@@ -3,7 +3,7 @@ import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage, makePin } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { PinnedMessagesNavigator } from './PinnedMessagesNavigator';
 
 function renderNavigator(props: React.ComponentProps<typeof PinnedMessagesNavigator>) {

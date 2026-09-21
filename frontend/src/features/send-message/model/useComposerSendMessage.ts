@@ -1,5 +1,5 @@
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import {
   addOutboxItem,
   patchThreadMessage,
@@ -10,9 +10,8 @@ import {
 } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { useChatUiStore } from '@/store';
-import { clearDraft } from '@/store/chatDrafts';
-import { setComposerText } from '@/shared/lib/setComposerText';
+import { clearDraft, useChatUiStore } from '@/entities/chat';
+import { setComposerText } from '@/shared/lib';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -107,7 +106,13 @@ export function useComposerSendMessage({
         setComposerText(draftRef.current, '');
         setError('');
       } catch (err: unknown) {
-        setError(describeApiError(err as { code?: string; message?: string }, t, t('messageSendError', 'Не удалось отправить сообщение')));
+        setError(
+          describeApiError(
+            err as { code?: string; message?: string },
+            t,
+            t('messageSendError', 'Не удалось отправить сообщение')
+          )
+        );
       } finally {
         setIsSending(false);
       }
