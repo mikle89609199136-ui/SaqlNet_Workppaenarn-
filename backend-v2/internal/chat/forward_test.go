@@ -36,6 +36,7 @@ var messageIDS = []string{
 }
 
 const (
+	chatID       = "550e8400-e29b-41d4-a716-446655440001"
 	targetChatID = "00000000-0000-0000-0000-000000000003"
 	userID       = "00000000-0000-0000-0000-000000000003"
 )
@@ -48,8 +49,8 @@ var contents = []string{
 
 var metadata = []string{
 	`{}`,
-	`{"forwarded":true,"forwardedFrom":{"messageId":"00000000-0000-0000-0000-000000000003","senderId":"00000000-0000-0000-0000-000000000004","senderName":"Alice"}}`,
-	`{"forwarded":true,"forwardedFrom":{"messageId":"00000000-0000-0000-0000-000000000003","senderId":"00000000-0000-0000-0000-000000000004","senderName":"Alice"}}`,
+	`{"forwarded":true,"forwardedFrom":{"messageId":"00000000-0000-0000-0000-000000000003","senderId":"00000000-0000-0000-0000-000000000003","senderName":"Alice"}}`,
+	`{"forwarded":true,"forwardedFrom":{"messageId":"00000000-0000-0000-0000-000000000001","senderId":"00000000-0000-0000-0000-000000000003","senderName":"Alice"}}`,
 }
 
 var messageType = []string{
@@ -226,7 +227,32 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 
 }
 
-func InsertSqlMok(t *testing.T, mock sqlmock.Sqlmock) {
+func selectMessages(mock sqlmock.Sqlmock) {
+	rows := sqlmock.NewRows([]string{
+		"id",
+		"type",
+		"sender_id",
+		"sender_name",
+	}).
+		AddRow(
+			message.MessageID,
+			"text",
+			message.SenderID,
+			"Alice",
+		).
+		AddRow(
+			messageIDS[1],
+			"text",
+			message.SenderID,
+			"Alice",
+		)
+
+	mock.ExpectQuery(`SELECT m.id, m.type, m.sender_id, COALESCE\(up.first_name, au.first_name, au.username, ''\)`).
+		WithArgs(chatID, sqlmock.AnyArg()).
+		WillReturnRows(rows)
+}
+
+func InsertSqlMok(mock sqlmock.Sqlmock) {
 	mock.ExpectExec("INSERT INTO messages.messages").WithArgs(sqlmock.AnyArg(), targetChatID, userID, pq.Array(contents), pq.Array(metadata), pq.Array(messageType)).WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
@@ -338,6 +364,7 @@ func TestSendForwardMessages(t *testing.T) {
 	messageDATA.Attachments = attachments
 
 	messageDATA2 := messageDATA
+	messageDATA2.MessageID = messageIDS[1]
 	messageDATA2.Attachments = nil
 
 	messages := []TMessages{
@@ -354,7 +381,8 @@ func TestSendForwardMessages(t *testing.T) {
 
 	mock.ExpectBegin()
 
-	InsertSqlMok(t, mock)
+	selectMessages(mock)
+	InsertSqlMok(mock)
 	InsertSqlMokAttachments(mock)
 
 	SelectFromMessages(mock, false)
@@ -381,21 +409,14 @@ func TestSendForwardMessages(t *testing.T) {
 	require.Equal(t, contents[0], result[1].Content)
 	require.Equal(t, contents[0], result[2].Content)
 
-	// === Проверяем метаданные для ПЕРВОГО forwarded-сообщения ===
-	// 1. Переводим ожидаемую структуру (*TMessageForwardMetadata) в JSON-байты
-	expectedBytes1, err := json.Marshal(messageDATA.Metadata)
-	require.NoError(t, err)
-	expectedBytes2, err := json.Marshal(messageDATA2.Metadata)
-	require.NoError(t, err)
-
 	// 2. Переводим актуальную мапу (map[string]any) из результата в JSON-байты
 	actualBytes1, err := json.Marshal(result[1].Metadata)
 	require.NoError(t, err)
 	actualBytes2, err := json.Marshal(result[2].Metadata)
 	require.NoError(t, err)
 
-	require.JSONEq(t, string(expectedBytes1), string(actualBytes1))
-	require.JSONEq(t, string(expectedBytes2), string(actualBytes2))
+	require.JSONEq(t, string(metadata[1]), string(actualBytes1))
+	require.JSONEq(t, string(metadata[2]), string(actualBytes2))
 
 	require.NoError(t, mock.ExpectationsWereMet())
 
@@ -406,6 +427,7 @@ func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
 	messageDATA.Attachments = attachments
 	messageDATA.Content = content
 	messageDATA2 := messageDATA
+	messageDATA2.MessageID = messageIDS[1]
 	messageDATA2.Attachments = nil
 	messageDATA2.Content = content
 
@@ -421,14 +443,14 @@ func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectBegin()
-
-	InsertSqlMok(t, mock)
+	selectMessages(mock)
+	InsertSqlMok(mock)
 	InsertSqlMokAttachments(mock)
 	SelectFromMessages(mock, true)
 
 	mock.ExpectRollback()
 
-	result, err := NewService(db, nil).sendForwardMessages(context.Background(), messages, caption, targetChatID, userID)
+	result, err := NewService(db, nil).sendForwardMessages(context.Background(), messages, caption, targetChatID, chatID, userID)
 
 	require.Error(t, err)
 	require.Nil(t, result)
