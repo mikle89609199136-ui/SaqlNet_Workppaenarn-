@@ -48,13 +48,7 @@ func (s *recordingStore) Connect(_ context.Context, _ string, connID string) err
 // разблокировки канала и проверяет, не вызывался ли Disconnect во время ожидания.
 func (s *recordingStore) Heartbeat(ctx context.Context, _ string, connID string) error {
 	s.mu.Lock()
-
-	for _, d := range s.disconnects {
-		if d == connID {
-			s.heartbeatAfterDisconnect = true
-			break
-		}
-	}
+	s.checkHeartbeatAfterDisconnect(connID)
 
 	s.heartbeats = append(s.heartbeats, connID)
 	_, hasDeadline := ctx.Deadline()
@@ -76,16 +70,22 @@ func (s *recordingStore) Heartbeat(ctx context.Context, _ string, connID string)
 
 	s.mu.Lock()
 
+	s.checkHeartbeatAfterDisconnect(connID)
+	err := s.heartbeatErr
+	s.mu.Unlock()
+
+	return err
+}
+
+// checkHeartbeatAfterDisconnect проверяет, вызывался ли Disconnect для данного connID,
+// и выставляет флаг ошибки при обнаружении. Вызывается под s.mu.Lock().
+func (s *recordingStore) checkHeartbeatAfterDisconnect(connID string) {
 	for _, d := range s.disconnects {
 		if d == connID {
 			s.heartbeatAfterDisconnect = true
 			break
 		}
 	}
-	err := s.heartbeatErr
-	s.mu.Unlock()
-
-	return err
 }
 
 func (s *recordingStore) Disconnect(_ context.Context, _ string, connID string) error {
@@ -310,13 +310,7 @@ func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
 
 	select {
 	case <-disconnCalled:
-		close(blockHeartbeat)
-		require.Eventually(t, func() bool {
-			rec.mu.Lock()
-			defer rec.mu.Unlock()
-			return rec.heartbeatAfterDisconnect
-		}, 500*time.Millisecond, 5*time.Millisecond)
-		require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat завершился после вызова Disconnect (воскрешение lease)")
+		t.Fatal("Disconnect вызван до завершения in-flight Heartbeat (барьер не сработал)")
 	case <-time.After(100 * time.Millisecond):
 		close(blockHeartbeat)
 		require.Eventually(t, func() bool {
@@ -326,5 +320,4 @@ func TestWSPresence_DisconnectPreventsLateHeartbeat(t *testing.T) {
 		}, 500*time.Millisecond, 5*time.Millisecond, "Disconnect не был вызван после завершения Heartbeat")
 		require.False(t, rec.heartbeatAfterDisconnect, "Heartbeat не должен завершаться после Disconnect")
 	}
-
 }

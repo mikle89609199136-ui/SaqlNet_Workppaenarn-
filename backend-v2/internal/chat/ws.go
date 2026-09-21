@@ -45,7 +45,7 @@ type Client struct {
 	Conn          *websocket.Conn
 	Send          chan []byte
 	done          chan struct{}
-	heartbeatDone chan struct{}
+	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
 	closeOnce     sync.Once
 	CallRoomID    string // non-empty while in a call room
 	ConnectionID  string // уникальный ID WS-соединения для presence
@@ -518,14 +518,7 @@ func (ws *WSServer) heartbeat(client *Client) {
 				return
 			default:
 			}
-			if ws.presence != nil && client.ConnectionID != "" {
-				hbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				err := ws.presence.Heartbeat(hbCtx, client.UserID, client.ConnectionID)
-				cancel()
-				if err != nil {
-					slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
-				}
-			}
+			ws.sendPresenceHeartbeat(client)
 			select {
 			case client.Send <- ping:
 			case <-client.done:
@@ -534,6 +527,20 @@ func (ws *WSServer) heartbeat(client *Client) {
 				return
 			}
 		}
+	}
+}
+
+// sendPresenceHeartbeat отправляет периодический heartbeat в presence.Store
+// с таймаутом 5 секунд. Ошибки логируются и не прерывают работу сокета.
+func (ws *WSServer) sendPresenceHeartbeat(client *Client) {
+	if ws.presence == nil || client.ConnectionID == "" {
+		return
+	}
+	hbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := ws.presence.Heartbeat(hbCtx, client.UserID, client.ConnectionID)
+	if err != nil {
+		slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
 	}
 }
 
