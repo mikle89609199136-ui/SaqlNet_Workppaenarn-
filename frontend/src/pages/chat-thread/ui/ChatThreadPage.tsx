@@ -117,6 +117,7 @@ export function ChatThreadPage() {
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
             setOpenedImage={modals.setOpenedImage}
+            showDeliveryStatus={chat?.type === 'private'}
             toggleMessageSelection={toggleMessageSelection}
           />
 

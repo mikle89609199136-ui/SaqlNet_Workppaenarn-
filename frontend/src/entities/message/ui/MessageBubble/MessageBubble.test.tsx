@@ -219,3 +219,58 @@ describe('MessageBubble', () => {
     expect(onCancelMessage).toHaveBeenCalledWith(message);
   });
 });
+
+describe('статус доставки', () => {
+  const sent = () => makeMessage({ id: 'msg-1', content: 'моё сообщение', status: 'sent' });
+
+  it('показывает галочку у своего отправленного в личном чате', () => {
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        showDeliveryStatus
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.getByTitle('Отправлено')).toBeInTheDocument();
+  });
+
+  it('молчит в групповом чате: там у «прочитано» нет одного значения', () => {
+    // `showDeliveryStatus` не передан — как это делает страница треда для группы.
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
+  });
+
+  it('не помечает чужие сообщения', () => {
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-2"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        showDeliveryStatus
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
+  });
+});
