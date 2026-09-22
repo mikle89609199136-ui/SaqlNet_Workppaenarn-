@@ -1,5 +1,5 @@
-import { DEFAULT_PROFILE_SETTINGS } from '@/consts';
-import { useProfileStore } from '@/store/profile';
+import { DEFAULT_PROFILE_SETTINGS } from '@/entities/user/model/defaultProfileSettings';
+import { useProfileStore } from '@/entities/user/model/profileStore';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { services } from '@/services/serviceContainer';
 
@@ -20,9 +20,14 @@ export async function fetchUserSettings(): Promise<ISettingsDto> {
   }
 }
 
-export function uploadAvatar(avatar: string) {
-  if (!avatar) return Promise.resolve();
-  return services.userService.updateAvatar(avatar);
+export async function uploadAvatar(avatar: File | string | null | undefined): Promise<void> {
+  if (!avatar) return;
+  if (typeof avatar === 'string') {
+    await services.userService.updateAvatar(avatar);
+    return;
+  }
+  const { url } = await services.mediaService.upload(avatar);
+  await services.userService.updateAvatar(url);
 }
 
 /**

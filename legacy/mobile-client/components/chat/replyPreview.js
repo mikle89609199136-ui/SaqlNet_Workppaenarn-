@@ -17,7 +17,7 @@ export class ReplyPreview {
     const container = document.createElement('div');
     container.id = this.id;
     container.className = 'reply-preview-container';
-    
+
     Object.assign(container.style, {
       background: colors.surfaceVariant,
       borderLeft: `4px solid ${colors.primary}`,
@@ -28,7 +28,7 @@ export class ReplyPreview {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: '12px',
-      maxWidth: '100%'
+      maxWidth: '100%',
     });
 
     const content = document.createElement('div');
@@ -43,7 +43,7 @@ export class ReplyPreview {
         fontSize: '13px',
         fontWeight: '600',
         color: colors.primary,
-        marginBottom: '4px'
+        marginBottom: '4px',
       });
       content.appendChild(sender);
     }
@@ -56,7 +56,7 @@ export class ReplyPreview {
       color: colors.textSecondary,
       whiteSpace: 'nowrap',
       overflow: 'hidden',
-      textOverflow: 'ellipsis'
+      textOverflow: 'ellipsis',
     });
     content.appendChild(message);
 
@@ -77,7 +77,7 @@ export class ReplyPreview {
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center'
+      justifyContent: 'center',
     });
     closeBtn.addEventListener('click', () => {
       this.close();

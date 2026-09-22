@@ -1,24 +1,171 @@
+x-secure: &secure [{ bearerAuth: [] }]
+x-error: &error { $ref: '../components/responses.yaml#/Error' }
+
 /encryption/keys:
   post:
     tags: [Encryption]
     summary: Upload a public encryption key
     operationId: uploadEncryptionKey
-    security: [{ bearerAuth: [] }]
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [publicKey, keyId], properties: { publicKey: { type: string }, keyId: { type: string }, pqPublicKey: { type: string } } } } } }
-    responses: { '200': { description: Key saved }, '400': { $ref: '../components/responses.yaml#/Error' } }
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/PublicEncryptionKey' }
+    responses:
+      '200':
+        description: Key saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+
 /encryption/keys/{userId}:
   get:
     tags: [Encryption]
     summary: Get a user's public encryption key
     operationId: getEncryptionKey
-    security: [{ bearerAuth: [] }]
-    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-    responses: { '200': { description: Public key }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } }
+    security: *secure
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Public key
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/PublicEncryptionKey' }
+      '403': *error
+      '404': *error
+
 /encryption/chat-keys/{chatId}:
-  parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }]
-  get: { tags: [Encryption], summary: Get encrypted chat keys, operationId: getChatKeys, security: [{ bearerAuth: [] }], responses: { '200': { description: Chat keys } } }
-  post: { tags: [Encryption], summary: Save encrypted chat keys, operationId: saveChatKeys, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Keys saved } } }
+  parameters:
+    - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+  get:
+    tags: [Encryption]
+    summary: Get encrypted chat keys
+    operationId: getChatKeys
+    security: *secure
+    responses:
+      '200':
+        description: Encrypted keys for chat members
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ChatKeysResponse' }
+      '403': *error
+  post:
+    tags: [Encryption]
+    summary: Save encrypted chat keys
+    operationId: saveChatKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveChatKeysRequest' }
+    responses:
+      '200':
+        description: Keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '403': *error
+
 /encryption/rotate-key/{chatId}:
-  post: { tags: [Encryption], summary: Rotate a chat key, operationId: rotateChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Key rotated } } }
+  post:
+    tags: [Encryption]
+    summary: Rotate a chat key
+    operationId: rotateChatKey
+    security: *secure
+    parameters:
+      - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveChatKeysRequest' }
+    responses:
+      '200':
+        description: Key rotated
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyEpochResponse' }
+      '400': *error
+      '403': *error
+      '429': *error
+
 /encryption/my-key/{chatId}:
-  get: { tags: [Encryption], summary: Get the current user's chat key, operationId: getMyChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: User chat key }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  get:
+    tags: [Encryption]
+    summary: Get the current user's chat key
+    operationId: getMyChatKey
+    security: *secure
+    parameters:
+      - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Current user's encrypted chat key
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ChatEncryptedKey' }
+      '404': *error
+      '500': *error
+
+/encryption/signal/keys:
+  post:
+    tags: [Encryption]
+    summary: Register Signal identity, signed pre-key and one-time pre-keys
+    operationId: uploadSignalKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SignalKeysRequest' }
+    responses:
+      '200':
+        description: Signal keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '500': *error
+      '503': *error
+
+/encryption/signal/bundle/{userId}:
+  get:
+    tags: [Encryption]
+    summary: Get and consume a Signal pre-key bundle
+    description: When available, one one-time pre-key is atomically consumed by this request.
+    operationId: getSignalBundle
+    security: *secure
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Signal pre-key bundle
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/SignalPreKeyBundle' }
+      '404': *error
+      '500': *error
+
+/encryption/signal/prekeys:
+  post:
+    tags: [Encryption]
+    summary: Replenish Signal one-time pre-keys
+    operationId: replenishSignalPreKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SignalPreKeysRequest' }
+    responses:
+      '200':
+        description: One-time pre-keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '500': *error

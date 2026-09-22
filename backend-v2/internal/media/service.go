@@ -9,10 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,13 +24,14 @@ import (
 )
 
 var (
-	ErrTooBig    = errors.New("file too large")
-	ErrBadType   = errors.New("unsupported content type")
-	ErrNotFound  = errors.New("upload not found")
-	ErrForbidden = errors.New("access denied")
+	ErrTooBig          = errors.New("file too large")
+	ErrBadType         = errors.New("unsupported content type")
+	ErrNotFound        = errors.New("upload not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrObjectNotFound  = errors.New("media object not found")
+	ErrStorage         = errors.New("media storage failure")
+	ErrResponseStarted = errors.New("media response stream failed")
 )
-
-const maxUploadBytes = 100 << 20 // 100 MB
 
 const maxFilenameBytes = 255
 
@@ -48,8 +52,22 @@ var allowedTypes = map[string]bool{
 // Store abstracts object storage (MinIO / S3-compatible).
 type Store interface {
 	Put(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error
+	Get(ctx context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error)
 	PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error)
 	Delete(ctx context.Context, bucket, key string) error
+}
+
+type GetOptions struct {
+	Head  bool
+	Range string
+}
+
+type ObjectResponse struct {
+	Body          io.ReadCloser
+	StatusCode    int
+	ContentLength int64
+	ContentRange  string
+	AcceptRanges  string
 }
 
 type Upload struct {
@@ -63,13 +81,14 @@ type Upload struct {
 }
 
 type Service struct {
-	db     *sql.DB
-	store  Store
-	bucket string
+	db             *sql.DB
+	store          Store
+	bucket         string
+	maxUploadBytes int64
 }
 
-func NewService(db *sql.DB, store Store, bucket string) *Service {
-	return &Service{db: db, store: store, bucket: bucket}
+func NewService(db *sql.DB, store Store, bucket string, maxUploadBytes int64) *Service {
+	return &Service{db: db, store: store, bucket: bucket, maxUploadBytes: maxUploadBytes}
 }
 
 func sanitizeFilename(filename string) string {
@@ -86,7 +105,7 @@ func sanitizeFilename(filename string) string {
 }
 
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
-	if int64(len(data)) > maxUploadBytes {
+	if int64(len(data)) > s.maxUploadBytes {
 		return Upload{}, ErrTooBig
 	}
 
@@ -128,17 +147,17 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 }
 
 func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
-	data, err := base64.StdEncoding.DecodeString(base64Ciphertext)
+	data, err := decodeBase64Payload(base64Ciphertext, s.maxUploadBytes)
 	if err != nil {
+		if errors.Is(err, ErrTooBig) {
+			return Upload{}, err
+		}
 		return Upload{}, fmt.Errorf("invalid ciphertext base64: %w", err)
 	}
 	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
-	if fh.Size > maxUploadBytes {
-		return Upload{}, ErrTooBig
-	}
 	ct := fh.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "application/octet-stream"
@@ -154,12 +173,31 @@ func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileH
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, sizeCheckReadLimit(s.maxUploadBytes)))
 	if err != nil {
 		return Upload{}, err
 	}
 
 	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "")
+}
+
+func decodeBase64Payload(encoded string, maxBytes int64) ([]byte, error) {
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
+	data, err := io.ReadAll(io.LimitReader(decoder, sizeCheckReadLimit(maxBytes)))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, ErrTooBig
+	}
+	return data, nil
+}
+
+func sizeCheckReadLimit(maxBytes int64) int64 {
+	if maxBytes == math.MaxInt64 {
+		return maxBytes
+	}
+	return maxBytes + 1
 }
 
 func (s *Service) Get(ctx context.Context, userID, uploadID string) (Upload, error) {
@@ -182,14 +220,15 @@ func (s *Service) Get(ctx context.Context, userID, uploadID string) (Upload, err
 	return up, nil
 }
 
-func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.ResponseWriter) error {
+func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.ResponseWriter, options GetOptions) error {
 	var objectKey, bucket, contentType string
+	var sizeBytes int64
 	var isEncrypted bool
 	var encryptionJSON sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT bucket, object_key, content_type, is_encrypted, encryption_key_id 
+		SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id
 		FROM media.uploads WHERE id = $1
-	`, uploadID).Scan(&bucket, &objectKey, &contentType, &isEncrypted, &encryptionJSON)
+	`, uploadID).Scan(&bucket, &objectKey, &contentType, &sizeBytes, &isEncrypted, &encryptionJSON)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -202,51 +241,181 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 	}
 
 	if isEncrypted {
-		// Download object, encode as base64, return JSON
-		url, err := s.store.PresignGet(ctx, bucket, objectKey, 5*time.Minute)
+		encryptedOptions := GetOptions{}
+		if options.Head {
+			encryptedOptions.Head = true
+		}
+		object, err := s.store.Get(ctx, bucket, objectKey, encryptedOptions)
+		if err != nil {
+			return storageError(ctx, err)
+		}
+		defer object.Body.Close()
+		switch object.StatusCode {
+		case http.StatusOK:
+		case http.StatusNotFound:
+			return ErrObjectNotFound
+		default:
+			return ErrStorage
+		}
+
+		prefix, suffix, err := encryptedJSONEnvelope(
+			encryptionJSON,
+			contentType,
+			sizeBytes,
+		)
 		if err != nil {
 			return err
 		}
 
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
+		ciphertextSize := object.ContentLength
+		if ciphertextSize < 0 {
+			ciphertextSize = sizeBytes
 		}
 
-		var encMeta map[string]any
-		if encryptionJSON.Valid && encryptionJSON.String != "" {
-			_ = json.Unmarshal([]byte(encryptionJSON.String), &encMeta)
-		} else {
-			encMeta = map[string]any{}
-		}
-		encMeta["encrypted"] = true
-		encMeta["ciphertext"] = base64.StdEncoding.EncodeToString(data)
-
-		if encMeta["mimeType"] == nil {
-			encMeta["mimeType"] = contentType
-		}
-		if encMeta["sizeBytes"] == nil {
-			encMeta["sizeBytes"] = len(data)
-		}
+		encodedSize := int64(base64.StdEncoding.EncodedLen(int(ciphertextSize)))
+		responseSize := int64(len(prefix)) + encodedSize + int64(len(suffix))
 
 		w.Header().Set("Cache-Control", "private, max-age=86400")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(encMeta)
+		w.Header().Set("Content-Length", strconv.FormatInt(responseSize, 10))
+		w.WriteHeader(http.StatusOK)
+
+		if options.Head {
+			return nil
+		}
+
+		if _, err := w.Write(prefix); err != nil {
+			return responseStartedError(ctx, err)
+		}
+
+		encoder := base64.NewEncoder(base64.StdEncoding, w)
+		if _, err := io.Copy(encoder, object.Body); err != nil {
+			_ = encoder.Close()
+			return responseStartedError(ctx, err)
+		}
+		if err := encoder.Close(); err != nil {
+			return responseStartedError(ctx, err)
+		}
+		if _, err := w.Write(suffix); err != nil {
+			return responseStartedError(ctx, err)
+		}
 		return nil
 	}
 
-	url, err := s.store.PresignGet(ctx, bucket, objectKey, 5*time.Minute)
+	object, err := s.store.Get(ctx, bucket, objectKey, options)
 	if err != nil {
-		return err
+		return storageError(ctx, err)
 	}
-	w.Header().Set("Location", url)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	defer object.Body.Close()
+
+	switch object.StatusCode {
+	case http.StatusOK, http.StatusPartialContent:
+	case http.StatusNotFound:
+		return ErrObjectNotFound
+	case http.StatusRequestedRangeNotSatisfiable:
+		copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
+		copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return nil
+	default:
+		return ErrStorage
+	}
+
+	w.Header().Set("Content-Type", safeContentType(contentType))
+	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
+	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
+	if w.Header().Get("Accept-Ranges") == "" {
+		w.Header().Set("Accept-Ranges", "bytes")
+	}
+
+	contentLength := sizeBytes
+	if object.StatusCode == http.StatusPartialContent {
+		contentLength = object.ContentLength
+	}
+	if contentLength >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	}
+	w.WriteHeader(object.StatusCode)
+
+	if options.Head {
+		return nil
+	}
+	if _, err := io.Copy(w, object.Body); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("%w: %v", ErrResponseStarted, err)
+	}
 	return nil
+}
+
+func storageError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: %v", ErrStorage, err)
+}
+
+func responseStartedError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: %v", ErrResponseStarted, err)
+}
+
+func copyObjectHeader(header http.Header, name, value string) {
+	if value != "" {
+		header.Set(name, value)
+	}
+}
+
+func safeContentType(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil || mediaType == "" {
+		return "application/octet-stream"
+	}
+	return mediaType
+}
+
+func encryptedJSONEnvelope(
+	encryptionJSON sql.NullString,
+	contentType string,
+	sizeBytes int64,
+) ([]byte, []byte, error) {
+	meta := map[string]any{}
+
+	if encryptionJSON.Valid && encryptionJSON.String != "" {
+		if err := json.Unmarshal([]byte(encryptionJSON.String), &meta); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	delete(meta, "ciphertext")
+	meta["encrypted"] = true
+
+	if meta["mimeType"] == nil {
+		meta["mimeType"] = contentType
+	}
+	if meta["sizeBytes"] == nil {
+		meta["sizeBytes"] = sizeBytes
+	}
+
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(encoded) < 2 {
+		return nil, nil, errors.New("invalid encrypted metadata")
+	}
+
+	// Убираем закрывающую скобку, чтобы добавить ciphertext последним полем.
+	prefix := append([]byte(nil), encoded[:len(encoded)-1]...)
+	if len(prefix) > 1 {
+		prefix = append(prefix, ',')
+	}
+	prefix = append(prefix, `"ciphertext":"`...)
+
+	suffix := []byte(`"}`)
+
+	return prefix, suffix, nil
 }

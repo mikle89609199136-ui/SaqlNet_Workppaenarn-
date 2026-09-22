@@ -21,7 +21,7 @@ export class Button {
     button.id = this.id;
     button.className = `crane-btn crane-btn--${this.type}`;
     button.textContent = this.label;
-    
+
     Object.assign(button.style, {
       width: this.width,
       height: this.height,
@@ -36,7 +36,7 @@ export class Button {
       justifyContent: 'center',
       gap: '8px',
       outline: 'none',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif',
     });
 
     this.applyTheme(button);
@@ -61,8 +61,16 @@ export class Button {
   }
 
   applyTheme(element) {
-    const { primary, secondary, onPrimary, onSecondary, surfaceVariant, textPrimary, textDisabled } = colors;
-    
+    const {
+      primary,
+      secondary,
+      onPrimary,
+      onSecondary,
+      surfaceVariant,
+      textPrimary,
+      textDisabled,
+    } = colors;
+
     if (this.type === 'primary') {
       element.style.background = this.disabled ? surfaceVariant : primary;
       element.style.color = onPrimary;

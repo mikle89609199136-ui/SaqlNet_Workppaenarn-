@@ -125,17 +125,19 @@
 
       const grid = document.createElement('div');
       grid.className = 'reaction-full-picker-grid';
-      getAvailableEmojis().slice(0, 200).forEach((emoji) => {
-        const button = document.createElement('div');
-        button.className = 'reaction-full-picker-emoji';
-        button.textContent = emoji;
-        button.onclick = (event) => {
-          event.stopPropagation();
-          toggleReaction(messageId, emoji);
-          closeFullEmojiPicker();
-        };
-        grid.appendChild(button);
-      });
+      getAvailableEmojis()
+        .slice(0, 200)
+        .forEach((emoji) => {
+          const button = document.createElement('div');
+          button.className = 'reaction-full-picker-emoji';
+          button.textContent = emoji;
+          button.onclick = (event) => {
+            event.stopPropagation();
+            toggleReaction(messageId, emoji);
+            closeFullEmojiPicker();
+          };
+          grid.appendChild(button);
+        });
 
       reactionFullPickerEl.appendChild(grid);
       document.body.appendChild(reactionFullPickerEl);

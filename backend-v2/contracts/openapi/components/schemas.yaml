@@ -1,10 +1,11 @@
 Error:
   type: object
-  required: [code, message, requestId]
+  required: [code, message]
   properties:
     code: { type: string, example: validation_failed }
     message: { type: string, example: invalid input }
-    requestId: { type: string }
+    requestId: { type: string, description: Present when the request passed through request ID middleware. }
+    details: { description: Optional structured error details. }
 User:
   type: object
   required: [id, username, firstName]
@@ -33,7 +34,7 @@ RegisterRequest:
   type: object
   required: [username, password, firstName]
   properties:
-    username: { type: string, pattern: '^[a-zA-Z0-9_]{3,32}$' }
+    username: { $ref: '#/Username' }
     password: { $ref: '#/Password' }
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
@@ -87,29 +88,48 @@ ChatMember:
         role: { type: string, enum: [owner, admin, member] }
         permissions: { type: object, additionalProperties: true }
         mutedUntil: { type: string, nullable: true }
-        mutedAt: { type: string, nullable: true, description: 'set when muted; mutedUntil null = permanent mute' }
+        mutedAt:
+          {
+            type: string,
+            nullable: true,
+            description: 'set when muted; mutedUntil null = permanent mute',
+          }
         joinedAt: { type: string }
 Message:
   type: object
-  required: [id, chatId, senderId, content, type, createdAt]
+  required: [id, chatId, senderId, senderFirstName, content, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
   properties:
     id: { type: string, format: uuid }
     chatId: { type: string, format: uuid }
     senderId: { type: string, format: uuid }
+    senderName: { type: string }
+    senderFirstName: { type: string }
+    senderAvatar: { type: string }
     content: { type: string }
-    type: { type: string }
+    type: { type: string, enum: [text, image, audio, video, voice, sticker, gif, file, call] }
     replyTo: { type: string, format: uuid, nullable: true }
+    replyToMessageId: { type: string, format: uuid, nullable: true }
+    replySenderName: { type: string }
+    replyToSenderName: { type: string }
+    reactions:
+      type: array
+      items: { $ref: '#/Reaction' }
     metadata: { type: object, additionalProperties: true }
     isForwarded: { type: boolean }
+    forwardedSenderName: { type: string }
     isPinned: { type: boolean }
     isEdited: { type: boolean }
     createdAt: { type: string }
     updatedAt: { type: string }
+    deletedAt: { type: string, nullable: true }
 SendMessageRequest:
   type: object
   properties:
     content: { type: string }
-    type: { type: string, default: text }
+    type:
+      type: string
+      enum: [text, image, audio, video, voice, sticker, gif, file]
+      description: Defaults to text when omitted.
     replyTo: { type: string, format: uuid, nullable: true }
     mediaUrl: { type: string }
     mediaType: { type: string }
@@ -118,12 +138,230 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+EditMessageRequest:
+  type: object
+  required: [content]
+  properties:
+    content: { type: string }
 Reaction:
   type: object
+  required: [emoji, count, myReaction]
   properties:
     emoji: { type: string }
-    count: { type: integer }
+    count: { type: integer, minimum: 1 }
     myReaction: { type: boolean }
+MessageResponse:
+  type: object
+  required: [message]
+  properties:
+    message: { $ref: '#/Message' }
+MessageListResponse:
+  type: object
+  required: [messages]
+  properties:
+    messages:
+      type: array
+      items: { $ref: '#/Message' }
+DeleteMessageResponse:
+  type: object
+  required: [success, lastMessage]
+  properties:
+    success: { type: boolean, enum: [true] }
+    lastMessage:
+      nullable: true
+      allOf: [{ $ref: '#/Message' }]
+MarkMessagesReadRequest:
+  type: object
+  required: [chatId]
+  properties:
+    chatId: { type: string, format: uuid }
+    messageIds:
+      type: array
+      description: Accepted for client compatibility; the current backend marks the whole chat as read.
+      items: { type: string, format: uuid }
+ReactionListResponse:
+  type: object
+  required: [reactions]
+  properties:
+    reactions:
+      type: array
+      items: { $ref: '#/Reaction' }
+ReactionToggleResponse:
+  type: object
+  required: [action, currentEmoji, reactions]
+  properties:
+    action: { type: string, enum: [added, removed, replaced] }
+    currentEmoji:
+      type: string
+      description: Empty when the reaction was removed.
+    reactions:
+      type: array
+      items: { $ref: '#/Reaction' }
+FavoriteStateResponse:
+  type: object
+  required: [favorited]
+  properties:
+    favorited: { type: boolean }
+PublicEncryptionKey:
+  type: object
+  required: [publicKey, keyId]
+  properties:
+    publicKey: { type: string, format: byte }
+    keyId: { type: string, minLength: 16, maxLength: 128 }
+    pqPublicKey: { type: string, nullable: true }
+ChatEncryptedKey:
+  type: object
+  required: [userId, encryptedKey, keyEpoch]
+  properties:
+    userId: { type: string, format: uuid }
+    encryptedKey: { type: string }
+    senderKeyId: { type: string, nullable: true }
+    pqCiphertext: { type: string, nullable: true }
+    keyEpoch: { type: integer, minimum: 0 }
+SaveChatKeysRequest:
+  type: object
+  required: [encryptedKeys, keyEpoch]
+  properties:
+    encryptedKeys:
+      type: array
+      maxItems: 500
+      items: { $ref: '#/ChatEncryptedKey' }
+    keyEpoch: { type: integer, minimum: 0 }
+ChatKeysResponse:
+  type: object
+  required: [keys]
+  properties:
+    keys:
+      type: array
+      items: { $ref: '#/ChatEncryptedKey' }
+KeyEpochResponse:
+  type: object
+  required: [ok, keyEpoch]
+  properties:
+    ok: { type: boolean, enum: [true] }
+    keyEpoch: { type: integer, minimum: 0 }
+OkResponse:
+  type: object
+  required: [ok]
+  properties:
+    ok: { type: boolean, enum: [true] }
+SignalIdentityKey:
+  type: object
+  required: [identityKey, registrationId]
+  properties:
+    identityKey: { type: string }
+    registrationId: { type: integer }
+SignalSignedPreKey:
+  type: object
+  required: [keyId, publicKey, signature]
+  properties:
+    keyId: { type: integer }
+    publicKey: { type: string }
+    signature: { type: string }
+SignalOneTimePreKey:
+  type: object
+  required: [keyId, publicKey]
+  properties:
+    keyId: { type: integer }
+    publicKey: { type: string }
+SignalKeysRequest:
+  type: object
+  required: [identityKey, signedPreKey, oneTimePreKeys]
+  properties:
+    identityKey: { $ref: '#/SignalIdentityKey' }
+    signedPreKey: { $ref: '#/SignalSignedPreKey' }
+    oneTimePreKeys:
+      type: array
+      items: { $ref: '#/SignalOneTimePreKey' }
+SignalPreKeysRequest:
+  type: object
+  required: [oneTimePreKeys]
+  properties:
+    oneTimePreKeys:
+      type: array
+      items: { $ref: '#/SignalOneTimePreKey' }
+SignalPreKeyBundle:
+  type: object
+  required: [identityKey, registrationId, signedPreKey]
+  properties:
+    identityKey: { type: string }
+    registrationId: { type: integer }
+    signedPreKey: { $ref: '#/SignalSignedPreKey' }
+    oneTimePreKey:
+      nullable: true
+      allOf: [{ $ref: '#/SignalOneTimePreKey' }]
+IceServer:
+  type: object
+  required: [urls]
+  properties:
+    urls:
+      oneOf:
+        - { type: string }
+        - { type: array, items: { type: string } }
+    username: { type: string }
+    credential: { type: string }
+IceConfiguration:
+  type: object
+  required: [servers, hasTurn, meteredConfigured, meteredTest]
+  properties:
+    servers:
+      type: array
+      items: { $ref: '#/IceServer' }
+    hasTurn: { type: boolean }
+    meteredConfigured: { type: boolean }
+    meteredTest: { nullable: true }
+CallParticipant:
+  type: object
+  required: [userId]
+  properties:
+    userId: { type: string, format: uuid }
+    displayName: { type: string }
+    avatarUrl: { type: string }
+CallRoom:
+  type: object
+  required: [id, type, callKind, chatId, title, hostId]
+  properties:
+    id: { type: string }
+    type: { type: string, enum: [p2p, group] }
+    callKind: { type: string, enum: [audio, video] }
+    chatId: { type: string, format: uuid }
+    title: { type: string }
+    hostId: { type: string, format: uuid }
+    participants:
+      type: array
+      items: { $ref: '#/CallParticipant' }
+CallRoomCreateRequest:
+  type: object
+  required: [chatId]
+  properties:
+    type:
+      type: string
+      enum: [p2p, group]
+      description: Defaults to group when omitted.
+    chatId: { type: string, format: uuid }
+    title: { type: string }
+    callKind:
+      type: string
+      enum: [audio, video]
+      description: Defaults to video when omitted.
+CallRoomResponse:
+  type: object
+  required: [success, room, iceServers, maxParticipants]
+  properties:
+    success: { type: boolean, enum: [true] }
+    room: { $ref: '#/CallRoom' }
+    iceServers:
+      type: array
+      items: { $ref: '#/IceServer' }
+    maxParticipants: { type: integer, enum: [5] }
+CallRoomListResponse:
+  type: object
+  required: [success, rooms]
+  properties:
+    success: { type: boolean, enum: [true] }
+    rooms:
+      type: array
+      items: { $ref: '#/CallRoom' }
 UploadResponse:
   type: object
   required: [success, url]
@@ -138,3 +376,69 @@ UploadResponse:
 Object:
   type: object
   additionalProperties: true
+Username:
+  type: string
+  pattern: '^[a-zA-Z0-9_]{3,32}$'
+  minLength: 3
+  maxLength: 32
+  example: 'john_doe'
+CreateGroupRequest:
+  type: object
+  required: [title, members]
+  properties:
+    title:
+      type: string
+      maxLength: 128
+      minLength: 1
+      description: |
+        Group title. Trimmed of leading and trailing whitespace before
+        validation and storage. The 128-character limit applies to the
+        trimmed value; an all-whitespace title is rejected.
+      example: 'Team standup'
+    description:
+      type: string
+      description: |
+        Optional group description. Trimmed of leading and trailing
+        whitespace before storage.
+      example: 'Daily sync at 10:00'
+    avatarUrl:
+      type: string
+      description: |
+        Optional avatar URL. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'https://cdn.example.com/avatars/team.png'
+    members:
+      type: array
+      minItems: 1
+      description: |
+        User IDs to add as members. The owner is added automatically
+        and does not need to be listed. Unknown or disabled users are
+        silently skipped.
+      items: { type: string, format: uuid }
+      example: ['550e8400-e29b-41d4-a716-446655440002']
+UpdateGroupRequest:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    title:
+      type: string
+      maxLength: 128
+      pattern: '\S'
+      description: |
+        New chat title. Trimmed of leading and trailing whitespace before
+        validation and storage. The 128-character limit applies to the
+        trimmed value. An all-whitespace value is rejected.
+      example: 'Team standup'
+    description:
+      type: string
+      description: |
+        New chat description. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'Daily sync at 10:00'
+    avatarUrl:
+      type: string
+      description: |
+        Optional avatar URL. Trimmed of leading and trailing whitespace
+        before storage.
+      example: 'https://cdn.example.com/avatars/team.png'

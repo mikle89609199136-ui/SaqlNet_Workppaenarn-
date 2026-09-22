@@ -15,10 +15,10 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 	defer db.Close()
 
 	replyID := "reply-id"
-	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID).
+	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID, "chat-id").
 		WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("Анна"))
 
-	msg := Message{SenderName: "Иван", ReplyTo: &replyID}
+	msg := Message{ChatID: "chat-id", SenderName: "Иван", ReplyTo: &replyID}
 	if err := NewService(db, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
 		t.Fatal(err)
 	}

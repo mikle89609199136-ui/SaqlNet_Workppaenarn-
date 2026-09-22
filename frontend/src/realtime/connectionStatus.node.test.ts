@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WS_EVENTS } from '@/consts';
-import { eventBus } from '@/core';
+import { WS_EVENTS } from '@/shared/config';
+import { eventBus } from '@/shared/lib/event-bus';
 import {
   CONNECTION_NOTICE_DELAY_MS,
   readConnectionStatus,

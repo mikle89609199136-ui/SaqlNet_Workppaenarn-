@@ -8,7 +8,7 @@
  */
 import { beforeEach } from 'vitest';
 
-/** Хранилище в памяти: `store/profile.ts` читает localStorage при импорте. */
+/** Хранилище в памяти: `entities/user/model/profileStore.ts` читает localStorage при импорте. */
 function createMemoryStorage(): Storage {
   const entries = new Map<string, string>();
 
