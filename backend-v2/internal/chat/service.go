@@ -2960,6 +2960,7 @@ func (s *Service) GetMlsState(ctx context.Context, chatID string) (int64, string
 
 type leaveChatInput struct {
 	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
 }
 
 type MemberRemovedEvent struct {
@@ -2969,189 +2970,216 @@ type MemberRemovedEvent struct {
 	Reason string `json:"reason"`
 }
 
-// The LeaveChat service method removes a user from a group chat,
-// provided the chat exists, is a group, and the user is not the owner.
+// LeaveChat removes a non-owner member from a group chat.
+// Private chats are rejected before any membership data is changed.
 func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
-	// ------------------------------------------------------------------
-	// Step 1: Validate input
-	// ------------------------------------------------------------------
-	input := leaveChatInput{ChatID: chatID}
+	const method = "LeaveChat"
+
+	input := leaveChatInput{UserID: userID, ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
+		slog.WarnContext(ctx, "invalid leave chat input",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return ErrInvalidInput
 	}
 
-	// ------------------------------------------------------------------
-	// Step 2: Verify chat exists and is a group (early validation)
-	//         – This avoids starting a transaction for invalid requests.
-	// ------------------------------------------------------------------
+	// Leaving is only supported for group chats.
 	var chatType string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT type FROM chats.chats WHERE id = $1`, chatID,
 	).Scan(&chatType)
 	if err != nil {
-		slog.Error("failed to check chat type",
-			"chatID", chatID,
-			"userID", userID,
-			"error", err,
-		)
 		if errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "chat not found",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+			)
 			return ErrNotFound
 		}
+		slog.ErrorContext(ctx, "failed to load chat type",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
+
 	if chatType != "group" {
-		return ErrInvalidChatType // e.g., "only group chats support leave"
+		slog.WarnContext(ctx, "leave is not allowed for non-group chat",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"chat_type", chatType,
+		)
+		return ErrInvalidChatType
 	}
 
-	// ------------------------------------------------------------------
-	// Step 3: Determine user's role in the chat
-	// ------------------------------------------------------------------
+	// The owner must transfer ownership before leaving.
 	role, err := s.memberRole(ctx, userID, chatID)
 	if err != nil {
-		slog.Error("failed to check user's role in chat",
-			"chatID", chatID,
-			"userID", userID,
+		if errors.Is(err, ErrForbidden) {
+			// Ожидаемый бизнес-отказ: пользователь не состоит в чате.
+			slog.WarnContext(ctx, "leave attempted by non-member",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+			)
+			return ErrForbidden
+		}
+		slog.ErrorContext(ctx, "failed to load member role",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
 		return err
 	}
+
 	if role == "owner" {
-		return ErrOwnershipTransferRequired // owner must transfer ownership first
+		slog.WarnContext(ctx, "owner must transfer ownership before leaving",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrOwnershipTransferRequired
 	}
 
-	// ------------------------------------------------------------------
-	// Step 4: Begin transaction – all deletions are atomic
-	// ------------------------------------------------------------------
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		slog.Error("failed to begin transaction",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
 		return err
 	}
 
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
-	// ------------------------------------------------------------------
-	// Step 4a: Fetch all current members (to notify them later)
-	//          – We do this before deleting to have the full list.
-	// ------------------------------------------------------------------
-	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
+	// Snapshot recipients before deletion so remaining members can be notified.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
-		slog.Error("failed to query current members",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to query current members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = tx.Rollback()
 		return err
 	}
+
 	var recipients []string
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
-			slog.Error("failed to scan member ID",
-				"chatID", chatID,
-				"userID", userID,
+			_ = rows.Close()
+			slog.ErrorContext(ctx, "failed to scan member id",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
 				"error", err,
 			)
-			_ = rows.Close()
-			_ = tx.Rollback()
 			return err
 		}
-		recipients = append(recipients, memberID)
+		if memberID != userID {
+			recipients = append(recipients, memberID)
+		}
 	}
 	if err := rows.Err(); err != nil {
-		slog.Error("rows iteration error",
-			"chatID", chatID,
-			"userID", userID,
+		_ = rows.Close()
+		slog.ErrorContext(ctx, "failed to iterate members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = rows.Close()
-		_ = tx.Rollback()
 		return err
 	}
 	_ = rows.Close()
 
-	// ------------------------------------------------------------------
-	// Step 4b: Delete user's encryption keys for this chat
-	// ------------------------------------------------------------------
+	// Remove per-user chat data and membership atomically.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
 		chatID, userID,
 	); err != nil {
-		slog.Error("failed to delete user's encryption keys",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to delete encryption keys",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = tx.Rollback()
 		return err
 	}
 
-	// ------------------------------------------------------------------
-	// Step 4c: Delete user's chat settings (preferences, etc.)
-	// ------------------------------------------------------------------
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`,
 		userID, chatID,
 	); err != nil {
-		slog.Error("failed to delete user's chat settings",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to delete chat settings",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = tx.Rollback()
 		return err
 	}
 
-	// ------------------------------------------------------------------
-	// Step 4d: Remove the member row (only if role is NOT 'owner')
-	// ------------------------------------------------------------------
 	res, err := tx.ExecContext(ctx,
-		`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`,
+		`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`,
 		chatID, userID,
 	)
 	if err != nil {
-		slog.Error("failed to delete member row",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to delete member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = tx.Rollback()
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		_ = tx.Rollback()
-		return ErrForbidden // e.g., user is not a member or is owner
+		slog.WarnContext(ctx, "member not removed",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrForbidden
 	}
 
-	// ------------------------------------------------------------------
-	// Step 4e: Commit transaction – all changes persist together
-	// ------------------------------------------------------------------
 	if err := tx.Commit(); err != nil {
-		slog.Error("failed to commit transaction",
-			"chatID", chatID,
-			"userID", userID,
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
 			"error", err,
 		)
-		_ = tx.Rollback()
 		return err
 	}
 
-	committed = true
-
-	// ------------------------------------------------------------------
-	// Step 5: Broadcast WebSocket event to remaining members
-	//         – Event notifies about the member removal.
-	// ------------------------------------------------------------------
+	// Notify remaining members only.
 	if s.ws != nil {
 		event := MemberRemovedEvent{
 			Type:   "chat_member_removed",
@@ -3161,15 +3189,18 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
-			slog.Error("failed to marshal member_removed event",
-				"err", err,
-				"chatID", chatID,
-				"userID", userID,
+			slog.ErrorContext(ctx, "failed to marshal member_removed event",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+				"error", err,
 			)
 		} else {
 			s.ws.BroadcastToUsers(recipients, payload)
 		}
 	}
+
 	return nil
 }
 
