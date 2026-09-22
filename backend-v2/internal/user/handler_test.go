@@ -1,12 +1,14 @@
 package user
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"craneapp/backend-v2/internal/platform/authctx"
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
@@ -196,5 +198,77 @@ func TestPublicStatusReturnsUserNotFound(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMalformedUUIDReturnsValidationFailedWithoutDatabaseCall(t *testing.T) {
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		body    []byte
+		handler func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:    "public profile",
+			method:  http.MethodGet,
+			path:    "/api/v2/users/not-a-uuid/profile",
+			handler: (*Handler).PublicProfile,
+		},
+		{
+			name:    "public status",
+			method:  http.MethodGet,
+			path:    "/api/v2/users/not-a-uuid/status",
+			handler: (*Handler).PublicStatus,
+		},
+		{
+			name:    "block user",
+			method:  http.MethodPost,
+			path:    "/api/v2/users/blocked",
+			body:    []byte(`{"userId":"not-a-uuid"}`),
+			handler: (*Handler).Blocked,
+		},
+		{
+			name:    "unblock user",
+			method:  http.MethodDelete,
+			path:    "/api/v2/users/blocked/not-a-uuid",
+			handler: (*Handler).Unblock,
+		},
+		{
+			name:    "delete device",
+			method:  http.MethodDelete,
+			path:    "/api/v2/users/devices/not-a-uuid",
+			handler: (*Handler).DeleteDevice,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			request := httptest.NewRequest(test.method, test.path, bytes.NewReader(test.body))
+			request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "11111111-1111-4111-8111-111111111111"}))
+			response := httptest.NewRecorder()
+
+			test.handler(NewHandler(NewService(db), nil), response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("expected status 400, got %d: %s", response.Code, response.Body.String())
+			}
+			var body map[string]any
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body["code"] != "validation_failed" {
+				t.Fatalf("expected validation_failed, got %v", body["code"])
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unexpected database call: %v", err)
+			}
+		})
 	}
 }

@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/skip2/go-qrcode"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
 )
+
+var validate = validator.New()
 
 type SignalRegistrationValidator interface {
 	ValidateSignalRegistration(ctx context.Context, identityKey, signedPreKey, signature string) (bool, error)
@@ -183,6 +186,10 @@ func (h *Handler) PublicProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
 		return
 	}
+	if !isValidUUID(userID) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
+		return
+	}
 	p, err := h.service.ProfileByID(r.Context(), userID)
 	respondProfile(w, r, p, err)
 }
@@ -195,6 +202,10 @@ func (h *Handler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 	userID, suffix := parseUserSubroute(r.URL.Path)
 	if userID == "" || suffix != "status" {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+	if !isValidUUID(userID) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
 		return
 	}
 	status, err := h.service.Status(r.Context(), userID)
@@ -415,6 +426,10 @@ func (h *Handler) Blocked(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "userId is required")
 			return
 		}
+		if !isValidUUID(input.UserID) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
+			return
+		}
 		err := h.service.Block(r.Context(), current.ID, input.UserID)
 		switch {
 		case errors.Is(err, ErrSelfBlock):
@@ -442,6 +457,10 @@ func (h *Handler) Unblock(w http.ResponseWriter, r *http.Request) {
 	blockedUserID := strings.TrimPrefix(r.URL.Path, "/api/v2/users/blocked/")
 	if blockedUserID == "" || blockedUserID == r.URL.Path {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "blocked user id is required")
+		return
+	}
+	if !isValidUUID(blockedUserID) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
 		return
 	}
 	if err := h.service.Unblock(r.Context(), current.ID, blockedUserID); err != nil {
@@ -512,6 +531,10 @@ func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimPrefix(r.URL.Path, "/api/v2/users/devices/")
 	if sessionID == "" || sessionID == r.URL.Path {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_request", "missing session id")
+		return
+	}
+	if !isValidUUID(sessionID) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid sessionId")
 		return
 	}
 	err := h.service.DeleteDevice(r.Context(), current.ID, sessionID)
@@ -611,6 +634,10 @@ func parseUserSubroute(path string) (string, string) {
 		return "", ""
 	}
 	return parts[0], parts[1]
+}
+
+func isValidUUID(value string) bool {
+	return validate.Var(value, "required,uuid") == nil
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
