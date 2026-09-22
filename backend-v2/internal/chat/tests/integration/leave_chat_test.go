@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"database/sql"
-	"os"
 	"strings"
 	"testing"
 
@@ -15,21 +14,18 @@ import (
 )
 
 func TestLeaveChat(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is not configured")
-	}
-
-	db, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
 
 	ctx := context.Background()
-	require.NoError(t, db.PingContext(ctx))
-
+	db := TestDB
 	service := chat.NewService(db, nil)
+
+	// t.Cleanup ниже по тексту seedUser/seedChat сами удаляют данные,
+	// но для подстраховки можно один раз очистить всё в начале теста.
+	t.Cleanup(func() {
+		if err := CleanupAllTables(context.Background(), TestDB); err != nil {
+			t.Logf("cleanup failed: %v", err)
+		}
+	})
 
 	t.Run("member leaves group chat", func(t *testing.T) {
 		ownerID := seedUser(t, db, ctx)
@@ -222,8 +218,9 @@ func seedChat(
 func seedEncryptionKey(t *testing.T, db *sql.DB, ctx context.Context, chatID, userID string) {
 	t.Helper()
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO crypto.chat_encryption_keys (chat_id, user_id, key) VALUES ($1, $2, 'test-key')`,
-		chatID, userID)
+		`INSERT INTO crypto.chat_encryption_keys (chat_id, user_id, encrypted_key)
+		 VALUES ($1, $2, $3)`,
+		chatID, userID, "test-key")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(context.Background(),
@@ -235,7 +232,8 @@ func seedEncryptionKey(t *testing.T, db *sql.DB, ctx context.Context, chatID, us
 func seedUserSettings(t *testing.T, db *sql.DB, ctx context.Context, chatID, userID string) {
 	t.Helper()
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO chats.user_chat_settings (user_id, chat_id, settings) VALUES ($1, $2, '{}')`,
+		`INSERT INTO chats.user_chat_settings (user_id, chat_id)
+		 VALUES ($1, $2)`,
 		userID, chatID)
 	require.NoError(t, err)
 	t.Cleanup(func() {
