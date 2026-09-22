@@ -8,6 +8,7 @@ import { type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
+import { validateAvatarFile } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import {
   registerFormSchema,
@@ -35,6 +36,7 @@ export function RegisterWizard() {
      ошибкой: человек до них просто не дошёл. */
   const [attempted, setAttempted] = useState(false);
   const [avatar, setAvatar] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -113,8 +115,23 @@ export function RegisterWizard() {
 
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
 
+    const validation = validateAvatarFile(file);
+    if (!validation.valid) {
+      const errorMessage =
+        validation.errorCode === 'tooLarge'
+          ? t('settings.profile.avatarTooLarge', 'Файл слишком большой. Максимальный размер 5 МБ')
+          : t(
+              'settings.profile.avatarInvalidType',
+              'Поддерживаются только изображения (JPEG, PNG, WebP, GIF)'
+            );
+      showToast('error', errorMessage);
+      return;
+    }
+
+    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = (readerEvent) => setAvatar(String(readerEvent.target?.result || ''));
     reader.readAsDataURL(file);
@@ -136,9 +153,10 @@ export function RegisterWizard() {
 
       saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
-         неудачная загрузка значит лишь аватарку по умолчанию. Полноценная
-         загрузка через медиа-сервис делается в #485. */
-      await uploadAvatar(avatar).catch(() => {});
+         неудачная загрузка значит лишь аватарку по умолчанию. */
+      if (avatarFile) {
+        await uploadAvatar(avatarFile).catch(() => {});
+      }
 
       showToast('success', t('welcomeDone', 'Добро пожаловать!'));
       navigate(ROUTES.CHATS, { replace: true });
