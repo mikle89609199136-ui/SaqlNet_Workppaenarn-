@@ -164,3 +164,37 @@ func TestCheckUsername_ValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicStatusReturnsUserNotFound(t *testing.T) {
+	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(statusQueryPattern).
+		WithArgs("11111111-1111-4111-8111-111111111111").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+
+	handler := NewHandler(NewService(db), nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/11111111-1111-4111-8111-111111111111/status", nil)
+	response := httptest.NewRecorder()
+
+	handler.PublicStatus(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", response.Code)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["code"] != "user_not_found" {
+		t.Fatalf("expected user_not_found, got %v", body["code"])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
