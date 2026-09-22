@@ -198,6 +198,10 @@ func (h *Handler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, err := h.service.Status(r.Context(), userID)
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "status fetch failed")
 		return
