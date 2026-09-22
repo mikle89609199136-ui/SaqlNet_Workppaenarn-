@@ -118,90 +118,6 @@
 }
 
 /* =========================================================
-   Components — Chats page  (was app.css)
-   ========================================================= */
-@layer components {
-
-  .chats-page {
-    @apply relative max-w-[920px] mx-auto px-3.5;
-    min-height: 100vh; min-height: 100dvh;
-    padding-top: calc(18px + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  }
-  .chats-toolbar {
-    @apply flex items-center gap-2 mb-3;
-    /* На телефоне прокручивается вся страница, и панель уезжала вверх
-       вместе с ней — на настольном она остаётся на месте, потому что там
-       прокручивается только список. Липкой она ведёт себя одинаково в
-       обоих случаях; фон обязателен, иначе под ней просвечивают строки. */
-    @media (max-width: 767px) {
-      @apply sticky z-10 py-2 bg-ground;
-      top: env(safe-area-inset-top, 0px);
-    }
-  }
-  /* Кнопка новой группы: раньше создать её было нельзя вовсе — страница
-     существовала, а ссылки на неё не было ни на одном экране. */
-  .chats-new-group {
-    @apply shrink-0 w-11 h-11 rounded-field flex items-center justify-center cursor-pointer bg-sheet-2 text-ink-2;
-    border: 1px solid var(--color-line);
-    transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-    &:hover { @apply text-ink; border-color: var(--color-ink-3); }
-    &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-  }
-  /* Окно создания группы */
-  .create-group-avatar {
-    @apply w-16 h-16 rounded-bubble flex items-center justify-center cursor-pointer overflow-hidden bg-brand-soft text-ink-2;
-    border: 1px dashed var(--color-line);
-    transition: border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-    & img { @apply w-full h-full object-cover; }
-    &:hover { border-color: var(--color-brand); @apply text-ink; }
-  }
-  /* Кнопка временная: цвета из кита, но компонент Button пишется
-     отдельно (#340). Тогда правило уедет. */
-  .create-group-submit {
-    @apply w-full h-11 rounded-field cursor-pointer font-semibold bg-brand-fill text-on-brand;
-    transition: filter var(--transition-duration-fast) ease-out;
-    &:hover:not(:disabled) { filter: brightness(1.08); }
-    &:disabled { @apply opacity-[0.42] cursor-default; }
-  }
-  .chats-list { @apply overflow-hidden; }
-
-  .chat-row {
-    @apply min-h-[72px] p-3 grid gap-3 text-inherit no-underline;
-    grid-template-columns: 48px minmax(0,1fr);
-    transition: background-color var(--transition-duration-fast) ease-out;
-    & + .chat-row { @apply border-t; border-color: var(--color-divider); }
-    &:hover { @apply bg-sheet-2; }
-    /* Открытый чат. Идёт после :hover намеренно — специфичность у них
-       одинаковая, и без этого наведение на соседнюю строку перекрывало бы
-       выделение открытой.
-
-       Оттенок с примесью бренда, а не та же подложка, что у наведения:
-       иначе при движении мыши по списку кажется, будто открывается другой
-       чат. Атрибут ставит NavLink сам. */
-    &[aria-current='page'] {
-      background: color-mix(in srgb, var(--color-brand) 16%, transparent);
-    }
-  }
-  /* Цвет аватарки пока задаётся типом чата. По киту он должен выводиться
-     из идентификатора, чтобы список читался цветовыми пятнами, — это
-     сделает компонент Avatar (#347). */
-  .chat-main { @apply min-w-0 flex flex-col justify-center gap-1.5; }
-  .chat-topline, .chat-subline { @apply min-w-0 flex items-center justify-between gap-3; }
-  .chat-title, .chat-subline span { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
-  .chat-title { @apply text-base font-semibold text-ink; }
-  .chat-time { @apply shrink-0 text-micro text-ink-3; font-family: var(--font-mono); }
-  /* Текст сообщения светлее отметки времени: при беглом просмотре глаз
-     ищет «что», а не «когда». Прежде оба были одного цвета, и строка
-     читалась ровным серым полотном. */
-  .chat-subline { @apply text-caption text-ink-2; }
-  /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
-  .chat-draft-label { color: var(--color-danger); }
-
-  /* Кнопка временная, см. #340. */
-}
-
-/* =========================================================
    Components — Toast / App shells  (was app.css)
    ========================================================= */
 @layer components {
@@ -300,18 +216,6 @@
       max-width: none;
     }
   }
-  .app-sidebar-pane .chats-page {
-    @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 flex flex-col overflow-hidden; }
-  }
-  .app-sidebar-pane .chats-toolbar {
-    @media (min-width: 768px) { @apply px-4 mb-4; }
-  }
-  .app-sidebar-pane .chat-row {
-    @media (min-width: 768px) { @apply py-2.5 px-4; }
-  }
-  .app-sidebar-pane .chats-list {
-    @media (min-width: 768px) { @apply flex-1 overflow-y-auto; }
-  }
   .app-chat-pane .thread-page {
     @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 m-0 flex flex-col; background: transparent; }
   }
@@ -342,7 +246,7 @@
     min-height: 100vh; min-height: 100dvh;
     background: var(--color-bg);
 
-    & .chats-page, & .settings-page { @apply pb-safe-nav; }
+    & .settings-page { @apply pb-safe-nav; }
   }
 	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
 	  .mobile-content:has(> .thread-page) {
