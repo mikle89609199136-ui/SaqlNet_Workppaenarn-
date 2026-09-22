@@ -33,7 +33,7 @@ export function ChatRowMenu({
   onClose,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
-  const { togglePin, toggleArchive } = useChatActions();
+  const { togglePin, toggleArchive, markRead } = useChatActions();
 
   return (
     <ContextMenu
@@ -44,6 +44,20 @@ export function ChatRowMenu({
       x={x}
       y={y}
     >
+      {/* Пункт показывается только там, где нажимать есть что: чат без
+          непрочитанных — это действие ни о чём. */}
+      {chat.unreadCount > 0 && (
+        <ContextMenu.Item
+          icon={<Icon name="check" />}
+          onClick={() => {
+            markRead(chat);
+            onClose();
+          }}
+        >
+          {t('markRead', 'Прочитано')}
+        </ContextMenu.Item>
+      )}
+
       <ContextMenu.Item
         icon={<Icon name="pin" />}
         onClick={() => {
