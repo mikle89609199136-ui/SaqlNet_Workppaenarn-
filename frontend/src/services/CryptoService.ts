@@ -20,6 +20,7 @@ import {
   PEER_BUNDLES_PREFIX,
   publishIdentity,
   readBackupState,
+  setBackupState,
   type IArgon2Params,
   type ILocalIdentity,
   type IPasskeySlot,
@@ -121,7 +122,7 @@ export class CryptoService {
   private backup: KeyBackupManager;
 
   /** Мастер-ключ, пришедший по QR до того, как сессия подготовлена. */
-  private pendingMasterKey: Uint8Array | null = null;
+  private pendingMasterKey: Uint8Array<ArrayBuffer> | null = null;
 
   constructor(apiClient: ApiClient, options: { argon2?: IArgon2Params } = {}) {
     this.apiClient = apiClient;
@@ -179,9 +180,25 @@ export class CryptoService {
 
   private async doInit(): Promise<ILocalIdentity | null> {
     const accountId = this.getAccountId();
-    if (!accountId || !this.hasWebCrypto()) return null;
+    if (!accountId) return null;
 
-    if (this.identity?.accountId === accountId) return this.identity;
+    if (!this.hasWebCrypto()) {
+      setBackupState({ status: 'unavailable', hasPasskey: false, migrating: false });
+      return null;
+    }
+
+    try {
+      return await this.prepareIdentity(accountId);
+    } catch (error) {
+      setBackupState({ status: 'error', hasPasskey: false, migrating: false });
+      throw error;
+    }
+  }
+
+  private async prepareIdentity(accountId: string): Promise<ILocalIdentity | null> {
+    if (this.identity?.accountId === accountId && readBackupState().status === 'ready') {
+      return this.identity;
+    }
 
     // Наследие прежней схемы: одиночная пара и заглушка группового
     // состояния. Ни то ни другое больше не читается.
@@ -255,7 +272,9 @@ export class CryptoService {
   }
 
   async unlockWithPasskey(
-    evaluate: (slots: IPasskeySlot[]) => Promise<{ credentialId: string; prfOutput: Uint8Array }>
+    evaluate: (
+      slots: IPasskeySlot[]
+    ) => Promise<{ credentialId: string; prfOutput: Uint8Array<ArrayBuffer> }>
   ): Promise<void> {
     this.chatKeys.forget();
     await this.activate(await this.backup.unlockWithPasskey(this.requireAccountId(), evaluate));
@@ -267,7 +286,7 @@ export class CryptoService {
    * Сессия к этому моменту может быть ещё не сохранена — тогда ключ ждёт
    * ближайшей подготовки личности.
    */
-  async acceptMasterKey(master: Uint8Array): Promise<void> {
+  async acceptMasterKey(master: Uint8Array<ArrayBuffer>): Promise<void> {
     const accountId = this.getAccountId();
 
     if (!accountId || readBackupState().status !== 'locked') {
@@ -280,7 +299,7 @@ export class CryptoService {
   }
 
   /** Мастер-ключ для передачи на новое устройство; `null` — копия здесь не открыта. */
-  currentMasterKey(): Uint8Array | null {
+  currentMasterKey(): Uint8Array<ArrayBuffer> | null {
     return this.backup.currentMasterKey();
   }
 

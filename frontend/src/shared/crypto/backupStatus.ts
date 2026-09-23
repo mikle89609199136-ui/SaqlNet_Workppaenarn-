@@ -7,13 +7,15 @@
  *   облачный пароль, passkey или вход по QR;
  * - `needsSetup` — копии нет: нужно задать облачный пароль. `migrating` —
  *   на устройстве уже есть переписка прежней схемы, она уйдёт в копию;
- * - `unavailable` — шифрование в этом окружении невозможно (нет WebCrypto).
+ * - `unavailable` — шифрование в этом окружении невозможно (нет WebCrypto);
+ * - `error` — выяснить не удалось (нет сети): можно повторить.
  *
  * Хранилище вне React: на него подписан только экран-заслонка, приход
  * сообщений его не трогает.
  */
 
-export type TBackupStatus = 'checking' | 'ready' | 'locked' | 'needsSetup' | 'unavailable';
+export type TBackupStatus =
+  'checking' | 'ready' | 'locked' | 'needsSetup' | 'unavailable' | 'error';
 
 export interface IBackupState {
   status: TBackupStatus;

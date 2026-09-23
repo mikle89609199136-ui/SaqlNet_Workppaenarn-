@@ -94,7 +94,7 @@ export class KeyBackupManager {
 
   private accountId: string | null = null;
 
-  private masterKey: Uint8Array | null = null;
+  private masterKey: Uint8Array<ArrayBuffer> | null = null;
 
   private pending = new Map<string, IChatKey & { chatId: string }>();
 
@@ -108,7 +108,11 @@ export class KeyBackupManager {
     setBackupState({ hasPasskey: false, migrating: false, ...state });
   }
 
-  private async rememberMasterKey(accountId: string, master: Uint8Array, sealed: string) {
+  private async rememberMasterKey(
+    accountId: string,
+    master: Uint8Array<ArrayBuffer>,
+    sealed: string
+  ) {
     await writeKey(masterKeyStorage(accountId), bytesToBase64(master));
     await writeKey(sealedIdentityStorage(accountId), sealed);
     this.accountId = accountId;
@@ -185,7 +189,7 @@ export class KeyBackupManager {
     const storedSealed = await readKey<string>(sealedIdentityStorage(accountId));
     const previous = await loadIdentity(accountId);
 
-    let master: Uint8Array;
+    let master: Uint8Array<ArrayBuffer>;
     let sealed: string;
     let portable: IPortableIdentity | null = null;
 
@@ -260,7 +264,9 @@ export class KeyBackupManager {
    */
   async unlockWithPasskey(
     accountId: string,
-    evaluate: (slots: IPasskeySlot[]) => Promise<{ credentialId: string; prfOutput: Uint8Array }>
+    evaluate: (
+      slots: IPasskeySlot[]
+    ) => Promise<{ credentialId: string; prfOutput: Uint8Array<ArrayBuffer> }>
   ): Promise<ILocalIdentity> {
     const server = await fetchBackup(this.deps.apiClient);
     if (!server) throw new Error('Резервная копия не найдена');
@@ -277,7 +283,10 @@ export class KeyBackupManager {
   }
 
   /** Открыть копию мастер-ключом, переданным с другого устройства по QR. */
-  async unlockWithMasterKey(accountId: string, master: Uint8Array): Promise<ILocalIdentity> {
+  async unlockWithMasterKey(
+    accountId: string,
+    master: Uint8Array<ArrayBuffer>
+  ): Promise<ILocalIdentity> {
     const server = await fetchBackup(this.deps.apiClient);
     if (!server) throw new Error('Резервная копия не найдена');
 
@@ -286,7 +295,7 @@ export class KeyBackupManager {
 
   private async unlock(
     accountId: string,
-    master: Uint8Array,
+    master: Uint8Array<ArrayBuffer>,
     server: IServerBackup
   ): Promise<ILocalIdentity> {
     const portable = await openIdentity(master, accountId, server.identity);
@@ -315,7 +324,10 @@ export class KeyBackupManager {
     return identity;
   }
 
-  private async openRow(master: Uint8Array, row: IBackupChatKeyRow): Promise<IChatKey | null> {
+  private async openRow(
+    master: Uint8Array<ArrayBuffer>,
+    row: IBackupChatKeyRow
+  ): Promise<IChatKey | null> {
     try {
       return {
         key: await openChatKey(master, row.chatId, row.epoch, row.encryptedKey),
@@ -405,7 +417,7 @@ export class KeyBackupManager {
   }
 
   /** Мастер-ключ для передачи на новое устройство по QR. */
-  currentMasterKey(): Uint8Array | null {
+  currentMasterKey(): Uint8Array<ArrayBuffer> | null {
     return this.masterKey;
   }
 

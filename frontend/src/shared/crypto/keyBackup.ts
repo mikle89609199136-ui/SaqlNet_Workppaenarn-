@@ -75,7 +75,7 @@ interface ISealed {
   ct: string;
 }
 
-function randomBytes(length: number): Uint8Array {
+function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   return crypto.getRandomValues(new Uint8Array(length));
 }
 
@@ -83,12 +83,15 @@ function randomId(): string {
   return bytesToBase64(randomBytes(9)).replace(/[+/=]/g, '');
 }
 
-async function importAesKey(raw: Uint8Array): Promise<CryptoKey> {
+async function importAesKey(raw: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
 /** Отдельный ключ под каждое назначение: личность и ключи чатов не делят один. */
-async function deriveFromMaster(master: Uint8Array, purpose: string): Promise<CryptoKey> {
+async function deriveFromMaster(
+  master: Uint8Array<ArrayBuffer>,
+  purpose: string
+): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', master, 'HKDF', false, ['deriveKey']);
 
   return crypto.subtle.deriveKey(
@@ -105,7 +108,11 @@ async function deriveFromMaster(master: Uint8Array, purpose: string): Promise<Cr
   );
 }
 
-async function sealBytes(key: CryptoKey, plaintext: Uint8Array, aad: string): Promise<ISealed> {
+async function sealBytes(
+  key: CryptoKey,
+  plaintext: Uint8Array<ArrayBuffer>,
+  aad: string
+): Promise<ISealed> {
   const iv = randomBytes(12);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv, additionalData: utf8ToBytes(aad) },
@@ -116,7 +123,11 @@ async function sealBytes(key: CryptoKey, plaintext: Uint8Array, aad: string): Pr
   return { v: SEAL_VERSION, iv: bytesToBase64(iv), ct: bytesToBase64(ciphertext) };
 }
 
-async function openBytes(key: CryptoKey, sealed: ISealed, aad: string): Promise<Uint8Array> {
+async function openBytes(
+  key: CryptoKey,
+  sealed: ISealed,
+  aad: string
+): Promise<Uint8Array<ArrayBuffer>> {
   if (sealed.v !== SEAL_VERSION) throw new Error('Неизвестный формат резервной копии');
 
   const plaintext = await crypto.subtle.decrypt(
@@ -149,12 +160,12 @@ function decodeSealed(value: string): ISealed {
   return candidate as ISealed;
 }
 
-export function generateMasterKey(): Uint8Array {
+export function generateMasterKey(): Uint8Array<ArrayBuffer> {
   return randomBytes(MASTER_KEY_BYTES);
 }
 
 export async function sealIdentity(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   accountId: string,
   identity: IPortableIdentity
 ): Promise<string> {
@@ -165,7 +176,7 @@ export async function sealIdentity(
 }
 
 export async function openIdentity(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   accountId: string,
   sealed: string
 ): Promise<IPortableIdentity> {
@@ -186,22 +197,22 @@ export async function openIdentity(
 
 /** Ключ чата привязан к чату и эпохе: переставить записи местами нельзя. */
 export async function sealChatKey(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   chatId: string,
   epoch: number,
   chatKey: Uint8Array
 ): Promise<string> {
   const key = await deriveFromMaster(master, 'chat-key');
 
-  return encodeSealed(await sealBytes(key, chatKey, `chat-key|${chatId}|${epoch}`));
+  return encodeSealed(await sealBytes(key, new Uint8Array(chatKey), `chat-key|${chatId}|${epoch}`));
 }
 
 export async function openChatKey(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   chatId: string,
   epoch: number,
   sealed: string
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const key = await deriveFromMaster(master, 'chat-key');
 
   return openBytes(key, decodeSealed(sealed), `chat-key|${chatId}|${epoch}`);
@@ -219,7 +230,7 @@ function slotAad(slot: Pick<TBackupSlot, 'type' | 'id'>): string {
  */
 async function passwordKey(
   password: string,
-  salt: Uint8Array,
+  salt: Uint8Array<ArrayBuffer>,
   params: IArgon2Params
 ): Promise<CryptoKey> {
   const { argon2id } = await import('hash-wasm');
@@ -233,11 +244,11 @@ async function passwordKey(
     outputType: 'binary',
   });
 
-  return importAesKey(hash);
+  return importAesKey(new Uint8Array(hash));
 }
 
 export async function createPasswordSlot(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   password: string,
   params: IArgon2Params = ARGON2_PARAMS
 ): Promise<IPasswordSlot> {
@@ -257,7 +268,7 @@ export async function createPasswordSlot(
 export async function openPasswordSlot(
   slot: IPasswordSlot,
   password: string
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
   try {
     const key = await passwordKey(password, base64ToBytes(slot.salt), slot.kdf);
 
@@ -268,15 +279,15 @@ export async function openPasswordSlot(
 }
 
 /** Ключ из секрета PRF: он уже случайный, растягивать его не нужно. */
-async function passkeyKey(prfOutput: Uint8Array): Promise<CryptoKey> {
+async function passkeyKey(prfOutput: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return deriveFromMaster(prfOutput, 'passkey-slot');
 }
 
 export async function createPasskeySlot(
-  master: Uint8Array,
+  master: Uint8Array<ArrayBuffer>,
   credentialId: string,
-  prfSalt: Uint8Array,
-  prfOutput: Uint8Array
+  prfSalt: Uint8Array<ArrayBuffer>,
+  prfOutput: Uint8Array<ArrayBuffer>
 ): Promise<IPasskeySlot> {
   const id = randomId();
   const sealed = await sealBytes(
@@ -298,8 +309,8 @@ export async function createPasskeySlot(
 /** `null` — секрет не от этого passkey. */
 export async function openPasskeySlot(
   slot: IPasskeySlot,
-  prfOutput: Uint8Array
-): Promise<Uint8Array | null> {
+  prfOutput: Uint8Array<ArrayBuffer>
+): Promise<Uint8Array<ArrayBuffer> | null> {
   try {
     return await openBytes(
       await passkeyKey(prfOutput),

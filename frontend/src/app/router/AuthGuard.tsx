@@ -1,6 +1,7 @@
 import { REACT_ROUTES } from '@/shared/config';
 import { useProfileStore } from '@/entities/user';
 import { clearAuthSession } from '@/features/auth';
+import { KeyBackupGate } from '@/features/key-backup';
 import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
@@ -21,5 +22,9 @@ export function AuthGuard() {
     return () => window.removeEventListener('craneapp:unauthorized', handleUnauthorized);
   }, [navigate]);
 
-  return <Outlet />;
+  return (
+    <KeyBackupGate>
+      <Outlet />
+    </KeyBackupGate>
+  );
 }

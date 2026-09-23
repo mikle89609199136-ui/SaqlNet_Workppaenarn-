@@ -8,5 +8,8 @@ export * from './identity';
 export * from './keyBackup';
 export * from './keyBackupManager';
 export * from './keyStore';
+export * from './loginPasswordFingerprint';
+export * from './passkey';
+export * from './qrLink';
 export * from './securityNotices';
 export * from './signing';
