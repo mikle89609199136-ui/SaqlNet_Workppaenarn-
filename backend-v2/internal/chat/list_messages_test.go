@@ -14,8 +14,26 @@ const (
 )
 
 const (
-	selectIsMemberSQL   = "SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)"
-	selectChatExistsSQL = "SELECT EXISTS(SELECT 1 FROM chats.chats WHERE id = $1)"
+	selectIsMemberSQL     = "SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)"
+	selectChatExistsSQL   = "SELECT EXISTS(SELECT 1 FROM chats.chats WHERE id = $1)"
+	selectListMessagesSQL = `
+	SELECT *
+FROM (
+SELECT m.id::text, m.chat_id::text, m.sender_id::text,
+      COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
+      m.content, m.type, m.reply_to::text, m.metadata,
+      (p.message_id IS NOT NULL), m.updated_at > m.created_at,
+      m.created_at::text, m.updated_at::text, m.deleted_at::text
+FROM messages.messages m
+LEFT JOIN auth.users au ON au.id = m.sender_id
+LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+LEFT JOIN messages.pins p ON p.message_id = m.id
+WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+ORDER BY m.created_at DESC
+LIMIT $2 OFFSET $3
+) recent_messages
+ORDER BY created_at ASC
+	`
 )
 
 // TestListMessages_ChatNotFound проверяет, что при попытке получить сообщения
@@ -36,5 +54,43 @@ func TestListMessages_ChatNotFound(t *testing.T) {
 	svc := NewService(db, nil, nil)
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
 	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestListMessages_NotMember проверяет, что при попытке получить сообщения
+// существующего чата пользователем, не состоящим в нём, сервис возвращает ErrForbidden.
+func TestListMessages_NotMember(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery(selectIsMemberSQL).
+		WithArgs(listMessagesUserID, listMessagesChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery(selectChatExistsSQL).
+		WithArgs(listMessagesChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	svc := NewService(db, nil, nil)
+	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
+	require.ErrorIs(t, err, ErrForbidden)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestListMessages_Success проверяет, что участник чата успешно получает сообщения,
+// а дополнительный запрос проверки существования чата на happy-path не выполняется.
+func TestListMessages_Success(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery(selectIsMemberSQL).
+		WithArgs(listMessagesUserID, listMessagesChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(selectListMessagesSQL).
+		WithArgs(listMessagesChatID, 50, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
+	svc := NewService(db, nil, nil)
+	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
