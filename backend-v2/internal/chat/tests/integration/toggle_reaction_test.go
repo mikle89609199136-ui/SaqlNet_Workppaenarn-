@@ -2,35 +2,32 @@ package integration
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
-	"fmt"
-	"os"
-	"strings"
 	"sync"
 	"testing"
 
 	"craneapp/backend-v2/internal/chat"
 
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// TestToggleReactionConcurrent verifies that two concurrent ToggleReaction
+// calls for the same (message, user) pair do not violate the unique
+// constraint introduced by migration 0022_single_user_message_reaction.sql,
+// and that exactly one reaction row remains afterwards.
+//
+// Uses the shared TestDB from TestMain; no per-test container is started.
 func TestToggleReactionConcurrent(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is not configured")
-	}
 	ctx := context.Background()
+	db := TestDB
 
-	db, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-	defer db.Close()
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-	require.NoError(t, db.PingContext(ctx))
+	t.Cleanup(func() {
+		truncateTables(t, db, context.Background())
+	})
 
+	// Sanity check: the unique constraint from migration 0022 must exist.
+	// Without it the guarantee under test is meaningless, and a passing
+	// test would be misleading.
 	var constraintExists bool
 	require.NoError(t, db.QueryRowContext(ctx, `
 		SELECT EXISTS (
@@ -42,38 +39,12 @@ func TestToggleReactionConcurrent(t *testing.T) {
 	`).Scan(&constraintExists))
 	require.True(t, constraintExists, "migration 0022_single_user_message_reaction.sql is not applied")
 
-	userID := randomUUID(t)
-	messageID := randomUUID(t)
-	chatID := randomUUID(t)
-	username := "reaction_" + strings.ReplaceAll(userID, "-", "")
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO auth.users (id, username, password_hash, first_name, last_name)
-		VALUES ($1, $2, 'hashed_password', 'Test', 'User')
-	`, userID, username)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = db.ExecContext(context.Background(), `DELETE FROM chats.chats WHERE id = $1`, chatID)
-		_, _ = db.ExecContext(context.Background(), `DELETE FROM auth.users WHERE id = $1`, userID)
+	// Seed a private chat owned by a single user, plus one message to react to.
+	userID := seedUser(t, db, ctx)
+	chatID := seedChat(t, db, ctx, "private", userID, map[string]string{
+		userID: "owner",
 	})
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO chats.chats (id, type, title, owner_id)
-		VALUES ($1, 'private', 'test-chat', $2)
-	`, chatID, userID)
-	require.NoError(t, err)
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO chats.members (user_id, chat_id)
-		VALUES ($1, $2)
-	`, userID, chatID)
-	require.NoError(t, err)
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO messages.messages (id, chat_id, content, sender_id, type)
-		VALUES ($1, $2, 'test message', $3, 'text')
-	`, messageID, chatID, userID)
-	require.NoError(t, err)
+	messageID := seedMessage(t, db, ctx, chatID, userID, "test message")
 
 	service := chat.NewService(db, nil, nil)
 	emojis := []string{"👍", "❤️"}
@@ -86,6 +57,7 @@ func TestToggleReactionConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(index int, selectedEmoji string) {
 			defer wg.Done()
+			// Block until both goroutines are ready to maximise the race window.
 			<-start
 			statuses[index], _, _, errs[index] = service.ToggleReaction(ctx, userID, messageID, selectedEmoji)
 		}(i, emoji)
@@ -95,6 +67,9 @@ func TestToggleReactionConcurrent(t *testing.T) {
 
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
+
+	// Exactly one call must add a new reaction and the other must replace it;
+	// order is nondeterministic, hence ElementsMatch.
 	assert.ElementsMatch(t,
 		[]chat.ReactionStatus{chat.StatusAdded, chat.StatusReplaced},
 		statuses,
@@ -106,7 +81,7 @@ func TestToggleReactionConcurrent(t *testing.T) {
 		FROM messages.reactions
 		WHERE message_id = $1 AND user_id = $2
 	`, messageID, userID).Scan(&count))
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 1, count, "exactly one reaction row must survive concurrent toggles")
 
 	var finalEmoji string
 	require.NoError(t, db.QueryRowContext(ctx, `
@@ -114,18 +89,5 @@ func TestToggleReactionConcurrent(t *testing.T) {
 		FROM messages.reactions
 		WHERE message_id = $1 AND user_id = $2
 	`, messageID, userID).Scan(&finalEmoji))
-	assert.Contains(t, emojis, finalEmoji)
-}
-
-func randomUUID(t *testing.T) string {
-	t.Helper()
-	var value [16]byte
-	_, err := rand.Read(value[:])
-	require.NoError(t, err)
-	value[6] = (value[6] & 0x0f) | 0x40
-	value[8] = (value[8] & 0x3f) | 0x80
-	return fmt.Sprintf(
-		"%08x-%04x-%04x-%04x-%012x",
-		value[0:4], value[4:6], value[6:8], value[8:10], value[10:16],
-	)
+	assert.Contains(t, emojis, finalEmoji, "surviving reaction must be one of the toggled emojis")
 }
