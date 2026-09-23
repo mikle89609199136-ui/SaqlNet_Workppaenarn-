@@ -8,11 +8,11 @@ import { allSettingsQuery } from './allSettingsQuery';
 describe('allSettingsQuery', () => {
   it('запрашивает все настройки пользователя единым запросом', async () => {
     const mockAllSettings = {
-      privacySettings: { lastSeen: 'nobody' },
-      notificationSettings: { sound: true },
-      soundSettings: { volume: 80 },
-      storageSettings: { maxCacheMb: 500 },
-      advancedSettings: { animations: false },
+      privacySettings: { lastSeen: 'nobody' as const },
+      notificationSettings: { privateChats: true, messagePreview: true },
+      soundSettings: { notificationsVolume: 80, mediaVolume: 100 },
+      storageSettings: { maxCacheSizeMb: 500 },
+      advancedSettings: { autoReconnect: true, hardwareAcceleration: true },
       folders: [{ id: 'f-1', name: 'Work' }],
       passcodeEnabled: true,
       passcodeTimeout: 60,

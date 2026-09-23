@@ -58,9 +58,14 @@ export type {
   IUploadResponse,
 } from './response.types';
 export type {
+  IAdvancedSettingsDto,
   IAllSettingsDto,
+  IChatFolderDto,
   ICheckUsernameResponse,
+  INotificationSettingsDto,
   IPrivacyDto,
+  ISoundSettingsDto,
+  IStorageSettingsDto,
   ISearchUserDto,
   ISettingsDto,
   ISettingsPayloadDto,

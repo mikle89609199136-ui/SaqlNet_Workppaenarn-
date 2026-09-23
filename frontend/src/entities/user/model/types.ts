@@ -48,14 +48,69 @@ export interface IUserStatusDto {
   lastSeen: string;
 }
 
+export interface INotificationSettingsDto {
+  privateChats?: boolean;
+  groups?: boolean;
+  channels?: boolean;
+  calls?: boolean;
+  videoCalls?: boolean;
+  inAppNotifications?: boolean;
+  messagePreview?: boolean;
+  readReceipts?: boolean;
+  reactions?: boolean;
+  newContacts?: boolean;
+}
+
+export interface ISoundSettingsDto {
+  notificationsVolume?: number;
+  mediaVolume?: number;
+  notificationsSound?: boolean;
+  messagesSound?: boolean;
+  sendSound?: boolean;
+  callsSound?: boolean;
+  vibrateOnCall?: boolean;
+  notificationSound?: string;
+  messageSound?: string;
+  ringtone?: string;
+}
+
+export interface IStorageSettingsDto {
+  keepMedia?: string;
+  maxCacheSizeMb?: number;
+  autoDownloadPhotos?: boolean;
+  autoDownloadVideos?: boolean;
+  autoDownloadFiles?: boolean;
+}
+
+export interface IAdvancedSettingsDto {
+  autoReconnect?: boolean;
+  fastConnection?: boolean;
+  connectionType?: string;
+  dataCompression?: boolean;
+  saveDrafts?: boolean;
+  analytics?: boolean;
+  developerMode?: boolean;
+  debugLog?: boolean;
+  hardwareAcceleration?: boolean;
+  autoplayGifs?: boolean;
+}
+
+export interface IChatFolderDto {
+  id?: string;
+  name?: string;
+  icon?: string;
+  includedChatIds?: string[];
+  excludedChatIds?: string[];
+}
+
 export interface IAllSettingsDto {
   settings?: Partial<ISettingsDto>;
   privacySettings?: Partial<IPrivacyDto>;
-  notificationSettings?: Record<string, unknown>;
-  soundSettings?: Record<string, unknown>;
-  storageSettings?: Record<string, unknown>;
-  advancedSettings?: Record<string, unknown>;
-  folders?: unknown[];
+  notificationSettings?: Partial<INotificationSettingsDto>;
+  soundSettings?: Partial<ISoundSettingsDto>;
+  storageSettings?: Partial<IStorageSettingsDto>;
+  advancedSettings?: Partial<IAdvancedSettingsDto>;
+  folders?: IChatFolderDto[];
   passcodeEnabled?: boolean;
   passcodeTimeout?: number;
 }
