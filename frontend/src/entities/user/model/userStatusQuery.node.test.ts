@@ -26,5 +26,8 @@ describe('userStatusQuery', () => {
     expect(options.staleTime).toBe(30000);
     expect(options.refetchInterval).toBe(30000);
     expect(options.enabled).toBe(true);
+
+    const disabledOptions = userStatusQuery('user-42', { enabled: false });
+    expect(disabledOptions.enabled).toBe(false);
   });
 });

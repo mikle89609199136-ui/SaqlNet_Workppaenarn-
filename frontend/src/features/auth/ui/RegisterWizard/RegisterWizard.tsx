@@ -20,7 +20,7 @@ import {
 import { StepHeader } from './StepHeader';
 import { WelcomeStep } from './WelcomeStep';
 import { AboutStep } from './AboutStep';
-import { CredentialsStep } from './CredentialsStep';
+import { CredentialsStep, type IUsernameValidationStatus } from './CredentialsStep';
 
 export function RegisterWizard() {
   const navigate = useNavigate();
@@ -37,6 +37,10 @@ export function RegisterWizard() {
   const [attempted, setAttempted] = useState(false);
   const [avatar, setAvatar] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [usernameStatus, setUsernameStatus] = useState<IUsernameValidationStatus>({
+    isChecking: false,
+    isTaken: false,
+  });
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -110,6 +114,7 @@ export function RegisterWizard() {
   function goToStep(next: TRegisterStep) {
     reset(getValues());
     setAttempted(false);
+    setUsernameStatus({ isChecking: false, isTaken: false });
     setStep(next);
   }
 
@@ -138,6 +143,19 @@ export function RegisterWizard() {
   }
 
   async function submit(values: TRegisterForm) {
+    if (usernameStatus.isTaken) {
+      setStep('credentials');
+      setError(
+        'username',
+        { message: t('register.usernameTaken', 'Это имя пользователя занято') },
+        { shouldFocus: true }
+      );
+      return;
+    }
+    if (usernameStatus.isChecking) {
+      return;
+    }
+
     try {
       const data: IAuthResponse = await services.authService.register({
         firstName: values.firstName.trim(),
@@ -233,13 +251,21 @@ export function RegisterWizard() {
         ) : (
           <CredentialsStep
             errorOf={errorOf}
+            onValidationChange={setUsernameStatus}
             password={watch('password')}
             register={register}
             username={watch('username')}
           />
         )}
 
-        <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+        <Button
+          className="mt-2 w-full"
+          disabled={
+            isSubmitting ||
+            (step === 'credentials' && (usernameStatus.isChecking || usernameStatus.isTaken))
+          }
+          type="submit"
+        >
           {step === 'about'
             ? t('continueAction', 'Продолжить')
             : isSubmitting

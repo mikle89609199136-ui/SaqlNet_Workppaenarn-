@@ -102,4 +102,11 @@ describe('CredentialsStep: проверка доступности имени п
     expect(screen.getByText('Не менее 3 символов')).toBeInTheDocument();
     expect(screen.queryByText('Имя пользователя свободно')).not.toBeInTheDocument();
   });
+
+  it('не выполняет проверку и не показывает доступность, если имя начинается с @', () => {
+    renderCredentialsStep({ username: '@alexandra' });
+
+    expect(screen.queryByText('Имя пользователя свободно')).not.toBeInTheDocument();
+    expect(screen.queryByText('Это имя пользователя занято')).not.toBeInTheDocument();
+  });
 });

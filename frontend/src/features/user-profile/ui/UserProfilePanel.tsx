@@ -31,7 +31,10 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     isLoading,
     isError,
   } = useQuery(userProfileQuery(targetUserId));
-  const { data: statusData } = useQuery(userStatusQuery(targetUserId));
+  const isMyProfile = Boolean(
+    currentUser?.id && (currentUser.id === targetUserId || currentUser.id === profileUser?.id)
+  );
+  const { data: statusData } = useQuery(userStatusQuery(targetUserId, { enabled: !isMyProfile }));
 
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
@@ -49,8 +52,6 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     startEdit,
     saveProfileEdit,
   } = useProfileEdit(profileUser, displayName);
-
-  const isMyProfile = currentUser?.id === profileUser?.id;
 
   const sharedMedia = useMemo(
     () => (profileState.messages || []).filter(isDisplayableMedia),

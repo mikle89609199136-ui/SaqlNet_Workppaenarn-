@@ -4,6 +4,7 @@ import { userKeys } from './userKeys';
 import type { ICheckUsernameResponse } from './types';
 
 export const MIN_USERNAME_LENGTH = 3;
+export const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 /**
  * Проверка доступности имени пользователя.
@@ -13,7 +14,7 @@ export const MIN_USERNAME_LENGTH = 3;
  * возвращаем null, чтобы UI не ломал процесс и не выдавал ложную ошибку.
  */
 export function checkUsernameQuery(username: string) {
-  const normalized = username.trim().replace(/^@/, '');
+  const normalized = username.trim();
 
   return queryOptions<ICheckUsernameResponse | null>({
     queryKey: userKeys.checkUsername(normalized),
@@ -33,6 +34,6 @@ export function checkUsernameQuery(username: string) {
       }
     },
     staleTime: 30 * 1000,
-    enabled: normalized.length >= MIN_USERNAME_LENGTH,
+    enabled: normalized.length >= MIN_USERNAME_LENGTH && USERNAME_PATTERN.test(normalized),
   });
 }

@@ -6,7 +6,7 @@ import { server } from '@/test/msw/server';
 import { checkUsernameQuery } from './checkUsernameQuery';
 
 describe('checkUsernameQuery', () => {
-  it('запрашивает доступность имени пользователя и нормализует символ @', async () => {
+  it('запрашивает доступность имени пользователя', async () => {
     let requestedUsername = '';
     server.use(
       http.get(api('/users/check-username'), ({ request }) => {
@@ -17,10 +17,21 @@ describe('checkUsernameQuery', () => {
     );
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const result = await queryClient.fetchQuery(checkUsernameQuery('@alexandra'));
+    const result = await queryClient.fetchQuery(checkUsernameQuery('alexandra'));
 
     expect(requestedUsername).toBe('alexandra');
     expect(result).toEqual({ available: true });
+  });
+
+  it('отключает запрос при недопустимом формате имени (например, символ @)', () => {
+    const withAt = checkUsernameQuery('@alexandra');
+    expect(withAt.enabled).toBe(false);
+
+    const withSpace = checkUsernameQuery('alex andra');
+    expect(withSpace.enabled).toBe(false);
+
+    const tooShort = checkUsernameQuery('al');
+    expect(tooShort.enabled).toBe(false);
   });
 
   it('возвращает false если имя уже занято', async () => {
