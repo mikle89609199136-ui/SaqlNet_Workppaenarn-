@@ -59,6 +59,38 @@ var messageType = []string{
 	"text",
 }
 
+type mockRealtimeServer struct {
+	called        bool
+	chatID        string
+	message       []byte
+	excludeUserID string
+}
+
+func (m *mockRealtimeServer) CallRooms() *CallRoomManager {
+	return nil
+}
+
+func (m *mockRealtimeServer) IsUserConnected(userID string) bool {
+	return false
+}
+
+func (m *mockRealtimeServer) BroadcastToChat(
+	chatID string,
+	message []byte,
+	excludeUserID string,
+) {
+	m.called = true
+	m.chatID = chatID
+	m.message = message
+	m.excludeUserID = excludeUserID
+}
+
+func (m *mockRealtimeServer) BroadcastToUsers(
+	userIDs []string,
+	message []byte,
+) {
+}
+
 func TestForwardMessagePreservesMediaMetadata(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -358,6 +390,24 @@ func SelectFromMessages(mock sqlmock.Sqlmock, err bool) {
 
 }
 
+func selectSingleMessage(mock sqlmock.Sqlmock) {
+	rows := sqlmock.NewRows([]string{
+		"id",
+		"type",
+		"sender_id",
+		"sender_name",
+	}).AddRow(
+		message.MessageID,
+		"text",
+		message.SenderID,
+		"Alice",
+	)
+
+	mock.ExpectQuery(`SELECT m.id, m.type, m.sender_id, COALESCE\(up.first_name, au.first_name, au.username, ''\)`).
+		WithArgs(chatID, sqlmock.AnyArg()).
+		WillReturnRows(rows)
+}
+
 func TestSendForwardMessages(t *testing.T) {
 	messageDATA := message
 	messageDATA.Content = content
@@ -376,7 +426,6 @@ func TestSendForwardMessages(t *testing.T) {
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-
 	defer db.Close()
 
 	mock.ExpectBegin()
@@ -384,34 +433,58 @@ func TestSendForwardMessages(t *testing.T) {
 	selectMessages(mock)
 	InsertSqlMok(mock)
 	InsertSqlMokAttachments(mock)
-
 	SelectFromMessages(mock, false)
 
 	mock.ExpectCommit()
 
-	result, err := NewService(db, nil).sendForwardMessages(context.Background(), messages, caption, targetChatID, chatID, userID)
+	ws := &mockRealtimeServer{}
+	service := NewService(db, ws)
+
+	result, err := service.sendForwardMessages(
+		context.Background(),
+		messages,
+		caption,
+		targetChatID,
+		chatID,
+		userID,
+	)
 
 	require.NoError(t, err)
+
+	// Проверяем WebSocket event.
+	require.True(t, ws.called)
+	require.Equal(t, targetChatID, ws.chatID)
+	require.Equal(t, userID, ws.excludeUserID)
+
+	var event struct {
+		Type     string              `json:"type"`
+		ChatID   string              `json:"chatId"`
+		Messages []ResForwardMessage `json:"messages"`
+	}
+
+	require.NoError(t, json.Unmarshal(ws.message, &event))
+	require.Equal(t, "new_messages", event.Type)
+	require.Equal(t, targetChatID, event.ChatID)
+	require.Len(t, event.Messages, 3)
+
 	require.Len(t, result, 3)
 
-	// Caption добавлен первым
-
+	// Caption добавлен первым.
 	require.Equal(t, caption, result[0].Content)
-	// Первое forwarded-сообщение с attachments
+
+	// Первое forwarded-сообщение с attachments.
 	require.Len(t, result[1].Attachments, 1)
-	// Второе forwarded-сообщение без attachments
+
+	// Второе forwarded-сообщение без attachments.
 	require.Empty(t, result[2].Attachments)
 
-	// messageDATAJSON2, err := json.Marshal(messageDATA2.Content)
-	// require.NoError(t, err)
-
-	// Проверяем порядок по Content
+	// Проверяем порядок по Content.
 	require.Equal(t, contents[0], result[1].Content)
 	require.Equal(t, contents[0], result[2].Content)
 
-	// 2. Переводим актуальную мапу (map[string]any) из результата в JSON-байты
 	actualBytes1, err := json.Marshal(result[1].Metadata)
 	require.NoError(t, err)
+
 	actualBytes2, err := json.Marshal(result[2].Metadata)
 	require.NoError(t, err)
 
@@ -419,7 +492,6 @@ func TestSendForwardMessages(t *testing.T) {
 	require.JSONEq(t, string(metadata[2]), string(actualBytes2))
 
 	require.NoError(t, mock.ExpectationsWereMet())
-
 }
 
 func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
@@ -454,6 +526,279 @@ func TestSendForwardMessages_Transaction_InsertMessagesError(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, result)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSendForwardMessages_PlaintextContent(t *testing.T) {
+	messageDATA := message
+	messageDATA.Content = "hello"
+	messageDATA.Attachments = nil
+
+	messages := []TMessages{
+		messageDATA,
+	}
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectBegin()
+	selectSingleMessage(mock)
+	mock.ExpectRollback()
+
+	ws := &mockRealtimeServer{}
+	service := NewService(db, ws)
+
+	result, err := service.sendForwardMessages(
+		context.Background(),
+		messages,
+		"",
+		targetChatID,
+		chatID,
+		userID,
+	)
+
+	require.ErrorIs(t, err, ErrForbidden)
+	require.Nil(t, result)
+	require.False(t, ws.called)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSendForwardMessages_PlaintextCaption(t *testing.T) {
+	messageDATA := message
+	messageDATA.Content = content
+	messageDATA.Attachments = nil
+
+	messages := []TMessages{
+		messageDATA,
+	}
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectBegin()
+	selectSingleMessage(mock)
+	mock.ExpectRollback()
+
+	ws := &mockRealtimeServer{}
+	service := NewService(db, ws)
+
+	result, err := service.sendForwardMessages(
+		context.Background(),
+		messages,
+		"hello",
+		targetChatID,
+		chatID,
+		userID,
+	)
+
+	require.ErrorIs(t, err, ErrForbidden)
+	require.Nil(t, result)
+	require.False(t, ws.called)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSendForwardMessages_MessageNotFound(t *testing.T) {
+	messageDATA := message
+	messageDATA.Content = content
+	messageDATA.Attachments = nil
+
+	messageDATA2 := messageDATA
+	messageDATA2.MessageID = messageIDS[1]
+
+	messages := []TMessages{
+		messageDATA,
+		messageDATA2,
+	}
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectBegin()
+
+	// Клиент запросил 2 сообщения,
+	// но в исходном чате найдено только 1.
+	rows := sqlmock.NewRows([]string{
+		"id",
+		"type",
+		"sender_id",
+		"sender_name",
+	}).AddRow(
+		message.MessageID,
+		"text",
+		message.SenderID,
+		"Alice",
+	)
+
+	mock.ExpectQuery(`SELECT m.id, m.type, m.sender_id, COALESCE\(up.first_name, au.first_name, au.username, ''\)`).
+		WithArgs(chatID, sqlmock.AnyArg()).
+		WillReturnRows(rows)
+
+	mock.ExpectRollback()
+
+	ws := &mockRealtimeServer{}
+	service := NewService(db, ws)
+
+	result, err := service.sendForwardMessages(
+		context.Background(),
+		messages,
+		"",
+		targetChatID,
+		chatID,
+		userID,
+	)
+
+	require.ErrorIs(t, err, ErrNotFound)
+	require.Nil(t, result)
+
+	// Никакого WebSocket-события при ошибке.
+	require.False(t, ws.called)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestForwardMessages_NotMemberOfChats(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM chats\.members m`).
+		WithArgs(
+			userID,
+			sqlmock.AnyArg(),
+			2,
+		).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"exists"}).AddRow(false),
+		)
+
+	service := NewService(db, nil)
+
+	result, err := service.ForwardMessages(
+		context.Background(),
+		userID,
+		chatID,
+		targetChatID,
+		"",
+		[]TMessages{},
+	)
+
+	require.ErrorIs(t, err, ErrForbidden)
+	require.Nil(t, result)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestForwardMessages_IsMemberOfChatsError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	expectedErr := errors.New("database error")
+
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM chats\.members m`).
+		WithArgs(
+			userID,
+			sqlmock.AnyArg(),
+			2,
+		).
+		WillReturnError(expectedErr)
+
+	service := NewService(db, nil)
+
+	result, err := service.ForwardMessages(
+		context.Background(),
+		userID,
+		chatID,
+		targetChatID,
+		"",
+		[]TMessages{},
+	)
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Nil(t, result)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSendForwardMessages_DoesNotTrustClientSenderID(t *testing.T) {
+	messageDATA := message
+	messageDATA.Content = content
+	messageDATA.SenderID = "99999999-9999-9999-9999-999999999999"
+	messageDATA.Attachments = nil
+
+	messages := []TMessages{messageDATA}
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectBegin()
+
+	selectSingleMessage(mock)
+
+	mock.ExpectExec("INSERT INTO messages.messages").
+		WithArgs(
+			sqlmock.AnyArg(),
+			targetChatID,
+			userID,
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	rows := sqlmock.NewRows([]string{
+		"id",
+		"chat_id",
+		"sender_id",
+		"content",
+		"metadata",
+		"type",
+		"created_at",
+		"attachments",
+	}).AddRow(
+		messageIDS[0],
+		targetChatID,
+		userID,
+		content,
+		metadata[1],
+		"text",
+		time.Now(),
+		[]byte(`[]`),
+	)
+
+	mock.ExpectQuery(`SELECT.*FROM messages\.messages m`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(rows)
+
+	mock.ExpectCommit()
+
+	ws := &mockRealtimeServer{}
+	service := NewService(db, ws)
+
+	result, err := service.sendForwardMessages(
+		context.Background(),
+		messages,
+		"",
+		targetChatID,
+		chatID,
+		userID,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+
+	forwardedFrom, ok := result[0].Metadata["forwardedFrom"].(map[string]any)
+	require.True(t, ok)
+
+	require.Equal(t, userID, forwardedFrom["senderId"])
+	require.Equal(t, "Alice", forwardedFrom["senderName"])
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
