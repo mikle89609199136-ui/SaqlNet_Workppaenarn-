@@ -4,12 +4,13 @@ import { useProfileEdit } from '../model/useProfileEdit';
 import {
   type IProfileState,
   userProfileQuery,
+  userStatusQuery,
   ProfileHeader,
   ProfilePanelFallback,
   useProfileStore,
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
-import { getChatSubtitle } from '@/shared/lib';
+import { formatLastSeen, getChatSubtitle } from '@/shared/lib';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
@@ -24,11 +25,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const { t } = useTranslation();
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
+  const targetUserId = profileState.userId || '';
   const {
     data: profileUser,
     isLoading,
     isError,
-  } = useQuery(userProfileQuery(profileState.userId || ''));
+  } = useQuery(userProfileQuery(targetUserId));
+  const { data: statusData } = useQuery(userStatusQuery(targetUserId));
 
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
@@ -54,10 +57,16 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     [profileState.messages]
   );
 
-  const profileSubtitle = useMemo(
-    () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t) : null),
-    [profileState.chat, t]
-  );
+  const isPeerOnline =
+    !isMyProfile && (statusData ? statusData.isOnline : Boolean(profileUser?.isOnline));
+
+  const profileSubtitle = useMemo(() => {
+    if (isMyProfile) return null;
+    if (statusData) {
+      return statusData.isOnline ? t('online', 'онлайн') : formatLastSeen(statusData.lastSeen, t);
+    }
+    return profileState.chat ? getChatSubtitle(profileState.chat, null, t) : null;
+  }, [isMyProfile, statusData, profileState.chat, t]);
 
   if (isLoading) {
     return (
@@ -84,7 +93,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
         <ProfileHeader
           hasChat={Boolean(profileState.chat)}
           isMyProfile={isMyProfile}
-          isPeerOnline={Boolean(profileUser.isOnline)}
+          isPeerOnline={isPeerOnline}
           onCall={(kind) =>
             profileState.chat &&
             initiateCall(

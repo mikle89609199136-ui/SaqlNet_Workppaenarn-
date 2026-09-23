@@ -39,6 +39,27 @@ export interface ISettingsPayloadDto {
   privacy: Partial<IPrivacyDto>;
 }
 
+export interface ICheckUsernameResponse {
+  available: boolean;
+}
+
+export interface IUserStatusDto {
+  isOnline: boolean;
+  lastSeen: string;
+}
+
+export interface IAllSettingsDto {
+  settings?: Partial<ISettingsDto>;
+  privacySettings?: Partial<IPrivacyDto>;
+  notificationSettings?: Record<string, unknown>;
+  soundSettings?: Record<string, unknown>;
+  storageSettings?: Record<string, unknown>;
+  advancedSettings?: Record<string, unknown>;
+  folders?: unknown[];
+  passcodeEnabled?: boolean;
+  passcodeTimeout?: number;
+}
+
 export interface ISearchUserDto {
   id: string;
   username: string;

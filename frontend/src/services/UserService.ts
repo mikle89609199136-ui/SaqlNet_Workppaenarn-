@@ -29,6 +29,24 @@ export class UserService {
       .then((response) => response.data?.user ?? response.data);
   }
 
+  checkUsername(username) {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_CHECK_USERNAME, { username })
+      .then((response) => response.data);
+  }
+
+  getStatus(userId) {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_STATUS(userId))
+      .then((response) => response.data);
+  }
+
+  getAllSettings() {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_ALL_SETTINGS)
+      .then((response) => response.data);
+  }
+
   getSettings() {
     return this.apiClient.get(API_ENDPOINTS.USER_SETTINGS).then((response) => response.data);
   }

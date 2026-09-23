@@ -269,5 +269,57 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(screen.getAllByText(/alex/).length).toBeGreaterThan(0);
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
     });
+
+    it('отображает онлайн статус при получении isOnline: true', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/:userId/status'), () =>
+          HttpResponse.json({ isOnline: true, lastSeen: 'recently' })
+        )
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-2',
+            chat: null,
+            messages: [],
+          }}
+        />
+      );
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
+      expect(await screen.findByText('онлайн')).toBeInTheDocument();
+    });
+
+    it('отображает последнее посещение при получении isOnline: false', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/:userId/status'), () =>
+          HttpResponse.json({ isOnline: false, lastSeen: 'recently' })
+        )
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-2',
+            chat: null,
+            messages: [],
+          }}
+        />
+      );
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
+      expect(await screen.findByText('был(а) недавно')).toBeInTheDocument();
+    });
   });
 });

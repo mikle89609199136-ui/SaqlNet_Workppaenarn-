@@ -231,7 +231,12 @@ export function RegisterWizard() {
             register={register}
           />
         ) : (
-          <CredentialsStep errorOf={errorOf} password={watch('password')} register={register} />
+          <CredentialsStep
+            errorOf={errorOf}
+            password={watch('password')}
+            register={register}
+            username={watch('username')}
+          />
         )}
 
         <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">

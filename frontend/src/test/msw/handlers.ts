@@ -31,6 +31,28 @@ export const defaultHandlers = [
       },
     })
   ),
+  http.get(api('/users/:userId/status'), () =>
+    HttpResponse.json({ isOnline: false, lastSeen: 'recently' })
+  ),
+
+  http.get(api('/users/check-username'), ({ request }) => {
+    const url = new URL(request.url);
+    const username = url.searchParams.get('username');
+    return HttpResponse.json({ available: username !== 'taken' });
+  }),
+
+  http.get(api('/users/all-settings'), () =>
+    HttpResponse.json({
+      privacySettings: {},
+      notificationSettings: {},
+      soundSettings: {},
+      storageSettings: {},
+      advancedSettings: {},
+      folders: [],
+      passcodeEnabled: false,
+      passcodeTimeout: 0,
+    })
+  ),
 
   // Настройки и приватность сервер отдаёт одним ответом. Пустые объекты, а
   // не выдуманные значения: раздел обязан работать на том, чего сервер не

@@ -58,11 +58,14 @@ export type {
   IUploadResponse,
 } from './response.types';
 export type {
+  IAllSettingsDto,
+  ICheckUsernameResponse,
   IPrivacyDto,
   ISearchUserDto,
   ISettingsDto,
   ISettingsPayloadDto,
   IUserDto,
+  IUserStatusDto,
   TLastSeenVisibility,
   TSearchUsersList,
   IProfileModal,
