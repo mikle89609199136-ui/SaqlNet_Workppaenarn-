@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"craneapp/backend-v2/internal/migrations"
+	migrationsql "craneapp/backend-v2/migrations"
 	"database/sql"
 	"fmt"
 	"log"
@@ -29,7 +30,7 @@ func main() {
 
 	ctx := context.Background()
 
-	if err := migrations.Run(ctx, db, "migrations"); err != nil {
+	if err := migrations.Run(ctx, db, migrationsql.FS, "."); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
 	log.Println("all migrations applied")
