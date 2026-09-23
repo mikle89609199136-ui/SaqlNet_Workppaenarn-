@@ -2254,9 +2254,69 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	if src.Metadata == nil {
 		src.Metadata = make(map[string]any)
 	}
-	src.Metadata["forwardedFrom"] = src.ID
-	src.Metadata["forwardedSenderName"] = src.SenderName
+	// Forwarding a forwarded message keeps pointing at the original author;
+	// the copied metadata already carries it.
+	if origin, _ := src.Metadata["forwardedFrom"].(string); origin == "" {
+		src.Metadata["forwardedFrom"] = src.ID
+		src.Metadata["forwardedSenderName"] = src.SenderName
+	}
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+}
+
+// ForwardOrigin resolves the forwardedFrom metadata for a message the client
+// forwards itself: end-to-end encrypted content has to be re-encrypted for the
+// target chat, so it arrives through the regular send route instead of
+// ForwardMessage.
+//
+// The requester must be able to read the message being forwarded. Without
+// this check a client could pass any message ID and learn who wrote a message
+// in a chat it does not belong to. A missing, deleted and inaccessible message
+// all yield ErrNotFound, so the response does not reveal which one it was.
+//
+// If the message is itself a forward, the original is returned instead. The
+// requester may have no access to the original's chat, so its ID and author
+// name come from the forwarded copy's metadata rather than from a lookup.
+func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (originID, senderName string, err error) {
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return "", "", ErrInvalidInput
+	}
+
+	var chatID string
+	var metadataBytes []byte
+	err = s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.metadata
+		FROM messages.messages m
+		LEFT JOIN auth.users au ON au.id = m.sender_id
+		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+		WHERE m.id = $1 AND m.deleted_at IS NULL
+	`, messageID).Scan(&chatID, &senderName, &metadataBytes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+
+	ok, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return "", "", err
+	}
+	if !ok {
+		return "", "", ErrNotFound
+	}
+
+	var metadata map[string]any
+	if len(metadataBytes) > 0 {
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
+			return "", "", err
+		}
+	}
+	if origin, _ := metadata["forwardedFrom"].(string); origin != "" {
+		originName, _ := metadata["forwardedSenderName"].(string)
+		return origin, originName, nil
+	}
+
+	return messageID, senderName, nil
 }
 
 // Reaction types.
