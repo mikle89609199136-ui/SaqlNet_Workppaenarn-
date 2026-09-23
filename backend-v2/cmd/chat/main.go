@@ -14,8 +14,10 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/presence"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -26,9 +28,19 @@ func main() {
 	}
 	defer pool.Close()
 
+	redisURL := config.Value("REDIS_URL", "redis://127.0.0.1:6379")
+	if config.Value("REDIS_URL", "") == "" && config.Value("CRANE_ENV", "development") == "production" {
+		log.Fatal("REDIS_URL is required in production (CRANE_ENV=production)")
+	}
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	redisClient := redis.NewClient(opt)
+	presenceStore := presence.NewRedisStore(redisClient)
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
-	wsServer := chat.NewWSServer(pool, crypto)
-	svc := chat.NewService(pool, wsServer)
+	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
+	svc := chat.NewService(pool, wsServer, presenceStore)
 	handler := chat.NewHandler(svc)
 
 	// In production NATS is required. In other environments it is optional

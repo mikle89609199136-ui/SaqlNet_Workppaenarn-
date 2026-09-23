@@ -51,7 +51,7 @@ func TestWSChatMessage_Unsupported(t *testing.T) {
 	memberID := seedUser(t, db, "member")
 	chatID := seedGroupChat(t, db, ownerID, memberID)
 
-	ws := chat.NewWSServer(db, stubTokenVerifier{})
+	ws := chat.NewWSServer(db, stubTokenVerifier{}, nil)
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 

@@ -338,11 +338,30 @@ func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, erro
 
 func (s *Service) Status(ctx context.Context, userID string) (map[string]any, error) {
 	var privacyJSON []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT privacy_settings FROM users.settings WHERE user_id = $1`, userID).Scan(&privacyJSON); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
+	var lastActive sql.NullString
+	var online bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(settings.privacy_settings, '{}'::jsonb),
+		       latest_session.last_active::text,
+		       COALESCE(latest_session.last_active > NOW() - INTERVAL '5 minutes', FALSE)
+		FROM auth.users
+		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
+		LEFT JOIN LATERAL (
+			SELECT last_active
+			FROM public.user_sessions
+			WHERE user_id = auth.users.id
+			ORDER BY last_active DESC
+			LIMIT 1
+		) AS latest_session ON TRUE
+		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
+	`, userID).Scan(&privacyJSON, &lastActive, &online)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, err
+	}
+
 	lastSeenPrivacy := "everyone"
 	if len(privacyJSON) > 0 {
 		var privacy struct {
@@ -353,22 +372,8 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 		}
 	}
 
-	var lastActive sql.NullString
-	err := s.db.QueryRowContext(ctx, `
-		SELECT last_active::text FROM public.user_sessions
-		WHERE user_id = $1 ORDER BY last_active DESC LIMIT 1
-	`, userID).Scan(&lastActive)
-	if errors.Is(err, sql.ErrNoRows) {
+	if !lastActive.Valid {
 		return map[string]any{"isOnline": false, "lastSeen": ""}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var online bool
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT EXISTS(SELECT 1 FROM public.user_sessions WHERE user_id = $1 AND last_active > NOW() - INTERVAL '5 minutes')
-	`, userID).Scan(&online); err != nil {
-		return nil, err
 	}
 
 	if lastSeenPrivacy == "nobody" || lastSeenPrivacy == "contacts" || lastSeenPrivacy == "none" {

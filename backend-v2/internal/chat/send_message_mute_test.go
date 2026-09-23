@@ -45,7 +45,7 @@ func TestSendMessage_MutedMember(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	expectMutedMembership(mock, "member")
 
@@ -66,7 +66,7 @@ func TestSendMessage_MutedAdmin(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	expectMutedMembership(mock, "admin")
 

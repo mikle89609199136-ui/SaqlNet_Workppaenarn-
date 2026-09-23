@@ -133,7 +133,9 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id::text, u.username, u.first_name, u.last_name, u.password_hash,
+		SELECT u.id::text, u.username,
+			COALESCE(p.first_name, u.first_name), COALESCE(p.last_name, u.last_name),
+			u.password_hash,
 			COALESCE(p.bio, ''), COALESCE(p.avatar_url, '')
 		FROM auth.users u
 		LEFT JOIN users.profiles p ON p.user_id = u.id

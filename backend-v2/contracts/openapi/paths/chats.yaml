@@ -278,11 +278,39 @@ x-secure: &secure [{ bearerAuth: [] }]
   get:
     {
       tags: [Chats],
-      summary: List online members,
+      summary: List online members of a group chat,
       operationId: listOnlineChatMembers,
       security: *secure,
       parameters: [*chatId],
-      responses: { '200': { description: Online user IDs } },
+      responses:
+        {
+          '200':
+            {
+              description: Online member UUIDs,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          type: object,
+                          required: [members],
+                          properties:
+                            {
+                              members:
+                                {
+                                  type: array,
+                                  items: { type: string, format: uuid },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
     }
 /chats/{chatId}/bans:
   get:
