@@ -152,9 +152,6 @@ export function RegisterWizard() {
       );
       return;
     }
-    if (usernameStatus.isChecking) {
-      return;
-    }
 
     try {
       const data: IAuthResponse = await services.authService.register({
@@ -260,10 +257,7 @@ export function RegisterWizard() {
 
         <Button
           className="mt-2 w-full"
-          disabled={
-            isSubmitting ||
-            (step === 'credentials' && (usernameStatus.isChecking || usernameStatus.isTaken))
-          }
+          disabled={isSubmitting || (step === 'credentials' && usernameStatus.isTaken)}
           type="submit"
         >
           {step === 'about'
