@@ -13,12 +13,17 @@ import {
   isLegacyContent,
   parseEnvelope,
   fetchPeerIdentity,
+  forgetBackupState,
   forgetPeerIdentities,
+  KeyBackupManager,
   knownPeerIdentities,
-  loadOrCreateIdentity,
   PEER_BUNDLES_PREFIX,
   publishIdentity,
+  readBackupState,
+  type IArgon2Params,
   type ILocalIdentity,
+  type IPasskeySlot,
+  type TBackupSlot,
   removeKey,
   removeKeysWithPrefix,
   signParts,
@@ -113,12 +118,29 @@ export class CryptoService {
 
   private initPromise: Promise<ILocalIdentity | null> | null = null;
 
-  constructor(apiClient: ApiClient) {
+  private backup: KeyBackupManager;
+
+  /** Мастер-ключ, пришедший по QR до того, как сессия подготовлена. */
+  private pendingMasterKey: Uint8Array | null = null;
+
+  constructor(apiClient: ApiClient, options: { argon2?: IArgon2Params } = {}) {
     this.apiClient = apiClient;
+    this.backup = new KeyBackupManager({
+      apiClient,
+      chatKeys: () => this.chatKeys,
+      onIdentity: (identity) => {
+        this.identity = identity;
+      },
+      argon2: options.argon2,
+    });
     this.chatKeys = new ChatKeyManager({
       apiClient,
       identity: () => this.requireIdentity(),
       members: async (chatId) => (await resolveMembers(chatId)).map((member) => member.id),
+      backup: {
+        save: (chatId, chatKey) => this.backup.saveChatKey(chatId, chatKey),
+        load: (chatId) => this.backup.loadChatKeys(chatId),
+      },
     });
   }
 
@@ -138,9 +160,10 @@ export class CryptoService {
   /**
    * Подготовка личности.
    *
-   * Ключи создаются один раз на аккаунт и публикуются связкой. Повторный
-   * вызов ничего не пересоздаёт: пересозданная пара означала бы, что вся
-   * прежняя переписка стала нечитаемой.
+   * Личность одна на все устройства и приходит из резервной копии (#739).
+   * Молча она больше не создаётся: на новом устройстве это отрезало бы его
+   * от истории. `null` — нужно действие человека: задать облачный пароль
+   * или открыть копию (`readBackupState` скажет, что именно).
    */
   async init(): Promise<ILocalIdentity | null> {
     if (this.initPromise) return this.initPromise;
@@ -160,13 +183,32 @@ export class CryptoService {
 
     if (this.identity?.accountId === accountId) return this.identity;
 
-    const identity = await loadOrCreateIdentity(accountId);
-    this.identity = identity;
-
     // Наследие прежней схемы: одиночная пара и заглушка группового
     // состояния. Ни то ни другое больше не читается.
     await removeKey(`signal_keypair:${accountId}`);
     await removeKeysWithPrefix(`mls_state:${accountId}`);
+
+    let identity = await this.backup.resolve(accountId);
+
+    const pending = this.pendingMasterKey;
+    this.pendingMasterKey = null;
+    if (!identity && pending && readBackupState().status === 'locked') {
+      identity = await this.backup.unlockWithMasterKey(accountId, pending);
+    }
+
+    if (!identity) return null;
+
+    return this.activate(identity);
+  }
+
+  /**
+   * Личность готова к работе: публикуем связку.
+   *
+   * На всех устройствах связка одна и та же, поэтому публикация больше не
+   * вытесняет соседнее устройство — сервер получает то, что у него уже есть.
+   */
+  private async activate(identity: ILocalIdentity): Promise<ILocalIdentity> {
+    this.identity = identity;
 
     try {
       await publishIdentity(this.apiClient, identity);
@@ -182,9 +224,90 @@ export class CryptoService {
   private async requireIdentity(): Promise<ILocalIdentity> {
     const identity = this.identity ?? (await this.init());
 
-    if (!identity) throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
+    if (!identity) {
+      throw new Error(
+        this.hasWebCrypto()
+          ? 'Шифрование не готово: откройте резервную копию облачным паролем'
+          : 'Шифрование недоступно: откройте приложение по HTTPS'
+      );
+    }
 
     return identity;
+  }
+
+  private requireAccountId(): string {
+    const accountId = this.getAccountId();
+    if (!accountId) throw new Error('Нет активной сессии');
+
+    return accountId;
+  }
+
+  /** Первая настройка резервной копии облачным паролем. */
+  async setupBackup(password: string): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.setup(this.requireAccountId(), password));
+  }
+
+  /** Открыть копию облачным паролем. Неверный пароль — `WrongCloudPasswordError`. */
+  async unlockWithPassword(password: string): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithPassword(this.requireAccountId(), password));
+  }
+
+  async unlockWithPasskey(
+    evaluate: (slots: IPasskeySlot[]) => Promise<{ credentialId: string; prfOutput: Uint8Array }>
+  ): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithPasskey(this.requireAccountId(), evaluate));
+  }
+
+  /**
+   * Мастер-ключ, пришедший с другого устройства по QR.
+   *
+   * Сессия к этому моменту может быть ещё не сохранена — тогда ключ ждёт
+   * ближайшей подготовки личности.
+   */
+  async acceptMasterKey(master: Uint8Array): Promise<void> {
+    const accountId = this.getAccountId();
+
+    if (!accountId || readBackupState().status !== 'locked') {
+      this.pendingMasterKey = master;
+      return;
+    }
+
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithMasterKey(accountId, master));
+  }
+
+  /** Мастер-ключ для передачи на новое устройство; `null` — копия здесь не открыта. */
+  currentMasterKey(): Uint8Array | null {
+    return this.backup.currentMasterKey();
+  }
+
+  async changeCloudPassword(password: string): Promise<void> {
+    await this.backup.changePassword(password);
+  }
+
+  async addPasskeySlot(slot: IPasskeySlot): Promise<void> {
+    await this.backup.addPasskeySlot(slot);
+  }
+
+  async removePasskeySlots(): Promise<void> {
+    await this.backup.removePasskeySlots();
+  }
+
+  async backupSlots(): Promise<TBackupSlot[]> {
+    return this.backup.slots();
+  }
+
+  /**
+   * Сброс копии, когда открыть её нечем. Переписка, которую держит только
+   * копия, пропадает для всех устройств — спрашивать об этом должен экран.
+   */
+  async resetBackup(): Promise<void> {
+    await this.backup.reset(this.requireAccountId());
+    this.identity = null;
+    this.chatKeys.forget();
   }
 
   async ensureChatKey(chatId: string): Promise<IKeyDistribution> {
@@ -356,18 +479,26 @@ export class CryptoService {
   /** Выход из аккаунта: память чистится, ключи на устройстве остаются. */
   forgetSession(): void {
     this.identity = null;
+    this.pendingMasterKey = null;
     this.chatKeys.forget();
+    this.backup.forget();
     forgetDerivedKeys();
     forgetPeerIdentities();
+    forgetBackupState();
   }
 
-  /** Завершение всех сеансов: ключи стираются с устройства. */
+  /**
+   * Завершение всех сеансов: ключи стираются с устройства.
+   *
+   * История при этом не теряется: она в резервной копии и вернётся после
+   * входа облачным паролем, passkey или по QR.
+   */
   async wipeDevice(): Promise<void> {
     const accountId = this.identity?.accountId ?? this.getAccountId();
 
     if (accountId) {
       await this.chatKeys.wipe(accountId);
-      await removeKey(`identity:${accountId}`);
+      await this.backup.forgetDevice(accountId);
       await removeKeysWithPrefix(PEER_BUNDLES_PREFIX);
     }
 
