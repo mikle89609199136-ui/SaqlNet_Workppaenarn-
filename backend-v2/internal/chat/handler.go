@@ -1,6 +1,9 @@
 package chat
 
 import (
+	"craneapp/backend-v2/internal/platform/authctx"
+	"craneapp/backend-v2/internal/platform/config"
+	"craneapp/backend-v2/internal/platform/httpx"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,11 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
-
-	"craneapp/backend-v2/internal/platform/authctx"
-	"craneapp/backend-v2/internal/platform/config"
-	"craneapp/backend-v2/internal/platform/httpx"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -32,6 +30,39 @@ func init() {
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+func validateInput(w http.ResponseWriter, r *http.Request, input any, method, currentID, text string) bool {
+	if err := validate.Struct(input); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			slog.WarnContext(
+				r.Context(),
+				text,
+				"layer", "handler",
+				"method", method,
+				"user_id", currentID,
+				"path", r.URL.Path,
+				"errors", validationErrors,
+			)
+
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid input",
+			)
+			return false
+		}
+
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusInternalServerError,
+			"internal_error",
+			err.Error(),
+		)
+		return false
+	}
+	return true
 }
 
 // List handles GET /api/v2/chats and returns the chats of the
@@ -119,12 +150,31 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	var input struct {
-		UserID string `json:"userId"`
-	}
+	var input UserID
 	if !decode(w, r, &input) {
 		return
 	}
+
+	if err := validate.Struct(input); err != nil {
+		if _, ok := err.(validator.ValidationErrors); ok {
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid input",
+			)
+			return
+		}
+
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusInternalServerError,
+			"internal_error",
+			err.Error(),
+		)
+		return
+	}
+
 	chatID, exists, err := h.service.CreatePrivate(r.Context(), current.ID, input.UserID)
 	switch {
 	case errors.Is(err, ErrInvalidInput):
@@ -163,12 +213,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	current := authctx.MustUser(r)
 
-	var input struct {
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		AvatarURL   string   `json:"avatarUrl"`
-		Members     []string `json:"members"`
-	}
+	var input CreateGroupRequest
 
 	if !decode(w, r, &input) {
 		return // decode logs internally
@@ -177,49 +222,20 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	// Trim before validating: a value that is only too long because of
 	// surrounding whitespace must be accepted, and the service must
 	// receive the same value that was validated.
-	title := strings.TrimSpace(input.Title)
-	description := strings.TrimSpace(input.Description)
-	avatarUrl := strings.TrimSpace(input.AvatarURL)
+	input.Title = strings.TrimSpace(input.Title)
+	input.Description = strings.TrimSpace(input.Description)
+	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
 
-	if title == "" {
-		slog.WarnContext(r.Context(), "group title is empty after trimming",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title is required")
-		return
-	}
-
-	if utf8.RuneCountInString(title) > maxTitleLen {
-		slog.WarnContext(r.Context(), "group title exceeds maximum length",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-			"length", utf8.RuneCountInString(title),
-			"max", maxTitleLen,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
-			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
-		return
-	}
-
-	if len(input.Members) == 0 {
-		slog.WarnContext(r.Context(), "group members list is empty",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "members must not be empty")
+	if !validateInput(w, r, input, method, current.ID, "group creation validation failed") {
 		return
 	}
 
 	chatID, err := h.service.CreateGroup(
 		r.Context(),
 		current.ID,
-		title,
-		description,
-		avatarUrl,
+		input.Title,
+		input.Description,
+		input.AvatarURL,
 		input.Members,
 	)
 
@@ -233,7 +249,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.JSON(w, http.StatusCreated, map[string]any{
 			"chatId": chatID,
-			"title":  title,
+			"title":  input.Title,
 		})
 	}
 }
