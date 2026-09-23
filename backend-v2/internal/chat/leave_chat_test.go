@@ -25,6 +25,9 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 	// Запросить роль текущего пользователя
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
+	mock.ExpectQuery(`SELECT type FROM chats.chats WHERE id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
@@ -37,8 +40,9 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`).
-		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`).
+		WithArgs(chatID, userID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	err = svc.LeaveChat(context.Background(), userID, chatID)
@@ -61,6 +65,9 @@ func TestLeaveChat_OwnerCannotLeave(t *testing.T) {
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
+	mock.ExpectQuery(`SELECT type FROM chats.chats WHERE id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
@@ -83,6 +90,9 @@ func TestLeaveChat_NotMember(t *testing.T) {
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
+	mock.ExpectQuery(`SELECT type FROM chats.chats WHERE id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnError(sql.ErrNoRows)
@@ -123,6 +133,9 @@ func TestLeaveChat_RollbackOnSettingsDeleteError(t *testing.T) {
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
+	mock.ExpectQuery(`SELECT type FROM chats.chats WHERE id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
@@ -160,6 +173,9 @@ func TestLeaveChat_RaceMemberDeleted(t *testing.T) {
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
+	mock.ExpectQuery(`SELECT type FROM chats.chats WHERE id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 	mock.ExpectQuery(`SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
@@ -174,8 +190,9 @@ func TestLeaveChat_RaceMemberDeleted(t *testing.T) {
 	mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
 		WithArgs(userID, chatID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`).
-		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`).
+		WithArgs(chatID, userID).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectRollback()
 
 	err = svc.LeaveChat(context.Background(), userID, chatID)

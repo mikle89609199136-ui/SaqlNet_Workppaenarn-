@@ -27,7 +27,8 @@ const (
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
 const (
-	memberRoleQuery = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	memberRoleQuery    = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	leaveChatTypeQuery = `SELECT type FROM chats.chats WHERE id = $1`
 	// actorChatInfoQuery — точная копия SQL getChatInfo: тип чата и роль
 	// актора одним запросом. Используется moderation-методами (mute/ban/...),
 	// которые после правки №1 проверяют chats.chats.type = 'group'.
@@ -38,7 +39,7 @@ const (
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
-	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`
+	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`
 	// sendMessageMuteQuery — точная копия SQL проверки mute в Service.SendMessage.
 	sendMessageMuteQuery = `
 	SELECT cm.role,
@@ -241,6 +242,9 @@ func TestHandler_LeaveChat(t *testing.T) {
 		{
 			name: "success_member_200",
 			setupMock: func() {
+				mock.ExpectQuery(leaveChatTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 				mock.ExpectQuery(memberRoleQuery).
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
@@ -262,6 +266,9 @@ func TestHandler_LeaveChat(t *testing.T) {
 		{
 			name: "owner_409_ownership_transfer_required",
 			setupMock: func() {
+				mock.ExpectQuery(leaveChatTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 				mock.ExpectQuery(memberRoleQuery).
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
@@ -272,6 +279,9 @@ func TestHandler_LeaveChat(t *testing.T) {
 		{
 			name: "not_member_403_access_denied",
 			setupMock: func() {
+				mock.ExpectQuery(leaveChatTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
 				mock.ExpectQuery(memberRoleQuery).
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnError(sql.ErrNoRows)

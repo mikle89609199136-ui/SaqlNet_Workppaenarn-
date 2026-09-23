@@ -1422,8 +1422,12 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 	return nil
 }
 
+type listBansInput struct {
+	ChatID string `validate:"required,uuid"`
+}
+
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
-	input := leaveChatInput{ChatID: chatID}
+	input := listBansInput{ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
 		return nil, ErrInvalidInput
 	}
