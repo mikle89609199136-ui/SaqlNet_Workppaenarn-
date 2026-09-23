@@ -41,24 +41,62 @@
 /auth/qr-token:
   post:
     tags: [Auth]
-    summary: Create a QR login token
+    summary: Start a QR login
+    description: >-
+      Called by the device that wants to log in. publicKey is a one-time ECDH
+      public key; the signed-in device encrypts the key backup master key to it.
+      The client draws the QR code itself.
     operationId: createQrToken
-    responses: { '200': { description: QR token and QR image created } }
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrTokenRequest' } } }
+    responses:
+      '200':
+        description: QR login started
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrTokenResponse' } } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-request/{token}:
+  get:
+    tags: [Auth]
+    summary: Show which device asks to log in
+    description: For the signed-in device before it confirms. 404 once the code expired or was confirmed. Not cacheable.
+    operationId: getQrRequest
+    security: [{ bearerAuth: [] }]
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    responses:
+      '200':
+        description: Pending QR login
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrLoginRequest' } } }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
 /auth/qr-status/{token}:
   get:
     tags: [Auth]
     summary: Get QR login status
+    description: >-
+      Polled by the new device. A confirmed status carries the session token and
+      the encrypted payload and is returned once; later polls report expired.
+      Not cacheable.
     operationId: getQrStatus
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
-    responses: { '200': { description: Pending, confirmed, or expired QR login status } }
+    responses:
+      '200':
+        description: Pending, confirmed, or expired QR login status
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrStatusResponse' } } }
 /auth/qr-confirm:
   post:
     tags: [Auth]
     summary: Confirm a QR login
+    description: A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
     operationId: confirmQrLogin
     security: [{ bearerAuth: [] }]
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [qrToken], properties: { qrToken: { type: string } } } } } }
-    responses: { '200': { description: Confirmed }, '400': { $ref: '../components/responses.yaml#/Error' } }
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrConfirmRequest' } } }
+    responses:
+      '200': { description: Confirmed }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '409': { $ref: '../components/responses.yaml#/Error' }
 /auth/logout:
   post:
     tags: [Auth]
