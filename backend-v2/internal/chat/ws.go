@@ -2,8 +2,10 @@ package chat
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	"craneapp/backend-v2/internal/presence"
 
 	"github.com/gorilla/websocket"
 )
@@ -38,11 +41,22 @@ type tokenVerifier interface {
 }
 
 type Client struct {
-	UserID     string
-	Conn       *websocket.Conn
-	Send       chan []byte
-	done       chan struct{}
-	CallRoomID string // non-empty while in a call room
+	UserID        string
+	Conn          *websocket.Conn
+	Send          chan []byte
+	done          chan struct{}
+	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
+	closeOnce     sync.Once
+	CallRoomID    string // non-empty while in a call room
+	ConnectionID  string // уникальный ID WS-соединения для presence
+}
+
+// close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
+// горутинам (включая heartbeat) о завершении жизненного цикла клиента.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
 }
 
 type WSServer struct {
@@ -55,9 +69,13 @@ type WSServer struct {
 	callRooms      *CallRoomManager
 	pendingInvites map[string]json.RawMessage
 	inviteMu       sync.Mutex
+	presence       presence.Store
+	pingInterval   time.Duration // интервал heartbeat; 0 → wsPingInterval
 }
 
-func NewWSServer(db *sql.DB, crypto tokenVerifier) *WSServer {
+// NewWSServer создаёт и запускает новый экземпляр WSServer.
+// store — источник online-состояния; nil допустим (presence отключён).
+func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServer {
 	ws := &WSServer{
 		db:             db,
 		crypto:         crypto,
@@ -66,6 +84,8 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier) *WSServer {
 		unreg:          make(chan *Client),
 		callRooms:      NewCallRoomManager(),
 		pendingInvites: make(map[string]json.RawMessage),
+		presence:       store,
+		pingInterval:   wsPingInterval,
 	}
 	go ws.run()
 	return ws
@@ -100,7 +120,7 @@ func (ws *WSServer) run() {
 			if conns, ok := ws.clients[client.UserID]; ok {
 				if _, ok := conns[client]; ok {
 					delete(conns, client)
-					close(client.done)
+					client.close()
 					close(client.Send)
 					if len(conns) == 0 {
 						delete(ws.clients, client.UserID)
@@ -112,6 +132,9 @@ func (ws *WSServer) run() {
 	}
 }
 
+// ServeWS выполняет HTTP-upgrade до WebSocket, аутентифицирует пользователя
+// по токену, регистрирует соединение в presence.Store и запускает горутины
+// чтения, записи и heartbeat.
 func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	if ws.crypto == nil {
 		http.Error(w, "token verifier unavailable", http.StatusServiceUnavailable)
@@ -152,7 +175,13 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{})}
+	connID := newConnectionID()
+	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	if ws.presence != nil {
+		if err := ws.presence.Connect(r.Context(), client.UserID, client.ConnectionID); err != nil {
+			slog.Error("presence connect error", "userID", client.UserID, "err", err)
+		}
+	}
 	ws.register <- client
 
 	// Deliver pending call invite if any
@@ -174,14 +203,38 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go ws.writePump(client)
 	go ws.readPump(client)
+	// #nosec - горутина долгоживущая, r.Context() отменяется после завершения HTTP-upgrade
 	go ws.heartbeat(client)
 }
 
+// newConnectionID генерирует случайный UUID v4 для идентификации
+// конкретного WebSocket-соединения в presence.Store.
+func newConnectionID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // Version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // Variant RFC4122
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// readPump читает входящие WS-сообщения клиента.
+// При завершении (ошибка чтения или закрытие соединения) удаляет lease
+// из presence.Store и отправляет клиента на отмену регистрации.
 func (ws *WSServer) readPump(client *Client) {
 	defer func() {
+		client.close()
 		ws.handleCallDisconnect(client)
+		if client.heartbeatDone != nil {
+			<-client.heartbeatDone
+		}
+		if ws.presence != nil && client.ConnectionID != "" {
+			// Горутина долгоживущая — r.Context() к этому моменту отменён.
+			if err := ws.presence.Disconnect(context.Background(), client.UserID, client.ConnectionID); err != nil {
+				slog.Error("presence disconnect error", "userID", client.UserID, "err", err)
+			}
+		}
 		ws.unreg <- client
-		client.Conn.Close()
+		_ = client.Conn.Close()
 	}()
 	for {
 		_, message, err := client.Conn.ReadMessage()
@@ -442,8 +495,17 @@ func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {
 	ws.BroadcastToChat(snap.ChatID, out, "")
 }
 
+// heartbeat периодически отправляет ping-сообщение клиенту и продлевает
+// TTL его lease в presence.Store. Останавливается при закрытии client.done.
 func (ws *WSServer) heartbeat(client *Client) {
-	ticker := time.NewTicker(wsPingInterval)
+	if client.heartbeatDone != nil {
+		defer close(client.heartbeatDone)
+	}
+	interval := wsPingInterval
+	if ws.pingInterval > 0 {
+		interval = ws.pingInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	ping, _ := json.Marshal(map[string]string{"type": "ping"})
 	for {
@@ -452,6 +514,12 @@ func (ws *WSServer) heartbeat(client *Client) {
 			return
 		case <-ticker.C:
 			select {
+			case <-client.done:
+				return
+			default:
+			}
+			ws.sendPresenceHeartbeat(client)
+			select {
 			case client.Send <- ping:
 			case <-client.done:
 				return
@@ -459,6 +527,20 @@ func (ws *WSServer) heartbeat(client *Client) {
 				return
 			}
 		}
+	}
+}
+
+// sendPresenceHeartbeat отправляет периодический heartbeat в presence.Store
+// с таймаутом 5 секунд. Ошибки логируются и не прерывают работу сокета.
+func (ws *WSServer) sendPresenceHeartbeat(client *Client) {
+	if ws.presence == nil || client.ConnectionID == "" {
+		return
+	}
+	hbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := ws.presence.Heartbeat(hbCtx, client.UserID, client.ConnectionID)
+	if err != nil {
+		slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
 	}
 }
 

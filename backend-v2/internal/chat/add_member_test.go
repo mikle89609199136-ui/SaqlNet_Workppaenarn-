@@ -28,7 +28,7 @@ func TestAddMember_Success(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// 1. Проверка роли актора (owner или admin)
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
@@ -93,7 +93,7 @@ func TestAddMember_InvalidInput(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	tests := []struct {
 		name   string
@@ -125,7 +125,7 @@ func TestAddMember_ChatNotFound(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Эмулируем, что проверка роли прошла (актор — владелец),
 	// но при запросе данных самого чата он не найден.
@@ -152,7 +152,7 @@ func TestAddMember_PrivateChat(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
 		WithArgs(actorID, chatID).
@@ -179,7 +179,7 @@ func TestAddMember_UserNotFound(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Подкейс A: Пользователя вообще нет в таблице auth.users
 	t.Run("UserDoesNotExist", func(t *testing.T) {
@@ -232,7 +232,7 @@ func TestAddMember_Forbidden(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Актор имеет роль 'member'
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
@@ -254,7 +254,7 @@ func TestAddMember_Conflict(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Подкейс A: Пользователь уже в группе
 	t.Run("AlreadyMember", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestAddMember_Broadcast(t *testing.T) {
 	// Для этого теста нам важно, чтобы ws был инициализирован.
 	// Если в проекте WSServer — это структура, мы можем создать её минимальный экземпляр
 	// или замокать интерфейс, если он будет выделен в процессе GREEN.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Настраиваем все успешные проверки (копия Happy Path)
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).WithArgs(actorID, chatID).WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
@@ -375,7 +375,7 @@ func TestAddMember_InsertConflictUnknownReason(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectQuery(`SELECT role FROM chats\.members`).
 		WithArgs(actorID, chatID).WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))

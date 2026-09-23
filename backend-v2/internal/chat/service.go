@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -108,6 +109,8 @@ type Message struct {
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
+	presence presence.Store
 }
 
 type realtimeServer interface {
@@ -177,8 +180,8 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName 
 	return fileName, sizeBytes, nil
 }
 
-func NewService(db *sql.DB, ws realtimeServer) *Service {
-	return &Service{db: db, ws: ws}
+func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
+	return &Service{db: db, ws: ws, presence: presence}
 }
 
 func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {
@@ -3183,4 +3186,72 @@ func AssertCanModerate(actorRole, targetRole string) error {
 		return ErrCannotModerateTarget
 	}
 	return nil
+}
+
+type onlineMembersInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+// ensureGroupMember проверяет существование чата, членство пользователя
+// и принадлежность чата к типу "group".
+func (s *Service) ensureGroupMember(ctx context.Context, chatID, userID string) error {
+	var chatType string
+	err := s.db.QueryRowContext(ctx, "SELECT type FROM chats.chats WHERE id = $1", chatID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := s.memberRole(ctx, userID, chatID); err != nil {
+		return err
+	}
+
+	if chatType != "group" {
+		return ErrInvalidChatType
+	}
+	return nil
+}
+
+// chatMemberIDs возвращает список UUID участников чата в порядке их хранения в БД.
+func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT user_id::text FROM chats.members WHERE chat_id = $1", chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	memberIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		memberIDs = append(memberIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return memberIDs, nil
+}
+
+// GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
+// (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
+func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
+	if err := validate.Struct(onlineMembersInput{ChatID: chatID, UserID: userID}); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	if err := s.ensureGroupMember(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+
+	memberIDs, err := s.chatMemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.presence.OnlineUsers(ctx, memberIDs)
 }
