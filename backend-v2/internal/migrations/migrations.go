@@ -4,15 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"sort"
 	"strings"
 )
 
-// Run applies all *.sql files from dir in lexicographic order.
-// Applied versions are tracked in schema_migrations (version TEXT PK).
-func Run(ctx context.Context, db *sql.DB, dir string) error {
+// Run applies all *.sql files found under dir inside fsys, in lexicographic
+// order. Applied versions are tracked in schema_migrations (version TEXT PK).
+//
+// fsys may be any fs.FS implementation: os.DirFS for on-disk migrations,
+// embed.FS for compiled-in ones, or fstest.MapFS in unit tests.
+// dir is a slash-separated path inside fsys; pass "." to use its root.
+func Run(ctx context.Context, db *sql.DB, fsys fs.FS, dir string) error {
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version TEXT PRIMARY KEY,
@@ -22,15 +26,15 @@ func Run(ctx context.Context, db *sql.DB, dir string) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	files, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
-		return fmt.Errorf("read migrations dir: %w", err)
+		return fmt.Errorf("read migrations dir %q: %w", dir, err)
 	}
 
 	var names []string
-	for _, f := range files {
-		if !f.IsDir() && strings.HasSuffix(f.Name(), ".sql") {
-			names = append(names, f.Name())
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
 		}
 	}
 	sort.Strings(names)
@@ -48,7 +52,9 @@ func Run(ctx context.Context, db *sql.DB, dir string) error {
 		}
 
 		fmt.Printf("Applying migration %s...\n", name)
-		content, err := os.ReadFile(filepath.Join(dir, name))
+		// fs.FS paths are always slash-separated, so use path.Join rather
+		// than filepath.Join (which would emit backslashes on Windows).
+		content, err := fs.ReadFile(fsys, path.Join(dir, name))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", name, err)
 		}
