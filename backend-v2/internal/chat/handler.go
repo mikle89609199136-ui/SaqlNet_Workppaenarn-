@@ -729,6 +729,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path == "/api/v2/messages/forward" && r.Method == http.MethodPost {
 		var input ForwardMessageInput
+
 		if !decode(w, r, &input) {
 			return
 		}

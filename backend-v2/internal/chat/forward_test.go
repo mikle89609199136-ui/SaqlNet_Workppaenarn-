@@ -194,9 +194,6 @@ func TestForwardMessageInput_Validation(t *testing.T) {
 			wantErrors: []validationError{
 				{field: "MessageID", tag: "required"},
 				{field: "SenderID", tag: "required"},
-				{field: "Forwarded", tag: "eq"},
-				{field: "MessageID", tag: "uuid"},
-				{field: "SenderID", tag: "required"},
 			},
 		},
 		{

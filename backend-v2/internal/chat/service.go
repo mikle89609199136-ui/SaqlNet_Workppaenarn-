@@ -2372,6 +2372,7 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 
 	// Подготавливаем messages + attachments.
 	for i, m := range messages {
+
 		source, ok := sourceMessages[m.MessageID]
 
 		if !ok {
@@ -2476,7 +2477,6 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 
 		ORDER BY array_position($1::uuid[], m.id)
 	`
-
 	resultRows, err := tx.QueryContext(ctx, selectQuery, pq.Array(messageIDS))
 
 	if err != nil {
@@ -2488,11 +2488,13 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 	result := make([]ResForwardMessage, 0, totalLength)
 
 	for resultRows.Next() {
+
 		var message ResForwardMessage
 		var attachmentsJSON []byte
 		var metadataJSON []byte
 
 		if err := resultRows.Scan(
+
 			&message.ID,
 			&message.ChatID,
 			&message.SenderID,
@@ -2517,6 +2519,7 @@ func (s *Service) sendForwardMessages(ctx context.Context, messages []TMessages,
 	}
 
 	if err := resultRows.Err(); err != nil {
+
 		return nil, err
 	}
 
@@ -2546,7 +2549,6 @@ func (s *Service) ForwardMessages(ctx context.Context, userID, chatID, targetCha
 
 		return nil, ErrForbidden
 	}
-
 	return s.sendForwardMessages(ctx, messages, caption, targetChatID, chatID, userID)
 }
 
