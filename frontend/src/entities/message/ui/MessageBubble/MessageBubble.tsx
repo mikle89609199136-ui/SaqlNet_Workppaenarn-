@@ -119,6 +119,21 @@ export const MessageBubble = memo(
             </div>
           )}
 
+          {/* Имя автора подставляет сервер, проверив доступ к исходному
+              сообщению. Пустым оно бывает только у старых пересылок. */}
+          {message.isForwarded && (
+            <p className="mb-1 text-caption text-ink-3">
+              {message.forwardedSenderName ? (
+                <>
+                  {t('forwardedFrom', 'Переслано от')}{' '}
+                  <b className="font-semibold text-ink-2">{message.forwardedSenderName}</b>
+                </>
+              ) : (
+                t('forwarded', 'Переслано')
+              )}
+            </p>
+          )}
+
           {hasReply && (
             <MessageReplyPreview
               message={message}

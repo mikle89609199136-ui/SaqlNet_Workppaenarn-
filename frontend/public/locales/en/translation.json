@@ -82,6 +82,8 @@
   "firstNamePlaceholder": "Your name",
   "forward": "Forward",
   "forwardMessages": "Forward messages",
+  "forwarded": "Forwarded",
+  "forwardedFrom": "Forwarded from",
   "goToMessage": "Go to message",
   "groupAvatar": "Group photo",
   "groupChat": "Group",
