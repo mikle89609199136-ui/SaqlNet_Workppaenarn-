@@ -46,13 +46,7 @@ func TestListMessages_ChatNotFound(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery(selectIsMemberSQL).
-		WithArgs(listMessagesUserID, listMessagesChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-
-	mock.ExpectQuery(selectChatExistsSQL).
-		WithArgs(listMessagesChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	expectMembershipAndChat(mock, false, false)
 
 	svc := NewService(db, nil, nil)
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
@@ -67,12 +61,8 @@ func TestListMessages_NotMember(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery(selectIsMemberSQL).
-		WithArgs(listMessagesUserID, listMessagesChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery(selectChatExistsSQL).
-		WithArgs(listMessagesChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	expectMembershipAndChat(mock, false, true)
+
 	svc := NewService(db, nil, nil)
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
 	require.ErrorIs(t, err, ErrForbidden)
@@ -86,9 +76,8 @@ func TestListMessages_Success(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	mock.ExpectQuery(selectIsMemberSQL).
-		WithArgs(listMessagesUserID, listMessagesChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	expectMembershipAndChat(mock, true, false)
+
 	mock.ExpectQuery(selectListMessagesSQL).
 		WithArgs(listMessagesChatID, 50, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
@@ -110,12 +99,7 @@ func TestHandler_ListMessages_ErrorMapping(t *testing.T) {
 		{
 			name: "chat not found",
 			mockSetup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(selectIsMemberSQL).
-					WithArgs(listMessagesUserID, listMessagesChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(selectChatExistsSQL).
-					WithArgs(listMessagesChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				expectMembershipAndChat(mock, false, false)
 			},
 			wantStatus: http.StatusNotFound,
 			wantCode:   "chat_not_found",
@@ -123,12 +107,7 @@ func TestHandler_ListMessages_ErrorMapping(t *testing.T) {
 		{
 			name: "access denied",
 			mockSetup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(selectIsMemberSQL).
-					WithArgs(listMessagesUserID, listMessagesChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectQuery(selectChatExistsSQL).
-					WithArgs(listMessagesChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+				expectMembershipAndChat(mock, false, true)
 			},
 			wantStatus: http.StatusForbidden,
 			wantCode:   "access_denied",
@@ -156,5 +135,17 @@ func TestHandler_ListMessages_ErrorMapping(t *testing.T) {
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
+	}
+}
+
+// expectMembershipAndChat задаёт мок-ожидания проверки членства и (если не участник) существования чата.
+func expectMembershipAndChat(mock sqlmock.Sqlmock, isMember, chatExists bool) {
+	mock.ExpectQuery(selectIsMemberSQL).
+		WithArgs(listMessagesUserID, listMessagesChatID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(isMember))
+	if !isMember {
+		mock.ExpectQuery(selectChatExistsSQL).
+			WithArgs(listMessagesChatID).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(chatExists))
 	}
 }
