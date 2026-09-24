@@ -2,6 +2,7 @@ package authctx
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -10,18 +11,26 @@ import (
 )
 
 type User struct {
-	ID       string
-	Username string
+	ID              string
+	Username        string
+	TokenGeneration int64
 }
 
 type contextKey struct{}
 
 // TokenChecker is implemented by services that maintain a revoked-token store.
 type TokenChecker interface {
-	IsTokenRevoked(ctx context.Context, token string) bool
+	IsTokenRevoked(ctx context.Context, token string, claims cryptoclient.TokenClaims) (bool, error)
 }
 
-func Middleware(crypto *cryptoclient.Client, checkers ...TokenChecker) func(http.Handler) http.Handler {
+type TokenVerifier interface {
+	VerifyToken(ctx context.Context, token string) (cryptoclient.TokenClaims, error)
+}
+
+// Middleware always requires a revocation checker. Keeping it mandatory makes
+// it impossible to compile a protected service that validates signatures but
+// accidentally skips logout/logout-all state.
+func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -32,16 +41,31 @@ func Middleware(crypto *cryptoclient.Client, checkers ...TokenChecker) func(http
 			token := strings.TrimPrefix(header, "Bearer ")
 			claims, err := crypto.VerifyToken(r.Context(), token)
 			if err != nil {
+				if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {
+					httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+					return
+				}
 				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_token", "token is invalid or expired")
 				return
 			}
-			for _, checker := range checkers {
-				if checker.IsTokenRevoked(r.Context(), token) {
-					httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "token has been revoked")
-					return
-				}
+			if checker == nil {
+				httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "auth_check_unavailable", "token revocation check is unavailable")
+				return
 			}
-			user := User{ID: claims.Subject, Username: claims.Username}
+			revoked, err := checker.IsTokenRevoked(r.Context(), token, claims)
+			if err != nil {
+				httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "auth_check_unavailable", "token revocation check is unavailable")
+				return
+			}
+			if revoked {
+				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "token has been revoked")
+				return
+			}
+			user := User{
+				ID:              claims.Subject,
+				Username:        claims.Username,
+				TokenGeneration: claims.TokenGeneration,
+			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, user)))
 		})
 	}

@@ -64,8 +64,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a QR login token */
+        /**
+         * Start a QR login
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself.
+         */
         post: operations["createQrToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-request/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show which device asks to log in
+         * @description For the signed-in device before it confirms. 404 once the code expired or was confirmed. Not cacheable.
+         */
+        get: operations["getQrRequest"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -79,7 +102,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get QR login status */
+        /**
+         * Get QR login status
+         * @description Polled by the new device. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         */
         get: operations["getQrStatus"];
         put?: never;
         post?: never;
@@ -98,7 +124,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm a QR login */
+        /**
+         * Confirm a QR login
+         * @description A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         */
         post: operations["confirmQrLogin"];
         delete?: never;
         options?: never;
@@ -132,7 +161,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke all user tokens */
+        /**
+         * Revoke all user tokens
+         * @description May return 503 while generation revocation is disabled during a compatibility rollout.
+         */
         post: operations["logoutAll"];
         delete?: never;
         options?: never;
@@ -919,6 +951,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/encryption/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the key backup
+         * @description Opaque end-to-end key backup of the requester. The server never sees the master key, the cloud password or any key inside. Not cacheable.
+         */
+        get: operations["getKeyBackup"];
+        /**
+         * Create or replace the key backup
+         * @description expectedVersion 0 creates the backup; any other value replaces it only if it still has that version, otherwise 409 version_conflict.
+         */
+        put: operations["putKeyBackup"];
+        post?: never;
+        /** Delete the key backup and every chat key in it */
+        delete: operations["deleteKeyBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/backup/chat-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backed-up chat keys
+         * @description Pages through the requester's chat keys in (chatId, epoch) order. An empty next means the list is complete.
+         */
+        get: operations["listBackupChatKeys"];
+        put?: never;
+        /**
+         * Add chat keys to the backup
+         * @description An epoch already in the backup is left unchanged; keys of chats that no longer exist are skipped.
+         */
+        post: operations["saveBackupChatKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/support/requests": {
         parameters: {
             query?: never;
@@ -1031,7 +1112,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a group chat */
+        /**
+         * Create a group chat
+         * @description Creates a new group chat owned by the authenticated user.
+         *
+         *     Text fields (title, description, avatarUrl) are trimmed of leading
+         *     and trailing whitespace before validation and storage. The 128-character
+         *     limit for title applies to the trimmed value; an all-whitespace title
+         *     is rejected.
+         */
         post: operations["createGroupChat"];
         delete?: never;
         options?: never;
@@ -1056,7 +1145,18 @@ export interface paths {
         delete: operations["deleteChat"];
         options?: never;
         head?: never;
-        /** Update a group chat */
+        /**
+         * Update a group chat
+         * @description Updates the title, description, and/or avatar URL of a group chat.
+         *     All fields are optional, but at least one must be present.
+         *
+         *     Text fields are trimmed of leading and trailing whitespace before
+         *     validation and storage. The 128-character limit for title applies
+         *     to the trimmed value; an all-whitespace title is rejected.
+         *
+         *     Only the chat owner or an admin may perform this operation.
+         *     Direct (non-group) chats cannot be updated through this endpoint.
+         */
         patch: operations["updateGroupChat"];
         trace?: never;
     };
@@ -1087,7 +1187,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List online members */
+        /** List online members of a group chat */
         get: operations["listOnlineChatMembers"];
         put?: never;
         post?: never;
@@ -2061,6 +2161,46 @@ export interface components {
             /** Format: password */
             twoFAPassword?: string;
         };
+        QrTokenRequest: {
+            /** @description One-time ECDH P-256 public key (SPKI) */
+            publicKey: string;
+            deviceName?: string;
+        };
+        QrTokenResponse: {
+            qrToken: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            expiresAt: number;
+        };
+        QrLoginRequest: {
+            publicKey: string;
+            deviceName: string;
+            userAgent: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            expiresAt: number;
+        };
+        /** @description The key backup master key encrypted to the new device's publicKey. Opaque to the server. */
+        QrKeyPayload: {
+            senderPublicKey: string;
+            iv: string;
+            ct: string;
+        };
+        QrStatusResponse: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            authToken?: string;
+            payload?: components["schemas"]["QrKeyPayload"];
+        };
+        QrConfirmRequest: {
+            qrToken: string;
+            payload: components["schemas"]["QrKeyPayload"];
+        };
         UpdateProfileRequest: {
             firstName?: string;
             lastName?: string;
@@ -2127,8 +2267,122 @@ export interface components {
         SignalPreKeysRequest: {
             oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
         };
+        /** @description Ways to open the master key (cloud password, passkey). Opaque to the server. */
+        KeyBackupSlots: {
+            [key: string]: unknown;
+        }[];
+        KeyBackup: {
+            /** Format: int64 */
+            version: number;
+            formatVersion: number;
+            /**
+             * Format: byte
+             * @description Encrypted identity keys.
+             */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+            updatedAt: string;
+        };
+        PutKeyBackupRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            formatVersion: number;
+            /** Format: byte */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+        };
+        KeyBackupVersionResponse: {
+            /** Format: int64 */
+            version: number;
+        };
+        BackupChatKey: {
+            /** Format: uuid */
+            chatId: string;
+            epoch: number;
+            /** Format: byte */
+            encryptedKey: string;
+        };
+        BackupChatKeysPage: {
+            keys: components["schemas"]["BackupChatKey"][];
+            /** @description Cursor for the next page; empty when there is none. */
+            next: string;
+        };
+        SaveBackupChatKeysRequest: {
+            keys: components["schemas"]["BackupChatKey"][];
+        };
+        SaveBackupChatKeysResponse: {
+            stored: number;
+        };
         /** @description Request failed */
         responses_Error: unknown;
+        CreateGroupRequest: {
+            /**
+             * @description Group title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value; an all-whitespace title is rejected.
+             * @example Team standup
+             */
+            title: string;
+            /**
+             * @description Optional group description. Trimmed of leading and trailing
+             *     whitespace before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+            /**
+             * @description User IDs to add as members. The owner is added automatically
+             *     and does not need to be listed. Unknown or disabled users are
+             *     silently skipped.
+             * @example [
+             *       "550e8400-e29b-41d4-a716-446655440002"
+             *     ]
+             */
+            members: string[];
+        };
+        UpdateGroupRequest: {
+            /**
+             * @description New chat title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value. An all-whitespace value is rejected.
+             * @example Team standup
+             */
+            title?: string;
+            /**
+             * @description New chat description. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+        };
+        Chat: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "private" | "group" | "channel";
+            title?: string;
+            description?: string;
+            avatarUrl?: string;
+            /** Format: uuid */
+            ownerId?: string;
+            role?: string;
+            isPinned?: boolean;
+            isArchived?: boolean;
+            memberCount?: number;
+            createdAt?: string;
+            updatedAt?: string;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
@@ -2169,6 +2423,11 @@ export interface components {
                 [key: string]: unknown;
             };
             isEncrypted?: boolean;
+            /**
+             * Format: uuid
+             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server.
+             */
+            forwardedFrom?: string | null;
         };
         MessageResponse: {
             message: components["schemas"]["Message"];
@@ -2389,15 +2648,46 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrTokenRequest"];
+            };
+        };
         responses: {
-            /** @description QR token and QR image created */
+            /** @description QR login started */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["QrTokenResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+        };
+    };
+    getQrRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending QR login */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrLoginRequest"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getQrStatus: {
@@ -2411,12 +2701,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending */
+            /** @description Pending, confirmed, or expired QR login status */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
             };
         };
     };
@@ -2429,9 +2721,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    qrToken: string;
-                };
+                "application/json": components["schemas"]["QrConfirmRequest"];
             };
         };
         responses: {
@@ -2443,6 +2733,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     logout: {
@@ -2479,6 +2770,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -2789,6 +3082,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "user_not_found",
+                     *       "message": "user not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3666,6 +3974,122 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
+    getKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key backup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackup"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    putKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutKeyBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the new version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackupVersionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listBackupChatKeys: {
+        parameters: {
+            query?: {
+                chatId?: string;
+                /** @description Cursor from the previous page: chatId:epoch */
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of chat keys */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupChatKeysPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    saveBackupChatKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveBackupChatKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description How many keys were new */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveBackupChatKeysResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
     listSupportRequests: {
         parameters: {
             query?: never;
@@ -3865,14 +4289,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Group creation payload. */
         requestBody: {
             content: {
-                "application/json": {
-                    title: string;
-                    description?: string;
-                    avatarUrl?: string;
-                    members: string[];
-                };
+                "application/json": components["schemas"]["CreateGroupRequest"];
             };
         };
         responses: {
@@ -3881,7 +4301,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        chatId: string;
+                        title: string;
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3935,13 +4379,10 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description Fields to update. At least one field must be present. */
         requestBody: {
             content: {
-                "application/json": {
-                    title?: string;
-                    description?: string;
-                    avatarUrl?: string;
-                };
+                "application/json": components["schemas"]["UpdateGroupRequest"];
             };
         };
         responses: {
@@ -3950,7 +4391,47 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        chat: components["schemas"]["Chat"];
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed, invalid_chat_type) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -4012,13 +4493,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Online user IDs */
+            /** @description Online member UUIDs */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        members: string[];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     listChatBans: {

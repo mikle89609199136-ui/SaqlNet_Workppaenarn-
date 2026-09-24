@@ -28,7 +28,9 @@ func main() {
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	svc := auth.NewService(db, crypto)
-	handler := auth.NewHandler(svc)
+	handler := auth.NewHandler(svc, auth.WithLogoutAllGenerationEnabled(
+		config.Bool("AUTH_LOGOUT_ALL_GENERATION_ENABLED", false),
+	))
 	authenticated := authctx.Middleware(crypto, svc)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -39,6 +41,14 @@ func main() {
 		defer cancel()
 		if err := db.PingContext(ctx); err != nil {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
+			return
+		}
+		if err := authctx.CheckTokenGenerationSchema(ctx, db); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(ctx); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})

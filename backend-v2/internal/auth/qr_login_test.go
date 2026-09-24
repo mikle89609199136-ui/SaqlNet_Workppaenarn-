@@ -59,8 +59,10 @@ func startQRLogin(t *testing.T, handler *Handler) string {
 }
 
 func expectIssueToken(mock sqlmock.Sqlmock, userID string) {
-	mock.ExpectQuery(`SELECT username FROM auth\.users WHERE id = \$1`).WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("anna"))
+	mock.ExpectQuery(`SELECT username, token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 0))
+	mock.ExpectQuery(`SELECT token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
 }
 
 func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {
@@ -116,6 +118,26 @@ func TestQRConfirmRejectsSecondConfirmation(t *testing.T) {
 
 	status := decodeJSON(t, qrCall(handler.QRStatus, http.MethodGet, "/api/v2/auth/qr-status/"+token, token, "", ""))
 	require.Equal(t, "confirmed", status["status"])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestQRConfirmCannotCrossLogoutAll(t *testing.T) {
+	handler, mock := qrHandler(t)
+	token := startQRLogin(t, handler)
+
+	// The request context represents a generation-0 access token, while a
+	// concurrent logout-all has already advanced the user to generation 1.
+	mock.ExpectQuery(`SELECT username, token_generation.*FROM auth\.users.*WHERE id = \$1`).
+		WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 1))
+
+	confirm := qrCall(handler.QRConfirm, http.MethodPost, "/api/v2/auth/qr-confirm", "",
+		`{"qrToken":"`+token+`","payload":`+qrPayload+`}`, "user-1")
+	require.Equal(t, http.StatusUnauthorized, confirm.Code, confirm.Body.String())
+	require.Equal(t, "token_revoked", decodeJSON(t, confirm)["code"])
+
+	status := decodeJSON(t, qrCall(handler.QRStatus, http.MethodGet, "/api/v2/auth/qr-status/"+token, token, "", ""))
+	require.Equal(t, "pending", status["status"])
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

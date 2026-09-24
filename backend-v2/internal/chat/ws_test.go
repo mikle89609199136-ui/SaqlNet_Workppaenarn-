@@ -16,6 +16,15 @@ type fakeTokenVerifier struct {
 	err    error
 }
 
+type fakeTokenChecker struct {
+	revoked bool
+	err     error
+}
+
+func (f fakeTokenChecker) IsTokenRevoked(_ context.Context, _ string, _ cryptoclient.TokenClaims) (bool, error) {
+	return f.revoked, f.err
+}
+
 func (f fakeTokenVerifier) VerifyToken(_ context.Context, _ string) (cryptoclient.TokenClaims, error) {
 	return f.claims, f.err
 }
@@ -63,6 +72,7 @@ func TestWSServer_Signaling(t *testing.T) {
 
 func TestWSServerRejectsMissingToken(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
+	t.Cleanup(ws.Close)
 	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	response := httptest.NewRecorder()
 
@@ -75,7 +85,50 @@ func TestWSServerRejectsMissingToken(t *testing.T) {
 
 func TestWSServerRejectsInvalidToken(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{err: errors.New("invalid")}, nil)
+	t.Cleanup(ws.Close)
 	request := httptest.NewRequest(http.MethodGet, "/ws?token=bad", nil)
+	response := httptest.NewRecorder()
+
+	ws.ServeWS(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+}
+
+func TestWSServerReportsIncompatibleCryptoAsUnavailable(t *testing.T) {
+	ws := NewWSServer(nil, fakeTokenVerifier{err: cryptoclient.ErrTokenGenerationProtocol}, nil)
+	t.Cleanup(ws.Close)
+	ws.tokenChecker = fakeTokenChecker{}
+	request := httptest.NewRequest(http.MethodGet, "/ws?token=legacy", nil)
+	response := httptest.NewRecorder()
+
+	ws.ServeWS(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected %d, got %d", http.StatusServiceUnavailable, response.Code)
+	}
+}
+
+func TestWSServerRejectsHandshakeWhenRevocationCheckFails(t *testing.T) {
+	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
+	t.Cleanup(ws.Close)
+	ws.tokenChecker = fakeTokenChecker{err: errors.New("database unavailable")}
+	request := httptest.NewRequest(http.MethodGet, "/ws?token=valid", nil)
+	response := httptest.NewRecorder()
+
+	ws.ServeWS(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected %d, got %d", http.StatusServiceUnavailable, response.Code)
+	}
+}
+
+func TestWSServerRejectsRevokedToken(t *testing.T) {
+	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
+	t.Cleanup(ws.Close)
+	ws.tokenChecker = fakeTokenChecker{revoked: true}
+	request := httptest.NewRequest(http.MethodGet, "/ws?token=revoked", nil)
 	response := httptest.NewRecorder()
 
 	ws.ServeWS(response, request)

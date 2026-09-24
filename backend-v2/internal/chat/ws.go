@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -62,6 +63,7 @@ func (c *Client) close() {
 type WSServer struct {
 	db             *sql.DB
 	crypto         tokenVerifier
+	tokenChecker   authctx.TokenChecker
 	clients        map[string]map[*Client]bool
 	mu             sync.RWMutex
 	register       chan *Client
@@ -71,6 +73,9 @@ type WSServer struct {
 	inviteMu       sync.Mutex
 	presence       presence.Store
 	pingInterval   time.Duration // интервал heartbeat; 0 → wsPingInterval
+	stop           chan struct{}
+	stopped        chan struct{}
+	stopOnce       sync.Once
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -79,6 +84,7 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 	ws := &WSServer{
 		db:             db,
 		crypto:         crypto,
+		tokenChecker:   authctx.NewDBTokenChecker(db),
 		clients:        make(map[string]map[*Client]bool),
 		register:       make(chan *Client),
 		unreg:          make(chan *Client),
@@ -86,9 +92,21 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 		pendingInvites: make(map[string]json.RawMessage),
 		presence:       store,
 		pingInterval:   wsPingInterval,
+		stop:           make(chan struct{}),
+		stopped:        make(chan struct{}),
 	}
 	go ws.run()
 	return ws
+}
+
+// Close stops the server's registration loop. Call it after the HTTP server
+// has stopped accepting handshakes and active test connections are closed.
+func (ws *WSServer) Close() {
+	if ws == nil || ws.stop == nil || ws.stopped == nil {
+		return
+	}
+	ws.stopOnce.Do(func() { close(ws.stop) })
+	<-ws.stopped
 }
 
 func (ws *WSServer) CallRooms() *CallRoomManager {
@@ -105,8 +123,13 @@ func (ws *WSServer) IsUserConnected(userID string) bool {
 }
 
 func (ws *WSServer) run() {
+	if ws.stopped != nil {
+		defer close(ws.stopped)
+	}
 	for {
 		select {
+		case <-ws.stop:
+			return
 		case client := <-ws.register:
 			ws.mu.Lock()
 			if ws.clients[client.UserID] == nil {
@@ -154,12 +177,25 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims, err := ws.crypto.VerifyToken(r.Context(), token)
+	if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {
+		http.Error(w, "crypto token-generation protocol is not ready", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil || claims.Subject == "" {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	if authctx.NewDBTokenChecker(ws.db).IsTokenRevoked(r.Context(), token) {
+	if ws.tokenChecker == nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	revoked, err := ws.tokenChecker.IsTokenRevoked(r.Context(), token, claims)
+	if err != nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if revoked {
 		http.Error(w, "token revoked", http.StatusUnauthorized)
 		return
 	}
