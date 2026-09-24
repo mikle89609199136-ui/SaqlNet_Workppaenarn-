@@ -47,6 +47,7 @@ func main() {
 	mux.HandleFunc("/api/v2/auth/login", handler.Login)
 	mux.HandleFunc("/api/v2/auth/qr-token", handler.QRToken)
 	mux.HandleFunc("/api/v2/auth/qr-status/{token}", handler.QRStatus)
+	mux.Handle("/api/v2/auth/qr-request/{token}", authenticated(http.HandlerFunc(handler.QRRequest)))
 	mux.Handle("/api/v2/auth/qr-confirm", authenticated(http.HandlerFunc(handler.QRConfirm)))
 	mux.Handle("/api/v2/auth/public-key", authenticated(http.HandlerFunc(handler.PublicKey)))
 	mux.Handle("/api/v2/auth/logout", authenticated(http.HandlerFunc(handler.Logout)))
