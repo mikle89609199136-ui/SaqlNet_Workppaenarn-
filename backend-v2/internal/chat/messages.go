@@ -34,6 +34,14 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		offset = o
 	}
 	msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat_not_found")
+		return
+	}
+	if errors.Is(err, ErrForbidden) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access_denied")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
 		return

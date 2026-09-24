@@ -2,6 +2,9 @@ package chat
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -93,4 +96,65 @@ func TestListMessages_Success(t *testing.T) {
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestHandler_ListMessages_ErrorMapping проверяет преобразование доменных ошибок
+// сервиса в корректные HTTP-статусы и коды JSON в Handler.ListMessages.
+func TestHandler_ListMessages_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		mockSetup  func(sqlmock.Sqlmock)
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name: "chat not found",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(selectIsMemberSQL).
+					WithArgs(listMessagesUserID, listMessagesChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectQuery(selectChatExistsSQL).
+					WithArgs(listMessagesChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+			},
+			wantStatus: http.StatusNotFound,
+			wantCode:   "chat_not_found",
+		},
+		{
+			name: "access denied",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(selectIsMemberSQL).
+					WithArgs(listMessagesUserID, listMessagesChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+				mock.ExpectQuery(selectChatExistsSQL).
+					WithArgs(listMessagesChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+			},
+			wantStatus: http.StatusForbidden,
+			wantCode:   "access_denied",
+		},
+		{
+			name: "internal error",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(selectIsMemberSQL).
+					WithArgs(listMessagesUserID, listMessagesChatID).
+					WillReturnError(errors.New("db error"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "internal_error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			tt.mockSetup(mock)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/messages/"+listMessagesChatID, nil, listMessagesUserID)
+			req.SetPathValue("chatId", listMessagesChatID)
+			rr := httptest.NewRecorder()
+			handler.ListMessages(rr, req)
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
