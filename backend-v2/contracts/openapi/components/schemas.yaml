@@ -452,3 +452,60 @@ UpdateGroupRequest:
         Optional avatar URL. Trimmed of leading and trailing whitespace
         before storage.
       example: 'https://cdn.example.com/avatars/team.png'
+KeyBackupSlots:
+  type: array
+  description: Ways to open the master key (cloud password, passkey). Opaque to the server.
+  minItems: 1
+  maxItems: 8
+  items: { type: object, additionalProperties: true }
+KeyBackup:
+  type: object
+  required: [version, formatVersion, identity, slots, updatedAt]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384, description: Encrypted identity keys. }
+    slots: { $ref: '#/KeyBackupSlots' }
+    updatedAt: { type: string }
+PutKeyBackupRequest:
+  type: object
+  required: [expectedVersion, formatVersion, identity, slots]
+  properties:
+    expectedVersion: { type: integer, format: int64, minimum: 0 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384 }
+    slots: { $ref: '#/KeyBackupSlots' }
+KeyBackupVersionResponse:
+  type: object
+  required: [version]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+BackupChatKey:
+  type: object
+  required: [chatId, epoch, encryptedKey]
+  properties:
+    chatId: { type: string, format: uuid }
+    epoch: { type: integer, minimum: 1 }
+    encryptedKey: { type: string, format: byte, maxLength: 1024 }
+BackupChatKeysPage:
+  type: object
+  required: [keys, next]
+  properties:
+    keys:
+      type: array
+      items: { $ref: '#/BackupChatKey' }
+    next: { type: string, description: Cursor for the next page; empty when there is none. }
+SaveBackupChatKeysRequest:
+  type: object
+  required: [keys]
+  properties:
+    keys:
+      type: array
+      minItems: 1
+      maxItems: 500
+      items: { $ref: '#/BackupChatKey' }
+SaveBackupChatKeysResponse:
+  type: object
+  required: [stored]
+  properties:
+    stored: { type: integer, minimum: 0 }

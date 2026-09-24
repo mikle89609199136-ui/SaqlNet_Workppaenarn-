@@ -72,6 +72,8 @@ paths:
   /encryption/signal/keys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1keys' }
   /encryption/signal/bundle/{userId}: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1bundle~1{userId}' }
   /encryption/signal/prekeys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1prekeys' }
+  /encryption/backup: { $ref: './paths/encryption.yaml#/~1encryption~1backup' }
+  /encryption/backup/chat-keys: { $ref: './paths/encryption.yaml#/~1encryption~1backup~1chat-keys' }
 
   /support/requests: { $ref: './paths/support.yaml#/~1support~1requests' }
   /support/requests/{requestId}: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}' }

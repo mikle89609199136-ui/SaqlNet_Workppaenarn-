@@ -79,6 +79,8 @@ func main() {
 	mux.Handle("/api/v2/encryption/chat-keys/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/rotate-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/my-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/backup", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/backup/chat-keys", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 
 	registerSignalRoutes(mux, authenticated, handler)
 	mux.Handle("/api/v2/users/", authenticated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
