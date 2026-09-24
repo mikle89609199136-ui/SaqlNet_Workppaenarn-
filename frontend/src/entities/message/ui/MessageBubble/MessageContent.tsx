@@ -1,11 +1,12 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 
 interface Props {
   content: string;
+  trailing?: ReactNode;
 }
 
-export const MessageContentRenderer = memo(({ content }: Props) => {
-  if (!content) return null;
+export const MessageContentRenderer = memo(({ content, trailing }: Props) => {
+  if (!content && !trailing) return null;
 
   const parts = [];
   const regex = /(#[\wа-яА-ЯёЁ]+)/g;
@@ -22,10 +23,13 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
     parts.push(
       <span
         key={match.index}
-        className="hashtag-link cursor-pointer font-bold text-brand"
+        className="cursor-pointer font-bold text-brand hover:underline"
         onClick={() => {
-          if (typeof window.handleUnifiedSearch === 'function') {
-            window.handleUnifiedSearch(hashtag);
+          const searchFn = (
+            window as unknown as { handleUnifiedSearch?: (tag: string) => void }
+          ).handleUnifiedSearch;
+          if (typeof searchFn === 'function') {
+            searchFn(hashtag);
           } else {
             alert(`Поиск по хэштегу: ${hashtag}`);
           }
@@ -43,8 +47,9 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
   }
 
   return (
-    <div className="message-content whitespace-pre-wrap leading-[1.38] [overflow-wrap:anywhere]">
+    <div className="message-content text-body whitespace-pre-wrap leading-snug [overflow-wrap:anywhere] flow-root">
       {parts.length > 0 ? parts : content}
+      {trailing}
     </div>
   );
 });

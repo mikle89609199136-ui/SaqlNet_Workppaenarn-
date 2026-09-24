@@ -52,6 +52,10 @@ interface Props {
    * судьбу моего сообщения, а не про чужие глаза.
    */
   showDeliveryStatus?: boolean;
+  /** Первое сообщение в непрерывной цепочке одного автора. */
+  isFirstInGroup?: boolean;
+  /** Последнее сообщение в группе — рисуется с «хвостиком» (срезанный угол). */
+  isLastInGroup?: boolean;
 }
 
 export const MessageBubble = memo(
@@ -67,6 +71,8 @@ export const MessageBubble = memo(
     onRetryMessage,
     onCancelMessage,
     showDeliveryStatus = false,
+    isFirstInGroup = true,
+    isLastInGroup = true,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -92,20 +98,78 @@ export const MessageBubble = memo(
     const isAudio = actualType === 'audio' || actualType === 'voice';
     const targetReplyId = message.replyTo || message.replyToMessageId;
     const hasReply = Boolean(targetReplyId || repliedMessage);
+    const hasInlineMeta =
+      message.type !== 'call' && (Boolean(message.content) || Boolean(message.undecryptable));
+
+    const renderMeta = (inline = true) => (
+      <span
+        className={cn(
+          'message-meta font-mono text-micro text-ink-3 tabular-nums select-none whitespace-nowrap',
+          inline
+            ? 'float-right inline-flex items-center gap-1 ml-3 mt-2 leading-none'
+            : 'mt-1 flex items-center justify-end gap-1'
+        )}
+      >
+        {message.isPinned && (
+          <span
+            aria-label={t('pinned', 'Закреплено')}
+            className="inline-flex items-center text-ink-3"
+            title={t('pinned', 'Закреплено')}
+          >
+            <Icon className="rotate-45 fill-current" name="pin" size="xs" />
+          </span>
+        )}
+        {message.isEdited && <span>{t('edited', 'изменено')}</span>}
+        <time>{formatMessageTime(message.createdAt)}</time>
+        {mine && (message.status === 'pending' || message.status === 'uploading') && (
+          <span
+            className="inline-flex items-center gap-1 text-ink-3"
+            title={
+              message.status === 'uploading'
+                ? t('uploading', 'Загрузка...')
+                : t('sending', 'Отправка...')
+            }
+          >
+            <Spinner
+              size="sm"
+              label={
+                message.status === 'uploading'
+                  ? t('uploading', 'Загрузка...')
+                  : t('sending', 'Отправка...')
+              }
+            />
+          </span>
+        )}
+
+        {mine && showDeliveryStatus && message.status === 'sent' && (
+          <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
+            <Icon name="check" size="xs" />
+          </span>
+        )}
+      </span>
+    );
 
     return (
       <article
         id={message.id}
         className={cn('flex justify-between gap-x-2', mine && 'justify-end')}
+        data-first-in-group={isFirstInGroup ? 'true' : undefined}
+        data-last-in-group={isLastInGroup ? 'true' : undefined}
         {...longPressHandlers}
       >
         <div
           data-state={isSelected ? 'selected' : undefined}
           className={cn(
-            'message-bubble relative w-fit max-w-[min(76%,560px)] px-2 pt-[5px] pb-1 text-ink shadow-[var(--elev-1)] transition-[box-shadow,filter] duration-fast ease-out',
+            'message-bubble relative w-fit min-w-20 max-w-[min(76%,560px)] px-3 py-1.5 text-body text-ink shadow-[var(--elev-1)] transition-[box-shadow,filter] duration-fast ease-out rounded-bubble',
             mine
-              ? 'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-[var(--radius-bubble)_var(--radius-bubble)_5px_var(--radius-bubble)]'
-              : 'bg-bubble-in rounded-[var(--radius-bubble)_var(--radius-bubble)_var(--radius-bubble)_5px]',
+              ? cn(
+                  'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-br-control',
+                  !isFirstInGroup && 'rounded-tr-control'
+                )
+              : cn(
+                  'bg-bubble-in rounded-bl-control',
+                  !isFirstInGroup && 'rounded-tl-control'
+                ),
             hasMessageMedia(message) && 'has-media w-fit max-w-[min(384px,calc(100%-20px))]',
             isAudio && 'w-full',
             isActionTarget &&
@@ -116,7 +180,7 @@ export const MessageBubble = memo(
               'ring-2 ring-brand ring-offset-2 ring-offset-ground bg-brand-soft/25 transition-all duration-500'
           )}
         >
-          {!mine && message.senderStatusEmoji && (
+          {!mine && isFirstInGroup && message.senderStatusEmoji && (
             <div className="mb-[3px] text-brand text-xs font-semibold">
               <span className="ml-1.5 inline-block">{message.senderStatusEmoji}</span>
             </div>
@@ -158,11 +222,15 @@ export const MessageBubble = memo(
           ) : message.undecryptable ? (
             /* Подпись к нечитаемому сообщению собирается здесь: причину
                назвал слой шифрования, а язык знает интерфейс. */
-            <p className="message-content whitespace-pre-wrap leading-[1.38] [overflow-wrap:anywhere] opacity-70">
+            <p className="message-content text-body whitespace-pre-wrap leading-snug [overflow-wrap:anywhere] opacity-70 flow-root">
               🔒 {t(`undecryptable.${message.undecryptable}`, message.content)}
+              {renderMeta(true)}
             </p>
           ) : (
-            <MessageContentRenderer content={translations[message.id] || message.content} />
+            <MessageContentRenderer
+              content={translations[message.id] || message.content}
+              trailing={hasInlineMeta ? renderMeta(true) : undefined}
+            />
           )}
 
           {message.reactions?.length > 0 && (
@@ -193,48 +261,7 @@ export const MessageBubble = memo(
             </div>
           )}
 
-          <div className="message-meta mt-1 flex items-center justify-end gap-[6px] font-mono text-micro text-ink-3 tabular-nums">
-            {message.isPinned && (
-              <span
-                aria-label={t('pinned', 'Закреплено')}
-                className="inline-flex items-center text-ink-3"
-                title={t('pinned', 'Закреплено')}
-              >
-                <Icon className="rotate-45 fill-current" name="pin" size="xs" />
-              </span>
-            )}
-            {message.isEdited && <span>{t('edited', 'изменено')}</span>}
-            <time>{formatMessageTime(message.createdAt)}</time>
-            {mine && (message.status === 'pending' || message.status === 'uploading') && (
-              <span
-                className="inline-flex items-center gap-1 text-ink-3"
-                title={
-                  message.status === 'uploading'
-                    ? t('uploading', 'Загрузка...')
-                    : t('sending', 'Отправка...')
-                }
-              >
-                <Spinner
-                  size="sm"
-                  label={
-                    message.status === 'uploading'
-                      ? t('uploading', 'Загрузка...')
-                      : t('sending', 'Отправка...')
-                  }
-                />
-              </span>
-            )}
-
-            {/* Статус доставки: галочка — «сервер принял». Двойной она не
-                станет, пока сервер не начнёт отдавать, до какого сообщения
-                прочитал собеседник: такого поля нет ни в контракте, ни в
-                схеме, ни в событиях. */}
-            {mine && showDeliveryStatus && message.status === 'sent' && (
-              <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
-                <Icon name="check" size="sm" />
-              </span>
-            )}
-          </div>
+          {!hasInlineMeta && renderMeta(false)}
 
           {mine && message.status === 'failed' && (
             <div className="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-danger/20 text-danger text-caption">
