@@ -19,8 +19,12 @@ import {
   knownPeerIdentities,
   PEER_BUNDLES_PREFIX,
   publishIdentity,
+  matchesLoginPassword,
   readBackupState,
+  sealForQrReceiver,
   setBackupState,
+  type IQrLink,
+  type IQrPayload,
   type IArgon2Params,
   type ILocalIdentity,
   type IPasskeySlot,
@@ -301,6 +305,23 @@ export class CryptoService {
   /** Мастер-ключ для передачи на новое устройство; `null` — копия здесь не открыта. */
   currentMasterKey(): Uint8Array<ArrayBuffer> | null {
     return this.backup.currentMasterKey();
+  }
+
+  /**
+   * Мастер-ключ копии, зашифрованный для нового устройства из QR (#745).
+   *
+   * Интерфейсу сам ключ не нужен: он получает только шифровку.
+   */
+  async sealMasterKeyForLink(link: IQrLink): Promise<IQrPayload> {
+    const master = this.backup.currentMasterKey();
+    if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
+
+    return sealForQrReceiver(link, master);
+  }
+
+  /** Совпадает ли облачный пароль с паролем входа — его знает сервер. */
+  isLoginPassword(password: string): Promise<boolean> {
+    return matchesLoginPassword(password);
   }
 
   async changeCloudPassword(password: string): Promise<void> {

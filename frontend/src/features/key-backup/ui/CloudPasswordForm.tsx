@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { matchesLoginPassword } from '@/shared/crypto';
+import { services } from '@/services/serviceContainer';
 import { Button } from '@/shared/ui';
 import {
   cloudPasswordFormSchema,
@@ -45,7 +45,7 @@ export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
   const score = cloudPasswordScore(watch('password'));
 
   async function submit(values: TCloudPasswordForm) {
-    if (await matchesLoginPassword(values.password)) {
+    if (await services.cryptoService.isLoginPassword(values.password)) {
       setError(
         'password',
         {

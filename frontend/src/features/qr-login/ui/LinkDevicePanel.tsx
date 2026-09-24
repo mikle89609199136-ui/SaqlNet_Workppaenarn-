@@ -4,7 +4,6 @@ import { services } from '@/services/serviceContainer';
 import {
   parseQrLink,
   readBackupState,
-  sealForQrReceiver,
   subscribeToBackupState,
   type IQrLink,
 } from '@/shared/crypto';
@@ -25,6 +24,9 @@ interface IRequestDetails {
 
 type TStage = 'input' | 'checking' | 'confirm' | 'sending' | 'done';
 
+type TInspection =
+  { ok: true; link: IQrLink; details: IRequestDetails } | { ok: false; error: string };
+
 /**
  * Подтвердить вход нового устройства (#745).
  *
@@ -33,9 +35,6 @@ type TStage = 'input' | 'checking' | 'confirm' | 'sending' | 'done';
  * войти». Ключ из QR сверяется с тем, что знает сервер: расхождение
  * значит, что код подменён, и подтверждать нельзя.
  */
-type TInspection =
-  { ok: true; link: IQrLink; details: IRequestDetails } | { ok: false; error: string };
-
 export function LinkDevicePanel({ initialLink, onDone }: Props) {
   const { t } = useTranslation();
   const [stage, setStage] = useState<TStage>(initialLink ? 'checking' : 'input');
@@ -47,7 +46,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
 
   // Подписка нужна ради перерисовки: копию могут открыть, пока экран открыт.
   const backup = useSyncExternalStore(subscribeToBackupState, readBackupState, readBackupState);
-  const masterKey = backup.status === 'ready' ? services.cryptoService.currentMasterKey() : null;
+  const unlocked = backup.status === 'ready';
 
   /** Разобрать код и спросить сервер, какое устройство просит войти. */
   async function inspect(raw: string): Promise<TInspection> {
@@ -112,14 +111,14 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
   }, [initialLink]);
 
   async function confirm() {
-    if (!link || !masterKey) return;
+    if (!link) return;
 
     setStage('sending');
     setError(null);
     try {
       await services.authService.confirmQrLogin(
         link.token,
-        await sealForQrReceiver(link, masterKey)
+        await services.cryptoService.sealMasterKeyForLink(link)
       );
       setStage('done');
     } catch {
@@ -133,7 +132,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
     }
   }
 
-  if (!masterKey) {
+  if (!unlocked) {
     return (
       <Banner icon="lock" tone="warn">
         {t(

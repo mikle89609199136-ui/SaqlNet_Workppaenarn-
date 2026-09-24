@@ -10,17 +10,6 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { LinkDevicePanel } from './LinkDevicePanel';
 
-/* Шифрование подменено: здесь проверяется поведение экрана, а сама
-   передача ключа — в qrLink.node.test.ts. */
-const sealForQrReceiver = vi.hoisted(() =>
-  vi.fn(async () => ({ senderPublicKey: 'c2VuZGVy', iv: 'aXY=', ct: 'Y3Q=' }))
-);
-
-vi.mock('@/shared/crypto', async (original) => ({
-  ...(await original<typeof import('@/shared/crypto')>()),
-  sealForQrReceiver,
-}));
-
 const TOKEN = '0123456789abcdef0123456789abcdef';
 const KEY = 'A'.repeat(122);
 const LINK = `${window.location.origin}/link#t=${TOKEN}&k=${KEY}`;
@@ -50,7 +39,13 @@ function answerRequest(publicKey: string) {
 describe('подключение устройства по QR (#745)', () => {
   beforeEach(() => {
     setBackupState({ status: 'ready', hasPasskey: false, migrating: false });
-    vi.spyOn(services.cryptoService, 'currentMasterKey').mockReturnValue(new Uint8Array(32));
+    /* Шифрование подменено методом сервиса: здесь проверяется поведение
+       экрана, а сама передача ключа — в qrLink.node.test.ts. */
+    vi.spyOn(services.cryptoService, 'sealMasterKeyForLink').mockResolvedValue({
+      senderPublicKey: 'c2VuZGVy',
+      iv: 'aXY=',
+      ct: 'Y3Q=',
+    });
   });
 
   afterEach(() => {

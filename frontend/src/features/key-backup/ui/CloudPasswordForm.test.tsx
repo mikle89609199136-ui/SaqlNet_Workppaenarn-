@@ -1,16 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { services } from '@/services/serviceContainer';
 import { testI18n } from '@/test/harness/i18n';
 import { CloudPasswordForm } from './CloudPasswordForm';
-
-const matchesLoginPassword = vi.hoisted(() => vi.fn(async () => false));
-
-vi.mock('@/shared/crypto', async (original) => ({
-  ...(await original<typeof import('@/shared/crypto')>()),
-  matchesLoginPassword,
-}));
 
 function renderForm(onSubmit = vi.fn(async () => {})) {
   render(
@@ -28,8 +22,17 @@ async function fill(password: string, confirmation = password) {
 }
 
 describe('облачный пароль: форма (#744)', () => {
+  /* Подменяется метод сервиса, а не модуль: тесты идут без изоляции
+     (isolate: false), и vi.mock модуля, который уже загрузил соседний
+     файл, в CI не срабатывает. */
+  let isLoginPassword: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    matchesLoginPassword.mockResolvedValue(false);
+    isLoginPassword = vi.spyOn(services.cryptoService, 'isLoginPassword').mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('требует не меньше 12 символов', async () => {
@@ -51,7 +54,7 @@ describe('облачный пароль: форма (#744)', () => {
   });
 
   it('не принимает пароль входа: его знает сервер', async () => {
-    matchesLoginPassword.mockResolvedValue(true);
+    isLoginPassword.mockResolvedValue(true);
     const onSubmit = renderForm();
 
     await fill('Пароль-входа-12345');
