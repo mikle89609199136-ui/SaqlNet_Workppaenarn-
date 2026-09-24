@@ -310,3 +310,39 @@ describe('пересланное сообщение (#169)', () => {
     expect(screen.queryByText(/Переслано/)).not.toBeInTheDocument();
   });
 });
+
+describe('закреплённое сообщение (#170)', () => {
+  function renderPinned(overrides: Parameters<typeof makeMessage>[0]) {
+    return renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ content: 'сообщение', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+  }
+
+  it('показывает иконку pin с заливкой и поворотом 45 градусов, когда сообщение закреплено', () => {
+    renderPinned({ isPinned: true });
+
+    const pinWrapper = screen.getByLabelText('Закреплено');
+    expect(pinWrapper).toBeInTheDocument();
+    expect(screen.getByTitle('Закреплено')).toBeInTheDocument();
+
+    const svg = pinWrapper.querySelector('svg');
+    expect(svg).toHaveClass('size-3');
+    expect(svg).toHaveClass('rotate-45');
+    expect(svg).toHaveClass('fill-current');
+  });
+
+  it('не показывает иконку pin у обычного сообщения', () => {
+    renderPinned({ isPinned: false });
+
+    expect(screen.queryByLabelText('Закреплено')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Закреплено')).not.toBeInTheDocument();
+  });
+});
+

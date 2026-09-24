@@ -88,7 +88,7 @@ export const MessageBubble = memo(
       message
     );
 
-    const actualType = message.mediaType || message.type;
+    const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
     const targetReplyId = message.replyTo || message.replyToMessageId;
     const hasReply = Boolean(targetReplyId || repliedMessage);
@@ -102,11 +102,14 @@ export const MessageBubble = memo(
         <div
           data-state={isSelected ? 'selected' : undefined}
           className={cn(
-            'message-bubble',
-            mine && 'is-mine',
-            hasMessageMedia(message) && 'has-media',
+            'message-bubble relative w-fit max-w-[min(76%,560px)] px-2 pt-[5px] pb-1 text-ink shadow-[var(--elev-1)] transition-[box-shadow,filter] duration-fast ease-out',
+            mine
+              ? 'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-[var(--radius-bubble)_var(--radius-bubble)_5px_var(--radius-bubble)]'
+              : 'bg-bubble-in rounded-[var(--radius-bubble)_var(--radius-bubble)_var(--radius-bubble)_5px]',
+            hasMessageMedia(message) && 'has-media w-fit max-w-[min(384px,calc(100%-20px))]',
             isAudio && 'w-full',
-            isActionTarget && 'is-action-target',
+            isActionTarget &&
+              'is-action-target z-20 max-md:z-[1201] shadow-[0_0_0_2px_var(--color-brand),var(--elev-3)]',
             isSelected &&
               'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
             isHighlighted &&
@@ -155,7 +158,7 @@ export const MessageBubble = memo(
           ) : message.undecryptable ? (
             /* Подпись к нечитаемому сообщению собирается здесь: причину
                назвал слой шифрования, а язык знает интерфейс. */
-            <p className="message-content opacity-70">
+            <p className="message-content whitespace-pre-wrap leading-[1.38] [overflow-wrap:anywhere] opacity-70">
               🔒 {t(`undecryptable.${message.undecryptable}`, message.content)}
             </p>
           ) : (
@@ -163,7 +166,7 @@ export const MessageBubble = memo(
           )}
 
           {message.reactions?.length > 0 && (
-            <div className="message-reactions">
+            <div className="message-reactions mt-[7px] flex flex-wrap gap-[5px]">
               {message.reactions.map((reaction) => (
                 /* Нажатие по реакции ставит свою или снимает — как в
                    привычных мессенджерах. Прежде это был `span`, и
@@ -172,7 +175,10 @@ export const MessageBubble = memo(
                 <button
                   aria-label={`${reaction.emoji} ${reaction.count}`}
                   aria-pressed={reaction.myReaction}
-                  className={cn(reaction.myReaction && 'is-mine')}
+                  className={cn(
+                    'min-h-[22px] px-[7px] py-0.5 rounded-pill bg-sheet-2 text-[12px] cursor-pointer border border-transparent transition-[background-color,border-color] duration-fast ease-out hover:border-line focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+                    reaction.myReaction && 'is-mine bg-brand-soft'
+                  )}
                   key={reaction.emoji}
                   onClick={(event) => {
                     // Иначе нажатие уходит выше и открывает меню действий.
@@ -187,7 +193,16 @@ export const MessageBubble = memo(
             </div>
           )}
 
-          <div className="message-meta">
+          <div className="message-meta mt-1 flex items-center justify-end gap-[6px] font-mono text-micro text-ink-3 tabular-nums">
+            {message.isPinned && (
+              <span
+                aria-label={t('pinned', 'Закреплено')}
+                className="inline-flex items-center text-ink-3"
+                title={t('pinned', 'Закреплено')}
+              >
+                <Icon className="rotate-45 fill-current" name="pin" size="xs" />
+              </span>
+            )}
             {message.isEdited && <span>{t('edited', 'изменено')}</span>}
             <time>{formatMessageTime(message.createdAt)}</time>
             {mine && (message.status === 'pending' || message.status === 'uploading') && (

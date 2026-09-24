@@ -22,12 +22,7 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
     parts.push(
       <span
         key={match.index}
-        className="hashtag-link"
-        style={{
-          color: 'var(--rd-accent, #ff2d8b)',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-        }}
+        className="hashtag-link cursor-pointer font-bold text-brand"
         onClick={() => {
           if (typeof window.handleUnifiedSearch === 'function') {
             window.handleUnifiedSearch(hashtag);
@@ -47,7 +42,11 @@ export const MessageContentRenderer = memo(({ content }: Props) => {
     parts.push(textAfter);
   }
 
-  return <div className="message-content">{parts.length > 0 ? parts : content}</div>;
+  return (
+    <div className="message-content whitespace-pre-wrap leading-[1.38] [overflow-wrap:anywhere]">
+      {parts.length > 0 ? parts : content}
+    </div>
+  );
 });
 
 MessageContentRenderer.displayName = 'MessageContentRenderer';
