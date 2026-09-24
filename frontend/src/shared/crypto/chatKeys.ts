@@ -38,6 +38,9 @@ const ROTATE_INTERVAL_MS = 60 * 1000;
  */
 const VERIFY_INTERVAL_MS = 30 * 1000;
 
+/** Как часто спрашивать резервную копию об эпохах одного чата. */
+const BACKUP_LOOKUP_INTERVAL_MS = 60 * 1000;
+
 export interface IChatKey {
   key: Uint8Array;
   epoch: number;
@@ -64,10 +67,25 @@ interface IServerChatKey {
   keyEpoch: number;
 }
 
+/**
+ * Резервная копия ключей чатов (#743).
+ *
+ * Эпохи прошлых ключей на сервере не хранятся — только в копии. Без неё
+ * новое устройство видит лишь текущую эпоху, а вся история до неё остаётся
+ * под замком.
+ */
+export interface IChatKeyBackup {
+  /** Положить ключ в копию. Не ждёт сети: очередь с повторами — забота копии. */
+  save(chatId: string, chatKey: IChatKey): void;
+  /** Все эпохи чата из копии; пусто, если копия закрыта или ключей нет. */
+  load(chatId: string): Promise<IChatKey[]>;
+}
+
 export interface IChatKeyDeps {
   apiClient: ApiClient;
   identity: () => Promise<ILocalIdentity>;
   members: (chatId: string) => Promise<string[]>;
+  backup?: IChatKeyBackup;
 }
 
 function wrapInfo(epoch: number, senderFp: string, recipientFp: string): string {
@@ -117,6 +135,8 @@ export class ChatKeyManager {
 
   private lastVerifiedAt = new Map<string, number>();
 
+  private backupLookups = new Map<string, { at: number; promise: Promise<IChatKey | null> }>();
+
   constructor(deps: IChatKeyDeps) {
     this.deps = deps;
   }
@@ -129,7 +149,11 @@ export class ChatKeyManager {
     return `chatkey-latest:${accountId}:${chatId}`;
   }
 
-  private async remember(chatId: string, chatKey: IChatKey): Promise<void> {
+  private async remember(
+    chatId: string,
+    chatKey: IChatKey,
+    { fromBackup = false }: { fromBackup?: boolean } = {}
+  ): Promise<void> {
     const { accountId } = await this.deps.identity();
 
     this.keys.set(`${chatId}:${chatKey.epoch}`, chatKey);
@@ -139,6 +163,79 @@ export class ChatKeyManager {
     if (latest === undefined || latest < chatKey.epoch) {
       await writeKey(this.latestKey(accountId, chatId), chatKey.epoch);
     }
+
+    // Взятое из копии возвращать туда же незачем.
+    if (!fromBackup) this.deps.backup?.save(chatId, chatKey);
+  }
+
+  /**
+   * Эпохи чата из резервной копии — на устройство.
+   *
+   * Возвращает самую позднюю из них: `ensure` решает по ней, нужна ли новая
+   * эпоха.
+   */
+  async restoreFromBackup(chatId: string): Promise<IChatKey | null> {
+    if (!this.deps.backup) return null;
+
+    // Промах бывает у каждого нечитаемого сообщения, и расшифровываются они
+    // разом: сто старых сообщений не должны превращаться в сто запросов.
+    const recent = this.backupLookups.get(chatId);
+    if (recent && Date.now() - recent.at < BACKUP_LOOKUP_INTERVAL_MS) return recent.promise;
+
+    const promise = (async () => {
+      const keys = (await this.deps.backup?.load(chatId)) ?? [];
+
+      for (const chatKey of keys) await this.remember(chatId, chatKey, { fromBackup: true });
+
+      return keys.reduce<IChatKey | null>(
+        (latest, chatKey) => (!latest || chatKey.epoch > latest.epoch ? chatKey : latest),
+        null
+      );
+    })();
+
+    this.backupLookups.set(chatId, { at: Date.now(), promise });
+
+    return promise;
+  }
+
+  /** Принять ключи, пришедшие из копии целиком — при открытии её на устройстве. */
+  async importFromBackup(chatId: string, keys: IChatKey[]): Promise<void> {
+    for (const chatKey of keys) await this.remember(chatId, chatKey, { fromBackup: true });
+  }
+
+  /** Все ключи на устройстве: `chatId` и эпоха. Для выгрузки в копию. */
+  async listLocal(accountId: string): Promise<{ chatId: string; epoch: number }[]> {
+    const prefix = `chatkey:${accountId}:`;
+
+    return (await listKeys(prefix)).flatMap((key) => {
+      const rest = key.slice(prefix.length);
+      const separator = rest.lastIndexOf(':');
+      const epoch = Number(rest.slice(separator + 1));
+
+      return separator > 0 && Number.isInteger(epoch)
+        ? [{ chatId: rest.slice(0, separator), epoch }]
+        : [];
+    });
+  }
+
+  /** Ключ с устройства по чату и эпохе — для выгрузки в копию. */
+  async localKey(chatId: string, epoch: number): Promise<IChatKey | null> {
+    return this.local(chatId, epoch);
+  }
+
+  /**
+   * Перезавернуть себе текущий ключ чата.
+   *
+   * После смены личности своя строка на сервере завёрнута для прежней, и
+   * ни одно устройство её больше не развернёт. Ключ у нас есть — кладём
+   * строку заново, не дожидаясь, пока это сделает собеседник.
+   */
+  async rewrapForSelf(chatId: string): Promise<void> {
+    const chatKey = await this.local(chatId);
+    if (!chatKey) return;
+
+    const { accountId } = await this.deps.identity();
+    await this.distribute(chatId, chatKey, [accountId], false);
   }
 
   /** Ключ нужной эпохи, если он уже есть на устройстве. */
@@ -379,10 +476,18 @@ export class ChatKeyManager {
 
     this.lastVerifiedAt.set(chatId, Date.now());
 
+    // Своей строки нет, но ключ текущей эпохи может лежать в копии: тогда
+    // новая эпоха не нужна, а строку завернёт доворачивание.
+    const highest = await this.highestEpoch(chatId);
+    const restored = await this.restoreFromBackup(chatId);
+    if (restored && restored.epoch >= highest) {
+      return { chatKey: restored, membersWithoutIdentity: [] };
+    }
+
     const memberIds = await this.deps.members(chatId);
     const fresh: IChatKey = {
       key: crypto.getRandomValues(new Uint8Array(KEY_BYTES)),
-      epoch: (await this.highestEpoch(chatId)) + 1,
+      epoch: highest + 1,
     };
 
     return this.distribute(chatId, fresh, memberIds, false);
@@ -481,8 +586,12 @@ export class ChatKeyManager {
     if (known) return known;
 
     const accepted = await this.acceptFromServer(chatId);
+    if (accepted?.epoch === epoch) return accepted;
 
-    return accepted?.epoch === epoch ? accepted : this.local(chatId, epoch);
+    // Прошлые эпохи сервер не хранит — их держит только резервная копия.
+    await this.restoreFromBackup(chatId);
+
+    return this.local(chatId, epoch);
   }
 
   /**
@@ -505,6 +614,7 @@ export class ChatKeyManager {
     this.lastHealAt.clear();
     this.lastRotateAt.clear();
     this.lastVerifiedAt.clear();
+    this.backupLookups.clear();
   }
 
   /** Полное стирание: завершение всех сеансов. */

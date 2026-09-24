@@ -110,6 +110,45 @@ export class AuthService {
   }
 
   /** Устройства, на которых выполнен вход. */
+  /** Новое устройство: начать вход по QR с одноразовым ключом (#745). */
+  startQrLogin(publicKey: string, deviceName: string) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_TOKEN, { publicKey, deviceName })
+      .then((response) => response.data as { qrToken: string; expiresAt: number });
+  }
+
+  getQrStatus(token: string) {
+    return this.apiClient.get(API_ENDPOINTS.AUTH_QR_STATUS(token)).then(
+      (response) =>
+        response.data as {
+          status: 'pending' | 'confirmed' | 'expired';
+          expiresAt?: number;
+          authToken?: string;
+          payload?: { senderPublicKey: string; iv: string; ct: string };
+        }
+    );
+  }
+
+  /** Вошедшее устройство: какое устройство просит войти. */
+  getQrRequest(token: string) {
+    return this.apiClient.get(API_ENDPOINTS.AUTH_QR_REQUEST(token)).then(
+      (response) =>
+        response.data as {
+          publicKey: string;
+          deviceName: string;
+          userAgent: string;
+          createdAt: number;
+          expiresAt: number;
+        }
+    );
+  }
+
+  confirmQrLogin(qrToken: string, payload: { senderPublicKey: string; iv: string; ct: string }) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_CONFIRM, { qrToken, payload })
+      .then((response) => response.data);
+  }
+
   getSessions() {
     return this.apiClient
       .get(API_ENDPOINTS.AUTH_SESSIONS)

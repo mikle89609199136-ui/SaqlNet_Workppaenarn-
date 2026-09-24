@@ -1,5 +1,6 @@
 import { API_ENDPOINTS, type ApiClient } from '@/shared/api';
 import { base64ToBytes, bytesToBase64, bytesToBase64Url, utf8ToBytes } from './encoding';
+import type { IPortableIdentity } from './keyBackup';
 import { readKey, writeKey } from './keyStore';
 import { noteIdentityChange } from './securityNotices';
 
@@ -204,6 +205,80 @@ function toLocal(accountId: string, stored: IStoredIdentity): ILocalIdentity {
     ecdsa: stored.ecdsaPublic,
     ecdhPrivate: stored.ecdhPrivate,
     ecdsaPrivate: stored.ecdsaPrivate,
+  };
+}
+
+/** Личность с устройства, если она там есть. Ничего не создаёт. */
+export async function loadIdentity(accountId: string): Promise<ILocalIdentity | null> {
+  const stored = await readKey<IStoredIdentity>(identityStorageKey(accountId));
+
+  if (stored?.version === IDENTITY_VERSION && stored.ecdhPrivate && stored.ecdsaPrivate) {
+    return toLocal(accountId, stored);
+  }
+
+  return null;
+}
+
+/**
+ * Установка личности из переносимого вида.
+ *
+ * Приватные части импортируются сразу неизвлекаемыми: на устройстве они
+ * живут так же, как созданные на месте, и вынести их отсюда нельзя.
+ */
+export async function restorePortableIdentity(
+  accountId: string,
+  portable: IPortableIdentity
+): Promise<ILocalIdentity> {
+  const publicIdentity = await decodeBundle(portable.bundle);
+  if (!publicIdentity) throw new Error('Повреждённая связка в резервной копии');
+
+  const ecdhPrivate = await crypto.subtle.importKey(
+    'pkcs8',
+    base64ToBytes(portable.ecdhPkcs8),
+    ECDH_ALGORITHM,
+    false,
+    ['deriveBits']
+  );
+  const ecdsaPrivate = await crypto.subtle.importKey(
+    'pkcs8',
+    base64ToBytes(portable.ecdsaPkcs8),
+    ECDSA_ALGORITHM,
+    false,
+    ['sign']
+  );
+
+  const stored: IStoredIdentity = {
+    version: IDENTITY_VERSION,
+    ecdhPrivate,
+    ecdhPublic: publicIdentity.ecdh,
+    ecdsaPrivate,
+    ecdsaPublic: publicIdentity.ecdsa,
+    bundle: portable.bundle,
+    fingerprint: publicIdentity.fingerprint,
+  };
+
+  await writeKey(identityStorageKey(accountId), stored);
+
+  return toLocal(accountId, stored);
+}
+
+/**
+ * Новая личность, которую можно перенести на другие устройства.
+ *
+ * Извлекаемой пара бывает только здесь, на время одного вызова: её
+ * приватные части отдаются наружу, чтобы запечатать в резервную копию.
+ * На устройство она попадает через `restorePortableIdentity` — заново
+ * импортированной неизвлекаемой, и только после того, как копия легла на
+ * сервер: иначе сбой сохранения стоил бы прежней личности.
+ */
+export async function createPortableIdentity(): Promise<IPortableIdentity> {
+  const ecdh = await crypto.subtle.generateKey(ECDH_ALGORITHM, true, ['deriveBits']);
+  const ecdsa = await crypto.subtle.generateKey(ECDSA_ALGORITHM, true, ['sign', 'verify']);
+
+  return {
+    ecdhPkcs8: bytesToBase64(await crypto.subtle.exportKey('pkcs8', ecdh.privateKey)),
+    ecdsaPkcs8: bytesToBase64(await crypto.subtle.exportKey('pkcs8', ecdsa.privateKey)),
+    bundle: encodeBundle(await exportSpki(ecdh.publicKey), await exportSpki(ecdsa.publicKey)),
   };
 }
 
