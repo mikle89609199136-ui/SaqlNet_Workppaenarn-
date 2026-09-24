@@ -51,7 +51,6 @@ x-error: &error
     tags: [Users]
     summary: Check username availability
     operationId: checkUsername
-    security: *secure
     parameters:
       [
         {
@@ -61,7 +60,17 @@ x-error: &error
           schema: { $ref: '../components/schemas.yaml#/Username' },
         },
       ]
-    responses: { '200': { description: Availability }, '400': *error }
+    responses:
+      '200':
+        description: Availability
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [available]
+              properties: { available: { type: boolean } }
+      '400': *error
+      '429': *error
 /users/search:
   get:
     tags: [Users]
