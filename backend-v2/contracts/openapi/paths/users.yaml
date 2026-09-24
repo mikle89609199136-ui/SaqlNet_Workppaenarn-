@@ -93,7 +93,14 @@ x-error: &error
     operationId: getUserStatus
     security: *secure
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-    responses: { '200': { description: User status } }
+    responses:
+      '200': { description: User status }
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            example: { code: user_not_found, message: user not found }
 /premium/subscribe:
   post:
     tags: [Users]

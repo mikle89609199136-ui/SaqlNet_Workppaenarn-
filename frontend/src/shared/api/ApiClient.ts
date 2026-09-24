@@ -53,15 +53,15 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'GET', params });
   }
 
-  post<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+  post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'POST', data });
   }
 
-  put<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+  put<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PUT', data });
   }
 
-  patch<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+  patch<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
@@ -75,21 +75,24 @@ export class ApiClient {
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
     const token = this.getToken();
-    let requestHeaders: Record<string, string> = {
+    const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    if (data === null || data === undefined) {
-      const { 'Content-Type': _omit, ...rest } = requestHeaders;
-      requestHeaders = rest;
+    const isFormData = data instanceof FormData;
+    const isNoData = data === null || data === undefined;
+    if (isNoData || isFormData) {
+      delete requestHeaders['Content-Type'];
     }
+
+    const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
 
     const response = await fetch(this.buildUrl(endpoint, params), {
       ...requestOptions,
       headers: requestHeaders,
-      body: data === null || data === undefined ? undefined : JSON.stringify(data),
+      body,
     });
 
     return this.parseResponse<T>(response);

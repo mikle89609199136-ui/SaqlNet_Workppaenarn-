@@ -81,6 +81,14 @@ func (h *Handler) EncryptionRoutes(w http.ResponseWriter, r *http.Request) {
 	case path == "/api/v2/encryption/signal/prekeys" && r.Method == http.MethodPost:
 		h.replenishPreKeys(w, r, current.ID)
 
+	// GET, PUT, DELETE /api/v2/encryption/backup
+	case path == "/api/v2/encryption/backup":
+		h.keyBackupRoutes(w, r, current.ID)
+
+	// GET, POST /api/v2/encryption/backup/chat-keys
+	case path == "/api/v2/encryption/backup/chat-keys":
+		h.backupChatKeyRoutes(w, r, current.ID)
+
 	default:
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
 	}

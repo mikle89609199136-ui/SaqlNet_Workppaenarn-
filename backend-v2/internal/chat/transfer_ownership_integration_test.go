@@ -117,7 +117,7 @@ func TestTransferOwnership_PrivateChat_Rejected(t *testing.T) {
 		t.Skip("integration test")
 	}
 	db := setupPostgres(t)
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	ownerID := seedUser(t, db, "owner_user")
 	peerID := seedUser(t, db, "peer_user")

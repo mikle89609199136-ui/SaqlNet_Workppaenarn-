@@ -709,3 +709,67 @@ func TestEscapeLikeOrder(t *testing.T) {
 		})
 	}
 }
+
+const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+
+func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
+	tests := []struct {
+		name   string
+		userID string
+	}{
+		{name: "missing user", userID: "11111111-1111-4111-8111-111111111111"},
+		{name: "disabled user", userID: "22222222-2222-4222-8222-222222222222"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			mock.ExpectQuery(statusSQLPattern).
+				WithArgs(tt.userID).
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+
+			status, err := user.NewService(db).Status(context.Background(), tt.userID)
+			if !errors.Is(err, user.ErrNotFound) {
+				t.Fatalf("expected ErrNotFound, got %v", err)
+			}
+			if status != nil {
+				t.Fatalf("expected nil status, got %v", status)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
+	const userID = "33333333-3333-4333-8333-333333333333"
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+	mock.ExpectQuery(statusSQLPattern).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}).
+			AddRow([]byte(`{}`), nil, false))
+
+	status, err := svc.Status(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status["isOnline"] != false || status["lastSeen"] != "" {
+		t.Fatalf("unexpected status: %v", status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

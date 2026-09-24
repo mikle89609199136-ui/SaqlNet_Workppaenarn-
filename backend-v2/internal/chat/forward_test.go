@@ -33,7 +33,7 @@ func TestForwardMessagePreservesMediaMetadata(t *testing.T) {
 			AddRow("forward-id", "target-chat", "user-id", "User", "", "", "file", nil, []byte(`{"mediaUrl":"/api/v2/media/upload-id","mediaType":"application/pdf","fileName":"document.pdf","sizeBytes":245760,"forwardedFrom":"message-id","forwardedSenderName":"Anna"}`), false, false, "created", "updated", nil))
 	mock.ExpectCommit()
 
-	msg, err := NewService(db, nil).ForwardMessage(context.Background(), "user-id", "message-id", "target-chat")
+	msg, err := NewService(db, nil, nil).ForwardMessage(context.Background(), "user-id", "message-id", "target-chat")
 	if err != nil {
 		t.Fatal(err)
 	}

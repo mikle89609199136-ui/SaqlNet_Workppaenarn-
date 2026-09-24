@@ -150,4 +150,20 @@ export class ChatService {
     const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
     return response.data;
   }
+
+  /**
+   * Отметить чат прочитанным целиком.
+   *
+   * Не то же самое, что отметки по отдельным сообщениям
+   * (`POST /messages/read`): там список идентификаторов того, что попало в
+   * поле зрения, и чат с сотней непрочитанных пришлось бы пролистать
+   * целиком. Здесь чат закрывается разом.
+   *
+   * События о прочтении сервер не рассылает никому — ни нам, ни
+   * собеседнику, — поэтому счётчик в списке обновляет вызывающая сторона.
+   */
+  async markChatRead(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_READ(chatId));
+    return response.data;
+  }
 }

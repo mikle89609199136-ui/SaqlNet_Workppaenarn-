@@ -159,7 +159,7 @@ func TestLogin_FindsUserByExactUsername(t *testing.T) {
 	}
 
 	svc := auth.NewService(db, crypto)
-	mock.ExpectQuery("SELECT u.id::text, u.username, u.first_name, u.last_name, u.password_hash").
+	mock.ExpectQuery("SELECT u.id::text, u.username,.*COALESCE\\(p.first_name, u.first_name\\), COALESCE\\(p.last_name, u.last_name\\),.*u.password_hash").
 		WithArgs("ivan").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "password_hash", "bio", "avatar_url"}).
 			AddRow("user-id", "ivan", "Ivan", "", "hash", "", ""))
@@ -174,6 +174,44 @@ func TestLogin_FindsUserByExactUsername(t *testing.T) {
 	}
 	if user.Username != "ivan" {
 		t.Fatalf("expected username ivan, got %s", user.Username)
+	}
+}
+
+// TestLogin_ReturnsCurrentProfileNames проверяет, что AuthResponse использует
+// актуальные имена из users.profiles, а не устаревшие значения auth.users.
+func TestLogin_ReturnsCurrentProfileNames(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	crypto := &mockCrypto{
+		verifyFunc:     func(ctx context.Context, password, hash string) (bool, error) { return true, nil },
+		issueTokenFunc: func(ctx context.Context, userID, username string) (string, error) { return "token", nil },
+	}
+
+	svc := auth.NewService(db, crypto)
+	mock.ExpectQuery("SELECT u.id::text, u.username,.*COALESCE\\(p.first_name, u.first_name\\), COALESCE\\(p.last_name, u.last_name\\),.*u.password_hash").
+		WithArgs("ivan").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "password_hash", "bio", "avatar_url"}).
+			AddRow("user-id", "ivan", "Updated", "Profile", "hash", "bio", "avatar"))
+	mock.ExpectQuery("SELECT two_fa_enabled, two_fa_hash FROM auth.users").
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"two_fa_enabled", "two_fa_hash"}).
+			AddRow(false, nil))
+
+	user, _, err := svc.Login(context.Background(), "ivan", "password", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.FirstName != "Updated" || user.LastName != "Profile" {
+		t.Fatalf("expected current profile name Updated Profile, got %q %q", user.FirstName, user.LastName)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -195,7 +233,7 @@ func TestLogin_DoesNotParseDiscriminator(t *testing.T) {
 
 	svc := auth.NewService(db, crypto)
 
-	mock.ExpectQuery("SELECT u.id::text, u.username, u.first_name, u.last_name, u.password_hash").
+	mock.ExpectQuery("SELECT u.id::text, u.username,.*COALESCE\\(p.first_name, u.first_name\\), COALESCE\\(p.last_name, u.last_name\\),.*u.password_hash").
 		WithArgs("ivan.123").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "password_hash", "bio", "avatar_url"}).
 			AddRow("user-id", "ivan.123", "Ivan", "", "hash", "", ""))
@@ -227,7 +265,7 @@ func TestLogin_ReturnsInvalidCredentialsWhenUserNotFound(t *testing.T) {
 	crypto := &mockCrypto{}
 	svc := auth.NewService(db, crypto)
 
-	mock.ExpectQuery("SELECT u.id::text, u.username, u.first_name, u.last_name, u.password_hash").WithArgs("ivan").WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT u.id::text, u.username,.*COALESCE\\(p.first_name, u.first_name\\), COALESCE\\(p.last_name, u.last_name\\),.*u.password_hash").WithArgs("ivan").WillReturnError(sql.ErrNoRows)
 
 	_, _, err = svc.Login(context.Background(), "ivan", "password", "")
 	if !errors.Is(err, auth.ErrInvalidCredentials) {

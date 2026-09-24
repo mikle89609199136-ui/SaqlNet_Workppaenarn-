@@ -6,7 +6,7 @@ describe('скелетон строки чата', () => {
   it('should draw as many rows as asked', () => {
     const { container } = render(<ChatListItemSkeleton rows={3} />);
 
-    expect(container.querySelectorAll('.chat-row')).toHaveLength(3);
+    expect(container.children).toHaveLength(3);
   });
 
   it('should match the avatar size of the real row', () => {
@@ -20,6 +20,6 @@ describe('скелетон строки чата', () => {
   it('should not catch clicks meant for the list', () => {
     const { container } = render(<ChatListItemSkeleton rows={1} />);
 
-    expect(container.querySelector('.chat-row')).toHaveClass('pointer-events-none');
+    expect(container.firstElementChild).toHaveClass('pointer-events-none');
   });
 });

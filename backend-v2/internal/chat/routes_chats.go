@@ -33,6 +33,11 @@ func registerChatRoutes(
 	)
 
 	mux.Handle(
+		"GET /api/v2/chats/{chatID}/members-online",
+		authenticated(http.HandlerFunc(handler.GetOnlineMembers)),
+	)
+
+	mux.Handle(
 		"POST /api/v2/chats/{chatID}/pins/{messageID}",
 		authenticated(http.HandlerFunc(handler.Pins)),
 	)

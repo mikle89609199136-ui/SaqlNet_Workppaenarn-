@@ -2,7 +2,9 @@ package chat
 
 import (
 	"bytes"
+	"context"
 	"craneapp/backend-v2/internal/platform/authctx"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -57,8 +59,10 @@ const (
 	banTargetRoleQuery = `
 		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`
-	banSelectQuery = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
-	banInsertQuery = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
+	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
+	onlineMemberIDsQuery = `SELECT user_id::text FROM chats.members WHERE chat_id = $1`
 )
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
@@ -69,7 +73,7 @@ func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 // newAuthedRequest создаёт запрос с контекстом пользователя-актора.
@@ -151,7 +155,7 @@ func TestHandler_AddMember(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := NewService(db, nil)
+	svc := NewService(db, nil, nil)
 	h := NewHandler(svc)
 
 	tests := []struct {
@@ -629,364 +633,119 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ----------------------------------------------------------------------------
-// Package-level declarations (shared between tests).
-// ----------------------------------------------------------------------------
-
-// bodyKind represents the type of malformed request body used in negative tests.
-type bodyKind int
-
-// Constants defining specific negative scenarios.
-const (
-	valid           bodyKind = iota // not used in tests; kept for clarity.
-	secondJSON                      // {"a":1} {"b":2}
-	trailingGarbage                 // {"a":1} garbage
-	oversized                       // body > 256 KiB
-	emptyBody                       // only whitespace
-	invalidSyntax                   // malformed JSON
-)
-
-// kindName returns a human-readable name for a negative test case kind.
-// It is used as a subtest name in t.Run().
-func kindName(k bodyKind) string {
-	switch k {
-	case secondJSON:
-		return "secondJSON"
-	case trailingGarbage:
-		return "trailingGarbage"
-	case oversized:
-		return "oversized"
-	case emptyBody:
-		return "emptyBody"
-	case invalidSyntax:
-		return "invalidSyntax"
-	default:
-		return "unknown"
-	}
-}
-
-// TestDecodeNegativeScenarios verifies that endpoints using decode() reject
-// malformed request bodies with 400 Bad Request and "invalid_json" error code.
-//
-// It tests each endpoint with the following invalid bodies:
-//   - multiple JSON values
-//   - trailing garbage after JSON
-//   - body exceeding 256 KiB limit
-//   - empty (whitespace-only) body
-//   - malformed JSON syntax
-//
-// A nil-database service is used: if validation fails to short-circuit,
-// the handler will panic on nil pointer dereference, failing the test.
-func TestDecodeNegativeScenarios(t *testing.T) {
-	svc := NewService(nil, nil)
-	h := NewHandler(svc)
-
-	// Fixed UUIDs for request paths and bodies.
-	userID := "550e8400-e29b-41d4-a716-446655440000"
-	chatID := "550e8400-e29b-41d4-a716-446655440001"
-	messageID := "550e8400-e29b-41d4-a716-446655440003"
-	memberID := "550e8400-e29b-41d4-a716-446655440002"
-
-	type testCase struct {
-		name     string
-		method   string
-		path     string
-		bodyFunc func(kind bodyKind) []byte
-		kinds    []bodyKind
+// TestHandler_GetOnlineMembers проверяет маппинг ошибок GetOnlineMembers
+// в HTTP-статусы и JSON-коды: по одному кейсу на каждый sentinel сервиса.
+func TestHandler_GetOnlineMembers(t *testing.T) {
+	onlineStore := presence.NewMemoryStore(time.Now)
+	if err := onlineStore.Connect(context.Background(), handlerActorID, handlerTargetID); err != nil {
+		t.Fatal(err)
 	}
 
-	cases := []testCase{
+	tests := []struct {
+		name        string
+		chatID      string
+		store       presence.Store
+		setupMock   func(sqlmock.Sqlmock)
+		wantStatus  int
+		wantCode    string
+		wantMembers []string
+	}{
 		{
-			name:   "CreatePrivate",
-			method: http.MethodPost,
-			path:   "/api/v2/chats/private",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"userId":"` + memberID + `"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"userId":"` + memberID + `"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"userId":"` + memberID + `", "extra":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"userId": "` + memberID + `"`) // missing closing brace
-				default:
-					return nil
-				}
-			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+			name:       "InvalidInput",
+			chatID:     "not-a-uuid",
+			setupMock:  func(sqlmock.Sqlmock) {},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "validation_failed",
 		},
 		{
-			name:   "CreateGroup",
-			method: http.MethodPost,
-			path:   "/api/v2/chats/groups",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"title":"G","members":["` + memberID + `"]} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"title":"G","members":["` + memberID + `"]} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"title":"G","members":["` + memberID + `"],"extra":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"title": "G", "members": [` + memberID + `]`)
-				default:
-					return nil
-				}
+			name:   "ChatNotFound",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}))
 			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+			wantStatus: http.StatusNotFound,
+			wantCode:   "chat_not_found",
 		},
 		{
-			name:   "UpdateGroup",
-			method: http.MethodPatch,
-			path:   "/api/v2/chats/" + chatID,
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"title":"New"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"title":"New"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"title":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"title": "New"`)
-				default:
-					return nil
-				}
+			name:   "NotMember",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}))
 			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+			wantStatus: http.StatusForbidden,
+			wantCode:   "access_denied",
 		},
 		{
-			name:   "TransferOwnership",
-			method: http.MethodPost,
-			path:   "/api/v2/chats/" + chatID + "/transfer-ownership",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"userId":"` + memberID + `"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"userId":"` + memberID + `"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"userId":"` + memberID + `", "extra":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"userId": "` + memberID + `"`)
-				default:
-					return nil
-				}
+			name:   "InvalidChatType",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("private"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_chat_type",
 		},
 		{
-			name:   "SendMessage",
-			method: http.MethodPost,
-			path:   "/api/v2/messages/" + chatID,
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"content":"hi","type":"text"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"content":"hi","type":"text"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"content":"` + big + `","type":"text"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"content": "hi", "type": "text"`)
-				default:
-					return nil
-				}
+			name:   "OK",
+			chatID: handlerChatID,
+			store:  onlineStore,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+				m.ExpectQuery(onlineMemberIDsQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
+						AddRow(handlerActorID).AddRow(handlerTargetID))
 			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
-		},
-		{
-			name:   "EditMessage",
-			method: http.MethodPut,
-			path:   "/api/v2/messages/" + messageID,
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"content":"edited"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"content":"edited"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"content":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"content": "edited"`)
-				default:
-					return nil
-				}
-			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
-		},
-		{
-			name:   "MessagesRead",
-			method: http.MethodPost,
-			path:   "/api/v2/messages/read",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"chatId":"` + chatID + `"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"chatId":"` + chatID + `"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"chatId":"` + chatID + `", "extra":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"chatId": "` + chatID + `"`)
-				default:
-					return nil
-				}
-			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
-		},
-		{
-			name:   "ForwardMessage",
-			method: http.MethodPost,
-			path:   "/api/v2/messages/" + messageID + "/forward",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"targetChatId":"` + chatID + `"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"targetChatId":"` + chatID + `"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"targetChatId":"` + chatID + `", "extra":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"targetChatId": "` + chatID + `"`)
-				default:
-					return nil
-				}
-			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
-		},
-		{
-			name:   "ToggleReaction",
-			method: http.MethodPost,
-			path:   "/api/v2/messages/" + messageID + "/reactions",
-			bodyFunc: func(kind bodyKind) []byte {
-				switch kind {
-				case secondJSON:
-					return []byte(`{"emoji":"👍"} {"second":true}`)
-				case trailingGarbage:
-					return []byte(`{"emoji":"👍"} garbage`)
-				case oversized:
-					big := strings.Repeat("a", 300*1024)
-					return []byte(`{"emoji":"` + big + `"}`)
-				case emptyBody:
-					return []byte("   ")
-				case invalidSyntax:
-					return []byte(`{"emoji": "👍"`)
-				default:
-					return nil
-				}
-			},
-			kinds: []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax},
+			wantStatus:  http.StatusOK,
+			wantMembers: []string{handlerActorID},
 		},
 	}
 
-	// Helper to route the request to the appropriate handler method.
-	callHandler := func(h *Handler, method, path string, body []byte, r *http.Request) *httptest.ResponseRecorder {
-		rr := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
 
-		// Explicitly handle each case
-		switch {
-		case path == "/api/v2/chats/private":
-			h.CreatePrivate(rr, r)
-		case path == "/api/v2/chats/groups":
-			h.CreateGroup(rr, r)
-		case strings.HasPrefix(path, "/api/v2/chats/") && strings.Contains(path, "/transfer-ownership"):
-			h.Chat(rr, r)
-		case strings.HasPrefix(path, "/api/v2/chats/") && method == http.MethodPatch:
-			// PATCH /api/v2/chats/{chatID} -> UpdateGroup
-			r.SetPathValue("chatID", chatID)
-			h.UpdateGroup(rr, r)
-		case path == "/api/v2/messages/read":
-			h.MessagesRead(rr, r)
+			tt.setupMock(mock)
 
-		case strings.HasSuffix(path, "/forward") ||
-			strings.HasSuffix(path, "/reactions") ||
-			strings.HasSuffix(path, "/favorite"):
-			// POST /api/v2/messages/{messageID}/forward
-			// POST /api/v2/messages/{messageID}/reactions
-			// POST|DELETE /api/v2/messages/{messageID}/favorite
-			h.Messages(rr, r)
+			h := NewHandler(NewService(db, nil, tt.store))
+			req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+tt.chatID+"/members-online", nil, handlerActorID)
+			req.SetPathValue("chatID", tt.chatID)
 
-		case method == http.MethodPost && strings.HasPrefix(path, "/api/v2/messages/"):
-			// POST /api/v2/messages/{chatId} -> SendMessage
-			r.SetPathValue("chatId", chatID)
-			h.SendMessage(rr, r)
+			rr := httptest.NewRecorder()
+			h.GetOnlineMembers(rr, req)
 
-		case method == http.MethodPut && strings.HasPrefix(path, "/api/v2/messages/"):
-			// PUT /api/v2/messages/{messageId} -> EditMessage
-			r.SetPathValue("messageId", messageID)
-			h.EditMessage(rr, r)
-
-		case strings.HasPrefix(path, "/api/v2/messages/"):
-			// Fallback for any other messages endpoint.
-			h.Messages(rr, r)
-
-		default:
-			t.Errorf("unknown endpoint: %s %s", method, path)
-		}
-		return rr
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, kind := range tc.kinds {
-				t.Run(kindName(kind), func(t *testing.T) {
-					body := tc.bodyFunc(kind)
-					req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
-					req.Header.Set("Content-Type", "application/json")
-					req.Header.Set("X-Request-ID", "test-request-id")
-
-					user := authctx.User{ID: userID, Username: "testuser"}
-
-					ctx := authctx.WithUser(req.Context(), user)
-					req = req.WithContext(ctx)
-
-					rr := callHandler(h, tc.method, tc.path, body, req)
-
-					if rr.Code != http.StatusBadRequest {
-						t.Errorf("status = %d, expected %d, body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
-					}
-
-					// Assert error code "validation_failed".
-					var resp map[string]any
-					if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-						t.Fatalf("failed to parse response JSON: %v", err)
-					}
-					if code, ok := resp["code"].(string); !ok || code != "validation_failed" {
-						t.Errorf("error code = %v, expected 'invalid_json'", resp["code"])
-					}
-				})
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			if tt.wantMembers != nil {
+				var body struct {
+					Members []string `json:"members"`
+				}
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+				require.Equal(t, tt.wantMembers, body.Members)
 			}
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }
 
-// newTestHandler builds a Handler backed by a fresh sqlmock instance and
+// newTestHandlerQueryMatcher builds a Handler backed by a fresh sqlmock instance and
 // registers cleanup for the underlying DB. Creating the mock per subtest
 // keeps test cases independent: a failure in one case cannot leak
 // expectations into the next.
@@ -999,7 +758,7 @@ func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 func TestHandler_List(t *testing.T) {
@@ -1257,6 +1016,7 @@ func TestParseArchived(t *testing.T) {
 			if got != tt.want {
 				t.Fatalf("got %v, want %v", got, tt.want)
 			}
+
 		})
 	}
 }

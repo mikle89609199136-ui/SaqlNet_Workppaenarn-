@@ -1,5 +1,12 @@
-import type { ApiClient } from '@/shared/api';
-import { STORAGE_KEYS } from '@/shared/config';
+import { API_ENDPOINTS, type ApiClient } from '@/shared/api';
+
+export interface IMediaUploadResponse {
+  contentType?: string;
+  fileName?: string;
+  sizeBytes?: number;
+  success?: boolean;
+  url: string;
+}
 
 export class MediaService {
   private apiClient: ApiClient;
@@ -8,28 +15,13 @@ export class MediaService {
     this.apiClient = apiClient;
   }
 
-  async upload(file: File) {
+  async upload(file: File): Promise<IMediaUploadResponse> {
     const form = new FormData();
     form.append('file', file);
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-    const response = await fetch('/api/v2/media', {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Ошибка загрузки файла');
-    }
-    return data.upload;
-  }
-
-  getUrl(uploadId: string) {
-    return `/api/v2/media/${uploadId}`;
-  }
-
-  async getUpload(uploadId: string) {
-    const { data } = await this.apiClient.get(`/media/${uploadId}`);
-    return data.upload ?? data;
+    const response = await this.apiClient.post<IMediaUploadResponse>(
+      API_ENDPOINTS.MEDIA_UPLOAD,
+      form
+    );
+    return response.data;
   }
 }

@@ -169,3 +169,87 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/OkResponse' }
       '400': *error
       '500': *error
+
+/encryption/backup:
+  get:
+    tags: [Encryption]
+    summary: Get the key backup
+    description: >-
+      Opaque end-to-end key backup of the requester. The server never sees the
+      master key, the cloud password or any key inside. Not cacheable.
+    operationId: getKeyBackup
+    security: *secure
+    responses:
+      '200':
+        description: Key backup
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyBackup' }
+      '404': *error
+  put:
+    tags: [Encryption]
+    summary: Create or replace the key backup
+    description: >-
+      expectedVersion 0 creates the backup; any other value replaces it only if
+      it still has that version, otherwise 409 version_conflict.
+    operationId: putKeyBackup
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/PutKeyBackupRequest' }
+    responses:
+      '200':
+        description: Saved; the new version
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyBackupVersionResponse' }
+      '400': *error
+      '409': *error
+  delete:
+    tags: [Encryption]
+    summary: Delete the key backup and every chat key in it
+    operationId: deleteKeyBackup
+    security: *secure
+    responses:
+      '204': { description: Deleted }
+
+/encryption/backup/chat-keys:
+  get:
+    tags: [Encryption]
+    summary: List backed-up chat keys
+    description: Pages through the requester's chat keys in (chatId, epoch) order. An empty next means the list is complete.
+    operationId: listBackupChatKeys
+    security: *secure
+    parameters:
+      - { name: chatId, in: query, schema: { type: string, format: uuid } }
+      - { name: after, in: query, description: 'Cursor from the previous page: chatId:epoch', schema: { type: string } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+    responses:
+      '200':
+        description: A page of chat keys
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/BackupChatKeysPage' }
+      '400': *error
+  post:
+    tags: [Encryption]
+    summary: Add chat keys to the backup
+    description: >-
+      An epoch already in the backup is left unchanged; keys of chats that no
+      longer exist are skipped.
+    operationId: saveBackupChatKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveBackupChatKeysRequest' }
+    responses:
+      '200':
+        description: How many keys were new
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/SaveBackupChatKeysResponse' }
+      '400': *error

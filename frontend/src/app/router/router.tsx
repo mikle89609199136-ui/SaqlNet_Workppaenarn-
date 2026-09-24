@@ -120,6 +120,15 @@ export const router = createBrowserRouter([
             Component: m.RegisterPage,
           })),
       },
+      /* Вне AuthGuard: страница сама отправит на вход, сохранив ссылку из
+         кода, — через загрузчик сессии фрагмент адреса бы потерялся. */
+      {
+        path: REACT_ROUTES.LINK,
+        lazy: () =>
+          import('@/pages/link').then((m) => ({
+            Component: m.LinkPage,
+          })),
+      },
       {
         Component: AuthGuard,
         loader: requireSession,

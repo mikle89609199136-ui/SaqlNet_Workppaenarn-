@@ -149,3 +149,25 @@ func trimString(s *string) *string {
 	v := strings.TrimSpace(*s)
 	return &v
 }
+
+// GetOnlineMembers возвращает UUID online-участников группового чата.
+func (h *Handler) GetOnlineMembers(w http.ResponseWriter, r *http.Request) {
+	current := authctx.MustUser(r)
+	chatID := r.PathValue("chatID")
+
+	members, err := h.service.GetOnlineMembers(r.Context(), chatID, current.ID)
+	switch {
+	case errors.Is(err, ErrInvalidInput):
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid chat ID")
+	case errors.Is(err, ErrNotFound):
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat not found")
+	case errors.Is(err, ErrForbidden):
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+	case errors.Is(err, ErrInvalidChatType):
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "online members are available only for group chats")
+	case err != nil:
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to fetch online members")
+	default:
+		httpx.JSON(w, http.StatusOK, map[string]any{"members": members})
+	}
+}

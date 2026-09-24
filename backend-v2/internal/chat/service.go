@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -108,6 +109,8 @@ type Message struct {
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
+	presence presence.Store
 }
 
 type realtimeServer interface {
@@ -177,8 +180,8 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName 
 	return fileName, sizeBytes, nil
 }
 
-func NewService(db *sql.DB, ws realtimeServer) *Service {
-	return &Service{db: db, ws: ws}
+func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
+	return &Service{db: db, ws: ws, presence: presence}
 }
 
 func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {
@@ -2251,9 +2254,69 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	if src.Metadata == nil {
 		src.Metadata = make(map[string]any)
 	}
-	src.Metadata["forwardedFrom"] = src.ID
-	src.Metadata["forwardedSenderName"] = src.SenderName
+	// Forwarding a forwarded message keeps pointing at the original author;
+	// the copied metadata already carries it.
+	if origin, _ := src.Metadata["forwardedFrom"].(string); origin == "" {
+		src.Metadata["forwardedFrom"] = src.ID
+		src.Metadata["forwardedSenderName"] = src.SenderName
+	}
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+}
+
+// ForwardOrigin resolves the forwardedFrom metadata for a message the client
+// forwards itself: end-to-end encrypted content has to be re-encrypted for the
+// target chat, so it arrives through the regular send route instead of
+// ForwardMessage.
+//
+// The requester must be able to read the message being forwarded. Without
+// this check a client could pass any message ID and learn who wrote a message
+// in a chat it does not belong to. A missing, deleted and inaccessible message
+// all yield ErrNotFound, so the response does not reveal which one it was.
+//
+// If the message is itself a forward, the original is returned instead. The
+// requester may have no access to the original's chat, so its ID and author
+// name come from the forwarded copy's metadata rather than from a lookup.
+func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (originID, senderName string, err error) {
+	if err := validate.Var(messageID, "required,uuid"); err != nil {
+		return "", "", ErrInvalidInput
+	}
+
+	var chatID string
+	var metadataBytes []byte
+	err = s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.metadata
+		FROM messages.messages m
+		LEFT JOIN auth.users au ON au.id = m.sender_id
+		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
+		WHERE m.id = $1 AND m.deleted_at IS NULL
+	`, messageID).Scan(&chatID, &senderName, &metadataBytes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+
+	ok, err := s.isMember(ctx, userID, chatID)
+	if err != nil {
+		return "", "", err
+	}
+	if !ok {
+		return "", "", ErrNotFound
+	}
+
+	var metadata map[string]any
+	if len(metadataBytes) > 0 {
+		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
+			return "", "", err
+		}
+	}
+	if origin, _ := metadata["forwardedFrom"].(string); origin != "" {
+		originName, _ := metadata["forwardedSenderName"].(string)
+		return origin, originName, nil
+	}
+
+	return messageID, senderName, nil
 }
 
 // Reaction types.
@@ -3183,4 +3246,72 @@ func AssertCanModerate(actorRole, targetRole string) error {
 		return ErrCannotModerateTarget
 	}
 	return nil
+}
+
+type onlineMembersInput struct {
+	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
+}
+
+// ensureGroupMember проверяет существование чата, членство пользователя
+// и принадлежность чата к типу "group".
+func (s *Service) ensureGroupMember(ctx context.Context, chatID, userID string) error {
+	var chatType string
+	err := s.db.QueryRowContext(ctx, "SELECT type FROM chats.chats WHERE id = $1", chatID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := s.memberRole(ctx, userID, chatID); err != nil {
+		return err
+	}
+
+	if chatType != "group" {
+		return ErrInvalidChatType
+	}
+	return nil
+}
+
+// chatMemberIDs возвращает список UUID участников чата в порядке их хранения в БД.
+func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT user_id::text FROM chats.members WHERE chat_id = $1", chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	memberIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		memberIDs = append(memberIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return memberIDs, nil
+}
+
+// GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
+// (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
+func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
+	if err := validate.Struct(onlineMembersInput{ChatID: chatID, UserID: userID}); err != nil {
+		return nil, ErrInvalidInput
+	}
+
+	if err := s.ensureGroupMember(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+
+	memberIDs, err := s.chatMemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.presence.OnlineUsers(ctx, memberIDs)
 }
