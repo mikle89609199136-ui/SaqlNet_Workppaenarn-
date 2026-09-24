@@ -138,6 +138,16 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+    forwardedFrom:
+      type: string
+      format: uuid
+      nullable: true
+      description: >-
+        Message being forwarded, for clients that re-encrypt content for the
+        target chat instead of calling /messages/{messageId}/forward. The
+        requester must be a member of that message's chat, otherwise 400. When
+        it is itself a forward, the original author is kept. The author name is
+        resolved by the server.
 EditMessageRequest:
   type: object
   required: [content]
