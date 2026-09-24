@@ -274,3 +274,39 @@ describe('статус доставки', () => {
     expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
   });
 });
+
+describe('пересланное сообщение (#169)', () => {
+  function renderForwarded(overrides: Parameters<typeof makeMessage>[0]) {
+    return renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ content: 'пересланный текст', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+  }
+
+  it('называет исходного автора', () => {
+    renderForwarded({ isForwarded: true, forwardedSenderName: 'Максим' });
+
+    expect(screen.getByText(/Переслано от/)).toHaveTextContent('Переслано от Максим');
+    expect(screen.getByText('Максим').tagName).toBe('B');
+    expect(screen.getByText('пересланный текст')).toBeInTheDocument();
+  });
+
+  it('помечает пересылку и без имени: у старых пересылок его нет', () => {
+    renderForwarded({ isForwarded: true, forwardedSenderName: '' });
+
+    expect(screen.getByText('Переслано')).toBeInTheDocument();
+    expect(screen.queryByText(/Переслано от/)).not.toBeInTheDocument();
+  });
+
+  it('молчит у обычного сообщения', () => {
+    renderForwarded({ isForwarded: false, forwardedSenderName: 'Максим' });
+
+    expect(screen.queryByText(/Переслано/)).not.toBeInTheDocument();
+  });
+});
