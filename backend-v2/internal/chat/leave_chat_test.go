@@ -20,7 +20,7 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Запросить роль текущего пользователя
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
@@ -57,7 +57,7 @@ func TestLeaveChat_OwnerCannotLeave(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
@@ -79,7 +79,7 @@ func TestLeaveChat_NotMember(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
@@ -101,7 +101,7 @@ func TestLeaveChat_InvalidUUID(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	userID := "not-a-uuid"
 
 	err = svc.LeaveChat(context.Background(), userID, "not-a-uuid")
@@ -118,7 +118,7 @@ func TestLeaveChat_RollbackOnSettingsDeleteError(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
@@ -155,7 +155,7 @@ func TestLeaveChat_RaceMemberDeleted(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"

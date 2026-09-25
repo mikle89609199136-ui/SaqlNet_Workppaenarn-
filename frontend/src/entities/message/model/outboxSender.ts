@@ -65,7 +65,10 @@ export async function sendOutboxItem(
         item.replyToId ?? null
       );
 
-      replaceThreadMessage(queryClient, item.chatId, item.tempId, message);
+      /* `sent` — это «сервер принял», и ничего больше: ответ на отправку и
+         есть подтверждение. Прочтения тут быть не может — сервер не
+         отдаёт, до какого сообщения прочитал собеседник. */
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
       removeOutboxItem(item.tempId);
     } else {
       patchThreadMessage(queryClient, item.chatId, item.tempId, {
@@ -79,7 +82,7 @@ export async function sendOutboxItem(
         item.replyToId ?? null
       );
 
-      replaceThreadMessage(queryClient, item.chatId, item.tempId, message);
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
       removeOutboxItem(item.tempId);
     }
     callbacks?.onSuccess?.();

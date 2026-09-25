@@ -64,6 +64,16 @@ UpdateProfileRequest:
     lastName: { type: string }
     bio: { type: string }
     avatarUrl: { type: string }
+RenameUsernameRequest:
+  type: object
+  required: [username]
+  properties:
+    username: { $ref: '#/Username' }
+ProfileResponse:
+  type: object
+  required: [user]
+  properties:
+    user: { $ref: '#/User' }
 Chat:
   type: object
   required: [id, type]
@@ -138,6 +148,16 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+    forwardedFrom:
+      type: string
+      format: uuid
+      nullable: true
+      description: >-
+        Message being forwarded, for clients that re-encrypt content for the
+        target chat instead of calling /messages/{messageId}/forward. The
+        requester must be a member of that message's chat, otherwise 400. When
+        it is itself a forward, the original author is kept. The author name is
+        resolved by the server.
 EditMessageRequest:
   type: object
   required: [content]
@@ -442,3 +462,163 @@ UpdateGroupRequest:
         Optional avatar URL. Trimmed of leading and trailing whitespace
         before storage.
       example: 'https://cdn.example.com/avatars/team.png'
+KeyBackupSlots:
+  type: array
+  description: Ways to open the master key (cloud password, passkey). Opaque to the server.
+  minItems: 1
+  maxItems: 8
+  items: { type: object, additionalProperties: true }
+KeyBackup:
+  type: object
+  required: [version, formatVersion, identity, slots, updatedAt]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384, description: Encrypted identity keys. }
+    slots: { $ref: '#/KeyBackupSlots' }
+    updatedAt: { type: string }
+PutKeyBackupRequest:
+  type: object
+  required: [expectedVersion, formatVersion, identity, slots]
+  properties:
+    expectedVersion: { type: integer, format: int64, minimum: 0 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384 }
+    slots: { $ref: '#/KeyBackupSlots' }
+KeyBackupVersionResponse:
+  type: object
+  required: [version]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+BackupChatKey:
+  type: object
+  required: [chatId, epoch, encryptedKey]
+  properties:
+    chatId: { type: string, format: uuid }
+    epoch: { type: integer, minimum: 1 }
+    encryptedKey: { type: string, format: byte, maxLength: 1024 }
+BackupChatKeysPage:
+  type: object
+  required: [keys, next]
+  properties:
+    keys:
+      type: array
+      items: { $ref: '#/BackupChatKey' }
+    next: { type: string, description: Cursor for the next page; empty when there is none. }
+SaveBackupChatKeysRequest:
+  type: object
+  required: [keys]
+  properties:
+    keys:
+      type: array
+      minItems: 1
+      maxItems: 500
+      items: { $ref: '#/BackupChatKey' }
+SaveBackupChatKeysResponse:
+  type: object
+  required: [stored]
+  properties:
+    stored: { type: integer, minimum: 0 }
+QrTokenRequest:
+  type: object
+  required: [publicKey]
+  properties:
+    publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI), base64 or base64url. }
+    deviceName: { type: string, maxLength: 64 }
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+    secret: { type: string, description: Secret of the replaced code. }
+QrTokenResponse:
+  type: object
+  required: [qrToken, secret, expiresAt]
+  properties:
+    qrToken: { type: string }
+    secret: { type: string, description: Kept by the device showing the code and never drawn into it. }
+    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrSecretRequest:
+  type: object
+  required: [secret]
+  properties:
+    secret: { type: string }
+QrLoginRequest:
+  type: object
+  required: [publicKey, deviceName, userAgent, createdAt, expiresAt]
+  properties:
+    publicKey: { type: string }
+    deviceName: { type: string }
+    userAgent: { type: string }
+    createdAt: { type: integer, format: int64 }
+    expiresAt: { type: integer, format: int64 }
+QrKeyPayload:
+  type: object
+  description: The key backup master key encrypted to the new device's publicKey. Opaque to the server.
+  required: [senderPublicKey, iv, ct]
+  properties:
+    senderPublicKey: { type: string }
+    iv: { type: string }
+    ct: { type: string }
+QrConfirmRequest:
+  type: object
+  required: [qrToken, payload]
+  properties:
+    qrToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }
+QrOfferRequest:
+  type: object
+  properties:
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+QrOfferResponse:
+  type: object
+  required: [offerToken, expiresAt]
+  properties:
+    offerToken: { type: string }
+    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrOfferClaim:
+  type: object
+  required: [publicKey, mac, deviceName, userAgent, claimedAt]
+  properties:
+    publicKey: { type: string }
+    mac: { type: string }
+    deviceName: { type: string }
+    userAgent: { type: string }
+    claimedAt: { type: integer, format: int64 }
+QrOfferState:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, claimed, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    claim: { $ref: '#/QrOfferClaim' }
+QrOfferClaimRequest:
+  type: object
+  required: [publicKey, mac]
+  properties:
+    publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI) of the new device, base64 or base64url. }
+    mac: { type: string, description: 'base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code.' }
+    deviceName: { type: string, maxLength: 64 }
+QrOfferClaimResponse:
+  type: object
+  required: [claimSecret, expiresAt]
+  properties:
+    claimSecret: { type: string }
+    expiresAt: { type: integer, format: int64 }
+QrOfferStatusResponse:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    authToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }
+QrOfferConfirmRequest:
+  type: object
+  required: [payload]
+  properties:
+    payload: { $ref: '#/QrKeyPayload' }
+QrStatusResponse:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, scanned, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    authToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }

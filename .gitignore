@@ -61,11 +61,27 @@ data/
 Thumbs.db
 
 # AI
+# Файлы и папки ИИ-инструментов — личные настройки каждого разработчика.
+# Правила проекта живут в docs/development-rules.md, а не здесь.
 AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
 GEMINI.md
 .serena
 .agents
 .kimi-code
+.claude/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.codex/
+.gemini/
+.continue/
+.aider*
+.roo/
+.clinerules
+claude.bat
 
 # Local dev accounts (passwords, never commit)
 dev-accounts.local.md

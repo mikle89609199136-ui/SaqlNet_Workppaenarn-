@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ func messageValidationHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 func messageValidationRequest(method, target, body, pathKey, pathValue string) *http.Request {
@@ -225,7 +226,7 @@ func TestEditMessageRejectsInvalidContentForStoredTypeWithoutUpdate(t *testing.T
 				WithArgs(messageValidationMessageID, messageValidationUserID).
 				WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow(tt.msgType))
 
-			_, err = NewService(db, nil).EditMessage(
+			_, err = NewService(db, nil, nil).EditMessage(
 				t.Context(),
 				messageValidationUserID,
 				messageValidationMessageID,
@@ -269,7 +270,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 			nil,
 		))
 
-	message, err := NewService(db, nil).EditMessage(
+	message, err := NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
@@ -291,7 +292,7 @@ func TestEditMessageReturnsNotFoundWhenMessageIsNotEditable(t *testing.T) {
 		WithArgs(messageValidationMessageID, messageValidationUserID).
 		WillReturnError(sql.ErrNoRows)
 
-	_, err = NewService(db, nil).EditMessage(
+	_, err = NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,

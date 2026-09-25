@@ -10,8 +10,27 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 /** Разброс паузы, доля. Нужен, чтобы вкладки не возвращались одной волной. */
 const JITTER = 0.2;
 
+/** Что можно переопределить при создании клиента. */
+export interface IWebSocketClientOptions {
+  getToken?: () => string | null;
+  reconnectDelay?: number;
+  maxReconnectDelay?: number;
+}
+
 export class WebSocketClient {
-  constructor(url, options = {}) {
+  private url: string;
+  private getToken: () => string | null;
+  private reconnectDelay: number;
+  private maxReconnectDelay: number;
+  private socket: WebSocket | null;
+  private reconnectAttempts: number;
+  private reconnectTimer: number | null;
+  private shouldReconnect: boolean;
+  private watchingForWakeUps: boolean;
+  private handleOnline: () => void;
+  private handleVisibilityChange: () => void;
+
+  constructor(url: string, options: IWebSocketClientOptions = {}) {
     this.url = url;
     this.getToken = options.getToken ?? (() => null);
     this.reconnectDelay = options.reconnectDelay ?? 1000;

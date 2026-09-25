@@ -18,3 +18,7 @@ Key variables:
   MinIO (S3-compatible media storage).
 - `RUN_LEGACY_MIGRATION=false` — disables the automatic legacy→v2 data
   migration on container first start (see `docs/deployment.md`).
+- `AUTH_LOGOUT_ALL_GENERATION_ENABLED=false` — safety gate for generation-based
+  logout-all. Keep it disabled through the compatibility rollout and enable it
+  only after every crypto, issuer, and validator replica has been updated; see
+  `docs/deployment.md`.
