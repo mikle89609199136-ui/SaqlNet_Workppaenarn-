@@ -39,6 +39,7 @@ type QRTokenData struct {
 type Handler struct {
 	service  *Service
 	qrTokens sync.Map
+	qrOffers sync.Map
 	// qrRotated remembers replaced codes for a while, so a device that
 	// scanned a code a moment too late hears "the code changed" rather than
 	// a generic error.
@@ -403,6 +404,12 @@ func (h *Handler) sweepQR(now time.Time) {
 	h.qrTokens.Range(func(key, val any) bool {
 		if now.After(val.(*QRTokenData).ExpiresAt) {
 			h.qrTokens.Delete(key)
+		}
+		return true
+	})
+	h.qrOffers.Range(func(key, val any) bool {
+		if now.After(val.(*QROfferData).ExpiresAt) {
+			h.qrOffers.Delete(key)
 		}
 		return true
 	})

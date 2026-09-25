@@ -138,6 +138,112 @@
       '400': { $ref: '../components/responses.yaml#/Error' }
       '403': { $ref: '../components/responses.yaml#/Error' }
       '409': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-offer:
+  post:
+    tags: [Auth]
+    summary: Show a login code on a signed-in device
+    description: >-
+      The other direction of QR login: the signed-in device shows the code and
+      the new device scans it. The QR code also carries a one-time ECDH public
+      key of the signed-in device and a MAC key; both stay after "#" and never
+      reach the server. Same lifetime rules as qr-token: 60 seconds, replaced
+      every 30 by passing the previous token; a claimed code is not replaced
+      (409 qr_scanned).
+    operationId: createQrOffer
+    security: [{ bearerAuth: [] }]
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferRequest' } } }
+    responses:
+      '200':
+        description: Code created
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferResponse' } } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+      '409': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-offer/{token}:
+  get:
+    tags: [Auth]
+    summary: Check whether a new device claimed the code
+    description: >-
+      For the owner of the code. A claim carries the new device's public key
+      and the HMAC over it, which the owner checks with the MAC key from the QR
+      code before confirming. Somebody else's code reports expired. Not cacheable.
+    operationId: getQrOffer
+    security: [{ bearerAuth: [] }]
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    responses:
+      '200':
+        description: Offer state
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferState' } } }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+  delete:
+    tags: [Auth]
+    summary: Withdraw the code
+    description: The page showing it went away, or the person declined the claim.
+    operationId: withdrawQrOffer
+    security: [{ bearerAuth: [] }]
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    responses:
+      '204': { description: Withdrawn }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-offer/{token}/claim:
+  post:
+    tags: [Auth]
+    summary: Claim a login code from the new device
+    description: >-
+      The first claim captures the code for 60 seconds; later claims get 404.
+      404 qr_rotated means the code was replaced by a newer one. The answer
+      carries the secret for polling the result. Not cacheable.
+    operationId: claimQrOffer
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferClaimRequest' } } }
+    responses:
+      '200':
+        description: Claimed
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferClaimResponse' } } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-offer/{token}/status:
+  get:
+    tags: [Auth]
+    summary: Get the result of a claimed code
+    description: >-
+      Polled by the new device with the claim secret in X-QR-Secret. A confirmed
+      status carries the session token and the encrypted payload and is returned
+      once; later polls, a declined or an expired code report expired. Not cacheable.
+    operationId: getQrOfferStatus
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+      - { name: X-QR-Secret, in: header, required: true, schema: { type: string } }
+    responses:
+      '200':
+        description: Pending, confirmed, or expired
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferStatusResponse' } } }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+/auth/qr-offer/{token}/confirm:
+  post:
+    tags: [Auth]
+    summary: Confirm the claimed login
+    description: >-
+      Only the owner of the code, only after a claim (409 not_claimed) and only
+      once (409 already_confirmed). payload is the master key encrypted to the
+      claimed public key.
+    operationId: confirmQrOffer
+    security: [{ bearerAuth: [] }]
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferConfirmRequest' } } }
+    responses:
+      '200': { description: Confirmed }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '409': { $ref: '../components/responses.yaml#/Error' }
 /auth/logout:
   post:
     tags: [Auth]

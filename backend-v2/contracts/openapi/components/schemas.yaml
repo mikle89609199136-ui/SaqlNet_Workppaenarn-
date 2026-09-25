@@ -562,6 +562,58 @@ QrConfirmRequest:
   properties:
     qrToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
+QrOfferRequest:
+  type: object
+  properties:
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+QrOfferResponse:
+  type: object
+  required: [offerToken, expiresAt]
+  properties:
+    offerToken: { type: string }
+    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrOfferClaim:
+  type: object
+  required: [publicKey, mac, deviceName, userAgent, claimedAt]
+  properties:
+    publicKey: { type: string }
+    mac: { type: string }
+    deviceName: { type: string }
+    userAgent: { type: string }
+    claimedAt: { type: integer, format: int64 }
+QrOfferState:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, claimed, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    claim: { $ref: '#/QrOfferClaim' }
+QrOfferClaimRequest:
+  type: object
+  required: [publicKey, mac]
+  properties:
+    publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI) of the new device, base64 or base64url. }
+    mac: { type: string, description: 'base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code.' }
+    deviceName: { type: string, maxLength: 64 }
+QrOfferClaimResponse:
+  type: object
+  required: [claimSecret, expiresAt]
+  properties:
+    claimSecret: { type: string }
+    expiresAt: { type: integer, format: int64 }
+QrOfferStatusResponse:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    authToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }
+QrOfferConfirmRequest:
+  type: object
+  required: [payload]
+  properties:
+    payload: { $ref: '#/QrKeyPayload' }
 QrStatusResponse:
   type: object
   required: [status]

@@ -129,6 +129,14 @@ export const router = createBrowserRouter([
             Component: m.LinkPage,
           })),
       },
+      /* Тоже вне AuthGuard: сюда приходит устройство без сессии. */
+      {
+        path: REACT_ROUTES.QR_LOGIN,
+        lazy: () =>
+          import('@/pages/qr-login').then((m) => ({
+            Component: m.QrClaimPage,
+          })),
+      },
       {
         Component: AuthGuard,
         loader: requireSession,

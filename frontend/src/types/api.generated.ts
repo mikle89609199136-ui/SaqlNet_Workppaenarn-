@@ -159,6 +159,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/qr-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a login code on a signed-in device
+         * @description The other direction of QR login: the signed-in device shows the code and the new device scans it. The QR code also carries a one-time ECDH public key of the signed-in device and a MAC key; both stay after "#" and never reach the server. Same lifetime rules as qr-token: 60 seconds, replaced every 30 by passing the previous token; a claimed code is not replaced (409 qr_scanned).
+         */
+        post: operations["createQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a new device claimed the code
+         * @description For the owner of the code. A claim carries the new device's public key and the HMAC over it, which the owner checks with the MAC key from the QR code before confirming. Somebody else's code reports expired. Not cacheable.
+         */
+        get: operations["getQrOffer"];
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the code
+         * @description The page showing it went away, or the person declined the claim.
+         */
+        delete: operations["withdrawQrOffer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a login code from the new device
+         * @description The first claim captures the code for 60 seconds; later claims get 404. 404 qr_rotated means the code was replaced by a newer one. The answer carries the secret for polling the result. Not cacheable.
+         */
+        post: operations["claimQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the result of a claimed code
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         */
+        get: operations["getQrOfferStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the claimed login
+         * @description Only the owner of the code, only after a claim (409 not_claimed) and only once (409 already_confirmed). payload is the master key encrypted to the claimed public key.
+         */
+        post: operations["confirmQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -2231,6 +2335,56 @@ export interface components {
             qrToken: string;
             payload: components["schemas"]["QrKeyPayload"];
         };
+        QrOfferRequest: {
+            /** @description Token of the code shown so far; it stops working at once. */
+            replaces?: string;
+        };
+        QrOfferResponse: {
+            offerToken: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            expiresAt: number;
+        };
+        QrOfferClaim: {
+            publicKey: string;
+            mac: string;
+            deviceName: string;
+            userAgent: string;
+            /** Format: int64 */
+            claimedAt: number;
+        };
+        QrOfferState: {
+            /** @enum {string} */
+            status: "pending" | "claimed" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            claim?: components["schemas"]["QrOfferClaim"];
+        };
+        QrOfferClaimRequest: {
+            /** @description One-time ECDH P-256 public key (SPKI) of the new device */
+            publicKey: string;
+            /** @description base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code. */
+            mac: string;
+            deviceName?: string;
+        };
+        QrOfferClaimResponse: {
+            claimSecret: string;
+            /** Format: int64 */
+            expiresAt: number;
+        };
+        QrOfferStatusResponse: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            authToken?: string;
+            payload?: components["schemas"]["QrKeyPayload"];
+        };
+        QrOfferConfirmRequest: {
+            payload: components["schemas"]["QrKeyPayload"];
+        };
         UpdateProfileRequest: {
             firstName?: string;
             lastName?: string;
@@ -2816,6 +2970,159 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    createQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferRequest"];
+            };
+        };
+        responses: {
+            /** @description Code created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Offer state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferState"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    withdrawQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    claimQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Claimed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferClaimResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getQrOfferStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-QR-Secret": string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, confirmed, or expired */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferStatusResponse"];
+                };
+            };
+            403: components["responses"]["Error"];
+        };
+    };
+    confirmQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             409: components["responses"]["Error"];
         };
     };

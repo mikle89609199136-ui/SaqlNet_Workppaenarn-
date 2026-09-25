@@ -175,6 +175,66 @@ export class AuthService {
       .then((response) => response.data);
   }
 
+  /**
+   * Вошедшее устройство: показать код для входа нового (#754) или сменить
+   * показанный. Ключ и ключ подписи в запрос не попадают — только в код.
+   */
+  createQrOffer(replaces?: string) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER, replaces ? { replaces } : {})
+      .then((response) => response.data as { offerToken: string; expiresAt: number });
+  }
+
+  /** Вошедшее устройство: не отсканировал ли кто-нибудь код. */
+  getQrOffer(token: string) {
+    return this.apiClient.get(API_ENDPOINTS.AUTH_QR_OFFER_BY_ID(token)).then(
+      (response) =>
+        response.data as {
+          status: 'pending' | 'claimed' | 'confirmed' | 'expired';
+          expiresAt?: number;
+          claim?: {
+            publicKey: string;
+            mac: string;
+            deviceName: string;
+            userAgent: string;
+            claimedAt: number;
+          };
+        }
+    );
+  }
+
+  withdrawQrOffer(token: string, options: { keepalive?: boolean } = {}) {
+    return this.apiClient
+      .delete(API_ENDPOINTS.AUTH_QR_OFFER_BY_ID(token), undefined, options)
+      .then(() => undefined);
+  }
+
+  confirmQrOffer(token: string, payload: { senderPublicKey: string; iv: string; ct: string }) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER_CONFIRM(token), { payload })
+      .then(() => undefined);
+  }
+
+  /** Новое устройство: занять отсканированный код своим ключом. */
+  claimQrOffer(token: string, claim: { publicKey: string; mac: string; deviceName: string }) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER_CLAIM(token), claim)
+      .then((response) => response.data as { claimSecret: string; expiresAt: number });
+  }
+
+  getQrOfferStatus(token: string, claimSecret: string) {
+    return this.apiClient
+      .get(API_ENDPOINTS.AUTH_QR_OFFER_STATUS(token), {}, { 'X-QR-Secret': claimSecret })
+      .then(
+        (response) =>
+          response.data as {
+            status: 'pending' | 'confirmed' | 'expired';
+            authToken?: string;
+            payload?: { senderPublicKey: string; iv: string; ct: string };
+          }
+      );
+  }
+
   /** Устройства, на которых выполнен вход. */
   getSessions() {
     return this.apiClient

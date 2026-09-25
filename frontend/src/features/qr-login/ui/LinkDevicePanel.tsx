@@ -4,6 +4,7 @@ import { services } from '@/services/serviceContainer';
 import type { IApiError } from '@/shared/api';
 import {
   parseQrLink,
+  parseQrOfferLink,
   readBackupState,
   subscribeToBackupState,
   type IQrLink,
@@ -56,8 +57,18 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
   /** Разобрать код и спросить сервер, какое устройство просит войти. */
   async function inspect(raw: string): Promise<TInspection> {
     const parsed = parseQrLink(raw, window.location.origin);
-    if (!parsed)
-      return { ok: false, error: t('qrLogin.invalidLink', 'Это не код входа в CraneApp') };
+    if (!parsed) {
+      return {
+        ok: false,
+        // Код с вошедшего устройства (#754) сканирует новое, а не это.
+        error: parseQrOfferLink(raw, window.location.origin)
+          ? t(
+              'qrLogin.offerHere',
+              'Этот код — для входа нового устройства. Отсканируйте его камерой на новом устройстве.'
+            )
+          : t('qrLogin.invalidLink', 'Это не код входа в CraneApp'),
+      };
+    }
 
     try {
       const request = await services.authService.getQrRequest(parsed.token);
