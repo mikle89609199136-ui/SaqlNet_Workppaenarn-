@@ -12,13 +12,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"craneapp/backend-v2/internal/platform/profileevent"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
+	"github.com/lib/pq"
 )
 
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
+const UsernameChangeCooldown = 24 * time.Hour
 
 var (
 	ErrNotFound              = errors.New("user not found")
@@ -26,9 +29,18 @@ var (
 	ErrAlreadyBlocked        = errors.New("user already blocked")
 	ErrInvalidInput          = errors.New("invalid input")
 	ErrInvalidUsernameFormat = errors.New("wrong username format")
+	ErrUsernameTaken         = errors.New("username already exists")
+	ErrUsernameCooldown      = errors.New("username change cooldown is active")
 	ErrWrongPasscode         = errors.New("wrong passcode")
 	ErrNoPasscodeSet         = errors.New("no passcode set")
 )
+
+type UsernameCooldownError struct {
+	AvailableAt time.Time
+}
+
+func (e *UsernameCooldownError) Error() string { return ErrUsernameCooldown.Error() }
+func (e *UsernameCooldownError) Unwrap() error { return ErrUsernameCooldown }
 
 type Profile struct {
 	ID        string   `json:"id"`
@@ -127,6 +139,112 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 		WHERE user_id = $1
 	`, userID, stringOrNil(firstName), stringOrNil(lastName), stringOrNil(bio), stringOrNil(avatarURL))
 	if err != nil {
+		return Profile{}, err
+	}
+	return s.profileByID(ctx, userID)
+}
+
+// RenameUsername atomically updates the canonical username and appends its old value
+// to the audit trail. Locking the user row serializes concurrent rename attempts for
+// one account; the username registry arbitrates competing accounts and reserves old names.
+func (s *Service) RenameUsername(ctx context.Context, userID, requestedUsername string) (Profile, error) {
+	newUsername := usernamepolicy.Normalize(requestedUsername)
+	if newUsername == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if !usernamepolicy.Valid(newUsername) {
+		return Profile{}, ErrInvalidUsernameFormat
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentUsername string
+	err = tx.QueryRowContext(ctx, `
+		SELECT username
+		FROM auth.users
+		WHERE id = $1 AND disabled_at IS NULL
+		FOR UPDATE
+	`, userID).Scan(&currentUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	if currentUsername == newUsername {
+		if err := tx.Commit(); err != nil {
+			return Profile{}, err
+		}
+		return s.profileByID(ctx, userID)
+	}
+
+	var lastChanged time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT changed_at
+		FROM users.username_changes
+		WHERE user_id = $1
+		  AND changed_at > NOW() - INTERVAL '24 hours'
+		ORDER BY changed_at DESC
+		LIMIT 1
+	`, userID).Scan(&lastChanged)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, err
+	}
+	if err == nil {
+		availableAt := lastChanged.Add(UsernameChangeCooldown)
+		return Profile{}, &UsernameCooldownError{AvailableAt: availableAt}
+	}
+
+	var claimedUsername string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO auth.username_registry (username, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (username) DO UPDATE
+		SET user_id = auth.username_registry.user_id
+		WHERE auth.username_registry.user_id = EXCLUDED.user_id
+		RETURNING username
+	`, newUsername, userID).Scan(&claimedUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrUsernameTaken
+	}
+	if err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE auth.users
+		SET username = $2, updated_at = NOW()
+		WHERE id = $1
+	`, userID, newUsername); err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		INSERT INTO users.username_changes (user_id, previous_username, new_username)
+		VALUES ($1, $2, $3)
+	`, userID, currentUsername, newUsername); err != nil {
+		return Profile{}, err
+	}
+	eventPayload, err := json.Marshal(profileevent.UsernameChanged{UserID: userID, Username: newUsername})
+	if err != nil {
+		return Profile{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `SELECT pg_notify($1, $2)`, profileevent.Channel, string(eventPayload)); err != nil {
+		return Profile{}, err
+	}
+	if err = tx.Commit(); err != nil {
 		return Profile{}, err
 	}
 	return s.profileByID(ctx, userID)
@@ -278,9 +396,10 @@ func EscapeLike(s string) string {
 
 // IsUsernameAvailable checks whether the given username is available for registration.
 // It performs the following validations:
+//   - Normalizes surrounding whitespace and letter case.
 //   - Ensures the username is not empty.
-//   - Validates the username against the allowed pattern (^[a-zA-Z0-9_]{3,32}$).
-//   - Queries the database case‑insensitively to check for existing users.
+//   - Validates the canonical username against the allowed pattern.
+//   - Queries the canonical registry, which includes current and historical claims.
 //
 // Returns:
 //   - (true, nil)  if the username is syntactically valid and does not exist in DB.
@@ -289,6 +408,7 @@ func EscapeLike(s string) string {
 //   - (false, ErrInvalidUsernameFormat) if the username does not match the pattern.
 //   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
+	username = usernamepolicy.Normalize(username)
 	// Log incoming request (debug level)
 	slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:checking username availability",
 		"username", username,
@@ -301,18 +421,18 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 	}
 
 	// Validate username against the allowed pattern
-	if !usernamePattern.MatchString(username) {
+	if !usernamepolicy.Valid(username) {
 		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:username does not match pattern",
 			"username", username,
-			"pattern", usernamePattern.String(),
 		)
 		return false, ErrInvalidUsernameFormat
 	}
 
-	// Case‑insensitive existence check in the database
+	// The registry includes both current and historical claims, preventing an
+	// old QR/deep link from being reassigned to a different account.
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
+		`SELECT EXISTS(SELECT 1 FROM auth.username_registry WHERE username = $1)`,
 		username).Scan(&exists)
 
 	if err != nil {
@@ -333,6 +453,30 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 }
 
 func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {
+	return s.profileByID(ctx, userID)
+}
+
+func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername string) (Profile, error) {
+	canonical := strings.ToLower(strings.TrimSpace(requestedUsername))
+	if canonical == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if len(canonical) > 64 {
+		return Profile{}, ErrNotFound
+	}
+
+	var userID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id::text
+		FROM auth.users
+		WHERE lower(username) = $1 AND disabled_at IS NULL
+	`, canonical).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
 	return s.profileByID(ctx, userID)
 }
 

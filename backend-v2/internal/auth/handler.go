@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +14,8 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 )
-
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
 
 type QRTokenData struct {
 	CreatedAt  time.Time
@@ -73,7 +71,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if !usernamePattern.MatchString(input.Username) || strings.TrimSpace(input.FirstName) == "" {
+	input.Username = usernamepolicy.Normalize(input.Username)
+	if !usernamepolicy.Valid(input.Username) || strings.TrimSpace(input.FirstName) == "" {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username or firstName is invalid")
 		return
 	}

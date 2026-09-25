@@ -12,6 +12,7 @@ import (
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 	"github.com/lib/pq"
 )
 
@@ -64,7 +65,7 @@ func NewService(db *sql.DB, crypto CryptoClient) *Service {
 }
 
 func (s *Service) Register(ctx context.Context, username, password, firstName, lastName, language string) (User, string, error) {
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = usernamepolicy.Normalize(username)
 	if err := ValidatePassword(password); err != nil {
 		return User{}, "", err
 	}
@@ -84,8 +85,13 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	var user User
 	var tokenGeneration int64
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO auth.users (username, password_hash, first_name, last_name)
-		VALUES ($1, $2, $3, $4)
+		WITH claimed AS (
+			INSERT INTO auth.username_registry (username, user_id)
+			VALUES ($1, gen_random_uuid())
+			RETURNING user_id
+		)
+		INSERT INTO auth.users (id, username, password_hash, first_name, last_name)
+		SELECT user_id, $1, $2, $3, $4 FROM claimed
 		RETURNING id::text, username, first_name, last_name, token_generation
 	`, username, hash, strings.TrimSpace(firstName), strings.TrimSpace(lastName)).Scan(
 		&user.ID,
@@ -96,7 +102,7 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	)
 	if err != nil {
 		var pgErr *pq.Error
-		if errors.As(err, &pgErr) && pgErr.Constraint == "auth_users_username_lower_key" {
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return User{}, "", ErrUsernameTaken
 		}
 		return User{}, "", err
@@ -149,7 +155,7 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 }
 
 func (s *Service) Login(ctx context.Context, username, password, twoFAPassword string) (User, string, error) {
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = usernamepolicy.Normalize(username)
 
 	var user User
 	err := s.db.QueryRowContext(ctx, `

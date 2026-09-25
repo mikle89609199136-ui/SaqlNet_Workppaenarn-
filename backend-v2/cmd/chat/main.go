@@ -22,7 +22,8 @@ import (
 
 func main() {
 	_ = config.Required("ALLOWED_ORIGINS")
-	pool, err := db.Open(config.Required("DATABASE_URL"))
+	databaseURL := config.Required("DATABASE_URL")
+	pool, err := db.Open(databaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,8 +47,8 @@ func main() {
 
 	// In production NATS is required. In other environments it is optional
 	// but outbox events will accumulate until NATS becomes available.
-	outboxCtx, outboxCancel := context.WithCancel(context.Background())
-	defer outboxCancel()
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
 	var natsConn chat.NATSConn
 	natsURL := config.Value("NATS_URL", "")
 	if natsURL == "" && config.Value("CRANE_ENV", "development") == "production" {
@@ -67,7 +68,8 @@ func main() {
 	} else {
 		log.Printf("NATS_URL not set — outbox events will accumulate until NATS is configured")
 	}
-	go chat.OutboxRelay(outboxCtx, pool, natsConn)
+	go chat.OutboxRelay(workerCtx, pool, natsConn)
+	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
