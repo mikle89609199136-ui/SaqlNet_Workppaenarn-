@@ -17,9 +17,13 @@ import { CreateGroupModal } from './CreateGroupModal';
  * Уменьшение картинки идёт через canvas, которого в jsdom нет. Оно вынесено
  * отдельным модулем и здесь подменяется: аватарка проверяется вживую.
  */
-vi.mock('@/shared/lib/downscaleImage', () => ({
-  downscaleImage: async () => 'data:image/jpeg;base64,УМЕНЬШЕННАЯ',
-}));
+vi.mock('@/shared/lib', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/lib')>();
+  return {
+    ...actual,
+    downscaleImage: async () => 'data:image/jpeg;base64,УМЕНЬШЕННАЯ',
+  };
+});
 
 const ME = makeUser({ id: 'user-1', firstName: 'Я' });
 

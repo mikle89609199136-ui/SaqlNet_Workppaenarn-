@@ -12,11 +12,12 @@ import { makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-vi.mock('@/hooks/useEncryptionState', () => ({
+vi.mock('@/features/chat-encryption', () => ({
   useEncryptionState: () => ({ status: 'ready', unreachable: [] }),
+  useChatEncryption: () => vi.fn(),
 }));
 
-vi.mock('@/hooks/useTypingIndicator', () => ({
+vi.mock('@/features/typing-indicator', () => ({
   useTypingIndicator: () => vi.fn(),
 }));
 

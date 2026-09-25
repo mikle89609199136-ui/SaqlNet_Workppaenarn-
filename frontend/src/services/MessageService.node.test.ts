@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { createApiClient } from '@/shared/api/apiFactory';
+import { createApiClient } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
@@ -93,6 +93,40 @@ describe('MessageService: пересылка', () => {
     );
 
     expect(body).toMatchObject({ content: 'переслано', type: 'text' });
+  });
+
+  it('should tell the server which message is forwarded', async () => {
+    // Имя автора сервер подставит сам, проверив доступ: от клиента имя не
+    // принимается, передаётся только идентификатор (#358).
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
+      })
+    );
+
+    await createService().forwardMessage(
+      message('source', 'chat-source', 'переслано'),
+      TARGET_CHAT
+    );
+
+    expect(body).toMatchObject({ forwardedFrom: 'source' });
+    expect(body).not.toHaveProperty('forwardedSenderName');
+  });
+
+  it('should not mark a regular message as forwarded', async () => {
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ message: message('regular-1', TARGET_CHAT, 'обычное') });
+      })
+    );
+
+    await createService().sendMessage(TARGET_CHAT, 'обычное');
+
+    expect(body).not.toHaveProperty('forwardedFrom');
   });
 
   it('отказывается пересылать то, что не смог прочитать', async () => {

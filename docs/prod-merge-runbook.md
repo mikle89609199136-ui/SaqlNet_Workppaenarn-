@@ -53,9 +53,36 @@ curl -fsS "$BASE_URL/api/v2/health"
 
 If either command fails, roll back immediately.
 
+### Token-generation release (#406)
+
+For the release that introduces migration 0025, the first Amvera deployment
+must use `AUTH_LOGOUT_ALL_GENERATION_ENABLED=false`. After that exact image has
+passed the smoke checks above:
+
+1. confirm migration `0025_auth_token_generation.sql` is recorded and the auth
+   service readiness check succeeds;
+2. set `AUTH_LOGOUT_ALL_GENERATION_ENABLED=true` in Amvera;
+3. redeploy the same image digest and repeat the smoke checks;
+4. run the acceptance scenario from `docs/deployment.md`: two old tokens become
+   `401` for HTTP and a new WebSocket handshake, while a subsequent login token
+   succeeds.
+
+Do not combine the compatibility deployment and activation into one rollout.
+
 ## Rollback
 
 Preferred rollback is redeploying the tagged previous version.
+
+Exception: once `AUTH_LOGOUT_ALL_GENERATION_ENABLED=true` has served production
+traffic, do **not** redeploy a version from before token-generation support with
+the existing `CRYPTO_SIGNING_SECRET`. Disabling the flag alone is insufficient:
+the old version can accept tokens that `logout-all` already revoked. Follow the
+post-activation procedure in `docs/deployment.md`, including a coordinated
+signing-key rotation and forced reauthentication. In the combined production
+image the Rust signer receives `JWT_SECRET`, so that is the value that must be
+rotated; the separate Kubernetes crypto service uses
+`crypto-secrets/signing-secret`. Keep migration 0025 applied; never drop
+`auth.users.token_generation` during an application rollback.
 
 For Railway/GitHub auto-deploy, revert `main` to the rollback tag with a new commit:
 

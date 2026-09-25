@@ -1,15 +1,13 @@
-import { useDebounce } from '@/shared/lib';
-import { chatsQuery } from '@/entities/chat';
+import { downscaleImage, useDebounce } from '@/shared/lib';
+import { chatKeys, chatsQuery } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
-import { chatKeys } from '@/queries/keys';
 import { services } from '@/services';
 import type { ISearchUserDto } from '@/types';
-import { downscaleImage } from '@/shared/lib/downscaleImage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Icon, Input, Modal, Textarea, showToast } from '@/shared/ui';
+import { Button, Icon, Input, Modal, Textarea, showToast } from '@/shared/ui';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Chip } from '@/shared/ui/Chip';
 import { suggestedMembers } from '../model/suggestedMembers';
@@ -168,11 +166,15 @@ export function CreateGroupModal({ onClose }: Props) {
         <div className="flex gap-x-4 px-6">
           <button
             aria-label={t('groupAvatar', 'Аватар группы')}
-            className="create-group-avatar shrink-0"
+            className="flex size-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-bubble border border-dashed border-line bg-brand-soft text-ink-2 transition-colors duration-fast hover:border-brand hover:text-ink"
             onClick={() => avatarInputRef.current?.click()}
             type="button"
           >
-            {avatarUrl ? <img alt="" src={avatarUrl} /> : <Icon name="camera" />}
+            {avatarUrl ? (
+              <img alt="" className="size-full object-cover" src={avatarUrl} />
+            ) : (
+              <Icon name="camera" />
+            )}
           </button>
 
           <input
@@ -276,14 +278,15 @@ export function CreateGroupModal({ onClose }: Props) {
       </div>
 
       <footer className="px-6">
-        <button
-          className="create-group-submit"
+        <Button
+          className="h-11 w-full"
           disabled={isCreating}
           onClick={() => void create()}
-          type="button"
+          size="md"
+          variant="primary"
         >
           {isCreating ? t('creating', 'Создание...') : t('createGroupAction', 'Создать группу')}
-        </button>
+        </Button>
       </footer>
     </Modal>
   );

@@ -27,12 +27,7 @@ export interface IReaction {
 
 export type TReactionsList = IReaction[];
 
-export type TMessageDeliveryStatus =
-  | 'pending'
-  | 'uploading'
-  | 'failed'
-  | 'sent'
-  | 'read';
+export type TMessageDeliveryStatus = 'pending' | 'uploading' | 'failed' | 'sent' | 'read';
 
 export interface IMessageDto {
   id: string;

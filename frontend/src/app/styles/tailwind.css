@@ -59,6 +59,13 @@
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 
+/* Появление содержимого, которое сменилось целиком: вкладка, шаг, новый
+   код. Сдвиг в четыре пикселя — смену видно, но блок не «въезжает». */
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in { animation: none; }
+}
+
 /* Бег полосы, когда доля неизвестна. Отрезок уходит за левый край и
    выходит за правый: так видно, что работа идёт, и не обещано, сколько
    осталось. Значения из кита — 38% ширины и полтора шага в секунду. */
@@ -115,90 +122,6 @@
 .styled-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #0d0e13 transparent;
-}
-
-/* =========================================================
-   Components — Chats page  (was app.css)
-   ========================================================= */
-@layer components {
-
-  .chats-page {
-    @apply relative max-w-[920px] mx-auto px-3.5;
-    min-height: 100vh; min-height: 100dvh;
-    padding-top: calc(18px + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  }
-  .chats-toolbar {
-    @apply flex items-center gap-2 mb-3;
-    /* На телефоне прокручивается вся страница, и панель уезжала вверх
-       вместе с ней — на настольном она остаётся на месте, потому что там
-       прокручивается только список. Липкой она ведёт себя одинаково в
-       обоих случаях; фон обязателен, иначе под ней просвечивают строки. */
-    @media (max-width: 767px) {
-      @apply sticky z-10 py-2 bg-ground;
-      top: env(safe-area-inset-top, 0px);
-    }
-  }
-  /* Кнопка новой группы: раньше создать её было нельзя вовсе — страница
-     существовала, а ссылки на неё не было ни на одном экране. */
-  .chats-new-group {
-    @apply shrink-0 w-11 h-11 rounded-field flex items-center justify-center cursor-pointer bg-sheet-2 text-ink-2;
-    border: 1px solid var(--color-line);
-    transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-    &:hover { @apply text-ink; border-color: var(--color-ink-3); }
-    &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-  }
-  /* Окно создания группы */
-  .create-group-avatar {
-    @apply w-16 h-16 rounded-bubble flex items-center justify-center cursor-pointer overflow-hidden bg-brand-soft text-ink-2;
-    border: 1px dashed var(--color-line);
-    transition: border-color var(--transition-duration-fast) ease-out, color var(--transition-duration-fast) ease-out;
-    & img { @apply w-full h-full object-cover; }
-    &:hover { border-color: var(--color-brand); @apply text-ink; }
-  }
-  /* Кнопка временная: цвета из кита, но компонент Button пишется
-     отдельно (#340). Тогда правило уедет. */
-  .create-group-submit {
-    @apply w-full h-11 rounded-field cursor-pointer font-semibold bg-brand-fill text-on-brand;
-    transition: filter var(--transition-duration-fast) ease-out;
-    &:hover:not(:disabled) { filter: brightness(1.08); }
-    &:disabled { @apply opacity-[0.42] cursor-default; }
-  }
-  .chats-list { @apply overflow-hidden; }
-
-  .chat-row {
-    @apply min-h-[72px] p-3 grid gap-3 text-inherit no-underline;
-    grid-template-columns: 48px minmax(0,1fr);
-    transition: background-color var(--transition-duration-fast) ease-out;
-    & + .chat-row { @apply border-t; border-color: var(--color-divider); }
-    &:hover { @apply bg-sheet-2; }
-    /* Открытый чат. Идёт после :hover намеренно — специфичность у них
-       одинаковая, и без этого наведение на соседнюю строку перекрывало бы
-       выделение открытой.
-
-       Оттенок с примесью бренда, а не та же подложка, что у наведения:
-       иначе при движении мыши по списку кажется, будто открывается другой
-       чат. Атрибут ставит NavLink сам. */
-    &[aria-current='page'] {
-      background: color-mix(in srgb, var(--color-brand) 16%, transparent);
-    }
-  }
-  /* Цвет аватарки пока задаётся типом чата. По киту он должен выводиться
-     из идентификатора, чтобы список читался цветовыми пятнами, — это
-     сделает компонент Avatar (#347). */
-  .chat-main { @apply min-w-0 flex flex-col justify-center gap-1.5; }
-  .chat-topline, .chat-subline { @apply min-w-0 flex items-center justify-between gap-3; }
-  .chat-title, .chat-subline span { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
-  .chat-title { @apply text-base font-semibold text-ink; }
-  .chat-time { @apply shrink-0 text-micro text-ink-3; font-family: var(--font-mono); }
-  /* Текст сообщения светлее отметки времени: при беглом просмотре глаз
-     ищет «что», а не «когда». Прежде оба были одного цвета, и строка
-     читалась ровным серым полотном. */
-  .chat-subline { @apply text-caption text-ink-2; }
-  /* Пометка о недописанном: выделяется цветом, сам текст остаётся приглушённым. */
-  .chat-draft-label { color: var(--color-danger); }
-
-  /* Кнопка временная, см. #340. */
 }
 
 /* =========================================================
@@ -300,18 +223,6 @@
       max-width: none;
     }
   }
-  .app-sidebar-pane .chats-page {
-    @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 flex flex-col overflow-hidden; }
-  }
-  .app-sidebar-pane .chats-toolbar {
-    @media (min-width: 768px) { @apply px-4 mb-4; }
-  }
-  .app-sidebar-pane .chat-row {
-    @media (min-width: 768px) { @apply py-2.5 px-4; }
-  }
-  .app-sidebar-pane .chats-list {
-    @media (min-width: 768px) { @apply flex-1 overflow-y-auto; }
-  }
   .app-chat-pane .thread-page {
     @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 m-0 flex flex-col; background: transparent; }
   }
@@ -342,7 +253,7 @@
     min-height: 100vh; min-height: 100dvh;
     background: var(--color-bg);
 
-    & .chats-page, & .settings-page { @apply pb-safe-nav; }
+    & .settings-page { @apply pb-safe-nav; }
   }
 	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
 	  .mobile-content:has(> .thread-page) {
@@ -713,55 +624,9 @@
 
   .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
 
-  /* Свой и чужой пузырь разведены не яркостью, а температурой: своё
-     тёплое, чужое холодное, оба спокойные. Раньше своё было ярко-синим
-     и выбивалось из всего остального. Срезанный угол — с той стороны,
-     откуда пришло сообщение. */
-  .message-bubble {
-    @apply relative w-fit bg-bubble-in text-ink;
-    max-width: min(76%,560px); padding: 5px 8px 4px;
-    border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 5px;
-    box-shadow: var(--elev-1);
-    transition: box-shadow var(--transition-duration-fast) ease-out, filter var(--transition-duration-fast) ease-out;
-    &.is-mine {
-      @apply self-end bg-bubble-out text-bubble-out-ink;
-      margin-right: 10px;
-      border-radius: var(--radius-bubble) var(--radius-bubble) 5px var(--radius-bubble);
-    }
-    &.is-action-target {
-      z-index: 20;
-      box-shadow: 0 0 0 2px var(--color-brand), var(--elev-3);
-    }
-  }
-  .message-bubble.has-media {
-    width: fit-content;
-    max-width: min(384px, calc(100% - 20px));
-  }
-  .message-content { @apply whitespace-pre-wrap leading-[1.38]; overflow-wrap: anywhere; }
-  .message-call-content {
-    @apply flex items-center gap-3;
-    min-width: 190px;
-  }
-  .message-call-icon {
-    @apply flex shrink-0 items-center justify-center rounded-full;
-    width: 42px;
-    height: 42px;
-    background: var(--color-line);
-    color: var(--color-ink);
-  }
-  .message-call-copy {
-    @apply min-w-0 flex flex-col gap-0.5;
-    & strong {
-      @apply text-[16px] font-extrabold leading-tight;
-      color: var(--color-ink);
-    }
-    & span {
-      @apply text-[13px] font-semibold;
-      color: var(--color-ink-2);
-    }
-  }
+
   .message-media { @apply block mb-[7px] rounded-[10px] object-contain; width: min(100%,360px); max-height: 360px; background: rgba(0,0,0,0.18); }
-  .message-bubble .message-media-open {
+  .message-media-open {
     @apply block max-w-full border-0 bg-transparent cursor-zoom-in;
     width: auto;
     min-height: 0;
@@ -806,52 +671,125 @@
     font-size: 30px;
     line-height: 1;
   }
-  .message-reactions {
-    @apply mt-[7px] flex flex-wrap gap-[5px];
-    /* Реакция — кнопка: по ней ставят свою и снимают. Раньше здесь был
-       span, и правило `is-mine` не применялось ни к чему — своя реакция
-       красилась утилитой `bg-accent-2` из старой палитры. */
-    & button {
-      min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill);
-      background: var(--color-sheet-2); font-size: 12px; cursor: pointer;
-      border: 1px solid transparent;
-      transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
-      &:hover { border-color: var(--color-line); }
-      &.is-mine { background: var(--color-brand-soft); }
-      &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-    }
-  }
-  .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
   .thread-composer {
-    @apply grid gap-[10px];
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--color-line);
-    grid-template-columns: 44px minmax(0,1fr) 44px;
-    background: var(--color-sheet-2);
-    & input { @apply min-w-0 min-h-[44px] outline-none text-white text-[15px]; padding: 0 14px; border: 1px solid var(--color-sheet-2); border-radius: 14px; background: var(--color-line-soft); &:focus { border-color: var(--color-brand-fill); } }
-    & .thread-composer-action-btn { @apply w-11 min-h-[44px] border-0 rounded-[14px] bg-[var(--color-warn)] text-[var(--color-sheet)] text-[18px] font-extrabold cursor-pointer; &:disabled { opacity: 0.45; cursor: not-allowed; } }
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px)) 11px;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
   }
-  .thread-file-input { display: none !important; }
-  .thread-composer .thread-attach-button {
-    background: var(--color-sheet-2);
+
+  .thread-composer-card {
+    background: var(--color-sheet);
+    border-radius: 28px;
+    border: 1px solid var(--color-line);
+    box-shadow: var(--elev-2);
+    padding: 6px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .thread-composer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .thread-composer-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
     color: var(--color-ink);
-    font-size: 20px;
-  }
-  .thread-composer .thread-attach-button:hover { background: var(--color-line); }
-  .thread-composer-context {
-    @apply col-span-full flex items-center justify-between gap-3 rounded-[12px] text-[13px];
-    min-height: 34px; padding: 6px 8px 6px 11px; background: var(--color-sheet-2); color: var(--color-ink-2);
-    & span { @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap; }
-    & button { width: 28px; min-height: 28px; border-radius: 9px; background: var(--color-line); color: var(--color-ink); font-size: 18px; border: 0; }
-  }
+    font-size: 15px;
+    padding: 8px 4px;
 
-  @media (max-width: 768px) {
-
-    .message-bubble.is-action-target {
-      z-index: 1201;
+    &::placeholder {
+      color: var(--color-ink-3);
     }
   }
+
+  .thread-composer-action-btn {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--color-ink);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s, transform 0.2s;
+
+    &:hover:not(:disabled) {
+      background-color: var(--color-sheet-2);
+      color: var(--color-ink);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.is-active {
+      color: var(--color-brand);
+    }
+  }
+
+  .thread-composer-context {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    min-height: 34px;
+    padding: 6px 8px 6px 11px;
+    background: var(--color-sheet-2);
+    color: var(--color-ink-2);
+
+    & span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .thread-composer-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-ink-2);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background-color 0.2s;
+
+    &:hover {
+      color: var(--color-ink);
+      background-color: var(--color-sheet-2);
+    }
+  }
+
+  .thread-file-input {
+    display: none !important;
+  }
+
 }
 
 /* =========================================================

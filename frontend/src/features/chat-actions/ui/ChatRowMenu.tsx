@@ -24,9 +24,16 @@ export interface IChatRowMenuProps {
  * умеет и что менялось молча, без единого способа управлять этим из
  * интерфейса.
  */
-export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }: IChatRowMenuProps) {
+export function ChatRowMenu({
+  chat,
+  pinnedCount,
+  x,
+  y,
+  returnFocusRef,
+  onClose,
+}: IChatRowMenuProps) {
   const { t } = useTranslation();
-  const { togglePin, toggleArchive } = useChatActions();
+  const { togglePin, toggleArchive, markRead } = useChatActions();
 
   return (
     <ContextMenu
@@ -37,6 +44,20 @@ export function ChatRowMenu({ chat, pinnedCount, x, y, returnFocusRef, onClose }
       x={x}
       y={y}
     >
+      {/* Пункт показывается только там, где нажимать есть что: чат без
+          непрочитанных — это действие ни о чём. */}
+      {chat.unreadCount > 0 && (
+        <ContextMenu.Item
+          icon={<Icon name="check" />}
+          onClick={() => {
+            markRead(chat);
+            onClose();
+          }}
+        >
+          {t('markRead', 'Прочитано')}
+        </ContextMenu.Item>
+      )}
+
       <ContextMenu.Item
         icon={<Icon name="pin" />}
         onClick={() => {

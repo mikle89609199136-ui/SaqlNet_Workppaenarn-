@@ -1,6 +1,6 @@
 import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,16 @@ import { useTranslation } from 'react-i18next';
  * закрепление перестаёт что-либо значить.
  */
 export const MAX_PINNED_CHATS = 5;
+
+/**
+ * Снять счётчик непрочитанных у одного чата.
+ *
+ * Список и архив — два запроса с одинаковой формой ответа, и чат может
+ * лежать в любом из них, поэтому обнуляется в обоих.
+ */
+function clearUnread(chats: IChatDto[] | undefined, chatId: string): IChatDto[] | undefined {
+  return chats?.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat));
+}
 
 /**
  * Действия над чатом из списка: закрепить, убрать в архив.
@@ -78,9 +88,51 @@ export function useChatActions() {
     [archiveMutation]
   );
 
+  /**
+   * Отметить чат прочитанным.
+   *
+   * Счётчик гасится сразу, не дожидаясь сервера: иначе бейдж мигает прежним
+   * числом до конца запроса, а при медленной связи это заметно. Значение
+   * запоминается и возвращается, если сервер отказал — без этого счётчик
+   * остался бы нулём при непрочитанных сообщениях.
+   *
+   * Перезапросы списка отменяются: начатый раньше, он вернул бы старое
+   * значение поверх нового.
+   */
+  const readMutation = useMutation({
+    mutationFn: (chatId: string) => services.chatService.markChatRead(chatId),
+    onMutate: async (chatId: string) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: chatKeys.list() }),
+        queryClient.cancelQueries({ queryKey: chatKeys.archived() }),
+      ]);
+
+      const previous = {
+        list: queryClient.getQueryData<IChatDto[]>(chatKeys.list()),
+        archived: queryClient.getQueryData<IChatDto[]>(chatKeys.archived()),
+      };
+
+      queryClient.setQueryData<IChatDto[]>(chatKeys.list(), (chats) => clearUnread(chats, chatId));
+      queryClient.setQueryData<IChatDto[]>(chatKeys.archived(), (chats) =>
+        clearUnread(chats, chatId)
+      );
+
+      return previous;
+    },
+    onError: (error: Error, _chatId, previous) => {
+      queryClient.setQueryData(chatKeys.list(), previous?.list);
+      queryClient.setQueryData(chatKeys.archived(), previous?.archived);
+      reportFailure(error);
+    },
+    onSuccess: refreshBothLists,
+  });
+
+  const markRead = useCallback((chat: IChatDto) => readMutation.mutate(chat.id), [readMutation]);
+
   return {
     togglePin,
     toggleArchive,
-    isPending: pinMutation.isPending || archiveMutation.isPending,
+    markRead,
+    isPending: pinMutation.isPending || archiveMutation.isPending || readMutation.isPending,
   };
 }

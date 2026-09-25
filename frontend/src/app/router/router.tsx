@@ -1,20 +1,14 @@
 import { chatQuery } from '@/entities/chat';
 import { messagesQuery } from '@/entities/message';
-import { queryClient } from '@/queries/queryClient';
+import { queryClient } from '@/shared/api';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
-import type { ComponentType } from 'react';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from './AuthGuard';
 import { AppLayout, RootLayout } from '@/app/layouts';
 import { RouteLoadingFallback } from '@/shared/ui';
-import {
-  DEFAULT_SETTINGS_SECTION,
-  REACT_ROUTES,
-  ROUTES,
-  SETTINGS_SECTIONS,
-  type TSettingsSection,
-} from '@/shared/config/routes';
+import { DEFAULT_SETTINGS_SECTION, REACT_ROUTES, ROUTES } from '@/shared/config/routes';
 import { clearAuthSession } from '@/features/auth';
+import { settingsSectionRoutes } from '@/pages/settings/settingsSectionRoutes';
 
 async function requireSession({ request }: { request: Request }) {
   const token = useProfileStore.getState().token;
@@ -102,51 +96,6 @@ const chatLoader = async ({ params }: { params: Params }) => {
  * хуже тихого перенаправления. Настройки открывают из меню, а не по внешним
  * ссылкам, поэтому терять тут нечего.
  */
-/**
- * Разделы настроек — по маршруту на каждый.
- *
- * Список один и тот же и для меню, и для маршрутов: раздела, которого нет
- * в `SETTINGS_SECTIONS`, не существует и для адреса. Тип `Record` не даст
- * добавить раздел в список и забыть про его экран.
- *
- * Импорты записаны по одному, а не собраны выражением: сборщику нужно
- * видеть каждый путь, иначе разделы не разъедутся по отдельным частям.
- */
-const SECTION_COMPONENTS: Record<TSettingsSection, () => Promise<{ Component: ComponentType }>> = {
-  account: () =>
-    import('@/pages/SettingsPage/sections/AccountSection.js').then((m) => ({
-      Component: m.AccountSection,
-    })),
-  notifications: () =>
-    import('@/pages/SettingsPage/sections/NotificationsSection.js').then((m) => ({
-      Component: m.NotificationsSection,
-    })),
-  appearance: () =>
-    import('@/pages/SettingsPage/sections/AppearanceSection.js').then((m) => ({
-      Component: m.AppearanceSection,
-    })),
-  privacy: () =>
-    import('@/pages/SettingsPage/sections/PrivacySection.js').then((m) => ({
-      Component: m.PrivacySection,
-    })),
-  language: () =>
-    import('@/pages/SettingsPage/sections/LanguageSection.js').then((m) => ({
-      Component: m.LanguageSection,
-    })),
-  about: () =>
-    import('@/pages/SettingsPage/sections/AboutSection.js').then((m) => ({
-      Component: m.AboutSection,
-    })),
-};
-
-/* Подстраницы есть пока только у аккаунта, и разбирает их он сам. */
-const settingsSectionRoutes = SETTINGS_SECTIONS.flatMap((section) => {
-  const lazy = SECTION_COMPONENTS[section];
-  const route = { path: section, lazy };
-
-  return section === 'account' ? [route, { path: `${section}/:subsection`, lazy }] : [route];
-});
-
 export const router = createBrowserRouter([
   {
     Component: RootLayout,
@@ -159,7 +108,7 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.LOGIN,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('@/pages/LoginPage/LoginPage.js').then((m) => ({
+          import('@/pages/login').then((m) => ({
             Component: m.LoginPage,
           })),
       },
@@ -167,8 +116,25 @@ export const router = createBrowserRouter([
         path: REACT_ROUTES.REGISTER,
         loader: redirectIfAuthed,
         lazy: () =>
-          import('@/pages/RegisterPage/RegisterPage.js').then((m) => ({
+          import('@/pages/register').then((m) => ({
             Component: m.RegisterPage,
+          })),
+      },
+      /* Вне AuthGuard: страница сама отправит на вход, сохранив ссылку из
+         кода, — через загрузчик сессии фрагмент адреса бы потерялся. */
+      {
+        path: REACT_ROUTES.LINK,
+        lazy: () =>
+          import('@/pages/link').then((m) => ({
+            Component: m.LinkPage,
+          })),
+      },
+      /* Тоже вне AuthGuard: сюда приходит устройство без сессии. */
+      {
+        path: REACT_ROUTES.QR_LOGIN,
+        lazy: () =>
+          import('@/pages/qr-login').then((m) => ({
+            Component: m.QrClaimPage,
           })),
       },
       {
@@ -184,7 +150,7 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHATS,
                 lazy: () =>
-                  import('@/pages/ChatsPage/ChatsPage.js').then((m) => ({
+                  import('@/pages/chats').then((m) => ({
                     Component: m.ChatsPage,
                   })),
                 children: [
@@ -201,7 +167,7 @@ export const router = createBrowserRouter([
                     shouldRevalidate: ({ currentParams, nextParams }) =>
                       currentParams.chatId !== nextParams.chatId,
                     lazy: () =>
-                      import('@/pages/ChatThreadPage/ChatThreadPage.js').then((m) => ({
+                      import('@/pages/chat-thread').then((m) => ({
                         Component: m.ChatThreadPage,
                       })),
                   },
@@ -213,28 +179,28 @@ export const router = createBrowserRouter([
               {
                 path: REACT_ROUTES.CHANNELS,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/channels').then((m) => ({
                     Component: m.ChannelsPage,
                   })),
               },
               {
                 path: REACT_ROUTES.COMMUNITIES,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/communities').then((m) => ({
                     Component: m.CommunitiesPage,
                   })),
               },
               {
                 path: REACT_ROUTES.MEETINGS,
                 lazy: () =>
-                  import('@/pages/SectionStubPage/SectionStubPage.js').then((m) => ({
+                  import('@/pages/meetings').then((m) => ({
                     Component: m.MeetingsPage,
                   })),
               },
               {
                 path: REACT_ROUTES.SETTINGS,
                 lazy: () =>
-                  import('@/pages/SettingsPage/SettingsPage.js').then((m) => ({
+                  import('@/pages/settings').then((m) => ({
                     Component: m.SettingsPage,
                   })),
                 children: [

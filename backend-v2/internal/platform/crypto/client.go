@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 )
+
+var ErrTokenGenerationProtocol = errors.New("crypto service does not support token generations")
 
 type Client struct {
 	baseURL string
@@ -15,10 +18,11 @@ type Client struct {
 }
 
 type TokenClaims struct {
-	Subject  string `json:"subject"`
-	Username string `json:"username"`
-	IssuedAt int64  `json:"issued_at"`
-	Expires  int64  `json:"expires_at"`
+	Subject         string `json:"subject"`
+	Username        string `json:"username"`
+	IssuedAt        int64  `json:"issued_at"`
+	Expires         int64  `json:"expires_at"`
+	TokenGeneration int64  `json:"token_generation"`
 }
 
 func NewClient(baseURL string) *Client {
@@ -26,6 +30,37 @@ func NewClient(baseURL string) *Client {
 		baseURL: baseURL,
 		http:    &http.Client{Timeout: 3 * time.Second},
 	}
+}
+
+// CheckTokenGenerationSupport is used by service readiness probes to prevent
+// a mixed-version rollout from sending traffic to Go replicas backed by an old
+// crypto service that silently drops token generations.
+func (c *Client) CheckTokenGenerationSupport(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health/ready", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return fmt.Errorf("crypto service returned %s", res.Status)
+	}
+
+	var response struct {
+		Capabilities struct {
+			TokenGeneration *bool `json:"token_generation"`
+		} `json:"capabilities"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return err
+	}
+	if response.Capabilities.TokenGeneration == nil || !*response.Capabilities.TokenGeneration {
+		return ErrTokenGenerationProtocol
+	}
+	return nil
 }
 
 func (c *Client) HashPassword(ctx context.Context, password string) (string, error) {
@@ -44,18 +79,46 @@ func (c *Client) VerifyPassword(ctx context.Context, password, hash string) (boo
 	return response.Valid, err
 }
 
-func (c *Client) IssueToken(ctx context.Context, subject, username string) (string, error) {
+func (c *Client) IssueToken(ctx context.Context, subject, username string, tokenGeneration int64) (string, error) {
 	var response struct {
-		Token string `json:"token"`
+		Token           string `json:"token"`
+		TokenGeneration *int64 `json:"token_generation"`
 	}
-	err := c.post(ctx, "/internal/v1/token/issue", map[string]string{"subject": subject, "username": username}, &response)
-	return response.Token, err
+	err := c.post(ctx, "/internal/v1/token/issue", map[string]any{
+		"subject":          subject,
+		"username":         username,
+		"token_generation": tokenGeneration,
+	}, &response)
+	if err != nil {
+		return "", err
+	}
+	if response.TokenGeneration == nil || *response.TokenGeneration != tokenGeneration {
+		return "", fmt.Errorf("%w: issue response generation mismatch", ErrTokenGenerationProtocol)
+	}
+	return response.Token, nil
 }
 
 func (c *Client) VerifyToken(ctx context.Context, token string) (TokenClaims, error) {
-	var response TokenClaims
-	err := c.post(ctx, "/internal/v1/token/verify", map[string]string{"token": token}, &response)
-	return response, err
+	var response struct {
+		Subject         string `json:"subject"`
+		Username        string `json:"username"`
+		IssuedAt        int64  `json:"issued_at"`
+		Expires         int64  `json:"expires_at"`
+		TokenGeneration *int64 `json:"token_generation"`
+	}
+	if err := c.post(ctx, "/internal/v1/token/verify", map[string]string{"token": token}, &response); err != nil {
+		return TokenClaims{}, err
+	}
+	if response.TokenGeneration == nil {
+		return TokenClaims{}, fmt.Errorf("%w: verify response is missing token_generation", ErrTokenGenerationProtocol)
+	}
+	return TokenClaims{
+		Subject:         response.Subject,
+		Username:        response.Username,
+		IssuedAt:        response.IssuedAt,
+		Expires:         response.Expires,
+		TokenGeneration: *response.TokenGeneration,
+	}, nil
 }
 
 func (c *Client) Encrypt(ctx context.Context, data, associatedData string) (string, error) {

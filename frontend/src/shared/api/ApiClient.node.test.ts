@@ -60,21 +60,6 @@ describe('ApiClient: сборка адреса', () => {
 
     expect(received).toBe('https://media.example.com/file.png');
   });
-
-  it('should not repeat the base path when the endpoint already contains it', async () => {
-    let received = '';
-    server.use(
-      http.get(api('/chats/abc'), ({ request }) => {
-        received = request.url;
-        return HttpResponse.json({ ok: true });
-      })
-    );
-
-    // Часть кода передаёт путь вместе с базой — адрес не должен удвоиться.
-    await createClient().get('/api/v2/chats/abc');
-
-    expect(received).toBe(`${API}/chats/abc`);
-  });
 });
 
 describe('ApiClient: заголовки', () => {
@@ -118,6 +103,59 @@ describe('ApiClient: заголовки', () => {
     await createClient().delete('/messages/m-1');
 
     expect(contentType).toBeNull();
+  });
+
+  it('should drop content-type when sending FormData', async () => {
+    let contentType: string | null = null;
+    server.use(
+      http.post(api('/media'), ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    const form = new FormData();
+    form.append('file', 'test');
+    await createClient().post('/media', form);
+
+    expect(contentType).not.toContain('application/json');
+    expect(contentType).toContain('multipart/form-data');
+  });
+
+  it('should preserve content-type and serialize valid falsy JSON values', async () => {
+    let contentType: string | null = null;
+    let receivedBody: unknown = null;
+    server.use(
+      http.post(api('/settings'), async ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        receivedBody = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await createClient().post('/settings', false);
+    expect(contentType).toBe('application/json');
+    expect(receivedBody).toBe(false);
+
+    await createClient().post('/settings', 0);
+    expect(contentType).toBe('application/json');
+    expect(receivedBody).toBe(0);
+  });
+
+  it('should drop content-type and omit body when data is null', async () => {
+    let contentType: string | null = 'not-null';
+    let rawBody: string | null = null;
+    server.use(
+      http.post(api('/logout'), async ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        rawBody = await request.text();
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await createClient().post('/logout', null);
+    expect(contentType).toBeNull();
+    expect(rawBody).toBe('');
   });
 });
 

@@ -64,8 +64,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a QR login token */
+        /**
+         * Start a QR login
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself.
+         */
         post: operations["createQrToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-request/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show which device asks to log in
+         * @description For the signed-in device before it confirms. 404 once the code expired or was confirmed. Not cacheable.
+         */
+        get: operations["getQrRequest"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -79,7 +102,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get QR login status */
+        /**
+         * Get QR login status
+         * @description Polled by the new device. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         */
         get: operations["getQrStatus"];
         put?: never;
         post?: never;
@@ -98,8 +124,115 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm a QR login */
+        /**
+         * Confirm a QR login
+         * @description A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         */
         post: operations["confirmQrLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a login code on a signed-in device
+         * @description The other direction of QR login: the signed-in device shows the code and the new device scans it. The QR code also carries a one-time ECDH public key of the signed-in device and a MAC key; both stay after "#" and never reach the server. Same lifetime rules as qr-token: 60 seconds, replaced every 30 by passing the previous token; a claimed code is not replaced (409 qr_scanned).
+         */
+        post: operations["createQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a new device claimed the code
+         * @description For the owner of the code. A claim carries the new device's public key and the HMAC over it, which the owner checks with the MAC key from the QR code before confirming. Somebody else's code reports expired. Not cacheable.
+         */
+        get: operations["getQrOffer"];
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the code
+         * @description The page showing it went away, or the person declined the claim.
+         */
+        delete: operations["withdrawQrOffer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a login code from the new device
+         * @description The first claim captures the code for 60 seconds; later claims get 404. 404 qr_rotated means the code was replaced by a newer one. The answer carries the secret for polling the result. Not cacheable.
+         */
+        post: operations["claimQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the result of a claimed code
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         */
+        get: operations["getQrOfferStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the claimed login
+         * @description Only the owner of the code, only after a claim (409 not_claimed) and only once (409 already_confirmed). payload is the master key encrypted to the claimed public key.
+         */
+        post: operations["confirmQrOffer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -132,7 +265,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke all user tokens */
+        /**
+         * Revoke all user tokens
+         * @description May return 503 while generation revocation is disabled during a compatibility rollout.
+         */
         post: operations["logoutAll"];
         delete?: never;
         options?: never;
@@ -253,6 +389,26 @@ export interface paths {
         get: operations["getCurrentUser"];
         /** Update current profile */
         put: operations["updateCurrentUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the current user's username
+         * @description Normalizes the username to lowercase and changes it atomically. A successful change invalidates old username deep links; user IDs and existing chats remain unchanged. The operation is limited to once every 24 hours.
+         */
+        put: operations["renameCurrentUser"];
         post?: never;
         delete?: never;
         options?: never;
@@ -865,6 +1021,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/encryption/signal/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Signal identity, signed pre-key and one-time pre-keys */
+        post: operations["uploadSignalKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/signal/bundle/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get and consume a Signal pre-key bundle
+         * @description When available, one one-time pre-key is atomically consumed by this request.
+         */
+        get: operations["getSignalBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/signal/prekeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replenish Signal one-time pre-keys */
+        post: operations["replenishSignalPreKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the key backup
+         * @description Opaque end-to-end key backup of the requester. The server never sees the master key, the cloud password or any key inside. Not cacheable.
+         */
+        get: operations["getKeyBackup"];
+        /**
+         * Create or replace the key backup
+         * @description expectedVersion 0 creates the backup; any other value replaces it only if it still has that version, otherwise 409 version_conflict.
+         */
+        put: operations["putKeyBackup"];
+        post?: never;
+        /** Delete the key backup and every chat key in it */
+        delete: operations["deleteKeyBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/backup/chat-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backed-up chat keys
+         * @description Pages through the requester's chat keys in (chatId, epoch) order. An empty next means the list is complete.
+         */
+        get: operations["listBackupChatKeys"];
+        put?: never;
+        /**
+         * Add chat keys to the backup
+         * @description An epoch already in the backup is left unchanged; keys of chats that no longer exist are skipped.
+         */
+        post: operations["saveBackupChatKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/support/requests": {
         parameters: {
             query?: never;
@@ -977,7 +1236,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a group chat */
+        /**
+         * Create a group chat
+         * @description Creates a new group chat owned by the authenticated user.
+         *
+         *     Text fields (title, description, avatarUrl) are trimmed of leading
+         *     and trailing whitespace before validation and storage. The 128-character
+         *     limit for title applies to the trimmed value; an all-whitespace title
+         *     is rejected.
+         */
         post: operations["createGroupChat"];
         delete?: never;
         options?: never;
@@ -1002,7 +1269,18 @@ export interface paths {
         delete: operations["deleteChat"];
         options?: never;
         head?: never;
-        /** Update a group chat */
+        /**
+         * Update a group chat
+         * @description Updates the title, description, and/or avatar URL of a group chat.
+         *     All fields are optional, but at least one must be present.
+         *
+         *     Text fields are trimmed of leading and trailing whitespace before
+         *     validation and storage. The 128-character limit for title applies
+         *     to the trimmed value; an all-whitespace title is rejected.
+         *
+         *     Only the chat owner or an admin may perform this operation.
+         *     Direct (non-group) chats cannot be updated through this endpoint.
+         */
         patch: operations["updateGroupChat"];
         trace?: never;
     };
@@ -1033,7 +1311,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List online members */
+        /** List online members of a group chat */
         get: operations["listOnlineChatMembers"];
         put?: never;
         post?: never;
@@ -1279,7 +1557,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark messages read */
+        /**
+         * Mark a chat as read
+         * @description The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+         */
         post: operations["markMessagesRead"];
         delete?: never;
         options?: never;
@@ -1326,7 +1607,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
@@ -1392,9 +1673,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add message to favorites */
+        /**
+         * Toggle favorite state
+         * @description The current backend toggles the state for both POST and DELETE and returns the resulting state.
+         */
         post: operations["favoriteMessage"];
-        /** Remove message from favorites */
+        /**
+         * Toggle favorite state
+         * @description The current backend toggles the state for both POST and DELETE and returns the resulting state.
+         */
         delete: operations["unfavoriteMessage"];
         options?: never;
         head?: never;
@@ -1533,7 +1820,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List call rooms */
+        /** List active in-memory call rooms */
         get: operations["listCallRooms"];
         put?: never;
         /** Create a call room */
@@ -1551,7 +1838,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a call room */
+        /** Get an active call room */
         get: operations["getCallRoom"];
         put?: never;
         post?: never;
@@ -1926,7 +2213,10 @@ export interface components {
             code: string;
             /** @example invalid input */
             message: string;
-            requestId: string;
+            /** @description Present when the request passed through request ID middleware. */
+            requestId?: string;
+            /** @description Optional structured error details. */
+            details?: unknown;
         };
         User: {
             /** Format: uuid */
@@ -1945,19 +2235,32 @@ export interface components {
             chatId: string;
             /** Format: uuid */
             senderId: string;
+            senderName?: string;
+            senderFirstName: string;
+            senderAvatar?: string;
             content: string;
-            type: string;
+            /** @enum {string} */
+            type: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file" | "call";
             /** Format: uuid */
             replyTo?: string | null;
+            /** Format: uuid */
+            replyToMessageId?: string | null;
+            replySenderName?: string;
+            replyToSenderName?: string;
+            reactions: components["schemas"]["Reaction"][];
             metadata?: {
                 [key: string]: unknown;
             };
-            isForwarded?: boolean;
-            isPinned?: boolean;
-            isEdited?: boolean;
+            isForwarded: boolean;
+            forwardedSenderName?: string;
+            isPinned: boolean;
+            isEdited: boolean;
             createdAt: string;
-            updatedAt?: string;
+            updatedAt: string;
+            deletedAt?: string | null;
         };
+        /** @example john_doe */
+        Username: string;
         /**
          * Format: password
          * @description At least 10 and at most 64 characters, counted in runes. Must contain a digit and one of !@#$%^&*()_+-=[]{}|;:'",.<>/?`~ Whitespace is not allowed anywhere in the value.
@@ -1965,7 +2268,7 @@ export interface components {
          */
         Password: string;
         RegisterRequest: {
-            username: string;
+            username: components["schemas"]["Username"];
             password: components["schemas"]["Password"];
             firstName: string;
             lastName?: string;
@@ -1982,19 +2285,262 @@ export interface components {
             /** Format: password */
             twoFAPassword?: string;
         };
+        QrTokenRequest: {
+            /** @description One-time ECDH P-256 public key (SPKI) */
+            publicKey: string;
+            deviceName?: string;
+        };
+        QrTokenResponse: {
+            qrToken: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            expiresAt: number;
+        };
+        QrLoginRequest: {
+            publicKey: string;
+            deviceName: string;
+            userAgent: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            expiresAt: number;
+        };
+        /** @description The key backup master key encrypted to the new device's publicKey. Opaque to the server. */
+        QrKeyPayload: {
+            senderPublicKey: string;
+            iv: string;
+            ct: string;
+        };
+        QrStatusResponse: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            authToken?: string;
+            payload?: components["schemas"]["QrKeyPayload"];
+        };
+        QrConfirmRequest: {
+            qrToken: string;
+            payload: components["schemas"]["QrKeyPayload"];
+        };
         UpdateProfileRequest: {
             firstName?: string;
             lastName?: string;
             bio?: string;
             avatarUrl?: string;
         };
+        RenameUsernameRequest: {
+            username: components["schemas"]["Username"];
+        };
+        ProfileResponse: {
+            user: components["schemas"]["User"];
+        };
         Object: {
             [key: string]: unknown;
         };
+        PublicEncryptionKey: {
+            /** Format: byte */
+            publicKey: string;
+            keyId: string;
+            pqPublicKey?: string | null;
+        };
+        OkResponse: {
+            /** @enum {boolean} */
+            ok: true;
+        };
+        ChatEncryptedKey: {
+            /** Format: uuid */
+            userId: string;
+            encryptedKey: string;
+            senderKeyId?: string | null;
+            pqCiphertext?: string | null;
+            keyEpoch: number;
+        };
+        ChatKeysResponse: {
+            keys: components["schemas"]["ChatEncryptedKey"][];
+        };
+        SaveChatKeysRequest: {
+            encryptedKeys: components["schemas"]["ChatEncryptedKey"][];
+            keyEpoch: number;
+        };
+        KeyEpochResponse: {
+            /** @enum {boolean} */
+            ok: true;
+            keyEpoch: number;
+        };
+        SignalIdentityKey: {
+            identityKey: string;
+            registrationId: number;
+        };
+        SignalSignedPreKey: {
+            keyId: number;
+            publicKey: string;
+            signature: string;
+        };
+        SignalOneTimePreKey: {
+            keyId: number;
+            publicKey: string;
+        };
+        SignalKeysRequest: {
+            identityKey: components["schemas"]["SignalIdentityKey"];
+            signedPreKey: components["schemas"]["SignalSignedPreKey"];
+            oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
+        };
+        SignalPreKeyBundle: {
+            identityKey: string;
+            registrationId: number;
+            signedPreKey: components["schemas"]["SignalSignedPreKey"];
+            oneTimePreKey?: components["schemas"]["SignalOneTimePreKey"] | null;
+        };
+        SignalPreKeysRequest: {
+            oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
+        };
+        /** @description Ways to open the master key (cloud password, passkey). Opaque to the server. */
+        KeyBackupSlots: {
+            [key: string]: unknown;
+        }[];
+        KeyBackup: {
+            /** Format: int64 */
+            version: number;
+            formatVersion: number;
+            /**
+             * Format: byte
+             * @description Encrypted identity keys.
+             */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+            updatedAt: string;
+        };
+        PutKeyBackupRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            formatVersion: number;
+            /** Format: byte */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+        };
+        KeyBackupVersionResponse: {
+            /** Format: int64 */
+            version: number;
+        };
+        BackupChatKey: {
+            /** Format: uuid */
+            chatId: string;
+            epoch: number;
+            /** Format: byte */
+            encryptedKey: string;
+        };
+        BackupChatKeysPage: {
+            keys: components["schemas"]["BackupChatKey"][];
+            /** @description Cursor for the next page; empty when there is none. */
+            next: string;
+        };
+        SaveBackupChatKeysRequest: {
+            keys: components["schemas"]["BackupChatKey"][];
+        };
+        SaveBackupChatKeysResponse: {
+            stored: number;
+        };
+        /** @description Request failed */
+        responses_Error: unknown;
+        CreateGroupRequest: {
+            /**
+             * @description Group title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value; an all-whitespace title is rejected.
+             * @example Team standup
+             */
+            title: string;
+            /**
+             * @description Optional group description. Trimmed of leading and trailing
+             *     whitespace before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+            /**
+             * @description User IDs to add as members. The owner is added automatically
+             *     and does not need to be listed. Unknown or disabled users are
+             *     silently skipped.
+             * @example [
+             *       "550e8400-e29b-41d4-a716-446655440002"
+             *     ]
+             */
+            members: string[];
+        };
+        UpdateGroupRequest: {
+            /**
+             * @description New chat title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value. An all-whitespace value is rejected.
+             * @example Team standup
+             */
+            title?: string;
+            /**
+             * @description New chat description. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+        };
+        Chat: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "private" | "group" | "channel";
+            title?: string;
+            description?: string;
+            avatarUrl?: string;
+            /** Format: uuid */
+            ownerId?: string;
+            role?: string;
+            isPinned?: boolean;
+            isArchived?: boolean;
+            memberCount?: number;
+            createdAt?: string;
+            updatedAt?: string;
+        };
+        MarkMessagesReadRequest: {
+            /** Format: uuid */
+            chatId: string;
+            /** @description Accepted for client compatibility; the current backend marks the whole chat as read. */
+            messageIds?: string[];
+        };
+        Success: {
+            /** @enum {boolean} */
+            success: true;
+        };
+        Reaction: {
+            emoji: string;
+            count: number;
+            myReaction: boolean;
+        };
+        MessageListResponse: {
+            messages: components["schemas"]["Message"][];
+        };
+        EditMessageRequest: {
+            content: string;
+        };
         SendMessageRequest: {
             content?: string;
-            /** @default text */
-            type: string;
+            /**
+             * @description Defaults to text when omitted.
+             * @enum {string}
+             */
+            type?: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file";
             /** Format: uuid */
             replyTo?: string | null;
             mediaUrl?: string;
@@ -2007,6 +2553,90 @@ export interface components {
                 [key: string]: unknown;
             };
             isEncrypted?: boolean;
+            /**
+             * Format: uuid
+             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server.
+             */
+            forwardedFrom?: string | null;
+        };
+        MessageResponse: {
+            message: components["schemas"]["Message"];
+        };
+        DeleteMessageResponse: {
+            /** @enum {boolean} */
+            success: true;
+            lastMessage: components["schemas"]["Message"] | null;
+        };
+        ReactionListResponse: {
+            reactions: components["schemas"]["Reaction"][];
+        };
+        ReactionToggleResponse: {
+            /** @enum {string} */
+            action: "added" | "removed" | "replaced";
+            /** @description Empty when the reaction was removed. */
+            currentEmoji: string;
+            reactions: components["schemas"]["Reaction"][];
+        };
+        FavoriteStateResponse: {
+            favorited: boolean;
+        };
+        IceServer: {
+            urls: string | string[];
+            username?: string;
+            credential?: string;
+        };
+        IceConfiguration: {
+            servers: components["schemas"]["IceServer"][];
+            hasTurn: boolean;
+            meteredConfigured: boolean;
+            meteredTest: unknown;
+        };
+        CallParticipant: {
+            /** Format: uuid */
+            userId: string;
+            displayName?: string;
+            avatarUrl?: string;
+        };
+        CallRoom: {
+            id: string;
+            /** @enum {string} */
+            type: "p2p" | "group";
+            /** @enum {string} */
+            callKind: "audio" | "video";
+            /** Format: uuid */
+            chatId: string;
+            title: string;
+            /** Format: uuid */
+            hostId: string;
+            participants?: components["schemas"]["CallParticipant"][];
+        };
+        CallRoomListResponse: {
+            /** @enum {boolean} */
+            success: true;
+            rooms: components["schemas"]["CallRoom"][];
+        };
+        CallRoomCreateRequest: {
+            /**
+             * @description Defaults to group when omitted.
+             * @enum {string}
+             */
+            type?: "p2p" | "group";
+            /** Format: uuid */
+            chatId: string;
+            title?: string;
+            /**
+             * @description Defaults to video when omitted.
+             * @enum {string}
+             */
+            callKind?: "audio" | "video";
+        };
+        CallRoomResponse: {
+            /** @enum {boolean} */
+            success: true;
+            room: components["schemas"]["CallRoom"];
+            iceServers: components["schemas"]["IceServer"][];
+            /** @enum {integer} */
+            maxParticipants: 5;
         };
         UploadResponse: {
             success: boolean;
@@ -2044,12 +2674,9 @@ export interface components {
                  *     }
                  */
                 "application/json": {
-                    error: {
+                    error: components["schemas"]["Error"] & {
                         /** @enum {string} */
-                        code: "file_too_large";
-                        /** @example file exceeds 100 MB limit */
-                        message: string;
-                        requestId?: string;
+                        code?: "file_too_large";
                     };
                 };
             };
@@ -2151,18 +2778,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrTokenRequest"];
+            };
+        };
         responses: {
-            /** @description QR token and QR image created */
+            /** @description QR login started */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["QrTokenResponse"];
+                };
             };
+            400: components["responses"]["Error"];
         };
     };
-    getQrStatus: {
+    getQrRequest: {
         parameters: {
             query?: never;
             header?: never;
@@ -2173,13 +2807,65 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending */
+            /** @description Pending QR login */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["QrLoginRequest"];
+                };
             };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getQrRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, confirmed, or expired QR login status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    getQrStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-QR-Secret": string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, scanned, confirmed, or expired QR login status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
+            };
+            403: components["responses"]["Error"];
         };
     };
     confirmQrLogin: {
@@ -2191,9 +2877,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    qrToken: string;
-                };
+                "application/json": components["schemas"]["QrConfirmRequest"];
             };
         };
         responses: {
@@ -2205,6 +2889,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     logout: {
@@ -2241,6 +2926,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -2426,6 +3113,43 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
+    renameCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameUsernameRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated canonical profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            /** @description Rename cooldown is active; Retry-After contains seconds remaining */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     updateAvatar: {
         parameters: {
             query?: never;
@@ -2454,7 +3178,7 @@ export interface operations {
     checkUsername: {
         parameters: {
             query: {
-                username: string;
+                username: components["schemas"]["Username"];
             };
             header?: never;
             path?: never;
@@ -2467,9 +3191,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        available: boolean;
+                    };
+                };
             };
             400: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     searchUsers: {
@@ -2551,6 +3280,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "user_not_found",
+                     *       "message": "user not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3207,11 +3951,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    publicKey: string;
-                    keyId: string;
-                    pqPublicKey?: string;
-                };
+                "application/json": components["schemas"]["PublicEncryptionKey"];
             };
         };
         responses: {
@@ -3220,7 +3960,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
             };
             400: components["responses"]["Error"];
         };
@@ -3241,7 +3983,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublicEncryptionKey"];
+                };
             };
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
@@ -3258,13 +4002,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Chat keys */
+            /** @description Encrypted keys for chat members */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChatKeysResponse"];
+                };
             };
+            403: components["responses"]["Error"];
         };
     };
     saveChatKeys: {
@@ -3278,7 +4025,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["SaveChatKeysRequest"];
             };
         };
         responses: {
@@ -3287,8 +4034,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
     rotateChatKey: {
@@ -3300,9 +4051,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["SaveChatKeysRequest"];
             };
         };
         responses: {
@@ -3311,8 +4062,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["KeyEpochResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getMyChatKey: {
@@ -3326,14 +4082,210 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description User chat key */
+            /** @description Current user's encrypted chat key */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatEncryptedKey"];
+                };
+            };
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    uploadSignalKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description Signal keys saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getSignalBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signal pre-key bundle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalPreKeyBundle"];
+                };
+            };
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    replenishSignalPreKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalPreKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description One-time pre-keys saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    getKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key backup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackup"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    putKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutKeyBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the new version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackupVersionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            404: components["responses"]["Error"];
+        };
+    };
+    listBackupChatKeys: {
+        parameters: {
+            query?: {
+                chatId?: string;
+                /** @description Cursor from the previous page: chatId:epoch */
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of chat keys */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupChatKeysPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    saveBackupChatKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveBackupChatKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description How many keys were new */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveBackupChatKeysResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
         };
     };
     listSupportRequests: {
@@ -3451,6 +4403,7 @@ export interface operations {
     listChats: {
         parameters: {
             query?: {
+                /** @description Filter chats by archived status. Accepts exactly "true" or "false" (lowercase). Absence equals "false". Any other value, empty value, or duplicated parameter results in 400 with code "validation_failed". */
                 archived?: boolean;
             };
             header?: never;
@@ -3465,6 +4418,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation_failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
             };
         };
     };
@@ -3507,14 +4487,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Group creation payload. */
         requestBody: {
             content: {
-                "application/json": {
-                    title: string;
-                    description?: string;
-                    avatarUrl?: string;
-                    members: string[];
-                };
+                "application/json": components["schemas"]["CreateGroupRequest"];
             };
         };
         responses: {
@@ -3523,7 +4499,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        chatId: string;
+                        title: string;
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3577,13 +4577,10 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description Fields to update. At least one field must be present. */
         requestBody: {
             content: {
-                "application/json": {
-                    title?: string;
-                    description?: string;
-                    avatarUrl?: string;
-                };
+                "application/json": components["schemas"]["UpdateGroupRequest"];
             };
         };
         responses: {
@@ -3592,7 +4589,47 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        chat: components["schemas"]["Chat"];
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed, invalid_chat_type) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3654,13 +4691,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Online user IDs */
+            /** @description Online member UUIDs */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        members: string[];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     listChatBans: {
@@ -4049,21 +5093,21 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uuid */
-                    chatId: string;
-                    messageIds?: string[];
-                };
+                "application/json": components["schemas"]["MarkMessagesReadRequest"];
             };
         };
         responses: {
-            /** @description Marked read */
+            /** @description Chat marked as read */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
     searchMessages: {
@@ -4078,13 +5122,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Matching messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteMessages: {
@@ -4099,13 +5147,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Favorite messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     listMessages: {
@@ -4116,20 +5167,24 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Messages */
+            /** @description Chat messages */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     editMessage: {
@@ -4137,16 +5192,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": {
-                    content: string;
-                };
+                "application/json": components["schemas"]["EditMessageRequest"];
             };
         };
         responses: {
@@ -4155,8 +5208,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     sendMessage: {
@@ -4164,7 +5222,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
@@ -4180,8 +5238,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     deleteMessage: {
@@ -4189,25 +5253,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Chat ID for GET/POST; message ID for PUT/DELETE */
+                /** @description Chat ID for GET/POST; message ID for PUT/DELETE. */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Message deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        success: boolean;
-                        lastMessage: components["schemas"]["Message"] | null;
-                    };
+                    "application/json": components["schemas"]["DeleteMessageResponse"];
                 };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     forwardMessage: {
@@ -4233,8 +5298,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listMessageReactions: {
@@ -4248,13 +5319,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Reactions */
+            /** @description Aggregated reactions */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReactionListResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     toggleMessageReaction: {
@@ -4274,13 +5351,19 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Reaction state */
+            /** @description Updated reaction state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     favoriteMessage: {
@@ -4294,13 +5377,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorite state */
+            /** @description Resulting favorite state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     unfavoriteMessage: {
@@ -4314,13 +5400,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorite state */
+            /** @description Resulting favorite state */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateResponse"];
+                };
             };
+            500: components["responses"]["Error"];
         };
     };
     uploadMlsKeyPackages: {
@@ -4515,7 +5604,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["IceConfiguration"];
+                };
             };
         };
     };
@@ -4528,12 +5619,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Call rooms */
+            /** @description Active call rooms */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomListResponse"];
+                };
             };
         };
     };
@@ -4546,17 +5639,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    type?: string;
-                    /** Format: uuid */
-                    chatId: string;
-                    title?: string;
-                    /**
-                     * @default video
-                     * @enum {string}
-                     */
-                    callKind?: "audio" | "video";
-                };
+                "application/json": components["schemas"]["CallRoomCreateRequest"];
             };
         };
         responses: {
@@ -4565,9 +5648,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomResponse"];
+                };
             };
             403: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     getCallRoom: {
@@ -4581,12 +5667,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Call room */
+            /** @description Call room and ICE configuration */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CallRoomResponse"];
+                };
             };
             404: components["responses"]["Error"];
         };

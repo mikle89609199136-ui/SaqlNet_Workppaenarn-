@@ -1,5 +1,7 @@
 import { Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
+import { chatRowStyles } from '@/entities/chat';
+import { cn } from '@/shared/lib';
 import type { IChatDto } from '@/types';
 import { useTranslation } from 'react-i18next';
 
@@ -29,17 +31,17 @@ export function ArchiveEntry({ chats, onOpen }: Props) {
     .join(', ');
 
   return (
-    <button className="chat-row w-full text-left" onClick={onOpen} type="button">
+    <button className={cn(chatRowStyles, 'w-full text-left')} onClick={onOpen} type="button">
       <span className="flex size-12 shrink-0 items-center justify-center rounded-pill bg-sheet-2 text-ink-2">
         <Icon name="download" />
       </span>
 
-      <div className="chat-main">
-        <div className="chat-topline">
-          <span className="chat-title">{t('archive', 'Архив')}</span>
+      <div className="flex min-w-0 flex-col justify-center gap-1.5">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <span className="truncate text-base font-semibold text-ink">{t('archive', 'Архив')}</span>
         </div>
-        <div className="chat-subline">
-          <span>{names}</span>
+        <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-ink-2">
+          <span className="truncate">{names}</span>
           {unread > 0 && (
             <Badge label={`${unread} ${t('unreadMessages', 'непрочитанных')}`} tone="quiet">
               {unread}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ func messageValidationHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 func messageValidationRequest(method, target, body, pathKey, pathValue string) *http.Request {
@@ -225,7 +226,7 @@ func TestEditMessageRejectsInvalidContentForStoredTypeWithoutUpdate(t *testing.T
 				WithArgs(messageValidationMessageID, messageValidationUserID).
 				WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow(tt.msgType))
 
-			_, err = NewService(db, nil).EditMessage(
+			_, err = NewService(db, nil, nil).EditMessage(
 				t.Context(),
 				messageValidationUserID,
 				messageValidationMessageID,
@@ -269,7 +270,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 			nil,
 		))
 
-	message, err := NewService(db, nil).EditMessage(
+	message, err := NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
@@ -291,7 +292,7 @@ func TestEditMessageReturnsNotFoundWhenMessageIsNotEditable(t *testing.T) {
 		WithArgs(messageValidationMessageID, messageValidationUserID).
 		WillReturnError(sql.ErrNoRows)
 
-	_, err = NewService(db, nil).EditMessage(
+	_, err = NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
@@ -300,4 +301,48 @@ func TestEditMessageReturnsNotFoundWhenMessageIsNotEditable(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestEditMessageHTTPReturnsNotFoundWhenMessageCannotBeEdited(t *testing.T) {
+	tests := []struct {
+		name                 string
+		messageTypeIsVisible bool
+	}{
+		{name: "message does not exist"},
+		{name: "message belongs to another author"},
+		{name: "requester is not a chat member"},
+		{name: "author is removed after type lookup", messageTypeIsVisible: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := messageValidationHandler(t)
+			typeQuery := mock.ExpectQuery(
+				`SELECT m\.type[\s\S]*JOIN chats\.members[\s\S]*cm\.user_id = \$2[\s\S]*m\.sender_id = \$2`,
+			).WithArgs(messageValidationMessageID, messageValidationUserID)
+
+			if tt.messageTypeIsVisible {
+				typeQuery.WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("text"))
+				mock.ExpectQuery(`WITH updated AS`).
+					WithArgs("updated", messageValidationMessageID, messageValidationUserID).
+					WillReturnError(sql.ErrNoRows)
+			} else {
+				typeQuery.WillReturnError(sql.ErrNoRows)
+			}
+
+			recorder := httptest.NewRecorder()
+			req := messageValidationRequest(
+				http.MethodPut,
+				"/api/v2/messages/"+messageValidationMessageID,
+				`{"content":"updated"}`,
+				"messageId",
+				messageValidationMessageID,
+			)
+
+			handler.EditMessage(recorder, req)
+
+			assertErrorResponse(t, recorder, http.StatusNotFound, "message_not_found")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

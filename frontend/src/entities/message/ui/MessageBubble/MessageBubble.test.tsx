@@ -3,7 +3,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageBubble } from './MessageBubble';
 
@@ -217,5 +217,131 @@ describe('MessageBubble', () => {
     await user.click(cancelButton);
 
     expect(onCancelMessage).toHaveBeenCalledWith(message);
+  });
+});
+
+describe('статус доставки', () => {
+  const sent = () => makeMessage({ id: 'msg-1', content: 'моё сообщение', status: 'sent' });
+
+  it('показывает галочку у своего отправленного в личном чате', () => {
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        showDeliveryStatus
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.getByTitle('Отправлено')).toBeInTheDocument();
+  });
+
+  it('молчит в групповом чате: там у «прочитано» нет одного значения', () => {
+    // `showDeliveryStatus` не передан — как это делает страница треда для группы.
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
+  });
+
+  it('не помечает чужие сообщения', () => {
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-2"
+        message={sent()}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        showDeliveryStatus
+        translations={{}}
+      />
+    );
+
+    expect(screen.getByText('моё сообщение')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
+  });
+});
+
+describe('пересланное сообщение (#169)', () => {
+  function renderForwarded(overrides: Parameters<typeof makeMessage>[0]) {
+    return renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ content: 'пересланный текст', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+  }
+
+  it('называет исходного автора', () => {
+    renderForwarded({ isForwarded: true, forwardedSenderName: 'Максим' });
+
+    expect(screen.getByText(/Переслано от/)).toHaveTextContent('Переслано от Максим');
+    expect(screen.getByText('Максим').tagName).toBe('B');
+    expect(screen.getByText('пересланный текст')).toBeInTheDocument();
+  });
+
+  it('помечает пересылку и без имени: у старых пересылок его нет', () => {
+    renderForwarded({ isForwarded: true, forwardedSenderName: '' });
+
+    expect(screen.getByText('Переслано')).toBeInTheDocument();
+    expect(screen.queryByText(/Переслано от/)).not.toBeInTheDocument();
+  });
+
+  it('молчит у обычного сообщения', () => {
+    renderForwarded({ isForwarded: false, forwardedSenderName: 'Максим' });
+
+    expect(screen.queryByText(/Переслано/)).not.toBeInTheDocument();
+  });
+});
+
+describe('закреплённое сообщение (#170)', () => {
+  function renderPinned(overrides: Parameters<typeof makeMessage>[0]) {
+    return renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ content: 'сообщение', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+  }
+
+  it('показывает иконку pin с заливкой и поворотом 45 градусов, когда сообщение закреплено', () => {
+    renderPinned({ isPinned: true });
+
+    const pinWrapper = screen.getByLabelText('Закреплено');
+    expect(pinWrapper).toBeInTheDocument();
+    expect(screen.getByTitle('Закреплено')).toBeInTheDocument();
+
+    const svg = pinWrapper.querySelector('svg');
+    expect(svg).toHaveClass('size-3');
+    expect(svg).toHaveClass('rotate-45');
+    expect(svg).toHaveClass('fill-current');
+  });
+
+  it('не показывает иконку pin у обычного сообщения', () => {
+    renderPinned({ isPinned: false });
+
+    expect(screen.queryByLabelText('Закреплено')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Закреплено')).not.toBeInTheDocument();
   });
 });

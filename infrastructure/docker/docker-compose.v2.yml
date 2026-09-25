@@ -61,6 +61,7 @@ services:
     environment:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
+      AUTH_LOGOUT_ALL_GENERATION_ENABLED: ${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -91,12 +92,15 @@ services:
       CRYPTO_URL: http://crypto:5005
       NATS_URL: nats://nats:4222
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      REDIS_URL: redis://redis:6379
     depends_on:
       migrate:
         condition: service_completed_successfully
       crypto:
         condition: service_started
       nats:
+        condition: service_started
+      redis:
         condition: service_started
 
   media:

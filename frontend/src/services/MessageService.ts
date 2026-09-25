@@ -1,7 +1,6 @@
-import { API_ENDPOINTS } from '@/shared/api/endpoints';
+import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
-import { ApiClient } from '@/shared/api/ApiClient';
-import { resolveChat } from '@/core/chatResolver';
+import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,
@@ -21,7 +20,7 @@ import type {
   TMessagesList,
   TMessageType,
 } from '@/types';
-import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib';
 import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
@@ -69,7 +68,8 @@ export class MessageService {
     chatId: string,
     content: string,
     type: TMessageType = 'text',
-    replyTo: string | null = null
+    replyTo: string | null = null,
+    forwardedFrom: string | null = null
   ): Promise<IMessageDto> {
     if (typeof content !== 'string' || !content.trim()) {
       throw new Error('Message must be a string');
@@ -88,6 +88,7 @@ export class MessageService {
         content: encryptedContent,
         type,
         replyTo,
+        ...(forwardedFrom ? { forwardedFrom } : {}),
       }
     );
 
@@ -102,7 +103,8 @@ export class MessageService {
     media: Blob,
     mediaType: TMediaMessageType,
     caption: string = '',
-    replyTo: string | null = null
+    replyTo: string | null = null,
+    forwardedFrom: string | null = null
   ): Promise<IMediaItem> {
     if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {
       throw new Error(`Unsupported media message type: ${mediaType}`);
@@ -137,6 +139,7 @@ export class MessageService {
         mediaEncrypted: true,
         mediaEncryption,
         isEncrypted: Boolean(trimmedCaption),
+        ...(forwardedFrom ? { forwardedFrom } : {}),
       }
     );
 
@@ -372,8 +375,10 @@ export class MessageService {
    * расшифрованным — из ленты, откуда его и выбрали, — и шифруется
    * заново ключом целевого чата.
    *
-   * Пометки «переслано» пока не будет: маршрут отправки не принимает
-   * признак пересылки. Задача заведена бэкенду.
+   * Пометку «переслано» ставит сервер по `forwardedFrom`: он проверяет,
+   * что нам видно пересылаемое сообщение, и сам подставляет имя автора.
+   * Передаётся всегда идентификатор того сообщения, что пересылаем, даже
+   * если оно само переслано, — до оригинала сервер дойдёт сам (#358).
    */
   async forwardMessage(message: IMessageDto, targetChatId: string) {
     const content = message.content ?? '';
@@ -390,10 +395,17 @@ export class MessageService {
       // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
       const blob = await fetch(media).then((response) => response.blob());
 
-      return this.sendMediaMessage(targetChatId, blob, message.type as TMediaMessageType, content);
+      return this.sendMediaMessage(
+        targetChatId,
+        blob,
+        message.type as TMediaMessageType,
+        content,
+        null,
+        message.id
+      );
     }
 
-    return this.sendMessage(targetChatId, content, message.type);
+    return this.sendMessage(targetChatId, content, message.type, null, message.id);
   }
 
   async listReactions(messageId: string) {
