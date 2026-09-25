@@ -41,6 +41,11 @@ type Handler struct {
 	service                    *Service
 	logoutAllGenerationEnabled bool
 	qrTokens                   sync.Map
+	qrOffers                   sync.Map
+	// qrRotated remembers replaced codes for a while, so a device that
+	// scanned a code a moment too late hears "the code changed" rather than
+	// a generic error.
+	qrRotated sync.Map
 	// qrMu makes each QR state change atomic: confirm-once and hand-out-once.
 	qrMu sync.Mutex
 }

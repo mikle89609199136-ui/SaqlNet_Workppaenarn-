@@ -286,7 +286,8 @@ func TestQRConfirmRejectsSecondConfirmation(t *testing.T) {
 
 func TestQRConfirmCannotCrossLogoutAll(t *testing.T) {
 	handler, mock := qrHandler(t)
-	token := startQRLogin(t, handler)
+	code := startQRLogin(t, handler)
+	require.Equal(t, http.StatusOK, scanQR(handler, code.token, "user-1").Code)
 
 	// The request context represents a generation-0 access token, while a
 	// concurrent logout-all has already advanced the user to generation 1.
@@ -295,12 +296,12 @@ func TestQRConfirmCannotCrossLogoutAll(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 1))
 
 	confirm := qrCall(handler.QRConfirm, http.MethodPost, "/api/v2/auth/qr-confirm", "",
-		`{"qrToken":"`+token+`","payload":`+qrPayload+`}`, "user-1")
+		`{"qrToken":"`+code.token+`","payload":`+qrPayload+`}`, "user-1")
 	require.Equal(t, http.StatusUnauthorized, confirm.Code, confirm.Body.String())
 	require.Equal(t, "token_revoked", decodeJSON(t, confirm)["code"])
 
-	status := decodeJSON(t, qrCall(handler.QRStatus, http.MethodGet, "/api/v2/auth/qr-status/"+token, token, "", ""))
-	require.Equal(t, "pending", status["status"])
+	status := qrStatus(t, handler, code)
+	require.Equal(t, "scanned", status["status"])
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

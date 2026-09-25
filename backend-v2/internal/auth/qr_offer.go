@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -310,7 +311,15 @@ func (h *Handler) QROfferConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authToken, err := h.service.IssueQRToken(r.Context(), current.ID)
+	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration)
+	if errors.Is(err, ErrAuthorizationRevoked) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
+	}
+	if tokenIssuanceUnavailable(err) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "token_issuer_not_ready", "token issuer is not ready")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to issue token")
 		return
