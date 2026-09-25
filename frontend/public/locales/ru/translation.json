@@ -82,6 +82,10 @@
   "firstName": "Имя",
   "firstNamePlaceholder": "Ваше имя",
   "forward": "Переслать",
+  "forward.bannerMany": "Переслать сообщения: {{count}}",
+  "forward.bannerOne": "Переслать сообщение",
+  "forward.cancel": "Отменить пересылку",
+  "forward.partial": "Переслано {{sent}} из {{total}}. Остальные остались над полем ввода — нажмите «Отправить», чтобы повторить. {{reason}}",
   "forwardMessages": "Переслать сообщения",
   "forwarded": "Переслано",
   "forwardedFrom": "Переслано от",
@@ -456,5 +460,6 @@
   "welcomeFeaturePrivacy": "Полная защита данных и приватность",
   "welcomeRegisterTitle": "Добро пожаловать в CraneApp",
   "whatIsYourName": "Как вас зовут?",
-  "yesterday": "Вчера"
+  "yesterday": "Вчера",
+  "you": "Вы"
 }
