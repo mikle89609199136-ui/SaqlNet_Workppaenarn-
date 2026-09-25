@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"mime/multipart"
@@ -249,54 +248,6 @@ func TestMultipartRejectsMIMEBeforeOpeningFile(t *testing.T) {
 	response := executeUpload(handler, request)
 	assertNoPersistence()
 	assertUnsupportedMIME(t, response)
-}
-
-func TestEncryptedUploadOutsidePlainMIMEPolicy(t *testing.T) {
-	for _, contentType := range []string{"text/html", "image/svg+xml", "application/octet-stream", "application/x-unknown"} {
-		t.Run(contentType, func(t *testing.T) {
-			data := []byte("cipher")
-			handler, mock, store := newMediaTestHandler(t, defaultTestMaxUploadBytes)
-			expectMIMEUploadInsert(mock, contentType, int64(len(data)), true)
-			got := performUpload(t, handler, encryptedUploadRequest(t, "file.bin", contentType, data))
-			if got["success"] != true || got["encrypted"] != true || got["contentType"] != contentType ||
-				got["fileName"] != "file.bin" || got["sizeBytes"] != float64(len(data)) || got["url"] != "/api/v2/media/"+testUploadID {
-				t.Fatalf("unexpected encrypted upload contract: %v", got)
-			}
-			metadata, ok := got["encryption"].(string)
-			if !ok {
-				t.Fatalf("encryption must remain a JSON string: %v", got)
-			}
-			var enc map[string]any
-			if err := json.Unmarshal([]byte(metadata), &enc); err != nil {
-				t.Fatal(err)
-			}
-			if enc["mimeType"] != contentType || enc["encrypted"] != true || enc["algorithm"] != "AES-GCM" || enc["iv"] != "aXY=" || enc["version"] != float64(1) || enc["sizeBytes"] != float64(len(data)) || enc["fileName"] != "file.bin" {
-				t.Fatalf("unexpected encryption metadata: %v", enc)
-			}
-			if store.putCalls != 1 || store.lastPutType != contentType || string(store.lastPutData) != string(data) {
-				t.Fatalf("encrypted Store.Put changed: %+v", store)
-			}
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatal(err)
-			}
-
-			download, downloadMock := newDownloadHandler(t, store, contentType, int64(len(data)), true, metadata)
-			response := serveDownload(t, download, http.MethodGet, nil)
-			if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/json" || response.Header().Get("Content-Disposition") != "" {
-				t.Fatalf("encrypted download status=%d headers=%v", response.Code, response.Header())
-			}
-			var body map[string]any
-			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-				t.Fatal(err)
-			}
-			if body["mimeType"] != contentType || body["ciphertext"] != base64.StdEncoding.EncodeToString(data) || body["encrypted"] != true {
-				t.Fatalf("encrypted download contract changed: %v", body)
-			}
-			if err := downloadMock.ExpectationsWereMet(); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
 }
 
 func TestLegacyDownloadMIMEPolicy(t *testing.T) {

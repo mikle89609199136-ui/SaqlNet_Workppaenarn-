@@ -1,11 +1,6 @@
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  resolveChat,
-  resolveMembers,
-  setChatResolver,
-  setMembersResolver,
-} from './chatResolver';
+import { resolveChat, resolveMembers, setChatResolver, setMembersResolver } from './chatResolver';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { queryClient } from '@/shared/api';
