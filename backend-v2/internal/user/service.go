@@ -105,7 +105,7 @@ func NewService(db *sql.DB) *Service {
 func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
 	profile, err := s.profileByID(ctx, userID)
 	if errors.Is(err, ErrNotFound) {
-		if err := s.ensureProfile(ctx, userID); err != nil {
+		if err := ensureProfile(ctx, s.db, userID); err != nil {
 			return Profile{}, err
 		}
 		return s.profileByID(ctx, userID)
@@ -113,27 +113,97 @@ func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
 	return profile, err
 }
 
+// UpdateProfile applies a partial update to the user's profile.
+// Passing nil or an empty string leaves the existing value intact
+// (see NULLIF below); there is currently no way to clear a field through
+// this method.
+// Only users.profiles is written. auth.users.first_name / last_name are a
+// historical snapshot from registration and are never updated here.
+// The profile row is created on demand via ensureProfile, so callers do
+// not need to pre-create it.
 func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, lastName, bio, avatarURL *string) (Profile, error) {
-	if err := s.ensureProfile(ctx, userID); err != nil {
+	const method = "UpdateProfile"
+
+	slog.DebugContext(ctx, "update profile request",
+		"layer", "service",
+		"method", method,
+		"user_id", userID,
+	)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
 		return Profile{}, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	// Rollback is a no-op after a successful Commit.
+	defer tx.Rollback() //nolint:errcheck
+
+	if err := ensureProfile(ctx, tx, userID); err != nil {
+		slog.ErrorContext(ctx, "failed to ensure profile",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
+		return Profile{}, err
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		UPDATE users.profiles SET
 			first_name = COALESCE(NULLIF($2, ''), first_name),
-			last_name = COALESCE($3, last_name),
-			bio = COALESCE($4, bio),
-			avatar_url = COALESCE($5, avatar_url),
+			last_name  = COALESCE(NULLIF($3, ''), last_name),
+			bio        = COALESCE(NULLIF($4, ''), bio),
+			avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
 			updated_at = NOW()
 		WHERE user_id = $1
 	`, userID, stringOrNil(firstName), stringOrNil(lastName), stringOrNil(bio), stringOrNil(avatarURL))
 	if err != nil {
+		slog.ErrorContext(ctx, "update profile query failed",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
 		return Profile{}, err
 	}
-	return s.profileByID(ctx, userID)
+
+	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
+		return Profile{}, err
+	}
+
+	profile, err := s.profileByID(ctx, userID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load profile after update",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
+		return Profile{}, err
+	}
+
+	slog.InfoContext(ctx, "profile updated successfully",
+		"layer", "service",
+		"method", method,
+		"user_id", userID,
+	)
+
+	return profile, nil
 }
 
 func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
-	if err := s.ensureProfile(ctx, userID); err != nil {
+	if err := ensureProfile(ctx, s.db, userID); err != nil {
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
@@ -150,10 +220,9 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 // The query may start with '@', which is stripped for convenience.
 // Special characters '%' and '_' are escaped to be treated literally.
 //
-// The search uses the same logic as the SELECT output:
-//   - first_name and last_name are taken from users.profiles if present,
-//     otherwise from auth.users (via COALESCE). This ensures that search
-//     results match what is displayed in the response.
+// Display fields (first_name, last_name, avatar_url) and bio are read from
+// users.profiles, the single source of truth. auth.users.first_name /
+// last_name are a historical snapshot and are not used here.
 func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchResult, error) {
 	const method = "Search"
 
@@ -191,17 +260,15 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name),
-		       COALESCE(up.last_name, au.last_name),
-		       COALESCE(up.avatar_url, '')
+		       up.first_name, up.last_name, up.avatar_url
 		FROM auth.users au
-		LEFT JOIN users.profiles up ON up.user_id = au.id
+		JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
-		  AND (au.username ILIKE $1 OR
-		       COALESCE(up.first_name, au.first_name) ILIKE $1 OR
-		       COALESCE(up.last_name, au.last_name) ILIKE $1 OR
-		       up.bio ILIKE $1)
+		  AND (au.username   ILIKE $1 OR
+		       up.first_name ILIKE $1 OR
+		       up.last_name  ILIKE $1 OR
+		       up.bio        ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
 	`, pattern, viewerID)
@@ -690,33 +757,82 @@ func (s *Service) Unblock(ctx context.Context, userID, blockedUserID string) err
 	return err
 }
 
+// profileByID loads a single user profile by ID.
+// Identity (id, username) and the disabled flag come from auth.users.
+// All display fields (first_name, last_name, bio, avatar_url, badges,
+// is_premium) come from users.profiles, which is the single source of
+// truth. auth.users.first_name/last_name are a historical snapshot from
+// registration and are never read here.
+// A profile row is expected to exist (created by trigger at registration,
+// backfilled for existing users, and additionally guarded by ensureProfile
+// in UpdateProfile). A missing row is treated as not found.
+// Disabled users are treated as not found.
+// Derived fields are computed after scanning:
+//   - IsBot is set when the "bot" badge is present.
+//   - The "premium" badge is appended when is_premium is TRUE but the
+//     badge is missing, so the response is internally consistent.
 func (s *Service) profileByID(ctx context.Context, userID string) (Profile, error) {
+	const method = "profileByID"
+
+	slog.DebugContext(ctx, "loading profile",
+		"layer", "service",
+		"method", method,
+		"user_id", userID,
+	)
+
 	var profile Profile
 	var badges pqStringArray
 	err := s.db.QueryRowContext(ctx, `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name),
-		       COALESCE(up.bio, ''), COALESCE(up.avatar_url, ''), COALESCE(up.badges, '{}'), COALESCE(up.is_premium, FALSE)
+		       up.first_name, up.last_name,
+		       up.bio, up.avatar_url, up.badges, up.is_premium
 		FROM auth.users au
-		LEFT JOIN users.profiles up ON up.user_id = au.id
+		JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.id = $1 AND au.disabled_at IS NULL
-	`, userID).Scan(&profile.ID, &profile.Username, &profile.FirstName, &profile.LastName, &profile.Bio, &profile.AvatarURL, &badges, &profile.IsPremium)
+	`, userID).Scan(
+		&profile.ID,
+		&profile.Username,
+		&profile.FirstName,
+		&profile.LastName,
+		&profile.Bio,
+		&profile.AvatarURL,
+		&badges,
+		&profile.IsPremium,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
+		slog.DebugContext(ctx, "profile not found",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+		)
 		return Profile{}, ErrNotFound
 	}
+	if err != nil {
+		slog.ErrorContext(ctx, "profile query failed",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"error", err,
+		)
+		return Profile{}, err
+	}
+
 	profile.Badges = []string(badges)
 
+	// IsBot is not stored explicitly; it is derived from the "bot" badge.
 	for _, badge := range profile.Badges {
 		if badge == "bot" {
 			profile.IsBot = true
 			break
 		}
 	}
+
+	// Keep the badges list consistent with the is_premium flag.
 	if profile.IsPremium && !contains(profile.Badges, "premium") {
 		profile.Badges = append(profile.Badges, "premium")
 	}
 
-	return profile, err
+	return profile, nil
 }
 
 func contains(slice []string, val string) bool {
@@ -728,8 +844,19 @@ func contains(slice []string, val string) bool {
 	return false
 }
 
-func (s *Service) ensureProfile(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `
+// Execer is implemented by both *sql.DB and *sql.Tx.
+// Used by helpers that must run inside the caller's transaction.
+type Execer interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+// ensureProfile creates the profile row for a user if it is missing,
+// seeding first_name / last_name from auth.users (the registration
+// snapshot). It is a safety net behind the DB trigger that creates the
+// profile on registration; both are idempotent.
+// It accepts Execer so it can run inside the caller's transaction.
+func ensureProfile(ctx context.Context, e Execer, userID string) error {
+	_, err := e.ExecContext(ctx, `
 		INSERT INTO users.profiles (user_id, first_name, last_name)
 		SELECT id, first_name, last_name FROM auth.users WHERE id = $1
 		ON CONFLICT (user_id) DO NOTHING

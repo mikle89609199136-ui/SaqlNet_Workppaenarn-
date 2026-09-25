@@ -3,6 +3,7 @@ package user_test
 import (
 	"context"
 	"craneapp/backend-v2/internal/user"
+	"database/sql/driver"
 	"errors"
 	"regexp"
 	"testing"
@@ -204,19 +205,24 @@ func TestProfileByID_ReturnsUsernameAsIs(t *testing.T) {
 // Duplicated here to keep the mock expectations independent from
 // the production code; consider exporting it as a const in the
 // service package if the query is extracted to a package-level var.
+//
+// Display fields (first_name, last_name, avatar_url) and bio are read
+// from users.profiles, the single source of truth. auth.users.first_name
+// / last_name are a registration snapshot and are not used here; there
+// is no COALESCE fallback anymore, and the JOIN to profiles is an inner
+// join because every user is guaranteed to have a profile row (trigger
+// at registration + backfill migration + ensureProfile safety net).
 const searchSQL = `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name),
-		       COALESCE(up.last_name, au.last_name),
-		       COALESCE(up.avatar_url, '')
+		       up.first_name, up.last_name, up.avatar_url
 		FROM auth.users au
-		LEFT JOIN users.profiles up ON up.user_id = au.id
+		JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
-		  AND (au.username ILIKE $1 OR
-		       COALESCE(up.first_name, au.first_name) ILIKE $1 OR
-		       COALESCE(up.last_name, au.last_name) ILIKE $1 OR
-		       up.bio ILIKE $1)
+		  AND (au.username   ILIKE $1 OR
+		       up.first_name ILIKE $1 OR
+		       up.last_name  ILIKE $1 OR
+		       up.bio        ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
 	`
@@ -561,6 +567,10 @@ func TestSearch(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			// Defensive: users.profiles.first_name is NOT NULL in the schema,
+			// so in production this cannot happen. The test still guards the
+			// scan loop against a NULL slipping through (e.g. a future
+			// migration relaxing the constraint, or a mocked/stubbed row).
 			name:     "NULL first_name results in scan error",
 			query:    "john",
 			viewerID: "viewer-1",
@@ -768,6 +778,384 @@ func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
 	}
 	if status["isOnline"] != false || status["lastSeen"] != "" {
 		t.Fatalf("unexpected status: %v", status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+//---------- Tests for UpdateProfile service method -------------------------
+
+// SQL patterns shared by the mocks.
+//
+// UpdateProfile now runs inside a transaction:
+//
+//	BeginTx → ensureProfile (Exec) → UPDATE (Exec) → Commit → reload (Query)
+//
+// so every test must announce ExpectBegin / ExpectCommit (or ExpectRollback
+// on failure) in addition to the statement-level expectations below.
+const (
+	ensureProfilePattern = "INSERT INTO users.profiles"
+	updateProfilePattern = "UPDATE users.profiles SET"
+	reloadProfilePattern = "SELECT au.id::text, au.username"
+)
+
+// strptr — convenience for taking the address of a string literal.
+func strptr(s string) *string { return &s }
+
+// contains — small helper; kept here because the same assertion is used
+// across several tests and the production package does not export one.
+func contains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// expectEnsureProfile expects the create-on-demand INSERT performed by
+// ensureProfile before the UPDATE.
+func expectEnsureProfile(mock sqlmock.Sqlmock, userID string) {
+	mock.ExpectExec(ensureProfilePattern).
+		WithArgs(userID).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
+// expectUpdateProfile expects the UPDATE with the given $2..$5 arguments.
+// These arguments are exactly stringOrNil(...) of the *string parameters.
+//
+// NOTE: this helper asserts argument pass-through only. It does not
+// verify the SQL body, so it cannot detect a regression in the
+// COALESCE(NULLIF(...)) clauses. Use expectUpdateProfileAllNullif for
+// tests that need to pin down the field semantics.
+func expectUpdateProfile(mock sqlmock.Sqlmock, userID string, fn, ln, bio, av any) {
+	mock.ExpectExec(updateProfilePattern).
+		WithArgs(userID, fn, ln, bio, av).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
+// updateProfileAllNullifRe matches the exact UPDATE used by UpdateProfile,
+// including the COALESCE(NULLIF($n, ”), col) clauses on every optional
+// text field. This is what actually pins down "empty string = no-op":
+// expectUpdateProfile (args-only) would stay green if someone reverted any
+// of the NULLIFs to a bare COALESCE.
+//
+// The regexp is whitespace-tolerant but column-order- and clause-shape-
+// sensitive; it will need updating if the UPDATE is refactored.
+var updateProfileAllNullifRe = regexp.MustCompile(
+	`(?s)UPDATE\s+users\.profiles\s+SET\s+` +
+		`first_name\s*=\s*COALESCE\(NULLIF\(\$2,\s*''\),\s*first_name\),\s*` +
+		`last_name\s*=\s*COALESCE\(NULLIF\(\$3,\s*''\),\s*last_name\),\s*` +
+		`bio\s*=\s*COALESCE\(NULLIF\(\$4,\s*''\),\s*bio\),\s*` +
+		`avatar_url\s*=\s*COALESCE\(NULLIF\(\$5,\s*''\),\s*avatar_url\),\s*` +
+		`updated_at\s*=\s*NOW\(\)\s+WHERE\s+user_id\s*=\s*\$1`,
+)
+
+func expectUpdateProfileAllNullif(mock sqlmock.Sqlmock, userID string, fn, ln, bio, av any) {
+	mock.ExpectExec(updateProfileAllNullifRe.String()).
+		WithArgs(userID, fn, ln, bio, av).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
+// expectReloadProfile expects the SELECT performed by profileByID after a
+// successful UPDATE, and returns the given row. The reload runs on the
+// service's *sql.DB (outside the transaction), so no Begin/Commit wrapper
+// is needed here — the caller is responsible for ExpectBegin/ExpectCommit
+// around the two Execs.
+func expectReloadProfile(mock sqlmock.Sqlmock, userID string, row []driver.Value) {
+	mock.ExpectQuery(reloadProfilePattern).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "username", "first_name", "last_name",
+			"bio", "avatar_url", "badges", "is_premium",
+		}).AddRow(row...))
+}
+
+// TestUpdateProfile_FirstNameRoundTrip is a regression test for the bug where
+// "after PUT /me, a search by the old first name still finds the user".
+//
+// At the service layer this means: the new first_name must be sent to the
+// UPDATE statement ($2), and the value returned by UpdateProfile must equal
+// what the reload (profileByID) yields. users.profiles is now the single
+// source of truth for first_name, so there is no longer any stale
+// auth.users field for the service to accidentally mix in — the reload is
+// the only path that produces the returned value.
+func TestUpdateProfile_FirstNameRoundTrip(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+
+	// Transaction opened by UpdateProfile: INSERT → UPDATE → COMMIT, then
+	// the SELECT that produces the returned profile.
+	mock.ExpectBegin()
+	expectEnsureProfile(mock, "user-1")
+	expectUpdateProfile(mock, "user-1", "UniqueSearchName260831", nil, nil, nil)
+	mock.ExpectCommit()
+	expectReloadProfile(mock, "user-1", []driver.Value{
+		"user-1", "ivan",
+		"UniqueSearchName260831", "Auditb",
+		"", "", "{}", false,
+	})
+
+	got, err := svc.UpdateProfile(context.Background(), "user-1",
+		strptr("UniqueSearchName260831"), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The returned profile must reflect the newly written first_name.
+	if got.FirstName != "UniqueSearchName260831" {
+		t.Fatalf("FirstName = %q, want %q", got.FirstName, "UniqueSearchName260831")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUpdateProfile_FieldSemantics pins down that an empty string means
+// "do not change" for every optional text field: first_name, last_name,
+// bio, avatar_url.
+//
+// The service forwards its arguments to the UPDATE verbatim via
+// stringOrNil (nil -> NULL, "" -> ”, non-empty -> as-is); the actual
+// "empty means no-op" behavior lives in the SQL, in the form of
+// COALESCE(NULLIF($n, ”), col). To keep a regression from silently
+// reintroducing the old asymmetric behavior (empty lastName overwrites),
+// the UPDATE expectation matches the NULLIF clauses themselves, not just
+// the argument list.
+func TestUpdateProfile_FieldSemantics(t *testing.T) {
+	tests := []struct {
+		name       string
+		firstName  *string
+		lastName   *string
+		bio        *string
+		avatarURL  *string
+		wantFnArg  any
+		wantLnArg  any
+		wantBioArg any
+		wantAvArg  any
+	}{
+		{
+			name:      "nil firstName is a no-op",
+			firstName: nil,
+			wantFnArg: nil, wantLnArg: nil, wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "empty firstName is a no-op",
+			firstName: strptr(""),
+			wantFnArg: "", wantLnArg: nil, wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "non-empty firstName is passed through",
+			firstName: strptr("Ivan"),
+			wantFnArg: "Ivan", wantLnArg: nil, wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "nil lastName is a no-op",
+			lastName:  nil,
+			wantFnArg: nil, wantLnArg: nil, wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "empty lastName is a no-op",
+			lastName:  strptr(""),
+			wantFnArg: nil, wantLnArg: "", wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "non-empty lastName is passed through",
+			lastName:  strptr("Petrov"),
+			wantFnArg: nil, wantLnArg: "Petrov", wantBioArg: nil, wantAvArg: nil,
+		},
+		{
+			name:      "empty bio is a no-op",
+			bio:       strptr(""),
+			wantFnArg: nil, wantLnArg: nil, wantBioArg: "", wantAvArg: nil,
+		},
+		{
+			name:      "empty avatarUrl is a no-op",
+			avatarURL: strptr(""),
+			wantFnArg: nil, wantLnArg: nil, wantBioArg: nil, wantAvArg: "",
+		},
+		{
+			name:      "all fields set",
+			firstName: strptr("Ivan"),
+			lastName:  strptr("Petrov"),
+			bio:       strptr("hello"),
+			avatarURL: strptr("http://a/x.png"),
+			wantFnArg: "Ivan", wantLnArg: "Petrov",
+			wantBioArg: "hello", wantAvArg: "http://a/x.png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			svc := user.NewService(db)
+
+			mock.ExpectBegin()
+			expectEnsureProfile(mock, "user-1")
+			expectUpdateProfileAllNullif(mock, "user-1",
+				tt.wantFnArg, tt.wantLnArg, tt.wantBioArg, tt.wantAvArg)
+			mock.ExpectCommit()
+			// The contents of the reloaded row are irrelevant here;
+			// only the fact that reload happens is asserted.
+			expectReloadProfile(mock, "user-1", []driver.Value{
+				"user-1", "ivan", "Ivan", "", "", "", "{}", false,
+			})
+
+			_, err = svc.UpdateProfile(context.Background(), "user-1",
+				tt.firstName, tt.lastName, tt.bio, tt.avatarURL)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestUpdateProfile_EnsureProfileError verifies that an error from
+// ensureProfile aborts execution before the UPDATE and before the reload.
+//
+// The transaction is opened before ensureProfile, so the deferred
+// tx.Rollback() is expected; the UPDATE and the SELECT are intentionally
+// not expected, and ExpectationsWereMet below confirms they were never
+// issued.
+func TestUpdateProfile_EnsureProfileError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(ensureProfilePattern).
+		WithArgs("user-1").
+		WillReturnError(errors.New("insert failed"))
+	mock.ExpectRollback()
+
+	_, err = svc.UpdateProfile(context.Background(), "user-1",
+		strptr("Ivan"), nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUpdateProfile_UpdateError verifies that an error from the UPDATE
+// prevents the reload from being called.
+//
+// The transaction is rolled back because Commit is never reached; the
+// SELECT is intentionally not expected.
+func TestUpdateProfile_UpdateError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+
+	mock.ExpectBegin()
+	expectEnsureProfile(mock, "user-1")
+	mock.ExpectExec(updateProfilePattern).
+		WithArgs("user-1", "Ivan", nil, nil, nil).
+		WillReturnError(errors.New("update failed"))
+	mock.ExpectRollback()
+
+	_, err = svc.UpdateProfile(context.Background(), "user-1",
+		strptr("Ivan"), nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUpdateProfile_ReloadError verifies that when the UPDATE succeeds but
+// re-reading the profile fails, the service surfaces the error instead of
+// masking it.
+//
+// The reload runs after Commit, outside the transaction, so no Rollback is
+// expected here.
+func TestUpdateProfile_ReloadError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+
+	mock.ExpectBegin()
+	expectEnsureProfile(mock, "user-1")
+	expectUpdateProfile(mock, "user-1", "Ivan", nil, nil, nil)
+	mock.ExpectCommit()
+	mock.ExpectQuery(reloadProfilePattern).
+		WithArgs("user-1").
+		WillReturnError(errors.New("select failed"))
+
+	_, err = svc.UpdateProfile(context.Background(), "user-1",
+		strptr("Ivan"), nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUpdateProfile_ReturnsDerivedFields verifies that the response of
+// UpdateProfile carries the same derived fields as profileByID returns:
+// IsBot is set from the "bot" badge, and "premium" is appended when
+// is_premium is TRUE.
+//
+// No additional logic on top of the reload is expected.
+func TestUpdateProfile_ReturnsDerivedFields(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+
+	mock.ExpectBegin()
+	expectEnsureProfile(mock, "user-1")
+	expectUpdateProfile(mock, "user-1", "Ivan", nil, nil, nil)
+	mock.ExpectCommit()
+	expectReloadProfile(mock, "user-1", []driver.Value{
+		"user-1", "ivan", "Ivan", "",
+		"", "", "{bot}", true,
+	})
+
+	got, err := svc.UpdateProfile(context.Background(), "user-1",
+		strptr("Ivan"), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.IsBot {
+		t.Fatal("expected IsBot=true derived from bot badge")
+	}
+	if !got.IsPremium {
+		t.Fatal("expected IsPremium=true")
+	}
+	if !contains(got.Badges, "premium") {
+		t.Fatalf("expected premium badge appended, got %v", got.Badges)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
