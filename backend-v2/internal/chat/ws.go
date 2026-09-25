@@ -44,7 +44,7 @@ type tokenVerifier interface {
 type Client struct {
 	UserID        string
 	Conn          *websocket.Conn
-	Send          chan []byte
+	Send          chan []byte // не закрывается; завершение сигнализируется через done
 	done          chan struct{}
 	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
 	closeOnce     sync.Once
@@ -144,7 +144,6 @@ func (ws *WSServer) run() {
 				if _, ok := conns[client]; ok {
 					delete(conns, client)
 					client.close()
-					close(client.Send)
 					if len(conns) == 0 {
 						delete(ws.clients, client.UserID)
 					}
@@ -583,19 +582,25 @@ func (ws *WSServer) sendPresenceHeartbeat(client *Client) {
 func (ws *WSServer) writePump(client *Client) {
 	defer client.Conn.Close()
 	for {
-		message, ok := <-client.Send
-		if !ok {
+		select {
+		case <-client.done:
 			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
 				return
 			}
 			_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
-		}
-		if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
-			return
-		}
-		if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			return
+		case message, ok := <-client.Send:
+			// Send принадлежит производителям сообщений и намеренно не закрывается:
+			// завершение жизненного цикла клиента сигнализируется через done.
+			if !ok {
+				return
+			}
+			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+				return
+			}
+			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				return
+			}
 		}
 	}
 }
