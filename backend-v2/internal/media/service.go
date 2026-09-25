@@ -50,6 +50,20 @@ var allowedTypes = map[string]bool{
 	"text/plain":      true,
 }
 
+func normalizeMediaType(raw string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(raw))
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return "", false
+	}
+	return strings.ToLower(mediaType), true
+}
+
+// allowedMediaType applies the declared MIME policy for plain uploads and downloads.
+func allowedMediaType(raw string) (string, bool) {
+	mediaType, ok := normalizeMediaType(raw)
+	return mediaType, ok && allowedTypes[mediaType]
+}
+
 // Store abstracts object storage (MinIO / S3-compatible).
 type Store interface {
 	Put(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error
@@ -159,12 +173,8 @@ func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64C
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
-	ct := fh.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "application/octet-stream"
-	}
-	base := strings.SplitN(ct, ";", 2)[0]
-	if !allowedTypes[base] {
+	base, ok := allowedMediaType(fh.Header.Get("Content-Type"))
+	if !ok {
 		return Upload{}, ErrBadType
 	}
 
@@ -322,7 +332,12 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return ErrStorage
 	}
 
-	w.Header().Set("Content-Type", safeContentType(contentType))
+	mediaType, allowed := allowedMediaType(contentType)
+	if !allowed {
+		mediaType = "application/octet-stream"
+		w.Header().Set("Content-Disposition", "attachment")
+	}
+	w.Header().Set("Content-Type", mediaType)
 	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
 	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
 	if w.Header().Get("Accept-Ranges") == "" {
@@ -368,14 +383,6 @@ func copyObjectHeader(header http.Header, name, value string) {
 	if value != "" {
 		header.Set(name, value)
 	}
-}
-
-func safeContentType(contentType string) string {
-	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
-	if err != nil || mediaType == "" {
-		return "application/octet-stream"
-	}
-	return mediaType
 }
 
 func encryptedJSONEnvelope(

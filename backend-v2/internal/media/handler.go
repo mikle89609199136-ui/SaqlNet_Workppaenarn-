@@ -117,6 +117,10 @@ func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, ErrBadType) {
+		httpx.ErrorJSON(w, r, http.StatusUnsupportedMediaType, "unsupported_type", "file type not allowed")
+		return
+	}
 	if errors.Is(err, ErrTooBig) {
 		h.writeFileTooLarge(w, r)
 		return
@@ -195,20 +199,21 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		parts := strings.SplitN(fileStr, ",", 2)
-		if len(parts) != 2 {
+		if len(parts) != 2 || !strings.HasSuffix(parts[0], ";base64") {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "invalid data url")
 			return
 		}
 
-		mimeType := "application/octet-stream"
 		header := parts[0]
 		if len(header) > maxDataURLHeaderBytes {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 			return
 		}
-		if strings.Contains(header, ";base64") {
-			mimeType = strings.TrimPrefix(header, "data:")
-			mimeType = strings.TrimSuffix(mimeType, ";base64")
+		mimeType := strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
+		mimeType, allowed := allowedMediaType(mimeType)
+		if !allowed {
+			h.writeUploadError(w, r, ErrBadType)
+			return
 		}
 
 		data, err := decodeBase64Payload(parts[1], h.service.maxUploadBytes)
@@ -244,27 +249,21 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_form", "failed to parse multipart form")
 		return
 	}
-	file, fh, err := r.FormFile("file")
-	if err != nil {
+	if r.MultipartForm == nil || len(r.MultipartForm.File["file"]) == 0 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "missing_file", "field 'file' is required")
 		return
 	}
-	_ = file.Close()
+	fh := r.MultipartForm.File["file"][0]
 	if len(fh.Filename) > maxFilenameBytes || len(fh.Header.Get("Content-Type")) > maxUploadMIMETypeBytes {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 		return
 	}
 	up, err := h.service.Upload(r.Context(), current.ID, fh)
-	switch {
-	case errors.Is(err, ErrTooBig):
-		h.writeFileTooLarge(w, r)
-	case errors.Is(err, ErrBadType):
-		httpx.ErrorJSON(w, r, http.StatusUnsupportedMediaType, "unsupported_type", "file type not allowed")
-	case err != nil:
-		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", "upload failed")
-	default:
-		httpx.JSON(w, http.StatusCreated, uploadResponse(up))
+	if err != nil {
+		h.writeUploadError(w, r, err)
+		return
 	}
+	httpx.JSON(w, http.StatusCreated, uploadResponse(up))
 }
 
 func uploadResponse(up Upload) map[string]any {
