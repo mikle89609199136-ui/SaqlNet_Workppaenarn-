@@ -10,8 +10,7 @@ import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it } from 'vitest';
 import { MAX_PINNED_CHATS, useChatActions } from './useChatActions';
 import { clearToasts, getToasts } from '@/shared/ui';
-import { chatKeys } from '@/entities/chat';
-import type { IChatDto } from '@/types';
+import { chatKeys, type IChatDto } from '@/entities/chat';
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

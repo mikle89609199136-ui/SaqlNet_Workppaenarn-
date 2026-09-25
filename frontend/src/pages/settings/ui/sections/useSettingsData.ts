@@ -6,8 +6,9 @@ import {
   settingsQuery,
   useUpdatePrivacy,
   useUpdateSettings,
+  type IPrivacyDto,
+  type ISettingsDto,
 } from '@/entities/user';
-import type { IPrivacyDto, ISettingsDto } from '@/types';
 
 /**
  * Настройки и способ их менять — то общее, что нужно почти каждому разделу.

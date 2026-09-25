@@ -1,4 +1,4 @@
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 import { cn } from '@/shared/lib';
 import {
   AlertTriangle,

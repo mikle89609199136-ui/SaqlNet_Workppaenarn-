@@ -4,7 +4,7 @@ import { createApiClient } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
-import type { IMessageDto } from '@/types';
+import type { IMessageDto } from '@/entities/message';
 import type { CryptoService } from './CryptoService';
 import { MessageService } from './MessageService';
 

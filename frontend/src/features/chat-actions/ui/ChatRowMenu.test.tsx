@@ -10,7 +10,7 @@ import { createRef } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatRowMenu } from './ChatRowMenu';
-import type { IChatDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
 
 function renderMenu(chat: IChatDto, onClose = () => {}) {
   const queryClient = new QueryClient({
@@ -58,5 +58,81 @@ describe('меню строки чата', () => {
 
     await waitFor(() => expect(calls).toContain('POST'));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('для личного чата показывает пункт «Заблокировать» и открывает диалог подтверждения', async () => {
+    let blockCalled = false;
+    server.use(
+      http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: [] })),
+      http.post(api('/users/blocked'), () => {
+        blockCalled = true;
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    const onClose = vi.fn();
+    renderMenu(
+      makeChat({ id: 'chat-priv', type: 'private', peerId: 'user-peer', title: 'Собеседник' }),
+      onClose
+    );
+
+    const blockItem = await screen.findByRole('menuitem', { name: 'Заблокировать' });
+    expect(blockItem).toBeInTheDocument();
+    await userEvent.click(blockItem);
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Заблокировать пользователя?' })
+    ).toBeInTheDocument();
+
+    const confirmBtns = screen.getAllByRole('button', { name: 'Заблокировать' });
+    const dialogConfirmBtn = confirmBtns[confirmBtns.length - 1];
+    await userEvent.click(dialogConfirmBtn);
+
+    await waitFor(() => expect(blockCalled).toBe(true));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('для личного чата с заблокированным показывает «Разблокировать»', async () => {
+    let unblockCalled = false;
+    server.use(
+      http.get(api('/users/blocked'), () =>
+        HttpResponse.json({
+          blocked: [
+            {
+              id: 'user-peer',
+              username: 'peer',
+              firstName: 'Иван',
+              lastName: '',
+              avatarUrl: '',
+              blockedAt: '2026-01-01',
+            },
+          ],
+        })
+      ),
+      http.delete(api('/users/blocked/:userId'), () => {
+        unblockCalled = true;
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    const onClose = vi.fn();
+    renderMenu(
+      makeChat({ id: 'chat-priv', type: 'private', peerId: 'user-peer', title: 'Собеседник' }),
+      onClose
+    );
+
+    const unblockItem = await screen.findByRole('menuitem', { name: 'Разблокировать' });
+    expect(unblockItem).toBeInTheDocument();
+    await userEvent.click(unblockItem);
+
+    await waitFor(() => expect(unblockCalled).toBe(true));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('для группового чата не показывает пунктов блокировки', () => {
+    renderMenu(makeChat({ type: 'group', peerId: undefined }));
+
+    expect(screen.queryByRole('menuitem', { name: 'Заблокировать' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Разблокировать' })).not.toBeInTheDocument();
   });
 });

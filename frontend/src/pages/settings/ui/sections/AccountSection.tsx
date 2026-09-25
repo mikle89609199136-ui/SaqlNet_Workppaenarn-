@@ -11,7 +11,7 @@ import { ProfileEditForm } from '@/features/user-profile-edit';
 import { ChangePasswordForm } from '@/features/change-password';
 import { SessionsManager } from '@/features/session-management';
 import { KeyBackupSettings } from '@/features/key-backup';
-import type { IUserDto } from '@/types';
+import type { IUserDto } from '@/entities/user';
 
 /**
  * Раздел «Аккаунт»: обзор и подстраницы.

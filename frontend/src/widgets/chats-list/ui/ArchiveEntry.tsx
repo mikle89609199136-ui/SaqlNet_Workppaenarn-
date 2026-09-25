@@ -1,8 +1,7 @@
 import { Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
-import { chatRowStyles } from '@/entities/chat';
+import { chatRowStyles, type IChatDto } from '@/entities/chat';
 import { cn } from '@/shared/lib';
-import type { IChatDto } from '@/types';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

@@ -1,5 +1,5 @@
 import { Button, Input } from '@/shared/ui';
-import type { IUserDto } from '@/types';
+import type { IUserDto } from '@/entities/user';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 

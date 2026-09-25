@@ -45,6 +45,8 @@ export const defaultHandlers = [
     HttpResponse.json({ privacy: await request.json() })
   ),
 
+  http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: [] })),
+
   http.get(api('/chats'), () => HttpResponse.json({ chats: [] })),
 
   http.get(api('/chats/:chatId'), ({ params }) =>

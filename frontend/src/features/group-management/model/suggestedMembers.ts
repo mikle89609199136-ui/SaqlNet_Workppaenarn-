@@ -1,4 +1,5 @@
-import type { IChatDto, ISearchUserDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { ISearchUserDto } from '@/entities/user';
 
 /**
  * Подбирает участников из недавних приватных переписок.

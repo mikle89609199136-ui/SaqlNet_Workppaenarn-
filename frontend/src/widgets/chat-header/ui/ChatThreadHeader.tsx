@@ -9,6 +9,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { Avatar, Icon } from '@/shared/ui';
+import { useBlockedUsers } from '@/features/blocked-users';
 
 /**
  * Что сказать вместо «был(а) недавно», пока связи нет.
@@ -48,20 +49,26 @@ export const ChatThreadHeader = ({
   const isLongPress = useRef(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
   const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
+  const { isUserBlocked } = useBlockedUsers();
 
   if (!chat) return;
 
+  const isPeerBlocked = Boolean(
+    chat.type === 'private' && chat.peerId && isUserBlocked(chat.peerId)
+  );
   const noticeSubtitle = connectionSubtitle(connection, t);
-  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
-  const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
+  const subtitle = isPeerBlocked
+    ? t('settings.privacy.userBlocked', 'Заблокирован')
+    : (noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t));
+  const isPeerOnline = Boolean(!isPeerBlocked && chat.type === 'private' && chat?.peerIsOnline);
 
   const handleCallClick = () => {
-    if (isLongPress.current) return;
+    if (isPeerBlocked || isLongPress.current) return;
     if (showCallMenu) {
       setShowCallMenu(false);
       return;
     }
-    initiateCall(chatId, chat.type, chat.title, 'audio');
+    initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId);
   };
 
   const handleTouchStart = () => {
@@ -162,7 +169,7 @@ export const ChatThreadHeader = ({
 
             <div className="thread-title-wrap">
               <h1>{chat.title}</h1>
-              <p className={cn(noticeSubtitle && 'thread-subtitle-notice')}>{subtitle}</p>
+              <p className={cn(noticeSubtitle && 'thread-subtitle-notice', isPeerBlocked && 'text-danger font-medium')}>{subtitle}</p>
             </div>
           </div>
 
@@ -170,8 +177,9 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-actions thread-call-desktop">
               <button
                 className="thread-call-button"
-                onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
-                title={t('audioCall', 'Аудиозвонок')}
+                disabled={isPeerBlocked}
+                onClick={() => !isPeerBlocked && initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
+                title={isPeerBlocked ? t('settings.privacy.userBlocked', 'Заблокирован') : t('audioCall', 'Аудиозвонок')}
                 type="button"
               >
                 <Icon name="phone" />
@@ -179,8 +187,9 @@ export const ChatThreadHeader = ({
 
               <button
                 className="thread-call-button"
-                onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
-                title={t('videoCall', 'Видео')}
+                disabled={isPeerBlocked}
+                onClick={() => !isPeerBlocked && initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
+                title={isPeerBlocked ? t('settings.privacy.userBlocked', 'Заблокирован') : t('videoCall', 'Видео')}
                 type="button"
               >
                 <Icon name="video" />
@@ -190,11 +199,13 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-mobile">
               <button
                 className="thread-call-button"
+                disabled={isPeerBlocked}
                 onClick={handleCallClick}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onTouchEnd={handleTouchEnd}
-                onTouchStart={handleTouchStart}
+                onMouseDown={!isPeerBlocked ? handleTouchStart : undefined}
+                onMouseUp={!isPeerBlocked ? handleTouchEnd : undefined}
+                onTouchEnd={!isPeerBlocked ? handleTouchEnd : undefined}
+                onTouchStart={!isPeerBlocked ? handleTouchStart : undefined}
+                title={isPeerBlocked ? t('settings.privacy.userBlocked', 'Заблокирован') : undefined}
                 type="button"
               >
                 <Icon name="phone" className="thread-call-icon" />

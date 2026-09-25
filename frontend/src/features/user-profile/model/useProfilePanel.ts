@@ -1,5 +1,6 @@
 import type { IProfileModal, IProfileState } from '@/entities/user';
-import type { IChatDto, TMessagesList } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { TMessagesList } from '@/entities/message';
 import { useEffect, useState } from 'react';
 
 const CLOSED_PROFILE: IProfileModal = { isOpen: false, userId: null };

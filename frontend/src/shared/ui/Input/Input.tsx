@@ -1,6 +1,6 @@
 import { FieldCaption, FieldLabel, useField } from '@/shared/ui/Field';
 import { Icon } from '@/shared/ui/Icon';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 import { cn } from '@/shared/lib';
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 

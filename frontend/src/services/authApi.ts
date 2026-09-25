@@ -1,6 +1,6 @@
 import { DEFAULT_PROFILE_SETTINGS } from '@/entities/user/model/defaultProfileSettings';
 import { useProfileStore } from '@/entities/user/model/profileStore';
-import type { ISettingsDto, IUserDto } from '@/types';
+import type { ISettingsDto, IUserDto } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 
 /**

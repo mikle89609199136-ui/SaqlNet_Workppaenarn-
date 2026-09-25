@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IChatDto } from '@/types';
+import type { IChatDto } from './types';
 import { isConversationStarted } from './isConversationStarted';
 
 function makeChat(overrides: Partial<IChatDto>): IChatDto {

@@ -35,7 +35,7 @@ import {
   verifyParts,
   type ISignedParts,
 } from '@/shared/crypto';
-import type { IEncryptedMedia } from '@/types';
+import type { IEncryptedMedia } from '@/shared/types';
 
 /**
  * Шифрование чатов.

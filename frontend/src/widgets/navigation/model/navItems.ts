@@ -1,5 +1,5 @@
 import { ROUTES } from '@/shared/config';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 
 export interface INavItem {
   key: string;

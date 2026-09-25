@@ -1,8 +1,7 @@
 import { Avatar, SegmentedControl } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { meQuery } from '@/entities/user';
-import type { ISettingsDto } from '@/types';
+import { meQuery, type ISettingsDto } from '@/entities/user';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useSettingsData } from './useSettingsData';
 

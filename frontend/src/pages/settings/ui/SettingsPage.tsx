@@ -28,9 +28,10 @@ export function SettingsPage() {
           растягивается до края экрана. */}
       <div className="min-w-0 flex-1 overflow-y-auto">
         {/* Колонка текста: на широком экране прижата влево с отступом, на
-            узком занимает ширину за вычетом полей. Прежний ручной порог
-            760px сведён к md — восемь пикселей разницы на границе. */}
-        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-16 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px]">
+            узком занимает ширину за вычетом полей. Отступ снизу на мобильном
+            (pb-24 = 96px) перекрывает высоту навбара (60px) + bottom-8 (32px)
+            с запасом в 4px. Прежний ручной порог 760px сведён к md. */}
+        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-26 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px] md:pb-16">
           <Outlet />
         </main>
       </div>

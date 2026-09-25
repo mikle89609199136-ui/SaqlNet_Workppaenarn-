@@ -6,7 +6,8 @@ import { renderChatThread } from '@/test/harness/renderChatThread';
 import { makeChatScenario, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import type { IChatDto, IMessageDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { IMessageDto } from '@/entities/message';
 
 /**
  * S10 — входящее сообщение по веб-сокету.

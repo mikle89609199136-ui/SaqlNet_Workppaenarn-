@@ -1,4 +1,5 @@
-import type { IChatDto, TMessagesList } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { TMessagesList } from '@/entities/message';
 
 export interface IUserDto {
   id: string;
@@ -59,3 +60,20 @@ export interface IProfileState extends IProfileModal {
   chat: IChatDto | null;
   messages: TMessagesList;
 }
+
+export interface IBlockedUserDto {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+  blockedAt: string;
+}
+
+export interface ISessionDto {
+  id: string;
+  deviceName?: string;
+  deviceType?: string;
+  lastActive: string | number | Date;
+}
+

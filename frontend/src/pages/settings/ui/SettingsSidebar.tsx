@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 import { SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 import { SettingsMenuItem } from './SettingsMenuItem';
 
 /* Порядок пунктов задаётся списком разделов, значок и подпись — здесь.

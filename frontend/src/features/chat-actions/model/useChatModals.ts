@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { IPendingAttachment } from '@/types';
+import type { IPendingAttachment } from '@/entities/chat';
 
 export function useChatModals() {
   const [pendingAttachment, setPendingAttachment] = useState<IPendingAttachment | null>(null);

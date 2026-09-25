@@ -1,6 +1,6 @@
 import { Button, Icon } from '@/shared/ui';
 import { EDITOR_FONTS } from '@/shared/config';
-import type { IEditorTextObject } from '@/types';
+import type { IEditorTextObject } from '@/shared/types';
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 

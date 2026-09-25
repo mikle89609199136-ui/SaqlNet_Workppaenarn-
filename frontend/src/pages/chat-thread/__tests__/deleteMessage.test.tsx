@@ -6,7 +6,8 @@ import { makeChatScenario } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
-import type { IChatDto, IMessageDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { IMessageDto } from '@/entities/message';
 
 /** Отдаёт странице ровно ту историю, с которой начинается сценарий. */
 function serveChat(chat: IChatDto, messages: IMessageDto[]): void {

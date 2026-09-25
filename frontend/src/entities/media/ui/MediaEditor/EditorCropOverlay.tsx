@@ -1,4 +1,4 @@
-import type { IEditorCrop } from '@/types';
+import type { IEditorCrop } from '@/shared/types';
 import { cn } from '@/shared/lib';
 
 interface Props {

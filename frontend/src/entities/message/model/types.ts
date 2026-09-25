@@ -1,4 +1,4 @@
-import type { IEncryptedMedia } from '@/types/encryption.types';
+import type { IEncryptedMedia } from '@/shared/types';
 
 export type TMessageType =
   'text' | 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file' | 'call';

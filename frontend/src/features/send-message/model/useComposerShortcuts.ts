@@ -1,8 +1,7 @@
-import { useThreadMessagesData } from '@/entities/message';
+import { useThreadMessagesData, type IMessageDto } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import { setComposerText } from '@/shared/lib';
-import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, type RefObject } from 'react';
 
 export function useComposerShortcuts(

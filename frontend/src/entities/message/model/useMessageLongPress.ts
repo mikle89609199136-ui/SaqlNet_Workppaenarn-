@@ -1,5 +1,5 @@
 import type { IActionMenu } from '@/entities/chat';
-import type { IMessageDto } from '@/types';
+import type { IMessageDto } from './types';
 import { useCallback, useEffect, useRef } from 'react';
 
 export const useMessageLongPress = (

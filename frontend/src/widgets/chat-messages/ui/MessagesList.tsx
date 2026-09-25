@@ -2,10 +2,14 @@ import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
-import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
+import {
+  MessageBubble,
+  MessageBubbleSkeleton,
+  type IMessageDto,
+  type TMessagesList,
+} from '@/entities/message';
 import { cn } from '@/shared/lib';
 import { DateDivider } from './DateDivider';
 import { ScrollToBottomButton } from './ScrollToBottomButton';

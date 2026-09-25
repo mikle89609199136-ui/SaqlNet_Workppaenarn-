@@ -1,4 +1,4 @@
-import type { IChatDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
 import { describe, expect, it } from 'vitest';
 import { suggestedMembers } from './suggestedMembers';
 

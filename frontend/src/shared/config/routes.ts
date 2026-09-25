@@ -43,12 +43,21 @@ export const ACCOUNT_SUBSECTIONS = [
 
 export type TAccountSubsection = (typeof ACCOUNT_SUBSECTIONS)[number];
 
+/* Подстраницы приватности — второй уровень: /settings/privacy/blocked. */
+export const PRIVACY_SUBSECTIONS = ['blocked'] as const;
+
+export type TPrivacySubsection = (typeof PRIVACY_SUBSECTIONS)[number];
+
 export function isSettingsSection(value: string | undefined): value is TSettingsSection {
   return SETTINGS_SECTIONS.includes(value as TSettingsSection);
 }
 
 export function isAccountSubsection(value: string | undefined): value is TAccountSubsection {
   return ACCOUNT_SUBSECTIONS.includes(value as TAccountSubsection);
+}
+
+export function isPrivacySubsection(value: string | undefined): value is TPrivacySubsection {
+  return PRIVACY_SUBSECTIONS.includes(value as TPrivacySubsection);
 }
 
 class Routes {

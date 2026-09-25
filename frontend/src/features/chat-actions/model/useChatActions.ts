@@ -1,8 +1,7 @@
 import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/entities/chat';
+import { chatKeys, type IChatDto } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
-import type { IChatDto } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';

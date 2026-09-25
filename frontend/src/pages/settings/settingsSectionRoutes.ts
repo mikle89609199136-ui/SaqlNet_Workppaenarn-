@@ -34,10 +34,11 @@ const SECTION_COMPONENTS: Record<TSettingsSection, () => Promise<{ Component: Co
     })),
 };
 
-/* Подстраницы есть пока только у аккаунта, и разбирает их он сам. */
+/* Подстраницы есть у аккаунта и приватности, и разбирают их они сами. */
 export const settingsSectionRoutes: RouteObject[] = SETTINGS_SECTIONS.flatMap((section) => {
   const lazy = SECTION_COMPONENTS[section];
   const route: RouteObject = { path: section, lazy };
 
-  return section === 'account' ? [route, { path: `${section}/:subsection`, lazy }] : [route];
+  const hasSubsections = section === 'account' || section === 'privacy';
+  return hasSubsections ? [route, { path: `${section}/:subsection`, lazy }] : [route];
 });

@@ -1,5 +1,5 @@
 import { Icon } from '@/shared/ui/Icon';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 import type { ReactNode } from 'react';
 
 interface Props {

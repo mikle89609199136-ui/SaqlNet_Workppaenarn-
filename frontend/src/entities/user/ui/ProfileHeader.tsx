@@ -1,5 +1,5 @@
 import { Avatar, Button, Icon } from '@/shared/ui';
-import type { TCallKind } from '@/types';
+import type { TCallKind } from '@/shared/types';
 import type { IUserDto } from '../model/types';
 import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
@@ -10,9 +10,12 @@ interface Props {
   isPeerOnline: boolean;
   profileSubtitle: string | null;
   hasChat: boolean;
+  isBlocked?: boolean;
   onClose: () => void;
   onCall: (kind: TCallKind) => void;
   onStartEdit: () => void;
+  onBlock?: () => void;
+  onUnblock?: () => void;
 }
 
 export function ProfileHeader({
@@ -21,11 +24,18 @@ export function ProfileHeader({
   isPeerOnline,
   profileSubtitle,
   hasChat,
+  isBlocked = false,
   onClose,
   onCall,
   onStartEdit,
+  onBlock,
+  onUnblock,
 }: Props) {
   const { t } = useTranslation();
+  const effectiveOnline = isBlocked ? false : isPeerOnline;
+  const effectiveSubtitle = isBlocked
+    ? t('settings.privacy.userBlocked', 'Заблокирован')
+    : profileSubtitle;
 
   return (
     <div className="flex flex-col items-center text-center">
@@ -46,7 +56,7 @@ export function ProfileHeader({
         <Avatar
           id={profileUser.id}
           name={profileUser.username}
-          online={isPeerOnline}
+          online={effectiveOnline}
           size="xl"
           src={profileUser.avatarUrl}
         />
@@ -58,14 +68,14 @@ export function ProfileHeader({
 
       <p className="text-caption text-ink-2">@{profileUser.username}</p>
 
-      {profileSubtitle && (
+      {effectiveSubtitle && (
         <p
           className={cn(
             'mt-1 text-caption font-medium',
-            isPeerOnline ? 'text-brand' : 'text-ink-2'
+            isBlocked ? 'text-danger' : effectiveOnline ? 'text-brand' : 'text-ink-2'
           )}
         >
-          {profileSubtitle}
+          {effectiveSubtitle}
         </p>
       )}
 
@@ -76,28 +86,50 @@ export function ProfileHeader({
             {t('editProfile', 'Редактировать')}
           </Button>
         ) : (
-          <>
-            <Button
-              disabled={!hasChat}
-              onClick={() => onCall('audio')}
-              size="md"
-              title={t('audioCall', 'Аудиозвонок')}
-              variant="secondary"
-            >
-              <Icon name="phone" />
-              {t('audioCall', 'Аудиозвонок')}
-            </Button>
-            <Button
-              disabled={!hasChat}
-              onClick={() => onCall('video')}
-              size="md"
-              title={t('videoCall', 'Видеозвонок')}
-              variant="secondary"
-            >
-              <Icon name="video" />
-              {t('videoCall', 'Видеозвонок')}
-            </Button>
-          </>
+          <div className="flex flex-col items-center gap-2 w-full">
+            <div className="flex items-center justify-center gap-3 w-full">
+              <Button
+                disabled={!hasChat || isBlocked}
+                onClick={() => onCall('audio')}
+                size="md"
+                title={t('audioCall', 'Аудиозвонок')}
+                variant="secondary"
+              >
+                <Icon name="phone" />
+                {t('audioCall', 'Аудиозвонок')}
+              </Button>
+              <Button
+                disabled={!hasChat || isBlocked}
+                onClick={() => onCall('video')}
+                size="md"
+                title={t('videoCall', 'Видеозвонок')}
+                variant="secondary"
+              >
+                <Icon name="video" />
+                {t('videoCall', 'Видеозвонок')}
+              </Button>
+            </div>
+
+            {isBlocked ? (
+              onUnblock && (
+                <Button className="w-full" onClick={onUnblock} size="md" variant="secondary">
+                  {t('settings.privacy.unblock', 'Разблокировать')}
+                </Button>
+              )
+            ) : (
+              onBlock && (
+                <Button
+                  className="w-full text-danger hover:bg-danger/10 hover:text-danger"
+                  onClick={onBlock}
+                  size="md"
+                  variant="ghost"
+                >
+                  <Icon name="cross" />
+                  {t('settings.privacy.block', 'Заблокировать')}
+                </Button>
+              )
+            )}
+          </div>
         )}
       </div>
     </div>

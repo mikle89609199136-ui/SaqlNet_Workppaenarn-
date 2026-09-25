@@ -1,4 +1,4 @@
-import type { IChatDto, IMemberDto } from '@/types';
+import type { IChatDto, IMemberDto } from './types';
 
 /**
  * Кто умеет доставать чат.

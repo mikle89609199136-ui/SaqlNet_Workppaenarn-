@@ -1,5 +1,5 @@
 import { Button, Icon } from '@/shared/ui';
-import type { TEditorTool } from '@/types';
+import type { TEditorTool } from '@/shared/types';
 
 interface Props {
   tool: TEditorTool;

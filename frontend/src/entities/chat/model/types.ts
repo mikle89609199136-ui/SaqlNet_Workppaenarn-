@@ -1,4 +1,4 @@
-import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
+import type { TMediaMessageType, TMessageType, TReactionsList } from '@/entities/message';
 
 export type TChatType = 'private' | 'group' | 'channel';
 

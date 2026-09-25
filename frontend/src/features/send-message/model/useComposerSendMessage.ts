@@ -7,12 +7,13 @@ import {
   retryOutboxMessage,
   sendOutboxItem,
   type IOutboxItem,
+  type IMediaItem,
+  type IMessageDto,
 } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { clearDraft, useChatUiStore } from '@/entities/chat';
+import { clearDraft, useChatUiStore, type IPendingAttachment } from '@/entities/chat';
 import { setComposerText } from '@/shared/lib';
-import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,

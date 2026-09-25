@@ -1,7 +1,7 @@
 import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/shared/api';
 import { useCallStore } from '../model/callStore';
-import type { ICallCancelledPayload, ICallInviteResponsePayload, IIncomingCall } from '@/types';
+import type { ICallCancelledPayload, ICallInviteResponsePayload, IIncomingCall } from '@/shared/types';
 import { useEffect, type PropsWithChildren } from 'react';
 
 export function CallProvider({ children }: PropsWithChildren) {

@@ -16,6 +16,7 @@ type TErrorLike = { code?: string; message?: string } | null | undefined;
 /** Коды, которые доходят до человека. Остальные — внутренние. */
 const MESSAGES: Record<string, string> = {
   access_denied: 'errors.accessDenied',
+  already_blocked: 'errors.alreadyBlocked',
   blocked_by_user: 'errors.blockedByUser',
   chat_not_found: 'errors.chatNotFound',
   file_too_large: 'errors.fileTooLarge',
@@ -26,6 +27,7 @@ const MESSAGES: Record<string, string> = {
   member_not_found: 'errors.memberNotFound',
   not_found: 'errors.notFound',
   rate_limited: 'errors.rateLimited',
+  self_block: 'errors.selfBlock',
   unsupported_type: 'errors.unsupportedType',
   user_not_found: 'errors.userNotFound',
   username_taken: 'errors.usernameTaken',

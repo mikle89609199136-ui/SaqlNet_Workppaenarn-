@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { STORAGE_KEYS } from '@/shared/config';
 import { settingsQuery } from './settingsQuery';
-import type { ISettingsDto } from '@/types';
+import type { ISettingsDto } from './types';
 
 /**
  * Применение темы и языка ко всему приложению.

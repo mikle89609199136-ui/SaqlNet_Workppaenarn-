@@ -1,5 +1,5 @@
 import { Button } from '@/shared/ui';
-import type { IEditorFilter } from '@/types';
+import type { IEditorFilter } from '@/shared/types';
 import { EditorRange, PanelTitle } from './EditorControls';
 
 interface Props {

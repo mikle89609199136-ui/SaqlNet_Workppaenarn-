@@ -1,25 +1,26 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
+import type { IChatContext, ILastMessageDto } from '@/entities/chat';
 import type {
-  IChatContext,
-  IDeleteMessageResponse,
-  IEmojisResponse,
-  IEncryptedMedia,
-  ILastMessageDto,
   IMediaItem,
   IMessageDto,
-  IMessageResponse,
-  IUploadResponse,
-  IMessagesResponse,
   IPinnedDto,
-  IPinnedListResponse,
-  IReactionsResponse,
-  ISuccessResponse,
   TMediaMessageType,
   TMessagesList,
   TMessageType,
-} from '@/types';
+} from '@/entities/message';
+import type {
+  IDeleteMessageResponse,
+  IEmojisResponse,
+  IEncryptedMedia,
+  IMessageResponse,
+  IUploadResponse,
+  IMessagesResponse,
+  IPinnedListResponse,
+  IReactionsResponse,
+  ISuccessResponse,
+} from '@/shared/types';
 import { sortMessagesChronologically } from '@/shared/lib';
 import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 

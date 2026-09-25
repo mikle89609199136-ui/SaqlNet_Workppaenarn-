@@ -4,9 +4,8 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Button, Icon, Input, Textarea, showToast } from '@/shared/ui';
-import { useProfileStore, userKeys, validateAvatarFile } from '@/entities/user';
+import { useProfileStore, userKeys, validateAvatarFile, type IUserDto } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import type { IUserDto } from '@/types';
 import { profileFormSchema, type TProfileForm } from '../model/profileSchema';
 
 interface Props {

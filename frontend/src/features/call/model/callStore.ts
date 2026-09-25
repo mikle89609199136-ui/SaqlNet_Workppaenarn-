@@ -2,14 +2,16 @@ import { WS_EVENTS } from '@/shared/config';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { WebSocketClient } from '@/services/WebSocketClient';
+import type { IMemberDto } from '@/entities/chat';
 import type {
   IActiveCall,
   ICallInviteResponsePayload,
   IIncomingCall,
-  IMemberDto,
   TCallKind,
   TCallRoomType,
-} from '@/types';
+} from '@/shared/types';
+import { queryClient } from '@/shared/api';
+import { userKeys, type IBlockedUserDto } from '@/entities/user';
 import { create } from 'zustand';
 
 interface CallStore {
@@ -71,6 +73,20 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   handleIncoming: (payload) => {
     const { activeCall, incomingCall, socket } = get();
+    const blockedUsers = queryClient.getQueryData<IBlockedUserDto[]>(userKeys.blocked());
+    if (blockedUsers?.some((u) => u.id === payload.from)) {
+      if (socket?.isConnected) {
+        socket.send({
+          type: WS_EVENTS.CALL.INVITE_RESPONSE,
+          to: payload.from,
+          roomId: payload.roomId,
+          accepted: false,
+          reason: 'busy',
+        });
+      }
+      return;
+    }
+
     if (activeCall || incomingCall) {
       if (socket?.isConnected) {
         socket.send({
@@ -150,6 +166,13 @@ export const useCallStore = create<CallStore>((set, get) => ({
   initiateCall: async (chatId, type, title, kind, peerId = null) => {
     const { activeCall, incomingCall, socket } = get();
     if (activeCall || incomingCall) return;
+
+    if (peerId) {
+      const blockedUsers = queryClient.getQueryData<IBlockedUserDto[]>(userKeys.blocked());
+      if (blockedUsers?.some((u) => u.id === peerId)) {
+        return;
+      }
+    }
 
     try {
       const callType: TCallRoomType = type === 'group' ? 'group' : 'private';

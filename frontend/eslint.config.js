@@ -24,7 +24,7 @@ export default tseslint.config(
       'coverage',
       'node_modules',
       // Генерируется openapi-typescript из contracts/openapi.
-      'src/types/api.generated.ts',
+      'src/shared/types/api.generated.ts',
       // Клиент до React: заморожен и ничем не собирается, см. legacy/README.md.
       '../legacy',
     ],

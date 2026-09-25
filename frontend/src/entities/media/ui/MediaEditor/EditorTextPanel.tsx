@@ -1,6 +1,6 @@
 import { Button, Icon } from '@/shared/ui';
 import { EDITOR_FONTS } from '@/shared/config';
-import type { IEditorTextObject, TTextFontId } from '@/types';
+import type { IEditorTextObject, TTextFontId } from '@/shared/types';
 import { ColorPicker, EditorRange, PanelTitle } from './EditorControls';
 
 interface Props {

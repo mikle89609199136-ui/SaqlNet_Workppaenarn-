@@ -5,10 +5,12 @@ import {
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { useQuery } from '@tanstack/react-query';
+import { chatQuery, clearDraft, readDraft, writeDraft, type IPendingAttachment } from '@/entities/chat';
+import { useBlockedUsers, useUnblockUserMutation } from '@/features/blocked-users';
+import { Button } from '@/shared/ui';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
-import type { IPendingAttachment } from '@/types';
 import { cn } from '@/shared/lib';
 import {
   useEffect,
@@ -26,6 +28,7 @@ import { AttachmentPreview } from './AttachmentPreview';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
+import { ComposerWrapper } from './ComposerWrapper';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
 function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
@@ -126,6 +129,34 @@ export const ChatThreadComposer = ({
     // символы состояние не трогают.
     setHasText(text.trim().length > 0);
     sendTyping();
+  }
+
+  const { data: chat } = useQuery(chatQuery(chatId));
+  const { isUserBlocked } = useBlockedUsers();
+  const unblockMutation = useUnblockUserMutation();
+  const isPeerBlocked = Boolean(
+    chat?.type === 'private' && chat.peerId && isUserBlocked(chat.peerId)
+  );
+
+  if (isPeerBlocked && chat?.peerId) {
+    return (
+      <ComposerWrapper>
+        <div className="flex min-h-11 items-center justify-between gap-4 px-4 py-2 text-body text-ink-2">
+          <span className="truncate">
+            {t('settings.privacy.youBlockedUser', 'Вы заблокировали этого пользователя')}
+          </span>
+          <Button
+            disabled={unblockMutation.isPending}
+            loading={unblockMutation.isPending}
+            onClick={() => chat.peerId && unblockMutation.mutateAsync(chat.peerId)}
+            size="sm"
+            variant="secondary"
+          >
+            {t('settings.privacy.unblock', 'Разблокировать')}
+          </Button>
+        </div>
+      </ComposerWrapper>
+    );
   }
 
   return (

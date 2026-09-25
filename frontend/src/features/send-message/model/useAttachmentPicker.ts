@@ -1,5 +1,4 @@
-import { useChatUiStore } from '@/entities/chat';
-import type { IPendingAttachment } from '@/types';
+import { useChatUiStore, type IPendingAttachment } from '@/entities/chat';
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 

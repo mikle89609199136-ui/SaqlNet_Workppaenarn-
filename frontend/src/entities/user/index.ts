@@ -4,6 +4,7 @@ export * from './model/defaultProfileSettings';
 export * from './model/meQuery';
 export * from './model/userProfileQuery';
 export * from './model/searchUsersQuery';
+export * from './model/blockedUsersQuery';
 export * from './model/settingsQuery';
 export * from './model/securityQueries';
 export * from './model/useApplyPreferences';

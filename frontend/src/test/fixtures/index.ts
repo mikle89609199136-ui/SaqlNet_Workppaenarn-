@@ -1,4 +1,6 @@
-import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
+import type { IChatDto } from '@/entities/chat';
+import type { IMessageDto, IPinnedDto } from '@/entities/message';
+import type { IUserDto } from '@/entities/user';
 
 /**
  * Фабрики тестовых данных.

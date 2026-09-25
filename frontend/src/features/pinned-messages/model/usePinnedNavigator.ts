@@ -1,5 +1,5 @@
 import { useChatUiStore } from '@/entities/chat';
-import type { TPinnedList } from '@/types';
+import type { TPinnedList } from '@/entities/message';
 import { useEffect, useRef, useState } from 'react';
 
 const MAX_VISIBLE_SEGMENTS = 4;

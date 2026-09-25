@@ -12,7 +12,7 @@ import type {
   TEditorObject,
   TEditorTool,
   TTextFontId,
-} from '@/types';
+} from '@/shared/types';
 import { cn } from '@/shared/lib';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

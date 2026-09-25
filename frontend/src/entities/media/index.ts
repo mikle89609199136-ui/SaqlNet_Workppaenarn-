@@ -1,4 +1,3 @@
-export * from './model/editorTypes';
 export * from './model/mediaObjectUrls';
 export * from './model/usePhotoEditor';
 export * from './model/usePhotoEditorCanvas';

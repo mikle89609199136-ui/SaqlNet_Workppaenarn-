@@ -1,6 +1,6 @@
 import { Button, Icon } from '@/shared/ui';
 import { useObjectUrl } from '@/shared/lib';
-import type { IPendingAttachment } from '@/types';
+import type { IPendingAttachment } from '@/entities/chat';
 import { formatFileSize } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 

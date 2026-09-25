@@ -1,14 +1,15 @@
 import { testI18n } from '@/test/harness/i18n';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ChatThreadComposer } from './ChatThreadComposer';
 import { clearOutbox } from '@/entities/message';
-import { useProfileStore } from '@/entities/user';
+import { chatKeys } from '@/entities/chat';
+import { userKeys, useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { makeMessage } from '@/test/fixtures';
+import { makeChat, makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -110,5 +111,54 @@ describe('ChatThreadComposer', () => {
 
     expect(screen.getByText('photo.png')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
+  });
+
+  it('отображает плашку блокировки и кнопку Разблокировать, если собеседник заблокирован', () => {
+    const chat = makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-blocked-1' });
+    queryClient.setQueryData(chatKeys.detail('chat-test-1'), chat);
+    queryClient.setQueryData(userKeys.blocked(), [
+      {
+        id: 'user-blocked-1',
+        username: 'blocked_user',
+        firstName: 'Иван',
+        lastName: 'Блокированный',
+        avatarUrl: '',
+        blockedAt: '2026-09-25T10:00:00Z',
+      },
+    ]);
+
+    const props = setupProps();
+    renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+    expect(screen.getByText('Вы заблокировали этого пользователя')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Разблокировать' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /сообщение/i })).not.toBeInTheDocument();
+  });
+
+  it('клик по кнопке Разблокировать вызывает unblockUser', async () => {
+    const chat = makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-blocked-1' });
+    queryClient.setQueryData(chatKeys.detail('chat-test-1'), chat);
+    queryClient.setQueryData(userKeys.blocked(), [
+      {
+        id: 'user-blocked-1',
+        username: 'blocked_user',
+        firstName: 'Иван',
+        lastName: 'Блокированный',
+        avatarUrl: '',
+        blockedAt: '2026-09-25T10:00:00Z',
+      },
+    ]);
+
+    const unblockSpy = vi.spyOn(services.userService, 'unblockUser').mockResolvedValue({ success: true });
+
+    const props = setupProps();
+    renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+    const unblockBtn = screen.getByRole('button', { name: 'Разблокировать' });
+    fireEvent.click(unblockBtn);
+
+    await waitFor(() => {
+      expect(unblockSpy).toHaveBeenCalledWith('user-blocked-1');
+    });
   });
 });

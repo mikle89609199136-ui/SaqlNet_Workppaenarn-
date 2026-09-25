@@ -1,5 +1,5 @@
 import { useChatUiStore, type IActionMenu } from '@/entities/chat';
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TMessagesList } from '@/entities/message';
 import { useCallback, useMemo } from 'react';
 
 export function useMessageSelection(messages: TMessagesList, actionMenu: IActionMenu | null) {

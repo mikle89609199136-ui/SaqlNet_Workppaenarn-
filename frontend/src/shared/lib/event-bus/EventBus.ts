@@ -1,4 +1,4 @@
-import type { IWsEventMap } from '@/types';
+import type { IWsEventMap } from '@/shared/types';
 
 export type Handler<TPayload = unknown> = (payload: TPayload) => void;
 

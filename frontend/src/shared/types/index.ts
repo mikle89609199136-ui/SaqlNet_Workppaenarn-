@@ -8,37 +8,8 @@ export type {
   TCallKind,
   TCallRoomType,
 } from './call.types';
-export type {
-  IChatContext,
-  IChatDto,
-  ILastMessageDto,
-  IMemberDto,
-  IPendingAttachment,
-  TChatRole,
-  TChatsList,
-  TChatType,
-  TMembersList,
-} from '@/entities/chat';
 export type { IEncryptedMedia } from './encryption.types';
 export type { TIconTypes } from './icons';
-export type {
-  IEmojiDto,
-  IMediaDisplayPatch,
-  IMediaItem,
-  IMediaPayload,
-  IMessageDto,
-  IPinMessagePayload,
-  IPinnedDto,
-  IPinnedMessageDto,
-  IReaction,
-  TEmojisList,
-  TMediaMessageType,
-  TMessageDeliveryStatus,
-  TMessagesList,
-  TMessageType,
-  TPinnedList,
-  TReactionsList,
-} from '@/entities/message';
 export type {
   IAuthResponse,
   IChatResponse,
@@ -57,17 +28,6 @@ export type {
   ISuccessResponse,
   IUploadResponse,
 } from './response.types';
-export type {
-  IPrivacyDto,
-  ISearchUserDto,
-  ISettingsDto,
-  ISettingsPayloadDto,
-  IUserDto,
-  TLastSeenVisibility,
-  TSearchUsersList,
-  IProfileModal,
-  IProfileState,
-} from '@/entities/user';
 export type {
   ICallAnswerEvent,
   ICallCenceledEvent,
@@ -95,20 +55,4 @@ export type {
   IWsEventMap,
   TWsEventType,
 } from './wsEvents.types';
-export type {
-  IBrushOption,
-  IEditorCrop,
-  IEditorFilter,
-  IEditorPathObject,
-  IEditorPoint,
-  IEditorState,
-  IEditorTextObject,
-  IFontOption,
-  IPhotoEditorModalProps,
-  IRatioOption,
-  TBrushType,
-  TCropRatioValue,
-  TEditorObject,
-  TEditorTool,
-  TTextFontId,
-} from '@/entities/media';
+export * from './editor.types';

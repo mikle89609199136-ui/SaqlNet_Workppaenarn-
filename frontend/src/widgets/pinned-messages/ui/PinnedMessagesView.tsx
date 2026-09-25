@@ -4,7 +4,7 @@ import { MessageActionsPopover } from '@/features/message-actions';
 import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/entities/chat';
-import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
+import type { IMessageDto, IPinnedDto, TPinnedList } from '@/entities/message';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';

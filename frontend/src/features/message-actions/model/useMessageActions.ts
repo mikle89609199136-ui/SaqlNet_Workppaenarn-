@@ -16,7 +16,7 @@ import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore } from '@/entities/chat';
 import { setComposerText, sortMessagesChronologically } from '@/shared/lib';
-import type { IMessageDto } from '@/types';
+import type { IMessageDto } from '@/entities/message';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';

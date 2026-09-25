@@ -7,7 +7,7 @@ import type {
   TEditorObject,
   TEditorTool,
   TTextFontId,
-} from '@/types';
+} from '@/shared/types';
 import {
   clamp,
   createEditorId,

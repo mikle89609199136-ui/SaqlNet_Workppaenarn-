@@ -2,7 +2,7 @@ import { useDebounce } from '@/shared/lib';
 import { services } from '@/services';
 import { chatsQuery } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
-import type { TMessagesList } from '@/types';
+import type { TMessagesList } from '@/entities/message';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';

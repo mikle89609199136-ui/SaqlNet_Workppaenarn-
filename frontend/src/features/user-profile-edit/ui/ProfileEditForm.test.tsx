@@ -3,12 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
-import { useProfileStore, userKeys, MAX_AVATAR_SIZE_BYTES } from '@/entities/user';
+import { useProfileStore, userKeys, MAX_AVATAR_SIZE_BYTES, type IUserDto } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { testI18n } from '@/test/harness/i18n';
 import { makeUser } from '@/test/fixtures';
 import { ToastStack } from '@/shared/ui';
-import type { IUserDto } from '@/types';
 import { ProfileEditForm } from './ProfileEditForm';
 
 const INITIAL_USER: IUserDto = makeUser({

@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import type { TMessagesList } from '@/types';
+import type { TMessagesList } from './types';
 import { EMPTY_THREAD } from './threadCache';
 import { messagesQuery } from './threadQueries';
 

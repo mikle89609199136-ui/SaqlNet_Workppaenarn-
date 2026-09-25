@@ -1,5 +1,5 @@
 import { EDITOR_FONTS } from '@/shared/config';
-import type { IEditorPathObject, IEditorPoint, IEditorTextObject, TEditorObject } from '@/types';
+import type { IEditorPathObject, IEditorPoint, IEditorTextObject, TEditorObject } from '@/shared/types';
 
 export function createEditorId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;

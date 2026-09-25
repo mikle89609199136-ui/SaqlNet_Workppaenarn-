@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link, useMatch } from 'react-router-dom';
 import { Icon } from '@/shared/ui/Icon';
 import { ROUTES, type TSettingsSection } from '@/shared/config/routes';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 
 interface Props {
   section: TSettingsSection;

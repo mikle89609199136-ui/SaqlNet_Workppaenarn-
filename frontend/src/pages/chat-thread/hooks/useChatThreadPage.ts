@@ -6,9 +6,8 @@ import { useMessageActions, useMessageSelection } from '@/features/message-actio
 import { useProfilePanel } from '@/features/user-profile';
 import { useAutoScrollToBottom, useEscapeKey } from '@/shared/lib';
 import { chatQuery, useChatUiStore } from '@/entities/chat';
-import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
+import { cancelOutboxMessage, pinsQuery, retryOutboxMessage, type IMessageDto } from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
-import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';

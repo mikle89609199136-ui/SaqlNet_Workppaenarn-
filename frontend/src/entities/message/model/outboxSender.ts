@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { services } from '@/services';
-import type { TMediaMessageType } from '@/types';
+import type { TMediaMessageType } from './types';
 import { dropThreadMessage, patchThreadMessage, replaceThreadMessage } from './threadCacheActions';
 import {
   type IOutboxItem,

@@ -1,7 +1,7 @@
 import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
-import type { ILastMessageDto } from '@/types';
+import type { ILastMessageDto } from '@/entities/chat';
 import { useEffect } from 'react';
 
 const FALLBACK_BODY = 'Новое сообщение';

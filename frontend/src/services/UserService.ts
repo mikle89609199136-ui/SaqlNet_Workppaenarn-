@@ -1,7 +1,9 @@
-import { API_ENDPOINTS } from '@/shared/api';
+import { API_ENDPOINTS, ApiClient } from '@/shared/api';
+import type { IBlockedUserDto } from '@/entities/user';
 
 export class UserService {
-  constructor(apiClient) {
+  private apiClient: ApiClient;
+  constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
 
@@ -105,22 +107,22 @@ export class UserService {
     return this.apiClient.get(API_ENDPOINTS.USER_EXPORT).then((response) => response.data);
   }
 
-  listBlocked() {
+  listBlocked(): Promise<IBlockedUserDto[]> {
     return this.apiClient
       .get(API_ENDPOINTS.USER_BLOCKED)
-      .then((response) => response.data?.blocked ?? []);
+      .then((response: { data?: { blocked?: IBlockedUserDto[] } }) => response.data?.blocked ?? []);
   }
 
-  blockUser(userId) {
+  blockUser(userId: string): Promise<{ success: boolean }> {
     return this.apiClient
       .post(API_ENDPOINTS.USER_BLOCKED, { userId })
-      .then((response) => response.data);
+      .then((response: { data: { success: boolean } }) => response.data);
   }
 
-  unblockUser(userId) {
+  unblockUser(userId: string): Promise<{ success: boolean }> {
     return this.apiClient
       .delete(API_ENDPOINTS.USER_BLOCKED_BY_ID(userId))
-      .then((response) => response.data);
+      .then((response: { data: { success: boolean } }) => response.data);
   }
 
   listDevices() {

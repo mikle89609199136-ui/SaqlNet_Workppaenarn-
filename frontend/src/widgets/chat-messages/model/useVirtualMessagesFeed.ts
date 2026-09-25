@@ -1,6 +1,10 @@
-import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
+import {
+  estimateMessageItemSize,
+  type IMediaItem,
+  type IMessageDto,
+  type TMessagesList,
+} from '@/entities/message';
 import { formatDateDivider, isDifferentDay } from '@/shared/lib';
-import { estimateMessageItemSize } from '@/entities/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';

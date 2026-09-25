@@ -1,5 +1,5 @@
 import { DEFAULT_CROP, DEFAULT_FILTERS } from '@/shared/config';
-import type { IEditorState } from '@/types';
+import type { IEditorState } from '@/shared/types';
 import { cloneEditorState } from '@/shared/lib';
 import { useCallback, useState } from 'react';
 

@@ -1,6 +1,6 @@
 import { Button, Icon } from '@/shared/ui';
 import { EDITOR_RATIOS } from '@/shared/config';
-import type { TCropRatioValue } from '@/types';
+import type { TCropRatioValue } from '@/shared/types';
 import { PanelTitle } from './EditorControls';
 
 interface Props {

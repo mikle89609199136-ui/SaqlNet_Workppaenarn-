@@ -1,6 +1,6 @@
 import { Button, Icon } from '@/shared/ui';
 import { usePinnedNavigator } from '../model/usePinnedNavigator';
-import type { IMessageDto, TPinnedList } from '@/types';
+import type { IMessageDto, TPinnedList } from '@/entities/message';
 import { cn } from '@/shared/lib';
 import type { TFunction } from 'i18next';
 import type { Dispatch, SetStateAction } from 'react';

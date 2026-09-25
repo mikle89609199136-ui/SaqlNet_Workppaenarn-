@@ -1,15 +1,12 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
+import type { IChatDto, TChatRole, TChatType, TMembersList } from '@/entities/chat';
 import type {
-  IChatDto,
   IChatResponse,
   IChatsResponse,
   ICreateGroupChatResponse,
   IMembersListResponse,
   ISearchUsersResponse,
-  TChatRole,
-  TChatType,
-  TMembersList,
-} from '@/types';
+} from '@/shared/types';
 
 export class ChatService {
   private apiClient: ApiClient;

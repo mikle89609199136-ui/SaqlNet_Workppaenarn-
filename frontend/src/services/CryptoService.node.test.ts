@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ApiClient } from '@/shared/api';
 import { useMemoryKeyStore } from '@/shared/crypto';
-import type { IEncryptedMedia } from '@/types';
+import type { IEncryptedMedia } from '@/shared/types';
 import {
   CryptoService,
   KEY_UNAVAILABLE_PLACEHOLDER,

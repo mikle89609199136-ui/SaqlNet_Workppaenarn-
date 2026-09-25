@@ -1,12 +1,6 @@
 import type { WS_EVENTS } from '@/shared/config';
-import type {
-  IChatDto,
-  IMemberDto,
-  IMessageDto,
-  IPinnedDto,
-  TMessageType,
-  TReactionsList,
-} from '@/types';
+import type { IChatDto, IMemberDto } from '@/entities/chat';
+import type { IMessageDto, IPinnedDto, TMessageType, TReactionsList } from '@/entities/message';
 
 export interface IMessageNewEvent {
   type: string;

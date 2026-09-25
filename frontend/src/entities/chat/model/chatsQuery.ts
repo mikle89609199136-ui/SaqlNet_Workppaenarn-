@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { services } from '@/services/serviceContainer';
-import type { IChatDto } from '@/types';
+import type { IChatDto } from './types';
 import { chatKeys } from './chatKeys';
 
 function lastActivityAt(chat: IChatDto): number {

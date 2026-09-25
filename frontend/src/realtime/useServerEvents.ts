@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { WS_EVENTS } from '@/shared/config';
-import type { IWsEventMap } from '@/types';
+import type { IWsEventMap } from '@/shared/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,

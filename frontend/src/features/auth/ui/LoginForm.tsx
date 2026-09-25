@@ -8,7 +8,7 @@ import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
-import type { IAuthResponse } from '@/types';
+import type { IAuthResponse } from '@/shared/types';
 import { loginFormSchema, type TLoginForm } from '../model/loginSchema';
 
 export function LoginForm() {

@@ -1,8 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { markThreadRead } from '@/entities/message';
+import { markThreadRead, type TMessagesList } from '@/entities/message';
 import { services } from '@/services/serviceContainer';
-import type { TMessagesList } from '@/types';
 
 /**
  * Отметка чужих сообщений прочитанными.

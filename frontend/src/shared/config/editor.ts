@@ -1,4 +1,4 @@
-import type { IBrushOption, IEditorCrop, IEditorFilter, IFontOption, IRatioOption } from '@/types';
+import type { IBrushOption, IEditorCrop, IEditorFilter, IFontOption, IRatioOption } from '@/shared/types';
 
 export const DEFAULT_FILTERS: IEditorFilter = {
   brightness: 100,

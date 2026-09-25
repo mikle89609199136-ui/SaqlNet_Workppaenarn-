@@ -1,4 +1,4 @@
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TMessagesList } from '@/entities/message';
 import { create } from 'zustand';
 
 export interface IActionMenu {

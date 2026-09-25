@@ -1,5 +1,5 @@
 import { Icon } from '@/shared/ui';
-import type { IMessageDto } from '@/types';
+import type { IMessageDto } from '../../model/types';
 import { formatCallDuration, parseCallContent } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 

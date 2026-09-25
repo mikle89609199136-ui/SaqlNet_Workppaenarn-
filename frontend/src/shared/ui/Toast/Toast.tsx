@@ -1,5 +1,5 @@
 import { Icon } from '@/shared/ui/Icon';
-import type { TIconTypes } from '@/types';
+import type { TIconTypes } from '@/shared/types';
 import { cn } from '@/shared/lib';
 import { useEffect, useRef, useState } from 'react';
 import type { IToast } from './toastQueue';

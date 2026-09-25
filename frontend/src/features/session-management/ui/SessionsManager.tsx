@@ -3,10 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
-import { sessionsQuery } from '@/entities/user';
+import { sessionsQuery, type ISessionDto } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { disconnectRealtimeSocket } from '@/shared/api';
-import type { ISessionDto } from '@/types';
 
 interface Props {
   onBack: () => void;

@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
-import type { IMediaItem } from '@/types';
+import type { IMediaItem } from '@/entities/message';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
@@ -105,6 +105,65 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(editBtn).toBeInTheDocument();
       await userEvent.click(editBtn);
       expect(onStartEdit).toHaveBeenCalled();
+    });
+
+    it('когда пользователь заблокирован, отключает звонки и показывает статус заблокирован', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'peer_user', firstName: 'Алексей' });
+      const onCall = vi.fn();
+      const onUnblock = vi.fn();
+
+      renderWithI18n(
+        <ProfileHeader
+          hasChat={true}
+          isBlocked={true}
+          isMyProfile={false}
+          isPeerOnline={true}
+          onCall={onCall}
+          onClose={vi.fn()}
+          onStartEdit={vi.fn()}
+          onUnblock={onUnblock}
+          profileSubtitle="в сети"
+          profileUser={peer}
+        />
+      );
+
+      expect(screen.getByText('Заблокирован')).toBeInTheDocument();
+      expect(screen.queryByText('в сети')).not.toBeInTheDocument();
+
+      const audioBtn = screen.getByRole('button', { name: /аудиозвонок/i });
+      const videoBtn = screen.getByRole('button', { name: /видеозвонок/i });
+      expect(audioBtn).toBeDisabled();
+      expect(videoBtn).toBeDisabled();
+
+      const unblockBtn = screen.getByRole('button', { name: /разблокировать/i });
+      expect(unblockBtn).toBeInTheDocument();
+      await userEvent.click(unblockBtn);
+      expect(onUnblock).toHaveBeenCalledTimes(1);
+    });
+
+    it('когда пользователь не заблокирован, показывает кнопку заблокировать', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'peer_user', firstName: 'Алексей' });
+      const onBlock = vi.fn();
+
+      renderWithI18n(
+        <ProfileHeader
+          hasChat={true}
+          isBlocked={false}
+          isMyProfile={false}
+          isPeerOnline={true}
+          onBlock={onBlock}
+          onCall={vi.fn()}
+          onClose={vi.fn()}
+          onStartEdit={vi.fn()}
+          profileSubtitle="в сети"
+          profileUser={peer}
+        />
+      );
+
+      const blockBtn = screen.getByRole('button', { name: /заблокировать/i });
+      expect(blockBtn).toBeInTheDocument();
+      await userEvent.click(blockBtn);
+      expect(onBlock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -269,5 +328,97 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(screen.getAllByText(/alex/).length).toBeGreaterThan(0);
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
     });
+
+    it('блокирует пользователя через диалог подтверждения', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      const blockedList: unknown[] = [];
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: blockedList })),
+        http.post(api('/users/blocked'), () => {
+          blockedList.push({
+            id: 'user-2',
+            username: 'alex',
+            firstName: 'Алексей',
+            lastName: '',
+            avatarUrl: '',
+            blockedAt: '2026-01-01',
+          });
+          return HttpResponse.json({ success: true });
+        })
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+
+      const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-2',
+            chat,
+            messages: [],
+          }}
+        />
+      );
+
+      const blockBtn = await screen.findByRole('button', { name: /заблокировать/i });
+      await userEvent.click(blockBtn);
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Заблокировать пользователя?' })
+      ).toBeInTheDocument();
+
+      // Нажимаем подтверждение внутри диалога
+      const confirmBtns = screen.getAllByRole('button', { name: 'Заблокировать' });
+      const dialogConfirmBtn = confirmBtns[confirmBtns.length - 1];
+      await userEvent.click(dialogConfirmBtn);
+
+      expect(await screen.findByRole('button', { name: /разблокировать/i })).toBeInTheDocument();
+    });
+
+    it('разблокирует пользователя по нажатию кнопки Разблокировать', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      let blockedList = [
+        {
+          id: 'user-2',
+          username: 'alex',
+          firstName: 'Алексей',
+          lastName: '',
+          avatarUrl: '',
+          blockedAt: '2026-01-01',
+        },
+      ];
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: blockedList })),
+        http.delete(api('/users/blocked/:userId'), () => {
+          blockedList = [];
+          return HttpResponse.json({ success: true });
+        })
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+
+      const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-2',
+            chat,
+            messages: [],
+          }}
+        />
+      );
+
+      const unblockBtn = await screen.findByRole('button', { name: /разблокировать/i });
+      await userEvent.click(unblockBtn);
+
+      expect(await screen.findByRole('button', { name: /заблокировать/i })).toBeInTheDocument();
+    });
   });
 });
+

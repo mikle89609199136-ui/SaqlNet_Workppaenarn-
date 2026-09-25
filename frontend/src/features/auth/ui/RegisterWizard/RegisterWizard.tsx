@@ -10,7 +10,7 @@ import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
 import { validateAvatarFile } from '@/entities/user';
-import type { IAuthResponse } from '@/types';
+import type { IAuthResponse } from '@/shared/types';
 import {
   registerFormSchema,
   REGISTER_STEPS,
