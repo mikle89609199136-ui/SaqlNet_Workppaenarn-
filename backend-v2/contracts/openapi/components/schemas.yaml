@@ -64,6 +64,16 @@ UpdateProfileRequest:
     lastName: { type: string }
     bio: { type: string }
     avatarUrl: { type: string }
+RenameUsernameRequest:
+  type: object
+  required: [username]
+  properties:
+    username: { $ref: '#/Username' }
+ProfileResponse:
+  type: object
+  required: [user]
+  properties:
+    user: { $ref: '#/User' }
 Chat:
   type: object
   required: [id, type]

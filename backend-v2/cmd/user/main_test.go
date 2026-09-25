@@ -36,7 +36,7 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 		})
 	}
 	registerUsernameRoutes(mux, authenticated, handler)
-	query := regexp.QuoteMeta(`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`)
+	query := regexp.QuoteMeta(`SELECT EXISTS(SELECT 1 FROM auth.username_registry WHERE username = $1)`)
 
 	tests := []struct {
 		name          string
@@ -92,8 +92,15 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 	if authorizedResponse.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected authenticated search request to reach handler and return 405, got %d", authorizedResponse.Code)
 	}
-	if authenticatedCalls != 2 {
-		t.Fatalf("expected authentication on both protected search requests, got %d calls", authenticatedCalls)
+
+	renameRequest := httptest.NewRequest(http.MethodPut, "/api/v2/users/me/username", strings.NewReader(`{"username":"alice"}`))
+	renameResponse := httptest.NewRecorder()
+	mux.ServeHTTP(renameResponse, renameRequest)
+	if renameResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected protected rename without token to return 401, got %d", renameResponse.Code)
+	}
+	if authenticatedCalls != 3 {
+		t.Fatalf("expected authentication on all protected username requests, got %d calls", authenticatedCalls)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
