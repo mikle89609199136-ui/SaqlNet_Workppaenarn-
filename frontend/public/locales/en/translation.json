@@ -396,7 +396,6 @@
   "settings.privacy.description": "Choose who can see your details.",
   "settings.privacy.lastSeen": "Last seen",
   "settings.privacy.lastSeenAll": "Everyone",
-  "settings.privacy.lastSeenContacts": "Contacts",
   "settings.privacy.lastSeenNobody": "Nobody",
   "settings.privacy.strangers": "Messages from strangers",
   "settings.privacy.title": "Privacy",

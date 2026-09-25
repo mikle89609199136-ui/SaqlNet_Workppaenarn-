@@ -247,7 +247,9 @@ func (h *Handler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
 		return
 	}
-	status, err := h.service.Status(r.Context(), userID)
+	// Статус зависит от того, кто смотрит: блокировка и правило приватности.
+	viewer, _ := authctx.UserFromContext(r.Context())
+	status, err := h.service.Status(r.Context(), viewer.ID, userID)
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
 		return
@@ -301,6 +303,10 @@ func (h *Handler) AllSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.service.UpdateAllSettings(r.Context(), current.ID, input); err != nil {
+			if errors.Is(err, ErrInvalidPrivacy) {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "all settings update failed")
 			return
 		}
@@ -321,6 +327,11 @@ func (h *Handler) Privacy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	privacy, err := h.service.UpdatePrivacy(r.Context(), current.ID, body)
+	if errors.Is(err, ErrInvalidPrivacy) {
+		// Текст — от проверки: какой ключ или значение не подошли.
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "privacy update failed")
 		return

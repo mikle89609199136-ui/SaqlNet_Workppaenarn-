@@ -603,7 +603,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update privacy */
+        /**
+         * Update privacy
+         * @description Partial update. Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the legacy contacts and none are accepted and stored as nobody, everyone as all.
+         */
         put: operations["updatePrivacy"];
         post?: never;
         delete?: never;
@@ -2423,6 +2426,23 @@ export interface components {
         Object: {
             [key: string]: unknown;
         };
+        /**
+         * @description Who else sees it. There are no contacts yet, so only everyone or nobody. Being blocked by the owner hides it regardless of the rule.
+         * @enum {string}
+         */
+        PrivacyVisibility: "all" | "nobody";
+        /** @description Privacy rules. Absent rules take their defaults (phoneVisibility nobody, the rest all); a corrupted stored value reads as nobody. */
+        PrivacySettings: {
+            lastSeen?: components["schemas"]["PrivacyVisibility"];
+            photoVisibility?: components["schemas"]["PrivacyVisibility"];
+            phoneVisibility?: components["schemas"]["PrivacyVisibility"];
+            forwards?: components["schemas"]["PrivacyVisibility"];
+            calls?: components["schemas"]["PrivacyVisibility"];
+            groupsAdd?: components["schemas"]["PrivacyVisibility"];
+            messagesFromStrangers?: boolean;
+            twoFactorAuth?: boolean;
+            autoDeleteAccount?: boolean;
+        };
         PublicEncryptionKey: {
             /** Format: byte */
             publicKey: string;
@@ -3712,7 +3732,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["PrivacySettings"];
             };
         };
         responses: {
@@ -3721,8 +3741,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        privacy: components["schemas"]["PrivacySettings"];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
         };
     };
     getNotifications: {

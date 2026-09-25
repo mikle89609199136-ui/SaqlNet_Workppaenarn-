@@ -190,18 +190,27 @@ x-error: &error
     }
 /users/privacy:
   put:
-    {
-      tags: [Users],
-      summary: Update privacy,
-      operationId: updatePrivacy,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated privacy } },
-    }
+    tags: [Users]
+    summary: Update privacy
+    operationId: updatePrivacy
+    security: *secure
+    description: >-
+      Partial update. Unknown keys or values are rejected with 400
+      validation_failed. Visibility rules take all or nobody; the legacy
+      contacts and none are accepted and stored as nobody, everyone as all.
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/PrivacySettings' } } }
+    responses:
+      '200':
+        description: Updated privacy
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privacy]
+              properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
 /users/notifications:
   get:
     {

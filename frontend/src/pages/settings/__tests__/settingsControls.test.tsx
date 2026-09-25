@@ -72,7 +72,7 @@ describe('переключатели настроек', () => {
     );
   });
 
-  it('не отправляет значение, которого нет в списке', async () => {
+  it('предлагает только «Все» и «Никто» и отправляет выбранное', async () => {
     const sent: unknown[] = [];
     server.use(
       http.put(api('/users/privacy'), async ({ request }) => {
@@ -83,10 +83,12 @@ describe('переключатели настроек', () => {
 
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
 
-    await userEvent.click(await screen.findByRole('radio', { name: 'Контакты' }));
+    // Контактов в приложении нет — и варианта «Контакты» тоже (#726).
+    expect(await screen.findByRole('radio', { name: 'Никто' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Контакты' })).not.toBeInTheDocument();
 
-    // Сервер значения не проверяет (#439), поэтому список допустимых
-    // держит клиент: уходит ровно то, что предложено человеку.
-    await waitFor(() => expect(sent).toEqual([{ lastSeen: 'contacts' }]));
+    await userEvent.click(screen.getByRole('radio', { name: 'Никто' }));
+
+    await waitFor(() => expect(sent).toEqual([{ lastSeen: 'nobody' }]));
   });
 });
