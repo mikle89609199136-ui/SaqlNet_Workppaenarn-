@@ -74,29 +74,67 @@ export class PasskeyPrfUnsupportedError extends Error {
   }
 }
 
+/**
+ * Passkey ничего не дал: окно закрыли, время вышло или подходящего passkey
+ * здесь нет — например, он сохранён в другом браузере. Причину браузер
+ * намеренно не называет (`NotAllowedError`), различить их нельзя.
+ */
+export class PasskeyCancelledError extends Error {
+  constructor() {
+    super('Passkey не использован');
+    this.name = 'PasskeyCancelledError';
+  }
+}
+
+/** Адрес страницы не годится для passkey — например, открыта по IP. */
+export class PasskeyNotAllowedHereError extends Error {
+  constructor() {
+    super('Passkey недоступен на этом адресе');
+    this.name = 'PasskeyNotAllowedHereError';
+  }
+}
+
+/**
+ * Вызов WebAuthn с понятными ошибками вместо браузерных. Текст
+ * `DOMException` — английский и для разработчика, человеку его не показать.
+ */
+async function webAuthn(request: () => Promise<Credential | null>): Promise<PublicKeyCredential> {
+  let credential: Credential | null;
+  try {
+    credential = await request();
+  } catch (error) {
+    const name = (error as { name?: string })?.name;
+    if (name === 'NotAllowedError' || name === 'AbortError') throw new PasskeyCancelledError();
+    if (name === 'SecurityError') throw new PasskeyNotAllowedHereError();
+    throw error;
+  }
+  if (!credential) throw new PasskeyCancelledError();
+  return credential as PublicKeyCredential;
+}
+
 async function evaluate(
   allow: { credentialId: string; prfSalt: Uint8Array<ArrayBuffer> }[]
 ): Promise<{ credentialId: string; prfOutput: Uint8Array<ArrayBuffer> }> {
-  const assertion = (await navigator.credentials.get({
-    publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rpId: window.location.hostname,
-      userVerification: 'required',
-      allowCredentials: allow.map(({ credentialId }) => ({
-        type: 'public-key' as const,
-        id: base64UrlToBytes(credentialId),
-      })),
-      extensions: {
-        prf: {
-          evalByCredential: Object.fromEntries(
-            allow.map(({ credentialId, prfSalt }) => [credentialId, { first: prfSalt }])
-          ),
-        },
-      } as AuthenticationExtensionsClientInputs,
-    },
-  })) as PublicKeyCredential | null;
-
-  if (!assertion) throw new Error('Вход с passkey отменён');
+  const assertion = await webAuthn(() =>
+    navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rpId: window.location.hostname,
+        userVerification: 'required',
+        allowCredentials: allow.map(({ credentialId }) => ({
+          type: 'public-key' as const,
+          id: base64UrlToBytes(credentialId),
+        })),
+        extensions: {
+          prf: {
+            evalByCredential: Object.fromEntries(
+              allow.map(({ credentialId, prfSalt }) => [credentialId, { first: prfSalt }])
+            ),
+          },
+        } as AuthenticationExtensionsClientInputs,
+      },
+    })
+  );
 
   const results = (assertion.getClientExtensionResults() as IPrfResults).prf?.results?.first;
   if (!results) throw new PasskeyPrfUnsupportedError();
@@ -117,25 +155,25 @@ export async function registerPasskey(user: {
 }): Promise<IPasskeyRegistration> {
   const prfSalt = crypto.getRandomValues(new Uint8Array(32));
 
-  const credential = (await navigator.credentials.create({
-    publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { id: window.location.hostname, name: 'CraneApp' },
-      user: {
-        id: utf8ToBytes(user.id),
-        name: user.username,
-        displayName: user.displayName,
+  const credential = await webAuthn(() =>
+    navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { id: window.location.hostname, name: 'CraneApp' },
+        user: {
+          id: utf8ToBytes(user.id),
+          name: user.username,
+          displayName: user.displayName,
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
+        ],
+        authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+        extensions: { prf: { eval: { first: prfSalt } } } as AuthenticationExtensionsClientInputs,
       },
-      pubKeyCredParams: [
-        { type: 'public-key', alg: -7 },
-        { type: 'public-key', alg: -257 },
-      ],
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
-      extensions: { prf: { eval: { first: prfSalt } } } as AuthenticationExtensionsClientInputs,
-    },
-  })) as PublicKeyCredential | null;
-
-  if (!credential) throw new Error('Создание passkey отменено');
+    })
+  );
 
   const credentialId = bytesToBase64Url(credential.rawId);
   const prf = (credential.getClientExtensionResults() as IPrfResults).prf;
