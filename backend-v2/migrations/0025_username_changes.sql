@@ -5,11 +5,6 @@ CREATE TABLE IF NOT EXISTS auth.username_registry (
     CONSTRAINT auth_username_registry_canonical CHECK (username = lower(username))
 );
 
-INSERT INTO auth.username_registry (username, user_id)
-SELECT lower(username), id
-FROM auth.users
-ON CONFLICT (username) DO NOTHING;
-
 CREATE INDEX IF NOT EXISTS auth_username_registry_user_idx
     ON auth.username_registry(user_id);
 
@@ -56,3 +51,11 @@ COMMENT ON TABLE users.username_changes IS
 
 COMMENT ON TABLE auth.username_registry IS
     'Lifetime username claims. Old names stay bound to their original account to prevent deep-link takeover.';
+
+-- Keep the backfill after all DDL. The registry foreign key is initially
+-- deferred, so inserting rows before CREATE INDEX/CREATE TRIGGER leaves
+-- pending constraint-trigger events and PostgreSQL rejects the later DDL.
+INSERT INTO auth.username_registry (username, user_id)
+SELECT lower(username), id
+FROM auth.users
+ON CONFLICT (username) DO NOTHING;
