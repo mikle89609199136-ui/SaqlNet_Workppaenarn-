@@ -370,7 +370,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			              THEN COALESCE(up.avatar_url, '') ELSE '' END AS avatar_url,
 			         au.username AS display_username,
 			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
-			         -- 75 секунд, как presenceOnlineWindow.
+			         -- presence.LeaseTTL (75 секунд).
 			         COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
 			           AND COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
 			         CASE WHEN COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
@@ -453,7 +453,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			              THEN COALESCE(up.avatar_url, '') ELSE '' END AS avatar_url,
 			         au.username AS display_username,
 			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
-			         -- 75 секунд, как presenceOnlineWindow.
+			         -- presence.LeaseTTL (75 секунд).
 			         COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
 			           AND COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
 			         CASE WHEN COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')

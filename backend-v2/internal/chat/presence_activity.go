@@ -16,12 +16,10 @@ import (
 // по личным чатам уходит presence_changed, а время активности пишется в
 // users.presence — оттуда его читают данные чата и GET /users/{id}/status.
 
+// «В сети» читатели считают по отметке свежее presence.LeaseTTL (75 с):
+// heartbeat идёт раз в wsPingInterval, окно — с запасом в два пропущенных.
+// Число записано прямо в SQL данных чата и GET /users/{id}/status.
 const presenceChangedType = "presence_changed"
-
-// presenceOnlineWindow — сколько отметка «в сети» считается живой без
-// heartbeat. Heartbeat идёт раз в wsPingInterval, окно — с запасом в два
-// пропущенных, как у presence.LeaseTTL.
-const presenceOnlineWindow = 75 * time.Second
 
 // presenceActivity хранит время активности и знает, кому о ней сообщать.
 type presenceActivity interface {
