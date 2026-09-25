@@ -34,7 +34,7 @@ export function QrClaimPanel({ link, onConfirmed, onRetry }: Props) {
 
   if (stage === 'failed' && problem) {
     return (
-      <div className="grid gap-4 text-left">
+      <div className="grid animate-fade-in gap-4 text-left" key="failed">
         <Banner icon="warning" tone="warn">
           {problems[problem]}
         </Banner>
@@ -47,7 +47,7 @@ export function QrClaimPanel({ link, onConfirmed, onRetry }: Props) {
 
   if (stage === 'waiting' && verificationCode) {
     return (
-      <div className="grid justify-items-center gap-4 text-center">
+      <div className="grid animate-fade-in justify-items-center gap-4 text-center" key="waiting">
         <span className="text-caption text-ink-2">
           {t('qrOffer.verificationCode', 'Код сверки')}
         </span>
@@ -66,7 +66,7 @@ export function QrClaimPanel({ link, onConfirmed, onRetry }: Props) {
   }
 
   return (
-    <div className="flex justify-center py-10">
+    <div className="flex animate-fade-in justify-center py-10" key="busy">
       <Spinner
         label={
           stage === 'finishing'

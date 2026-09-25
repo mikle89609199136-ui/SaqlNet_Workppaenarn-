@@ -164,7 +164,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
 
   if (stage === 'done') {
     return (
-      <div className="grid gap-4 text-center">
+      <div className="grid animate-fade-in gap-4 text-center" key="done">
         <Icon className="mx-auto size-10 text-ok" name="checkCircle" />
         <p className="text-body text-ink">
           {t('qrLogin.done', 'Готово: новое устройство вошло, история переписки уже там.')}
@@ -180,7 +180,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
 
   if ((stage === 'confirm' || stage === 'sending') && details) {
     return (
-      <div className="grid gap-4 text-left">
+      <div className="grid animate-fade-in gap-4 text-left" key="confirm">
         <p className="text-body text-ink">
           {t('qrLogin.confirmQuestion', 'Войти в ваш аккаунт на этом устройстве?')}
         </p>
@@ -219,7 +219,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
   }
 
   return (
-    <div className="grid gap-4 text-left">
+    <div className="grid animate-fade-in gap-4 text-left" key="input">
       {error && (
         <Banner icon="warning" tone="warn">
           {error}

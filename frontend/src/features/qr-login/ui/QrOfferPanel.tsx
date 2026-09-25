@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { readBackupState, subscribeToBackupState } from '@/shared/crypto';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrOffer } from '../model/useQrOffer';
-import { QrCode } from './QrCode';
+import { QrCode, QrFrame } from './QrCode';
 import { QrCodeLayout } from './QrCodeLayout';
 import { RotationHint } from './RotationHint';
 
@@ -56,7 +56,7 @@ function OfferCode({ onDone }: Props) {
 
   if (stage === 'done') {
     return (
-      <div className="grid gap-4 text-center">
+      <div className="grid animate-fade-in gap-4 text-center" key="done">
         <Icon className="mx-auto size-10 text-ok" name="checkCircle" />
         <p className="text-body text-ink">
           {t('qrLogin.done', 'Готово: новое устройство вошло, история переписки уже там.')}
@@ -72,7 +72,7 @@ function OfferCode({ onDone }: Props) {
 
   if ((stage === 'claimed' || stage === 'sending') && claim) {
     return (
-      <div className="grid gap-4 text-left">
+      <div className="grid animate-fade-in gap-4 text-left" key="claimed">
         <p className="text-body text-ink">
           {t('qrOffer.claimQuestion', 'Код отсканировало устройство:')}
         </p>
@@ -127,12 +127,14 @@ function OfferCode({ onDone }: Props) {
             label={t('qrOffer.codeLabel', 'QR-код для входа на новом устройстве')}
             value={link}
           />
+        ) : stage === 'error' ? (
+          <QrFrame key="error">
+            <Icon className="size-8 text-ink-3" name="warning" />
+          </QrFrame>
         ) : (
-          stage !== 'error' && (
-            <div className="flex justify-center py-10">
-              <Spinner label={t('loading', 'Загрузка…')} size="lg" />
-            </div>
-          )
+          <QrFrame key="loading">
+            <Spinner label={t('loading', 'Загрузка…')} size="lg" />
+          </QrFrame>
         )
       }
       intro={

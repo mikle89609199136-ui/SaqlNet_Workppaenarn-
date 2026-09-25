@@ -49,17 +49,21 @@ export function LoginPage() {
       {/* Вход по QR переносит и ключи: история откроется без облачного
           пароля (#745). После сохранения сессии страница сама уйдёт в
           чаты — её перенаправляет проверка токена выше. */}
+      {/* Смена вкладки или направления — новое содержимое проявляется, а
+          карточка плавно меняет размер (AuthLayout). */}
       {method === 'password' ? (
-        <LoginForm />
+        <div className="animate-fade-in" key="password">
+          <LoginForm />
+        </div>
       ) : qrDirection === 'show' ? (
-        <div className="grid gap-4">
+        <div className="grid animate-fade-in gap-4" key="show">
           <QrLoginPanel onConfirmed={completeQrLogin} />
           <QrDirectionSwitch icon onClick={() => setQrDirection('scan')}>
             {t('login.scanOtherDevice', 'Отсканировать код с другого устройства')}
           </QrDirectionSwitch>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid animate-fade-in gap-4" key="scan">
           <QrScanLoginPanel onConfirmed={completeQrLogin} />
           <QrDirectionSwitch onClick={() => setQrDirection('show')}>
             {t('login.showCodeHere', 'Показать код на этом устройстве')}

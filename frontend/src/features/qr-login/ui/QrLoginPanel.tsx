@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrLogin, type IQrLoginResult } from '../model/useQrLogin';
-import { QrCode } from './QrCode';
+import { QrCode, QrFrame } from './QrCode';
 import { QrCodeLayout } from './QrCodeLayout';
 import { RotationHint } from './RotationHint';
 
@@ -70,20 +70,22 @@ export function QrLoginPanel({ onConfirmed }: Props) {
         scanned ? (
           /* Код захвачен: показывать его дальше незачем, он не сменится,
              пока человек не решит на другом устройстве. */
-          <div className="grid justify-items-center gap-3 py-6 text-center">
+          <QrFrame key="scanned">
             <Spinner label={t('qrLogin.scannedTitle', 'Код отсканирован')} size="lg" />
             <p className="text-body text-ink">
               {t('qrLogin.scannedHint', 'Подтвердите вход на устройстве, где вы уже вошли.')}
             </p>
-          </div>
+          </QrFrame>
         ) : showCode && link ? (
           <QrCode label={t('qrLogin.codeLabel', 'QR-код для входа')} value={link} />
+        ) : status === 'error' ? (
+          <QrFrame key="error">
+            <Icon className="size-8 text-ink-3" name="warning" />
+          </QrFrame>
         ) : (
-          status !== 'error' && (
-            <div className="flex justify-center py-10">
-              <Spinner label={t('loading', 'Загрузка…')} size="lg" />
-            </div>
-          )
+          <QrFrame key="loading">
+            <Spinner label={t('loading', 'Загрузка…')} size="lg" />
+          </QrFrame>
         )
       }
       intro={
