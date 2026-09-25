@@ -55,6 +55,38 @@ spec:
     metadata:
       labels: { app: auth, crypto-client: "true" }
     spec:
+      initContainers:
+        - name: require-auth-token-generation-schema
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until [ "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "
+                SELECT CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM public.schema_migrations
+                  WHERE version = '0025_auth_token_generation.sql'
+                ) AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_schema = 'auth'
+                    AND table_name = 'users'
+                    AND column_name = 'token_generation'
+                    AND data_type = 'bigint'
+                    AND is_nullable = 'NO'
+                    AND column_default IS NOT NULL
+                ) THEN 'ready' ELSE 'waiting' END
+              " 2>/dev/null)" = "ready" ]; do
+                echo "waiting for migration 0025_auth_token_generation.sql"
+                sleep 2
+              done
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: url
       containers:
         - name: auth
           image: craneapp/auth:v2
@@ -62,6 +94,9 @@ spec:
             - { name: http, containerPort: 8081 }
           env:
             - { name: CRYPTO_URL, value: "http://crypto:5005" }
+            # Activate only after crypto and every token-validating service have
+            # completed their generation-aware rollout. See docs/deployment.md.
+            - { name: AUTH_LOGOUT_ALL_GENERATION_ENABLED, value: "false" }
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: database-secrets, key: url } }
           readinessProbe: { httpGet: { path: /health/ready, port: http } }
@@ -132,6 +167,38 @@ spec:
     metadata:
       labels: { app: chat, crypto-client: "true" }
     spec:
+      initContainers:
+        - name: require-auth-token-generation-schema
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until [ "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "
+                SELECT CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM public.schema_migrations
+                  WHERE version = '0025_auth_token_generation.sql'
+                ) AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_schema = 'auth'
+                    AND table_name = 'users'
+                    AND column_name = 'token_generation'
+                    AND data_type = 'bigint'
+                    AND is_nullable = 'NO'
+                    AND column_default IS NOT NULL
+                ) THEN 'ready' ELSE 'waiting' END
+              " 2>/dev/null)" = "ready" ]; do
+                echo "waiting for migration 0025_auth_token_generation.sql"
+                sleep 2
+              done
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: url
       containers:
         - name: chat
           image: craneapp/chat:v2
@@ -170,6 +237,38 @@ spec:
     metadata:
       labels: { app: user, crypto-client: "true" }
     spec:
+      initContainers:
+        - name: require-auth-token-generation-schema
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until [ "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "
+                SELECT CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM public.schema_migrations
+                  WHERE version = '0025_auth_token_generation.sql'
+                ) AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_schema = 'auth'
+                    AND table_name = 'users'
+                    AND column_name = 'token_generation'
+                    AND data_type = 'bigint'
+                    AND is_nullable = 'NO'
+                    AND column_default IS NOT NULL
+                ) THEN 'ready' ELSE 'waiting' END
+              " 2>/dev/null)" = "ready" ]; do
+                echo "waiting for migration 0025_auth_token_generation.sql"
+                sleep 2
+              done
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: url
       containers:
         - name: user
           image: craneapp/user:v2

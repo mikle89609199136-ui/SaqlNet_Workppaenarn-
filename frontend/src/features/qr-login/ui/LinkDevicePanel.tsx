@@ -1,8 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
+import type { IApiError } from '@/shared/api';
 import {
   parseQrLink,
+  parseQrOfferLink,
   readBackupState,
   subscribeToBackupState,
   type IQrLink,
@@ -34,6 +36,10 @@ type TInspection =
  * войти: код могли подсунуть — «отсканируйте, пожалуйста, мне нужно
  * войти». Ключ из QR сверяется с тем, что знает сервер: расхождение
  * значит, что код подменён, и подтверждать нельзя.
+ *
+ * Первый взгляд на запрос закрепляет код за этим аккаунтом (#753): никто
+ * другой его уже не подтвердит. «Отмена» отпускает код — новое устройство
+ * покажет следующий.
  */
 export function LinkDevicePanel({ initialLink, onDone }: Props) {
   const { t } = useTranslation();
@@ -51,8 +57,18 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
   /** Разобрать код и спросить сервер, какое устройство просит войти. */
   async function inspect(raw: string): Promise<TInspection> {
     const parsed = parseQrLink(raw, window.location.origin);
-    if (!parsed)
-      return { ok: false, error: t('qrLogin.invalidLink', 'Это не код входа в CraneApp') };
+    if (!parsed) {
+      return {
+        ok: false,
+        // Код с вошедшего устройства (#754) сканирует новое, а не это.
+        error: parseQrOfferLink(raw, window.location.origin)
+          ? t(
+              'qrLogin.offerHere',
+              'Этот код — для входа нового устройства. Отсканируйте его камерой на новом устройстве.'
+            )
+          : t('qrLogin.invalidLink', 'Это не код входа в CraneApp'),
+      };
+    }
 
     try {
       const request = await services.authService.getQrRequest(parsed.token);
@@ -66,13 +82,16 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
               'Код не совпадает с запросом входа — не подтверждайте его'
             ),
           };
-    } catch {
+    } catch (error) {
       return {
         ok: false,
-        error: t(
-          'qrLogin.expired',
-          'Код истёк или уже использован. Обновите его на новом устройстве.'
-        ),
+        error:
+          (error as IApiError).code === 'qr_rotated'
+            ? t('qrLogin.rotated', 'Код обновился — отсканируйте ещё раз.')
+            : t(
+                'qrLogin.expired',
+                'Код истёк или уже использован. Обновите его на новом устройстве.'
+              ),
       };
     }
   }
@@ -145,7 +164,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
 
   if (stage === 'done') {
     return (
-      <div className="grid gap-4 text-center">
+      <div className="grid animate-fade-in gap-4 text-center" key="done">
         <Icon className="mx-auto size-10 text-ok" name="checkCircle" />
         <p className="text-body text-ink">
           {t('qrLogin.done', 'Готово: новое устройство вошло, история переписки уже там.')}
@@ -161,7 +180,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
 
   if ((stage === 'confirm' || stage === 'sending') && details) {
     return (
-      <div className="grid gap-4 text-left">
+      <div className="grid animate-fade-in gap-4 text-left" key="confirm">
         <p className="text-body text-ink">
           {t('qrLogin.confirmQuestion', 'Войти в ваш аккаунт на этом устройстве?')}
         </p>
@@ -186,6 +205,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
           className="w-full"
           disabled={stage === 'sending'}
           onClick={() => {
+            if (link) void services.authService.declineQrRequest(link.token).catch(() => {});
             setStage('input');
             setDetails(null);
             setLink(null);
@@ -199,7 +219,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
   }
 
   return (
-    <div className="grid gap-4 text-left">
+    <div className="grid animate-fade-in gap-4 text-left" key="input">
       {error && (
         <Banner icon="warning" tone="warn">
           {error}

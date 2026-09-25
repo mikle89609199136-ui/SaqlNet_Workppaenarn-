@@ -61,6 +61,7 @@ services:
     environment:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
+      AUTH_LOGOUT_ALL_GENERATION_ENABLED: ${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

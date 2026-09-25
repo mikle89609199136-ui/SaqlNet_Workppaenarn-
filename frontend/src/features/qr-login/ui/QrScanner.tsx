@@ -4,6 +4,8 @@ import { Banner } from '@/shared/ui';
 
 interface Props {
   onResult: (text: string) => void;
+  /** Что делать без камеры. По умолчанию — для вошедшего устройства. */
+  unavailableHint?: string;
 }
 
 interface IBarcodeDetector {
@@ -20,7 +22,7 @@ const SCAN_INTERVAL_MS = 250;
  * `BarcodeDetector` есть не везде — например, его нет в Chrome на Windows.
  * Там кадр разбирает jsQR: он грузится лениво, только когда сканер открыт.
  */
-export function QrScanner({ onResult }: Props) {
+export function QrScanner({ onResult, unavailableHint }: Props) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
@@ -95,10 +97,11 @@ export function QrScanner({ onResult }: Props) {
   if (failed) {
     return (
       <Banner icon="warning" tone="warn">
-        {t(
-          'qrLogin.cameraUnavailable',
-          'Камера недоступна. Скопируйте ссылку под кодом на новом устройстве и вставьте её сюда.'
-        )}
+        {unavailableHint ??
+          t(
+            'qrLogin.cameraUnavailable',
+            'Камера недоступна. Скопируйте ссылку под кодом на новом устройстве и вставьте её сюда.'
+          )}
       </Banner>
     );
   }

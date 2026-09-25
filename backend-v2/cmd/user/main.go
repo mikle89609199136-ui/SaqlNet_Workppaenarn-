@@ -38,12 +38,19 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
 			return
 		}
+		if err := authctx.CheckTokenGenerationSchema(r.Context(), pool); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(r.Context()); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+			return
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/api/v2/users/me", authenticated(http.HandlerFunc(handler.Me)))
 	mux.Handle("/api/v2/users/avatar", authenticated(http.HandlerFunc(handler.Avatar)))
-	mux.Handle("/api/v2/users/check-username", authenticated(http.HandlerFunc(handler.CheckUsername)))
-	mux.Handle("/api/v2/users/search", authenticated(http.HandlerFunc(handler.Search)))
+	registerUsernameRoutes(mux, authenticated, handler)
 	mux.Handle("/api/v2/users/qr-code", authenticated(http.HandlerFunc(handler.QRCode)))
 	mux.Handle("/api/v2/premium/subscribe", authenticated(http.HandlerFunc(handler.SubscribePremium)))
 	mux.Handle("/api/v2/users/all-settings", authenticated(http.HandlerFunc(handler.AllSettings)))
@@ -108,6 +115,12 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdown)
+}
+
+func registerUsernameRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {
+	mux.HandleFunc("/api/v2/users/check-username", handler.CheckUsername)
+	mux.Handle("/api/v2/users/me/username", authenticated(http.HandlerFunc(handler.Username)))
+	mux.Handle("/api/v2/users/search", authenticated(http.HandlerFunc(handler.Search)))
 }
 
 func registerSignalRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {

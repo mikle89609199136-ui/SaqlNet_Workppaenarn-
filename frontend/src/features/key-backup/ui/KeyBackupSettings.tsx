@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LinkDevicePanel } from '@/features/qr-login';
+import { LinkDevicePanel, QrOfferPanel } from '@/features/qr-login';
 import { services } from '@/services/serviceContainer';
 import { isPasskeyAvailable, type TBackupSlot } from '@/shared/crypto';
 import { Banner, Button, ConfirmDialog, Icon, showToast } from '@/shared/ui';
@@ -12,7 +12,7 @@ interface Props {
   onBack: () => void;
 }
 
-type TPanel = 'password' | 'passkey' | 'device' | null;
+type TPanel = 'password' | 'passkey' | 'device' | 'code' | null;
 
 /**
  * Настройки → Аккаунт → Шифрование и устройства (#744, #745, #746).
@@ -110,6 +110,10 @@ export function KeyBackupSettings({ onBack }: Props) {
         <SettingsCard title={t('keyBackup.settings.linkDevice', 'Подключить устройство')}>
           <LinkDevicePanel onDone={() => setPanel(null)} />
         </SettingsCard>
+      ) : panel === 'code' ? (
+        <SettingsCard title={t('keyBackup.settings.loginCode', 'Код для входа')}>
+          <QrOfferPanel onDone={() => setPanel(null)} />
+        </SettingsCard>
       ) : (
         <div className="grid gap-4">
           <Banner icon="shield" tone="info">
@@ -159,6 +163,15 @@ export function KeyBackupSettings({ onBack }: Props) {
               )}
               onClick={() => setPanel('device')}
               title={t('keyBackup.settings.linkDevice', 'Подключить устройство')}
+            />
+            <SettingsRow
+              action={t('keyBackup.settings.show', 'Показать')}
+              description={t(
+                'keyBackup.settings.loginCodeDescription',
+                'Код, который сканирует новое устройство: удобно войти на телефоне, когда вы вошли на компьютере.'
+              )}
+              onClick={() => setPanel('code')}
+              title={t('keyBackup.settings.loginCode', 'Код для входа')}
             />
           </div>
         </div>
