@@ -196,7 +196,9 @@ describe('реакции на чужое сообщение', () => {
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         return HttpResponse.json({
-          reactions: [{ emoji: body.emoji, count: 1, myReaction: true }],
+          // Отличающееся количество позволяет тесту дождаться не только
+          // оптимистического состояния, но и завершения самого запроса.
+          reactions: [{ emoji: body.emoji, count: 2, myReaction: true }],
         });
       })
     );
@@ -208,6 +210,7 @@ describe('реакции на чужое сообщение', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
 
     await waitFor(() => expect(screen.getByText('❤️ 1')).toBeInTheDocument());
+    expect(await screen.findByText('❤️ 2')).toBeInTheDocument();
   });
   it('снимает реакцию нажатием по ней самой, без меню', async () => {
     /* Прежде реакция была `span`, и убрать её можно было только через

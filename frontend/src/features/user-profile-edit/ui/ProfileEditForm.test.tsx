@@ -65,9 +65,7 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
 
     fireEvent.change(fileInput, { target: { files: [invalidFile] } });
 
-    expect(
-      await screen.findByText(/Поддерживаются только изображения/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Поддерживаются только изображения/i)).toBeInTheDocument();
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
@@ -141,9 +139,7 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
 
     await userEvent.upload(fileInput, validFile);
 
-    expect(
-      await screen.findByText('Не удалось загрузить фото профиля')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось загрузить фото профиля')).toBeInTheDocument();
     expect(updateAvatarSpy).not.toHaveBeenCalled();
 
     // Кеш не изменился
@@ -169,9 +165,7 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
 
     await userEvent.upload(fileInput, validFile);
 
-    expect(
-      await screen.findByText('Не удалось загрузить фото профиля')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось загрузить фото профиля')).toBeInTheDocument();
 
     // Кеш не изменился
     const cachedUser = queryClient.getQueryData<IUserDto>(userKeys.me());

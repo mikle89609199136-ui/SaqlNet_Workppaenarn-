@@ -118,9 +118,20 @@ export class ApiClient {
       }
     });
 
+    const base = this.baseUrl.replace(/\/+$/, '');
+    // Путь базы — '/api/v2' и у относительной базы, и у абсолютной.
+    const basePath = base.replace(/^https?:\/\/[^/]+/, '');
+    const relative = endpoint.replace(/^\/+/, '');
+
+    // Сервер отдаёт часть адресов уже с базой: mediaUrl вложений —
+    // '/api/v2/media/<id>'. Приклеенная второй раз база давала
+    // '/api/v2/api/v2/media/…' и 404: вложения не открывались ни у
+    // получателя, ни у отправителя после перезагрузки.
     const path = /^https?:\/\//.test(endpoint)
       ? endpoint
-      : `${this.baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+      : basePath && `/${relative}`.startsWith(`${basePath}/`)
+        ? `${base.slice(0, base.length - basePath.length)}/${relative}`
+        : `${base}/${relative}`;
 
     const qs = query.toString();
     return qs ? `${path}?${qs}` : path;
