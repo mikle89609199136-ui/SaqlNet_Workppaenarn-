@@ -12,7 +12,8 @@
 -- это поле обновляется только при регистрации устройства: «был в сети»
 -- показывало время последнего входа.
 --
--- Идемпотентна: локальный стенд прогоняет все миграции при каждом запуске.
+-- Повторяемая, как все миграции: базы, созданные до schema_migrations,
+-- получают все файлы при первом запуске мигратора (проверяет CI).
 CREATE TABLE IF NOT EXISTS users.presence (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     online BOOLEAN NOT NULL DEFAULT FALSE,
