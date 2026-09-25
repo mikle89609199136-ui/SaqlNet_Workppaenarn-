@@ -38,6 +38,14 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
 			return
 		}
+		if err := authctx.CheckTokenGenerationSchema(r.Context(), pool); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(r.Context()); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+			return
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/api/v2/users/me", authenticated(http.HandlerFunc(handler.Me)))

@@ -25,9 +25,8 @@ export const MessageContentRenderer = memo(({ content, trailing }: Props) => {
         key={match.index}
         className="cursor-pointer font-bold text-brand hover:underline"
         onClick={() => {
-          const searchFn = (
-            window as unknown as { handleUnifiedSearch?: (tag: string) => void }
-          ).handleUnifiedSearch;
+          const searchFn = (window as unknown as { handleUnifiedSearch?: (tag: string) => void })
+            .handleUnifiedSearch;
           if (typeof searchFn === 'function') {
             searchFn(hashtag);
           } else {

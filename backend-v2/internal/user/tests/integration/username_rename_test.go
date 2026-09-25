@@ -23,7 +23,7 @@ func (authCryptoStub) HashPassword(context.Context, string) (string, error) { re
 func (authCryptoStub) VerifyPassword(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (authCryptoStub) IssueToken(context.Context, string, string) (string, error) {
+func (authCryptoStub) IssueToken(context.Context, string, string, int64) (string, error) {
 	return "token", nil
 }
 

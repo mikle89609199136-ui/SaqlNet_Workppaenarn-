@@ -57,6 +57,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - CRYPTO_URL=http://crypto:5005
       - NATS_URL=nats://nats:4222
+      - AUTH_LOGOUT_ALL_GENERATION_ENABLED=${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

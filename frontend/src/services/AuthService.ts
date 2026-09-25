@@ -70,11 +70,8 @@ export class AuthService {
    * завершая. Адрес существует давно: POST /api/v2/auth/logout-all.
    */
   async logoutAll() {
-    try {
-      await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT_ALL);
-    } finally {
-      this.authStorage.clearProfile();
-    }
+    await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT_ALL);
+    this.authStorage.clearProfile();
   }
 
   /**
@@ -256,7 +253,7 @@ export class AuthService {
         this.authStorage.setUser(response.data.user);
       }
       return true;
-    } catch (error) {
+    } catch {
       this.authStorage.clearProfile();
       return false;
     }

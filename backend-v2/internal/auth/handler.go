@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 )
@@ -37,9 +38,10 @@ type QRTokenData struct {
 }
 
 type Handler struct {
-	service  *Service
-	qrTokens sync.Map
-	qrOffers sync.Map
+	service                    *Service
+	logoutAllGenerationEnabled bool
+	qrTokens                   sync.Map
+	qrOffers                   sync.Map
 	// qrRotated remembers replaced codes for a while, so a device that
 	// scanned a code a moment too late hears "the code changed" rather than
 	// a generic error.
@@ -48,8 +50,23 @@ type Handler struct {
 	qrMu sync.Mutex
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type HandlerOption func(*Handler)
+
+// WithLogoutAllGenerationEnabled enables the generation-changing logout-all
+// operation. It must only be enabled after every token issuer and validator in
+// the deployment understands token generations.
+func WithLogoutAllGenerationEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.logoutAllGenerationEnabled = enabled
+	}
+}
+
+func NewHandler(service *Service, options ...HandlerOption) *Handler {
+	handler := &Handler{service: service}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +97,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrUsernameTaken) {
 		httpx.ErrorJSON(w, r, http.StatusConflict, "username_taken", "username already exists")
+		return
+	}
+	if tokenIssuanceUnavailable(err) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "token_issuer_not_ready", "token issuer is not ready")
 		return
 	}
 	if err != nil {
@@ -114,6 +135,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrInvalidCredentials) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		return
+	}
+	if tokenIssuanceUnavailable(err) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "token_issuer_not_ready", "token issuer is not ready")
 		return
 	}
 	if err != nil {
@@ -164,6 +189,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !h.logoutAllGenerationEnabled {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "logout_all_unavailable", "logout from all devices is not enabled yet")
 		return
 	}
 	current := authctx.MustUser(r)
@@ -716,7 +745,15 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authToken, err := h.service.IssueQRToken(r.Context(), current.ID)
+	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration)
+	if errors.Is(err, ErrAuthorizationRevoked) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
+	}
+	if tokenIssuanceUnavailable(err) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "token_issuer_not_ready", "token issuer is not ready")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to issue token")
 		return
@@ -727,4 +764,8 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 	data.Payload = input.Payload
 
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func tokenIssuanceUnavailable(err error) bool {
+	return errors.Is(err, ErrTokenGenerationChanged) || errors.Is(err, cryptoclient.ErrTokenGenerationProtocol)
 }

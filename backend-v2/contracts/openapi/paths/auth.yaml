@@ -255,9 +255,13 @@
   post:
     tags: [Auth]
     summary: Revoke all user tokens
+    description: May return 503 while generation revocation is disabled during a compatibility rollout.
     operationId: logoutAll
     security: [{ bearerAuth: [] }]
-    responses: { '200': { description: All sessions revoked } }
+    responses:
+      '200': { description: All sessions revoked }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '503': { $ref: '../components/responses.yaml#/Error' }
 /auth/sessions:
   get:
     tags: [Auth]

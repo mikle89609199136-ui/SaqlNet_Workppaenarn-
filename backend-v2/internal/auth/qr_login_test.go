@@ -104,8 +104,10 @@ func confirmQR(handler *Handler, token, userID string) *httptest.ResponseRecorde
 }
 
 func expectIssueToken(mock sqlmock.Sqlmock, userID string) {
-	mock.ExpectQuery(`SELECT username FROM auth\.users WHERE id = \$1`).WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("anna"))
+	mock.ExpectQuery(`SELECT username, token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 0))
+	mock.ExpectQuery(`SELECT token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
 }
 
 func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {
@@ -279,6 +281,27 @@ func TestQRConfirmRejectsSecondConfirmation(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, scanQR(handler, code.token, "user-2").Code)
 	require.Equal(t, "confirmed", qrStatus(t, handler, code)["status"])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestQRConfirmCannotCrossLogoutAll(t *testing.T) {
+	handler, mock := qrHandler(t)
+	code := startQRLogin(t, handler)
+	require.Equal(t, http.StatusOK, scanQR(handler, code.token, "user-1").Code)
+
+	// The request context represents a generation-0 access token, while a
+	// concurrent logout-all has already advanced the user to generation 1.
+	mock.ExpectQuery(`SELECT username, token_generation.*FROM auth\.users.*WHERE id = \$1`).
+		WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 1))
+
+	confirm := qrCall(handler.QRConfirm, http.MethodPost, "/api/v2/auth/qr-confirm", "",
+		`{"qrToken":"`+code.token+`","payload":`+qrPayload+`}`, "user-1")
+	require.Equal(t, http.StatusUnauthorized, confirm.Code, confirm.Body.String())
+	require.Equal(t, "token_revoked", decodeJSON(t, confirm)["code"])
+
+	status := qrStatus(t, handler, code)
+	require.Equal(t, "scanned", status["status"])
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

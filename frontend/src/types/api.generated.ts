@@ -65,31 +65,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start a QR login or replace the code
-         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
+         * Start a QR login
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself.
          */
         post: operations["createQrToken"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/qr-token/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Withdraw a QR code
-         * @description Called when the page showing the code goes away. Needs the secret from creation; an unknown code is ignored.
-         */
-        delete: operations["cancelQrToken"];
         options?: never;
         head?: never;
         patch?: never;
@@ -104,16 +84,12 @@ export interface paths {
         };
         /**
          * Show which device asks to log in
-         * @description For the signed-in device before it confirms. The first account to call it captures the code for 60 seconds; for everyone else the code is gone. 404 qr_rotated means the code was replaced by a newer one, invalid_token that it expired or was used. Not cacheable.
+         * @description For the signed-in device before it confirms. 404 once the code expired or was confirmed. Not cacheable.
          */
         get: operations["getQrRequest"];
         put?: never;
         post?: never;
-        /**
-         * Decline a scanned QR login
-         * @description Drops a code this account captured; the device showing it draws a new one.
-         */
-        delete: operations["declineQrRequest"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -128,7 +104,7 @@ export interface paths {
         };
         /**
          * Get QR login status
-         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         * @description Polled by the new device. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
          */
         get: operations["getQrStatus"];
         put?: never;
@@ -150,7 +126,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm a QR login
-         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         * @description A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
          */
         post: operations["confirmQrLogin"];
         delete?: never;
@@ -289,7 +265,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke all user tokens */
+        /**
+         * Revoke all user tokens
+         * @description May return 503 while generation revocation is disabled during a compatibility rollout.
+         */
         post: operations["logoutAll"];
         delete?: never;
         options?: never;
@@ -2310,23 +2289,14 @@ export interface components {
             /** @description One-time ECDH P-256 public key (SPKI) */
             publicKey: string;
             deviceName?: string;
-            /** @description Token of the code shown so far; it stops working at once. */
-            replaces?: string;
-            /** @description Secret of the replaced code. */
-            secret?: string;
         };
         QrTokenResponse: {
             qrToken: string;
-            /** @description Kept by the device showing the code and never drawn into it. */
-            secret: string;
             /**
              * Format: int64
              * @description Unix milliseconds.
              */
             expiresAt: number;
-        };
-        QrSecretRequest: {
-            secret: string;
         };
         QrLoginRequest: {
             publicKey: string;
@@ -2345,7 +2315,7 @@ export interface components {
         };
         QrStatusResponse: {
             /** @enum {string} */
-            status: "pending" | "scanned" | "confirmed" | "expired";
+            status: "pending" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
             authToken?: string;
@@ -2353,56 +2323,6 @@ export interface components {
         };
         QrConfirmRequest: {
             qrToken: string;
-            payload: components["schemas"]["QrKeyPayload"];
-        };
-        QrOfferRequest: {
-            /** @description Token of the code shown so far; it stops working at once. */
-            replaces?: string;
-        };
-        QrOfferResponse: {
-            offerToken: string;
-            /**
-             * Format: int64
-             * @description Unix milliseconds.
-             */
-            expiresAt: number;
-        };
-        QrOfferClaim: {
-            publicKey: string;
-            mac: string;
-            deviceName: string;
-            userAgent: string;
-            /** Format: int64 */
-            claimedAt: number;
-        };
-        QrOfferState: {
-            /** @enum {string} */
-            status: "pending" | "claimed" | "confirmed" | "expired";
-            /** Format: int64 */
-            expiresAt?: number;
-            claim?: components["schemas"]["QrOfferClaim"];
-        };
-        QrOfferClaimRequest: {
-            /** @description One-time ECDH P-256 public key (SPKI) of the new device */
-            publicKey: string;
-            /** @description base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code. */
-            mac: string;
-            deviceName?: string;
-        };
-        QrOfferClaimResponse: {
-            claimSecret: string;
-            /** Format: int64 */
-            expiresAt: number;
-        };
-        QrOfferStatusResponse: {
-            /** @enum {string} */
-            status: "pending" | "confirmed" | "expired";
-            /** Format: int64 */
-            expiresAt?: number;
-            authToken?: string;
-            payload?: components["schemas"]["QrKeyPayload"];
-        };
-        QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
         };
         UpdateProfileRequest: {
@@ -2874,34 +2794,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    cancelQrToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QrSecretRequest"];
-            };
-        };
-        responses: {
-            /** @description Withdrawn */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
         };
     };
     getQrRequest: {
@@ -2928,7 +2820,7 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
-    declineQrRequest: {
+    getQrRequest: {
         parameters: {
             query?: never;
             header?: never;
@@ -2939,12 +2831,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Declined */
-            204: {
+            /** @description Pending, confirmed, or expired QR login status */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
             };
             401: components["responses"]["Error"];
         };
@@ -2995,160 +2889,6 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    createQrOffer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QrOfferRequest"];
-            };
-        };
-        responses: {
-            /** @description Code created */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QrOfferResponse"];
-                };
-            };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    getQrOffer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Offer state */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QrOfferState"];
-                };
-            };
-            401: components["responses"]["Error"];
-        };
-    };
-    withdrawQrOffer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Withdrawn */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-        };
-    };
-    claimQrOffer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QrOfferClaimRequest"];
-            };
-        };
-        responses: {
-            /** @description Claimed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QrOfferClaimResponse"];
-                };
-            };
-            400: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-        };
-    };
-    getQrOfferStatus: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-QR-Secret": string;
-            };
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Pending, confirmed, or expired */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QrOfferStatusResponse"];
-                };
-            };
-            403: components["responses"]["Error"];
-        };
-    };
-    confirmQrOffer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QrOfferConfirmRequest"];
-            };
-        };
-        responses: {
-            /** @description Confirmed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
             409: components["responses"]["Error"];
         };
     };
@@ -3186,6 +2926,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listAuthSessions: {

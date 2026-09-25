@@ -345,4 +345,3 @@ describe('закреплённое сообщение (#170)', () => {
     expect(screen.queryByTitle('Закреплено')).not.toBeInTheDocument();
   });
 });
-

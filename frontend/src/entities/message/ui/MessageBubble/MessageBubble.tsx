@@ -166,10 +166,7 @@ export const MessageBubble = memo(
                   'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-br-control',
                   !isFirstInGroup && 'rounded-tr-control'
                 )
-              : cn(
-                  'bg-bubble-in rounded-bl-control',
-                  !isFirstInGroup && 'rounded-tl-control'
-                ),
+              : cn('bg-bubble-in rounded-bl-control', !isFirstInGroup && 'rounded-tl-control'),
             hasMessageMedia(message) && 'has-media w-fit max-w-[min(384px,calc(100%-20px))]',
             isAudio && 'w-full',
             isActionTarget &&
