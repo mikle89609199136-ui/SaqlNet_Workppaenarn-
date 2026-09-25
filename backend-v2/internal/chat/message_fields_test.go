@@ -15,11 +15,11 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 	defer db.Close()
 
 	replyID := "reply-id"
-	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID).
+	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID, "chat-id").
 		WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("Анна"))
 
-	msg := Message{SenderName: "Иван", ReplyTo: &replyID}
-	if err := NewService(db, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
+	msg := Message{ChatID: "chat-id", SenderName: "Иван", ReplyTo: &replyID}
+	if err := NewService(db, nil, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
 		t.Fatal(err)
 	}
 	if msg.SenderFirstName != "Иван" || msg.ReplyToMessageID == nil || *msg.ReplyToMessageID != replyID {
@@ -58,7 +58,7 @@ func TestHydrateMessagesReactions(t *testing.T) {
 			),
 		)
 
-	service := NewService(db, nil)
+	service := NewService(db, nil, nil)
 	err = service.hydrateMessagesReactions(
 		context.Background(),
 		"current-user-id",
@@ -133,7 +133,7 @@ func TestHydrateChatsLastMessageReactions(t *testing.T) {
 			),
 		)
 
-	service := NewService(db, nil)
+	service := NewService(db, nil, nil)
 	err = service.hydrateChatsLastMessageReactions(
 		context.Background(),
 		"current-user-id",

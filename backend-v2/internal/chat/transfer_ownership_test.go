@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	transferOwnerIDQuery = `SELECT owner_id FROM chats.chats WHERE id = $1 FOR UPDATE`
+	transferOwnerIDQuery = `SELECT owner_id, type FROM chats.chats WHERE id = $1 FOR UPDATE`
 	transferTargetQuery  = `SELECT role FROM chats.members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`
 	transferChatUpdate   = `UPDATE chats.chats SET owner_id = $1, updated_at = NOW() WHERE id = $2`
 	transferTargetUpdate = `UPDATE chats.members SET role = 'owner' WHERE chat_id = $1 AND user_id = $2`
@@ -22,11 +22,11 @@ const (
 	transferOtherOwnerID = "550e8400-e29b-41d4-a716-446655440009" // владелец, подменивший актора
 )
 
-// expectOwnerLock мокирует SELECT ... FOR UPDATE по chats.chats с заданным owner_id.
+// expectOwnerLock мокирует SELECT ... FOR UPDATE по chats.chats с заданным owner_id и типом group.
 func expectOwnerLock(mock sqlmock.Sqlmock, ownerID string) {
 	mock.ExpectQuery(transferOwnerIDQuery).
 		WithArgs(transferChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"owner_id"}).AddRow(ownerID))
+		WillReturnRows(sqlmock.NewRows([]string{"owner_id", "type"}).AddRow(ownerID, "group"))
 }
 
 // expectTargetLock мокирует SELECT ... FOR UPDATE по membership-строке target.
@@ -45,9 +45,9 @@ func TestTransferOwnership_Success_ownerTransfers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -76,9 +76,9 @@ func TestTransferOwnership_OwnershipConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferOtherOwnerID)
@@ -96,9 +96,9 @@ func TestTransferOwnership_ChatNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(transferOwnerIDQuery).
@@ -119,9 +119,9 @@ func TestTransferOwnership_TargetNotMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -142,9 +142,9 @@ func TestTransferOwnership_SelfTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, transferActorID)
 	require.ErrorIs(t, err, chat.ErrInvalidInput)
@@ -157,9 +157,9 @@ func TestTransferOwnership_InvalidUUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, "not-a-uuid")
 	require.ErrorIs(t, err, chat.ErrInvalidInput)
@@ -173,9 +173,9 @@ func TestTransferOwnership_RollbackOnUpdateError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -198,9 +198,9 @@ func TestTransferOwnership_ChatDeletedMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -222,9 +222,9 @@ func TestTransferOwnership_TargetLeftMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -249,9 +249,9 @@ func TestTransferOwnership_ActorMembershipLostMidTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
 
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	mock.ExpectBegin()
 	expectOwnerLock(mock, transferActorID)
@@ -270,4 +270,39 @@ func TestTransferOwnership_ActorMembershipLostMidTx(t *testing.T) {
 	err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, transferTargetID)
 	require.ErrorIs(t, err, chat.ErrOwnershipConflict)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestTransferOwnership_InvalidChatType проверяет запрет передачи владения для не-групповых чатов:
+// если тип чата не 'group' (например, 'private' или 'channel'), транзакция откатывается
+// и возвращается ErrInvalidChatType, последующие UPDATE не выполняются.
+func TestTransferOwnership_InvalidChatType(t *testing.T) {
+	tests := []struct {
+		name     string
+		chatType string
+	}{
+		{"Private", "private"},
+		{"Channel", "channel"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			if err != nil {
+				t.Fatalf("sqlmock: %v", err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+
+			svc := chat.NewService(db, nil, nil)
+
+			mock.ExpectBegin()
+			mock.ExpectQuery(transferOwnerIDQuery).
+				WithArgs(transferChatID).
+				WillReturnRows(sqlmock.NewRows([]string{"owner_id", "type"}).AddRow(transferActorID, tt.chatType))
+			mock.ExpectRollback()
+
+			err = svc.TransferOwnership(context.Background(), transferActorID, transferChatID, transferTargetID)
+			require.ErrorIs(t, err, chat.ErrInvalidChatType)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

@@ -130,8 +130,17 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+          working-directory: backend-v2
+
       - name: Run Go tests
         run: go test -v ./...
+
+      - name: Run auth revocation integration tests
+        run: go test -count=1 -tags=integration -v ./internal/platform/authctx
 
       - name: Build services
         run: go build ./...

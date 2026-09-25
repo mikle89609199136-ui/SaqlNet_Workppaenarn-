@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eventBus } from '@/core';
+import { eventBus } from '@/shared/lib/event-bus';
 import { WebSocketClient } from './WebSocketClient';
 
 /**

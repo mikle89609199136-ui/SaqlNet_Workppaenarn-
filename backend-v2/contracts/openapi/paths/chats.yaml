@@ -1,50 +1,576 @@
-x-chat-id: &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
-x-user-id: &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+x-chat-id:
+  &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+x-user-id:
+  &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
 x-secure: &secure [{ bearerAuth: [] }]
 /chats:
-  get: { tags: [Chats], summary: List chats, operationId: listChats, security: *secure, parameters: [{ name: archived, in: query, schema: { type: boolean } }], responses: { '200': { description: Chats } } }
+  get:
+    {
+      tags: [Chats],
+      summary: List chats,
+      operationId: listChats,
+      security: *secure,
+      parameters:
+        [
+          {
+            name: archived,
+            in: query,
+            description: 'Filter chats by archived status. Accepts exactly "true" or "false" (lowercase). Absence equals "false". Any other value, empty value, or duplicated parameter results in 400 with code "validation_failed".',
+            schema: { type: boolean },
+          },
+        ],
+      responses:
+        {
+          '200': { description: Chats },
+          '400':
+            {
+              description: Validation_failed,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '405':
+            {
+              description: Method not allowed,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '500':
+            {
+              description: Internal server error,
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+        },
+    }
 /chats/private:
-  post: { tags: [Chats], summary: Create or get a private chat, operationId: createPrivateChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Existing chat }, '201': { description: Created chat } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Create or get a private chat,
+      operationId: createPrivateChat,
+      security: *secure,
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [userId],
+                      properties: { userId: { type: string, format: uuid } },
+                    },
+                },
+            },
+        },
+      responses: { '200': { description: Existing chat }, '201': { description: Created chat } },
+    }
 /chats/groups:
-  post: { tags: [Chats], summary: Create a group chat, operationId: createGroupChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [title, members], properties: { title: { type: string }, description: { type: string }, avatarUrl: { type: string }, members: { type: array, items: { type: string, format: uuid } } } } } } }, responses: { '201': { description: Created chat } } }
+  post:
+    tags: [Chats]
+    summary: Create a group chat
+    description: |
+      Creates a new group chat owned by the authenticated user.
+
+      Text fields (title, description, avatarUrl) are trimmed of leading
+      and trailing whitespace before validation and storage. The 128-character
+      limit for title applies to the trimmed value; an all-whitespace title
+      is rejected.
+    operationId: createGroupChat
+    security: *secure
+    requestBody:
+      required: true
+      description: Group creation payload.
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/CreateGroupRequest' }
+    responses:
+      {
+        '201':
+          {
+            description: Created chat,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [chatId, title],
+                        properties:
+                          {
+                            chatId: { type: string, format: uuid },
+                            title: { type: string, maxLength: 128 },
+                          },
+                      },
+                  },
+              },
+          },
+        '400':
+          {
+            description: 'Invalid request (validation_failed)',
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '500':
+          {
+            description: Internal server error,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+      }
 /chats/{chatId}:
   parameters: [*chatId]
-  get: { tags: [Chats], summary: Get a chat, operationId: getChat, security: *secure, responses: { '200': { description: Chat }, '404': { $ref: '../components/responses.yaml#/Error' } } }
-  patch: { tags: [Chats], summary: Update a group chat, operationId: updateGroupChat, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { title: { type: string }, description: { type: string }, avatarUrl: { type: string } } } } } }, responses: { '200': { description: Updated chat } } }
-  delete: { tags: [Chats], summary: Delete a chat, operationId: deleteChat, security: *secure, responses: { '200': { description: Deleted } } }
+  get:
+    {
+      tags: [Chats],
+      summary: Get a chat,
+      operationId: getChat,
+      security: *secure,
+      responses:
+        { '200': { description: Chat }, '404': { $ref: '../components/responses.yaml#/Error' } },
+    }
+  patch:
+    tags: [Chats]
+    summary: Update a group chat
+    description: |
+      Updates the title, description, and/or avatar URL of a group chat.
+      All fields are optional, but at least one must be present.
+
+      Text fields are trimmed of leading and trailing whitespace before
+      validation and storage. The 128-character limit for title applies
+      to the trimmed value; an all-whitespace title is rejected.
+
+      Only the chat owner or an admin may perform this operation.
+      Direct (non-group) chats cannot be updated through this endpoint.
+    operationId: updateGroupChat
+    security: *secure
+    requestBody:
+      required: true
+      description: Fields to update. At least one field must be present.
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/UpdateGroupRequest' }
+    responses:
+      {
+        '200':
+          {
+            description: Updated chat,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [chat],
+                        properties: { chat: { $ref: '../components/schemas.yaml#/Chat' } },
+                      },
+                  },
+              },
+          },
+        '400':
+          {
+            description: 'Invalid request (validation_failed, invalid_chat_type)',
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: '../components/schemas.yaml#/Error' },
+                    examples:
+                      {
+                        titleEmpty:
+                          {
+                            value: { code: validation_failed, message: 'title must not be empty' },
+                          },
+                        titleTooLong:
+                          {
+                            value:
+                              {
+                                code: validation_failed,
+                                message: 'title exceeds maximum length of 128 characters',
+                              },
+                          },
+                        emptyBody:
+                          {
+                            value:
+                              {
+                                code: validation_failed,
+                                message: 'at least one field is required',
+                              },
+                          },
+                        invalidChatType:
+                          {
+                            value:
+                              {
+                                code: invalid_chat_type,
+                                message: 'only group chats can be updated',
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+        '403':
+          {
+            description: Access denied,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '404':
+          {
+            description: Chat not found,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+        '500':
+          {
+            description: Internal server error,
+            content:
+              { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } },
+          },
+      }
+  delete:
+    {
+      tags: [Chats],
+      summary: Delete a chat,
+      operationId: deleteChat,
+      security: *secure,
+      responses: { '200': { description: Deleted } },
+    }
 /chats/{chatId}/members:
   parameters: [*chatId]
-  get: { tags: [Chats], summary: List chat members, operationId: listChatMembers, security: *secure, responses: { '200': { description: Members } } }
-  post: { tags: [Chats], summary: Add a chat member, operationId: addChatMember, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userId], properties: { userId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Member added } } }
+  get:
+    {
+      tags: [Chats],
+      summary: List chat members,
+      operationId: listChatMembers,
+      security: *secure,
+      responses: { '200': { description: Members } },
+    }
+  post:
+    {
+      tags: [Chats],
+      summary: Add a chat member,
+      operationId: addChatMember,
+      security: *secure,
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [userId],
+                      properties: { userId: { type: string, format: uuid } },
+                    },
+                },
+            },
+        },
+      responses: { '200': { description: Member added } },
+    }
 /chats/{chatId}/members-online:
-  get: { tags: [Chats], summary: List online members, operationId: listOnlineChatMembers, security: *secure, parameters: [*chatId], responses: { '200': { description: Online user IDs } } }
+  get:
+    {
+      tags: [Chats],
+      summary: List online members of a group chat,
+      operationId: listOnlineChatMembers,
+      security: *secure,
+      parameters: [*chatId],
+      responses:
+        {
+          '200':
+            {
+              description: Online member UUIDs,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          type: object,
+                          required: [members],
+                          properties:
+                            {
+                              members:
+                                {
+                                  type: array,
+                                  items: { type: string, format: uuid },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/bans:
-  get: { tags: [Chats], summary: List chat bans, operationId: listChatBans, security: *secure, parameters: [*chatId], responses: { '200': { description: Bans }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' } } }
+  get:
+    {
+      tags: [Chats],
+      summary: List chat bans,
+      operationId: listChatBans,
+      security: *secure,
+      parameters: [*chatId],
+      responses:
+        {
+          '200': { description: Bans },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}:
-  delete: { tags: [Chats], summary: Remove a chat member, operationId: removeChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Removed }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' }, '409': { $ref: '../components/responses.yaml#/Error' } } }
+  delete:
+    {
+      tags: [Chats],
+      summary: Remove a chat member,
+      operationId: removeChatMember,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      responses:
+        {
+          '200': { description: Removed },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+          '409': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}/role:
-  post: { tags: [Chats], summary: Set a member role, operationId: setChatMemberRole, security: *secure, parameters: [*chatId, *userId], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [role], properties: { role: { type: string, enum: [admin, member] } } } } } }, responses: { '200': { description: Role updated or already set }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' }, '409': { $ref: '../components/responses.yaml#/Error' } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Set a member role,
+      operationId: setChatMemberRole,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [role],
+                      properties: { role: { type: string, enum: [admin, member] } },
+                    },
+                },
+            },
+        },
+      responses:
+        {
+          '200': { description: Role updated or already set },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+          '409': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}/ban:
-  post: { tags: [Chats], summary: Ban a member, operationId: banChatMember, security: *secure, parameters: [*chatId, *userId], requestBody: { content: { application/json: { schema: { type: object, properties: { bannedUntil: { type: string, format: date-time, nullable: true, description: 'null = permanent ban' }, reason: { type: string, maxLength: 500 } } } } } }, responses: { '200': { description: Banned or already banned with same state }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Ban a member,
+      operationId: banChatMember,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      requestBody:
+        {
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          bannedUntil:
+                            {
+                              type: string,
+                              format: date-time,
+                              nullable: true,
+                              description: 'null = permanent ban',
+                            },
+                          reason: { type: string, maxLength: 500 },
+                        },
+                    },
+                },
+            },
+        },
+      responses:
+        {
+          '200': { description: Banned or already banned with same state },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}/unban:
-  post: { tags: [Chats], summary: Unban a member, operationId: unbanChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Unbanned or not banned }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Unban a member,
+      operationId: unbanChatMember,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      responses:
+        {
+          '200': { description: Unbanned or not banned },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}/mute:
-  post: { tags: [Chats], summary: Mute a member, operationId: muteChatMember, security: *secure, parameters: [*chatId, *userId], requestBody: { content: { application/json: { schema: { type: object, properties: { mutedUntil: { type: string, format: date-time, nullable: true, description: 'null = permanent mute' } } } } } }, responses: { '200': { description: Muted or already muted with same state }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Mute a member,
+      operationId: muteChatMember,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      requestBody:
+        {
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          mutedUntil:
+                            {
+                              type: string,
+                              format: date-time,
+                              nullable: true,
+                              description: 'null = permanent mute',
+                            },
+                        },
+                    },
+                },
+            },
+        },
+      responses:
+        {
+          '200': { description: Muted or already muted with same state },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/members/{userId}/unmute:
-  post: { tags: [Chats], summary: Unmute a member, operationId: unmuteChatMember, security: *secure, parameters: [*chatId, *userId], responses: { '200': { description: Unmuted or not muted }, '400': { $ref: '../components/responses.yaml#/Error' }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Unmute a member,
+      operationId: unmuteChatMember,
+      security: *secure,
+      parameters: [*chatId, *userId],
+      responses:
+        {
+          '200': { description: Unmuted or not muted },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
 /chats/{chatId}/mls-state:
-  get: { tags: [Chats], summary: Get legacy MLS state, operationId: getChatMlsState, security: *secure, parameters: [*chatId], responses: { '200': { description: MLS state } } }
+  get:
+    {
+      tags: [Chats],
+      summary: Get legacy MLS state,
+      operationId: getChatMlsState,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: MLS state } },
+    }
 /chats/{chatId}/pin:
-  post: { tags: [Chats], summary: Pin a chat, operationId: pinChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Pinned } } }
-  delete: { tags: [Chats], summary: Unpin a chat, operationId: unpinChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Unpinned } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Pin a chat,
+      operationId: pinChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Pinned } },
+    }
+  delete:
+    {
+      tags: [Chats],
+      summary: Unpin a chat,
+      operationId: unpinChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Unpinned } },
+    }
 /chats/{chatId}/archive:
-  post: { tags: [Chats], summary: Archive a chat, operationId: archiveChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Archived } } }
-  delete: { tags: [Chats], summary: Unarchive a chat, operationId: unarchiveChat, security: *secure, parameters: [*chatId], responses: { '200': { description: Unarchived } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Archive a chat,
+      operationId: archiveChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Archived } },
+    }
+  delete:
+    {
+      tags: [Chats],
+      summary: Unarchive a chat,
+      operationId: unarchiveChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Unarchived } },
+    }
 /chats/{chatId}/read:
-  post: { tags: [Chats], summary: Mark a chat read, operationId: markChatRead, security: *secure, parameters: [*chatId], responses: { '200': { description: Marked read } } }
+  post:
+    {
+      tags: [Chats],
+      summary: Mark a chat read,
+      operationId: markChatRead,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Marked read } },
+    }
 /chats/{chatId}/pins:
-  get: { tags: [Chats], summary: List pinned messages, operationId: listPinnedMessages, security: *secure, parameters: [*chatId], responses: { '200': { description: Pins } } }
+  get:
+    {
+      tags: [Chats],
+      summary: List pinned messages,
+      operationId: listPinnedMessages,
+      security: *secure,
+      parameters: [*chatId],
+      responses: { '200': { description: Pins } },
+    }
 /chats/{chatId}/pins/{messageId}:
-  parameters: [*chatId, { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
-  post: { tags: [Chats], summary: Pin a message, operationId: pinMessage, security: *secure, responses: { '200': { description: Pinned } } }
-  delete: { tags: [Chats], summary: Unpin a message, operationId: unpinMessage, security: *secure, responses: { '200': { description: Unpinned } } }
+  parameters:
+    [*chatId, { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+  post:
+    {
+      tags: [Chats],
+      summary: Pin a message,
+      operationId: pinMessage,
+      security: *secure,
+      responses: { '200': { description: Pinned } },
+    }
+  delete:
+    {
+      tags: [Chats],
+      summary: Unpin a message,
+      operationId: unpinMessage,
+      security: *secure,
+      responses: { '200': { description: Unpinned } },
+    }

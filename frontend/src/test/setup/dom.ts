@@ -10,14 +10,12 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
-import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
-import { queryClient } from '@/queries/queryClient';
-import { eventBus } from '@/core/EventBus';
-import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
-import { useCallStore } from '@/store/call';
-import { useChatUiStore } from '@/store/chatUi';
-import { useProfileStore } from '@/store/profile';
-import { clearOutbox } from '@/store/outbox';
+import { eventBus } from '@/shared/lib/event-bus';
+import { queryClient, resetRealtimeSocketForTests } from '@/shared/api';
+import { useCallStore } from '@/features/call';
+import { registerChatResolver, useChatUiStore } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
+import { clearOutbox } from '@/entities/message';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 

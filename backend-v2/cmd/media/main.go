@@ -35,8 +35,9 @@ func main() {
 		log.Fatal("MINIO_SECRET_KEY must be set to a non-default value in production")
 	}
 
+	minioEndpoint := config.Value("MINIO_ENDPOINT", "http://127.0.0.1:9000")
 	store := media.NewMinioStore(
-		config.Value("MINIO_ENDPOINT", "http://127.0.0.1:9000"),
+		minioEndpoint,
 		config.Value("MINIO_ACCESS_KEY", "craneapp"),
 		minioSecret,
 		config.Value("MINIO_REGION", "us-east-1"),
@@ -63,12 +64,18 @@ func main() {
 	if ensureErr != nil {
 		log.Fatalf("media: failed to ensure bucket %q after %d retries: %v", bucket, minioEnsureRetries, ensureErr)
 	}
+	backfillCtx, backfillCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	backfillErr := media.BackfillStickerStorageIdentities(backfillCtx, pool, minioEndpoint, bucket)
+	backfillCancel()
+	if backfillErr != nil {
+		log.Fatalf("media: backfill sticker storage identities: %v", backfillErr)
+	}
 
 	svc := media.NewService(pool, store, bucket, maxFileSize)
 	handler := media.NewHandler(svc)
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
-	authenticated := authctx.Middleware(crypto)
+	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -77,6 +84,14 @@ func main() {
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context(), pool); err != nil {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
+			return
+		}
+		if err := authctx.CheckTokenGenerationSchema(r.Context(), pool); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(r.Context()); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
@@ -91,9 +106,12 @@ func main() {
 	mux.Handle("/api/v2/stickers/packs/", authenticated(http.HandlerFunc(handler.HandleStickersRoutes)))
 	mux.Handle("/api/v2/stickers/", authenticated(http.HandlerFunc(handler.HandleStickersRoutes)))
 
-	server := &http.Server{Addr: config.Value("MEDIA_ADDR", ":8084"), Handler: httpx.Middleware(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 120 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	cleanupWorker := media.NewCleanupWorker(pool, store)
+	go cleanupWorker.Run(ctx)
+
+	server := &http.Server{Addr: config.Value("MEDIA_ADDR", ":8084"), Handler: httpx.Middleware(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 120 * time.Second}
 	go func() {
 		log.Printf("media service listening on %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

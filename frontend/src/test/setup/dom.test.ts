@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { eventBus } from '@/core/EventBus';
-import { useChatUiStore } from '@/store/chatUi';
-import { useProfileStore } from '@/store/profile';
+import { eventBus } from '@/shared/lib/event-bus';
+import { useChatUiStore } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 
 // Тесты самой инфраструктуры: если сброс состояния между тестами перестанет
 // работать, остальные тесты начнут падать в зависимости от порядка запуска,

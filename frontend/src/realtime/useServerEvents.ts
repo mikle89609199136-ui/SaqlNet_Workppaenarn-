@@ -2,17 +2,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
-import { useRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,
+  isReactionChangePending,
   patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
-} from '@/queries/chat/threadCacheActions';
-import { isReactionChangePending } from '@/queries/chat/pendingReactions';
+} from '@/entities/message';
+import { useTypingStore, resolveChat } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
-import { resolveChat } from '@/core/chatResolver';
-import { useTypingStore } from '@/store/typing';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';

@@ -11,19 +11,36 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
+
+	"craneapp/backend-v2/internal/platform/profileevent"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
+	"github.com/lib/pq"
 )
 
+const UsernameChangeCooldown = 24 * time.Hour
+
 var (
-	ErrNotFound       = errors.New("user not found")
-	ErrSelfBlock      = errors.New("cannot block yourself")
-	ErrAlreadyBlocked = errors.New("user already blocked")
-	ErrInvalidInput   = errors.New("invalid input")
-	ErrWrongPasscode  = errors.New("wrong passcode")
-	ErrNoPasscodeSet  = errors.New("no passcode set")
+	ErrNotFound              = errors.New("user not found")
+	ErrSelfBlock             = errors.New("cannot block yourself")
+	ErrAlreadyBlocked        = errors.New("user already blocked")
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidUsernameFormat = errors.New("wrong username format")
+	ErrUsernameTaken         = errors.New("username already exists")
+	ErrUsernameCooldown      = errors.New("username change cooldown is active")
+	ErrWrongPasscode         = errors.New("wrong passcode")
+	ErrNoPasscodeSet         = errors.New("no passcode set")
 )
+
+type UsernameCooldownError struct {
+	AvailableAt time.Time
+}
+
+func (e *UsernameCooldownError) Error() string { return ErrUsernameCooldown.Error() }
+func (e *UsernameCooldownError) Unwrap() error { return ErrUsernameCooldown }
 
 type Profile struct {
 	ID        string   `json:"id"`
@@ -127,6 +144,112 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 	return s.profileByID(ctx, userID)
 }
 
+// RenameUsername atomically updates the canonical username and appends its old value
+// to the audit trail. Locking the user row serializes concurrent rename attempts for
+// one account; the username registry arbitrates competing accounts and reserves old names.
+func (s *Service) RenameUsername(ctx context.Context, userID, requestedUsername string) (Profile, error) {
+	newUsername := usernamepolicy.Normalize(requestedUsername)
+	if newUsername == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if !usernamepolicy.Valid(newUsername) {
+		return Profile{}, ErrInvalidUsernameFormat
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentUsername string
+	err = tx.QueryRowContext(ctx, `
+		SELECT username
+		FROM auth.users
+		WHERE id = $1 AND disabled_at IS NULL
+		FOR UPDATE
+	`, userID).Scan(&currentUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	if currentUsername == newUsername {
+		if err := tx.Commit(); err != nil {
+			return Profile{}, err
+		}
+		return s.profileByID(ctx, userID)
+	}
+
+	var lastChanged time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT changed_at
+		FROM users.username_changes
+		WHERE user_id = $1
+		  AND changed_at > NOW() - INTERVAL '24 hours'
+		ORDER BY changed_at DESC
+		LIMIT 1
+	`, userID).Scan(&lastChanged)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, err
+	}
+	if err == nil {
+		availableAt := lastChanged.Add(UsernameChangeCooldown)
+		return Profile{}, &UsernameCooldownError{AvailableAt: availableAt}
+	}
+
+	var claimedUsername string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO auth.username_registry (username, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (username) DO UPDATE
+		SET user_id = auth.username_registry.user_id
+		WHERE auth.username_registry.user_id = EXCLUDED.user_id
+		RETURNING username
+	`, newUsername, userID).Scan(&claimedUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrUsernameTaken
+	}
+	if err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE auth.users
+		SET username = $2, updated_at = NOW()
+		WHERE id = $1
+	`, userID, newUsername); err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		INSERT INTO users.username_changes (user_id, previous_username, new_username)
+		VALUES ($1, $2, $3)
+	`, userID, currentUsername, newUsername); err != nil {
+		return Profile{}, err
+	}
+	eventPayload, err := json.Marshal(profileevent.UsernameChanged{UserID: userID, Username: newUsername})
+	if err != nil {
+		return Profile{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `SELECT pg_notify($1, $2)`, profileevent.Channel, string(eventPayload)); err != nil {
+		return Profile{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Profile{}, err
+	}
+	return s.profileByID(ctx, userID)
+}
+
 func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return err
@@ -140,64 +263,249 @@ func (s *Service) SubscribePremium(ctx context.Context, userID string) error {
 	return err
 }
 
+// Search performs a case-insensitive substring search across user records.
+// It returns up to 50 results, excluding the current viewer.
+// The query may start with '@', which is stripped for convenience.
+// Special characters '%' and '_' are escaped to be treated literally.
+//
+// The search uses the same logic as the SELECT output:
+//   - first_name and last_name are taken from users.profiles if present,
+//     otherwise from auth.users (via COALESCE). This ensures that search
+//     results match what is displayed in the response.
 func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchResult, error) {
+	const method = "Search"
+
 	query = strings.TrimSpace(query)
+	slog.DebugContext(ctx, "search request",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
+		"query", query,
+	)
+
 	if query == "" {
+		slog.DebugContext(ctx, "empty query, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
 		return []SearchResult{}, nil
 	}
 
 	cleanQuery := strings.TrimPrefix(query, "@")
+	// If the query consisted only of '@', treat it as empty to avoid
+	// listing all users via the '%%' pattern.
+	if cleanQuery == "" {
+		slog.DebugContext(ctx, "query after stripping '@' is empty, returning empty result",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+		)
+		return []SearchResult{}, nil
+	}
+
+	escaped := EscapeLike(cleanQuery)
+	pattern := "%" + escaped + "%"
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT au.id::text, au.username,
-		       COALESCE(up.first_name, au.first_name), COALESCE(up.last_name, au.last_name), COALESCE(up.avatar_url, '')
+		       COALESCE(up.first_name, au.first_name),
+		       COALESCE(up.last_name, au.last_name),
+		       COALESCE(up.avatar_url, '')
 		FROM auth.users au
 		LEFT JOIN users.profiles up ON up.user_id = au.id
 		WHERE au.disabled_at IS NULL
 		  AND au.id::text != $2
-		  AND (au.username ILIKE $1 OR au.first_name ILIKE $1 OR au.last_name ILIKE $1 OR up.bio ILIKE $1)
+		  AND (au.username ILIKE $1 OR
+		       COALESCE(up.first_name, au.first_name) ILIKE $1 OR
+		       COALESCE(up.last_name, au.last_name) ILIKE $1 OR
+		       up.bio ILIKE $1)
 		ORDER BY au.username
 		LIMIT 50
-	`, "%"+cleanQuery+"%", viewerID)
+	`, pattern, viewerID)
 	if err != nil {
+		slog.ErrorContext(ctx, "search query failed",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+			"pattern", pattern,
+			"error", err,
+		)
 		return nil, err
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "failed to close rows",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
+				"error", closeErr,
+			)
+		}
 	}()
 
 	var users []SearchResult
 	for rows.Next() {
 		var user SearchResult
-		if err := rows.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.AvatarURL); err != nil {
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
+		); err != nil {
+			slog.ErrorContext(ctx, "failed to scan row",
+				"layer", "service",
+				"method", method,
+				"user_id", viewerID,
+				"error", err,
+			)
 			return nil, err
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error",
+			"layer", "service",
+			"method", method,
+			"user_id", viewerID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "search completed successfully",
+		"layer", "service",
+		"method", method,
+		"user_id", viewerID,
+		"result_count", len(users),
+	)
+
+	return users, nil
 }
 
+// EscapeLike escapes special characters for SQL LIKE/ILIKE patterns.
+// It escapes backslash first, then percent and underscore.
+func EscapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
+
+// IsUsernameAvailable checks whether the given username is available for registration.
+// It performs the following validations:
+//   - Normalizes surrounding whitespace and letter case.
+//   - Ensures the username is not empty.
+//   - Validates the canonical username against the allowed pattern.
+//   - Queries the canonical registry, which includes current and historical claims.
+//
+// Returns:
+//   - (true, nil)  if the username is syntactically valid and does not exist in DB.
+//   - (false, nil) if the username is valid but already exists.
+//   - (false, ErrInvalidInput) if the username is empty.
+//   - (false, ErrInvalidUsernameFormat) if the username does not match the pattern.
+//   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
-	username = strings.TrimSpace(username)
+	username = usernamepolicy.Normalize(username)
+	// Log incoming request (debug level)
+	slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:checking username availability",
+		"username", username,
+	)
+
+	// Check for empty input
 	if username == "" {
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:empty username, returning invalid input")
 		return false, ErrInvalidInput
 	}
+
+	// Validate username against the allowed pattern
+	if !usernamepolicy.Valid(username) {
+		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:username does not match pattern",
+			"username", username,
+		)
+		return false, ErrInvalidUsernameFormat
+	}
+
+	// The registry includes both current and historical claims, preventing an
+	// old QR/deep link from being reassigned to a different account.
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`, username).Scan(&exists)
-	return !exists, err
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM auth.username_registry WHERE username = $1)`,
+		username).Scan(&exists)
+
+	if err != nil {
+		slog.ErrorContext(ctx, "[Service-IsUsernameAvailable]:database query failed",
+			"username", username,
+			"error", err,
+		)
+		return false, err
+	}
+
+	available := !exists
+	slog.InfoContext(ctx, "[Service-IsUsernameAvailable]:availability check completed",
+		"username", username,
+		"available", available,
+	)
+
+	return available, nil
 }
 
 func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {
 	return s.profileByID(ctx, userID)
 }
 
+func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername string) (Profile, error) {
+	canonical := strings.ToLower(strings.TrimSpace(requestedUsername))
+	if canonical == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if len(canonical) > 64 {
+		return Profile{}, ErrNotFound
+	}
+
+	var userID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id::text
+		FROM auth.users
+		WHERE lower(username) = $1 AND disabled_at IS NULL
+	`, canonical).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	return s.profileByID(ctx, userID)
+}
+
 func (s *Service) Status(ctx context.Context, userID string) (map[string]any, error) {
 	var privacyJSON []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT privacy_settings FROM users.settings WHERE user_id = $1`, userID).Scan(&privacyJSON); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
+	var lastActive sql.NullString
+	var online bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(settings.privacy_settings, '{}'::jsonb),
+		       latest_session.last_active::text,
+		       COALESCE(latest_session.last_active > NOW() - INTERVAL '5 minutes', FALSE)
+		FROM auth.users
+		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
+		LEFT JOIN LATERAL (
+			SELECT last_active
+			FROM public.user_sessions
+			WHERE user_id = auth.users.id
+			ORDER BY last_active DESC
+			LIMIT 1
+		) AS latest_session ON TRUE
+		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
+	`, userID).Scan(&privacyJSON, &lastActive, &online)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, err
+	}
+
 	lastSeenPrivacy := "everyone"
 	if len(privacyJSON) > 0 {
 		var privacy struct {
@@ -208,22 +516,8 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 		}
 	}
 
-	var lastActive sql.NullString
-	err := s.db.QueryRowContext(ctx, `
-		SELECT last_active::text FROM public.user_sessions
-		WHERE user_id = $1 ORDER BY last_active DESC LIMIT 1
-	`, userID).Scan(&lastActive)
-	if errors.Is(err, sql.ErrNoRows) {
+	if !lastActive.Valid {
 		return map[string]any{"isOnline": false, "lastSeen": ""}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var online bool
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT EXISTS(SELECT 1 FROM public.user_sessions WHERE user_id = $1 AND last_active > NOW() - INTERVAL '5 minutes')
-	`, userID).Scan(&online); err != nil {
-		return nil, err
 	}
 
 	if lastSeenPrivacy == "nobody" || lastSeenPrivacy == "contacts" || lastSeenPrivacy == "none" {

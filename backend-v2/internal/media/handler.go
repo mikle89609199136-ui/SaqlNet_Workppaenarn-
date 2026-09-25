@@ -290,7 +290,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.multipartBodyLimit())
 	parseErr := r.ParseMultipartForm(h.multipartMemoryLimit())
 	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 	}
 	if parseErr != nil {
 		if isMaxBytesError(parseErr) {

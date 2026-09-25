@@ -207,7 +207,7 @@ func (s *Service) UpsertSignalKeys(ctx context.Context, userID string, identity 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO crypto.signal_identity_keys (user_id, identity_key, registration_id, updated_at)

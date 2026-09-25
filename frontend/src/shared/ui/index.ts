@@ -1,3 +1,4 @@
+export { AudioPlayer } from './AudioPlayer';
 export { Avatar, AvatarShapeProvider, useAvatarShape, type TAvatarShape } from './Avatar';
 export { Badge } from './Badge';
 export { Banner } from './Banner';
@@ -21,3 +22,8 @@ export { Textarea } from './Textarea';
 export { Toast, ToastStack, showToast, hideToast, clearToasts, getToasts } from './Toast';
 export type { IToast, TToastType } from './Toast';
 export { Tooltip } from './Tooltip';
+export { VideoPlayer } from './VideoPlayer';
+export { AnimatedHeight } from './AnimatedHeight';
+export { AuthLayout } from './AuthLayout';
+export { PaneResizer } from './PaneResizer';
+export { SectionStub } from './SectionStub';
