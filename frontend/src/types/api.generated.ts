@@ -417,6 +417,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the current user's username
+         * @description Normalizes the username to lowercase and changes it atomically. A successful change invalidates old username deep links; user IDs and existing chats remain unchanged. The operation is limited to once every 24 hours.
+         */
+        put: operations["renameCurrentUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/avatar": {
         parameters: {
             query?: never;
@@ -2391,6 +2411,12 @@ export interface components {
             bio?: string;
             avatarUrl?: string;
         };
+        RenameUsernameRequest: {
+            username: components["schemas"]["Username"];
+        };
+        ProfileResponse: {
+            user: components["schemas"]["User"];
+        };
         Object: {
             [key: string]: unknown;
         };
@@ -3343,6 +3369,43 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    renameCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameUsernameRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated canonical profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            /** @description Rename cooldown is active; Retry-After contains seconds remaining */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     updateAvatar: {
