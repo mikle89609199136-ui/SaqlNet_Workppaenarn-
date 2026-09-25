@@ -2586,6 +2586,7 @@ export interface components {
             type: "private" | "group" | "channel";
             title?: string;
             description?: string;
+            /** @description For a private chat, the peer's avatar. Empty when the peer's photoVisibility hides it (contacts and nobody both hide: there are no contacts). */
             avatarUrl?: string;
             /** Format: uuid */
             ownerId?: string;
@@ -2595,6 +2596,15 @@ export interface components {
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
+            /**
+             * Format: uuid
+             * @description Private chats only.
+             */
+            peerId?: string;
+            /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden by the peer's lastSeen privacy setting. Changes arrive as the presence_changed WebSocket event. */
+            peerIsOnline?: boolean;
+            /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden by the peer's lastSeen privacy setting. */
+            peerLastSeen?: string;
         };
         MarkMessagesReadRequest: {
             /** Format: uuid */

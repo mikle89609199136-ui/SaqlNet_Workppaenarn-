@@ -82,7 +82,12 @@ Chat:
     type: { type: string, enum: [private, group, channel] }
     title: { type: string }
     description: { type: string }
-    avatarUrl: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        For a private chat, the peer's avatar. Empty when the peer's
+        photoVisibility hides it (contacts and nobody both hide: there are no
+        contacts).
     ownerId: { type: string, format: uuid }
     role: { type: string }
     isPinned: { type: boolean }
@@ -90,6 +95,19 @@ Chat:
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
+    peerId: { type: string, format: uuid, description: Private chats only. }
+    peerIsOnline:
+      type: boolean
+      description: >-
+        Private chats only. True while the peer has a live WebSocket connection
+        (heartbeat within 75 seconds). Omitted when false or hidden by the
+        peer's lastSeen privacy setting. Changes arrive as the presence_changed
+        WebSocket event.
+    peerLastSeen:
+      type: string
+      description: >-
+        Private chats only. ISO 8601 UTC time of the peer's last activity.
+        Omitted when unknown or hidden by the peer's lastSeen privacy setting.
 ChatMember:
   allOf:
     - { $ref: '#/User' }

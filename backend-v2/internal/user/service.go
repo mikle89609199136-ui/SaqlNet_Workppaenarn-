@@ -486,17 +486,13 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 	var online bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(settings.privacy_settings, '{}'::jsonb),
-		       latest_session.last_active::text,
-		       COALESCE(latest_session.last_active > NOW() - INTERVAL '5 minutes', FALSE)
+		       to_char(presence.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       -- «В сети» — живое WebSocket-подключение (#780): отметку ведёт
+		       -- чат-сервис, свежей она считается 75 секунд.
+		       COALESCE(presence.online AND presence.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE)
 		FROM auth.users
 		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
-		LEFT JOIN LATERAL (
-			SELECT last_active
-			FROM public.user_sessions
-			WHERE user_id = auth.users.id
-			ORDER BY last_active DESC
-			LIMIT 1
-		) AS latest_session ON TRUE
+		LEFT JOIN users.presence AS presence ON presence.user_id = auth.users.id
 		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
 	`, userID).Scan(&privacyJSON, &lastActive, &online)
 	if errors.Is(err, sql.ErrNoRows) {

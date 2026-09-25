@@ -72,7 +72,8 @@ type WSServer struct {
 	pendingInvites map[string]json.RawMessage
 	inviteMu       sync.Mutex
 	presence       presence.Store
-	pingInterval   time.Duration // интервал heartbeat; 0 → wsPingInterval
+	activity       presenceActivity // время активности и собеседники; nil — не ведётся
+	pingInterval   time.Duration    // интервал heartbeat; 0 → wsPingInterval
 	stop           chan struct{}
 	stopped        chan struct{}
 	stopOnce       sync.Once
@@ -94,6 +95,9 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 		pingInterval:   wsPingInterval,
 		stop:           make(chan struct{}),
 		stopped:        make(chan struct{}),
+	}
+	if db != nil {
+		ws.activity = dbPresenceActivity{db: db}
 	}
 	go ws.run()
 	return ws
@@ -212,6 +216,9 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	connID := newConnectionID()
 	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	// Второе окно или вкладка — не новость: о входе сообщаем только тогда,
+	// когда до этого соединений не было вовсе.
+	firstConnection := !ws.isOnlineElsewhere(r.Context(), client.UserID, client)
 	if ws.presence != nil {
 		if err := ws.presence.Connect(r.Context(), client.UserID, client.ConnectionID); err != nil {
 			slog.Error("presence connect error", "userID", client.UserID, "err", err)
@@ -240,6 +247,11 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	go ws.readPump(client)
 	// #nosec - горутина долгоживущая, r.Context() отменяется после завершения HTTP-upgrade
 	go ws.heartbeat(client)
+	if firstConnection {
+		go ws.announcePresence(client.UserID, true)
+	} else {
+		go ws.touchPresence(client.UserID)
+	}
 }
 
 // newConnectionID генерирует случайный UUID v4 для идентификации
@@ -268,6 +280,8 @@ func (ws *WSServer) readPump(client *Client) {
 				slog.Error("presence disconnect error", "userID", client.UserID, "err", err)
 			}
 		}
+		// Закрыто последнее соединение — человек вышел из сети.
+		go ws.announceOffline(client)
 		ws.unreg <- client
 		_ = client.Conn.Close()
 	}()
@@ -554,6 +568,7 @@ func (ws *WSServer) heartbeat(client *Client) {
 			default:
 			}
 			ws.sendPresenceHeartbeat(client)
+			ws.touchPresence(client.UserID)
 			select {
 			case client.Send <- ping:
 			case <-client.done:

@@ -924,7 +924,7 @@ func TestEscapeLikeOrder(t *testing.T) {
 	}
 }
 
-const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 	tests := []struct {

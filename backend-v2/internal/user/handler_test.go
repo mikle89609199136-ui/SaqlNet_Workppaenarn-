@@ -212,7 +212,7 @@ func TestCheckUsername_ValidationErrors(t *testing.T) {
 }
 
 func TestPublicStatusReturnsUserNotFound(t *testing.T) {
-	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 	db, mock, err := sqlmock.New()
 	if err != nil {
