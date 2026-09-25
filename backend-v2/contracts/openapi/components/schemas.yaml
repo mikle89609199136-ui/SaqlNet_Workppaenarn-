@@ -74,6 +74,28 @@ ProfileResponse:
   required: [user]
   properties:
     user: { $ref: '#/User' }
+PrivacyVisibility:
+  type: string
+  enum: [all, nobody]
+  description: >-
+    Who else sees it. There are no contacts yet, so only everyone or nobody.
+    Being blocked by the owner hides it regardless of the rule.
+PrivacySettings:
+  type: object
+  additionalProperties: false
+  description: >-
+    Privacy rules. Absent rules take their defaults (phoneVisibility nobody,
+    the rest all); a corrupted stored value reads as nobody.
+  properties:
+    lastSeen: { $ref: '#/PrivacyVisibility' }
+    photoVisibility: { $ref: '#/PrivacyVisibility' }
+    phoneVisibility: { $ref: '#/PrivacyVisibility' }
+    forwards: { $ref: '#/PrivacyVisibility' }
+    calls: { $ref: '#/PrivacyVisibility' }
+    groupsAdd: { $ref: '#/PrivacyVisibility' }
+    messagesFromStrangers: { type: boolean }
+    twoFactorAuth: { type: boolean }
+    autoDeleteAccount: { type: boolean }
 Chat:
   type: object
   required: [id, type]
