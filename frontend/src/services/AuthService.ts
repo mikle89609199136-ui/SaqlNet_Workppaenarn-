@@ -109,24 +109,45 @@ export class AuthService {
     return this.apiClient.post(endpoint, { password }).then((response) => response.data);
   }
 
-  /** Устройства, на которых выполнен вход. */
-  /** Новое устройство: начать вход по QR с одноразовым ключом (#745). */
-  startQrLogin(publicKey: string, deviceName: string) {
+  /**
+   * Новое устройство: начать вход по QR с одноразовым ключом (#745) или
+   * сменить показанный код (#753). Прежний код перестаёт работать сразу;
+   * сменить его может только тот, кто знает секрет из ответа.
+   */
+  startQrLogin(
+    publicKey: string,
+    deviceName: string,
+    replaces?: { token: string; secret: string }
+  ) {
     return this.apiClient
-      .post(API_ENDPOINTS.AUTH_QR_TOKEN, { publicKey, deviceName })
-      .then((response) => response.data as { qrToken: string; expiresAt: number });
+      .post(API_ENDPOINTS.AUTH_QR_TOKEN, {
+        publicKey,
+        deviceName,
+        ...(replaces && { replaces: replaces.token, secret: replaces.secret }),
+      })
+      .then((response) => response.data as { qrToken: string; secret: string; expiresAt: number });
   }
 
-  getQrStatus(token: string) {
-    return this.apiClient.get(API_ENDPOINTS.AUTH_QR_STATUS(token)).then(
-      (response) =>
-        response.data as {
-          status: 'pending' | 'confirmed' | 'expired';
-          expiresAt?: number;
-          authToken?: string;
-          payload?: { senderPublicKey: string; iv: string; ct: string };
-        }
-    );
+  /** Секрет в код не попадает: по фотографии экрана сессию не забрать. */
+  getQrStatus(token: string, secret: string) {
+    return this.apiClient
+      .get(API_ENDPOINTS.AUTH_QR_STATUS(token), {}, { 'X-QR-Secret': secret })
+      .then(
+        (response) =>
+          response.data as {
+            status: 'pending' | 'scanned' | 'confirmed' | 'expired';
+            expiresAt?: number;
+            authToken?: string;
+            payload?: { senderPublicKey: string; iv: string; ct: string };
+          }
+      );
+  }
+
+  /** Погасить код, когда страница с ним закрывается. */
+  cancelQrLogin(token: string, secret: string, options: { keepalive?: boolean } = {}) {
+    return this.apiClient
+      .delete(API_ENDPOINTS.AUTH_QR_TOKEN_BY_ID(token), { secret }, options)
+      .then(() => undefined);
   }
 
   /** Вошедшее устройство: какое устройство просит войти. */
@@ -143,12 +164,78 @@ export class AuthService {
     );
   }
 
+  /** Вошедшее устройство: отказаться от отсканированного кода. */
+  declineQrRequest(token: string) {
+    return this.apiClient.delete(API_ENDPOINTS.AUTH_QR_REQUEST(token)).then(() => undefined);
+  }
+
   confirmQrLogin(qrToken: string, payload: { senderPublicKey: string; iv: string; ct: string }) {
     return this.apiClient
       .post(API_ENDPOINTS.AUTH_QR_CONFIRM, { qrToken, payload })
       .then((response) => response.data);
   }
 
+  /**
+   * Вошедшее устройство: показать код для входа нового (#754) или сменить
+   * показанный. Ключ и ключ подписи в запрос не попадают — только в код.
+   */
+  createQrOffer(replaces?: string) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER, replaces ? { replaces } : {})
+      .then((response) => response.data as { offerToken: string; expiresAt: number });
+  }
+
+  /** Вошедшее устройство: не отсканировал ли кто-нибудь код. */
+  getQrOffer(token: string) {
+    return this.apiClient.get(API_ENDPOINTS.AUTH_QR_OFFER_BY_ID(token)).then(
+      (response) =>
+        response.data as {
+          status: 'pending' | 'claimed' | 'confirmed' | 'expired';
+          expiresAt?: number;
+          claim?: {
+            publicKey: string;
+            mac: string;
+            deviceName: string;
+            userAgent: string;
+            claimedAt: number;
+          };
+        }
+    );
+  }
+
+  withdrawQrOffer(token: string, options: { keepalive?: boolean } = {}) {
+    return this.apiClient
+      .delete(API_ENDPOINTS.AUTH_QR_OFFER_BY_ID(token), undefined, options)
+      .then(() => undefined);
+  }
+
+  confirmQrOffer(token: string, payload: { senderPublicKey: string; iv: string; ct: string }) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER_CONFIRM(token), { payload })
+      .then(() => undefined);
+  }
+
+  /** Новое устройство: занять отсканированный код своим ключом. */
+  claimQrOffer(token: string, claim: { publicKey: string; mac: string; deviceName: string }) {
+    return this.apiClient
+      .post(API_ENDPOINTS.AUTH_QR_OFFER_CLAIM(token), claim)
+      .then((response) => response.data as { claimSecret: string; expiresAt: number });
+  }
+
+  getQrOfferStatus(token: string, claimSecret: string) {
+    return this.apiClient
+      .get(API_ENDPOINTS.AUTH_QR_OFFER_STATUS(token), {}, { 'X-QR-Secret': claimSecret })
+      .then(
+        (response) =>
+          response.data as {
+            status: 'pending' | 'confirmed' | 'expired';
+            authToken?: string;
+            payload?: { senderPublicKey: string; iv: string; ct: string };
+          }
+      );
+  }
+
+  /** Устройства, на которых выполнен вход. */
   getSessions() {
     return this.apiClient
       .get(API_ENDPOINTS.AUTH_SESSIONS)

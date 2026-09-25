@@ -64,9 +64,56 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a QR login token */
+        /**
+         * Start a QR login or replace the code
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
+         */
         post: operations["createQrToken"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-token/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw a QR code
+         * @description Called when the page showing the code goes away. Needs the secret from creation; an unknown code is ignored.
+         */
+        delete: operations["cancelQrToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-request/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show which device asks to log in
+         * @description For the signed-in device before it confirms. The first account to call it captures the code for 60 seconds; for everyone else the code is gone. 404 qr_rotated means the code was replaced by a newer one, invalid_token that it expired or was used. Not cacheable.
+         */
+        get: operations["getQrRequest"];
+        put?: never;
+        post?: never;
+        /**
+         * Decline a scanned QR login
+         * @description Drops a code this account captured; the device showing it draws a new one.
+         */
+        delete: operations["declineQrRequest"];
         options?: never;
         head?: never;
         patch?: never;
@@ -79,7 +126,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get QR login status */
+        /**
+         * Get QR login status
+         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         */
         get: operations["getQrStatus"];
         put?: never;
         post?: never;
@@ -98,8 +148,115 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm a QR login */
+        /**
+         * Confirm a QR login
+         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         */
         post: operations["confirmQrLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a login code on a signed-in device
+         * @description The other direction of QR login: the signed-in device shows the code and the new device scans it. The QR code also carries a one-time ECDH public key of the signed-in device and a MAC key; both stay after "#" and never reach the server. Same lifetime rules as qr-token: 60 seconds, replaced every 30 by passing the previous token; a claimed code is not replaced (409 qr_scanned).
+         */
+        post: operations["createQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a new device claimed the code
+         * @description For the owner of the code. A claim carries the new device's public key and the HMAC over it, which the owner checks with the MAC key from the QR code before confirming. Somebody else's code reports expired. Not cacheable.
+         */
+        get: operations["getQrOffer"];
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the code
+         * @description The page showing it went away, or the person declined the claim.
+         */
+        delete: operations["withdrawQrOffer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a login code from the new device
+         * @description The first claim captures the code for 60 seconds; later claims get 404. 404 qr_rotated means the code was replaced by a newer one. The answer carries the secret for polling the result. Not cacheable.
+         */
+        post: operations["claimQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the result of a claimed code
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         */
+        get: operations["getQrOfferStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the claimed login
+         * @description Only the owner of the code, only after a claim (409 not_claimed) and only once (409 already_confirmed). payload is the master key encrypted to the claimed public key.
+         */
+        post: operations["confirmQrOffer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -253,6 +410,26 @@ export interface paths {
         get: operations["getCurrentUser"];
         /** Update current profile */
         put: operations["updateCurrentUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the current user's username
+         * @description Normalizes the username to lowercase and changes it atomically. A successful change invalidates old username deep links; user IDs and existing chats remain unchanged. The operation is limited to once every 24 hours.
+         */
+        put: operations["renameCurrentUser"];
         post?: never;
         delete?: never;
         options?: never;
@@ -919,6 +1096,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/encryption/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the key backup
+         * @description Opaque end-to-end key backup of the requester. The server never sees the master key, the cloud password or any key inside. Not cacheable.
+         */
+        get: operations["getKeyBackup"];
+        /**
+         * Create or replace the key backup
+         * @description expectedVersion 0 creates the backup; any other value replaces it only if it still has that version, otherwise 409 version_conflict.
+         */
+        put: operations["putKeyBackup"];
+        post?: never;
+        /** Delete the key backup and every chat key in it */
+        delete: operations["deleteKeyBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/encryption/backup/chat-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backed-up chat keys
+         * @description Pages through the requester's chat keys in (chatId, epoch) order. An empty next means the list is complete.
+         */
+        get: operations["listBackupChatKeys"];
+        put?: never;
+        /**
+         * Add chat keys to the backup
+         * @description An epoch already in the backup is left unchanged; keys of chats that no longer exist are skipped.
+         */
+        post: operations["saveBackupChatKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/support/requests": {
         parameters: {
             query?: never;
@@ -1031,7 +1257,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a group chat */
+        /**
+         * Create a group chat
+         * @description Creates a new group chat owned by the authenticated user.
+         *
+         *     Text fields (title, description, avatarUrl) are trimmed of leading
+         *     and trailing whitespace before validation and storage. The 128-character
+         *     limit for title applies to the trimmed value; an all-whitespace title
+         *     is rejected.
+         */
         post: operations["createGroupChat"];
         delete?: never;
         options?: never;
@@ -1056,7 +1290,18 @@ export interface paths {
         delete: operations["deleteChat"];
         options?: never;
         head?: never;
-        /** Update a group chat */
+        /**
+         * Update a group chat
+         * @description Updates the title, description, and/or avatar URL of a group chat.
+         *     All fields are optional, but at least one must be present.
+         *
+         *     Text fields are trimmed of leading and trailing whitespace before
+         *     validation and storage. The 128-character limit for title applies
+         *     to the trimmed value; an all-whitespace title is rejected.
+         *
+         *     Only the chat owner or an admin may perform this operation.
+         *     Direct (non-group) chats cannot be updated through this endpoint.
+         */
         patch: operations["updateGroupChat"];
         trace?: never;
     };
@@ -1087,7 +1332,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List online members */
+        /** List online members of a group chat */
         get: operations["listOnlineChatMembers"];
         put?: never;
         post?: never;
@@ -2061,11 +2306,116 @@ export interface components {
             /** Format: password */
             twoFAPassword?: string;
         };
+        QrTokenRequest: {
+            /** @description One-time ECDH P-256 public key (SPKI) */
+            publicKey: string;
+            deviceName?: string;
+            /** @description Token of the code shown so far; it stops working at once. */
+            replaces?: string;
+            /** @description Secret of the replaced code. */
+            secret?: string;
+        };
+        QrTokenResponse: {
+            qrToken: string;
+            /** @description Kept by the device showing the code and never drawn into it. */
+            secret: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            expiresAt: number;
+        };
+        QrSecretRequest: {
+            secret: string;
+        };
+        QrLoginRequest: {
+            publicKey: string;
+            deviceName: string;
+            userAgent: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            expiresAt: number;
+        };
+        /** @description The key backup master key encrypted to the new device's publicKey. Opaque to the server. */
+        QrKeyPayload: {
+            senderPublicKey: string;
+            iv: string;
+            ct: string;
+        };
+        QrStatusResponse: {
+            /** @enum {string} */
+            status: "pending" | "scanned" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            authToken?: string;
+            payload?: components["schemas"]["QrKeyPayload"];
+        };
+        QrConfirmRequest: {
+            qrToken: string;
+            payload: components["schemas"]["QrKeyPayload"];
+        };
+        QrOfferRequest: {
+            /** @description Token of the code shown so far; it stops working at once. */
+            replaces?: string;
+        };
+        QrOfferResponse: {
+            offerToken: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            expiresAt: number;
+        };
+        QrOfferClaim: {
+            publicKey: string;
+            mac: string;
+            deviceName: string;
+            userAgent: string;
+            /** Format: int64 */
+            claimedAt: number;
+        };
+        QrOfferState: {
+            /** @enum {string} */
+            status: "pending" | "claimed" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            claim?: components["schemas"]["QrOfferClaim"];
+        };
+        QrOfferClaimRequest: {
+            /** @description One-time ECDH P-256 public key (SPKI) of the new device */
+            publicKey: string;
+            /** @description base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code. */
+            mac: string;
+            deviceName?: string;
+        };
+        QrOfferClaimResponse: {
+            claimSecret: string;
+            /** Format: int64 */
+            expiresAt: number;
+        };
+        QrOfferStatusResponse: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "expired";
+            /** Format: int64 */
+            expiresAt?: number;
+            authToken?: string;
+            payload?: components["schemas"]["QrKeyPayload"];
+        };
+        QrOfferConfirmRequest: {
+            payload: components["schemas"]["QrKeyPayload"];
+        };
         UpdateProfileRequest: {
             firstName?: string;
             lastName?: string;
             bio?: string;
             avatarUrl?: string;
+        };
+        RenameUsernameRequest: {
+            username: components["schemas"]["Username"];
+        };
+        ProfileResponse: {
+            user: components["schemas"]["User"];
         };
         Object: {
             [key: string]: unknown;
@@ -2127,8 +2477,122 @@ export interface components {
         SignalPreKeysRequest: {
             oneTimePreKeys: components["schemas"]["SignalOneTimePreKey"][];
         };
+        /** @description Ways to open the master key (cloud password, passkey). Opaque to the server. */
+        KeyBackupSlots: {
+            [key: string]: unknown;
+        }[];
+        KeyBackup: {
+            /** Format: int64 */
+            version: number;
+            formatVersion: number;
+            /**
+             * Format: byte
+             * @description Encrypted identity keys.
+             */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+            updatedAt: string;
+        };
+        PutKeyBackupRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            formatVersion: number;
+            /** Format: byte */
+            identity: string;
+            slots: components["schemas"]["KeyBackupSlots"];
+        };
+        KeyBackupVersionResponse: {
+            /** Format: int64 */
+            version: number;
+        };
+        BackupChatKey: {
+            /** Format: uuid */
+            chatId: string;
+            epoch: number;
+            /** Format: byte */
+            encryptedKey: string;
+        };
+        BackupChatKeysPage: {
+            keys: components["schemas"]["BackupChatKey"][];
+            /** @description Cursor for the next page; empty when there is none. */
+            next: string;
+        };
+        SaveBackupChatKeysRequest: {
+            keys: components["schemas"]["BackupChatKey"][];
+        };
+        SaveBackupChatKeysResponse: {
+            stored: number;
+        };
         /** @description Request failed */
         responses_Error: unknown;
+        CreateGroupRequest: {
+            /**
+             * @description Group title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value; an all-whitespace title is rejected.
+             * @example Team standup
+             */
+            title: string;
+            /**
+             * @description Optional group description. Trimmed of leading and trailing
+             *     whitespace before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+            /**
+             * @description User IDs to add as members. The owner is added automatically
+             *     and does not need to be listed. Unknown or disabled users are
+             *     silently skipped.
+             * @example [
+             *       "550e8400-e29b-41d4-a716-446655440002"
+             *     ]
+             */
+            members: string[];
+        };
+        UpdateGroupRequest: {
+            /**
+             * @description New chat title. Trimmed of leading and trailing whitespace before
+             *     validation and storage. The 128-character limit applies to the
+             *     trimmed value. An all-whitespace value is rejected.
+             * @example Team standup
+             */
+            title?: string;
+            /**
+             * @description New chat description. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example Daily sync at 10:00
+             */
+            description?: string;
+            /**
+             * @description Optional avatar URL. Trimmed of leading and trailing whitespace
+             *     before storage.
+             * @example https://cdn.example.com/avatars/team.png
+             */
+            avatarUrl?: string;
+        };
+        Chat: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "private" | "group" | "channel";
+            title?: string;
+            description?: string;
+            avatarUrl?: string;
+            /** Format: uuid */
+            ownerId?: string;
+            role?: string;
+            isPinned?: boolean;
+            isArchived?: boolean;
+            memberCount?: number;
+            createdAt?: string;
+            updatedAt?: string;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
@@ -2169,6 +2633,11 @@ export interface components {
                 [key: string]: unknown;
             };
             isEncrypted?: boolean;
+            /**
+             * Format: uuid
+             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server.
+             */
+            forwardedFrom?: string | null;
         };
         MessageResponse: {
             message: components["schemas"]["Message"];
@@ -2389,18 +2858,53 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrTokenRequest"];
+            };
+        };
         responses: {
-            /** @description QR token and QR image created */
+            /** @description QR login started */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrTokenResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    cancelQrToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrSecretRequest"];
+            };
+        };
+        responses: {
+            /** @description Withdrawn */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
         };
     };
-    getQrStatus: {
+    getQrRequest: {
         parameters: {
             query?: never;
             header?: never;
@@ -2411,13 +2915,63 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending */
+            /** @description Pending QR login */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrLoginRequest"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    declineQrRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declined */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+        };
+    };
+    getQrStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-QR-Secret": string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, scanned, confirmed, or expired QR login status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
+            };
+            403: components["responses"]["Error"];
         };
     };
     confirmQrLogin: {
@@ -2429,9 +2983,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    qrToken: string;
-                };
+                "application/json": components["schemas"]["QrConfirmRequest"];
             };
         };
         responses: {
@@ -2443,6 +2995,161 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    createQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferRequest"];
+            };
+        };
+        responses: {
+            /** @description Code created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Offer state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferState"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    withdrawQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    claimQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Claimed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferClaimResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getQrOfferStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-QR-Secret": string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, confirmed, or expired */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrOfferStatusResponse"];
+                };
+            };
+            403: components["responses"]["Error"];
+        };
+    };
+    confirmQrOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QrOfferConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     logout: {
@@ -2664,6 +3371,43 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
+    renameCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameUsernameRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated canonical profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            /** @description Rename cooldown is active; Retry-After contains seconds remaining */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     updateAvatar: {
         parameters: {
             query?: never;
@@ -2794,6 +3538,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "user_not_found",
+                     *       "message": "user not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3671,6 +4430,122 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
+    getKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key backup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackup"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    putKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutKeyBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the new version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyBackupVersionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteKeyBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listBackupChatKeys: {
+        parameters: {
+            query?: {
+                chatId?: string;
+                /** @description Cursor from the previous page: chatId:epoch */
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of chat keys */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupChatKeysPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    saveBackupChatKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveBackupChatKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description How many keys were new */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveBackupChatKeysResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
     listSupportRequests: {
         parameters: {
             query?: never;
@@ -3870,14 +4745,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Group creation payload. */
         requestBody: {
             content: {
-                "application/json": {
-                    title: string;
-                    description?: string;
-                    avatarUrl?: string;
-                    members: string[];
-                };
+                "application/json": components["schemas"]["CreateGroupRequest"];
             };
         };
         responses: {
@@ -3886,7 +4757,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        chatId: string;
+                        title: string;
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3940,13 +4835,10 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description Fields to update. At least one field must be present. */
         requestBody: {
             content: {
-                "application/json": {
-                    title?: string;
-                    description?: string;
-                    avatarUrl?: string;
-                };
+                "application/json": components["schemas"]["UpdateGroupRequest"];
             };
         };
         responses: {
@@ -3955,7 +4847,47 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        chat: components["schemas"]["Chat"];
+                    };
+                };
+            };
+            /** @description Invalid request (validation_failed, invalid_chat_type) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -4017,13 +4949,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Online user IDs */
+            /** @description Online member UUIDs */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        members: string[];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     listChatBans: {

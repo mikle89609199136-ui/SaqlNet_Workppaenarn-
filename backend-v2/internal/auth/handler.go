@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -17,19 +18,32 @@ import (
 )
 
 type QRTokenData struct {
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	// Secret is known only to the device showing the code: it is returned on
+	// creation and never drawn into the QR code. Polling, replacing and
+	// cancelling the code require it, so a photo of the screen is not enough
+	// to pick up the session (#753).
+	Secret     string
 	PublicKey  string
 	DeviceName string
 	UserAgent  string
-	Confirmed  bool
-	AuthToken  string
-	Payload    json.RawMessage
+	// ScannedBy is the account that scanned the code first. Nobody else can
+	// look at the request or confirm it.
+	ScannedBy string
+	Confirmed bool
+	AuthToken string
+	Payload   json.RawMessage
 }
 
 type Handler struct {
 	service  *Service
 	qrTokens sync.Map
+	qrOffers sync.Map
+	// qrRotated remembers replaced codes for a while, so a device that
+	// scanned a code a moment too late hears "the code changed" rather than
+	// a generic error.
+	qrRotated sync.Map
 	// qrMu makes each QR state change atomic: confirm-once and hand-out-once.
 	qrMu sync.Mutex
 }
@@ -307,9 +321,20 @@ func (h *Handler) TwoFAVerify(w http.ResponseWriter, r *http.Request) {
 // and confirms with the backup master key encrypted to that public key. The
 // server only relays the ciphertext and issues the session; it cannot read the
 // key. The QR code is drawn by the client, so nothing here depends on Host.
+//
+// A code on a screen can be photographed, so it lives briefly (#753): the
+// showing device replaces it every 30 seconds, and the TTL is only a safety
+// net for a tab that fell asleep. The first account to scan a code captures
+// it; from then on the code stops changing and waits for that account alone.
 
 const (
-	qrLoginTTL            = 5 * time.Minute
+	qrLoginTTL = 60 * time.Second
+	// qrScanTTL is how long a scanned code waits for the confirmation.
+	qrScanTTL = 60 * time.Second
+	// qrRotatedTTL keeps a replaced code recognisable as replaced.
+	qrRotatedTTL          = 2 * time.Minute
+	qrSecretHeader        = "X-QR-Secret"
+	qrSecretBytes         = 32
 	minQRPublicKeyBytes   = 26
 	maxQRPublicKeyBytes   = 200
 	maxQRDeviceNameRunes  = 64
@@ -353,6 +378,59 @@ func validQRPayload(payload json.RawMessage) bool {
 	return true
 }
 
+func randomHex(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func newQRSecret() (string, error) {
+	buf := make([]byte, qrSecretBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func sameQRSecret(expected, given string) bool {
+	return expected != "" && subtle.ConstantTimeCompare([]byte(expected), []byte(given)) == 1
+}
+
+// sweepQR drops expired codes. Nothing else removes a code nobody polls any
+// more, and creating codes needs no account. The caller holds qrMu.
+func (h *Handler) sweepQR(now time.Time) {
+	h.qrTokens.Range(func(key, val any) bool {
+		if now.After(val.(*QRTokenData).ExpiresAt) {
+			h.qrTokens.Delete(key)
+		}
+		return true
+	})
+	h.qrOffers.Range(func(key, val any) bool {
+		if now.After(val.(*QROfferData).ExpiresAt) {
+			h.qrOffers.Delete(key)
+		}
+		return true
+	})
+	h.qrRotated.Range(func(key, val any) bool {
+		if now.After(val.(time.Time)) {
+			h.qrRotated.Delete(key)
+		}
+		return true
+	})
+}
+
+// qrGone answers for a code that is not there: replaced by a newer one, or
+// expired and used. The caller holds qrMu.
+func (h *Handler) qrGone(w http.ResponseWriter, r *http.Request, token string) {
+	if until, ok := h.qrRotated.Load(token); ok && time.Now().Before(until.(time.Time)) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "qr_rotated", "QR code has been replaced by a newer one")
+		return
+	}
+	httpx.ErrorJSON(w, r, http.StatusNotFound, "invalid_token", "QR code expired or already used")
+}
+
 // pendingQRLogin returns a live, unconfirmed login. The caller holds qrMu.
 func (h *Handler) pendingQRLogin(token string) (*QRTokenData, bool) {
 	val, ok := h.qrTokens.Load(token)
@@ -367,6 +445,8 @@ func (h *Handler) pendingQRLogin(token string) (*QRTokenData, bool) {
 	return data, !data.Confirmed
 }
 
+// QRToken starts a login or replaces the code shown a moment ago. The
+// replacement is authorised by the secret from the previous answer.
 func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -376,6 +456,8 @@ func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		PublicKey  string `json:"publicKey"`
 		DeviceName string `json:"deviceName"`
+		Replaces   string `json:"replaces"`
+		Secret     string `json:"secret"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
@@ -386,18 +468,45 @@ func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var buf [16]byte
-	if _, err := rand.Read(buf[:]); err != nil {
+	qrToken, err := randomHex(16)
+	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to generate token")
 		return
 	}
-	qrToken := hex.EncodeToString(buf[:])
-	now := time.Now()
-	expiresAt := now.Add(qrLoginTTL)
+	secret, err := newQRSecret()
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to generate token")
+		return
+	}
 
+	h.qrMu.Lock()
+	defer h.qrMu.Unlock()
+
+	now := time.Now()
+	h.sweepQR(now)
+
+	if input.Replaces != "" {
+		if val, ok := h.qrTokens.Load(input.Replaces); ok {
+			previous := val.(*QRTokenData)
+			if !sameQRSecret(previous.Secret, input.Secret) {
+				httpx.ErrorJSON(w, r, http.StatusForbidden, "invalid_secret", "the code can be replaced only by the device showing it")
+				return
+			}
+			// A scanned code waits for its confirmation instead of changing.
+			if previous.ScannedBy != "" {
+				httpx.ErrorJSON(w, r, http.StatusConflict, "qr_scanned", "the code has been scanned and waits for confirmation")
+				return
+			}
+			h.qrTokens.Delete(input.Replaces)
+			h.qrRotated.Store(input.Replaces, now.Add(qrRotatedTTL))
+		}
+	}
+
+	expiresAt := now.Add(qrLoginTTL)
 	h.qrTokens.Store(qrToken, &QRTokenData{
 		CreatedAt:  now,
 		ExpiresAt:  expiresAt,
+		Secret:     secret,
 		PublicKey:  input.PublicKey,
 		DeviceName: truncateRunes(input.DeviceName, maxQRDeviceNameRunes),
 		UserAgent:  truncateRunes(r.UserAgent(), maxQRUserAgentRunes),
@@ -405,38 +514,98 @@ func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"qrToken":   qrToken,
+		"secret":    secret,
 		"expiresAt": expiresAt.UnixMilli(),
 	})
 }
 
-// QRRequest tells the signed-in device which device is asking to log in, so
-// the person can refuse a code they did not open themselves.
-func (h *Handler) QRRequest(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	if r.Method != http.MethodGet {
+// QRCancel withdraws a code when the page showing it goes away.
+func (h *Handler) QRCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
 
-	h.qrMu.Lock()
-	data, ok := h.pendingQRLogin(r.PathValue("token"))
-	var request map[string]any
-	if ok {
-		request = map[string]any{
-			"publicKey":  data.PublicKey,
-			"deviceName": data.DeviceName,
-			"userAgent":  data.UserAgent,
-			"createdAt":  data.CreatedAt.UnixMilli(),
-			"expiresAt":  data.ExpiresAt.UnixMilli(),
-		}
+	var input struct {
+		Secret string `json:"secret"`
 	}
-	h.qrMu.Unlock()
-
-	if !ok {
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "invalid_token", "QR code expired or already used")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, request)
+
+	token := r.PathValue("token")
+	h.qrMu.Lock()
+	defer h.qrMu.Unlock()
+
+	if val, ok := h.qrTokens.Load(token); ok {
+		if !sameQRSecret(val.(*QRTokenData).Secret, input.Secret) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "invalid_secret", "the code can be cancelled only by the device showing it")
+			return
+		}
+		h.qrTokens.Delete(token)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// QRRequest serves the signed-in device that scanned a code: GET tells it
+// which device is asking to log in, DELETE declines the request.
+func (h *Handler) QRRequest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	switch r.Method {
+	case http.MethodGet:
+		h.inspectQRLogin(w, r)
+	case http.MethodDelete:
+		h.declineQRLogin(w, r)
+	default:
+		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+	}
+}
+
+// inspectQRLogin shows the request so the person can refuse a code they did
+// not open themselves. The first look captures the code for this account.
+func (h *Handler) inspectQRLogin(w http.ResponseWriter, r *http.Request) {
+	current := authctx.MustUser(r)
+	token := r.PathValue("token")
+
+	h.qrMu.Lock()
+	defer h.qrMu.Unlock()
+
+	data, ok := h.pendingQRLogin(token)
+	if ok && data.ScannedBy != "" && data.ScannedBy != current.ID {
+		ok = false
+	}
+	if !ok {
+		h.qrGone(w, r, token)
+		return
+	}
+	if data.ScannedBy == "" {
+		data.ScannedBy = current.ID
+		data.ExpiresAt = time.Now().Add(qrScanTTL)
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"publicKey":  data.PublicKey,
+		"deviceName": data.DeviceName,
+		"userAgent":  data.UserAgent,
+		"createdAt":  data.CreatedAt.UnixMilli(),
+		"expiresAt":  data.ExpiresAt.UnixMilli(),
+	})
+}
+
+// declineQRLogin drops a code this account scanned; the device showing it
+// then sees it expired and draws a new one.
+func (h *Handler) declineQRLogin(w http.ResponseWriter, r *http.Request) {
+	current := authctx.MustUser(r)
+	token := r.PathValue("token")
+
+	h.qrMu.Lock()
+	defer h.qrMu.Unlock()
+
+	if data, ok := h.pendingQRLogin(token); ok && data.ScannedBy == current.ID {
+		h.qrTokens.Delete(token)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) QRStatus(w http.ResponseWriter, r *http.Request) {
@@ -467,6 +636,12 @@ func (h *Handler) QRStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "expired"})
 		return
 	}
+	// The token is drawn into the QR code, the secret is not: without it a
+	// photo of the screen would be enough to collect the session.
+	if !sameQRSecret(data.Secret, r.Header.Get(qrSecretHeader)) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "invalid_secret", "the status is available only to the device showing the code")
+		return
+	}
 
 	// The session and the key are handed out once; a second poll finds nothing.
 	if data.Confirmed {
@@ -479,8 +654,12 @@ func (h *Handler) QRStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := "pending"
+	if data.ScannedBy != "" {
+		status = "scanned"
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"status":    "pending",
+		"status":    status,
 		"expiresAt": data.ExpiresAt.UnixMilli(),
 	})
 }
@@ -529,6 +708,11 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.Confirmed {
 		httpx.ErrorJSON(w, r, http.StatusConflict, "already_confirmed", "QR login is already confirmed")
+		return
+	}
+	// Only the account that looked at the request and captured the code.
+	if data.ScannedBy != current.ID {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "not_scanned", "scan the QR code before confirming it")
 		return
 	}
 
