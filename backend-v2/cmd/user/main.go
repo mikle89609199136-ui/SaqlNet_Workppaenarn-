@@ -111,6 +111,7 @@ func main() {
 
 func registerUsernameRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {
 	mux.HandleFunc("/api/v2/users/check-username", handler.CheckUsername)
+	mux.Handle("/api/v2/users/me/username", authenticated(http.HandlerFunc(handler.Username)))
 	mux.Handle("/api/v2/users/search", authenticated(http.HandlerFunc(handler.Search)))
 }
 
