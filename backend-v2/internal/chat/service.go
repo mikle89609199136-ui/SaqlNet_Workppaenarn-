@@ -363,13 +363,24 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
-			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         -- Приватность собеседника (#463): закрытые фото, статус и время
+			         -- активности не раскрываются. «contacts» скрывает так же, как
+			         -- «nobody» — контактов у нас нет; так же считает /users/{id}/status.
+			         CASE WHEN COALESCE(ps.privacy_settings->>'photoVisibility', '') IN ('', 'all', 'everyone')
+			              THEN COALESCE(up.avatar_url, '') ELSE '' END AS avatar_url,
 			         au.username AS display_username,
-			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
-			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
+			         -- 75 секунд, как presenceOnlineWindow.
+			         COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
+			           AND COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
+			         CASE WHEN COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
+			              THEN COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+			              ELSE '' END AS last_seen
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			  LEFT JOIN users.settings ps ON ps.user_id = pm.user_id
+			  LEFT JOIN users.presence pr ON pr.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -400,7 +411,6 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
 		return nil, err
 	}
-	s.hydrateRealtimePresence(chats)
 	return chats, nil
 }
 
@@ -436,13 +446,24 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
-			         COALESCE(up.avatar_url, '') AS avatar_url,
+			         -- Приватность собеседника (#463): закрытые фото, статус и время
+			         -- активности не раскрываются. «contacts» скрывает так же, как
+			         -- «nobody» — контактов у нас нет; так же считает /users/{id}/status.
+			         CASE WHEN COALESCE(ps.privacy_settings->>'photoVisibility', '') IN ('', 'all', 'everyone')
+			              THEN COALESCE(up.avatar_url, '') ELSE '' END AS avatar_url,
 			         au.username AS display_username,
-			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
-			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
+			         -- 75 секунд, как presenceOnlineWindow.
+			         COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
+			           AND COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
+			         CASE WHEN COALESCE(ps.privacy_settings->>'lastSeen', '') IN ('', 'all', 'everyone')
+			              THEN COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+			              ELSE '' END AS last_seen
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			  LEFT JOIN users.settings ps ON ps.user_id = pm.user_id
+			  LEFT JOIN users.presence pr ON pr.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -482,9 +503,6 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			return Chat{}, err
 		}
 	}
-	if chat.Type == "private" && s.ws != nil && s.ws.IsUserConnected(chat.PeerID) {
-		chat.PeerIsOnline = true
-	}
 	return chat, nil
 }
 
@@ -494,17 +512,6 @@ func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (strin
 	FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`, userID, chatID).Scan(&chatType, &role)
 
 	return chatType, role, err
-}
-
-func (s *Service) hydrateRealtimePresence(chats []Chat) {
-	if s.ws == nil {
-		return
-	}
-	for i := range chats {
-		if chats[i].Type == "private" && s.ws.IsUserConnected(chats[i].PeerID) {
-			chats[i].PeerIsOnline = true
-		}
-	}
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
