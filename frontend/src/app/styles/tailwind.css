@@ -59,6 +59,13 @@
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 
+/* Появление содержимого, которое сменилось целиком: вкладка, шаг, новый
+   код. Сдвиг в четыре пикселя — смену видно, но блок не «въезжает». */
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in { animation: none; }
+}
+
 /* Бег полосы, когда доля неизвестна. Отрезок уходит за левый край и
    выходит за правый: так видно, что работа идёт, и не обещано, сколько
    осталось. Значения из кита — 38% ширины и полтора шага в секунду. */

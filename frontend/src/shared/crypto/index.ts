@@ -11,5 +11,6 @@ export * from './keyStore';
 export * from './loginPasswordFingerprint';
 export * from './passkey';
 export * from './qrLink';
+export * from './qrOffer';
 export * from './securityNotices';
 export * from './signing';

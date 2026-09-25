@@ -5,6 +5,8 @@ import { services } from '@/services/serviceContainer';
 import {
   evaluatePasskeySlots,
   isPasskeyAvailable,
+  PasskeyCancelledError,
+  PasskeyNotAllowedHereError,
   PasskeyPrfUnsupportedError,
   WrongCloudPasswordError,
 } from '@/shared/crypto';
@@ -43,6 +45,22 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
     } catch (caught) {
       if (caught instanceof WrongCloudPasswordError) {
         setError(t('keyBackup.unlock.wrongPassword', 'Неверный облачный пароль'));
+      } else if (caught instanceof PasskeyCancelledError) {
+        // Причину браузер не называет: закрыли окно, вышло время или
+        // passkey сохранён в другом браузере — подсказываем все сразу.
+        setError(
+          t(
+            'keyBackup.passkey.cancelled',
+            'Passkey не сработал: окно закрыли, время вышло или в этом браузере нет passkey для CraneApp. Если он сохранён на другом устройстве или в другом браузере, откройте историю облачным паролем.'
+          )
+        );
+      } else if (caught instanceof PasskeyNotAllowedHereError) {
+        setError(
+          t(
+            'keyBackup.passkey.notAllowedHere',
+            'На этом адресе passkey не работает. Откройте CraneApp по обычному адресу или введите облачный пароль.'
+          )
+        );
       } else if (caught instanceof PasskeyPrfUnsupportedError) {
         setError(
           t(
@@ -51,8 +69,11 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
           )
         );
       } else {
+        // Текст ошибки браузера — английский и для разработчика.
         setError(
-          (caught as Error).message || t('keyBackup.unlock.failed', 'Не удалось открыть копию')
+          caught instanceof DOMException
+            ? t('keyBackup.unlock.failed', 'Не удалось открыть копию')
+            : (caught as Error).message || t('keyBackup.unlock.failed', 'Не удалось открыть копию')
         );
       }
     } finally {

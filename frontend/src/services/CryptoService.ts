@@ -24,6 +24,7 @@ import {
   sealForQrReceiver,
   setBackupState,
   type IQrLink,
+  type IQrOffer,
   type IQrPayload,
   type IArgon2Params,
   type ILocalIdentity,
@@ -317,6 +318,21 @@ export class CryptoService {
     if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
 
     return sealForQrReceiver(link, master);
+  }
+
+  /**
+   * Мастер-ключ копии для нового устройства, отсканировавшего код с этого
+   * (#754). Ключ устройства к этому моменту проверен подписью из кода.
+   */
+  async sealMasterKeyForOffer(
+    offer: IQrOffer,
+    token: string,
+    claimPublicKey: string
+  ): Promise<IQrPayload> {
+    const master = this.backup.currentMasterKey();
+    if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
+
+    return offer.seal(token, claimPublicKey, master);
   }
 
   /** Совпадает ли облачный пароль с паролем входа — его знает сервер. */

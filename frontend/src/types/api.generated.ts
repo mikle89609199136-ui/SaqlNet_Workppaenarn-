@@ -135,6 +135,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/qr-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a login code on a signed-in device
+         * @description The other direction of QR login: the signed-in device shows the code and the new device scans it. The QR code also carries a one-time ECDH public key of the signed-in device and a MAC key; both stay after "#" and never reach the server. Same lifetime rules as qr-token: 60 seconds, replaced every 30 by passing the previous token; a claimed code is not replaced (409 qr_scanned).
+         */
+        post: operations["createQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a new device claimed the code
+         * @description For the owner of the code. A claim carries the new device's public key and the HMAC over it, which the owner checks with the MAC key from the QR code before confirming. Somebody else's code reports expired. Not cacheable.
+         */
+        get: operations["getQrOffer"];
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the code
+         * @description The page showing it went away, or the person declined the claim.
+         */
+        delete: operations["withdrawQrOffer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim a login code from the new device
+         * @description The first claim captures the code for 60 seconds; later claims get 404. 404 qr_rotated means the code was replaced by a newer one. The answer carries the secret for polling the result. Not cacheable.
+         */
+        post: operations["claimQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the result of a claimed code
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         */
+        get: operations["getQrOfferStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/qr-offer/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the claimed login
+         * @description Only the owner of the code, only after a claim (409 not_claimed) and only once (409 already_confirmed). payload is the master key encrypted to the claimed public key.
+         */
+        post: operations["confirmQrOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -285,6 +389,26 @@ export interface paths {
         get: operations["getCurrentUser"];
         /** Update current profile */
         put: operations["updateCurrentUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the current user's username
+         * @description Normalizes the username to lowercase and changes it atomically. A successful change invalidates old username deep links; user IDs and existing chats remain unchanged. The operation is limited to once every 24 hours.
+         */
+        put: operations["renameCurrentUser"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2207,6 +2331,12 @@ export interface components {
             bio?: string;
             avatarUrl?: string;
         };
+        RenameUsernameRequest: {
+            username: components["schemas"]["Username"];
+        };
+        ProfileResponse: {
+            user: components["schemas"]["User"];
+        };
         Object: {
             [key: string]: unknown;
         };
@@ -2690,7 +2820,7 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
-    getQrStatus: {
+    getQrRequest: {
         parameters: {
             query?: never;
             header?: never;
@@ -2710,6 +2840,32 @@ export interface operations {
                     "application/json": components["schemas"]["QrStatusResponse"];
                 };
             };
+            401: components["responses"]["Error"];
+        };
+    };
+    getQrStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-QR-Secret": string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending, scanned, confirmed, or expired QR login status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrStatusResponse"];
+                };
+            };
+            403: components["responses"]["Error"];
         };
     };
     confirmQrLogin: {
@@ -2955,6 +3111,43 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    renameCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameUsernameRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated canonical profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            /** @description Rename cooldown is active; Retry-After contains seconds remaining */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     updateAvatar: {
