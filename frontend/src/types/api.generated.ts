@@ -2749,11 +2749,8 @@ export interface components {
                  * @description Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
                  */
                 ciphertext: string;
-                /**
-                 * @description At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies.
-                 * @default application/octet-stream
-                 */
-                mimeType: string;
+                /** @description At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies. */
+                mimeType?: string;
                 /** @description At most 255 UTF-8 bytes. Empty or absent uses the request filename, then filename sanitization applies. */
                 fileName?: string;
             };

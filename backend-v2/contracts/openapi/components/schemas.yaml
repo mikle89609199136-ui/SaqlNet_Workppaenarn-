@@ -206,7 +206,6 @@ EncryptedMediaUploadRequest:
         mimeType:
           type: string
           maxLength: 255
-          default: application/octet-stream
           description: At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies.
         fileName:
           type: string
