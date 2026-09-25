@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { createPasskeySlot, PasskeyPrfUnsupportedError, registerPasskey } from '@/shared/crypto';
+import {
+  createPasskeySlot,
+  PasskeyCancelledError,
+  PasskeyNotAllowedHereError,
+  PasskeyPrfUnsupportedError,
+  registerPasskey,
+} from '@/shared/crypto';
 import { Banner, Button } from '@/shared/ui';
 
 interface Props {
@@ -49,13 +55,20 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
       await services.cryptoService.addPasskeySlot(slot);
       onDone();
     } catch (caught) {
+      // Окно закрыли сами — ошибкой это не считаем.
+      if (caught instanceof PasskeyCancelledError) return;
       setError(
-        caught instanceof PasskeyPrfUnsupportedError
+        caught instanceof PasskeyNotAllowedHereError
           ? t(
-              'keyBackup.passkey.unsupported',
-              'Этот passkey не подходит для восстановления копии. Попробуйте другой способ хранения ключей — например, менеджер паролей Google или iCloud.'
+              'keyBackup.passkey.notAllowedHere',
+              'На этом адресе passkey не работает. Откройте CraneApp по обычному адресу или введите облачный пароль.'
             )
-          : t('keyBackup.passkey.failed', 'Не удалось добавить passkey')
+          : caught instanceof PasskeyPrfUnsupportedError
+            ? t(
+                'keyBackup.passkey.unsupported',
+                'Этот passkey не подходит для восстановления копии. Попробуйте другой способ хранения ключей — например, менеджер паролей Google или iCloud.'
+              )
+            : t('keyBackup.passkey.failed', 'Не удалось добавить passkey')
       );
     } finally {
       setBusy(false);
