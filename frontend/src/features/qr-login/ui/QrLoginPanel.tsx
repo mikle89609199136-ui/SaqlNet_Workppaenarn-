@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrLogin, type IQrLoginResult } from '../model/useQrLogin';
 import { QrCode } from './QrCode';
+import { RotationHint } from './RotationHint';
 
 interface Props {
   /**
@@ -25,7 +26,7 @@ export function QrLoginPanel({ onConfirmed }: Props) {
   const [finishing, setFinishing] = useState(false);
 
   // Ошибка пробрасывается дальше: по ней хук обновит код.
-  const { status, link, restart } = useQrLogin(async (result) => {
+  const { status, link, rotatesAt, restart } = useQrLogin(async (result) => {
     setFinishing(true);
     setError(null);
     try {
@@ -81,16 +82,23 @@ export function QrLoginPanel({ onConfirmed }: Props) {
         </Banner>
       )}
 
-      {link && !finishing ? (
+      {status === 'scanned' && !finishing ? (
+        /* Код захвачен: показывать его дальше незачем, он не сменится,
+           пока человек не решит на другом устройстве. */
+        <div className="grid justify-items-center gap-3 py-6 text-center">
+          <Spinner label={t('qrLogin.scannedTitle', 'Код отсканирован')} size="lg" />
+          <p className="text-body text-ink">
+            {t('qrLogin.scannedHint', 'Подтвердите вход на устройстве, где вы уже вошли.')}
+          </p>
+        </div>
+      ) : link && !finishing ? (
         <>
           <QrCode label={t('qrLogin.codeLabel', 'QR-код для входа')} value={link} />
           <Button className="w-full" onClick={copyLink} variant="secondary">
             <Icon name="copy" size="sm" />
             {t('qrLogin.copyLink', 'Скопировать ссылку')}
           </Button>
-          <p className="text-caption text-center text-ink-3">
-            {t('qrLogin.waiting', 'Ждём подтверждения… Код обновляется сам.')}
-          </p>
+          <RotationHint rotatesAt={rotatesAt} />
         </>
       ) : (
         status !== 'error' && (

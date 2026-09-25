@@ -14,6 +14,7 @@ export const API_ENDPOINTS = {
   AUTH_VALIDATE: '/auth/validate',
   AUTH_PUBLIC_KEY: '/auth/public-key',
   AUTH_QR_TOKEN: '/auth/qr-token',
+  AUTH_QR_TOKEN_BY_ID: (token: string) => `/auth/qr-token/${token}`,
   AUTH_QR_REQUEST: (token: string) => `/auth/qr-request/${token}`,
   AUTH_QR_STATUS: (token: string) => `/auth/qr-status/${token}`,
   AUTH_QR_CONFIRM: '/auth/qr-confirm',

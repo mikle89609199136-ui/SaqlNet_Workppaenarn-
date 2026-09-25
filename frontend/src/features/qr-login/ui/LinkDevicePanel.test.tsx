@@ -94,6 +94,39 @@ describe('подключение устройства по QR (#745)', () => {
     });
   });
 
+  it('просит отсканировать ещё раз, если код успел смениться (#753)', async () => {
+    server.use(
+      http.get(api(`/auth/qr-request/${TOKEN}`), () =>
+        HttpResponse.json(
+          { code: 'qr_rotated', error: 'QR code has been replaced by a newer one' },
+          { status: 404 }
+        )
+      )
+    );
+
+    renderPanel();
+
+    expect(await screen.findByText('Код обновился — отсканируйте ещё раз.')).toBeInTheDocument();
+  });
+
+  it('«Отмена» отпускает код на сервере, чтобы новое устройство показало следующий', async () => {
+    answerRequest(KEY);
+    let declined = false;
+    server.use(
+      http.delete(api(`/auth/qr-request/${TOKEN}`), () => {
+        declined = true;
+        return new HttpResponse(null, { status: 204 });
+      })
+    );
+
+    renderPanel();
+    await screen.findByText('Firefox на Linux');
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+
+    await vi.waitFor(() => expect(declined).toBe(true));
+    expect(screen.getByRole('button', { name: 'Сканировать код' })).toBeInTheDocument();
+  });
+
   it('не принимает ссылку с чужого сайта', async () => {
     renderPanel(null);
 

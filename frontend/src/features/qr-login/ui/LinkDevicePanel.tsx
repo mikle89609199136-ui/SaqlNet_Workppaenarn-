@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
+import type { IApiError } from '@/shared/api';
 import {
   parseQrLink,
   readBackupState,
@@ -34,6 +35,10 @@ type TInspection =
  * войти: код могли подсунуть — «отсканируйте, пожалуйста, мне нужно
  * войти». Ключ из QR сверяется с тем, что знает сервер: расхождение
  * значит, что код подменён, и подтверждать нельзя.
+ *
+ * Первый взгляд на запрос закрепляет код за этим аккаунтом (#753): никто
+ * другой его уже не подтвердит. «Отмена» отпускает код — новое устройство
+ * покажет следующий.
  */
 export function LinkDevicePanel({ initialLink, onDone }: Props) {
   const { t } = useTranslation();
@@ -66,13 +71,16 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
               'Код не совпадает с запросом входа — не подтверждайте его'
             ),
           };
-    } catch {
+    } catch (error) {
       return {
         ok: false,
-        error: t(
-          'qrLogin.expired',
-          'Код истёк или уже использован. Обновите его на новом устройстве.'
-        ),
+        error:
+          (error as IApiError).code === 'qr_rotated'
+            ? t('qrLogin.rotated', 'Код обновился — отсканируйте ещё раз.')
+            : t(
+                'qrLogin.expired',
+                'Код истёк или уже использован. Обновите его на новом устройстве.'
+              ),
       };
     }
   }
@@ -186,6 +194,7 @@ export function LinkDevicePanel({ initialLink, onDone }: Props) {
           className="w-full"
           disabled={stage === 'sending'}
           onClick={() => {
+            if (link) void services.authService.declineQrRequest(link.token).catch(() => {});
             setStage('input');
             setDetails(null);
             setLink(null);

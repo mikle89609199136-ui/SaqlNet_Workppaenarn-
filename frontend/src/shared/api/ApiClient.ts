@@ -49,8 +49,12 @@ export class ApiClient {
     this.onUnauthorized = handler;
   }
 
-  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  get<T = unknown>(
+    endpoint: string,
+    params: TQueryParams = {},
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
   post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
@@ -65,8 +69,16 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
-  delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  /**
+   * `keepalive` — для запроса, который уходит при закрытии вкладки:
+   * без него браузер обрывает его вместе со страницей.
+   */
+  delete<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    options: Pick<IRequestOptions, 'keepalive'> = {}
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE', data });
   }
 
   private async request<T = unknown>(

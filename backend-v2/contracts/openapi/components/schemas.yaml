@@ -525,12 +525,20 @@ QrTokenRequest:
   properties:
     publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI), base64 or base64url. }
     deviceName: { type: string, maxLength: 64 }
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+    secret: { type: string, description: Secret of the replaced code. }
 QrTokenResponse:
   type: object
-  required: [qrToken, expiresAt]
+  required: [qrToken, secret, expiresAt]
   properties:
     qrToken: { type: string }
+    secret: { type: string, description: Kept by the device showing the code and never drawn into it. }
     expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrSecretRequest:
+  type: object
+  required: [secret]
+  properties:
+    secret: { type: string }
 QrLoginRequest:
   type: object
   required: [publicKey, deviceName, userAgent, createdAt, expiresAt]
@@ -558,7 +566,7 @@ QrStatusResponse:
   type: object
   required: [status]
   properties:
-    status: { type: string, enum: [pending, confirmed, expired] }
+    status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
     authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
