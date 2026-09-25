@@ -2,8 +2,8 @@ import { useProfileStore } from '@/entities/user';
 import { LoginForm } from '@/features/auth';
 import { completeQrLogin, QrLoginPanel, QrScanLoginPanel } from '@/features/qr-login';
 import { ROUTES } from '@/shared/config/routes';
-import { AuthLayout, Button, Icon, SegmentedControl } from '@/shared/ui';
-import { useState } from 'react';
+import { AuthLayout, Icon, SegmentedControl } from '@/shared/ui';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router-dom';
 
@@ -20,6 +20,10 @@ export function LoginPage() {
 
   return (
     <AuthLayout
+      /* Код с шагами в карточку для формы не помещается: шаги рассыпаются
+         в ленту, а код уезжает за край экрана. На широком экране карточка
+         раздвигается, и шаги встают слева от кода. */
+      className={method === 'qr' && qrDirection === 'show' ? 'md:w-[min(100%,760px)]' : undefined}
       footer={
         <>
           {t('noAccount', 'Нет аккаунта?')}{' '}
@@ -48,21 +52,46 @@ export function LoginPage() {
       {method === 'password' ? (
         <LoginForm />
       ) : qrDirection === 'show' ? (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           <QrLoginPanel onConfirmed={completeQrLogin} />
-          <Button className="w-full" onClick={() => setQrDirection('scan')} variant="ghost">
-            <Icon name="camera" size="sm" />
+          <QrDirectionSwitch icon onClick={() => setQrDirection('scan')}>
             {t('login.scanOtherDevice', 'Отсканировать код с другого устройства')}
-          </Button>
+          </QrDirectionSwitch>
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           <QrScanLoginPanel onConfirmed={completeQrLogin} />
-          <Button className="w-full" onClick={() => setQrDirection('show')} variant="ghost">
+          <QrDirectionSwitch onClick={() => setQrDirection('show')}>
             {t('login.showCodeHere', 'Показать код на этом устройстве')}
-          </Button>
+          </QrDirectionSwitch>
         </div>
       )}
     </AuthLayout>
+  );
+}
+
+/**
+ * Переход ко второму направлению входа по QR. Ссылкой, а не кнопкой во
+ * всю ширину: это запасной путь, и на телефоне длинная подпись кнопки
+ * ломалась на две строки с оторванной от текста иконкой.
+ */
+function QrDirectionSwitch({
+  children,
+  icon = false,
+  onClick,
+}: {
+  children: ReactNode;
+  icon?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="text-caption mx-auto inline-flex items-center gap-1.5 rounded-control px-2 py-1 text-brand transition-colors duration-fast hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+      onClick={onClick}
+      type="button"
+    >
+      {icon && <Icon name="camera" size="sm" />}
+      {children}
+    </button>
   );
 }

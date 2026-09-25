@@ -24,7 +24,7 @@ export function QrCode({ value, label }: Props) {
   return (
     <div
       aria-label={label}
-      className="mx-auto aspect-square w-[min(100%,240px)] rounded-field bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
+      className="mx-auto aspect-square w-[min(100%,260px)] rounded-field bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
       dangerouslySetInnerHTML={{ __html: svg }}
       role="img"
     />

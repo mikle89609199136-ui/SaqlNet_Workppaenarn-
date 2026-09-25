@@ -4,6 +4,7 @@ import { readBackupState, subscribeToBackupState } from '@/shared/crypto';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrOffer } from '../model/useQrOffer';
 import { QrCode } from './QrCode';
+import { QrCodeLayout } from './QrCodeLayout';
 import { RotationHint } from './RotationHint';
 
 interface Props {
@@ -108,69 +109,78 @@ function OfferCode({ onDone }: Props) {
   }
 
   return (
-    <div className="grid gap-4 text-left">
-      <ol className="text-body grid list-decimal gap-1 pl-5 text-ink-2">
-        <li>
-          {t(
-            'qrOffer.step1',
-            'На новом устройстве откройте CraneApp → «Войти» → «QR-код» → «Отсканировать код с другого устройства» или наведите на код камеру телефона'
-          )}
-        </li>
-        <li>
-          {t('qrOffer.step2', 'Сверьте четыре цифры на обоих экранах и подтвердите вход здесь')}
-        </li>
-      </ol>
-
-      {problem === 'tampered' && (
-        <Banner icon="warning" tone="danger">
-          {t(
-            'qrOffer.tampered',
-            'Ключ нового устройства пришёл без верной подписи — код мог быть подменён. Вход отклонён, показан новый код.'
-          )}
-        </Banner>
-      )}
-      {problem === 'confirmFailed' && (
-        <Banner icon="warning" tone="warn">
-          {t(
-            'qrLogin.confirmFailed',
-            'Не удалось подтвердить вход. Обновите код и попробуйте ещё раз.'
-          )}
-        </Banner>
-      )}
-
-      {stage === 'error' && (
-        <Banner
-          action={
-            <Button onClick={restart} size="sm" variant="secondary">
-              {t('qrLogin.retry', 'Повторить')}
+    <QrCodeLayout
+      actions={
+        link && (
+          <>
+            <Button className="w-full" onClick={copyLink} variant="secondary">
+              <Icon name="copy" size="sm" />
+              {t('qrLogin.copyLink', 'Скопировать ссылку')}
             </Button>
-          }
-          icon="warning"
-          tone="warn"
-        >
-          {t('qrLogin.startFailed', 'Не удалось получить код')}
-        </Banner>
-      )}
-
-      {link ? (
-        <>
+            <RotationHint rotatesAt={rotatesAt} />
+          </>
+        )
+      }
+      code={
+        link ? (
           <QrCode
             label={t('qrOffer.codeLabel', 'QR-код для входа на новом устройстве')}
             value={link}
           />
-          <Button className="w-full" onClick={copyLink} variant="secondary">
-            <Icon name="copy" size="sm" />
-            {t('qrLogin.copyLink', 'Скопировать ссылку')}
-          </Button>
-          <RotationHint rotatesAt={rotatesAt} />
-        </>
-      ) : (
-        stage !== 'error' && (
-          <div className="flex justify-center py-10">
-            <Spinner label={t('loading', 'Загрузка…')} size="lg" />
-          </div>
+        ) : (
+          stage !== 'error' && (
+            <div className="flex justify-center py-10">
+              <Spinner label={t('loading', 'Загрузка…')} size="lg" />
+            </div>
+          )
         )
-      )}
-    </div>
+      }
+      intro={
+        <>
+          <ol className="text-body grid list-decimal gap-1 pl-5 text-ink-2">
+            <li>
+              {t(
+                'qrOffer.step1',
+                'На новом устройстве откройте CraneApp → «Войти» → «QR-код» → «Отсканировать код с другого устройства» или наведите на код камеру телефона'
+              )}
+            </li>
+            <li>
+              {t('qrOffer.step2', 'Сверьте четыре цифры на обоих экранах и подтвердите вход здесь')}
+            </li>
+          </ol>
+
+          {problem === 'tampered' && (
+            <Banner icon="warning" tone="danger">
+              {t(
+                'qrOffer.tampered',
+                'Ключ нового устройства пришёл без верной подписи — код мог быть подменён. Вход отклонён, показан новый код.'
+              )}
+            </Banner>
+          )}
+          {problem === 'confirmFailed' && (
+            <Banner icon="warning" tone="warn">
+              {t(
+                'qrLogin.confirmFailed',
+                'Не удалось подтвердить вход. Обновите код и попробуйте ещё раз.'
+              )}
+            </Banner>
+          )}
+
+          {stage === 'error' && (
+            <Banner
+              action={
+                <Button onClick={restart} size="sm" variant="secondary">
+                  {t('qrLogin.retry', 'Повторить')}
+                </Button>
+              }
+              icon="warning"
+              tone="warn"
+            >
+              {t('qrLogin.startFailed', 'Не удалось получить код')}
+            </Banner>
+          )}
+        </>
+      }
+    />
   );
 }

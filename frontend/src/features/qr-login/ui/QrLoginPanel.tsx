@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrLogin, type IQrLoginResult } from '../model/useQrLogin';
 import { QrCode } from './QrCode';
+import { QrCodeLayout } from './QrCodeLayout';
 import { RotationHint } from './RotationHint';
 
 interface Props {
@@ -49,64 +50,76 @@ export function QrLoginPanel({ onConfirmed }: Props) {
     }
   }
 
+  const scanned = status === 'scanned' && !finishing;
+  const showCode = Boolean(link) && !finishing && !scanned;
+
   return (
-    <div className="grid gap-4 text-left">
-      <ol className="text-body grid list-decimal gap-1 pl-5 text-ink-2">
-        <li>{t('qrLogin.step1', 'Откройте CraneApp на устройстве, где вы уже вошли')}</li>
-        <li>
-          {t(
-            'qrLogin.step2',
-            'Наведите на код камеру телефона или откройте «Настройки → Аккаунт → Шифрование и устройства → Подключить устройство»'
-          )}
-        </li>
-        <li>{t('qrLogin.step3', 'Подтвердите вход — история переписки появится здесь')}</li>
-      </ol>
-
-      {status === 'error' && (
-        <Banner
-          action={
-            <Button onClick={restart} size="sm" variant="secondary">
-              {t('qrLogin.retry', 'Повторить')}
+    <QrCodeLayout
+      actions={
+        showCode && (
+          <>
+            <Button className="w-full" onClick={copyLink} variant="secondary">
+              <Icon name="copy" size="sm" />
+              {t('qrLogin.copyLink', 'Скопировать ссылку')}
             </Button>
-          }
-          icon="warning"
-          tone="warn"
-        >
-          {t('qrLogin.startFailed', 'Не удалось получить код')}
-        </Banner>
-      )}
-
-      {error && (
-        <Banner icon="warning" tone="warn">
-          {error}
-        </Banner>
-      )}
-
-      {status === 'scanned' && !finishing ? (
-        /* Код захвачен: показывать его дальше незачем, он не сменится,
-           пока человек не решит на другом устройстве. */
-        <div className="grid justify-items-center gap-3 py-6 text-center">
-          <Spinner label={t('qrLogin.scannedTitle', 'Код отсканирован')} size="lg" />
-          <p className="text-body text-ink">
-            {t('qrLogin.scannedHint', 'Подтвердите вход на устройстве, где вы уже вошли.')}
-          </p>
-        </div>
-      ) : link && !finishing ? (
-        <>
-          <QrCode label={t('qrLogin.codeLabel', 'QR-код для входа')} value={link} />
-          <Button className="w-full" onClick={copyLink} variant="secondary">
-            <Icon name="copy" size="sm" />
-            {t('qrLogin.copyLink', 'Скопировать ссылку')}
-          </Button>
-          <RotationHint rotatesAt={rotatesAt} />
-        </>
-      ) : (
-        status !== 'error' && (
-          <div className="flex justify-center py-10">
-            <Spinner label={t('loading', 'Загрузка…')} size="lg" />
-          </div>
+            <RotationHint rotatesAt={rotatesAt} />
+          </>
         )
-      )}
-    </div>
+      }
+      code={
+        scanned ? (
+          /* Код захвачен: показывать его дальше незачем, он не сменится,
+             пока человек не решит на другом устройстве. */
+          <div className="grid justify-items-center gap-3 py-6 text-center">
+            <Spinner label={t('qrLogin.scannedTitle', 'Код отсканирован')} size="lg" />
+            <p className="text-body text-ink">
+              {t('qrLogin.scannedHint', 'Подтвердите вход на устройстве, где вы уже вошли.')}
+            </p>
+          </div>
+        ) : showCode && link ? (
+          <QrCode label={t('qrLogin.codeLabel', 'QR-код для входа')} value={link} />
+        ) : (
+          status !== 'error' && (
+            <div className="flex justify-center py-10">
+              <Spinner label={t('loading', 'Загрузка…')} size="lg" />
+            </div>
+          )
+        )
+      }
+      intro={
+        <>
+          <ol className="text-body grid list-decimal gap-1 pl-5 text-ink-2">
+            <li>{t('qrLogin.step1', 'Откройте CraneApp на устройстве, где вы уже вошли')}</li>
+            <li>
+              {t(
+                'qrLogin.step2',
+                'Наведите на код камеру телефона или откройте «Настройки → Аккаунт → Шифрование и устройства → Подключить устройство»'
+              )}
+            </li>
+            <li>{t('qrLogin.step3', 'Подтвердите вход — история переписки появится здесь')}</li>
+          </ol>
+
+          {status === 'error' && (
+            <Banner
+              action={
+                <Button onClick={restart} size="sm" variant="secondary">
+                  {t('qrLogin.retry', 'Повторить')}
+                </Button>
+              }
+              icon="warning"
+              tone="warn"
+            >
+              {t('qrLogin.startFailed', 'Не удалось получить код')}
+            </Banner>
+          )}
+
+          {error && (
+            <Banner icon="warning" tone="warn">
+              {error}
+            </Banner>
+          )}
+        </>
+      }
+    />
   );
 }
