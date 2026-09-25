@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { renderSettings } from '@/test/harness/renderSettings';
+import { testI18n } from '@/test/harness/i18n';
+import { clearToasts, getToasts } from '@/shared/ui';
 
 /**
  * Разделы «Внешний вид» и «Язык».
@@ -28,6 +30,34 @@ describe('внешний вид и язык', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'English' }));
 
     await waitFor(() => expect(sent).toEqual({ language: 'en' }));
+  });
+
+  it('сообщает о сохранении уже на выбранном языке', async () => {
+    // Раньше тост брал перевод, пойманный до смены языка, и после выбора
+    // English говорил «Настройки сохранены».
+    testI18n.addResource('en', 'translation', 'settingsSaved', 'Settings saved');
+    clearToasts();
+    server.use(
+      http.put(api('/users/settings'), async ({ request }) =>
+        HttpResponse.json({ settings: await request.json() })
+      )
+    );
+
+    try {
+      renderSettings({ section: 'language', settings: { language: 'ru' } });
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await userEvent.click(await screen.findByRole('option', { name: 'English' }));
+
+      await waitFor(() =>
+        expect(getToasts().map((toast) => toast.message)).toContain('Settings saved')
+      );
+      expect(getToasts().map((toast) => toast.message)).not.toContain('Настройки сохранены');
+    } finally {
+      // Экземпляр общий для всех тестов: возвращаем русский.
+      await testI18n.changeLanguage('ru');
+      clearToasts();
+    }
   });
 
   it('предлагает только переведённые языки', async () => {

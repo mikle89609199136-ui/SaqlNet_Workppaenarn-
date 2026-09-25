@@ -22,7 +22,10 @@ import type { IPrivacyDto, ISettingsDto } from '@/types';
  * уходит только изменённое.
  */
 export function useSettingsData() {
-  const { t } = useTranslation();
+  // Сообщения берутся с экземпляра `i18n` в момент показа, а не из `t`
+  // этой отрисовки: сохранение может само сменить язык, и `t`, пойманный
+  // до смены, выдал бы тост на прежнем языке.
+  const { i18n } = useTranslation();
   const { data, isPending } = useQuery(settingsQuery());
   const updateSettings = useUpdateSettings();
   const updatePrivacy = useUpdatePrivacy();
@@ -32,18 +35,27 @@ export function useSettingsData() {
 
   function saveSettings(patch: Partial<ISettingsDto>) {
     updateSettings.mutate(patch, {
-      onSuccess: () => showToast('success', t('settingsSaved', 'Настройки сохранены')),
+      onSuccess: async () => {
+        // Язык сменился этим же сохранением: ждём словарь нового языка —
+        // он грузится по сети, и без него сработал бы русский текст по
+        // умолчанию.
+        if (patch.language) await i18n.changeLanguage(patch.language).catch(() => {});
+        showToast('success', i18n.t('settingsSaved', 'Настройки сохранены'));
+      },
       onError: () =>
-        showToast('error', t('toast.settingsFailed', 'Не удалось сохранить настройки')),
+        showToast('error', i18n.t('toast.settingsFailed', 'Не удалось сохранить настройки')),
     });
   }
 
   function savePrivacy(patch: Partial<IPrivacyDto>) {
     updatePrivacy.mutate(patch, {
       onSuccess: () =>
-        showToast('success', t('toast.privacySaved', 'Настройки приватности сохранены')),
+        showToast('success', i18n.t('toast.privacySaved', 'Настройки приватности сохранены')),
       onError: () =>
-        showToast('error', t('toast.privacyFailed', 'Не удалось сохранить настройки приватности')),
+        showToast(
+          'error',
+          i18n.t('toast.privacyFailed', 'Не удалось сохранить настройки приватности')
+        ),
     });
   }
 
