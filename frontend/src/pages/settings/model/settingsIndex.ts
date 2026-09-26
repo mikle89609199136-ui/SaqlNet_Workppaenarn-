@@ -88,10 +88,16 @@ export const SETTINGS_INDEX: ISettingsEntry[] = [
     synonyms: ['был в сети', 'кто видит', 'приватность'],
   },
   {
-    title: 'Сообщения от незнакомых',
+    title: 'Пересылка сообщений',
     section: 'Конфиденциальность',
     path: ROUTES.SETTINGS_SECTION('privacy'),
-    synonyms: ['незнакомцы', 'приватность', 'кто может писать'],
+    synonyms: ['пересылка', 'ссылка на профиль', 'приватность'],
+  },
+  {
+    title: 'Чёрный список',
+    section: 'Конфиденциальность',
+    path: ROUTES.SETTINGS_SUBSECTION('privacy', 'blocked'),
+    synonyms: ['заблокировать', 'блокировка', 'заблокированные', 'незнакомцы'],
   },
   {
     title: 'Язык приложения',
