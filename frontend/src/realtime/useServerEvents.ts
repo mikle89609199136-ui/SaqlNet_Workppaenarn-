@@ -12,7 +12,7 @@ import {
 } from '@/entities/message';
 import { useTypingStore, resolveChat } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
-import { applyPresence, refreshPresence } from './applyPresence';
+import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
@@ -119,9 +119,11 @@ export function useServerEvents(enabled: boolean): void {
       refreshPresence(queryClient);
     });
 
-    // Статус собеседника кладётся в кеш прямо из события (#780).
+    // Статус собеседника кладётся в кеш прямо из события (#780); выход —
+    // с задержкой, чтобы обрыв связи на пару секунд не давал мигания.
+    const presence = createPresenceBuffer(queryClient);
     const unsubscribePresence = eventBus.on(WS_EVENTS.USER.PRESENCE, (event) => {
-      applyPresence(queryClient, event);
+      presence.push(event);
     });
 
     // Вкладка спала: браузер мог придержать сокет, и события прошли мимо.
@@ -181,6 +183,7 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribeTyping();
       unsubscribeReconnect();
       unsubscribePresence();
+      presence.dispose();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubscribeMemberAdded();
       unsubscribeMemberRemoved();
