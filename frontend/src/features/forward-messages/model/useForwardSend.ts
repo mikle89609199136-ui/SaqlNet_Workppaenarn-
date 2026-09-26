@@ -6,6 +6,7 @@ import { putThreadMessages } from '@/entities/message';
 import { services } from '@/services';
 import { describeApiError } from '@/shared/api';
 import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
+import { trimRichText, type IRichText } from '@/shared/lib/richText';
 import type { IMessageDto } from '@/types';
 import { useForwardStore } from './forwardStore';
 
@@ -52,12 +53,15 @@ export function useForwardSend(chatId: string) {
    * пересылки его не возвращают в поле, иначе повтор отправил бы его
    * дважды. Причина сбоя уже показана.
    */
-  async function send(comment: string): Promise<{ done: boolean; commentSent: boolean }> {
+  async function send(input: IRichText | string): Promise<{ done: boolean; commentSent: boolean }> {
     if (!pending || isForwarding) return { done: false, commentSent: false };
 
     setForwarding(true);
     setError('');
     const { messages } = pending;
+    // Комментарий может быть отформатирован, как обычное сообщение (#656).
+    const note = trimRichText(typeof input === 'string' ? { text: input, entities: [] } : input);
+    const comment = note.text;
     let sent = 0;
     let commentSent = false;
 
@@ -66,7 +70,8 @@ export function useForwardSend(chatId: string) {
         const delivered = await services.messageService.forwardMessages(
           chatId,
           batch,
-          commentSent ? '' : comment
+          commentSent ? '' : comment,
+          commentSent ? [] : note.entities
         );
         // Пачкой: одна запись в ленту и один перезапрос списка чатов.
         putThreadMessages(

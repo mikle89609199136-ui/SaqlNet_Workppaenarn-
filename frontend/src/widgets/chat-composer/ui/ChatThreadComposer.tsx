@@ -6,17 +6,19 @@ import {
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { chatQuery, clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { chatQuery, clearDraft, readDraft, readRichDraft, writeDraft } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn, setComposerText } from '@/shared/lib';
+import { cn } from '@/shared/lib';
+import type { IRichText } from '@/shared/lib/richText';
+import { RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
-  type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -53,7 +55,7 @@ interface Props {
   pendingAttachment: IPendingAttachment | null;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
-  draftRef: RefObject<HTMLInputElement | null>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   setOpenedImage?: Dispatch<SetStateAction<string | null>>;
@@ -99,11 +101,11 @@ export const ChatThreadComposer = ({
   }
 
   useEffect(() => {
-    if (draftRef.current) draftRef.current.value = readDraft(chatId);
+    draftRef.current?.setValue(readRichDraft(chatId));
   }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();
-  const { cancelComposerMode } = useComposerShortcuts(draftRef, formRef);
+  const { cancelComposerMode } = useComposerShortcuts(draftRef);
   const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
     setPendingAttachment,
@@ -131,32 +133,34 @@ export const ChatThreadComposer = ({
     }
 
     event.preventDefault();
-    const comment = (draftRef.current?.value ?? '').trim();
-    setComposerText(draftRef.current, '');
+    const comment = draftRef.current?.getValue() ?? { text: '', entities: [] };
+    draftRef.current?.clear();
     clearDraft(chatId);
     setHasText(false);
 
     const { commentSent } = await forward.send(comment);
-    if (comment && !commentSent) {
-      setComposerText(draftRef.current, comment);
+    if (comment.text.trim() && !commentSent) {
+      draftRef.current?.setValue(comment);
       writeDraft(chatId, comment);
       setHasText(true);
     }
   }
 
-  function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    const text = event.target.value;
-
+  function handleDraftChange(value: IRichText, { external }: { external: boolean }) {
     // Пустое поле — не черновик: пометка в списке чатов должна пропасть
     // сразу, а не через полсекунды после стирания последнего символа.
-    if (text) writeDraft(chatId, text);
+    if (value.text.trim()) writeDraft(chatId, value);
     else clearDraft(chatId);
 
     // Перерисовка только на переходе «пусто ↔ есть текст»: остальные
     // символы состояние не трогают.
-    setHasText(text.trim().length > 0);
-    sendTyping();
+    setHasText(value.text.trim().length > 0);
+    // «Печатает» — только когда печатает человек, а не когда поле
+    // заполнила программа (черновик, правка).
+    if (!external) sendTyping();
   }
+
+  const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
 
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
@@ -184,13 +188,14 @@ export const ChatThreadComposer = ({
           onChange={handleAttachmentChange}
         />
 
-        <input
-          ref={draftRef}
-          aria-label={t('message', 'Сообщение')}
-          className="thread-composer-input min-h-11"
+        <RichTextInput
+          ariaLabel={t('message', 'Сообщение')}
+          className="min-h-11 max-h-40 overflow-y-auto px-1 py-2.5 text-[15px] leading-snug text-ink"
           disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
+          onSubmit={submitForm}
           placeholder={composerPlaceholder(encryption, t)}
+          ref={draftRef}
         />
 
         <button

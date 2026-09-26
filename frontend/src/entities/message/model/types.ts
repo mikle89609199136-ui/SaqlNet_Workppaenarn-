@@ -1,3 +1,4 @@
+import type { IMessageEntity } from '@/shared/lib/richText';
 import type { IEncryptedMedia } from '@/types/encryption.types';
 
 export type TMessageType =
@@ -40,6 +41,11 @@ export interface IMessageDto {
   senderFirstName: string;
   senderName: string;
   content: string;
+  /**
+   * Форматирование текста (#656). В зашифрованных чатах приходит из самого
+   * конверта после расшифровки; в каналах — открытым полем с сервера.
+   */
+  entities?: IMessageEntity[];
   type: TMessageType;
   createdAt: Date;
   updatedAt: Date;

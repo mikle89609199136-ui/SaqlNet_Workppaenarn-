@@ -33,12 +33,14 @@ export const ContextMenuSeparator = ({ className, ...props }: ContextMenuSeparat
 export interface ContextMenuItemProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
   variant?: 'default' | 'danger';
+  /** Сочетание клавиш — подсказкой справа, как в меню настольных программ. */
+  shortcut?: string;
   className?: string;
 }
 
 export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProps>(
   function ContextMenuItem(
-    { icon, variant = 'default', disabled, className, children, onClick, ...props },
+    { icon, variant = 'default', shortcut, disabled, className, children, onClick, ...props },
     ref
   ) {
     return (
@@ -50,6 +52,7 @@ export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProp
         size="sm"
         disabled={disabled}
         aria-disabled={disabled || undefined}
+        aria-keyshortcuts={shortcut}
         onClick={onClick}
         className={cn(
           'w-full justify-start font-normal text-sm border-0 rounded-control gap-2.5 px-2.5 py-2 text-left',
@@ -65,6 +68,9 @@ export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProp
           </span>
         )}
         <span className="flex-1 truncate text-left">{children}</span>
+        {shortcut && (
+          <span className="ml-4 shrink-0 text-micro text-ink-3 tabular-nums">{shortcut}</span>
+        )}
       </Button>
     );
   }

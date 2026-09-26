@@ -1,5 +1,6 @@
 import { base64ToBytes, bytesToBase64, bytesToUtf8, utf8ToBytes } from './encoding';
 import type { ISignedParts } from './signing';
+import { normalizeEntities, type IMessageEntity, type IRichText } from '@/shared/lib/richText';
 
 /**
  * Конверт сообщения: то, что уходит на сервер вместо текста.
@@ -15,14 +16,21 @@ import type { ISignedParts } from './signing';
  * расшифровка после такой правки просто не состоится.
  *
  * Имена полей `e2e`, `iv` и `data` выбраны не нами: по ним сервер узнаёт
- * зашифрованное сообщение и оставляет его нетронутым
- * (`backend-v2/internal/chat/sanitize.go`). Всё остальное он экранирует как
- * HTML, и кавычки превращаются в `&#34;` — конверт перестаёт быть JSON и
- * не расшифровывается ни у кого, кроме отправителя, у которого текст
- * остался в памяти. Проверено вживую.
+ * зашифрованное сообщение (`backend-v2/internal/chat/sanitize.go`) — не
+ * применяет к нему лимит длины текста и не принимает рядом открытые
+ * `entities`. Экранировать содержимое сервер перестал в #799.
+ *
+ * Две версии. В `v2` внутри шифровки — просто текст. В `v3` — текст
+ * вместе с форматированием, `{ text, entities }` (#656): диапазоны жирного,
+ * ссылок и прочего — такая же часть сообщения, как сам текст, и сервер не
+ * должен видеть даже их. `v3` пишется, только когда форматирование есть:
+ * обычное сообщение остаётся `v2`.
  */
 
 export const ENVELOPE_VERSION = 2;
+
+/** Конверт с форматированием: внутри шифровки `{ text, entities }`. */
+export const RICH_ENVELOPE_VERSION = 3;
 
 const IV_LENGTH = 12;
 const KEY_INFO_PREFIX = 'craneapp/e2e/v2/';
@@ -115,8 +123,15 @@ export function forgetDerivedKeys(): void {
   derivedKeys.clear();
 }
 
-function messageAad(chatId: string, epoch: number, senderId: string): Uint8Array {
-  return utf8ToBytes(`${chatId}|${epoch}|${senderId}`);
+/**
+ * Версия в подпись не входит, поэтому у `v3` она входит в дополнительные
+ * данные: иначе сервер мог бы выдать конверт `v3` за `v2`, и получатель
+ * увидел бы вместо сообщения сырой JSON. С версией в AAD такая подмена
+ * просто не расшифруется. У `v2` данные прежние — старые сообщения читаются.
+ */
+function messageAad(chatId: string, epoch: number, senderId: string, version: number): Uint8Array {
+  const base = `${chatId}|${epoch}|${senderId}`;
+  return utf8ToBytes(version === ENVELOPE_VERSION ? base : `${base}|v${version}`);
 }
 
 function mediaAad(chatId: string, epoch: number): Uint8Array {
@@ -129,7 +144,7 @@ export function isEnvelopeV2(value: unknown): value is IEnvelopeV2 {
   const candidate = value as Record<string, unknown>;
 
   return (
-    candidate.v === ENVELOPE_VERSION &&
+    (candidate.v === ENVELOPE_VERSION || candidate.v === RICH_ENVELOPE_VERSION) &&
     typeof candidate.epoch === 'number' &&
     typeof candidate.iv === 'string' &&
     typeof candidate.data === 'string'
@@ -167,7 +182,9 @@ export function isLegacyContent(content: string): boolean {
 
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>;
-    return parsed.e2e === true && parsed.v !== ENVELOPE_VERSION;
+    return (
+      parsed.e2e === true && parsed.v !== ENVELOPE_VERSION && parsed.v !== RICH_ENVELOPE_VERSION
+    );
   } catch {
     return false;
   }
@@ -179,19 +196,22 @@ export async function encryptMessage(
   epoch: number,
   senderId: string,
   text: string,
-  signer?: IEnvelopeSigner
+  signer?: IEnvelopeSigner,
+  entities: IMessageEntity[] = []
 ): Promise<string> {
   const key = await derivePurposeKey(chatKey, chatId, 'msg', epoch);
   const iv = randomIv();
+  const version = entities.length > 0 ? RICH_ENVELOPE_VERSION : ENVELOPE_VERSION;
+  const plaintext = version === RICH_ENVELOPE_VERSION ? JSON.stringify({ text, entities }) : text;
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: messageAad(chatId, epoch, senderId) },
+    { name: 'AES-GCM', iv, additionalData: messageAad(chatId, epoch, senderId, version) },
     key,
-    utf8ToBytes(text)
+    utf8ToBytes(plaintext)
   );
 
   const envelope: IEnvelopeV2 = {
-    v: ENVELOPE_VERSION,
+    v: version,
     e2e: true,
     epoch,
     iv: bytesToBase64(iv),
@@ -212,25 +232,36 @@ export async function encryptMessage(
   return JSON.stringify(envelope);
 }
 
+/**
+ * Текст и форматирование из конверта. У `v2` форматирования нет; у `v3`
+ * диапазоны проверяются заново: их не видел никто, кроме отправителя.
+ */
 export async function decryptMessage(
   chatKey: Uint8Array,
   chatId: string,
   senderId: string,
   envelope: IEnvelopeV2
-): Promise<string> {
+): Promise<IRichText> {
   const key = await derivePurposeKey(chatKey, chatId, 'msg', envelope.epoch);
 
   const plaintext = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
       iv: base64ToBytes(envelope.iv),
-      additionalData: messageAad(chatId, envelope.epoch, senderId),
+      additionalData: messageAad(chatId, envelope.epoch, senderId, envelope.v),
     },
     key,
     base64ToBytes(envelope.data)
   );
 
-  return bytesToUtf8(plaintext);
+  const decoded = bytesToUtf8(plaintext);
+  if (envelope.v !== RICH_ENVELOPE_VERSION) return { text: decoded, entities: [] };
+
+  const payload = JSON.parse(decoded) as { text?: unknown; entities?: unknown };
+  if (typeof payload.text !== 'string') {
+    throw new Error('Конверт v3 без текста');
+  }
+  return { text: payload.text, entities: normalizeEntities(payload.text, payload.entities) };
 }
 
 export async function encryptMediaBytes(

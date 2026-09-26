@@ -11,7 +11,8 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { clearDraft, useChatUiStore } from '@/entities/chat';
-import { setComposerText } from '@/shared/lib';
+import { trimRichText } from '@/shared/lib/richText';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,7 +28,7 @@ import { useParams } from 'react-router-dom';
 
 interface Params {
   selectionMode: boolean;
-  draftRef: RefObject<HTMLInputElement | null>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
   pendingAttachment: IPendingAttachment | null;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   bottomRef: RefObject<HTMLDivElement | null>;
@@ -91,7 +92,11 @@ export function useComposerSendMessage({
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (selectionMode) return;
-    const content = (draftRef.current?.value ?? '').trim();
+    // Текст с форматированием; пробелы по краям срезаются вместе с
+    // диапазонами (#656).
+    const { text: content, entities } = trimRichText(
+      draftRef.current?.getValue() ?? { text: '', entities: [] }
+    );
     if (!content && !pendingAttachment) return;
 
     if (editingMessage) {
@@ -101,17 +106,19 @@ export function useComposerSendMessage({
         const result = await services.messageService.editMessage(
           editingMessage.id,
           chatId,
-          content
+          content,
+          entities
         );
 
         patchThreadMessage(queryClient, chatId, editingMessage.id, {
           content: result.content,
+          entities: result.entities,
           updatedAt: result.updatedAt,
           isEdited: true,
         });
         void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
         setEditingMessage(null);
-        setComposerText(draftRef.current, '');
+        draftRef.current?.clear();
         setError('');
       } catch (err: unknown) {
         showSendError(err);
@@ -141,6 +148,7 @@ export function useComposerSendMessage({
       chatId,
       senderId: currentUser?.id ?? '',
       content,
+      entities,
       type: pendingAttachment ? pendingAttachment.type : 'text',
       mediaType: pendingAttachment ? pendingAttachment.type : undefined,
       mediaUrl: blobUrl,
@@ -155,6 +163,7 @@ export function useComposerSendMessage({
       tempId,
       chatId,
       content,
+      entities,
       type: pendingAttachment ? pendingAttachment.type : 'text',
       file: pendingAttachment?.file,
       replyToId: replyToMessage?.id ?? null,
@@ -169,7 +178,7 @@ export function useComposerSendMessage({
     scrollToBottom();
 
     // 2. Мгновенно очищаем композер, не блокируя набор следующих сообщений
-    setComposerText(draftRef.current, '');
+    draftRef.current?.clear();
     clearDraft(chatId);
     setPendingAttachment(null);
     setReplyToMessage(null);

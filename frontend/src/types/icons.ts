@@ -57,4 +57,15 @@ export type TIconTypes =
   | 'flipHorizontal'
   | 'flipVertical'
   | 'plus'
-  | 'pipette';
+  | 'pipette'
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strikethrough'
+  | 'code'
+  | 'link'
+  | 'quote'
+  | 'scissors'
+  | 'paste'
+  | 'selectAll'
+  | 'clearFormatting';

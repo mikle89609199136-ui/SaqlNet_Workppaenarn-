@@ -245,6 +245,9 @@ export const MessageBubble = memo(
           ) : (
             <MessageContentRenderer
               content={translations[message.id] || message.content}
+              // У перевода свой текст и свои смещения: форматирование оригинала
+              // к нему не приложить.
+              entities={translations[message.id] ? undefined : message.entities}
               trailing={hasInlineMeta ? renderMeta(true) : undefined}
             />
           )}

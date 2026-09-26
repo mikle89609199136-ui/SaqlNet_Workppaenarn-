@@ -27,3 +27,4 @@ export { AnimatedHeight } from './AnimatedHeight';
 export { AuthLayout } from './AuthLayout';
 export { PaneResizer } from './PaneResizer';
 export { SectionStub } from './SectionStub';
+export { RichTextInput, type IRichTextInputHandle } from './RichTextInput';

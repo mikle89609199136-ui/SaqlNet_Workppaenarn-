@@ -2,6 +2,13 @@ import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import {
   AlertTriangle,
+  Bold,
+  Code,
+  Italic,
+  Link,
+  Quote,
+  Strikethrough,
+  Underline,
   ArrowUpRight,
   Bell,
   Camera,
@@ -60,6 +67,10 @@ import {
   VolumeX,
   X,
   Zap,
+  Scissors,
+  ClipboardPaste,
+  SquareDashed,
+  RemoveFormatting,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -72,6 +83,13 @@ interface Props extends Omit<LucideProps, 'size' | 'ref'> {
 }
 
 const iconsConfig: Record<TIconTypes, LucideIcon> = {
+  bold: Bold,
+  italic: Italic,
+  underline: Underline,
+  strikethrough: Strikethrough,
+  code: Code,
+  link: Link,
+  quote: Quote,
   bell: Bell,
   burger: Menu,
   camera: Camera,
@@ -131,6 +149,10 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   flipVertical: FlipVertical,
   plus: Plus,
   pipette: Pipette,
+  scissors: Scissors,
+  paste: ClipboardPaste,
+  selectAll: SquareDashed,
+  clearFormatting: RemoveFormatting,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {
