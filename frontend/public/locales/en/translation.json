@@ -383,6 +383,7 @@
   "selectContactOrChatFromListForStartMesseging": "Choose a contact or a chat on the left to start talking.",
   "selecteChat": "Choose a chat",
   "selected": "Selected",
+  "selectionLimitReached": "You can select up to {{count}} messages",
   "sendFailed": "Failed to send",
   "sendMessage": "Send message",
   "senderNotConfirmed": "⚠️ Could not verify the sender",

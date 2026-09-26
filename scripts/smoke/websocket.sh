@@ -40,7 +40,7 @@ run_websocket_tests() {
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
 		-H "Authorization: Bearer $TOKEN" \
-		-d "{\"content\":\"$smoke_ws_message\",\"type\":\"text\"}"
+		-d "{\"messages\":[{\"content\":\"$smoke_ws_message\",\"type\":\"text\"}]}"
 
 	if [[ "$HTTP_CODE" != "200" ]]; then
 		echo "✗ [$HTTP_CODE] Failed to create message for WebSocket test"

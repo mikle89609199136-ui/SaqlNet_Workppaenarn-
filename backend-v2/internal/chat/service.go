@@ -1893,8 +1893,41 @@ const sendPermissionQuery = `
 		WHERE cm.chat_id = $1 AND cm.user_id = $2
 	`
 
-func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string, metadata map[string]any) (Message, error) {
-	content = sanitizeMessageContent(content)
+// OutgoingMessage — одно сообщение из отправки: уже проверенное
+// обработчиком, с готовыми metadata (файл, пересылка).
+type OutgoingMessage struct {
+	Content  string
+	Type     string
+	ReplyTo  *string
+	Metadata map[string]any
+}
+
+// MessageItemError — ошибка конкретного сообщения из пачки: клиенту
+// отвечают его номером, чтобы было видно, что именно не так (#808).
+type MessageItemError struct {
+	Index int
+	Err   error
+}
+
+func (e *MessageItemError) Error() string {
+	return fmt.Sprintf("message %d: %v", e.Index, e.Err)
+}
+
+func (e *MessageItemError) Unwrap() error { return e.Err }
+
+// SendMessages записывает пачку сообщений в чат (#808). Одно сообщение —
+// та же пачка из одного: путь записи один.
+//
+// Всё или ничего: сообщения пишутся одной транзакцией, и если хоть одно
+// не прошло (ответ на чужое или удалённое сообщение), не записывается ни
+// одно. Порядок — как в пачке: время создания внутри транзакции у всех
+// строк одно и то же, поэтому к нему добавляется номер сообщения в
+// микросекундах, иначе лента перемешала бы пачку. События уходят после
+// коммита, по одному на сообщение, в том же порядке.
+func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgoing []OutgoingMessage) ([]Message, error) {
+	if len(outgoing) == 0 {
+		return nil, ErrInvalidInput
+	}
 
 	var role string
 	var isMuted sql.NullBool
@@ -1903,71 +1936,76 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Message{}, ErrForbidden
+			return nil, ErrForbidden
 		}
-		return Message{}, err
+		return nil, err
 	}
 
 	if isMuted.Valid && isMuted.Bool {
-		return Message{}, ErrMemberMuted
+		return nil, ErrMemberMuted
 	}
 	// Ни в базу, ни в рассылку: заблокировавший его не получит.
 	if blockedByPeer {
-		return Message{}, ErrBlockedByUser
+		return nil, ErrBlockedByUser
 	}
 
-	var msg Message
-	var replyToStr sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
+	contents := make([]string, len(outgoing))
+	metadataJSON := make([][]byte, len(outgoing))
+	replies := make([]sql.NullString, len(outgoing))
 
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return Message{}, err
-	}
+	for i, out := range outgoing {
+		contents[i] = sanitizeMessageContent(out.Content)
 
-	var replyToSQL sql.NullString
-
-	if replyTo != nil && *replyTo != "" {
-		if err := validate.Var(*replyTo, "uuid"); err != nil {
-			return Message{}, ErrInvalidInput
+		metadataJSON[i], err = json.Marshal(out.Metadata)
+		if err != nil {
+			return nil, err
 		}
 
-		replyToSQL = sql.NullString{
-			String: *replyTo,
-			Valid:  true,
+		if out.ReplyTo != nil && *out.ReplyTo != "" {
+			if err := validate.Var(*out.ReplyTo, "uuid"); err != nil {
+				return nil, &MessageItemError{Index: i, Err: ErrInvalidInput}
+			}
+			replies[i] = sql.NullString{String: *out.ReplyTo, Valid: true}
 		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Message{}, err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if replyToSQL.Valid {
-		var replyID string
-		err = tx.QueryRowContext(ctx, `
+	msgs := make([]Message, len(outgoing))
+
+	for i, out := range outgoing {
+		if replies[i].Valid {
+			var replyID string
+			err = tx.QueryRowContext(ctx, `
         SELECT id::text
         FROM messages.messages
         WHERE id = $1
           AND chat_id = $2
           AND deleted_at IS NULL
         FOR SHARE
-    `, replyToSQL.String, chatID).Scan(&replyID)
+    `, replies[i].String, chatID).Scan(&replyID)
 
-		if errors.Is(err, sql.ErrNoRows) {
-			return Message{}, ErrNotFound
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, &MessageItemError{Index: i, Err: ErrNotFound}
+			}
+			if err != nil {
+				return nil, err
+			}
 		}
-		if err != nil {
-			return Message{}, err
-		}
-	}
 
-	err = tx.QueryRowContext(ctx, `
+		msg := &msgs[i]
+		var replyToStr sql.NullString
+		var deletedAt sql.NullString
+		var metadataBytes []byte
+
+		err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
-			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond')
 			RETURNING *
 		)
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
@@ -1978,49 +2016,54 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		FROM inserted m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-	`, chatID, userID, content, msgType, replyToSQL, metadataJSON).Scan(
-		&msg.ID, &msg.ChatID, &msg.SenderID,
-		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
-		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+	`, chatID, userID, contents[i], out.Type, replies[i], metadataJSON[i], i).Scan(
+			&msg.ID, &msg.ChatID, &msg.SenderID,
+			&msg.SenderName, &msg.SenderAvatar,
+			&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
+			&msg.IsPinned, &msg.IsEdited,
+			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
 
-	if err != nil {
-		return Message{}, err
+		if err != nil {
+			return nil, err
+		}
+
+		if replyToStr.Valid {
+			msg.ReplyTo = &replyToStr.String
+		}
+
+		if deletedAt.Valid {
+			msg.DeletedAt = &deletedAt.String
+		}
+
+		if metadataBytes != nil {
+			if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return Message{}, err
+		return nil, err
 	}
 
-	if replyToStr.Valid {
-		msg.ReplyTo = &replyToStr.String
-	}
-
-	if deletedAt.Valid {
-		msg.DeletedAt = &deletedAt.String
-	}
-
-	if metadataBytes != nil {
-		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
-			return Message{}, err
+	for i := range msgs {
+		if err := s.hydrateMessageFields(ctx, &msgs[i]); err != nil {
+			return nil, err
 		}
 	}
-	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
-		return Message{}, err
-	}
 
-	// Broadcast
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{
-			"type":    "new_message",
-			"chatId":  chatID,
-			"message": forBroadcast(&msg),
-		})
-		s.ws.BroadcastToChat(chatID, payload, userID)
+		for i := range msgs {
+			payload, _ := json.Marshal(map[string]any{
+				"type":    "new_message",
+				"chatId":  chatID,
+				"message": forBroadcast(&msgs[i]),
+			})
+			s.ws.BroadcastToChat(chatID, payload, userID)
+		}
 	}
 
-	return msg, nil
+	return msgs, nil
 }
 
 func (s *Service) EditMessage(ctx context.Context, userID, messageID, content string) (Message, error) {
@@ -2315,58 +2358,6 @@ func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bo
 	}
 
 	return exists, nil
-}
-
-// ForwardMessage copies a message into a target chat.
-func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetChatID string) (Message, error) {
-	if ok, err := s.isMember(ctx, userID, targetChatID); err != nil || !ok {
-		if err != nil {
-			return Message{}, err
-		}
-		return Message{}, ErrForbidden
-	}
-
-	var src Message
-	var replyTo sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
-		       COALESCE(up.first_name, au.first_name, au.username, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata, m.created_at::text, m.updated_at::text, m.deleted_at::text
-		FROM messages.messages m
-		LEFT JOIN auth.users au ON au.id = m.sender_id
-		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&src.ID, &src.ChatID, &src.SenderID, &src.SenderName, &src.Content, &src.Type, &replyTo, &metadataBytes, &src.CreatedAt, &src.UpdatedAt, &deletedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Message{}, ErrNotFound
-	}
-	if err != nil {
-		return Message{}, err
-	}
-	if len(metadataBytes) > 0 {
-		if err := json.Unmarshal(metadataBytes, &src.Metadata); err != nil {
-			return Message{}, err
-		}
-	}
-
-	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
-		if err != nil {
-			return Message{}, err
-		}
-		return Message{}, ErrForbidden
-	}
-
-	if src.Metadata == nil {
-		src.Metadata = make(map[string]any)
-	}
-	source, err := s.forwardSource(ctx, userID, src.ID, src.SenderID, src.SenderName, src.Metadata)
-	if err != nil {
-		return Message{}, err
-	}
-	source.Apply(src.Metadata)
-	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
 // ForwardSource — чем пересланное сообщение ссылается на оригинал (#169, #785).

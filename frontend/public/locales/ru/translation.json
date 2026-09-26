@@ -383,6 +383,7 @@
   "selectContactOrChatFromListForStartMesseging": "Выберите контакт или чат из списка слева, чтобы начать общение.",
   "selecteChat": "Выберите чат",
   "selected": "Выбрано",
+  "selectionLimitReached": "Можно выбрать не больше {{count}} сообщений",
   "sendFailed": "Не удалось отправить",
   "sendMessage": "Отправить сообщение",
   "senderNotConfirmed": "⚠️ Не удалось подтвердить отправителя",

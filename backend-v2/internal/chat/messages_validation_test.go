@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// sendBody — тело отправки: пачка из переданных сообщений (#808).
+func sendBody(messages ...string) string {
+	return `{"messages":[` + strings.Join(messages, ",") + `]}`
+}
+
 const (
 	messageValidationUserID    = "550e8400-e29b-41d4-a716-446655440001"
 	messageValidationChatID    = "550e8400-e29b-41d4-a716-446655440002"
@@ -62,7 +67,7 @@ func TestSendMessageRejectsInvalidPayloadWithoutDatabaseWrites(t *testing.T) {
 			req := messageValidationRequest(
 				http.MethodPost,
 				"/api/v2/messages/"+messageValidationChatID,
-				tt.body,
+				sendBody(tt.body),
 				"chatId",
 				messageValidationChatID,
 			)
@@ -85,7 +90,7 @@ func TestSendMessageRejectsMalformedReplyToWithoutInsert(t *testing.T) {
 	req := messageValidationRequest(
 		http.MethodPost,
 		"/api/v2/messages/"+messageValidationChatID,
-		`{"type":"text","content":"reply","replyTo":"not-a-uuid"}`,
+		sendBody(`{"type":"text","content":"reply","replyTo":"not-a-uuid"}`),
 		"chatId",
 		messageValidationChatID,
 	)
@@ -121,7 +126,7 @@ func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
 			req := messageValidationRequest(
 				http.MethodPost,
 				"/api/v2/messages/"+messageValidationChatID,
-				`{"type":"text","content":"reply","replyTo":"`+messageValidationMessageID+`"}`,
+				sendBody(`{"type":"text","content":"reply","replyTo":"`+messageValidationMessageID+`"}`),
 				"chatId",
 				messageValidationChatID,
 			)
@@ -148,6 +153,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 			"text",
 			sql.NullString{},
 			[]byte("null"),
+			0,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
@@ -175,7 +181,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 	req := messageValidationRequest(
 		http.MethodPost,
 		"/api/v2/messages/"+messageValidationChatID,
-		`{"type":"text","content":"some message","replyTo":""}`,
+		sendBody(`{"type":"text","content":"some message","replyTo":""}`),
 		"chatId",
 		messageValidationChatID,
 	)

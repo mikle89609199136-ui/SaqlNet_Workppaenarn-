@@ -116,7 +116,6 @@ paths:
   /messages/search: { $ref: './paths/messages.yaml#/~1messages~1search' }
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
-  /messages/{messageId}/forward: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1forward' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
 
