@@ -251,16 +251,16 @@ func TestDBPresenceActivity(t *testing.T) {
 		return got
 	}
 	peerRows := func() *sqlmock.Rows {
-		return sqlmock.NewRows([]string{"user_id", "blocked", "exceptions"})
+		return sqlmock.NewRows([]string{"user_id", "blocked", "exceptions", "peer_privacy", "peer_blocks", "peer_exceptions"})
 	}
 
 	t.Run("открытый статус — всем, кроме заблокированных и «никогда»", func(t *testing.T) {
 		// Настроек нет — статус по умолчанию открыт.
 		got := audience(t, nil, peerRows().
-			AddRow("peer-1", false, nil).
-			AddRow("peer-2", true, nil).
-			AddRow("peer-3", false, []byte(`{"lastSeen":false}`)).
-			AddRow("peer-4", false, []byte(`{"photoVisibility":false}`)))
+			AddRow("peer-1", false, nil, nil, false, nil).
+			AddRow("peer-2", true, nil, nil, false, nil).
+			AddRow("peer-3", false, []byte(`{"lastSeen":false}`), nil, false, nil).
+			AddRow("peer-4", false, []byte(`{"photoVisibility":false}`), nil, false, nil))
 
 		require.Equal(t, []string{"peer-1", "peer-4"}, got)
 	})
@@ -268,12 +268,26 @@ func TestDBPresenceActivity(t *testing.T) {
 	t.Run("закрытый статус — только тем, кому открыли исключением", func(t *testing.T) {
 		for _, setting := range []string{`{"lastSeen":"nobody"}`, `{"lastSeen":"contacts"}`} {
 			got := audience(t, []byte(setting), peerRows().
-				AddRow("peer-1", false, nil).
-				AddRow("peer-2", false, []byte(`{"lastSeen":true}`)).
-				AddRow("peer-3", true, []byte(`{"lastSeen":true}`)))
+				AddRow("peer-1", false, nil, nil, false, nil).
+				AddRow("peer-2", false, []byte(`{"lastSeen":true}`), nil, false, nil).
+				AddRow("peer-3", true, []byte(`{"lastSeen":true}`), nil, false, nil))
 
 			require.Equal(t, []string{"peer-2"}, got, "%s; чёрный список сильнее «всегда»", setting)
 		}
+	})
+
+	t.Run("взаимно: скрывший своё не получает событий, кроме открытых ему исключением", func(t *testing.T) {
+		closed := []byte(`{"lastSeen":"nobody"}`)
+		got := audience(t, nil, peerRows().
+			AddRow("peer-1", false, nil, closed, false, nil).
+			AddRow("peer-2", false, nil, closed, false, []byte(`{"lastSeen":true}`)).
+			AddRow("peer-3", false, nil, nil, true, nil).
+			AddRow("peer-4", false, nil, nil, false, []byte(`{"lastSeen":false}`)).
+			AddRow("peer-5", false, nil, nil, false, nil))
+
+		// peer-1 скрыл своё; peer-2 скрыл, но владельцу — «всегда»; peer-3
+		// заблокировал владельца; peer-4 поставил ему «никогда».
+		require.Equal(t, []string{"peer-2", "peer-5"}, got)
 	})
 
 	t.Run("ошибка чтения настроек не превращается в рассылку", func(t *testing.T) {

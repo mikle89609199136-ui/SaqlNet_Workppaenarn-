@@ -30,14 +30,21 @@ var (
 	selectMemberIDsSQL = `(?s)FROM chats\.members cm.*LEFT JOIN users\.settings ms.*WHERE cm\.chat_id = \$1`
 )
 
+// memberColumns — участник, его настройки и отношение к зрителю, затем
+// то же о зрителе по отношению к участнику (#791).
+var memberColumns = []string{
+	"user_id", "privacy_settings", "blocked", "exceptions",
+	"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+}
+
 var errRedisDown = errors.New("redis down")
 
 // mockGroupWithMembers настраивает ожидания sqlmock для группового чата
 // и выборки указанных участников для onlineChatID и onlineUserID.
 func mockGroupWithMembers(mock sqlmock.Sqlmock, memberIDs ...string) {
-	rows := sqlmock.NewRows([]string{"user_id", "privacy_settings", "blocked", "exceptions"})
+	rows := sqlmock.NewRows(memberColumns)
 	for _, id := range memberIDs {
-		rows.AddRow(id, nil, false, nil)
+		rows.AddRow(id, nil, false, nil, nil, false, nil)
 	}
 	mockGroupWithRows(mock, rows)
 }
@@ -237,13 +244,13 @@ func TestGetOnlineMembers_RespectsPrivacy(t *testing.T) {
 		require.NoError(t, store.Connect(context.Background(), id, "conn-"+string(rune('a'+i))))
 	}
 	closed := []byte(`{"lastSeen":"nobody"}`)
-	mockGroupWithRows(mock, sqlmock.NewRows([]string{"user_id", "privacy_settings", "blocked", "exceptions"}).
-		AddRow(onlineUserID, closed, false, nil).
-		AddRow(hidden, closed, false, nil).
-		AddRow(allowed, closed, false, []byte(`{"lastSeen":true}`)).
-		AddRow(denied, nil, false, []byte(`{"lastSeen":false}`)).
-		AddRow(blocking, nil, true, []byte(`{"lastSeen":true}`)).
-		AddRow(open, nil, false, nil))
+	mockGroupWithRows(mock, sqlmock.NewRows(memberColumns).
+		AddRow(onlineUserID, closed, false, nil, nil, false, nil).
+		AddRow(hidden, closed, false, nil, nil, false, nil).
+		AddRow(allowed, closed, false, []byte(`{"lastSeen":true}`), nil, false, nil).
+		AddRow(denied, nil, false, []byte(`{"lastSeen":false}`), nil, false, nil).
+		AddRow(blocking, nil, true, []byte(`{"lastSeen":true}`), nil, false, nil).
+		AddRow(open, nil, false, nil, nil, false, nil))
 
 	got, err := chat.NewService(db, nil, store).GetOnlineMembers(context.Background(), onlineChatID, onlineUserID)
 
@@ -251,5 +258,36 @@ func TestGetOnlineMembers_RespectsPrivacy(t *testing.T) {
 	// Себя зритель видит всегда; «всегда разрешать» открывает, «никогда» и
 	// блокировка закрывают.
 	require.Equal(t, []string{onlineUserID, allowed, open}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestGetOnlineMembers_IsMutual: скрывший своё время не видит «в сети» у
+// других, кроме тех, кому открыл его исключением (#791).
+func TestGetOnlineMembers_IsMutual(t *testing.T) {
+	const (
+		plain    = "550e8400-e29b-41d4-a716-456655440021"
+		trusted  = "550e8400-e29b-41d4-a716-456655440022"
+		unwanted = "550e8400-e29b-41d4-a716-456655440023"
+	)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	store := presence.NewMemoryStore(time.Now)
+	for i, id := range []string{onlineUserID, plain, trusted, unwanted} {
+		require.NoError(t, store.Connect(context.Background(), id, "conn-m"+string(rune('a'+i))))
+	}
+	viewerClosed := []byte(`{"lastSeen":"nobody"}`)
+	mockGroupWithRows(mock, sqlmock.NewRows(memberColumns).
+		AddRow(onlineUserID, viewerClosed, false, nil, viewerClosed, false, nil).
+		AddRow(plain, nil, false, nil, viewerClosed, false, nil).
+		AddRow(trusted, nil, false, nil, viewerClosed, false, []byte(`{"lastSeen":true}`)).
+		// Открыт всем, но зритель его заблокировал.
+		AddRow(unwanted, nil, false, nil, nil, true, nil))
+
+	got, err := chat.NewService(db, nil, store).GetOnlineMembers(context.Background(), onlineChatID, onlineUserID)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{onlineUserID, trusted}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -484,16 +484,22 @@ func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername strin
 
 // Status — «в сети» и «был(а)» пользователя userID глазами viewerID. Что
 // из этого можно показать, решает общая проверка приватности (#783):
-// правило «Последняя активность», блокировка и исключения (#784).
+// правило «Последняя активность», блокировка и исключения (#784) — в обе
+// стороны, как в Telegram (#791). Вместо скрытого точного времени —
+// приблизительное: lastSeenApprox.
 func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[string]any, error) {
-	var privacyJSON, exceptions []byte
-	var blocked bool
+	var ownerPrivacy, ownerExceptions, viewerPrivacy, viewerExceptions []byte
+	var ownerBlocks, viewerBlocks bool
 	var lastActive sql.NullString
 	var online bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings.privacy_settings,
 		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = auth.users.id AND b.blocked_user_id = $2),
 		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = auth.users.id AND e.user_id = $2),
+		       -- Взаимность (#791): то же о зрителе по отношению к владельцу.
+		       (SELECT vs.privacy_settings FROM users.settings vs WHERE vs.user_id = $2),
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $2 AND b.blocked_user_id = auth.users.id),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $2 AND e.user_id = auth.users.id),
 		       to_char(presence.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		       -- «В сети» — живое WebSocket-подключение (#780): отметку ведёт
 		       -- чат-сервис, свежей она считается 75 секунд.
@@ -502,7 +508,8 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
 		LEFT JOIN users.presence AS presence ON presence.user_id = auth.users.id
 		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
-	`, userID, viewerID).Scan(&privacyJSON, &blocked, &exceptions, &lastActive, &online)
+	`, userID, viewerID).Scan(&ownerPrivacy, &ownerBlocks, &ownerExceptions,
+		&viewerPrivacy, &viewerBlocks, &viewerExceptions, &lastActive, &online)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -510,9 +517,14 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 		return nil, err
 	}
 
-	relation := privacy.Relation{Self: viewerID == userID, Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)}
-	if !privacy.Decide(privacy.Parse(privacyJSON), relation, privacy.LastSeen) {
-		return map[string]any{"isOnline": false, "lastSeen": "recently"}, nil
+	pair := privacy.Pair{
+		Owner:         privacy.Parse(ownerPrivacy),
+		Viewer:        privacy.Parse(viewerPrivacy),
+		OwnerToViewer: privacy.Relation{Self: viewerID == userID, Blocked: ownerBlocks, Exceptions: privacy.ParseExceptions(ownerExceptions)},
+		ViewerToOwner: privacy.Relation{Blocked: viewerBlocks, Exceptions: privacy.ParseExceptions(viewerExceptions)},
+	}
+	if view := pair.LastSeen(privacy.ParseLastSeen(lastActive.String), time.Now()); !view.Exact {
+		return map[string]any{"isOnline": false, "lastSeen": "", "lastSeenApprox": view.Approx}, nil
 	}
 	if !lastActive.Valid {
 		return map[string]any{"isOnline": false, "lastSeen": ""}, nil

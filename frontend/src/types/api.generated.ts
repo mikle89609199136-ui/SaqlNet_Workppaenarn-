@@ -2470,6 +2470,17 @@ export interface components {
         ProfileResponse: {
             user: components["schemas"]["User"];
         };
+        /**
+         * @description Approximate last activity, given instead of the exact time when it is hidden. The exact time is shown only if both people share it with each other (lastSeen rule, exceptions and the block list, checked both ways); otherwise recently is up to 3 days, within_week up to 7, within_month up to 30, long_ago beyond that or never. Someone blocked by the owner always gets long_ago.
+         * @enum {string}
+         */
+        LastSeenApprox: "recently" | "within_week" | "within_month" | "long_ago";
+        UserStatus: {
+            isOnline: boolean;
+            /** @description ISO 8601 UTC time of the last activity; empty when unknown or hidden. */
+            lastSeen: string;
+            lastSeenApprox?: components["schemas"]["LastSeenApprox"];
+        };
         Object: {
             [key: string]: unknown;
         };
@@ -2690,10 +2701,12 @@ export interface components {
              * @description Private chats only.
              */
             peerId?: string;
-            /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden by the peer's lastSeen privacy setting. Changes arrive as the presence_changed WebSocket event. */
+            /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden, see peerLastSeenApprox. Changes arrive as the presence_changed WebSocket event. */
             peerIsOnline?: boolean;
-            /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden by the peer's lastSeen privacy setting. */
+            /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden, see peerLastSeenApprox. */
             peerLastSeen?: string;
+            /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
+            peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
         MarkMessagesReadRequest: {
             /** Format: uuid */
@@ -3670,12 +3683,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description User status */
+            /** @description User status as the caller may see it */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserStatus"];
+                };
             };
             /** @description User not found */
             404: {
@@ -5665,6 +5680,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

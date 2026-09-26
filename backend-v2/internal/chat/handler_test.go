@@ -65,6 +65,12 @@ const (
 	onlineMemberIDsQuery = membersWithPrivacyQuery
 )
 
+// onlineMemberColumns — столбцы membersWithPrivacyQuery.
+var onlineMemberColumns = []string{
+	"user_id", "privacy_settings", "blocked", "exceptions",
+	"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+}
+
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
 func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	t.Helper()
@@ -709,8 +715,9 @@ func TestHandler_GetOnlineMembers(t *testing.T) {
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				m.ExpectQuery(onlineMemberIDsQuery).
 					WithArgs(handlerChatID, handlerActorID).
-					WillReturnRows(sqlmock.NewRows([]string{"user_id", "privacy_settings", "blocked", "exceptions"}).
-						AddRow(handlerActorID, nil, false, nil).AddRow(handlerTargetID, nil, false, nil))
+					WillReturnRows(sqlmock.NewRows(onlineMemberColumns).
+						AddRow(handlerActorID, nil, false, nil, nil, false, nil).
+						AddRow(handlerTargetID, nil, false, nil, nil, false, nil))
 			},
 			wantStatus:  http.StatusOK,
 			wantMembers: []string{handlerActorID},
@@ -771,7 +778,7 @@ func TestHandler_List(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	tests := []struct {
@@ -1260,14 +1267,14 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", "", "", nil, false, nil,
+			3, "", "", false, "", 0, "", "", "", "", "", nil, false, nil, nil, false, nil,
 		)
 	}
 

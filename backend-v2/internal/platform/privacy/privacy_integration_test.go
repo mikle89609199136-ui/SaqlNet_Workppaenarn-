@@ -94,7 +94,7 @@ func TestExceptionsOnRealSchema(t *testing.T) {
 		require.NotEmpty(t, saved.CreatedAt)
 
 		require.True(t, allowed(t, db, owner, viewer, privacy.LastSeen))
-		require.NotEqual(t, "recently", status()["lastSeen"], "статус тоже учитывает исключение")
+		require.NotContains(t, status(), "lastSeenApprox", "статус тоже учитывает исключение")
 		require.False(t, allowed(t, db, owner, other, privacy.LastSeen), "остальным по-прежнему закрыто")
 		require.False(t, allowed(t, db, owner, viewer, privacy.Photo), "исключение действует только на своё правило")
 	})
@@ -105,7 +105,8 @@ func TestExceptionsOnRealSchema(t *testing.T) {
 		require.NoError(t, err)
 
 		require.False(t, allowed(t, db, owner, viewer, privacy.LastSeen))
-		require.Equal(t, "recently", status()["lastSeen"])
+		// Владелец ни разу не подключался — «давно».
+		require.Equal(t, privacy.LongAgo, status()["lastSeenApprox"])
 		require.True(t, allowed(t, db, owner, other, privacy.LastSeen))
 
 		list, err := users.PrivacyExceptions(ctx, owner, privacy.LastSeen)
@@ -237,4 +238,55 @@ func TestChatDataHidesWhatThePeerClosed(t *testing.T) {
 	blocked := peer()
 	require.False(t, blocked.PeerIsOnline, "блокировка сильнее «всегда разрешать»")
 	require.Empty(t, blocked.AvatarURL)
+}
+
+// «Был(а)» на настоящей схеме (#791): приблизительное время вместо скрытого
+// и взаимность — в статусе и в карточке чата одинаково.
+func TestLastSeenOnRealSchema(t *testing.T) {
+	db := startDatabase(t)
+	ctx := context.Background()
+	users := user.NewService(db)
+	chats := chat.NewService(db, nil, nil)
+	_, err := db.Exec(`INSERT INTO users.presence (user_id, online, last_seen_at) VALUES ($1, FALSE, NOW() - INTERVAL '10 days')`, owner)
+	require.NoError(t, err)
+	chatID, _, err := chats.CreatePrivate(ctx, viewer, owner)
+	require.NoError(t, err)
+
+	// Что видит зритель: из статуса и из карточки чата — должно совпадать.
+	seen := func() (exact bool, approx string) {
+		t.Helper()
+		status, err := users.Status(ctx, viewer, owner)
+		require.NoError(t, err)
+		detail, err := chats.Get(ctx, viewer, chatID)
+		require.NoError(t, err)
+		statusApprox, _ := status["lastSeenApprox"].(string)
+		require.Equal(t, statusApprox, detail.PeerLastSeenApprox, "статус и карточка чата расходятся")
+		require.Equal(t, status["lastSeen"], detail.PeerLastSeen, "статус и карточка чата расходятся")
+		return statusApprox == "", statusApprox
+	}
+
+	exact, _ := seen()
+	require.True(t, exact, "по умолчанию время открыто")
+
+	setPrivacy(t, db, owner, `{"lastSeen":"nobody"}`)
+	_, approx := seen()
+	require.Equal(t, privacy.WithinMonth, approx, "10 дней назад — «в этом месяце»")
+
+	setPrivacy(t, db, owner, `{"lastSeen":"all"}`)
+	setPrivacy(t, db, viewer, `{"lastSeen":"nobody"}`)
+	_, approx = seen()
+	require.Equal(t, privacy.WithinMonth, approx, "зритель скрыл своё — видит только приблизительное")
+
+	_, err = users.SetPrivacyException(ctx, viewer, privacy.LastSeen, owner, true)
+	require.NoError(t, err)
+	exact, _ = seen()
+	require.True(t, exact, "зритель открыл своё владельцу — обмен восстановлен")
+
+	own, err := users.Status(ctx, viewer, viewer)
+	require.NoError(t, err)
+	require.NotContains(t, own, "lastSeenApprox", "себе — всегда точно")
+
+	block(t, db, owner, viewer)
+	_, approx = seen()
+	require.Equal(t, privacy.LongAgo, approx, "заблокированный видит «давно»")
 }
