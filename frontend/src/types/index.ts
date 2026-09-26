@@ -64,6 +64,7 @@ export type {
   ISettingsPayloadDto,
   IUserDto,
   TLastSeenVisibility,
+  TPrivacyVisibility,
   TSearchUsersList,
   IProfileModal,
   IProfileState,

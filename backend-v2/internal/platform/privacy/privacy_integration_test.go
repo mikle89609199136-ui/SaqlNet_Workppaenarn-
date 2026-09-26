@@ -5,6 +5,7 @@ package privacy_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -406,5 +407,116 @@ func TestPhotoHiddenEverywhere(t *testing.T) {
 	for _, payload := range events.payloads {
 		require.NotContains(t, payload, "owner-avatar", payload)
 		require.NotContains(t, payload, "/api/v2/media/other", payload)
+	}
+}
+
+// Правило «Пересылка» на настоящей схеме (#785): решение фиксируется в
+// сообщении при пересылке; при запрете в ответах и событиях нет ни
+// исходного сообщения, ни автора — только имя.
+func TestForwardsRuleOnRealSchema(t *testing.T) {
+	db := startDatabase(t)
+	dbtest.User(t, db, other, "other_user")
+	ctx := context.Background()
+	users := user.NewService(db)
+	events := &recorder{}
+	chats := chat.NewService(db, events, nil)
+
+	sourceChat, err := chats.CreateGroup(ctx, owner, "source", "", "", []string{viewer})
+	require.NoError(t, err)
+	original, err := chats.SendMessage(ctx, owner, sourceChat, "оригинал", "text", nil, nil)
+	require.NoError(t, err)
+	targetChat, _, err := chats.CreatePrivate(ctx, viewer, other)
+	require.NoError(t, err)
+
+	// Пересылает viewer; читает other.
+	forward := func() chat.Message {
+		t.Helper()
+		events.payloads = nil
+		sent, err := chats.ForwardMessage(ctx, viewer, original.ID, targetChat)
+		require.NoError(t, err)
+		history, err := chats.ListMessages(ctx, other, targetChat, 50, 0)
+		require.NoError(t, err)
+		for _, m := range history {
+			if m.ID == sent.ID {
+				return m
+			}
+		}
+		t.Fatal("пересланного нет в истории получателя")
+		return chat.Message{}
+	}
+	requireLinked := func(m chat.Message) {
+		t.Helper()
+		require.True(t, m.IsForwarded)
+		require.Equal(t, "Owner", m.ForwardedSenderName)
+		require.Equal(t, original.ID, m.Metadata["forwardedFrom"])
+		require.Equal(t, owner, m.ForwardedSenderID, "автор — чтобы открыть профиль")
+	}
+	requireNameOnly := func(m chat.Message) {
+		t.Helper()
+		require.True(t, m.IsForwarded)
+		require.Equal(t, "Owner", m.ForwardedSenderName)
+		encoded, err := json.Marshal(m)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), original.ID, "исходное сообщение в ответе")
+		require.NotContains(t, string(encoded), owner, "автор в ответе")
+		for _, payload := range events.payloads {
+			require.NotContains(t, payload, original.ID, "исходное сообщение в событии")
+			require.NotContains(t, payload, owner, "автор в событии")
+		}
+	}
+	_, err = db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Owner')`, owner)
+	require.NoError(t, err)
+
+	requireLinked(forward())
+
+	setPrivacy(t, db, owner, `{"forwards":"nobody"}`)
+	hidden := forward()
+	requireNameOnly(hidden)
+
+	// Скрытый источник остаётся скрытым, даже когда пересылает дальше
+	// тот, кому автор разрешил бы.
+	_, err = users.SetPrivacyException(ctx, owner, privacy.Forwards, other, true)
+	require.NoError(t, err)
+	backChat, err := chats.CreateGroup(ctx, other, "back", "", "", []string{viewer})
+	require.NoError(t, err)
+	events.payloads = nil
+	chain, err := chats.ForwardMessage(ctx, other, hidden.ID, backChat)
+	require.NoError(t, err)
+	requireNameOnly(chain)
+	require.NotContains(t, chain.Metadata, "forwardedFrom")
+
+	_, err = users.SetPrivacyException(ctx, owner, privacy.Forwards, viewer, true)
+	require.NoError(t, err)
+	requireLinked(forward())
+
+	block(t, db, owner, viewer)
+	requireNameOnly(forward())
+
+	// Пересылка до #785: автора в метаданных нет — находится по оригиналу.
+	var legacyID string
+	require.NoError(t, db.QueryRow(`
+		INSERT INTO messages.messages (chat_id, sender_id, content, type, metadata)
+		VALUES ($1, $2, 'старая пересылка', 'text', jsonb_build_object('forwardedFrom', $3::text, 'forwardedSenderName', 'Owner'))
+		RETURNING id::text`, targetChat, viewer, original.ID).Scan(&legacyID))
+	legacy, err := chats.ListMessages(ctx, other, targetChat, 100, 0)
+	require.NoError(t, err)
+	found := false
+	for _, m := range legacy {
+		if m.ID == legacyID {
+			found = true
+			require.True(t, m.IsForwarded)
+			require.Equal(t, owner, m.ForwardedSenderID)
+		}
+	}
+	require.True(t, found, "старой пересылки нет в истории")
+
+	// Решение зафиксировано: снятие запрета не раскрывает уже пересланное.
+	setPrivacy(t, db, owner, `{"forwards":"all"}`)
+	again, err := chats.ListMessages(ctx, other, targetChat, 50, 0)
+	require.NoError(t, err)
+	for _, m := range again {
+		if m.ID == hidden.ID {
+			requireNameOnly(m)
+		}
 	}
 }

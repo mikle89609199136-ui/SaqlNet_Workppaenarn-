@@ -11,7 +11,7 @@ import { PhotoEditorModal } from '@/entities/media';
 
 import { useOutletContext } from 'react-router-dom';
 
-import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
@@ -69,6 +69,13 @@ export function ChatThreadPage() {
     handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
+  // Автор пересланного сообщения (#785). Стабильная ссылка: пузыри
+  // мемоизированы и не должны перерисовываться всей лентой.
+  const openProfile = useCallback(
+    (userId: string) => setProfileModal({ isOpen: true, userId }),
+    [setProfileModal]
+  );
+
   return (
     <>
       {modals.isForwardModalOpen && (
@@ -114,6 +121,7 @@ export function ChatThreadPage() {
             messages={messages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
+            onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
             setOpenedImage={modals.setOpenedImage}

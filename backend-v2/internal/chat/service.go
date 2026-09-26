@@ -103,11 +103,14 @@ type Message struct {
 	Metadata            map[string]any `json:"metadata,omitempty"`
 	IsForwarded         bool           `json:"isForwarded"`
 	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
-	IsPinned            bool           `json:"isPinned"`
-	IsEdited            bool           `json:"isEdited"`
-	CreatedAt           string         `json:"createdAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	DeletedAt           *string        `json:"deletedAt,omitempty"`
+	// ForwardedSenderID — автор оригинала, чтобы открыть его профиль. Только
+	// когда его правило «Пересылка» разрешило ссылку (#785).
+	ForwardedSenderID string  `json:"forwardedSenderId,omitempty"`
+	IsPinned          bool    `json:"isPinned"`
+	IsEdited          bool    `json:"isEdited"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+	DeletedAt         *string `json:"deletedAt,omitempty"`
 }
 
 type Service struct {
@@ -207,19 +210,33 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 		msg.ReplyToSenderName = name
 	}
 	if msg.Metadata != nil {
-		if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
+		forwardedFrom, _ := msg.Metadata["forwardedFrom"].(string)
+		hidden, _ := msg.Metadata["forwardedHidden"].(bool)
+		if forwardedFrom != "" || hidden {
 			msg.IsForwarded = true
 			if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
 				msg.ForwardedSenderName = name
 			}
-			if msg.ForwardedSenderName == "" {
+			if forwardedFrom != "" {
+				msg.ForwardedSenderID, _ = msg.Metadata["forwardedSenderId"].(string)
+			}
+			// Пересылки до #785 не хранят автора: он находится по исходному
+			// сообщению. Правила тогда не было — ссылка была у всех.
+			if forwardedFrom != "" && (msg.ForwardedSenderName == "" || msg.ForwardedSenderID == "") {
+				var name, senderID string
 				_ = s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+					SELECT COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(m.sender_id::text, '')
 					FROM messages.messages m
 					LEFT JOIN auth.users au ON au.id = m.sender_id
 					LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 					WHERE m.id::text = $1
-				`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+				`, forwardedFrom).Scan(&name, &senderID)
+				if msg.ForwardedSenderName == "" {
+					msg.ForwardedSenderName = name
+				}
+				if msg.ForwardedSenderID == "" {
+					msg.ForwardedSenderID = senderID
+				}
 			}
 		}
 	}
@@ -2321,69 +2338,125 @@ func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetC
 	if src.Metadata == nil {
 		src.Metadata = make(map[string]any)
 	}
-	// Forwarding a forwarded message keeps pointing at the original author;
-	// the copied metadata already carries it.
-	if origin, _ := src.Metadata["forwardedFrom"].(string); origin == "" {
-		src.Metadata["forwardedFrom"] = src.ID
-		src.Metadata["forwardedSenderName"] = src.SenderName
+	source, err := s.forwardSource(ctx, userID, src.ID, src.SenderID, src.SenderName, src.Metadata)
+	if err != nil {
+		return Message{}, err
 	}
+	source.Apply(src.Metadata)
 	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
 }
 
-// ForwardOrigin resolves the forwardedFrom metadata for a message the client
-// forwards itself: end-to-end encrypted content has to be re-encrypted for the
-// target chat, so it arrives through the regular send route instead of
-// ForwardMessage.
+// ForwardSource — чем пересланное сообщение ссылается на оригинал (#169, #785).
+type ForwardSource struct {
+	// MessageID — исходное сообщение. Пусто, если автор оригинала запретил
+	// пересылающему ссылку на себя (правило «Пересылка»): тогда остаётся
+	// только имя.
+	MessageID  string
+	SenderName string
+	// SenderID — автор оригинала; пусто вместе с MessageID.
+	SenderID string
+}
+
+// Apply записывает источник в метаданные нового сообщения. Прежние ключи
+// пересылки стираются: копия пересланного не должна их унаследовать.
+func (f ForwardSource) Apply(metadata map[string]any) {
+	delete(metadata, "forwardedFrom")
+	delete(metadata, "forwardedHidden")
+	delete(metadata, "forwardedSenderId")
+	metadata["forwardedSenderName"] = f.SenderName
+	if f.MessageID != "" {
+		metadata["forwardedFrom"] = f.MessageID
+		if f.SenderID != "" {
+			metadata["forwardedSenderId"] = f.SenderID
+		}
+	} else {
+		metadata["forwardedHidden"] = true
+	}
+}
+
+// ForwardOrigin решает, как пересылаемое userID сообщение сошлётся на
+// оригинал. Клиент присылает forwardedFrom в зашифрованной пересылке, и
+// сервер проверяет, что отправитель видит это сообщение; имя и автора
+// берёт сам, не из запроса.
 //
-// The requester must be able to read the message being forwarded. Without
-// this check a client could pass any message ID and learn who wrote a message
-// in a chat it does not belong to. A missing, deleted and inaccessible message
-// all yield ErrNotFound, so the response does not reveal which one it was.
-//
-// If the message is itself a forward, the original is returned instead. The
-// requester may have no access to the original's chat, so its ID and author
-// name come from the forwarded copy's metadata rather than from a lookup.
-func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (originID, senderName string, err error) {
+// Пересылка пересланного ссылается на первоисточник. Ссылку разрешает
+// правило «Пересылка» автора первоисточника — с блокировкой и исключениями;
+// при запрете остаётся только имя. Решение принимается один раз, при
+// пересылке, и дальше не зависит от того, кто читает: скрытый источник
+// остаётся скрытым и при следующих пересылках.
+func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (ForwardSource, error) {
 	if err := validate.Var(messageID, "required,uuid"); err != nil {
-		return "", "", ErrInvalidInput
+		return ForwardSource{}, ErrInvalidInput
 	}
 
-	var chatID string
+	var chatID, senderID, senderName string
 	var metadataBytes []byte
-	err = s.db.QueryRowContext(ctx, `
-		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.metadata
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.sender_id::text, m.metadata
 		FROM messages.messages m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&chatID, &senderName, &metadataBytes)
+	`, messageID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", ErrNotFound
+		return ForwardSource{}, ErrNotFound
 	}
 	if err != nil {
-		return "", "", err
+		return ForwardSource{}, err
 	}
 
 	ok, err := s.isMember(ctx, userID, chatID)
 	if err != nil {
-		return "", "", err
+		return ForwardSource{}, err
 	}
 	if !ok {
-		return "", "", ErrNotFound
+		return ForwardSource{}, ErrNotFound
 	}
 
 	var metadata map[string]any
 	if len(metadataBytes) > 0 {
 		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return "", "", err
+			return ForwardSource{}, err
 		}
 	}
+	return s.forwardSource(ctx, userID, messageID, senderID, senderName, metadata)
+}
+
+// forwardSource — решение для уже загруженного сообщения, которое userID
+// вправе видеть.
+func (s *Service) forwardSource(ctx context.Context, userID, messageID, senderID, senderName string, metadata map[string]any) (ForwardSource, error) {
+	source := ForwardSource{MessageID: messageID, SenderName: senderName}
+	authorID := senderID
+	if hidden, _ := metadata["forwardedHidden"].(bool); hidden {
+		name, _ := metadata["forwardedSenderName"].(string)
+		return ForwardSource{SenderName: name}, nil
+	}
 	if origin, _ := metadata["forwardedFrom"].(string); origin != "" {
-		originName, _ := metadata["forwardedSenderName"].(string)
-		return origin, originName, nil
+		source.MessageID = origin
+		source.SenderName, _ = metadata["forwardedSenderName"].(string)
+		// Автор первоисточника; удалённое сообщение тоже помнит автора.
+		if validate.Var(origin, "uuid") != nil {
+			return ForwardSource{SenderName: source.SenderName}, nil
+		}
+		err := s.db.QueryRowContext(ctx, `SELECT sender_id::text FROM messages.messages WHERE id = $1`, origin).Scan(&authorID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Автора не узнать — ссылку не даём.
+			return ForwardSource{SenderName: source.SenderName}, nil
+		}
+		if err != nil {
+			return ForwardSource{}, err
+		}
 	}
 
-	return messageID, senderName, nil
+	allowed, err := privacy.Allowed(ctx, s.db, authorID, userID, privacy.Forwards)
+	if err != nil {
+		return ForwardSource{}, err
+	}
+	if !allowed {
+		return ForwardSource{SenderName: source.SenderName}, nil
+	}
+	source.SenderID = authorID
+	return source, nil
 }
 
 // Reaction types.

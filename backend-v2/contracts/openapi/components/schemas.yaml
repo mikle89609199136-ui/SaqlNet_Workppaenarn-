@@ -218,9 +218,25 @@ Message:
     reactions:
       type: array
       items: { $ref: '#/Reaction' }
-    metadata: { type: object, additionalProperties: true }
+    metadata:
+      type: object
+      additionalProperties: true
+      description: >-
+        A forward carries forwardedSenderName and either forwardedFrom (the
+        original message) with forwardedSenderId, or forwardedHidden: true when the original author's
+        forwards rule did not allow the forwarder to link to them. Decided once,
+        at forwarding time, for every reader.
     isForwarded: { type: boolean }
-    forwardedSenderName: { type: string }
+    forwardedSenderName:
+      type: string
+      description: Name of the original author, shown as text even when the link is hidden.
+    forwardedSenderId:
+      type: string
+      format: uuid
+      description: >-
+        Original author, to open their profile. Present only when the author's
+        forwards rule allowed the forwarder to link to them; absent together
+        with forwardedFrom when the link is hidden.
     isPinned: { type: boolean }
     isEdited: { type: boolean }
     createdAt: { type: string }
@@ -251,7 +267,10 @@ SendMessageRequest:
         target chat instead of calling /messages/{messageId}/forward. The
         requester must be a member of that message's chat, otherwise 400. When
         it is itself a forward, the original author is kept. The author name is
-        resolved by the server.
+        resolved by the server. If the original author's forwards rule (with
+        the block list and exceptions) forbids the requester, only the name is
+        kept and metadata gets forwardedHidden instead of forwardedFrom; a
+        hidden forward stays hidden when forwarded again.
 EditMessageRequest:
   type: object
   required: [content]
