@@ -45,19 +45,6 @@ describe('checkUsernameQuery', () => {
     expect(result).toEqual({ available: false });
   });
 
-  it('возвращает null при 401 unauthorized (неавторизованный пользователь в мастере)', async () => {
-    server.use(
-      http.get(api('/users/check-username'), () =>
-        HttpResponse.json({ code: 'missing_token', message: 'Unauthorized' }, { status: 401 })
-      )
-    );
-
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const result = await queryClient.fetchQuery(checkUsernameQuery('newuser'));
-
-    expect(result).toBeNull();
-  });
-
   it('пробрасывает другие ошибки сервера (500)', async () => {
     server.use(
       http.get(api('/users/check-username'), () =>

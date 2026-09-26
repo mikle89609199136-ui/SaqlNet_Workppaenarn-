@@ -7,6 +7,7 @@ import { Button, Icon, Input, showToast } from '@/shared/ui';
 import { ROUTES } from '@/shared/config/routes';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
+import { rememberLoginPassword } from '@/shared/crypto';
 import type { IAuthResponse } from '@/types';
 import { loginFormSchema, type TLoginForm } from '../model/loginSchema';
 
@@ -61,6 +62,8 @@ export function LoginForm() {
       }
 
       const settings = await fetchUserSettings();
+      // Облачный пароль не должен совпасть с этим: его знает сервер.
+      await rememberLoginPassword(values.password);
       saveAuthSession({ settings, token: data.token, user: data.user! });
       navigate(safeReturnPath(searchParams.get('from')), { replace: true });
     } catch (error) {

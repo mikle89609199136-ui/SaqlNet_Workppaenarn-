@@ -21,8 +21,15 @@ paths:
   /auth/login: { $ref: './paths/auth.yaml#/~1auth~1login' }
   /auth/public-key: { $ref: './paths/auth.yaml#/~1auth~1public-key' }
   /auth/qr-token: { $ref: './paths/auth.yaml#/~1auth~1qr-token' }
+  /auth/qr-token/{token}: { $ref: './paths/auth.yaml#/~1auth~1qr-token~1{token}' }
+  /auth/qr-request/{token}: { $ref: './paths/auth.yaml#/~1auth~1qr-request~1{token}' }
   /auth/qr-status/{token}: { $ref: './paths/auth.yaml#/~1auth~1qr-status~1{token}' }
   /auth/qr-confirm: { $ref: './paths/auth.yaml#/~1auth~1qr-confirm' }
+  /auth/qr-offer: { $ref: './paths/auth.yaml#/~1auth~1qr-offer' }
+  /auth/qr-offer/{token}: { $ref: './paths/auth.yaml#/~1auth~1qr-offer~1{token}' }
+  /auth/qr-offer/{token}/claim: { $ref: './paths/auth.yaml#/~1auth~1qr-offer~1{token}~1claim' }
+  /auth/qr-offer/{token}/status: { $ref: './paths/auth.yaml#/~1auth~1qr-offer~1{token}~1status' }
+  /auth/qr-offer/{token}/confirm: { $ref: './paths/auth.yaml#/~1auth~1qr-offer~1{token}~1confirm' }
   /auth/logout: { $ref: './paths/auth.yaml#/~1auth~1logout' }
   /auth/logout-all: { $ref: './paths/auth.yaml#/~1auth~1logout-all' }
   /auth/sessions: { $ref: './paths/auth.yaml#/~1auth~1sessions' }
@@ -33,6 +40,7 @@ paths:
   /auth/2fa/verify: { $ref: './paths/auth.yaml#/~1auth~12fa~1verify' }
 
   /users/me: { $ref: './paths/users.yaml#/~1users~1me' }
+  /users/me/username: { $ref: './paths/users.yaml#/~1users~1me~1username' }
   /users/avatar: { $ref: './paths/users.yaml#/~1users~1avatar' }
   /users/check-username: { $ref: './paths/users.yaml#/~1users~1check-username' }
   /users/search: { $ref: './paths/users.yaml#/~1users~1search' }
@@ -43,6 +51,8 @@ paths:
   /users/all-settings: { $ref: './paths/users.yaml#/~1users~1all-settings' }
   /users/settings: { $ref: './paths/users.yaml#/~1users~1settings' }
   /users/privacy: { $ref: './paths/users.yaml#/~1users~1privacy' }
+  /users/privacy/exceptions: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions' }
+  /users/privacy/exceptions/{rule}/{userId}: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions~1{rule}~1{userId}' }
   /users/notifications: { $ref: './paths/users.yaml#/~1users~1notifications' }
   /users/sounds: { $ref: './paths/users.yaml#/~1users~1sounds' }
   /users/advanced-settings: { $ref: './paths/users.yaml#/~1users~1advanced-settings' }
@@ -72,6 +82,8 @@ paths:
   /encryption/signal/keys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1keys' }
   /encryption/signal/bundle/{userId}: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1bundle~1{userId}' }
   /encryption/signal/prekeys: { $ref: './paths/encryption.yaml#/~1encryption~1signal~1prekeys' }
+  /encryption/backup: { $ref: './paths/encryption.yaml#/~1encryption~1backup' }
+  /encryption/backup/chat-keys: { $ref: './paths/encryption.yaml#/~1encryption~1backup~1chat-keys' }
 
   /support/requests: { $ref: './paths/support.yaml#/~1support~1requests' }
   /support/requests/{requestId}: { $ref: './paths/support.yaml#/~1support~1requests~1{requestId}' }
@@ -85,6 +97,8 @@ paths:
   /chats/{chatId}/members: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members' }
   /chats/{chatId}/members-online: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members-online' }
   /chats/{chatId}/bans: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1bans' }
+  /chats/{chatId}/leave: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1leave' }
+  /chats/{chatId}/transfer-ownership: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1transfer-ownership' }
   /chats/{chatId}/members/{userId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}' }
   /chats/{chatId}/members/{userId}/role: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1role' }
   /chats/{chatId}/members/{userId}/ban: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1ban' }
@@ -102,7 +116,6 @@ paths:
   /messages/search: { $ref: './paths/messages.yaml#/~1messages~1search' }
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
-  /messages/{messageId}/forward: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1forward' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
 
@@ -147,3 +160,6 @@ components:
     Error: { $ref: './components/schemas.yaml#/Error' }
     User: { $ref: './components/schemas.yaml#/User' }
     Message: { $ref: './components/schemas.yaml#/Message' }
+    MessageEntity: { $ref: './components/schemas.yaml#/MessageEntity' }
+    MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
+    LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }

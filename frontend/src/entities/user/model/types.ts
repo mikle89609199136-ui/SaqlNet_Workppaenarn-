@@ -1,4 +1,5 @@
 import type { IChatDto, TMessagesList } from '@/types';
+import type { TLastSeenApprox } from '@/shared/lib';
 
 export interface IUserDto {
   id: string;
@@ -22,12 +23,50 @@ export interface ISettingsDto {
   avatarShape: 'letter' | 'grid';
 }
 
+/** Правило приватности. Контактов нет — только «все» и «никто». */
+export type TPrivacyVisibility = 'all' | 'nobody';
+
 /** Кто видит время последнего входа. */
-export type TLastSeenVisibility = 'all' | 'contacts' | 'nobody';
+export type TLastSeenVisibility = TPrivacyVisibility;
 
 export interface IPrivacyDto {
   lastSeen: TLastSeenVisibility;
+  /** Кто видит фото профиля (#789). */
+  photoVisibility: TPrivacyVisibility;
+  /** Кто может ссылаться на мой аккаунт, пересылая мои сообщения (#785). */
+  forwards: TPrivacyVisibility;
   messagesFromStrangers: boolean;
+}
+
+/**
+ * Правила, у которых на экране есть исключения (#786) — те, что сервер
+ * применяет. «Звонки» добавятся вместе с #714.
+ */
+export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards';
+
+/** allow — «Всегда разрешать», deny — «Никогда не разрешать». */
+export type TPrivacyExceptionMode = 'allow' | 'deny';
+
+/** Человек в исключениях правила (#784). Фото — по его правилу «Фото». */
+export interface IPrivacyExceptionDto {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+  rule: TPrivacyRule;
+  mode: TPrivacyExceptionMode;
+  createdAt: string;
+}
+
+/** Человек из чёрного списка (#727). Фото — по его правилу «Фото» (#789). */
+export interface IBlockedUserDto {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+  blockedAt: string;
 }
 
 /**
@@ -46,73 +85,7 @@ export interface ICheckUsernameResponse {
 export interface IUserStatusDto {
   isOnline: boolean;
   lastSeen: string;
-}
-
-export interface INotificationSettingsDto {
-  privateChats?: boolean;
-  groups?: boolean;
-  channels?: boolean;
-  calls?: boolean;
-  videoCalls?: boolean;
-  inAppNotifications?: boolean;
-  messagePreview?: boolean;
-  readReceipts?: boolean;
-  reactions?: boolean;
-  newContacts?: boolean;
-}
-
-export interface ISoundSettingsDto {
-  notificationsVolume?: number;
-  mediaVolume?: number;
-  notificationsSound?: boolean;
-  messagesSound?: boolean;
-  sendSound?: boolean;
-  callsSound?: boolean;
-  vibrateOnCall?: boolean;
-  notificationSound?: string;
-  messageSound?: string;
-  ringtone?: string;
-}
-
-export interface IStorageSettingsDto {
-  keepMedia?: string;
-  maxCacheSizeMb?: number;
-  autoDownloadPhotos?: boolean;
-  autoDownloadVideos?: boolean;
-  autoDownloadFiles?: boolean;
-}
-
-export interface IAdvancedSettingsDto {
-  autoReconnect?: boolean;
-  fastConnection?: boolean;
-  connectionType?: string;
-  dataCompression?: boolean;
-  saveDrafts?: boolean;
-  analytics?: boolean;
-  developerMode?: boolean;
-  debugLog?: boolean;
-  hardwareAcceleration?: boolean;
-  autoplayGifs?: boolean;
-}
-
-export interface IChatFolderDto {
-  id?: string;
-  name?: string;
-  icon?: string;
-  includedChatIds?: string[];
-  excludedChatIds?: string[];
-}
-
-export interface IAllSettingsDto {
-  settings?: Partial<ISettingsDto>;
-  privacySettings?: Partial<IPrivacyDto>;
-  notificationSettings?: Partial<INotificationSettingsDto>;
-  soundSettings?: Partial<ISoundSettingsDto>;
-  storageSettings?: Partial<IStorageSettingsDto>;
-  advancedSettings?: Partial<IAdvancedSettingsDto>;
-  folders?: IChatFolderDto[];
-  passcodeEnabled?: boolean;
-  passcodeTimeout?: number;
+  lastSeenApprox?: TLastSeenApprox;
 }
 
 export interface ISearchUserDto {

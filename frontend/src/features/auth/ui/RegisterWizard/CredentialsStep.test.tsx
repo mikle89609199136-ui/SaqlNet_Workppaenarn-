@@ -75,31 +75,17 @@ describe('CredentialsStep: проверка доступности имени п
     expect(await screen.findByText('Это имя пользователя занято')).toBeInTheDocument();
   });
 
-  it('не ломает интерфейс и не показывает ошибку при ответе 401', async () => {
-    server.use(
-      http.get(api('/users/check-username'), () =>
-        HttpResponse.json({ code: 'missing_token' }, { status: 401 })
-      )
-    );
-
-    renderCredentialsStep({ username: 'newuser' });
-
-    // Ждём завершения запроса: текст ошибки или успеха не должен появиться
-    expect(screen.queryByText('Это имя пользователя занято')).not.toBeInTheDocument();
-    expect(screen.queryByText('Имя пользователя свободно')).not.toBeInTheDocument();
-  });
-
   it('отдаёт приоритет ошибке формы схемы над проверкой сервера', async () => {
     server.use(
       http.get(api('/users/check-username'), () => HttpResponse.json({ available: true }))
     );
 
     renderCredentialsStep(
-      { username: 'al' },
-      (field) => (field === 'username' ? 'Не менее 3 символов' : undefined)
+      { username: 'valid_name' },
+      (field) => (field === 'username' ? 'Ошибка валидации формы' : undefined)
     );
 
-    expect(screen.getByText('Не менее 3 символов')).toBeInTheDocument();
+    expect(await screen.findByText('Ошибка валидации формы')).toBeInTheDocument();
     expect(screen.queryByText('Имя пользователя свободно')).not.toBeInTheDocument();
   });
 

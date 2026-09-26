@@ -6,6 +6,7 @@ import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
+import { cn } from '@/shared/lib';
 import { DateDivider } from './DateDivider';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThreadState } from './ThreadState';
@@ -26,6 +27,8 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Профиль автора пересланного сообщения (#785). */
+  onOpenProfile?: (userId: string) => void;
   /**
    * Показывать ли статус доставки у своих сообщений. Только личные чаты:
    * в группе у «прочитано» нет одного значения — непонятно, прочитал один
@@ -47,6 +50,7 @@ export const MessagesList = memo(
     bottomRef,
     messagesRef,
     onRetryMessage,
+    onOpenProfile,
     onCancelMessage,
     showDeliveryStatus = false,
   }: Props) => {
@@ -121,7 +125,10 @@ export const MessagesList = memo(
 
                 return (
                   <div
-                    className="w-full absolute top-0 left-0"
+                    className={cn(
+                      'w-full absolute top-0 left-0',
+                      item.type === 'message' && item.isDifferentAuthor && 'pt-2'
+                    )}
                     data-index={virtualRow.index}
                     key={item.id}
                     ref={virtualizer.measureElement}
@@ -134,8 +141,11 @@ export const MessagesList = memo(
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
+                        isFirstInGroup={item.isFirstInGroup}
+                        isLastInGroup={item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
+                        onOpenProfile={onOpenProfile}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}

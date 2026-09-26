@@ -2,6 +2,33 @@ package config
 
 import "testing"
 
+func TestBoolUsesFallbackWhenUnset(t *testing.T) {
+	t.Setenv("TEST_BOOL", "")
+
+	if got := Bool("TEST_BOOL", true); !got {
+		t.Fatal("expected true fallback")
+	}
+}
+
+func TestBoolReadsEnvironmentValue(t *testing.T) {
+	t.Setenv("TEST_BOOL", "false")
+
+	if got := Bool("TEST_BOOL", true); got {
+		t.Fatal("expected false environment value")
+	}
+}
+
+func TestBoolPanicsOnInvalidValue(t *testing.T) {
+	t.Setenv("TEST_BOOL", "sometimes")
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic, but function did not panic")
+		}
+	}()
+
+	Bool("TEST_BOOL", false)
+}
+
 func TestPositiveFloat64UsesFallbackWhenUnset(t *testing.T) {
 	t.Setenv("TEST_POSITIVE_FLOAT64", "")
 

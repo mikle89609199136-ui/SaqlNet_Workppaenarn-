@@ -5,12 +5,12 @@ import {
   isConversationStarted,
 } from '@/entities/chat';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
-import { ChatRowMenu } from '@/features/chat-actions';
 import { Button, Icon } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArchiveEntry } from './ArchiveEntry';
+import { ChatRowMenuWithActions } from './ChatRowMenuWithActions';
 import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
 
@@ -112,7 +112,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
             chat={chat}
             key={chat.id}
             pinnedCount={pinnedCount}
-            renderMenu={(props) => <ChatRowMenu {...props} />}
+            renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
           />
         ))}
       </section>
@@ -174,7 +174,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
               chat={chat}
               key={chat.id}
               pinnedCount={pinnedCount}
-              renderMenu={(props) => <ChatRowMenu {...props} />}
+              renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
             />
           ))}
       </section>

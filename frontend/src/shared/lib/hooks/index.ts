@@ -8,6 +8,7 @@ export * from './useFullscreen';
 export * from './useIdle';
 export * from './useIsMobile';
 export * from './useLongPress';
+export * from './useNow';
 export * from './useObjectUrl';
 export * from './usePaneWidth';
 export * from './useSecurityNotice';

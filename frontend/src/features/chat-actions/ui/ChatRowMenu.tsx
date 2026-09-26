@@ -14,6 +14,24 @@ export interface IChatRowMenuProps {
   /** Строка, из которой меню вызвали: ей вернётся фокус при закрытии. */
   returnFocusRef: RefObject<HTMLElement | null>;
   onClose: () => void;
+  /**
+   * Блокировка собеседника по личному чату (#727). Приходит сверху: срез
+   * блокировок — отдельная фича, и меню о ней не знает.
+   */
+  block?: IChatRowBlockAction;
+  /**
+   * Выход из группы (#90). Тоже приходит сверху: подтверждение и передача
+   * прав — забота фичи управления группой.
+   */
+  onLeave?: () => void;
+  /** Спрятать меню, не закрывая: пока открыто подтверждение блокировки или выхода. */
+  hidden?: boolean;
+}
+
+export interface IChatRowBlockAction {
+  blocked: boolean;
+  onBlock: () => void;
+  onUnblock: () => void;
 }
 
 /**
@@ -31,6 +49,9 @@ export function ChatRowMenu({
   y,
   returnFocusRef,
   onClose,
+  block,
+  onLeave,
+  hidden = false,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
   const { togglePin, toggleArchive, markRead } = useChatActions();
@@ -39,7 +60,7 @@ export function ChatRowMenu({
     <ContextMenu
       aria-label={t('chatActions', 'Действия с чатом')}
       onClose={onClose}
-      open
+      open={!hidden}
       returnFocusRef={returnFocusRef}
       x={x}
       y={y}
@@ -77,6 +98,32 @@ export function ChatRowMenu({
       >
         {chat.isArchived ? t('unarchiveChat', 'Вернуть из архива') : t('archiveChat', 'В архив')}
       </ContextMenu.Item>
+
+      {block &&
+        (block.blocked ? (
+          <ContextMenu.Item
+            icon={<Icon name="user" />}
+            onClick={() => {
+              block.onUnblock();
+              onClose();
+            }}
+          >
+            {t('unblock', 'Разблокировать')}
+          </ContextMenu.Item>
+        ) : (
+          /* Меню не закрывается: сверху откроется подтверждение, и
+             закроет всё уже оно. */
+          <ContextMenu.Item icon={<Icon name="cross" />} onClick={block.onBlock} variant="danger">
+            {t('block', 'Заблокировать')}
+          </ContextMenu.Item>
+        ))}
+
+      {/* Меню не закрывается: сверху откроется подтверждение. */}
+      {onLeave && (
+        <ContextMenu.Item icon={<Icon name="logOut" />} onClick={onLeave} variant="danger">
+          {t('leaveGroupAction', 'Покинуть группу')}
+        </ContextMenu.Item>
+      )}
     </ContextMenu>
   );
 }

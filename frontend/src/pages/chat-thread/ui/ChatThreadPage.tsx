@@ -1,5 +1,7 @@
 import { ChatThreadHeader, SafetyCodeNotice } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
+import { BlockUserButton, NewChatBanner } from '@/features/block-user';
+import type { IProfileActionsTarget } from '@/features/user-profile';
 import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-composer';
 import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
@@ -11,11 +13,17 @@ import { PhotoEditorModal } from '@/entities/media';
 
 import { useOutletContext } from 'react-router-dom';
 
-import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
 import type { IProfileState } from '@/entities/user';
+
+/* Действия с чужим профилем — блокировка (#727). На уровне модуля:
+   стабильная ссылка не перерисовывает мемоизированную панель. */
+const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
+  <BlockUserButton name={name} userId={id} />
+);
 
 interface IOutletContext {
   onProfileStateChange: Dispatch<SetStateAction<IProfileState>>;
@@ -69,6 +77,13 @@ export function ChatThreadPage() {
     handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
+  // Автор пересланного сообщения (#785). Стабильная ссылка: пузыри
+  // мемоизированы и не должны перерисовываться всей лентой.
+  const openProfile = useCallback(
+    (userId: string) => setProfileModal({ isOpen: true, userId }),
+    [setProfileModal]
+  );
+
   return (
     <>
       {modals.isForwardModalOpen && (
@@ -105,6 +120,10 @@ export function ChatThreadPage() {
             messages={pinnedMessages}
             setPinnedMessagesOpen={modals.setPinnedMessagesOpen}
           />
+          {/* Новый чат от незнакомого: заблокировать или пожаловаться (#465). */}
+          {chat && (
+            <NewChatBanner chat={chat} hasOlder={hasOlder} key={chat.id} messages={messages} />
+          )}
           <MessagesList
             bottomRef={bottomRef}
             error={threadError}
@@ -114,6 +133,7 @@ export function ChatThreadPage() {
             messages={messages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
+            onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
             setOpenedImage={modals.setOpenedImage}
@@ -197,6 +217,7 @@ export function ChatThreadPage() {
             <UserProfileModal
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
               profileModal={profileModal}
+              renderActions={renderProfileActions}
             />
           )}
 

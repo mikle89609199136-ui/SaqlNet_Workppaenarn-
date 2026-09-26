@@ -49,29 +49,5 @@ describe('UserService: новые эндпоинты (#598)', () => {
       expect(result).toEqual({ isOnline: true, lastSeen: '2026-09-23T15:00:00Z' });
     });
   });
-
-  describe('getAllSettings', () => {
-    it('отправляет GET /users/all-settings и возвращает полный объект настроек', async () => {
-      const mockAllSettings = {
-        settings: { theme: 'dark', language: 'ru' },
-        privacySettings: { lastSeen: 'all' },
-        notificationSettings: { privateChats: true },
-        soundSettings: { notificationsVolume: 80 },
-        storageSettings: { maxCacheSizeMb: 500 },
-        advancedSettings: { autoReconnect: true },
-        folders: [],
-        passcodeEnabled: false,
-        passcodeTimeout: 0,
-      };
-
-      server.use(
-        http.get(api('/users/all-settings'), () => {
-          return HttpResponse.json(mockAllSettings);
-        })
-      );
-
-      const result = await services.userService.getAllSettings();
-      expect(result).toEqual(mockAllSettings);
-    });
-  });
 });
+

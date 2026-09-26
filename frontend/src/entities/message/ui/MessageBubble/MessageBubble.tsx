@@ -39,6 +39,8 @@ interface Props {
   onReact: (message: IMessageDto, emoji: string) => void;
   /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
   onJumpToMessage?: (messageId: string) => void;
+  /** Профиль автора пересланного сообщения по клику на его имя (#785). */
+  onOpenProfile?: (userId: string) => void;
   /** Повторная отправка сообщения из Outbox при ошибке сети (#552). */
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
@@ -52,6 +54,10 @@ interface Props {
    * судьбу моего сообщения, а не про чужие глаза.
    */
   showDeliveryStatus?: boolean;
+  /** Первое сообщение в непрерывной цепочке одного автора. */
+  isFirstInGroup?: boolean;
+  /** Последнее сообщение в группе — рисуется с «хвостиком» (срезанный угол). */
+  isLastInGroup?: boolean;
 }
 
 export const MessageBubble = memo(
@@ -64,9 +70,12 @@ export const MessageBubble = memo(
     onReact,
     onSelection,
     onJumpToMessage,
+    onOpenProfile,
     onRetryMessage,
     onCancelMessage,
     showDeliveryStatus = false,
+    isFirstInGroup = true,
+    isLastInGroup = true,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -88,35 +97,124 @@ export const MessageBubble = memo(
       message
     );
 
-    const actualType = message.mediaType || message.type;
+    const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
     const targetReplyId = message.replyTo || message.replyToMessageId;
     const hasReply = Boolean(targetReplyId || repliedMessage);
+    const hasInlineMeta =
+      message.type !== 'call' && (Boolean(message.content) || Boolean(message.undecryptable));
+
+    const renderMeta = (inline = true) => (
+      <span
+        className={cn(
+          'message-meta font-mono text-micro text-ink-3 tabular-nums select-none whitespace-nowrap',
+          inline
+            ? 'float-right inline-flex items-center gap-1 ml-3 mt-2 leading-none'
+            : 'mt-1 flex items-center justify-end gap-1'
+        )}
+      >
+        {message.isPinned && (
+          <span
+            aria-label={t('pinned', 'Закреплено')}
+            className="inline-flex items-center text-ink-3"
+            title={t('pinned', 'Закреплено')}
+          >
+            <Icon className="rotate-45 fill-current" name="pin" size="xs" />
+          </span>
+        )}
+        {message.isEdited && <span>{t('edited', 'изменено')}</span>}
+        <time>{formatMessageTime(message.createdAt)}</time>
+        {mine && (message.status === 'pending' || message.status === 'uploading') && (
+          <span
+            className="inline-flex items-center gap-1 text-ink-3"
+            title={
+              message.status === 'uploading'
+                ? t('uploading', 'Загрузка...')
+                : t('sending', 'Отправка...')
+            }
+          >
+            <Spinner
+              size="sm"
+              label={
+                message.status === 'uploading'
+                  ? t('uploading', 'Загрузка...')
+                  : t('sending', 'Отправка...')
+              }
+            />
+          </span>
+        )}
+
+        {mine && showDeliveryStatus && message.status === 'sent' && (
+          <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
+            <Icon name="check" size="xs" />
+          </span>
+        )}
+      </span>
+    );
 
     return (
       <article
         id={message.id}
         className={cn('flex justify-between gap-x-2', mine && 'justify-end')}
+        data-first-in-group={isFirstInGroup ? 'true' : undefined}
+        data-last-in-group={isLastInGroup ? 'true' : undefined}
         {...longPressHandlers}
       >
         <div
           data-state={isSelected ? 'selected' : undefined}
           className={cn(
-            'message-bubble',
-            mine && 'is-mine',
-            hasMessageMedia(message) && 'has-media',
+            'message-bubble relative w-fit min-w-20 max-w-[min(76%,560px)] px-3 py-1.5 text-body text-ink shadow-[var(--elev-1)] transition-[box-shadow,filter] duration-fast ease-out rounded-bubble',
+            mine
+              ? cn(
+                  'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-br-control',
+                  !isFirstInGroup && 'rounded-tr-control'
+                )
+              : cn('bg-bubble-in rounded-bl-control', !isFirstInGroup && 'rounded-tl-control'),
+            hasMessageMedia(message) && 'has-media w-fit max-w-[min(384px,calc(100%-20px))]',
             isAudio && 'w-full',
-            isActionTarget && 'is-action-target',
+            isActionTarget &&
+              'is-action-target z-20 max-md:z-[1201] shadow-[0_0_0_2px_var(--color-brand),var(--elev-3)]',
             isSelected &&
               'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
             isHighlighted &&
               'ring-2 ring-brand ring-offset-2 ring-offset-ground bg-brand-soft/25 transition-all duration-500'
           )}
         >
-          {!mine && message.senderStatusEmoji && (
+          {!mine && isFirstInGroup && message.senderStatusEmoji && (
             <div className="mb-[3px] text-brand text-xs font-semibold">
               <span className="ml-1.5 inline-block">{message.senderStatusEmoji}</span>
             </div>
+          )}
+
+          {/* Имя автора подставляет сервер, проверив доступ к исходному
+              сообщению. Пустым оно бывает только у старых пересылок.
+              Профиль открывается, только если автор разрешил ссылку на
+              себя: иначе сервер не присылает forwardedSenderId (#785). */}
+          {message.isForwarded && (
+            <p className="mb-1 text-caption text-ink-3">
+              {message.forwardedSenderName ? (
+                <>
+                  {t('forwardedFrom', 'Переслано от')}{' '}
+                  {message.forwardedSenderId && onOpenProfile ? (
+                    <button
+                      className="font-semibold text-brand hover:underline focus-visible:underline"
+                      onClick={(event) => {
+                        // Клик по пузырю выделяет сообщение — здесь не нужно.
+                        event.stopPropagation();
+                        onOpenProfile(message.forwardedSenderId!);
+                      }}
+                      type="button"
+                    >
+                      {message.forwardedSenderName}
+                    </button>
+                  ) : (
+                    <b className="font-semibold text-ink-2">{message.forwardedSenderName}</b>
+                  )}
+                </>
+              ) : (
+                t('forwarded', 'Переслано')
+              )}
+            </p>
           )}
 
           {hasReply && (
@@ -140,15 +238,19 @@ export const MessageBubble = memo(
           ) : message.undecryptable ? (
             /* Подпись к нечитаемому сообщению собирается здесь: причину
                назвал слой шифрования, а язык знает интерфейс. */
-            <p className="message-content opacity-70">
+            <p className="message-content text-body whitespace-pre-wrap leading-snug [overflow-wrap:anywhere] opacity-70 flow-root">
               🔒 {t(`undecryptable.${message.undecryptable}`, message.content)}
+              {renderMeta(true)}
             </p>
           ) : (
-            <MessageContentRenderer content={translations[message.id] || message.content} />
+            <MessageContentRenderer
+              content={translations[message.id] || message.content}
+              trailing={hasInlineMeta ? renderMeta(true) : undefined}
+            />
           )}
 
           {message.reactions?.length > 0 && (
-            <div className="message-reactions">
+            <div className="message-reactions mt-[7px] flex flex-wrap gap-[5px]">
               {message.reactions.map((reaction) => (
                 /* Нажатие по реакции ставит свою или снимает — как в
                    привычных мессенджерах. Прежде это был `span`, и
@@ -157,7 +259,10 @@ export const MessageBubble = memo(
                 <button
                   aria-label={`${reaction.emoji} ${reaction.count}`}
                   aria-pressed={reaction.myReaction}
-                  className={cn(reaction.myReaction && 'is-mine')}
+                  className={cn(
+                    'min-h-[22px] px-[7px] py-0.5 rounded-pill bg-sheet-2 text-[12px] cursor-pointer border border-transparent transition-[background-color,border-color] duration-fast ease-out hover:border-line focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+                    reaction.myReaction && 'is-mine bg-brand-soft'
+                  )}
                   key={reaction.emoji}
                   onClick={(event) => {
                     // Иначе нажатие уходит выше и открывает меню действий.
@@ -172,39 +277,7 @@ export const MessageBubble = memo(
             </div>
           )}
 
-          <div className="message-meta">
-            {message.isEdited && <span>{t('edited', 'изменено')}</span>}
-            <time>{formatMessageTime(message.createdAt)}</time>
-            {mine && (message.status === 'pending' || message.status === 'uploading') && (
-              <span
-                className="inline-flex items-center gap-1 text-ink-3"
-                title={
-                  message.status === 'uploading'
-                    ? t('uploading', 'Загрузка...')
-                    : t('sending', 'Отправка...')
-                }
-              >
-                <Spinner
-                  size="sm"
-                  label={
-                    message.status === 'uploading'
-                      ? t('uploading', 'Загрузка...')
-                      : t('sending', 'Отправка...')
-                  }
-                />
-              </span>
-            )}
-
-            {/* Статус доставки: галочка — «сервер принял». Двойной она не
-                станет, пока сервер не начнёт отдавать, до какого сообщения
-                прочитал собеседник: такого поля нет ни в контракте, ни в
-                схеме, ни в событиях. */}
-            {mine && showDeliveryStatus && message.status === 'sent' && (
-              <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
-                <Icon name="check" size="sm" />
-              </span>
-            )}
-          </div>
+          {!hasInlineMeta && renderMeta(false)}
 
           {mine && message.status === 'failed' && (
             <div className="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-danger/20 text-danger text-caption">

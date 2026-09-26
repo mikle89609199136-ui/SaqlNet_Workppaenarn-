@@ -1,15 +1,17 @@
 import { useEncryptionState } from '@/features/chat-encryption';
+import { PendingForwardBanner, useForwardSend } from '@/features/forward-messages';
 import { useTypingIndicator } from '@/features/typing-indicator';
 import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { chatQuery, clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn } from '@/shared/lib';
+import { cn, setComposerText } from '@/shared/lib';
 import {
   useEffect,
   useRef,
@@ -18,11 +20,13 @@ import {
   type Dispatch,
   type RefObject,
   type SetStateAction,
+  type SubmitEvent,
 } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
 import { AttachmentPreview } from './AttachmentPreview';
+import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
@@ -113,6 +117,32 @@ export const ChatThreadComposer = ({
     selectionMode,
     setPendingAttachment,
   });
+  const forward = useForwardSend(chatId);
+  // Блокировка в личном чате (#760) — вместо поля ввода. Проверка после
+  // всех хуков: их порядок не должен зависеть от данных.
+  const { data: chat } = useQuery(chatQuery(chatId));
+
+  /* Пересылка ждёт в этом чате: «Отправить» уносит комментарий из поля
+     (если он есть) и пересланные сообщения, а не обычное сообщение. */
+  async function handleComposerSubmit(event: SubmitEvent<HTMLFormElement>) {
+    if (!forward.pending || selectionMode) {
+      await handleSubmit(event);
+      return;
+    }
+
+    event.preventDefault();
+    const comment = (draftRef.current?.value ?? '').trim();
+    setComposerText(draftRef.current, '');
+    clearDraft(chatId);
+    setHasText(false);
+
+    const { commentSent } = await forward.send(comment);
+    if (comment && !commentSent) {
+      setComposerText(draftRef.current, comment);
+      writeDraft(chatId, comment);
+      setHasText(true);
+    }
+  }
 
   function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
     const text = event.target.value;
@@ -128,9 +158,17 @@ export const ChatThreadComposer = ({
     sendTyping();
   }
 
+  if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
+    return <BlockedComposer chat={chat} />;
+  }
+
   return (
-    <ComposerForm onSubmit={handleSubmit} ref={formRef}>
-      <ComposerContextBanner onCancel={cancelComposerMode} />
+    <ComposerForm onSubmit={handleComposerSubmit} ref={formRef}>
+      {forward.pending ? (
+        <PendingForwardBanner forward={forward.pending} onCancel={forward.cancel} />
+      ) : (
+        <ComposerContextBanner onCancel={cancelComposerMode} />
+      )}
       <AttachmentPreview
         attachment={pendingAttachment}
         onEdit={setPhotoEditorFile}
@@ -138,8 +176,10 @@ export const ChatThreadComposer = ({
         onRemove={removePendingAttachment}
       />
       <ComposerRow>
+        {/* К пересылке прикладывается только комментарий: вложение ушло бы
+            отдельным сообщением неизвестно где в очереди. */}
         <AttachmentControl
-          isSending={isSending}
+          isSending={isSending || Boolean(forward.pending)}
           inputRef={attachmentInputRef}
           onChange={handleAttachmentChange}
         />
@@ -155,8 +195,8 @@ export const ChatThreadComposer = ({
 
         <button
           aria-label={t('sendMessage', 'Отправить сообщение')}
-          className={cn('thread-composer-action-btn', hasText && 'is-active')}
-          disabled={encryption.status !== 'ready'}
+          className={cn('thread-composer-action-btn', (hasText || forward.pending) && 'is-active')}
+          disabled={encryption.status !== 'ready' || forward.isForwarding}
           type="submit"
         >
           <svg

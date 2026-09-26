@@ -38,12 +38,6 @@ func TestMessageHandlers_InvalidPathUUIDReturns400WithoutSQL(t *testing.T) {
 			handler: (*Handler).EditMessage,
 		},
 		{
-			name:    "forward message invalid messageId",
-			method:  http.MethodPost,
-			path:    "/api/v2/messages/not-a-uuid/forward",
-			handler: (*Handler).Messages,
-		},
-		{
 			name:    "toggle reaction invalid messageId",
 			method:  http.MethodPost,
 			path:    "/api/v2/messages/not-a-uuid/reactions",

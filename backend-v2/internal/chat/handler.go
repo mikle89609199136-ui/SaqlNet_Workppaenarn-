@@ -666,23 +666,6 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func (h *Handler) MessagesRead(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r)
-		return
-	}
-	current := authctx.MustUser(r)
-	var input struct {
-		ChatID     string   `json:"chatId"`
-		MessageIDs []string `json:"messageIds"`
-	}
-	if !decode(w, r, &input) {
-		return
-	}
-	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
-	respondSuccess(w, r, err)
-}
-
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	// Handle special non-ID routes first.
@@ -749,27 +732,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case suffix == "/forward" && r.Method == http.MethodPost:
-		var input struct {
-			TargetChatID string `json:"targetChatId"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "forward failed")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
 	case suffix == "/reactions" && r.Method == http.MethodPost:
 		var input struct {
 			Emoji string `json:"emoji"`
@@ -807,7 +769,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
 			"reactions":    reactions,    // full list of emoji counts with myReaction flags
 		})
-
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
@@ -907,7 +868,12 @@ func parseMemberAction(suffix string) (string, string) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(value); err != nil {
+	return decodeLimited(w, r, value, 256<<10)
+}
+
+// decodeLimited — decode со своим пределом тела: отправке пачкой общего не хватает.
+func decodeLimited(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(value); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}

@@ -8,6 +8,7 @@ import type { TChatRole } from '@/types';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useLeaveGroupFlow } from '../model/useLeaveGroupFlow';
 
 interface Props {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
   const { t } = useTranslation();
   const { chatId = '' } = useParams<{ chatId: string }>();
   const queryClient = useQueryClient();
+  const leave = useLeaveGroupFlow();
   const { data: chat } = useQuery(chatQuery(chatId));
   const {
     data: members = [],
@@ -54,10 +56,12 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     userId: string,
     body: { role: TChatRole } | null = null
   ) {
-    if (!body) return;
     try {
       if (action === 'change-participant-role') {
-        await services.chatService.setMemberRole(chatId, userId, body?.role);
+        // Удаление участника тела не несёт; раньше общая проверка тела
+        // стояла первой и молча глотала нажатие «Удалить».
+        if (!body) return;
+        await services.chatService.setMemberRole(chatId, userId, body.role);
       } else if (action === 'kick-participant') {
         await services.chatService.removeMember(chatId, userId);
       } else {
@@ -93,23 +97,6 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
     // в двух местах, как было раньше.
     await queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) });
     handleToggleEditMode();
-  };
-
-  const handleLeaveChat = async () => {
-    if (!currentUserData?.id || !chat) return;
-    try {
-      await services.chatService.removeMember(chat.id, currentUserData.id);
-      clearDraft(chat.id);
-      queryClient.removeQueries({ queryKey: chatKeys.detail(chat.id) });
-      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-      onClose();
-      navigate('/chats');
-    } catch (err: any) {
-      showToast(
-        'error',
-        describeApiError(err, t, t('toast.leaveChatFailed', 'Не удалось покинуть чат'))
-      );
-    }
   };
 
   const handleDeleteChat = async () => {
@@ -187,7 +174,12 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
               >
                 {t('edit', 'Редактировать')}
               </Button>
-              <Button className="w-full" onClick={handleLeaveChat} size="sm" variant="danger">
+              <Button
+                className="w-full"
+                onClick={() => leave.requestLeave(chat)}
+                size="sm"
+                variant="danger"
+              >
                 {t('leaveChat', 'Покинуть чат')}
               </Button>
               {currentUser?.role === 'owner' && (
@@ -265,6 +257,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
           </ul>
         )}
       </div>
+      {leave.dialog}
     </Modal>
   );
 }

@@ -13,7 +13,8 @@ export function userStatusQuery(userId: string, options?: { enabled?: boolean })
     queryKey: userKeys.status(userId),
     queryFn: () => services.userService.getStatus(userId),
     staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    refetchInterval: (query) => ((query.state.error as any)?.status === 404 ? false : 30 * 1000),
+    retry: (failureCount, error: any) => (error?.status === 404 ? false : failureCount < 3),
     enabled: Boolean(userId) && (options?.enabled ?? true),
   });
 }
