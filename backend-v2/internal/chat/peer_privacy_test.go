@@ -54,3 +54,22 @@ func TestApplyPeerPrivacy(t *testing.T) {
 		require.Empty(t, chat.AvatarURL)
 	})
 }
+
+func TestApplyPeerPrivacyWithExceptions(t *testing.T) {
+	t.Run("статус закрыт для всех, но зрителю открыт", func(t *testing.T) {
+		chat := peerChat()
+		applyPeerPrivacy(&chat, privacy.Parse([]byte(`{"lastSeen":"nobody","photoVisibility":"nobody"}`)),
+			privacy.Relation{Exceptions: map[privacy.Rule]bool{privacy.LastSeen: true}})
+		require.True(t, chat.PeerIsOnline)
+		require.Equal(t, "2026-09-26T12:00:00Z", chat.PeerLastSeen)
+		require.Empty(t, chat.AvatarURL, "фото исключение не открывало")
+	})
+
+	t.Run("фото открыто всем, но от зрителя закрыто", func(t *testing.T) {
+		chat := peerChat()
+		applyPeerPrivacy(&chat, privacy.Parse(nil),
+			privacy.Relation{Exceptions: map[privacy.Rule]bool{privacy.Photo: false}})
+		require.Empty(t, chat.AvatarURL)
+		require.True(t, chat.PeerIsOnline)
+	})
+}

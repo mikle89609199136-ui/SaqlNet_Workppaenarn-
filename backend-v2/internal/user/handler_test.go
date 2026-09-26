@@ -222,7 +222,7 @@ func TestPublicStatusReturnsUserNotFound(t *testing.T) {
 
 	mock.ExpectQuery(statusQueryPattern).
 		WithArgs("11111111-1111-4111-8111-111111111111", "").
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}))
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "last_active", "is_online"}))
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/11111111-1111-4111-8111-111111111111/status", nil)

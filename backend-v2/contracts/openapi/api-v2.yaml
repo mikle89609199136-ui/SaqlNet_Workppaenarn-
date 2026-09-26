@@ -51,6 +51,8 @@ paths:
   /users/all-settings: { $ref: './paths/users.yaml#/~1users~1all-settings' }
   /users/settings: { $ref: './paths/users.yaml#/~1users~1settings' }
   /users/privacy: { $ref: './paths/users.yaml#/~1users~1privacy' }
+  /users/privacy/exceptions: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions' }
+  /users/privacy/exceptions/{rule}/{userId}: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions~1{rule}~1{userId}' }
   /users/notifications: { $ref: './paths/users.yaml#/~1users~1notifications' }
   /users/sounds: { $ref: './paths/users.yaml#/~1users~1sounds' }
   /users/advanced-settings: { $ref: './paths/users.yaml#/~1users~1advanced-settings' }

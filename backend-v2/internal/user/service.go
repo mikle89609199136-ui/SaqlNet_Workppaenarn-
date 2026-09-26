@@ -484,15 +484,16 @@ func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername strin
 
 // Status — «в сети» и «был(а)» пользователя userID глазами viewerID. Что
 // из этого можно показать, решает общая проверка приватности (#783):
-// правило «Последняя активность» и блокировка.
+// правило «Последняя активность», блокировка и исключения (#784).
 func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[string]any, error) {
-	var privacyJSON []byte
+	var privacyJSON, exceptions []byte
 	var blocked bool
 	var lastActive sql.NullString
 	var online bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings.privacy_settings,
 		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = auth.users.id AND b.blocked_user_id = $2),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = auth.users.id AND e.user_id = $2),
 		       to_char(presence.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		       -- «В сети» — живое WebSocket-подключение (#780): отметку ведёт
 		       -- чат-сервис, свежей она считается 75 секунд.
@@ -501,7 +502,7 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
 		LEFT JOIN users.presence AS presence ON presence.user_id = auth.users.id
 		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
-	`, userID, viewerID).Scan(&privacyJSON, &blocked, &lastActive, &online)
+	`, userID, viewerID).Scan(&privacyJSON, &blocked, &exceptions, &lastActive, &online)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -509,7 +510,7 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 		return nil, err
 	}
 
-	relation := privacy.Relation{Self: viewerID == userID, Blocked: blocked}
+	relation := privacy.Relation{Self: viewerID == userID, Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)}
 	if !privacy.Decide(privacy.Parse(privacyJSON), relation, privacy.LastSeen) {
 		return map[string]any{"isOnline": false, "lastSeen": "recently"}, nil
 	}

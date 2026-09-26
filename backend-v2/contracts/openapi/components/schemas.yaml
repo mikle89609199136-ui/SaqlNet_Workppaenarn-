@@ -96,6 +96,26 @@ PrivacySettings:
     messagesFromStrangers: { type: boolean }
     twoFactorAuth: { type: boolean }
     autoDeleteAccount: { type: boolean }
+PrivacyExceptionRule:
+  type: string
+  enum: [lastSeen, photoVisibility, phoneVisibility, forwards, calls, groupsAdd]
+  description: Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
+PrivacyExceptionMode:
+  type: string
+  enum: [allow, deny]
+  description: allow — always let this person see it; deny — never.
+PrivacyException:
+  type: object
+  required: [id, username, firstName, lastName, avatarUrl, rule, mode, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    username: { type: string }
+    firstName: { type: string }
+    lastName: { type: string }
+    avatarUrl: { type: string }
+    rule: { $ref: '#/PrivacyExceptionRule' }
+    mode: { $ref: '#/PrivacyExceptionMode' }
+    createdAt: { type: string, format: date-time }
 Chat:
   type: object
   required: [id, type]

@@ -615,6 +615,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/privacy/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List privacy exceptions
+         * @description People the owner let see a closed rule (allow) or hid an open one from (deny), newest first. Without rule, exceptions of every rule.
+         */
+        get: operations["listPrivacyExceptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/privacy/exceptions/{rule}/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add or switch a privacy exception
+         * @description One exception per person and rule: putting someone on the allow list moves them off the deny list. Order of the check: the owner themself, the block list, the exception, the rule. Yourself is 400 self_exception; an unknown or disabled user is 404 user_not_found.
+         */
+        put: operations["setPrivacyException"];
+        post?: never;
+        /**
+         * Remove a privacy exception
+         * @description Removing an exception that is not there is not an error.
+         */
+        delete: operations["removePrivacyException"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/notifications": {
         parameters: {
             query?: never;
@@ -2443,6 +2490,28 @@ export interface components {
             twoFactorAuth?: boolean;
             autoDeleteAccount?: boolean;
         };
+        /**
+         * @description Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
+         * @enum {string}
+         */
+        PrivacyExceptionRule: "lastSeen" | "photoVisibility" | "phoneVisibility" | "forwards" | "calls" | "groupsAdd";
+        /**
+         * @description allow — always let this person see it; deny — never.
+         * @enum {string}
+         */
+        PrivacyExceptionMode: "allow" | "deny";
+        PrivacyException: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            avatarUrl: string;
+            rule: components["schemas"]["PrivacyExceptionRule"];
+            mode: components["schemas"]["PrivacyExceptionMode"];
+            /** Format: date-time */
+            createdAt: string;
+        };
         PublicEncryptionKey: {
             /** Format: byte */
             publicKey: string;
@@ -3746,6 +3815,86 @@ export interface operations {
                         privacy: components["schemas"]["PrivacySettings"];
                     };
                 };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    listPrivacyExceptions: {
+        parameters: {
+            query?: {
+                rule?: components["schemas"]["PrivacyExceptionRule"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Privacy exceptions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        exceptions: components["schemas"]["PrivacyException"][];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    setPrivacyException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: components["schemas"]["PrivacyExceptionMode"];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved exception */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        exception: components["schemas"]["PrivacyException"];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    removePrivacyException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["Error"];
         };
