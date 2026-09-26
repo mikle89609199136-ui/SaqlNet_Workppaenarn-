@@ -150,11 +150,12 @@ jobs:
         run: go test -count=1 -tags=integration -v ./cmd/migrate
 
       # Единая проверка приватности, исключения по людям и настоящий SQL
-      # статуса, данных чата и рассылки присутствия (#783, #784).
+      # статуса, данных чата, рассылки присутствия и списка «в сети» в группе
+      # (#783, #784).
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run TestPresenceAudienceOnRealSchema ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema' ./internal/chat
 
       - name: Build services
         run: go build ./...

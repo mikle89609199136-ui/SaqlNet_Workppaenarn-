@@ -3304,9 +3304,22 @@ func (s *Service) ensureGroupMember(ctx context.Context, chatID, userID string) 
 	return nil
 }
 
-// chatMemberIDs возвращает список UUID участников чата в порядке их хранения в БД.
-func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT user_id::text FROM chats.members WHERE chat_id = $1", chatID)
+// membersWithPrivacyQuery — участники чата $1 и всё, что нужно проверке
+// приватности для зрителя $2.
+const membersWithPrivacyQuery = `
+		SELECT cm.user_id::text, ms.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = cm.user_id AND b.blocked_user_id = $2),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = cm.user_id AND e.user_id = $2)
+		FROM chats.members cm
+		LEFT JOIN users.settings ms ON ms.user_id = cm.user_id
+		WHERE cm.chat_id = $1`
+
+// statusVisibleMemberIDs возвращает UUID участников чата, чей статус виден
+// viewerID, в порядке их хранения в БД. Решает общая проверка приватности
+// (#783, #784): правило «Последняя активность», блокировка и исключения —
+// так же, как для статуса, данных личного чата и рассылки присутствия.
+func (s *Service) statusVisibleMemberIDs(ctx context.Context, chatID, viewerID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, membersWithPrivacyQuery, chatID, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -3315,10 +3328,15 @@ func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, e
 	memberIDs := make([]string, 0)
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var settings, exceptions []byte
+		var blocked bool
+		if err := rows.Scan(&id, &settings, &blocked, &exceptions); err != nil {
 			return nil, err
 		}
-		memberIDs = append(memberIDs, id)
+		relation := privacy.Relation{Self: id == viewerID, Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)}
+		if privacy.Decide(privacy.Parse(settings), relation, privacy.LastSeen) {
+			memberIDs = append(memberIDs, id)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -3328,6 +3346,7 @@ func (s *Service) chatMemberIDs(ctx context.Context, chatID string) ([]string, e
 
 // GetOnlineMembers возвращает UUID участников группового чата, которые сейчас online
 // (по presence.Store). Доступ только для участников чата; личные чаты не поддерживаются.
+// Участники, скрывшие статус от userID, в ответ не попадают.
 func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) ([]string, error) {
 	if err := validate.Struct(onlineMembersInput{ChatID: chatID, UserID: userID}); err != nil {
 		return nil, ErrInvalidInput
@@ -3337,7 +3356,7 @@ func (s *Service) GetOnlineMembers(ctx context.Context, chatID, userID string) (
 		return nil, err
 	}
 
-	memberIDs, err := s.chatMemberIDs(ctx, chatID)
+	memberIDs, err := s.statusVisibleMemberIDs(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
 	}

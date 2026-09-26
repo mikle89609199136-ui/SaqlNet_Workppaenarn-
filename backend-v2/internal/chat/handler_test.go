@@ -62,7 +62,7 @@ const (
 	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
 	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
-	onlineMemberIDsQuery = `SELECT user_id::text FROM chats.members WHERE chat_id = $1`
+	onlineMemberIDsQuery = membersWithPrivacyQuery
 )
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
@@ -708,9 +708,9 @@ func TestHandler_GetOnlineMembers(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				m.ExpectQuery(onlineMemberIDsQuery).
-					WithArgs(handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
-						AddRow(handlerActorID).AddRow(handlerTargetID))
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"user_id", "privacy_settings", "blocked", "exceptions"}).
+						AddRow(handlerActorID, nil, false, nil).AddRow(handlerTargetID, nil, false, nil))
 			},
 			wantStatus:  http.StatusOK,
 			wantMembers: []string{handlerActorID},
