@@ -97,6 +97,8 @@ paths:
   /chats/{chatId}/members: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members' }
   /chats/{chatId}/members-online: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members-online' }
   /chats/{chatId}/bans: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1bans' }
+  /chats/{chatId}/leave: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1leave' }
+  /chats/{chatId}/transfer-ownership: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1transfer-ownership' }
   /chats/{chatId}/members/{userId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}' }
   /chats/{chatId}/members/{userId}/role: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1role' }
   /chats/{chatId}/members/{userId}/ban: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1ban' }
