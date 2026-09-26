@@ -10,6 +10,7 @@ import {
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
 import { getChatSubtitle, useNow } from '@/shared/lib';
+import { BlockUserButton } from '@/features/block-user';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
@@ -92,7 +93,9 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     <aside className="h-full flex flex-col bg-sheet overflow-hidden" role="complementary">
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         <ProfileHeader
-          hasChat={Boolean(chat)}
+          /* Звонить есть куда — общий личный чат — и можно: блокировка в
+             любую сторону звонки запрещает, сервер их отклонит (#760). */
+          hasChat={Boolean(chat) && !chat?.isBlockedByPeer && !chat?.isPeerBlocked}
           isMyProfile={isMyProfile}
           isPeerOnline={Boolean(profileUser.isOnline)}
           onCall={(kind) =>
@@ -114,6 +117,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           onSave={saveProfileEdit}
           profileUser={profileUser}
         />
+
+        {/* Блокировка — из профиля человека, как в Telegram (#727). */}
+        {!isMyProfile && profileUser.id && (
+          <BlockUserButton name={displayName} userId={profileUser.id} />
+        )}
 
         {chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
       </div>

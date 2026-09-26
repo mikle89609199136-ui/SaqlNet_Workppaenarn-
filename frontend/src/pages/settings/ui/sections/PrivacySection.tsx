@@ -1,4 +1,9 @@
-import { RadioGroup, Switch } from '@/shared/ui';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useParams } from 'react-router-dom';
+import { blockedUsersQuery } from '@/entities/user';
+import { BlockedUsersManager } from '@/features/block-user';
+import { ROUTES, isPrivacySubsection } from '@/shared/config/routes';
+import { Icon, RadioGroup, Switch } from '@/shared/ui';
 import type { TPrivacyVisibility } from '@/types';
 import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +28,14 @@ const GROUP_LABEL = '[&>legend]:text-body [&>legend]:mb-2 [&>legend]:text-ink';
 
 export function PrivacySection() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const params = useParams<{ subsection: string }>();
   const { privacy, savePrivacy } = useSettingsData();
+  const blocked = useQuery(blockedUsersQuery());
+
+  if (isPrivacySubsection(params.subsection)) {
+    return <BlockedUsersManager onBack={() => navigate(ROUTES.SETTINGS_SECTION('privacy'))} />;
+  }
 
   const visibilityOptions = [
     { value: 'all', label: t('settings.privacy.lastSeenAll', 'Все') },
@@ -83,6 +95,20 @@ export function PrivacySection() {
           onChange={(event) => savePrivacy({ messagesFromStrangers: event.target.checked })}
         />
       </SettingsRow>
+
+      {/* Чёрный список — отдельной подстраницей (#727): список людей не
+          помещается рядом с переключателями. */}
+      <button
+        className="text-body -mx-1 flex min-h-11 w-[calc(100%+0.5rem)] items-center justify-between gap-4 rounded-control px-1 text-left text-ink transition-colors duration-fast hover:bg-sheet-2 focus-visible:outline-2 focus-visible:outline-brand"
+        onClick={() => navigate(ROUTES.SETTINGS_SUBSECTION('privacy', 'blocked'))}
+        type="button"
+      >
+        <span>{t('settings.privacy.blocked', 'Чёрный список')}</span>
+        <span className="flex shrink-0 items-center gap-2 text-ink-2">
+          {blocked.data?.length ? blocked.data.length : null}
+          <Icon className="text-ink-3" name="chevronRight" size="sm" />
+        </span>
+      </button>
     </SettingsSection>
   );
 }

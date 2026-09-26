@@ -114,6 +114,32 @@ describe('переключатели настроек', () => {
     await waitFor(() => expect(sent).toEqual([{ forwards: 'nobody' }]));
   });
 
+  it('«Чёрный список» — число заблокированных и переход к списку (#727)', async () => {
+    const person = (id: string, name: string) => ({
+      id,
+      username: id,
+      firstName: name,
+      lastName: '',
+      avatarUrl: '',
+      blockedAt: '2026-09-26T12:00:00Z',
+    });
+    server.use(
+      http.get(api('/users/blocked'), () =>
+        HttpResponse.json({ blocked: [person('anna', 'Анна'), person('boris', 'Борис')] })
+      )
+    );
+
+    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+
+    const row = await screen.findByRole('button', { name: /Чёрный список/ });
+    await waitFor(() => expect(row).toHaveTextContent('2'));
+    await userEvent.click(row);
+
+    expect(await screen.findByRole('heading', { name: 'Чёрный список' })).toBeInTheDocument();
+    expect(await screen.findByText('Анна')).toBeInTheDocument();
+    expect(screen.getByText('Борис')).toBeInTheDocument();
+  });
+
   it('объясняет, что будет при «Никто», и связывает подсказку с выбором', async () => {
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
 

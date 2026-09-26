@@ -1,9 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { chatKeys } from '@/entities/chat';
+import { useUnblockUser } from '@/features/block-user';
 import { describeApiError } from '@/shared/api';
 import { Button, showToast } from '@/shared/ui';
-import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { ComposerForm } from './ComposerForm';
 
@@ -12,29 +10,26 @@ import { ComposerForm } from './ComposerForm';
  *
  * Заблокировали вас — писать и звонить нельзя, сервер ответит
  * blocked_by_user. Заблокировали вы — написать можно после разблокировки,
- * как в Telegram: кнопка прямо здесь. Флаги считает сервер; после
- * разблокировки чат перечитывается и поле ввода возвращается.
+ * как в Telegram: кнопка прямо здесь. Флаги считает сервер; разблокировка
+ * перечитывает чат, профиль и чёрный список (#727), и поле ввода
+ * возвращается.
  */
 export function BlockedComposer({ chat }: { chat: IChatDto }) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const unblock = useMutation({
-    mutationFn: () => services.userService.unblockUser(chat.peerId ?? ''),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id), exact: true });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.list(), exact: true });
-    },
-    onError: (error) => {
-      showToast(
-        'error',
-        describeApiError(
-          error as { code?: string },
-          t,
-          t('unblockFailed', 'Не удалось разблокировать')
-        )
-      );
-    },
-  });
+  const unblock = useUnblockUser();
+
+  const handleUnblock = () =>
+    unblock.mutate(chat.peerId ?? '', {
+      onError: (error) =>
+        showToast(
+          'error',
+          describeApiError(
+            error as { code?: string },
+            t,
+            t('unblockFailed', 'Не удалось разблокировать')
+          )
+        ),
+    });
 
   return (
     <ComposerForm onSubmit={(event) => event.preventDefault()}>
@@ -47,7 +42,7 @@ export function BlockedComposer({ chat }: { chat: IChatDto }) {
             <span className="text-body text-ink-2">
               {t('chatPeerBlocked', 'Вы заблокировали этого пользователя')}
             </span>
-            <Button disabled={unblock.isPending} onClick={() => unblock.mutate()} size="sm">
+            <Button disabled={unblock.isPending} onClick={handleUnblock} size="sm">
               {t('unblock', 'Разблокировать')}
             </Button>
           </>

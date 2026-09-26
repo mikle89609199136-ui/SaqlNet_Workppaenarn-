@@ -191,7 +191,12 @@ describe('ChatThreadComposer', () => {
       const unblock = vi
         .spyOn(services.userService, 'unblockUser')
         .mockResolvedValue({ success: true });
-      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+      // Чат с этим человеком перечитывается — с сервера он придёт уже без флага.
+      const refetch = vi
+        .spyOn(services.chatService, 'getChat')
+        .mockResolvedValue(
+          makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer' }) as never
+        );
 
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
 
@@ -199,11 +204,9 @@ describe('ChatThreadComposer', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
 
       expect(unblock).toHaveBeenCalledWith('user-peer');
-      await vi.waitFor(() =>
-        expect(invalidate).toHaveBeenCalledWith(
-          expect.objectContaining({ queryKey: chatKeys.detail('chat-test-1') })
-        )
-      );
+      await vi.waitFor(() => expect(refetch).toHaveBeenCalledWith('chat-test-1'));
+      // Флага больше нет — вернулось обычное поле ввода.
+      expect(await screen.findByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
     });
 
     it('без блокировки — обычное поле ввода', () => {
