@@ -1,14 +1,4 @@
 export type {
-  IActiveCall,
-  ICall,
-  ICallCancelledPayload,
-  ICallInviteResponsePayload,
-  IIncomingCall,
-  IRingtone,
-  TCallKind,
-  TCallRoomType,
-} from './call.types';
-export type {
   IChatContext,
   IChatDto,
   ILastMessageDto,
@@ -73,7 +63,7 @@ export type {
 } from '@/entities/user';
 export type {
   ICallAnswerEvent,
-  ICallCenceledEvent,
+  ICallCancelledEvent,
   ICallErrorEvent,
   ICallIceEvent,
   ICallIncomingEvent,
