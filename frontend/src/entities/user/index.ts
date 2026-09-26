@@ -10,6 +10,8 @@ export * from './model/blockedUsersQuery';
 export * from './model/privacyExceptionsQuery';
 export * from './model/useApplyPreferences';
 export * from './model/userKeys';
+export * from './model/checkUsernameQuery';
+export * from './model/userStatusQuery';
 export * from './model/validateAvatarFile';
 export * from './api/settingsMutations';
 export { ProfileHeader } from './ui/ProfileHeader';

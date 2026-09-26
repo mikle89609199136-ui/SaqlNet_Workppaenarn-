@@ -1,4 +1,5 @@
 import type { IChatDto, TMessagesList } from '@/types';
+import type { TLastSeenApprox } from '@/shared/lib';
 
 export interface IUserDto {
   id: string;
@@ -75,6 +76,16 @@ export interface IBlockedUserDto {
 export interface ISettingsPayloadDto {
   settings: Partial<ISettingsDto>;
   privacy: Partial<IPrivacyDto>;
+}
+
+export interface ICheckUsernameResponse {
+  available: boolean;
+}
+
+export interface IUserStatusDto {
+  isOnline: boolean;
+  lastSeen: string;
+  lastSeenApprox?: TLastSeenApprox;
 }
 
 export interface ISearchUserDto {

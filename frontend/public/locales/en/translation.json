@@ -358,6 +358,8 @@
   "qrOffer.verificationCode": "Verification code",
   "reactionChosen": "— your reaction",
   "reactionError": "Could not update the reaction",
+  "register.usernameAvailable": "Username is available",
+  "register.usernameChecking": "Checking username availability...",
   "register.usernameTaken": "This username is taken",
   "register.weakPassword": "Password does not meet requirements",
   "registerAction": "Sign up",

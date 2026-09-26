@@ -358,6 +358,8 @@
   "qrOffer.verificationCode": "Код сверки",
   "reactionChosen": "— ваша реакция",
   "reactionError": "Не удалось обновить реакцию",
+  "register.usernameAvailable": "Имя пользователя свободно",
+  "register.usernameChecking": "Проверка доступности имени...",
   "register.usernameTaken": "Это имя пользователя занято",
   "register.weakPassword": "Пароль не отвечает требованиям",
   "registerAction": "Зарегистрироваться",

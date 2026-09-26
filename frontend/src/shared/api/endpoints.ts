@@ -40,6 +40,8 @@ export const API_ENDPOINTS = {
   CHAT_READ: (chatId: string) => `/chats/${chatId}/read`,
 
   USER_SEARCH: '/users/search',
+  USER_CHECK_USERNAME: '/users/check-username',
+  USER_STATUS: (userId: string) => `/users/${userId}/status`,
   USER_PROFILE: (userId: string) => `/users/${userId}/profile`,
   USER_SETTINGS: '/users/settings',
   USER_PRIVACY: '/users/privacy',
