@@ -19,7 +19,7 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"name", "id", "content", "entities", "type", "sender_id"}).AddRow("Анна", replyID, "Привет", []byte(`[{"type":"bold","offset":0,"length":6}]`), "text", "sender-id"))
 
 	msg := Message{ChatID: "chat-id", SenderName: "Иван", ReplyTo: &replyID}
-	if err := NewService(db, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
+	if err := NewService(db, nil, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
 		t.Fatal(err)
 	}
 	if msg.SenderFirstName != "Иван" || msg.ReplyToMessageID == nil || *msg.ReplyToMessageID != replyID {
@@ -61,7 +61,7 @@ func TestHydrateMessagesReactions(t *testing.T) {
 			),
 		)
 
-	service := NewService(db, nil)
+	service := NewService(db, nil, nil)
 	err = service.hydrateMessagesReactions(
 		context.Background(),
 		"current-user-id",
@@ -136,7 +136,7 @@ func TestHydrateChatsLastMessageReactions(t *testing.T) {
 			),
 		)
 
-	service := NewService(db, nil)
+	service := NewService(db, nil, nil)
 	err = service.hydrateChatsLastMessageReactions(
 		context.Background(),
 		"current-user-id",

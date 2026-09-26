@@ -5,10 +5,9 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
-
-	"strings"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
@@ -39,40 +38,59 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
 			return
 		}
+		if err := authctx.CheckTokenGenerationSchema(r.Context(), pool); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(r.Context()); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+			return
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/api/v2/users/me", authenticated(http.HandlerFunc(handler.Me)))
 	mux.Handle("/api/v2/users/avatar", authenticated(http.HandlerFunc(handler.Avatar)))
-	mux.Handle("/api/v2/users/check-username", authenticated(http.HandlerFunc(handler.CheckUsername)))
-	mux.Handle("/api/v2/users/search", authenticated(http.HandlerFunc(handler.Search)))
+	registerUsernameRoutes(mux, authenticated, handler)
 	mux.Handle("/api/v2/users/qr-code", authenticated(http.HandlerFunc(handler.QRCode)))
 	mux.Handle("/api/v2/premium/subscribe", authenticated(http.HandlerFunc(handler.SubscribePremium)))
 	mux.Handle("/api/v2/users/all-settings", authenticated(http.HandlerFunc(handler.AllSettings)))
 	mux.Handle("/api/v2/users/settings", authenticated(http.HandlerFunc(handler.Settings)))
 	mux.Handle("/api/v2/users/privacy", authenticated(http.HandlerFunc(handler.Privacy)))
+	mux.Handle("/api/v2/users/privacy/exceptions", authenticated(http.HandlerFunc(handler.PrivacyExceptions)))
+	mux.Handle("/api/v2/users/privacy/exceptions/", authenticated(http.HandlerFunc(handler.PrivacyExceptions)))
 	mux.Handle("/api/v2/users/notifications", authenticated(http.HandlerFunc(handler.Preference)))
 	mux.Handle("/api/v2/users/sounds", authenticated(http.HandlerFunc(handler.Preference)))
 	mux.Handle("/api/v2/users/advanced-settings", authenticated(http.HandlerFunc(handler.Preference)))
 	mux.Handle("/api/v2/users/folders", authenticated(http.HandlerFunc(handler.Folders)))
+
 	mux.Handle("/api/v2/users/storage", authenticated(http.HandlerFunc(handler.Storage)))
 	mux.Handle("/api/v2/users/storage/", authenticated(http.HandlerFunc(handler.Storage)))
+
 	mux.Handle("/api/v2/users/export", authenticated(http.HandlerFunc(handler.Export)))
+
 	mux.Handle("/api/v2/users/passcode", authenticated(http.HandlerFunc(handler.Passcode)))
 	mux.Handle("/api/v2/users/passcode/", authenticated(http.HandlerFunc(handler.Passcode)))
+
 	mux.Handle("/api/v2/users/blocked", authenticated(http.HandlerFunc(handler.Blocked)))
 	mux.Handle("/api/v2/users/blocked/", authenticated(http.HandlerFunc(handler.Unblock)))
+
 	mux.Handle("/api/v2/users/devices", authenticated(http.HandlerFunc(handler.Devices)))
 	mux.Handle("/api/v2/users/devices/register", authenticated(http.HandlerFunc(handler.RegisterDevice)))
 	mux.Handle("/api/v2/users/devices/terminate-all", authenticated(http.HandlerFunc(handler.TerminateAllDevices)))
 	mux.Handle("/api/v2/users/devices/", authenticated(http.HandlerFunc(handler.DeleteDevice)))
+
 	supportHandler := support.NewHandler(support.NewService(pool))
 	mux.Handle("/api/v2/support/requests", authenticated(http.HandlerFunc(supportHandler.Routes)))
 	mux.Handle("/api/v2/support/requests/", authenticated(http.HandlerFunc(supportHandler.Routes)))
+
 	mux.Handle("/api/v2/encryption/keys", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/keys/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/chat-keys/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/rotate-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
 	mux.Handle("/api/v2/encryption/my-key/", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/backup", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+	mux.Handle("/api/v2/encryption/backup/chat-keys", authenticated(http.HandlerFunc(handler.EncryptionRoutes)))
+
 	registerSignalRoutes(mux, authenticated, handler)
 	mux.Handle("/api/v2/users/", authenticated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/profile") {
@@ -99,6 +117,12 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdown)
+}
+
+func registerUsernameRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {
+	mux.HandleFunc("/api/v2/users/check-username", handler.CheckUsername)
+	mux.Handle("/api/v2/users/me/username", authenticated(http.HandlerFunc(handler.Username)))
+	mux.Handle("/api/v2/users/search", authenticated(http.HandlerFunc(handler.Search)))
 }
 
 func registerSignalRoutes(mux *http.ServeMux, authenticated func(http.Handler) http.Handler, handler *user.Handler) {

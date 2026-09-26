@@ -1,9 +1,9 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { flattenThread } from './threadCache';
 import { getChatOutbox } from './outboxStore';
-import { sortMessagesChronologically } from '@/shared/lib/sortMessagesChronologically';
+import { sortMessagesChronologically } from '@/shared/lib';
 import type { IMessageDto, TMediaMessageType } from './types';
 
 /** Размер страницы истории — тот же, что запрашивала страница чата до миграции. */

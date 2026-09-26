@@ -1,5 +1,5 @@
 import { Icon } from '@/shared/ui';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { getMessagePreview } from '@/entities/message';
 import { useTranslation } from 'react-i18next';
 

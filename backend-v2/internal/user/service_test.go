@@ -3,9 +3,12 @@ package user_test
 import (
 	"context"
 	"craneapp/backend-v2/internal/user"
+	"database/sql"
 	"errors"
 	"regexp"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -73,8 +76,192 @@ func TestIsUsernameAvailable_ReturnsErrInvalidInputOnEmpty(t *testing.T) {
 	svc := user.NewService(db)
 
 	_, err = svc.IsUsernameAvailable(context.Background(), "    ")
-	if !errors.Is(err, user.ErrInvalidUsernameFormat) {
+	if !errors.Is(err, user.ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameUsername_NormalizesAndAuditsAtomically(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT username\s+FROM auth\.users.*FOR UPDATE`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("old_name"))
+	mock.ExpectQuery(`SELECT changed_at\s+FROM users\.username_changes`).
+		WithArgs("user-id").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`INSERT INTO auth\.username_registry`).
+		WithArgs("alice_1", "user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("alice_1"))
+	mock.ExpectExec(`UPDATE auth\.users`).
+		WithArgs("user-id", "alice_1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO users\.username_changes`).
+		WithArgs("user-id", "old_name", "alice_1").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`SELECT pg_notify`).
+		WithArgs("crane_user_profile_changed", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+			AddRow("user-id", "alice_1", "Alice", "", "", "", "{}", false))
+
+	profile, err := user.NewService(db).RenameUsername(context.Background(), "user-id", " Alice_1 ")
+	if err != nil {
+		t.Fatalf("rename username: %v", err)
+	}
+	if profile.Username != "alice_1" {
+		t.Fatalf("expected canonical username alice_1, got %q", profile.Username)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameUsername_MapsAtomicUniqueConflict(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT username\s+FROM auth\.users.*FOR UPDATE`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("old_name"))
+	mock.ExpectQuery(`SELECT changed_at\s+FROM users\.username_changes`).
+		WithArgs("user-id").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`INSERT INTO auth\.username_registry`).
+		WithArgs("taken_name", "user-id").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	_, err = user.NewService(db).RenameUsername(context.Background(), "user-id", "TAKEN_NAME")
+	if !errors.Is(err, user.ErrUsernameTaken) {
+		t.Fatalf("expected ErrUsernameTaken, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameUsername_ConcurrentAttemptsAreSerializedBeforeCooldownCheck(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	changedAt := time.Now().Add(-time.Hour)
+	mock.ExpectBegin()
+	// FOR UPDATE is the concurrency guarantee: a second rename for this user
+	// cannot evaluate its cooldown until the first transaction has committed.
+	mock.ExpectQuery(`SELECT username\s+FROM auth\.users.*FOR UPDATE`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("old_name"))
+	mock.ExpectQuery(`SELECT changed_at\s+FROM users\.username_changes`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"changed_at"}).AddRow(changedAt))
+	mock.ExpectRollback()
+
+	_, err = user.NewService(db).RenameUsername(context.Background(), "user-id", "new_name")
+	if !errors.Is(err, user.ErrUsernameCooldown) {
+		t.Fatalf("expected ErrUsernameCooldown, got %v", err)
+	}
+	var cooldown *user.UsernameCooldownError
+	if !errors.As(err, &cooldown) || !cooldown.AvailableAt.Equal(changedAt.Add(user.UsernameChangeCooldown)) {
+		t.Fatalf("unexpected cooldown details: %#v", cooldown)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameUsername_ConcurrentAccountsCannotClaimSameName(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	for _, account := range []struct {
+		id, old string
+	}{
+		{id: "user-1", old: "old_one"},
+		{id: "user-2", old: "old_two"},
+	} {
+		mock.ExpectBegin()
+		mock.ExpectQuery(`SELECT username\s+FROM auth\.users.*FOR UPDATE`).
+			WithArgs(account.id).
+			WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow(account.old))
+		mock.ExpectQuery(`SELECT changed_at\s+FROM users\.username_changes`).
+			WithArgs(account.id).
+			WillReturnError(sql.ErrNoRows)
+	}
+	mock.ExpectQuery(`INSERT INTO auth\.username_registry`).
+		WithArgs("shared_name", "user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("shared_name"))
+	mock.ExpectQuery(`INSERT INTO auth\.username_registry`).
+		WithArgs("shared_name", "user-2").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(`UPDATE auth\.users`).
+		WithArgs("user-1", "shared_name").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO users\.username_changes`).
+		WithArgs("user-1", "old_one", "shared_name").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`SELECT pg_notify`).
+		WithArgs("crane_user_profile_changed", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+		WithArgs("user-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+			AddRow("user-1", "shared_name", "One", "", "", "", "{}", false))
+	mock.ExpectRollback()
+
+	svc := user.NewService(db)
+	results := make(chan error, 2)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, id := range []string{"user-1", "user-2"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, renameErr := svc.RenameUsername(context.Background(), id, "SHARED_NAME")
+			results <- renameErr
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	var successes, conflicts int
+	for result := range results {
+		switch {
+		case result == nil:
+			successes++
+		case errors.Is(result, user.ErrUsernameTaken):
+			conflicts++
+		default:
+			t.Fatalf("unexpected rename result: %v", result)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("expected one winner and one conflict, got successes=%d conflicts=%d", successes, conflicts)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -188,12 +375,39 @@ func TestProfileByID_ReturnsUsernameAsIs(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
 			AddRow("user-id", "ivan.7", "Ivan", "", "", "", "{}", false))
 
-	profile, err := svc.ProfileByID(context.Background(), "user-id")
+	profile, err := svc.ProfileByID(context.Background(), "user-id", "user-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if profile.Username != "ivan.7" {
 		t.Fatalf("expected username ivan.7, got %s", profile.Username)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProfileByUsername_AllowsLegacyDiscriminator(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1`).
+		WithArgs("ivan.123").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("user-id"))
+	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+			AddRow("user-id", "ivan.123", "Ivan", "", "", "", "{}", false))
+
+	profile, err := user.NewService(db).ProfileByUsername(context.Background(), " IVAN.123 ")
+	if err != nil {
+		t.Fatalf("lookup legacy username: %v", err)
+	}
+	if profile.Username != "ivan.123" {
+		t.Fatalf("expected legacy username ivan.123, got %q", profile.Username)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -221,12 +435,23 @@ const searchSQL = `
 		LIMIT 50
 	`
 
+// expectPhotoCheck — проверка правила «Фото» у найденных с аватарами (#789).
+// Настроек нет — фото по умолчанию открыто.
+func expectPhotoCheck(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`FROM auth\.users u\s+LEFT JOIN users\.settings s`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "privacy_settings", "blocked", "exceptions"}).
+			AddRow("user-1", nil, false, nil).
+			AddRow("user-2", nil, false, nil).
+			AddRow("user-3", nil, false, nil))
+}
+
 // TestSearch covers all branches of Service.Search:
 //   - early returns without a DB call (empty query, whitespace-only query,
 //     bare '@' after stripping, queries that become empty after TrimPrefix);
 //   - successful searches with and without a leading '@';
 //   - SQL LIKE wildcard escaping (%, _, \);
 //   - DB and row-scan errors.
+
 func TestSearch(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -292,6 +517,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -309,6 +535,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -509,6 +736,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-1", Username: "john_doe", FirstName: "John", LastName: "Doe", AvatarURL: "http://a.com/1"},
@@ -707,5 +935,69 @@ func TestEscapeLikeOrder(t *testing.T) {
 				t.Errorf("escapeLike(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+
+func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
+	tests := []struct {
+		name   string
+		userID string
+	}{
+		{name: "missing user", userID: "11111111-1111-4111-8111-111111111111"},
+		{name: "disabled user", userID: "22222222-2222-4222-8222-222222222222"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			mock.ExpectQuery(statusSQLPattern).
+				WithArgs(tt.userID, "viewer-1").
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "last_active", "is_online"}))
+
+			status, err := user.NewService(db).Status(context.Background(), "viewer-1", tt.userID)
+			if !errors.Is(err, user.ErrNotFound) {
+				t.Fatalf("expected ErrNotFound, got %v", err)
+			}
+			if status != nil {
+				t.Fatalf("expected nil status, got %v", status)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
+	const userID = "33333333-3333-4333-8333-333333333333"
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	svc := user.NewService(db)
+	mock.ExpectQuery(statusSQLPattern).
+		WithArgs(userID, "viewer-1").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "last_active", "is_online"}).
+			AddRow([]byte(`{}`), false, nil, nil, false, nil, nil, false))
+
+	status, err := svc.Status(context.Background(), "viewer-1", userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status["isOnline"] != false || status["lastSeen"] != "" {
+		t.Fatalf("unexpected status: %v", status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -54,7 +54,7 @@ run_websocket_tests() {
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
 		-H "Authorization: Bearer $TOKEN" \
-		-d "{\"content\":\"$smoke_ws_message\",\"type\":\"text\",\"entities\":[{\"type\":\"bold\",\"offset\":0,\"length\":5},{\"type\":\"link\",\"offset\":6,\"length\":2,\"data\":{\"url\":\"https://example.com/docs\"}}]}"
+		-d "{\"messages\":[{\"content\":\"$smoke_ws_message\",\"type\":\"text\",\"entities\":[{\"type\":\"bold\",\"offset\":0,\"length\":5},{\"type\":\"link\",\"offset\":6,\"length\":2,\"data\":{\"url\":\"https://example.com/docs\"}}]}]}"
 
 	if [[ "$HTTP_CODE" != "201" ]]; then
 		echo "✗ [$HTTP_CODE] Failed to create message for WebSocket test"

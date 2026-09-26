@@ -43,7 +43,7 @@ export function AboutStep({ avatar, avatarInputRef, errorOf, onAvatarChange, reg
           {t('tapAddPhoto', 'Нажмите чтобы добавить фото')}
         </span>
         <input
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp,image/gif"
           className="hidden"
           onChange={onAvatarChange}
           ref={avatarInputRef}

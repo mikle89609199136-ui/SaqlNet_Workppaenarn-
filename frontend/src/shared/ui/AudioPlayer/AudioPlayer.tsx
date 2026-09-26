@@ -1,8 +1,7 @@
 import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 import { Icon } from '@/shared/ui/Icon';
-import { useAudio } from '@/shared/lib/useAudio';
-import { useIsMobile } from '@/shared/lib/useIsMobile';
+import { useAudio, useIsMobile } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {

@@ -14,27 +14,41 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/presence"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	_ = config.Required("ALLOWED_ORIGINS")
-	pool, err := db.Open(config.Required("DATABASE_URL"))
+	databaseURL := config.Required("DATABASE_URL")
+	pool, err := db.Open(databaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer pool.Close()
 
+	redisURL := config.Value("REDIS_URL", "redis://127.0.0.1:6379")
+	if config.Value("REDIS_URL", "") == "" && config.Value("CRANE_ENV", "development") == "production" {
+		log.Fatal("REDIS_URL is required in production (CRANE_ENV=production)")
+	}
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	redisClient := redis.NewClient(opt)
+	presenceStore := presence.NewRedisStore(redisClient)
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
-	wsServer := chat.NewWSServer(pool, crypto)
-	svc := chat.NewService(pool, wsServer)
+	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
+	defer wsServer.Close()
+	svc := chat.NewService(pool, wsServer, presenceStore)
 	handler := chat.NewHandler(svc)
 
 	// In production NATS is required. In other environments it is optional
 	// but outbox events will accumulate until NATS becomes available.
-	outboxCtx, outboxCancel := context.WithCancel(context.Background())
-	defer outboxCancel()
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
 	var natsConn chat.NATSConn
 	natsURL := config.Value("NATS_URL", "")
 	if natsURL == "" && config.Value("CRANE_ENV", "development") == "production" {
@@ -54,7 +68,9 @@ func main() {
 	} else {
 		log.Printf("NATS_URL not set — outbox events will accumulate until NATS is configured")
 	}
-	go chat.OutboxRelay(outboxCtx, pool, natsConn)
+	go chat.OutboxRelay(workerCtx, pool, natsConn)
+	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
+	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -65,12 +81,20 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
 			return
 		}
+		if err := authctx.CheckTokenGenerationSchema(r.Context(), pool); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(r.Context()); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+			return
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
 	chat.RegisterRoutes(mux, handler, authenticated)
 
-	mux.Handle("POST /api/v2/messages/read", authenticated(http.HandlerFunc(handler.MessagesRead)))
+	mux.Handle("POST /api/v2/messages/read", authenticated(http.HandlerFunc(handler.MarkMessagesRead)))
 	mux.Handle("GET /api/v2/messages/search", authenticated(http.HandlerFunc(handler.Messages)))
 	mux.Handle("GET /api/v2/messages/favorites", authenticated(http.HandlerFunc(handler.Messages)))
 

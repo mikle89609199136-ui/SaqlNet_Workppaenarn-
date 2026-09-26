@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { UseFormRegister } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/shared/ui';
-import { getPasswordScore } from '@/shared/lib/passwordRules';
+import { getPasswordScore, MIN_PASSWORD_LENGTH } from '@/shared/lib';
 import { PasswordRequirements } from '../PasswordRequirements';
 import { PasswordStrength } from './PasswordStrength';
 import { PasswordToggle } from './PasswordToggle';
@@ -53,7 +53,13 @@ export function CredentialsStep({ errorOf, password, register }: Props) {
           autoComplete="new-password"
           error={errorOf('password')}
           label={t('password', 'Пароль')}
-          placeholder={t('passwordMin', 'Минимум 6 символов')}
+          /* Число подставляется из правила, а не вписано в текст: вписанное
+             уже разошлось с политикой — подсказка обещала шесть символов,
+             тогда как список требований и схема требуют десять. */
+          placeholder={t('passwordMin', {
+            defaultValue: 'Минимум {{min}} символов',
+            min: MIN_PASSWORD_LENGTH,
+          })}
           type={showPassword ? 'text' : 'password'}
           {...register('password')}
         />

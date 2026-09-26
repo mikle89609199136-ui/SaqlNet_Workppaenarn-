@@ -25,7 +25,12 @@ def request(method, path, body=None, status=200):
     return data
 
 
-content = 'entities-smoke a & b <i>x</i> "q" 😀'
+def send(item):
+    """Отправка всегда пачкой (#808): здесь пачка из одного."""
+    return request('POST', '/messages/' + chat_id, {'messages': [item]}, status=201)['messages'][0]
+
+
+content ='entities-smoke a & b <i>x</i> "q" 😀'
 entities = [
     {'type': 'bold', 'offset': 0, 'length': 14},
     {'type': 'link', 'offset': 15, 'length': 1, 'data': {'url': 'https://example.com/docs'}},
@@ -38,15 +43,13 @@ def check_message(message, expected_content=content, expected_entities=entities)
 
 
 print('\n→ Message entities')
-message = request('POST', '/messages/' + chat_id,
-                  {'content': content, 'entities': entities}, status=201)['message']
+message = send({'content': content, 'entities': entities})
 message_id = message['id']
 check_message(message)
 check_message(next(m for m in request('GET', '/messages/' + chat_id)['messages'] if m['id'] == message_id))
 chat = next(c for c in request('GET', '/chats')['chats'] if c['id'] == chat_id)
 check_message(chat['lastMessage'])
-reply = request('POST', '/messages/' + chat_id,
-                {'content': 'reply', 'replyTo': message_id}, status=201)['message']
+reply = send({'content': 'reply', 'replyTo': message_id})
 check_message(reply['replyPreview'])
 assert reply['entities'] == []
 request('POST', '/chats/' + chat_id + '/pins/' + message_id)
@@ -54,10 +57,12 @@ check_message(next(p['message'] for p in request('GET', '/chats/' + chat_id + '/
 request('POST', '/messages/' + message_id + '/favorite')
 check_message(next(m for m in request('GET', '/messages/favorites')['messages'] if m['id'] == message_id))
 check_message(next(m for m in request('GET', '/messages/search?q=entities')['messages'] if m['id'] == message_id))
-forward = request('POST', '/messages/' + message_id + '/forward', {'targetChatId': chat_id})['message']
+# Пересылка — обычная отправка с forwardedFrom (#808): содержимое и
+# entities присылает клиент, сервер хранит их как есть.
+forward = send({'content': content, 'entities': entities, 'forwardedFrom': message_id})
 check_message(forward)
 # Repeat forwarding to catch accidental double escaping.
-check_message(request('POST', '/messages/' + forward['id'] + '/forward', {'targetChatId': chat_id})['message'])
+check_message(send({'content': content, 'entities': entities, 'forwardedFrom': forward['id']}))
 changed = [{'type': 'italic', 'offset': 0, 'length': 7}]
 check_message(request('PUT', '/messages/' + message_id, {'content': content, 'entities': changed}), content, changed)
 check_message(request('PUT', '/messages/' + message_id, {'content': content}), content, [])
@@ -69,11 +74,11 @@ for bad in [
     {'content': '😀', 'entities': [{'type': 'bold', 'offset': 0, 'length': 1}]},
     {'type': 'sticker', 'mediaUrl': '/sticker', 'entities': [{'type': 'bold', 'offset': 0, 'length': 1}]},
 ]:
-    data = request('POST', '/messages/' + chat_id, bad, status=400)
+    data = request('POST', '/messages/' + chat_id, {'messages': [bad]}, status=400)
     assert data['code'] == 'validation_failed', data
 assert len(request('GET', '/messages/' + chat_id)['messages']) == before
 # The plaintext limit must not apply to an opaque E2E transport envelope.
 envelope = json.dumps({'v': 2, 'e2e': True, 'iv': 'iv', 'data': 'x' * 17000})
-check_message(request('POST', '/messages/' + chat_id, {'content': envelope}, status=201)['message'], envelope, [])
-assert request('POST', '/messages/' + chat_id, {'content': envelope, 'entities': entities}, status=400)['code'] == 'validation_failed'
+check_message(send({'content': envelope}), envelope, [])
+assert request('POST', '/messages/' + chat_id, {'messages': [{'content': envelope, 'entities': entities}]}, status=400)['code'] == 'validation_failed'
 print('✓ [entities] send/list/previews/pins/favorites/search/edit/forward, limits and E2E')

@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createTestQueryClient, renderSettings } from '@/test/harness/renderSettings';
 
@@ -77,6 +77,33 @@ describe('выход из аккаунта', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(logoutAll).not.toHaveBeenCalled();
     expect(wipeDevice).not.toHaveBeenCalled();
+
+    logoutAll.mockRestore();
+    wipeDevice.mockRestore();
+  });
+
+  it('не стирает ключи и показывает ошибку, если сервер не отозвал сеансы', async () => {
+    const logoutAll = vi
+      .spyOn(services.authService, 'logoutAll')
+      .mockRejectedValue(new Error('logout-all unavailable'));
+    const wipeDevice = vi.spyOn(services.cryptoService, 'wipeDevice');
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(chatKeys.messages('chat-1'), {
+      pages: [[{ id: 'm1' }]],
+      pageParams: [0],
+    });
+
+    renderSettings({ queryClient, section: 'account', subsection: 'sessions' });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить сеансы' }));
+
+    expect(
+      await screen.findByText(/Другие устройства всё ещё могут иметь доступ/)
+    ).toBeInTheDocument();
+    expect(wipeDevice).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(chatKeys.messages('chat-1'))).toBeDefined();
+    expect(screen.queryByText('Вход')).not.toBeInTheDocument();
 
     logoutAll.mockRestore();
     wipeDevice.mockRestore();

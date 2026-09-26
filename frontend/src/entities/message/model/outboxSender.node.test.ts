@@ -10,7 +10,7 @@ import {
   retryOutboxMessage,
   sendOutboxItem,
 } from './outboxSender';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 
 describe('outboxSender', () => {
@@ -64,6 +64,9 @@ describe('outboxSender', () => {
     // Проверяем, что в кеше сообщение заменено на серверное
     const cached: any = queryClient.getQueryData(chatKeys.messages(chatId));
     expect(cached.pages[0][0].id).toBe('server-100');
+    // И помечено отправленным: из этого рисуется галочка в личном чате.
+    // Серверный ответ статуса не несёт — его ставит тот, кто записал ответ.
+    expect(cached.pages[0][0].status).toBe('sent');
   });
 
   it('should mark message as failed in cache and outbox on error', async () => {

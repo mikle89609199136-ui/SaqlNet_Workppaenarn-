@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import { createRef, type ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
-import { chatKeys } from '@/queries/keys';
+import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 import { createTestQueryClient } from '@/test/harness/renderChatThread';
 import { useThreadMessages } from './useThreadMessages';

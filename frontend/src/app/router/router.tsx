@@ -1,6 +1,6 @@
 import { chatQuery } from '@/entities/chat';
 import { messagesQuery } from '@/entities/message';
-import { queryClient } from '@/queries/queryClient';
+import { queryClient } from '@/shared/api';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
 import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
 import { AuthGuard } from './AuthGuard';
@@ -118,6 +118,23 @@ export const router = createBrowserRouter([
         lazy: () =>
           import('@/pages/register').then((m) => ({
             Component: m.RegisterPage,
+          })),
+      },
+      /* Вне AuthGuard: страница сама отправит на вход, сохранив ссылку из
+         кода, — через загрузчик сессии фрагмент адреса бы потерялся. */
+      {
+        path: REACT_ROUTES.LINK,
+        lazy: () =>
+          import('@/pages/link').then((m) => ({
+            Component: m.LinkPage,
+          })),
+      },
+      /* Тоже вне AuthGuard: сюда приходит устройство без сессии. */
+      {
+        path: REACT_ROUTES.QR_LOGIN,
+        lazy: () =>
+          import('@/pages/qr-login').then((m) => ({
+            Component: m.QrClaimPage,
           })),
       },
       {

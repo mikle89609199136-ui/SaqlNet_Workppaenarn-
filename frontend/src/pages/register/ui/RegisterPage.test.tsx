@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { MIN_PASSWORD_LENGTH } from '@/shared/lib';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { renderAuth } from '@/test/harness/renderAuth';
@@ -11,6 +12,14 @@ async function goToCredentials(name = 'Максим') {
   await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
   await userEvent.type(screen.getByLabelText('Имя'), name);
   await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+}
+
+/* Token redirects RegisterPage before the async submit tail has necessarily
+   published its final side effects. Waiting for both prevents that tail from
+   leaking authentication and a toast into the following test. */
+async function expectSuccessfulRegistration() {
+  expect(await screen.findByText('Список чатов')).toBeInTheDocument();
+  expect(await screen.findByText('Добро пожаловать!')).toBeInTheDocument();
 }
 
 describe('регистрация', () => {
@@ -23,6 +32,22 @@ describe('регистрация', () => {
     expect(await screen.findByText('Введите имя')).toBeInTheDocument();
     // Остались на том же шаге: поле имени никуда не делось.
     expect(screen.getByLabelText('Имя')).toBeInTheDocument();
+  });
+
+  it('называет в подсказке тот же минимум, что и список требований', async () => {
+    renderAuth({ page: 'register' });
+
+    await goToCredentials();
+    await userEvent.type(screen.getByLabelText('Пароль'), 'a');
+
+    // Подсказка обещала шесть символов, а список требований под полем и
+    // схема требовали десяти: человек видел два разных числа на одном
+    // экране и не понимал, какому верить (#691).
+    expect(screen.getByLabelText('Пароль')).toHaveAttribute(
+      'placeholder',
+      `Минимум ${MIN_PASSWORD_LENGTH} символов`
+    );
+    expect(screen.getByText(`Не менее ${MIN_PASSWORD_LENGTH} символов`)).toBeInTheDocument();
   });
 
   it('сохраняет введённое при возврате назад', async () => {
@@ -104,7 +129,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.lastName).toBe('Донской');
     // Язык — тот, на котором человек сейчас видит мастер.
     expect(body.language).toBe('ru');
@@ -127,7 +152,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.lastName).toBe('');
   });
 
@@ -214,7 +239,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    expect(await screen.findByText('Список чатов')).toBeInTheDocument();
+    await expectSuccessfulRegistration();
   });
 
   it('отправляет имя и имя пользователя без лишних пробелов', async () => {
@@ -234,7 +259,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.firstName).toBe('Максим');
     expect(body.username).toBe('maximdon');
   });

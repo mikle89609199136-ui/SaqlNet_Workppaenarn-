@@ -1,9 +1,8 @@
-import { useConnectionStatus } from '@/hooks';
 import { useCall } from '@/features/call';
 import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/entities/user';
 import { chatQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle } from '@/shared/lib';
+import { cn, getChatSubtitle, useConnectionStatus, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
@@ -49,12 +48,16 @@ export const ChatThreadHeader = ({
   const isLongPress = useRef(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
   const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
+  // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
+  const now = useNow();
 
   if (!chat) return;
 
   const noticeSubtitle = connectionSubtitle(connection, t);
-  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
+  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t, now);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
+  // Блокировка в любую сторону — звонков нет (#760).
+  const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
 
   const handleCallClick = () => {
     if (isLongPress.current) return;
@@ -171,6 +174,7 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-actions thread-call-desktop">
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
                 title={t('audioCall', 'Аудиозвонок')}
                 type="button"
@@ -180,6 +184,7 @@ export const ChatThreadHeader = ({
 
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
                 title={t('videoCall', 'Видео')}
                 type="button"
@@ -191,6 +196,7 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-mobile">
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={handleCallClick}
                 onMouseDown={handleTouchStart}
                 onMouseUp={handleTouchEnd}

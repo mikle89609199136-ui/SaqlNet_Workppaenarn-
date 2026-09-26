@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
-import { useRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,
   isReactionChangePending,
@@ -10,9 +10,9 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/entities/message';
-import { useTypingStore } from '@/entities/chat';
+import { chatQuery, useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
-import { resolveChat } from '@/core/chatResolver';
+import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
@@ -27,6 +27,9 @@ import { resyncAfterReconnect } from './resyncAfterReconnect';
  * Исключение сделано для нового сообщения: инвалидация означала бы поход
  * на сервер и задержку в ленте, поэтому оно кладётся в кеш напрямую.
  */
+/** Не чаще — перечитывание статусов при возврате во вкладку. */
+const PRESENCE_REFRESH_MS = 30_000;
+
 export function useServerEvents(enabled: boolean): void {
   const queryClient = useQueryClient();
   const { eventBus } = useRealtimeSocket(enabled);
@@ -112,7 +115,27 @@ export function useServerEvents(enabled: boolean): void {
     // появилось бы в разговоре никогда.
     const unsubscribeReconnect = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
       void resyncAfterReconnect(queryClient);
+      // Пока связи не было, собеседники могли войти и выйти.
+      refreshPresence(queryClient);
     });
+
+    // Статус собеседника кладётся в кеш прямо из события (#780); выход —
+    // с задержкой, чтобы обрыв связи на пару секунд не давал мигания.
+    const presence = createPresenceBuffer(queryClient);
+    const unsubscribePresence = eventBus.on(WS_EVENTS.USER.PRESENCE, (event) => {
+      presence.push(event);
+    });
+
+    // Вкладка спала: браузер мог придержать сокет, и события прошли мимо.
+    // Перечитываем статусы при возврате, но не чаще раза в полминуты.
+    let lastPresenceRefresh = Date.now();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastPresenceRefresh < PRESENCE_REFRESH_MS) return;
+      lastPresenceRefresh = Date.now();
+      refreshPresence(queryClient);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Состав чата изменился — ключ чата пора менять: вошедший не должен
     // читать написанное до него, вышедший — написанное после.
@@ -121,12 +144,21 @@ export function useServerEvents(enabled: boolean): void {
     // услышал событие, несколько участников одновременно записали бы разные
     // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
     // сервере идёт построчно, без транзакции.
-    const rotateIfOwner = async (chatId?: string) => {
+    //
+    // Зависеть от того, в сети ли владелец, — слабое место; как от него
+    // уйти, описано в #806.
+    const rotateIfOwner = async (chatId?: string, removedUserId?: string) => {
       if (!chatId) return;
 
+      const me = services.cryptoService.getAccountId();
+      // Ушли мы сами: в этом чате нас больше нет, и ключ менять не нам.
+      if (removedUserId && removedUserId === me) return;
+
       try {
-        const chat = await resolveChat(chatId);
-        const me = services.cryptoService.getAccountId();
+        // Владельца берём с сервера, а не из кеша: права могли только что
+        // передать, а события о передаче сервер не шлёт (#105). Из кеша
+        // новый владелец видел бы прежнего и ключ после его ухода не менял.
+        const chat = await queryClient.fetchQuery({ ...chatQuery(chatId), staleTime: 0 });
 
         if (chat?.ownerId && me && chat.ownerId === me) {
           await services.cryptoService.rotateChatKey(chatId);
@@ -141,7 +173,7 @@ export function useServerEvents(enabled: boolean): void {
     });
 
     const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateIfOwner(event?.chatId, event?.userId);
     });
 
     // «Печатает» живёт три секунды и не кешируется — это не данные,
@@ -159,6 +191,9 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
       unsubscribeReconnect();
+      unsubscribePresence();
+      presence.dispose();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubscribeMemberAdded();
       unsubscribeMemberRemoved();
       stopConnectionWatch();

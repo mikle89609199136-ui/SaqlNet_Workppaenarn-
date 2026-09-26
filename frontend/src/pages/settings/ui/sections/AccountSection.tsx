@@ -4,12 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import { meQuery, sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { ProfileEditForm } from '@/features/user-profile-edit';
 import { ChangePasswordForm } from '@/features/change-password';
 import { SessionsManager } from '@/features/session-management';
+import { KeyBackupSettings } from '@/features/key-backup';
 import type { IUserDto } from '@/types';
 
 /**
@@ -75,11 +76,16 @@ export function AccountSection() {
       return <SessionsManager onBack={() => openView('overview')} />;
     }
 
+    if (view === 'encryption') {
+      return <KeyBackupSettings onBack={() => openView('overview')} />;
+    }
+
     return (
       <AccountSettings
         onEditProfile={() => openView('profile')}
         onLogout={() => setAsked(true)}
         onOpenEmail={() => openView('email')}
+        onOpenEncryption={() => openView('encryption')}
         onOpenPassword={() => openView('password')}
         onOpenSessions={() => openView('sessions')}
         sessionsCount={sessions.data?.length}
@@ -139,6 +145,7 @@ interface AccountSettingsProps {
   onOpenEmail: () => void;
   onOpenPassword: () => void;
   onOpenSessions: () => void;
+  onOpenEncryption: () => void;
 }
 
 function AccountSettings({
@@ -150,6 +157,7 @@ function AccountSettings({
   onOpenEmail,
   onOpenPassword,
   onOpenSessions,
+  onOpenEncryption,
 }: AccountSettingsProps) {
   const name =
     [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Пользователь';
@@ -202,6 +210,10 @@ function AccountSettings({
           label={t('settings.account.sessions', 'Активные сеансы')}
           onClick={onOpenSessions}
           value={sessionsCount ?? '—'}
+        />
+        <OverviewRow
+          label={t('keyBackup.settings.title', 'Шифрование и устройства')}
+          onClick={onOpenEncryption}
         />
         <OverviewRow
           label={t('settings.account.logout', 'Выйти из аккаунта')}

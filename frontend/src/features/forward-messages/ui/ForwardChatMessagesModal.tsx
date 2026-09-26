@@ -1,5 +1,4 @@
 import { useDebounce } from '@/shared/lib';
-import { services } from '@/services';
 import { chatsQuery } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
@@ -7,6 +6,7 @@ import { useMemo, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, Button, Icon, Modal } from '@/shared/ui';
+import { useForwardStore } from '../model/forwardStore';
 
 interface Props {
   messages: TMessagesList;
@@ -26,7 +26,6 @@ export const ForwardChatMessagesModal = ({
 
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [isForwarding, setForwarding] = useState(false);
 
   const debounceSearch = useDebounce(search);
 
@@ -40,29 +39,19 @@ export const ForwardChatMessagesModal = ({
     });
   }, [chats, debounceSearch]);
 
-  const handleForward = async (e: MouseEvent<HTMLUListElement>) => {
-    const target = e.target as HTMLElement;
-    const button = target.closest('button');
+  /* Выбор чата ничего не отправляет: пересылка ждёт в целевом чате над
+     полем ввода, где к ней можно дописать комментарий или отменить её
+     (#93). Прежде сообщения уходили от одного нажатия на строку списка. */
+  const handleForward = (e: MouseEvent<HTMLUListElement>) => {
+    const button = (e.target as HTMLElement).closest('button');
+    const chatId = button?.dataset.chatid;
+    if (!chatId) return;
 
-    if (!button) return;
-
-    const chatId = button.dataset.chatid;
-
-    if (!chatId || isForwarding) return;
-
-    try {
-      setForwarding(true);
-      for (const message of messages) {
-        await services.messageService.forwardMessage(message, chatId);
-      }
-
-      setSelectedMessages([]);
-      setSelectionMode(false);
-      onClose();
-      navigate(`/chats/${chatId}`);
-    } finally {
-      setForwarding(false);
-    }
+    useForwardStore.getState().start(chatId, messages);
+    setSelectedMessages([]);
+    setSelectionMode(false);
+    onClose();
+    navigate(`/chats/${chatId}`);
   };
 
   return (

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { disconnectRealtimeSocket } from '@/hooks/useRealtimeSocket';
+import { disconnectRealtimeSocket } from '@/shared/api';
 import type { ISessionDto } from '@/types';
 
 interface Props {
@@ -20,15 +20,17 @@ export function SessionsManager({ onBack }: Props) {
 
   const [asked, setAsked] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
 
   async function handleLogoutAll() {
     setLeaving(true);
+    setLogoutError(false);
     try {
-      await services.authService.logoutAll().catch(() => {});
+      await services.authService.logoutAll();
 
       // Завершение всех сеансов стирает и ключи шифрования: это тот самый
       // случай, ради которого кнопку нажимают — чужой или потерянный
-      // компьютер.
+      // компьютер. История не пропадает: она в резервной копии (#739).
       await services.cryptoService.wipeDevice().catch(() => {});
 
       disconnectRealtimeSocket();
@@ -39,6 +41,10 @@ export function SessionsManager({ onBack }: Props) {
       queryClient.clear();
 
       navigate('/login');
+    } catch {
+      // Do not wipe this device or claim success when the server did not revoke
+      // the other tokens (for example while a safe rollout gate is disabled).
+      setLogoutError(true);
     } finally {
       setLeaving(false);
       setAsked(false);
@@ -71,6 +77,13 @@ export function SessionsManager({ onBack }: Props) {
         <Banner tone="danger">
           Не удалось получить список устройств. Это не значит, что их нет, — попробуйте обновить
           страницу.
+        </Banner>
+      )}
+
+      {logoutError && (
+        <Banner tone="danger">
+          Не удалось завершить сеансы. Другие устройства всё ещё могут иметь доступ к аккаунту;
+          повторите попытку позже.
         </Banner>
       )}
 
@@ -126,8 +139,8 @@ export function SessionsManager({ onBack }: Props) {
         open={asked}
         title="Завершить все сеансы?"
       >
-        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Прошлая
-        переписка здесь больше не откроется — восстановить её нечем.
+        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Переписка
+        сохранена в резервной копии: после входа откройте её облачным паролем.
       </ConfirmDialog>
     </section>
   );

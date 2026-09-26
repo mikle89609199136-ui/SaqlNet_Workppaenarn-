@@ -21,24 +21,25 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	ws := &recordingRealtime{}
-	handler := NewHandler(NewService(db, ws))
+	handler := NewHandler(NewService(db, ws, nil))
 	content := `a & b <i>x</i> "q"`
 	entities := `[{"type":"bold","offset":0,"length":1},{"type":"link","offset":4,"length":1,"data":{"url":"https://example.com/docs"}}]`
-	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
+	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
-	mock.ExpectQuery(`INSERT INTO messages\.messages .*entities`).WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), []byte(entities)).WillReturnRows(entityMessageRows(content, entities))
+	mock.ExpectQuery(`INSERT INTO messages\.messages .*entities`).WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), 0, []byte(entities)).WillReturnRows(entityMessageRows(content, entities))
 	mock.ExpectCommit()
 	body, err := json.Marshal(map[string]any{"content": content, "entities": json.RawMessage(entities)})
 	require.NoError(t, err)
 	rr := httptest.NewRecorder()
-	handler.SendMessage(rr, messageValidationRequest(http.MethodPost, "/api/v2/messages/"+messageValidationChatID, string(body), "chatId", messageValidationChatID))
+	handler.SendMessage(rr, messageValidationRequest(http.MethodPost, "/api/v2/messages/"+messageValidationChatID, sendBody(string(body)), "chatId", messageValidationChatID))
 	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
 	var response struct {
-		Message Message `json:"message"`
+		Messages []Message `json:"messages"`
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
-	require.Equal(t, content, response.Message.Content)
-	raw, err := json.Marshal(response.Message.Entities)
+	require.Len(t, response.Messages, 1)
+	require.Equal(t, content, response.Messages[0].Content)
+	raw, err := json.Marshal(response.Messages[0].Entities)
 	require.NoError(t, err)
 	require.JSONEq(t, entities, string(raw))
 	require.Len(t, ws.broadcasts, 1)
@@ -48,7 +49,7 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(ws.broadcasts[0].payload, &event))
 	require.Equal(t, "new_message", event.Type)
-	require.Equal(t, response.Message.Entities, event.Message.Entities)
+	require.Equal(t, response.Messages[0].Entities, event.Message.Entities)
 	require.Equal(t, content, event.Message.Content)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -64,7 +65,7 @@ func TestEditReplacesOrClearsEntities(t *testing.T) {
 			require.NoError(t, err)
 			defer db.Close()
 			ws := &recordingRealtime{}
-			handler := NewHandler(NewService(db, ws))
+			handler := NewHandler(NewService(db, ws, nil))
 			content := "x & <i>y</i>"
 			mock.ExpectQuery(`SELECT m\.type`).WithArgs(messageValidationMessageID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("text"))
 			mock.ExpectQuery(`SET content = \$1, entities = \$4`).WithArgs(content, messageValidationMessageID, messageValidationUserID, []byte(tc.want)).WillReturnRows(entityMessageRows(content, tc.want))
@@ -98,13 +99,13 @@ func TestInvalidEntitiesHaveNoSideEffects(t *testing.T) {
 				require.NoError(t, err)
 				defer db.Close()
 				ws := &recordingRealtime{}
-				h := NewHandler(NewService(db, ws))
+				h := NewHandler(NewService(db, ws, nil))
 				rr := httptest.NewRecorder()
 				body := `{"content":"hello","entities":` + raw + `}`
 				if edit {
 					h.EditMessage(rr, messageValidationRequest(http.MethodPut, "/", body, "messageId", messageValidationMessageID))
 				} else {
-					h.SendMessage(rr, messageValidationRequest(http.MethodPost, "/", body, "chatId", messageValidationChatID))
+					h.SendMessage(rr, messageValidationRequest(http.MethodPost, "/", sendBody(body), "chatId", messageValidationChatID))
 				}
 				assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
 				require.Contains(t, rr.Body.String(), "entities")
@@ -128,8 +129,8 @@ func TestServiceValidatesBeforeDatabase(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		ws := &recordingRealtime{}
-		svc := NewService(db, ws)
-		_, err = svc.SendMessage(t.Context(), "user", "chat", tc.content, tc.kind, nil, nil, tc.entities)
+		svc := NewService(db, ws, nil)
+		_, err = svc.SendMessages(t.Context(), "user", "chat", []OutgoingMessage{{Content: tc.content, Type: tc.kind, Entities: tc.entities}})
 		require.ErrorIs(t, err, ErrInvalidInput)
 		_, err = svc.EditMessage(t.Context(), "user", "message", tc.content, tc.entities)
 		require.ErrorIs(t, err, ErrInvalidInput)
@@ -146,7 +147,7 @@ func TestLegacyMessageDefaultEntitiesInListResponse(t *testing.T) {
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery("SELECT ").WillReturnRows(entityMessageRows("legacy &amp; text", "[]"))
 	mock.ExpectQuery("SELECT message_id::text").WillReturnRows(sqlmock.NewRows([]string{"message_id", "emoji", "count", "my_reaction"}))
-	h := NewHandler(NewService(db, nil))
+	h := NewHandler(NewService(db, nil, nil))
 	rr := httptest.NewRecorder()
 	h.ListMessages(rr, messageValidationRequest(http.MethodGet, "/", "", "chatId", messageValidationChatID))
 	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
@@ -167,7 +168,7 @@ func TestSendStickerEntitiesRejected(t *testing.T) {
 	ws := &recordingRealtime{}
 	h.service.ws = ws
 	rr := httptest.NewRecorder()
-	h.SendMessage(rr, messageValidationRequest(http.MethodPost, "/", `{"type":"sticker","content":"x","mediaUrl":"/sticker","entities":[{"type":"bold","offset":0,"length":1}]}`, "chatId", messageValidationChatID))
+	h.SendMessage(rr, messageValidationRequest(http.MethodPost, "/", sendBody(`{"type":"sticker","content":"x","mediaUrl":"/sticker","entities":[{"type":"bold","offset":0,"length":1}]}`), "chatId", messageValidationChatID))
 	assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
 	require.Contains(t, rr.Body.String(), "entities")
 	require.Empty(t, ws.broadcasts)

@@ -22,20 +22,24 @@ import (
 )
 
 type rateLimitConfig struct {
-	authRate    float64
-	authBurst   int
-	globalRate  float64
-	globalBurst int
+	authRate           float64
+	authBurst          int
+	usernameCheckRate  float64
+	usernameCheckBurst int
+	globalRate         float64
+	globalBurst        int
 }
 
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func loadRateLimitConfig() rateLimitConfig {
 	return rateLimitConfig{
-		authRate:    config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
-		authBurst:   config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
-		globalRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
-		globalBurst: config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
+		authRate:           config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
+		authBurst:          config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
+		usernameCheckRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_USERNAME_CHECK_RPS", 2),
+		usernameCheckBurst: config.PositiveInt("EDGE_RATE_LIMIT_USERNAME_CHECK_BURST", 5),
+		globalRate:         config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
+		globalBurst:        config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
 	}
 }
 
@@ -103,7 +107,7 @@ func min(a, b float64) float64 {
 	return b
 }
 
-func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
+func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, usernameCheckLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := trustedProxies.clientIP(r)
 		// Stricter limit for auth endpoints (login/register brute-force).
@@ -112,6 +116,10 @@ func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimi
 				httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests — slow down")
 				return
 			}
+		}
+		if r.URL.Path == "/api/v2/users/check-username" && !usernameCheckLimiter.Allow(ip) {
+			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many username checks — slow down")
+			return
 		}
 		if !globalLimiter.Allow(ip) {
 			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests")
@@ -271,8 +279,9 @@ func main() {
 	// Rate limits use safe defaults and can be overridden through environment variables.
 	limits := loadRateLimitConfig()
 	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
+	usernameCheckLimiter := newTokenBucket(limits.usernameCheckRate, float64(limits.usernameCheckBurst))
 	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
-	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, globalLimiter, mux)
+	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, usernameCheckLimiter, globalLimiter, mux)
 
 	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {

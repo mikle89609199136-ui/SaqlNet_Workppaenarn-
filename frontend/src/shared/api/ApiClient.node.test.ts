@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { api, API } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { ApiClient } from './ApiClient';
@@ -47,6 +47,45 @@ describe('ApiClient: сборка адреса', () => {
     expect(url.searchParams.has('search')).toBe(false);
   });
 
+  it('does not repeat the base for a path that already starts with it', async () => {
+    let received = '';
+    server.use(
+      http.get(api('/media/file-1'), ({ request }) => {
+        received = request.url;
+        return HttpResponse.json({ ok: true });
+      })
+    );
+
+    // Так приходит mediaUrl вложения: '/api/v2/media/<id>'.
+    await createClient().get(`${new URL(API).pathname}/media/file-1`);
+
+    expect(received).toBe(`${API}/media/file-1`);
+  });
+
+  it('keeps a relative base relative and does not repeat it either', async () => {
+    const requested: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requested.push(String(input));
+      return new Response('{}', { headers: { 'content-type': 'application/json' } });
+    });
+
+    try {
+      const client = new ApiClient('/api/v2');
+      await client.get('/api/v2/media/file-1');
+      await client.get('/chats/abc');
+      // Похожий, но другой путь — не база.
+      await client.get('/api/v2x/thing');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(requested).toEqual([
+      '/api/v2/media/file-1',
+      '/api/v2/chats/abc',
+      '/api/v2/api/v2x/thing',
+    ]);
+  });
+
   it('should use an absolute endpoint as is', async () => {
     let received = '';
     server.use(
@@ -59,21 +98,6 @@ describe('ApiClient: сборка адреса', () => {
     await createClient().get('https://media.example.com/file.png');
 
     expect(received).toBe('https://media.example.com/file.png');
-  });
-
-  it('should not repeat the base path when the endpoint already contains it', async () => {
-    let received = '';
-    server.use(
-      http.get(api('/chats/abc'), ({ request }) => {
-        received = request.url;
-        return HttpResponse.json({ ok: true });
-      })
-    );
-
-    // Часть кода передаёт путь вместе с базой — адрес не должен удвоиться.
-    await createClient().get('/api/v2/chats/abc');
-
-    expect(received).toBe(`${API}/chats/abc`);
   });
 });
 
@@ -118,6 +142,59 @@ describe('ApiClient: заголовки', () => {
     await createClient().delete('/messages/m-1');
 
     expect(contentType).toBeNull();
+  });
+
+  it('should drop content-type when sending FormData', async () => {
+    let contentType: string | null = null;
+    server.use(
+      http.post(api('/media'), ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    const form = new FormData();
+    form.append('file', 'test');
+    await createClient().post('/media', form);
+
+    expect(contentType).not.toContain('application/json');
+    expect(contentType).toContain('multipart/form-data');
+  });
+
+  it('should preserve content-type and serialize valid falsy JSON values', async () => {
+    let contentType: string | null = null;
+    let receivedBody: unknown = null;
+    server.use(
+      http.post(api('/settings'), async ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        receivedBody = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await createClient().post('/settings', false);
+    expect(contentType).toBe('application/json');
+    expect(receivedBody).toBe(false);
+
+    await createClient().post('/settings', 0);
+    expect(contentType).toBe('application/json');
+    expect(receivedBody).toBe(0);
+  });
+
+  it('should drop content-type and omit body when data is null', async () => {
+    let contentType: string | null = 'not-null';
+    let rawBody: string | null = null;
+    server.use(
+      http.post(api('/logout'), async ({ request }) => {
+        contentType = request.headers.get('Content-Type');
+        rawBody = await request.text();
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await createClient().post('/logout', null);
+    expect(contentType).toBeNull();
+    expect(rawBody).toBe('');
   });
 });
 

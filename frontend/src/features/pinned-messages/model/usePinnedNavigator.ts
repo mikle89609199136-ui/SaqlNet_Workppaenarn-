@@ -1,4 +1,4 @@
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import type { TPinnedList } from '@/types';
 import { useEffect, useRef, useState } from 'react';
 
