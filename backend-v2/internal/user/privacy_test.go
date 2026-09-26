@@ -16,21 +16,26 @@ import (
 
 const privacyStatusPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1`
 
-func statusRows(privacyJSON string, blocked bool) *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}).
-		AddRow([]byte(privacyJSON), blocked, "2026-09-26T12:00:00Z", true)
+func statusRows(privacyJSON string, blocked bool, exceptions string) *sqlmock.Rows {
+	var rawExceptions any
+	if exceptions != "" {
+		rawExceptions = []byte(exceptions)
+	}
+	return sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "last_active", "is_online"}).
+		AddRow([]byte(privacyJSON), blocked, rawExceptions, "2026-09-26T12:00:00Z", true)
 }
 
-// Статус глазами зрителя: одна проверка приватности на всё (#783).
+// Статус глазами зрителя: одна проверка приватности на всё (#783, #784).
 func TestStatusFollowsUnifiedPrivacy(t *testing.T) {
 	visible := map[string]any{"isOnline": true, "lastSeen": "2026-09-26T12:00:00Z"}
 	hidden := map[string]any{"isOnline": false, "lastSeen": "recently"}
 
 	for name, tt := range map[string]struct {
-		viewer  string
-		privacy string
-		blocked bool
-		want    map[string]any
+		viewer     string
+		privacy    string
+		blocked    bool
+		exceptions string
+		want       map[string]any
 	}{
 		"открытый статус":                  {viewer: "viewer", privacy: `{"lastSeen":"all"}`, want: visible},
 		"закрытый статус":                  {viewer: "viewer", privacy: `{"lastSeen":"nobody"}`, want: hidden},
@@ -38,13 +43,17 @@ func TestStatusFollowsUnifiedPrivacy(t *testing.T) {
 		"заблокировал зрителя — закрыто":   {viewer: "viewer", privacy: `{"lastSeen":"all"}`, blocked: true, want: hidden},
 		"себе видно при любых настройках":  {viewer: "owner", privacy: `{"lastSeen":"nobody"}`, want: visible},
 		"повреждённые настройки — закрыто": {viewer: "viewer", privacy: `{oops`, want: hidden},
+		"«всегда разрешать» открывает":     {viewer: "viewer", privacy: `{"lastSeen":"nobody"}`, exceptions: `{"lastSeen":true}`, want: visible},
+		"«никогда не разрешать» закрывает": {viewer: "viewer", privacy: `{"lastSeen":"all"}`, exceptions: `{"lastSeen":false}`, want: hidden},
+		"исключение на другое правило":     {viewer: "viewer", privacy: `{"lastSeen":"all"}`, exceptions: `{"photoVisibility":false}`, want: visible},
+		"блокировка сильнее «всегда»":      {viewer: "viewer", privacy: `{"lastSeen":"nobody"}`, blocked: true, exceptions: `{"lastSeen":true}`, want: hidden},
 	} {
 		t.Run(name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer db.Close()
 			mock.ExpectQuery(privacyStatusPattern).WithArgs("owner", tt.viewer).
-				WillReturnRows(statusRows(tt.privacy, tt.blocked))
+				WillReturnRows(statusRows(tt.privacy, tt.blocked, tt.exceptions))
 
 			status, err := NewService(db).Status(context.Background(), tt.viewer, "owner")
 

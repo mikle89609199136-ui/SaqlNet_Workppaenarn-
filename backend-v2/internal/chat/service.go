@@ -355,7 +355,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
-		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE)
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -366,8 +366,8 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         -- Сырые данные: что из них видно зрителю, решает
-			         -- privacy.Decide в scanChats (#783) — по настройкам собеседника
-			         -- и блокировке, как во всех остальных местах.
+			         -- privacy.Decide в scanChats (#783, #784) — по настройкам собеседника,
+			         -- блокировке и исключениям, как во всех остальных местах.
 			         COALESCE(up.avatar_url, '') AS avatar_url,
 			         au.username AS display_username,
 			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
@@ -375,7 +375,8 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
 			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
 			         ps.privacy_settings AS privacy,
-			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer,
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
@@ -396,7 +397,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			WHERE COALESCE(cs.is_archived, FALSE) = $2
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer,
+			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
@@ -437,7 +438,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
-		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE)
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -448,8 +449,8 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
 			         -- Сырые данные: что из них видно зрителю, решает
-			         -- privacy.Decide в scanChats (#783) — по настройкам собеседника
-			         -- и блокировке, как во всех остальных местах.
+			         -- privacy.Decide в scanChats (#783, #784) — по настройкам собеседника,
+			         -- блокировке и исключениям, как во всех остальных местах.
 			         COALESCE(up.avatar_url, '') AS avatar_url,
 			         au.username AS display_username,
 			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
@@ -457,7 +458,8 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
 			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
 			         ps.privacy_settings AS privacy,
-			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer,
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
@@ -478,7 +480,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			WHERE c.id = $2
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer,
+			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
@@ -1685,7 +1687,7 @@ func (s *Service) peerPublicKey(ctx context.Context, userID, chatID string) (str
 }
 
 // applyPeerPrivacy прячет в личном чате то, что собеседник закрыл от
-// зрителя (#463, #783): статус и время активности, фото.
+// зрителя (#463, #783, #784): статус и время активности, фото.
 func applyPeerPrivacy(chat *Chat, settings privacy.Settings, rel privacy.Relation) {
 	if !privacy.Decide(settings, rel, privacy.LastSeen) {
 		chat.PeerIsOnline = false
@@ -1702,7 +1704,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 		var chat Chat
 		var unreadCount int
 		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
-		var peerPrivacy []byte
+		var peerPrivacy, peerExceptions []byte
 		var peerBlocksViewer bool
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
@@ -1710,12 +1712,15 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
-			&peerPrivacy, &peerBlocksViewer,
+			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
 		); err != nil {
 			return nil, err
 		}
 		if chat.Type == "private" {
-			applyPeerPrivacy(&chat, privacy.Parse(peerPrivacy), privacy.Relation{Blocked: peerBlocksViewer})
+			applyPeerPrivacy(&chat, privacy.Parse(peerPrivacy), privacy.Relation{
+				Blocked:    peerBlocksViewer,
+				Exceptions: privacy.ParseExceptions(peerExceptions),
+			})
 		}
 		chat.UnreadCount = unreadCount
 		if lmContent.Valid || lmType.Valid {

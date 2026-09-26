@@ -25,13 +25,13 @@ type touch struct {
 	online bool
 }
 
-// fakeActivity записывает отметки и отдаёт заданную аудиторию.
+// fakeActivity записывает отметки и отдаёт заданную аудиторию — тех, кому
+// статус виден.
 type fakeActivity struct {
 	mu        sync.Mutex
 	touches   []touch
 	audiences int
 	peers     []string
-	visible   bool
 }
 
 func (a *fakeActivity) Touch(_ context.Context, userID string, online bool) (time.Time, error) {
@@ -41,11 +41,11 @@ func (a *fakeActivity) Touch(_ context.Context, userID string, online bool) (tim
 	return presenceTestTime, nil
 }
 
-func (a *fakeActivity) Audience(context.Context, string) ([]string, bool, error) {
+func (a *fakeActivity) Audience(context.Context, string) ([]string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.audiences++
-	return a.peers, a.visible, nil
+	return a.peers, nil
 }
 
 func (a *fakeActivity) snapshot() ([]touch, int) {
@@ -95,7 +95,7 @@ func requireNoEvent(t *testing.T, client *Client) {
 }
 
 func TestAnnouncePresenceTellsPrivateChatPeers(t *testing.T) {
-	activity := &fakeActivity{peers: []string{"peer-1"}, visible: true}
+	activity := &fakeActivity{peers: []string{"peer-1"}}
 	ws := presenceServer(activity)
 	peer := connectLocal(ws, "peer-1")
 	stranger := connectLocal(ws, "stranger")
@@ -114,21 +114,21 @@ func TestAnnouncePresenceTellsPrivateChatPeers(t *testing.T) {
 }
 
 func TestAnnouncePresenceKeepsHiddenStatusPrivate(t *testing.T) {
-	activity := &fakeActivity{peers: []string{"peer-1"}, visible: false}
+	activity := &fakeActivity{}
 	ws := presenceServer(activity)
 	peer := connectLocal(ws, "peer-1")
 
 	ws.announcePresence("user-1", true)
 
-	// Время активности записано, но собеседникам ничего не ушло: событие
-	// само выдало бы, что человек в сети.
+	// Статус не виден никому: время активности записано, но событие не ушло —
+	// оно само выдало бы, что человек в сети.
 	requireNoEvent(t, peer)
 	touches, _ := activity.snapshot()
 	require.Len(t, touches, 1)
 }
 
 func TestAnnounceOfflineWaitsForTheLastConnection(t *testing.T) {
-	activity := &fakeActivity{peers: []string{"peer-1"}, visible: true}
+	activity := &fakeActivity{peers: []string{"peer-1"}}
 	ws := presenceServer(activity)
 	peer := connectLocal(ws, "peer-1")
 	first := connectLocal(ws, "user-1")
@@ -163,7 +163,7 @@ func TestPresenceWithoutActivityIsSilent(t *testing.T) {
 // Через настоящий ServeWS: вход сообщается один раз на первое соединение,
 // выход — когда закрыто последнее.
 func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
-	activity := &fakeActivity{visible: true}
+	activity := &fakeActivity{}
 	db, _, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -231,39 +231,49 @@ func TestDBPresenceActivity(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("скрытый статус не ищет собеседников", func(t *testing.T) {
-		for _, setting := range []string{"nobody", "contacts"} {
-			db, mock, err := sqlmock.New()
-			require.NoError(t, err)
-			mock.ExpectQuery(`FROM users\.settings`).WithArgs("user-1").
-				WillReturnRows(sqlmock.NewRows([]string{"last_seen"}).AddRow(setting))
-
-			peers, visible, err := dbPresenceActivity{db: db}.Audience(context.Background(), "user-1")
-
-			require.NoError(t, err)
-			require.False(t, visible, setting)
-			require.Empty(t, peers)
-			require.NoError(t, mock.ExpectationsWereMet())
-			_ = db.Close()
-		}
-	})
-
-	t.Run("открытый статус — собеседники по личным чатам", func(t *testing.T) {
+	audience := func(t *testing.T, settings any, peers *sqlmock.Rows) []string {
+		t.Helper()
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		defer db.Close()
-		// Настроек нет — статус по умолчанию открыт.
-		mock.ExpectQuery(`FROM users\.settings`).WithArgs("user-1").
-			WillReturnRows(sqlmock.NewRows([]string{"last_seen"}))
+		settingsRows := sqlmock.NewRows([]string{"privacy_settings"})
+		if settings != nil {
+			settingsRows.AddRow(settings)
+		}
+		mock.ExpectQuery(`FROM users\.settings`).WithArgs("user-1").WillReturnRows(settingsRows)
 		mock.ExpectQuery(`(?s)JOIN chats\.chats c ON c\.id = me\.chat_id AND c\.type = 'private'`).WithArgs("user-1").
-			WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow("peer-1").AddRow("peer-2"))
+			WillReturnRows(peers)
 
-		peers, visible, err := dbPresenceActivity{db: db}.Audience(context.Background(), "user-1")
+		got, err := dbPresenceActivity{db: db}.Audience(context.Background(), "user-1")
 
 		require.NoError(t, err)
-		require.True(t, visible)
-		require.Equal(t, []string{"peer-1", "peer-2"}, peers)
 		require.NoError(t, mock.ExpectationsWereMet())
+		return got
+	}
+	peerRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"user_id", "blocked", "exceptions"})
+	}
+
+	t.Run("открытый статус — всем, кроме заблокированных и «никогда»", func(t *testing.T) {
+		// Настроек нет — статус по умолчанию открыт.
+		got := audience(t, nil, peerRows().
+			AddRow("peer-1", false, nil).
+			AddRow("peer-2", true, nil).
+			AddRow("peer-3", false, []byte(`{"lastSeen":false}`)).
+			AddRow("peer-4", false, []byte(`{"photoVisibility":false}`)))
+
+		require.Equal(t, []string{"peer-1", "peer-4"}, got)
+	})
+
+	t.Run("закрытый статус — только тем, кому открыли исключением", func(t *testing.T) {
+		for _, setting := range []string{`{"lastSeen":"nobody"}`, `{"lastSeen":"contacts"}`} {
+			got := audience(t, []byte(setting), peerRows().
+				AddRow("peer-1", false, nil).
+				AddRow("peer-2", false, []byte(`{"lastSeen":true}`)).
+				AddRow("peer-3", true, []byte(`{"lastSeen":true}`)))
+
+			require.Equal(t, []string{"peer-2"}, got, "%s; чёрный список сильнее «всегда»", setting)
+		}
 	})
 
 	t.Run("ошибка чтения настроек не превращается в рассылку", func(t *testing.T) {
@@ -272,10 +282,9 @@ func TestDBPresenceActivity(t *testing.T) {
 		defer db.Close()
 		mock.ExpectQuery(`FROM users\.settings`).WithArgs("user-1").WillReturnError(errors.New("db down"))
 
-		peers, visible, err := dbPresenceActivity{db: db}.Audience(context.Background(), "user-1")
+		peers, err := dbPresenceActivity{db: db}.Audience(context.Background(), "user-1")
 
 		require.Error(t, err)
-		require.False(t, visible)
 		require.Empty(t, peers)
 	})
 }

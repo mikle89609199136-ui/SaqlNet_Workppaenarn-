@@ -103,3 +103,58 @@ func TestMapRoundTrip(t *testing.T) {
 	require.Equal(t, true, m["messagesFromStrangers"])
 	require.Equal(t, "nobody", m["phoneVisibility"])
 }
+
+// Исключения по людям (#784): сам себе → блокировка → исключение → правило.
+func TestDecideWithExceptions(t *testing.T) {
+	open := Parse([]byte(`{"lastSeen":"all","photoVisibility":"all"}`))
+	closed := Parse([]byte(`{"lastSeen":"nobody","photoVisibility":"nobody"}`))
+	always := map[Rule]bool{LastSeen: true}
+	never := map[Rule]bool{LastSeen: false}
+
+	require.True(t, Decide(closed, Relation{Exceptions: always}, LastSeen), "«всегда» открывает закрытое")
+	require.False(t, Decide(open, Relation{Exceptions: never}, LastSeen), "«никогда» закрывает открытое")
+	require.False(t, Decide(closed, Relation{Exceptions: always}, Photo), "исключение — только на своё правило")
+	require.True(t, Decide(open, Relation{Exceptions: never}, Photo))
+	require.False(t, Decide(open, Relation{Blocked: true, Exceptions: always}, LastSeen), "блокировка сильнее «всегда»")
+	require.True(t, Decide(closed, Relation{Self: true, Exceptions: never}, LastSeen), "себе — всегда")
+	// Повреждённые настройки закрывают правило, но «всегда» сильнее правила.
+	require.True(t, Decide(Parse([]byte(`{broken`)), Relation{Exceptions: always}, LastSeen))
+}
+
+func TestParseExceptions(t *testing.T) {
+	require.Nil(t, ParseExceptions(nil), "NULL из jsonb_object_agg — исключений нет")
+	require.Equal(t, map[Rule]bool{LastSeen: true, Photo: false},
+		ParseExceptions([]byte(`{"lastSeen":true,"photoVisibility":false}`)))
+
+	broken := ParseExceptions([]byte(`{"lastSeen":"yes"}`))
+	for rule := range defaults {
+		allow, ok := broken[rule]
+		require.True(t, ok, rule)
+		require.False(t, allow, "повреждённые исключения закрывают %s", rule)
+	}
+}
+
+func TestExceptionRuleAndMode(t *testing.T) {
+	for _, name := range []string{"lastSeen", "photoVisibility", "phoneVisibility", "forwards", "calls", "groupsAdd"} {
+		rule, ok := ExceptionRule(name)
+		require.True(t, ok, name)
+		require.Equal(t, Rule(name), rule)
+	}
+	for _, name := range []string{"messagesFromStrangers", "twoFactorAuth", "lastseen", ""} {
+		_, ok := ExceptionRule(name)
+		require.False(t, ok, name)
+	}
+
+	allow, ok := ParseMode("allow")
+	require.True(t, ok)
+	require.True(t, allow)
+	allow, ok = ParseMode("deny")
+	require.True(t, ok)
+	require.False(t, allow)
+	for _, mode := range []string{"", "Allow", "never", "true"} {
+		_, ok := ParseMode(mode)
+		require.False(t, ok, mode)
+	}
+	require.Equal(t, AlwaysAllow, ModeOf(true))
+	require.Equal(t, NeverAllow, ModeOf(false))
+}

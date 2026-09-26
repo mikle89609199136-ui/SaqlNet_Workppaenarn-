@@ -945,7 +945,7 @@ func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 
 			mock.ExpectQuery(statusSQLPattern).
 				WithArgs(tt.userID, "viewer-1").
-				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}))
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "last_active", "is_online"}))
 
 			status, err := user.NewService(db).Status(context.Background(), "viewer-1", tt.userID)
 			if !errors.Is(err, user.ErrNotFound) {
@@ -973,8 +973,8 @@ func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
 	svc := user.NewService(db)
 	mock.ExpectQuery(statusSQLPattern).
 		WithArgs(userID, "viewer-1").
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}).
-			AddRow([]byte(`{}`), false, nil, false))
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "last_active", "is_online"}).
+			AddRow([]byte(`{}`), false, nil, nil, false))
 
 	status, err := svc.Status(context.Background(), "viewer-1", userID)
 	if err != nil {
