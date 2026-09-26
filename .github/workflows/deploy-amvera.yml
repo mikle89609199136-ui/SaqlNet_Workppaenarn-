@@ -1,0 +1,23 @@
+# .github/workflows/deploy-amvera.yml
+
+name: Deploy to Amvera
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Amvera master
+        run: |
+          git remote add amvera "${{ secrets.AMVERA_REMOTE }}"
+          git push amvera HEAD:master
