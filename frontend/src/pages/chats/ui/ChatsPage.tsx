@@ -7,6 +7,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '@/entities/user';
+import { BlockUserButton } from '@/features/block-user';
+import type { IProfileActionsTarget } from '@/features/user-profile';
+
+/* Действия с чужим профилем — блокировка (#727). На уровне модуля:
+   стабильная ссылка не перерисовывает мемоизированную панель. */
+const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
+  <BlockUserButton name={name} userId={id} />
+);
 
 /* Границы ширины колонок. Ниже нижней строка чата перестаёт помещаться,
    выше верхней колонка съедает переписку. */
@@ -131,6 +139,7 @@ export function ChatsPage() {
                 setProfileCloseToken((value) => value + 1);
               }}
               profileState={profileState}
+              renderActions={renderProfileActions}
             />
           </div>
         </>

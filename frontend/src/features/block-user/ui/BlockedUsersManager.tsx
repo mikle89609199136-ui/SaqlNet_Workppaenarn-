@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { blockedUsersQuery, type IBlockedUserDto } from '@/entities/user';
 import { describeApiError } from '@/shared/api';
-import { Avatar, Banner, Button, Icon, showToast } from '@/shared/ui';
+import { Avatar, Banner, Button, Icon, Input, showToast } from '@/shared/ui';
 import { useUnblockUser } from '../model/useBlockActions';
 
 interface Props {
@@ -13,12 +14,23 @@ function displayName(user: IBlockedUserDto): string {
   return [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
 }
 
+/** Поиск по имени, фамилии и логину; «@» в начале не мешает. */
+function matches(user: IBlockedUserDto, query: string): boolean {
+  const needle = query.trim().replace(/^@/, '').toLowerCase();
+  if (!needle) return true;
+  return [user.firstName, user.lastName, user.username, displayName(user)].some((field) =>
+    field?.toLowerCase().includes(needle)
+  );
+}
+
 /** Чёрный список в «Настройки → Конфиденциальность» (#727). */
 export function BlockedUsersManager({ onBack }: Props) {
   const { t } = useTranslation();
   const blocked = useQuery(blockedUsersQuery());
   const unblock = useUnblockUser();
-  const users = blocked.data ?? [];
+  const [query, setQuery] = useState('');
+  const all = blocked.data ?? [];
+  const users = all.filter((user) => matches(user, query));
 
   return (
     <section>
@@ -50,6 +62,18 @@ export function BlockedUsersManager({ onBack }: Props) {
             'Не удалось загрузить чёрный список. Попробуйте обновить страницу.'
           )}
         </Banner>
+      )}
+
+      {/* Поиск — когда есть в чём искать (идея из #761). */}
+      {all.length > 0 && (
+        <Input
+          aria-label={t('settings.privacy.blockedSearch', 'Поиск в чёрном списке')}
+          className="mt-4"
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('settings.privacy.blockedSearch', 'Поиск в чёрном списке')}
+          type="search"
+          value={query}
+        />
       )}
 
       <div className="mt-4 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
@@ -95,7 +119,9 @@ export function BlockedUsersManager({ onBack }: Props) {
           <div className="text-body p-5 text-center text-ink-2">
             {blocked.isError
               ? t('settings.privacy.blockedUnavailable', 'Список недоступен')
-              : t('settings.privacy.blockedEmpty', 'Вы никого не заблокировали')}
+              : all.length > 0
+                ? t('settings.privacy.blockedNotFound', 'Никого не нашлось')
+                : t('settings.privacy.blockedEmpty', 'Вы никого не заблокировали')}
           </div>
         )}
       </div>

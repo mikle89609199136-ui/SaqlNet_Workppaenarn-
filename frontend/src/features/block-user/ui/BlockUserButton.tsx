@@ -1,10 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { blockedUsersQuery } from '@/entities/user';
-import { describeApiError } from '@/shared/api';
-import { Button, ConfirmDialog, showToast } from '@/shared/ui';
-import { useBlockUser, useUnblockUser } from '../model/useBlockActions';
+import { Button } from '@/shared/ui';
+import { useBlockFlow } from '../model/useBlockFlow';
 
 interface Props {
   userId: string;
@@ -12,29 +8,17 @@ interface Props {
 }
 
 /**
- * «Заблокировать» / «Разблокировать» в профиле (#727). Блокировка — с
- * подтверждением: она обрывает переписку и звонки; снятие — сразу.
+ * «Заблокировать» / «Разблокировать» в профиле и в плашке нового чата
+ * (#727, #465). Блокировка — с подтверждением: она обрывает переписку и
+ * звонки; снятие — сразу.
  */
 export function BlockUserButton({ userId, name }: Props) {
   const { t } = useTranslation();
-  const blocked = useQuery(blockedUsersQuery());
-  const block = useBlockUser();
-  const unblock = useUnblockUser();
-  const [asked, setAsked] = useState(false);
+  const flow = useBlockFlow();
 
-  const isBlocked = Boolean(blocked.data?.some((user) => user.id === userId));
-  const fail = (fallback: string) => (error: unknown) =>
-    showToast('error', describeApiError(error as { code?: string }, t, fallback));
-
-  if (isBlocked) {
+  if (flow.isBlocked(userId)) {
     return (
-      <Button
-        disabled={unblock.isPending}
-        onClick={() =>
-          unblock.mutate(userId, { onError: fail(t('unblockFailed', 'Не удалось разблокировать')) })
-        }
-        variant="secondary"
-      >
+      <Button disabled={flow.isUnblocking} onClick={() => flow.unblock(userId)} variant="secondary">
         {t('unblock', 'Разблокировать')}
       </Button>
     );
@@ -42,31 +26,14 @@ export function BlockUserButton({ userId, name }: Props) {
 
   return (
     <>
-      <Button disabled={blocked.isPending} onClick={() => setAsked(true)} variant="danger">
+      <Button
+        disabled={flow.isListLoading}
+        onClick={() => flow.requestBlock(userId, name)}
+        variant="danger"
+      >
         {t('block', 'Заблокировать')}
       </Button>
-      <ConfirmDialog
-        confirmLabel={t('block', 'Заблокировать')}
-        confirming={block.isPending}
-        danger
-        onCancel={() => setAsked(false)}
-        onConfirm={() =>
-          block.mutate(userId, {
-            onSuccess: () => setAsked(false),
-            onError: (error) => {
-              setAsked(false);
-              fail(t('blockFailed', 'Не удалось заблокировать'))(error);
-            },
-          })
-        }
-        open={asked}
-        title={t('blockConfirmTitle', { name, defaultValue: 'Заблокировать {{name}}?' })}
-      >
-        {t(
-          'blockConfirmText',
-          'Этот человек не сможет писать вам и звонить. Разблокировать можно в его профиле или в «Настройки → Конфиденциальность → Чёрный список».'
-        )}
-      </ConfirmDialog>
+      {flow.dialog}
     </>
   );
 }

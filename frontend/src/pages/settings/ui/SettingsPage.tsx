@@ -29,8 +29,12 @@ export function SettingsPage() {
       <div className="min-w-0 flex-1 overflow-y-auto">
         {/* Колонка текста: на широком экране прижата влево с отступом, на
             узком занимает ширину за вычетом полей. Прежний ручной порог
-            760px сведён к md — восемь пикселей разницы на границе. */}
-        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-16 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px]">
+            760px сведён к md — восемь пикселей разницы на границе.
+
+            Снизу на узком экране — место под плавающую панель навигации
+            (BottomNav: 60px высоты на 32px от края, всего 92px) и 20px
+            воздуха, иначе она закрывает последние пункты (идея из #761). */}
+        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-28 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px] md:pb-16">
           <Outlet />
         </main>
       </div>
