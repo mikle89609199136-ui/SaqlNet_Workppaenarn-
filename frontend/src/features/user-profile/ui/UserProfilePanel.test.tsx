@@ -269,5 +269,40 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(screen.getAllByText(/alex/).length).toBeGreaterThan(0);
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
     });
+
+    it('профиль из пересланного сообщения не берёт чужой чат (#785)', async () => {
+      const author = makeUser({ id: 'user-3', username: 'anna', firstName: 'Анна' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: author }))
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+
+      // Открыт чат с user-2, а профиль — автора пересланного, user-3.
+      const chat = makeChat({
+        id: 'chat-1',
+        type: 'private',
+        peerId: 'user-2',
+        peerIsOnline: true,
+      });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-3',
+            chat,
+            messages: [makeMediaMessage('m-1', 'image', '/api/v2/media/foreign')],
+          }}
+        />
+      );
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Анна' })).toBeInTheDocument();
+      // Ни статуса, ни звонка, ни общих медиа чужого собеседника.
+      expect(screen.queryByText('онлайн')).not.toBeInTheDocument();
+      // Звонить некуда: общего личного чата нет — кнопка неактивна.
+      expect(screen.getByRole('button', { name: /аудиозвонок/i })).toBeDisabled();
+      expect(document.querySelector('img[src*="foreign"]')).toBeNull();
+    });
   });
 });

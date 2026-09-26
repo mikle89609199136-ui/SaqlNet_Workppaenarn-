@@ -29,8 +29,9 @@ var forwardSourceColumns = []string{"chat_id", "sender_name", "sender_id", "meta
 // forwardMetadataArg matches the metadata JSON written by the INSERT.
 // Empty from means the link to the original is hidden (#785).
 type forwardMetadataArg struct {
-	from string
-	name string
+	from     string
+	name     string
+	senderID string
 }
 
 func (a forwardMetadataArg) Match(value driver.Value) bool {
@@ -47,10 +48,11 @@ func (a forwardMetadataArg) Match(value driver.Value) bool {
 	}
 	if a.from == "" {
 		_, linked := metadata["forwardedFrom"]
-		return !linked && metadata["forwardedHidden"] == true
+		_, author := metadata["forwardedSenderId"]
+		return !linked && !author && metadata["forwardedHidden"] == true
 	}
 	_, hidden := metadata["forwardedHidden"]
-	return !hidden && metadata["forwardedFrom"] == a.from
+	return !hidden && metadata["forwardedFrom"] == a.from && metadata["forwardedSenderId"] == a.senderID
 }
 
 // expectForwardSource — сообщение от автора forwardAuthorID в чате, где
@@ -86,7 +88,7 @@ func TestForwardOriginReturnsForwardedMessageAuthor(t *testing.T) {
 	source, err := NewService(db, nil, nil).ForwardOrigin(context.Background(), messageValidationUserID, messageValidationMessageID)
 
 	require.NoError(t, err)
-	require.Equal(t, ForwardSource{MessageID: messageValidationMessageID, SenderName: "Anna"}, source)
+	require.Equal(t, ForwardSource{MessageID: messageValidationMessageID, SenderName: "Anna", SenderID: forwardAuthorID}, source)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -103,13 +105,13 @@ func TestForwardOriginKeepsOriginalAuthorOfForwardedMessage(t *testing.T) {
 	source, err := NewService(db, nil, nil).ForwardOrigin(context.Background(), messageValidationUserID, messageValidationMessageID)
 
 	require.NoError(t, err)
-	require.Equal(t, ForwardSource{MessageID: forwardOriginalID, SenderName: "Boris"}, source)
+	require.Equal(t, ForwardSource{MessageID: forwardOriginalID, SenderName: "Boris", SenderID: forwardOriginalAuthorID}, source)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 // Правило «Пересылка» (#785): при запрете остаётся только имя.
 func TestForwardOriginFollowsForwardsRule(t *testing.T) {
-	linked := ForwardSource{MessageID: messageValidationMessageID, SenderName: "Anna"}
+	linked := ForwardSource{MessageID: messageValidationMessageID, SenderName: "Anna", SenderID: forwardAuthorID}
 	nameOnly := ForwardSource{SenderName: "Anna"}
 
 	for name, tt := range map[string]struct {
@@ -154,7 +156,7 @@ func TestForwardOriginWithoutRuleQuery(t *testing.T) {
 		source, err := NewService(db, nil, nil).ForwardOrigin(context.Background(), messageValidationUserID, messageValidationMessageID)
 
 		require.NoError(t, err)
-		require.Equal(t, ForwardSource{MessageID: messageValidationMessageID, SenderName: "Me"}, source)
+		require.Equal(t, ForwardSource{MessageID: messageValidationMessageID, SenderName: "Me", SenderID: messageValidationUserID}, source)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -188,9 +190,9 @@ func TestForwardOriginWithoutRuleQuery(t *testing.T) {
 }
 
 func TestForwardSourceApply(t *testing.T) {
-	metadata := map[string]any{"forwardedFrom": "old", "forwardedHidden": true, "fileName": "a.pdf"}
-	ForwardSource{MessageID: "new", SenderName: "Anna"}.Apply(metadata)
-	require.Equal(t, map[string]any{"forwardedFrom": "new", "forwardedSenderName": "Anna", "fileName": "a.pdf"}, metadata)
+	metadata := map[string]any{"forwardedFrom": "old", "forwardedHidden": true, "forwardedSenderId": "old-author", "fileName": "a.pdf"}
+	ForwardSource{MessageID: "new", SenderName: "Anna", SenderID: "anna"}.Apply(metadata)
+	require.Equal(t, map[string]any{"forwardedFrom": "new", "forwardedSenderName": "Anna", "forwardedSenderId": "anna", "fileName": "a.pdf"}, metadata)
 
 	ForwardSource{SenderName: "Anna"}.Apply(metadata)
 	require.Equal(t, map[string]any{"forwardedHidden": true, "forwardedSenderName": "Anna", "fileName": "a.pdf"}, metadata)
@@ -290,6 +292,7 @@ type forwardedResponse struct {
 	Message struct {
 		IsForwarded         bool           `json:"isForwarded"`
 		ForwardedSenderName string         `json:"forwardedSenderName"`
+		ForwardedSenderID   string         `json:"forwardedSenderId"`
 		Metadata            map[string]any `json:"metadata"`
 	} `json:"message"`
 }
@@ -297,13 +300,14 @@ type forwardedResponse struct {
 func TestSendMessageStoresForwardedFrom(t *testing.T) {
 	body := sendForwarded(t,
 		func(mock sqlmock.Sqlmock) { expectForwardsRule(mock, forwardAuthorID, "", false, "") },
-		forwardMetadataArg{from: messageValidationMessageID, name: "Anna"},
-		`{"forwardedFrom":"`+messageValidationMessageID+`","forwardedSenderName":"Anna"}`)
+		forwardMetadataArg{from: messageValidationMessageID, name: "Anna", senderID: forwardAuthorID},
+		`{"forwardedFrom":"`+messageValidationMessageID+`","forwardedSenderName":"Anna","forwardedSenderId":"`+forwardAuthorID+`"}`)
 
 	var response forwardedResponse
 	require.NoError(t, json.Unmarshal([]byte(body), &response))
 	require.True(t, response.Message.IsForwarded)
 	require.Equal(t, "Anna", response.Message.ForwardedSenderName, "имя — с сервера, не из запроса")
+	require.Equal(t, forwardAuthorID, response.Message.ForwardedSenderID, "автор — чтобы открыть профиль")
 }
 
 // Автор запретил пересылку со ссылкой (#785): в ответе нет ни исходного
@@ -398,7 +402,7 @@ func TestForwardMessageKeepsOriginalAuthorOfForwardedMessage(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
-		WithArgs(messageValidationChatID, messageValidationUserID, "text", "text", sqlmock.AnyArg(), forwardMetadataArg{from: forwardOriginalID, name: "Boris"}).
+		WithArgs(messageValidationChatID, messageValidationUserID, "text", "text", sqlmock.AnyArg(), forwardMetadataArg{from: forwardOriginalID, name: "Boris", senderID: forwardOriginalAuthorID}).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}).
 			AddRow("forward-id", messageValidationChatID, messageValidationUserID, "User", "", "text", "text", nil, []byte(metadata), false, false, "created", "updated", nil))
 	mock.ExpectCommit()

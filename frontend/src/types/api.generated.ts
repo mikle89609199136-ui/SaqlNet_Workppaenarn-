@@ -2324,13 +2324,18 @@ export interface components {
             replySenderName?: string;
             replyToSenderName?: string;
             reactions: components["schemas"]["Reaction"][];
-            /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
+            /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
                 [key: string]: unknown;
             };
             isForwarded: boolean;
             /** @description Name of the original author, shown as text even when the link is hidden. */
             forwardedSenderName?: string;
+            /**
+             * Format: uuid
+             * @description Original author, to open their profile. Present only when the author's forwards rule allowed the forwarder to link to them; absent together with forwardedFrom when the link is hidden.
+             */
+            forwardedSenderId?: string;
             isPinned: boolean;
             isEdited: boolean;
             createdAt: string;

@@ -316,6 +316,43 @@ describe('пересланное сообщение (#169)', () => {
     expect(screen.queryByRole('button', { name: /Анна/ })).not.toBeInTheDocument();
   });
 
+  it('открывает профиль автора по клику на имя, если ссылка разрешена (#785)', async () => {
+    const onOpenProfile = vi.fn();
+    const onSelection = vi.fn();
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({
+          content: 'пересланный текст',
+          isForwarded: true,
+          forwardedSenderName: 'Анна',
+          forwardedSenderId: 'user-anna',
+        })}
+        onOpenImage={vi.fn()}
+        onOpenProfile={onOpenProfile}
+        onReact={vi.fn()}
+        onSelection={onSelection}
+        translations={{}}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Анна' }));
+
+    expect(onOpenProfile).toHaveBeenCalledWith('user-anna');
+    expect(onSelection).not.toHaveBeenCalled();
+  });
+
+  it('без обработчика профиля имя остаётся текстом', () => {
+    renderForwarded({
+      isForwarded: true,
+      forwardedSenderName: 'Анна',
+      forwardedSenderId: 'user-anna',
+    });
+
+    expect(screen.getByText('Анна').tagName).toBe('B');
+    expect(screen.queryByRole('button', { name: 'Анна' })).not.toBeInTheDocument();
+  });
+
   it('молчит у обычного сообщения', () => {
     renderForwarded({ isForwarded: false, forwardedSenderName: 'Максим' });
 

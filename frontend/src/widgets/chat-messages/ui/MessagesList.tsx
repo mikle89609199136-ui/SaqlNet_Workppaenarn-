@@ -27,6 +27,8 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Профиль автора пересланного сообщения (#785). */
+  onOpenProfile?: (userId: string) => void;
   /**
    * Показывать ли статус доставки у своих сообщений. Только личные чаты:
    * в группе у «прочитано» нет одного значения — непонятно, прочитал один
@@ -48,6 +50,7 @@ export const MessagesList = memo(
     bottomRef,
     messagesRef,
     onRetryMessage,
+    onOpenProfile,
     onCancelMessage,
     showDeliveryStatus = false,
   }: Props) => {
@@ -142,6 +145,7 @@ export const MessagesList = memo(
                         isLastInGroup={item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
+                        onOpenProfile={onOpenProfile}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}

@@ -39,6 +39,8 @@ interface Props {
   onReact: (message: IMessageDto, emoji: string) => void;
   /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
   onJumpToMessage?: (messageId: string) => void;
+  /** Профиль автора пересланного сообщения по клику на его имя (#785). */
+  onOpenProfile?: (userId: string) => void;
   /** Повторная отправка сообщения из Outbox при ошибке сети (#552). */
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
@@ -68,6 +70,7 @@ export const MessageBubble = memo(
     onReact,
     onSelection,
     onJumpToMessage,
+    onOpenProfile,
     onRetryMessage,
     onCancelMessage,
     showDeliveryStatus = false,
@@ -184,13 +187,29 @@ export const MessageBubble = memo(
           )}
 
           {/* Имя автора подставляет сервер, проверив доступ к исходному
-              сообщению. Пустым оно бывает только у старых пересылок. */}
+              сообщению. Пустым оно бывает только у старых пересылок.
+              Профиль открывается, только если автор разрешил ссылку на
+              себя: иначе сервер не присылает forwardedSenderId (#785). */}
           {message.isForwarded && (
             <p className="mb-1 text-caption text-ink-3">
               {message.forwardedSenderName ? (
                 <>
                   {t('forwardedFrom', 'Переслано от')}{' '}
-                  <b className="font-semibold text-ink-2">{message.forwardedSenderName}</b>
+                  {message.forwardedSenderId && onOpenProfile ? (
+                    <button
+                      className="font-semibold text-brand hover:underline focus-visible:underline"
+                      onClick={(event) => {
+                        // Клик по пузырю выделяет сообщение — здесь не нужно.
+                        event.stopPropagation();
+                        onOpenProfile(message.forwardedSenderId!);
+                      }}
+                      type="button"
+                    >
+                      {message.forwardedSenderName}
+                    </button>
+                  ) : (
+                    <b className="font-semibold text-ink-2">{message.forwardedSenderName}</b>
+                  )}
                 </>
               ) : (
                 t('forwarded', 'Переслано')

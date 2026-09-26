@@ -25,6 +25,15 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const now = useNow();
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
+  /* Чат и его лента — только если это личный чат именно с этим человеком.
+     Профиль открывается и по имени автора пересланного сообщения (#785):
+     тогда открытый чат чужой, и его статус, общие медиа и звонок
+     относились бы к другому собеседнику. */
+  const chat =
+    profileState.chat?.type === 'private' && profileState.chat.peerId === profileState.userId
+      ? profileState.chat
+      : null;
+  const chatMessages = chat ? profileState.messages : undefined;
   const {
     data: profileUser,
     isLoading,
@@ -34,7 +43,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
     profileUser?.username ||
-    profileState.chat?.title ||
+    chat?.title ||
     t('user', 'Пользователь');
 
   const {
@@ -51,13 +60,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const isMyProfile = currentUser?.id === profileUser?.id;
 
   const sharedMedia = useMemo(
-    () => (profileState.messages || []).filter(isDisplayableMedia),
-    [profileState.messages]
+    () => (chatMessages || []).filter(isDisplayableMedia),
+    [chatMessages]
   );
 
   const profileSubtitle = useMemo(
-    () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t, now) : null),
-    [profileState.chat, t, now]
+    () => (chat ? getChatSubtitle(chat, null, t, now) : null),
+    [chat, t, now]
   );
 
   if (isLoading) {
@@ -83,18 +92,11 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     <aside className="h-full flex flex-col bg-sheet overflow-hidden" role="complementary">
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         <ProfileHeader
-          hasChat={Boolean(profileState.chat)}
+          hasChat={Boolean(chat)}
           isMyProfile={isMyProfile}
           isPeerOnline={Boolean(profileUser.isOnline)}
           onCall={(kind) =>
-            profileState.chat &&
-            initiateCall(
-              profileState.chat.id,
-              'private',
-              profileUser.username,
-              kind,
-              profileUser.id
-            )
+            chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
           }
           onClose={onClose}
           onStartEdit={startEdit}
@@ -113,7 +115,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           profileUser={profileUser}
         />
 
-        {profileState.chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
+        {chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
       </div>
     </aside>
   );

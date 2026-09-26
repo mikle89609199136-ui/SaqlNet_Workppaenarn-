@@ -103,11 +103,14 @@ type Message struct {
 	Metadata            map[string]any `json:"metadata,omitempty"`
 	IsForwarded         bool           `json:"isForwarded"`
 	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
-	IsPinned            bool           `json:"isPinned"`
-	IsEdited            bool           `json:"isEdited"`
-	CreatedAt           string         `json:"createdAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	DeletedAt           *string        `json:"deletedAt,omitempty"`
+	// ForwardedSenderID — автор оригинала, чтобы открыть его профиль. Только
+	// когда его правило «Пересылка» разрешило ссылку (#785).
+	ForwardedSenderID string  `json:"forwardedSenderId,omitempty"`
+	IsPinned          bool    `json:"isPinned"`
+	IsEdited          bool    `json:"isEdited"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+	DeletedAt         *string `json:"deletedAt,omitempty"`
 }
 
 type Service struct {
@@ -214,14 +217,26 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 			if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
 				msg.ForwardedSenderName = name
 			}
-			if msg.ForwardedSenderName == "" && forwardedFrom != "" {
+			if forwardedFrom != "" {
+				msg.ForwardedSenderID, _ = msg.Metadata["forwardedSenderId"].(string)
+			}
+			// Пересылки до #785 не хранят автора: он находится по исходному
+			// сообщению. Правила тогда не было — ссылка была у всех.
+			if forwardedFrom != "" && (msg.ForwardedSenderName == "" || msg.ForwardedSenderID == "") {
+				var name, senderID string
 				_ = s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+					SELECT COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(m.sender_id::text, '')
 					FROM messages.messages m
 					LEFT JOIN auth.users au ON au.id = m.sender_id
 					LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 					WHERE m.id::text = $1
-				`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+				`, forwardedFrom).Scan(&name, &senderID)
+				if msg.ForwardedSenderName == "" {
+					msg.ForwardedSenderName = name
+				}
+				if msg.ForwardedSenderID == "" {
+					msg.ForwardedSenderID = senderID
+				}
 			}
 		}
 	}
@@ -2338,6 +2353,8 @@ type ForwardSource struct {
 	// только имя.
 	MessageID  string
 	SenderName string
+	// SenderID — автор оригинала; пусто вместе с MessageID.
+	SenderID string
 }
 
 // Apply записывает источник в метаданные нового сообщения. Прежние ключи
@@ -2345,9 +2362,13 @@ type ForwardSource struct {
 func (f ForwardSource) Apply(metadata map[string]any) {
 	delete(metadata, "forwardedFrom")
 	delete(metadata, "forwardedHidden")
+	delete(metadata, "forwardedSenderId")
 	metadata["forwardedSenderName"] = f.SenderName
 	if f.MessageID != "" {
 		metadata["forwardedFrom"] = f.MessageID
+		if f.SenderID != "" {
+			metadata["forwardedSenderId"] = f.SenderID
+		}
 	} else {
 		metadata["forwardedHidden"] = true
 	}
@@ -2432,8 +2453,9 @@ func (s *Service) forwardSource(ctx context.Context, userID, messageID, senderID
 		return ForwardSource{}, err
 	}
 	if !allowed {
-		source.MessageID = ""
+		return ForwardSource{SenderName: source.SenderName}, nil
 	}
+	source.SenderID = authorID
 	return source, nil
 }
 

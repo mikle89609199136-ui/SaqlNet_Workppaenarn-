@@ -449,6 +449,7 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 		require.True(t, m.IsForwarded)
 		require.Equal(t, "Owner", m.ForwardedSenderName)
 		require.Equal(t, original.ID, m.Metadata["forwardedFrom"])
+		require.Equal(t, owner, m.ForwardedSenderID, "автор — чтобы открыть профиль")
 	}
 	requireNameOnly := func(m chat.Message) {
 		t.Helper()
@@ -490,6 +491,24 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 
 	block(t, db, owner, viewer)
 	requireNameOnly(forward())
+
+	// Пересылка до #785: автора в метаданных нет — находится по оригиналу.
+	var legacyID string
+	require.NoError(t, db.QueryRow(`
+		INSERT INTO messages.messages (chat_id, sender_id, content, type, metadata)
+		VALUES ($1, $2, 'старая пересылка', 'text', jsonb_build_object('forwardedFrom', $3::text, 'forwardedSenderName', 'Owner'))
+		RETURNING id::text`, targetChat, viewer, original.ID).Scan(&legacyID))
+	legacy, err := chats.ListMessages(ctx, other, targetChat, 100, 0)
+	require.NoError(t, err)
+	found := false
+	for _, m := range legacy {
+		if m.ID == legacyID {
+			found = true
+			require.True(t, m.IsForwarded)
+			require.Equal(t, owner, m.ForwardedSenderID)
+		}
+	}
+	require.True(t, found, "старой пересылки нет в истории")
 
 	// Решение зафиксировано: снятие запрета не раскрывает уже пересланное.
 	setPrivacy(t, db, owner, `{"forwards":"all"}`)
