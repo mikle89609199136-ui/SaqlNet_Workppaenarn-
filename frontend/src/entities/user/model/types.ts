@@ -35,6 +35,16 @@ export interface IPrivacyDto {
   messagesFromStrangers: boolean;
 }
 
+/** Человек из чёрного списка (#727). Фото — по его правилу «Фото» (#789). */
+export interface IBlockedUserDto {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+  blockedAt: string;
+}
+
 /**
  * Ответ на запрос настроек: сервер отдаёт настройки и приватность вместе,
  * потому что хранит их в одной строке — двумя колонками jsonb.

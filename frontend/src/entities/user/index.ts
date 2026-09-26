@@ -6,6 +6,7 @@ export * from './model/userProfileQuery';
 export * from './model/searchUsersQuery';
 export * from './model/settingsQuery';
 export * from './model/securityQueries';
+export * from './model/blockedUsersQuery';
 export * from './model/useApplyPreferences';
 export * from './model/userKeys';
 export * from './model/validateAvatarFile';

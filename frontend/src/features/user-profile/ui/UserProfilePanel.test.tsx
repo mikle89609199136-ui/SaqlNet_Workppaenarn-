@@ -270,6 +270,61 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
     });
 
+    it('при блокировке звонок из профиля неактивен (#760)', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: null }))
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+      const chat = makeChat({
+        id: 'chat-1',
+        type: 'private',
+        peerId: 'user-2',
+        isBlockedByPeer: true,
+      });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+        />
+      );
+
+      expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /видеозвонок/i })).toBeDisabled();
+    });
+
+    it('в чужом профиле — «Заблокировать», в своём — нет (#727)', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      const me = makeUser({ id: 'user-1', username: 'me', firstName: 'Я' });
+      server.use(
+        http.get(api('/users/:userId/profile'), ({ params }) =>
+          HttpResponse.json({ user: params.userId === 'user-1' ? me : peer })
+        ),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: null }))
+      );
+      useProfileStore.setState({ user: me });
+
+      const { unmount } = renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{ isOpen: true, userId: 'user-2', chat: null, messages: [] }}
+        />
+      );
+      expect(await screen.findByRole('button', { name: 'Заблокировать' })).toBeInTheDocument();
+      unmount();
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{ isOpen: true, userId: 'user-1', chat: null, messages: [] }}
+        />
+      );
+      expect(await screen.findByRole('heading', { level: 2, name: 'Я' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Заблокировать' })).not.toBeInTheDocument();
+    });
+
     it('профиль из пересланного сообщения не берёт чужой чат (#785)', async () => {
       const author = makeUser({ id: 'user-3', username: 'anna', firstName: 'Анна' });
       server.use(
