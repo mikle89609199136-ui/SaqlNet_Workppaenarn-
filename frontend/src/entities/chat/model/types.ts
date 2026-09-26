@@ -35,6 +35,10 @@ export interface IChatDto {
   peerLastSeen?: string;
   /** Промежуток вместо скрытого времени (#791): recently, within_week, within_month, long_ago. */
   peerLastSeenApprox?: TLastSeenApprox;
+  /** Собеседник заблокировал вас: писать и звонить нельзя (#760). */
+  isBlockedByPeer?: boolean;
+  /** Вы заблокировали собеседника. */
+  isPeerBlocked?: boolean;
   ownerId: string;
   role: TChatRole;
   isPinned: boolean;

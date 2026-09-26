@@ -93,6 +93,7 @@ export type {
   IPongEvent,
   IReactionUpdatedEvent,
   IPresenceChangedEvent,
+  IUserBlockEvent,
   ITypingEvent,
   IWsEventMap,
   TWsEventType,

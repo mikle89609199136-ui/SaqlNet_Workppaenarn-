@@ -70,6 +70,7 @@ func main() {
 	}
 	go chat.OutboxRelay(workerCtx, pool, natsConn)
 	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
+	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {

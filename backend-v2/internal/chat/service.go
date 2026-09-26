@@ -50,18 +50,22 @@ type Chat struct {
 	PeerLastSeen  string `json:"peerLastSeen,omitempty"`
 	// PeerLastSeenApprox — приблизительное время вместо скрытого (#791):
 	// recently, within_week, within_month, long_ago.
-	PeerLastSeenApprox string              `json:"peerLastSeenApprox,omitempty"`
-	OwnerID            string              `json:"ownerId"`
-	Role               string              `json:"role"`
-	IsPinned           bool                `json:"isPinned"`
-	IsArchived         bool                `json:"isArchived"`
-	LastReadAt         string              `json:"lastReadAt,omitempty"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
-	MemberCount        int                 `json:"memberCount"`
-	LastMessageAt      string              `json:"lastMessageAt,omitempty"`
-	UnreadCount        int                 `json:"unreadCount"`
-	LastMessage        *LastMessagePreview `json:"lastMessage,omitempty"`
+	PeerLastSeenApprox string `json:"peerLastSeenApprox,omitempty"`
+	// IsBlockedByPeer — собеседник заблокировал вас: писать и звонить нельзя (#760).
+	IsBlockedByPeer bool `json:"isBlockedByPeer,omitempty"`
+	// IsPeerBlocked — вы заблокировали собеседника.
+	IsPeerBlocked bool                `json:"isPeerBlocked,omitempty"`
+	OwnerID       string              `json:"ownerId"`
+	Role          string              `json:"role"`
+	IsPinned      bool                `json:"isPinned"`
+	IsArchived    bool                `json:"isArchived"`
+	LastReadAt    string              `json:"lastReadAt,omitempty"`
+	CreatedAt     string              `json:"createdAt"`
+	UpdatedAt     string              `json:"updatedAt"`
+	MemberCount   int                 `json:"memberCount"`
+	LastMessageAt string              `json:"lastMessageAt,omitempty"`
+	UnreadCount   int                 `json:"unreadCount"`
+	LastMessage   *LastMessagePreview `json:"lastMessage,omitempty"`
 }
 
 type LastMessagePreview struct {
@@ -1760,6 +1764,8 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			return nil, err
 		}
 		if chat.Type == "private" {
+			chat.IsBlockedByPeer = peerBlocksViewer
+			chat.IsPeerBlocked = viewerBlocksPeer
 			applyPeerPrivacy(&chat, privacy.Pair{
 				Owner:         privacy.Parse(peerPrivacy),
 				Viewer:        privacy.Parse(viewerPrivacy),
@@ -1866,21 +1872,34 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 	return messages, rows.Err()
 }
 
+// sendPermissionQuery — может ли участник писать в чат: роль, заглушение и
+// блокировка собеседником по личному чату (#760).
+const sendPermissionQuery = `
+		SELECT cm.role,
+		       (
+		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
+		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
+		       ),
+		       -- Собеседник по личному чату заблокировал отправителя (#760).
+		       EXISTS(
+		         SELECT 1
+		         FROM chats.chats c
+		         JOIN chats.members peer ON peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
+		         WHERE c.id = cm.chat_id AND c.type = 'private'
+		       )
+		FROM chats.members cm
+		JOIN auth.users u ON u.id = cm.user_id
+		WHERE cm.chat_id = $1 AND cm.user_id = $2
+	`
+
 func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string, metadata map[string]any) (Message, error) {
 	content = sanitizeMessageContent(content)
 
 	var role string
 	var isMuted sql.NullBool
-	err := s.db.QueryRowContext(ctx, `
-		SELECT cm.role,
-		       (
-		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
-		       )
-		FROM chats.members cm
-		JOIN auth.users u ON u.id = cm.user_id
-		WHERE cm.chat_id = $1 AND cm.user_id = $2
-	`, chatID, userID).Scan(&role, &isMuted)
+	var blockedByPeer bool
+	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1891,6 +1910,10 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 
 	if isMuted.Valid && isMuted.Bool {
 		return Message{}, ErrMemberMuted
+	}
+	// Ни в базу, ни в рассылку: заблокировавший его не получит.
+	if blockedByPeer {
+		return Message{}, ErrBlockedByUser
 	}
 
 	var msg Message

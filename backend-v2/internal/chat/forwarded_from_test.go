@@ -258,7 +258,7 @@ func sendForwarded(t *testing.T, rule func(sqlmock.Sqlmock), stored forwardMetad
 	rule(mock)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(messageValidationChatID, messageValidationUserID, "forwarded text", "text", sql.NullString{}, stored).
@@ -399,7 +399,7 @@ func TestForwardMessageKeepsOriginalAuthorOfForwardedMessage(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"sender_id"}).AddRow(forwardOriginalAuthorID))
 	expectForwardsRule(mock, forwardOriginalAuthorID, "", false, "")
 	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(messageValidationChatID, messageValidationUserID, "text", "text", sqlmock.AnyArg(), forwardMetadataArg{from: forwardOriginalID, name: "Boris", senderID: forwardOriginalAuthorID}).

@@ -180,6 +180,11 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if errors.Is(err, ErrBlockedByUser) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
+		return
+	}
+
 	if errors.Is(err, ErrForbidden) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 		return

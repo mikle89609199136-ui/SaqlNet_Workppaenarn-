@@ -1690,7 +1690,10 @@ export interface paths {
         get: operations["listMessages"];
         /** Edit a message */
         put: operations["editMessage"];
-        /** Send a message to a chat */
+        /**
+         * Send a message to a chat
+         * @description 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — the message is neither stored nor delivered.
+         */
         post: operations["sendMessage"];
         /** Delete a message */
         delete: operations["deleteMessage"];
@@ -2714,6 +2717,10 @@ export interface components {
             peerIsOnline?: boolean;
             /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden, see peerLastSeenApprox. */
             peerLastSeen?: string;
+            /** @description Private chats only. The peer has blocked the caller: sending (403 blocked_by_user) and calling are refused. Changes arrive as the user_blocked / user_unblocked WebSocket events. */
+            isBlockedByPeer?: boolean;
+            /** @description Private chats only. The caller has blocked the peer. */
+            isPeerBlocked?: boolean;
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };

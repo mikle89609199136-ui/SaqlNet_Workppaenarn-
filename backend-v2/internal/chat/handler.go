@@ -757,6 +757,14 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
+		if errors.Is(err, ErrBlockedByUser) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
+			return
+		}
+		if errors.Is(err, ErrMemberMuted) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			return
