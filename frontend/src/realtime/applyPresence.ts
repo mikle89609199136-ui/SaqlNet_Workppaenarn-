@@ -48,3 +48,60 @@ export function refreshPresence(queryClient: QueryClient): void {
     void queryClient.invalidateQueries({ queryKey: key, exact: true });
   }
 }
+
+/**
+ * Сколько ждать, прежде чем показать «был(а)» вместо «в сети».
+ *
+ * Сервер сообщает о выходе, как только закрылось последнее соединение, а
+ * при плохой связи оно рвётся и восстанавливается за секунды: у собеседника
+ * статус мигал бы «в сети» → «был(а)» → «в сети». Вход показывается сразу,
+ * выход — если человек не вернулся за это время.
+ */
+export const PRESENCE_OFFLINE_DELAY_MS = 30_000;
+
+export interface IPresenceBuffer {
+  push(event: IPresenceChangedEvent): void;
+  dispose(): void;
+}
+
+/** Применяет события присутствия с задержкой выхода (см. PRESENCE_OFFLINE_DELAY_MS). */
+export function createPresenceBuffer(
+  queryClient: QueryClient,
+  offlineDelayMs = PRESENCE_OFFLINE_DELAY_MS
+): IPresenceBuffer {
+  const pendingOffline = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const cancel = (userId: string) => {
+    const timer = pendingOffline.get(userId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    pendingOffline.delete(userId);
+  };
+
+  return {
+    push(event) {
+      if (!event?.userId) return;
+      const { userId } = event;
+
+      if (event.isOnline) {
+        // Вернулся, пока ждали, — для собеседника он и не уходил.
+        cancel(userId);
+        applyPresence(queryClient, event);
+        return;
+      }
+
+      cancel(userId);
+      pendingOffline.set(
+        userId,
+        setTimeout(() => {
+          pendingOffline.delete(userId);
+          applyPresence(queryClient, event);
+        }, offlineDelayMs)
+      );
+    },
+    dispose() {
+      for (const timer of pendingOffline.values()) clearTimeout(timer);
+      pendingOffline.clear();
+    },
+  };
+}
