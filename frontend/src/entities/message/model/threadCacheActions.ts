@@ -28,9 +28,15 @@ import {
  * Правило живёт здесь, а не в вызывающем коде: раньше связь ленты и
  * превью поддерживал отдельный хук со своими подписками, и стоило
  * появиться новому способу отправки, как превью переставало обновляться.
+ *
+ * Уже идущий перезапрос не прерывается (`cancelRefetch: false`): пачка
+ * сообщений — своя отправка или N событий `new_message` подряд — иначе
+ * давала N запросов списка, каждый из которых отменял предыдущий (#808).
+ * Сервер рассылает события после записи всей пачки, так что первый же
+ * запрос видит её целиком.
  */
 function markChatListStale(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+  void queryClient.invalidateQueries({ queryKey: chatKeys.list() }, { cancelRefetch: false });
 }
 
 export function putThreadMessage(
@@ -38,6 +44,20 @@ export function putThreadMessage(
   chatId: string,
   message: IMessageDto
 ): void {
+  putThreadMessages(queryClient, chatId, [message]);
+}
+
+/**
+ * Несколько сообщений разом — ответ на отправку пачкой (#808): одна запись
+ * в кеш и одна пометка списка чатов на всю пачку.
+ */
+export function putThreadMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  messages: IMessageDto[]
+): void {
+  if (messages.length === 0) return;
+
   const current = queryClient.getQueryData<IThreadPages>(chatKeys.messages(chatId));
 
   // Историю, которую ещё не загружали, дополнять нельзя: одно сообщение
@@ -48,7 +68,10 @@ export function putThreadMessage(
     return;
   }
 
-  queryClient.setQueryData(chatKeys.messages(chatId), appendMessage(current, message));
+  queryClient.setQueryData(
+    chatKeys.messages(chatId),
+    messages.reduce((pages, message) => appendMessage(pages, message), current)
+  );
   markChatListStale(queryClient);
 }
 

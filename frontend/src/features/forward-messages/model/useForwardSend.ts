@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatUiStore } from '@/entities/chat';
-import { putThreadMessage } from '@/entities/message';
+import { putThreadMessages } from '@/entities/message';
 import { services } from '@/services';
 import { describeApiError } from '@/shared/api';
 import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
@@ -68,8 +68,11 @@ export function useForwardSend(chatId: string) {
           batch,
           commentSent ? '' : comment
         );
-        delivered.forEach((message) =>
-          putThreadMessage(queryClient, chatId, { ...message, status: 'sent' })
+        // Пачкой: одна запись в ленту и один перезапрос списка чатов.
+        putThreadMessages(
+          queryClient,
+          chatId,
+          delivered.map((message) => ({ ...message, status: 'sent' as const }))
         );
         commentSent = Boolean(comment);
         sent += batch.length;
