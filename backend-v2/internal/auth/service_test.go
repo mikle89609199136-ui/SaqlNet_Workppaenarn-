@@ -114,7 +114,6 @@ func TestRegister_CreatesUserWithExactUsername(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO auth.users").WithArgs("ivan", "hash", "Ivan", "").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "token_generation"}).AddRow("user_id", "ivan", "Ivan", "", 0))
-	mock.ExpectExec("INSERT INTO users.profiles").WithArgs("user_id", "Ivan", "").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO users.settings").WithArgs("user_id", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
@@ -154,7 +153,6 @@ func TestRegister_RollsBackWhenFirstTokenCannotBeIssued(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO auth.users").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "token_generation"}).
 			AddRow("user_id", "ivan", "Ivan", "", 0))
-	mock.ExpectExec("INSERT INTO users.profiles").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO users.settings").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectRollback()
 
@@ -227,7 +225,6 @@ func TestRegister_StoresUsernameLowercase(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO auth.users").WithArgs("ivan", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "token_generation"}).AddRow("user_id", "ivan", "Ivan", "", 0))
-	mock.ExpectExec("INSERT INTO users.profiles").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO users.settings").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 

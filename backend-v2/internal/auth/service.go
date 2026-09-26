@@ -13,6 +13,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
+
 	"github.com/lib/pq"
 )
 
@@ -111,13 +112,10 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	user.Bio = ""
 	user.AvatarUrl = ""
 
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO users.profiles (user_id, first_name, last_name, bio, avatar_url)
-		VALUES ($1, $2, $3, '', '')
-	`, user.ID, user.FirstName, user.LastName)
-	if err != nil {
-		return User{}, "", err
-	}
+	// The profile is created by the trg_create_profile_for_new_user trigger
+	// (AFTER INSERT ON auth.users) within this same transaction. An explicit
+	// INSERT into users.profiles is not needed here — it would cause a 23505
+	// on profiles_pkey and roll back the entire registration.
 
 	lang := language
 	if lang == "" {
