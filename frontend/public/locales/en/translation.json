@@ -404,6 +404,8 @@
   "settings.password.title": "Change password",
   "settings.password.weak": "Password does not meet requirements",
   "settings.privacy.description": "Choose who can see your details.",
+  "settings.privacy.forwards": "Forwarded messages",
+  "settings.privacy.forwardsHint": "With Nobody, your messages forwarded by others will show only your name, without a link to your profile. Messages already forwarded won't change.",
   "settings.privacy.lastSeen": "Last seen",
   "settings.privacy.lastSeenAll": "Everyone",
   "settings.privacy.lastSeenHint": "If you hide it, others will only see an approximate time: recently, within a week, within a month or a long time ago. You won't see other people's exact time either.",

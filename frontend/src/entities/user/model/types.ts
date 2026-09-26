@@ -22,11 +22,16 @@ export interface ISettingsDto {
   avatarShape: 'letter' | 'grid';
 }
 
-/** Кто видит время последнего входа. Контактов нет — только «все» и «никто». */
-export type TLastSeenVisibility = 'all' | 'nobody';
+/** Правило приватности. Контактов нет — только «все» и «никто». */
+export type TPrivacyVisibility = 'all' | 'nobody';
+
+/** Кто видит время последнего входа. */
+export type TLastSeenVisibility = TPrivacyVisibility;
 
 export interface IPrivacyDto {
   lastSeen: TLastSeenVisibility;
+  /** Кто может ссылаться на мой аккаунт, пересылая мои сообщения (#785). */
+  forwards: TPrivacyVisibility;
   messagesFromStrangers: boolean;
 }
 

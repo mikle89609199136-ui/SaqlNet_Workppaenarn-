@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderSettings } from './renderSettings';
 
@@ -19,7 +19,8 @@ describe('оснастка настроек', () => {
   it('показывает значение из кеша, не обращаясь к серверу', async () => {
     renderSettings({ section: 'privacy', privacy: { lastSeen: 'nobody' } });
 
-    expect(await screen.findByRole('radio', { name: 'Никто' })).toBeChecked();
+    const lastSeen = await screen.findByRole('group', { name: 'Последняя активность' });
+    expect(within(lastSeen).getByRole('radio', { name: 'Никто' })).toBeChecked();
   });
 
   it('открывает подстраницу аккаунта по адресу', async () => {
