@@ -38,7 +38,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
   docker compose -f infrastructure/docker/docker-compose.v2.yml up -d
 ```
 
-Двенадцать сервисов: `postgres`, `redis`, `nats`, `minio`, `crypto` (Rust), одноразовый `migrate` (отрабатывает и выходит) и шесть Go-сервисов из `backend-v2/cmd/` — `edge`, `auth`, `user`, `chat`, `media`, `admin`. Точка входа для клиента — `edge` на `:8080`.
+Двенадцать сервисов: `postgres`, `redis`, `nats`, `minio`, `crypto` (Rust), одноразовый `migrate` (Go-мигратор из `backend-v2/cmd/migrate`, как на проде: применяет новые миграции, записывает их в `schema_migrations` и выходит) и шесть Go-сервисов из `backend-v2/cmd/` — `edge`, `auth`, `user`, `chat`, `media`, `admin`. Точка входа для клиента — `edge` на `:8080`.
 
 Сидера в репозитории нет: на свежем стенде пользователей не будет, их заводят руками через `POST /api/v2/auth/register`.
 
@@ -91,6 +91,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
 - **`lefthook` на pre-commit прогоняет prettier по всем файлам в коммите.** При массовых переносах это даёт тысячи строк лишних изменений — тогда `--no-verify` и объяснение в теле коммита.
 - **`npm run typecheck` сейчас падает**: около 600 ошибок, проверка убрана из CI (#253). Включать ступенчато, разом не выйдет.
 - **`legacy/mobile-client/`** — клиент до React. Ничем не собирается и не раздаётся: `edge` отдаёт только сборку Vite из `dist/`. Заморожен, править не нужно, см. `legacy/README.md`.
+- **Миграции обязаны переживать повторный прогон.** База, созданная до `schema_migrations`, при первом запуске мигратора получает все файлы подряд. Поэтому `CREATE … IF NOT EXISTS`, `DROP … IF EXISTS`, условия в `DO $ … $` — и никаких безусловных `ALTER COLUMN … TYPE`: после `0025_username_changes` на `auth.users.username` висит триггер, и Postgres отказывается менять тип такой колонки. Проверяет CI (`go test -tags=integration ./cmd/migrate`). Уже применённые миграции не правятся — кроме как ради повторяемости без изменения результата.
 - Сборка клиента кладётся в **корневой `dist/`**, а не в `frontend/dist` — на этот путь рассчитывают compose и `edge`.
 
 ## Задачи

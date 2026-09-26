@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"github.com/DATA-DOG/go-sqlmock"
@@ -21,6 +22,49 @@ func TestMeRejectsUnsupportedMethodWithoutServiceCall(t *testing.T) {
 
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status 405, got %d", response.Code)
+	}
+}
+
+func TestUsernameReturnsCooldownWithRetryAfter(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT username\s+FROM auth\.users.*FOR UPDATE`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("old_name"))
+	mock.ExpectQuery(`SELECT changed_at\s+FROM users\.username_changes`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"changed_at"}).AddRow(time.Now().Add(-time.Hour)))
+	mock.ExpectRollback()
+
+	handler := NewHandler(NewService(db), nil)
+	request := httptest.NewRequest(http.MethodPut, "/api/v2/users/me/username", bytes.NewBufferString(`{"username":"new_name"}`))
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	response := httptest.NewRecorder()
+
+	handler.Username(response, request)
+
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Code != "username_change_cooldown" {
+		t.Fatalf("expected username_change_cooldown, got %q", body.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -122,7 +166,7 @@ func TestCheckUsername_ValidationErrors(t *testing.T) {
 			username:       "    ",
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "validation_failed",
-			expectedMsg:    "username - wrong format",
+			expectedMsg:    "username is required",
 		},
 	}
 
@@ -168,7 +212,7 @@ func TestCheckUsername_ValidationErrors(t *testing.T) {
 }
 
 func TestPublicStatusReturnsUserNotFound(t *testing.T) {
-	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -177,8 +221,8 @@ func TestPublicStatusReturnsUserNotFound(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery(statusQueryPattern).
-		WithArgs("11111111-1111-4111-8111-111111111111").
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+		WithArgs("11111111-1111-4111-8111-111111111111", "").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}))
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/11111111-1111-4111-8111-111111111111/status", nil)

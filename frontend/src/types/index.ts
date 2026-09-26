@@ -91,6 +91,7 @@ export type {
   IPingEvent,
   IPongEvent,
   IReactionUpdatedEvent,
+  IPresenceChangedEvent,
   ITypingEvent,
   IWsEventMap,
   TWsEventType,

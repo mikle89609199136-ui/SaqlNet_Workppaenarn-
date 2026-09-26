@@ -9,6 +9,7 @@ import { clearOutbox } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { makeMessage } from '@/test/fixtures';
+import { useForwardStore } from '@/features/forward-messages';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -110,5 +111,55 @@ describe('ChatThreadComposer', () => {
 
     expect(screen.getByText('photo.png')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
+  });
+
+  describe('пересылка ждёт над полем ввода (#93)', () => {
+    const original = makeMessage({ id: 'orig-1', content: 'релиз в пятницу', senderName: 'Анна' });
+
+    beforeEach(() => {
+      useForwardStore.getState().start('chat-test-1', [original]);
+    });
+
+    it('показывает, что будет переслано, и даёт отправить без текста', () => {
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByText('Переслать сообщение')).toBeInTheDocument();
+      expect(screen.getByText(/релиз в пятницу/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /отправить сообщение/i })).toHaveClass('is-active');
+    });
+
+    it('крестик отменяет пересылку', async () => {
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Отменить пересылку' }));
+
+      expect(screen.queryByText('Переслать сообщение')).not.toBeInTheDocument();
+      expect(useForwardStore.getState().pending).toBeNull();
+    });
+
+    it('«Отправить» уносит комментарий, а затем пересланное', async () => {
+      const order: string[] = [];
+      vi.spyOn(services.messageService, 'sendMessage').mockImplementation(
+        async (chatId, content) => {
+          order.push(`комментарий: ${content}`);
+          return makeMessage({ chatId, content });
+        }
+      );
+      vi.spyOn(services.messageService, 'forwardMessage').mockImplementation(
+        async (message, chatId) => {
+          order.push(`пересылка: ${message.content}`);
+          return makeMessage({ chatId, content: message.content });
+        }
+      );
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      fireEvent.change(input, { target: { value: 'посмотри' } });
+      fireEvent.submit(input.closest('form')!);
+
+      await vi.waitFor(() => expect(useForwardStore.getState().pending).toBeNull());
+      expect(order).toEqual(['комментарий: посмотри', 'пересылка: релиз в пятницу']);
+      expect(input).toHaveValue('');
+    });
   });
 });

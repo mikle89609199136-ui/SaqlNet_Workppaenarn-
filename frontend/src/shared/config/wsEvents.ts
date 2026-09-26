@@ -25,6 +25,8 @@ export const WS_EVENTS = {
   },
   USER: {
     TYPING: 'typing',
+    // Собеседник вошёл в сеть или вышел из неё (#780).
+    PRESENCE: 'presence_changed',
   },
   CALL: {
     ERROR: 'call_error',

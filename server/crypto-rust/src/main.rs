@@ -56,6 +56,8 @@ struct ValidResponse {
 struct IssueTokenRequest {
     subject: String,
     username: String,
+    #[serde(default)]
+    token_generation: u64,
 }
 
 #[derive(Deserialize)]
@@ -74,12 +76,15 @@ struct TokenClaims {
     issued_at: u64,
     #[serde(rename = "exp")]
     expires_at: u64,
+    #[serde(rename = "tokenGeneration", default)]
+    token_generation: u64,
 }
 
 #[derive(Serialize)]
 struct IssueTokenResponse {
     token: String,
     expires_at: u64,
+    token_generation: u64,
 }
 
 #[derive(Serialize)]
@@ -88,6 +93,7 @@ struct VerifyTokenResponse {
     username: String,
     issued_at: u64,
     expires_at: u64,
+    token_generation: u64,
 }
 
 #[derive(Deserialize)]
@@ -207,7 +213,10 @@ async fn main() {
 }
 
 async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"status": "ok"}))
+    Json(serde_json::json!({
+        "status": "ok",
+        "capabilities": {"token_generation": true}
+    }))
 }
 
 async fn hash_password(Json(payload): Json<PasswordRequest>) -> ApiResult<HashResponse> {
@@ -256,6 +265,7 @@ async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueT
         username: payload.username,
         issued_at,
         expires_at,
+        token_generation: payload.token_generation,
     };
     let header = general_purpose::URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
     let body =
@@ -265,6 +275,7 @@ async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueT
     Ok(Json(IssueTokenResponse {
         token: format!("{signing_input}.{signature}"),
         expires_at,
+        token_generation: claims.token_generation,
     }))
 }
 
@@ -316,6 +327,7 @@ async fn verify_token(Json(payload): Json<VerifyTokenRequest>) -> ApiResult<Veri
         username: claims.username,
         issued_at: claims.issued_at,
         expires_at: claims.expires_at,
+        token_generation: claims.token_generation,
     }))
 }
 
@@ -600,6 +612,35 @@ fn internal(error_value: impl std::fmt::Display) -> (StatusCode, Json<ApiError>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use tokio::sync::Mutex;
+
+    const TOKEN_GENERATION_CONTRACT: &str =
+        include_str!("../../../backend-v2/contracts/fixtures/token_generation.json");
+    static TOKEN_ENV_LOCK: Mutex<()> = Mutex::const_new(());
+
+    struct EnvVarGuard {
+        name: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = env::var_os(name);
+            env::set_var(name, value);
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                env::set_var(self.name, value);
+            } else {
+                env::remove_var(self.name);
+            }
+        }
+    }
 
     #[test]
     fn constant_time_comparison_handles_equal_and_different_values() {
@@ -631,5 +672,67 @@ mod tests {
         assert!(argon2
             .verify_password("wrong_password".as_bytes(), &parsed_hash)
             .is_err());
+    }
+
+    #[test]
+    fn legacy_token_claims_without_generation_remain_valid() {
+        let claims: TokenClaims = serde_json::from_str(
+            r#"{"sub":"user-id","username":"user","iat":1700000000,"exp":1700003600}"#,
+        )
+        .unwrap();
+
+        assert_eq!(claims.issued_at, 1_700_000_000);
+        assert_eq!(claims.token_generation, 0);
+    }
+
+    #[tokio::test]
+    async fn issued_token_round_trips_generation() {
+        let _environment_lock = TOKEN_ENV_LOCK.lock().await;
+        let _signing_secret = EnvVarGuard::set(
+            "CRYPTO_SIGNING_SECRET",
+            "test-signing-secret-with-at-least-32-bytes",
+        );
+        let contract: serde_json::Value = serde_json::from_str(TOKEN_GENERATION_CONTRACT).unwrap();
+        let issue_request: IssueTokenRequest =
+            serde_json::from_value(contract["issue_request"].clone()).unwrap();
+        let issued = match issue_token(Json(issue_request)).await {
+            Ok(Json(response)) => response,
+            Err(_) => panic!("token issue failed"),
+        };
+        let issued_json = serde_json::to_value(&issued).unwrap();
+        assert_eq!(
+            issued_json["token_generation"],
+            contract["issue_response"]["token_generation"]
+        );
+        let verify_request: VerifyTokenRequest = serde_json::from_value(serde_json::json!({
+            "token": issued.token
+        }))
+        .unwrap();
+        let verified = match verify_token(Json(verify_request)).await {
+            Ok(Json(response)) => response,
+            Err(_) => panic!("token verification failed"),
+        };
+        let response_json = serde_json::to_value(verified).unwrap();
+
+        assert_eq!(
+            response_json["subject"],
+            contract["verify_response"]["subject"]
+        );
+        assert_eq!(
+            response_json["username"],
+            contract["verify_response"]["username"]
+        );
+        assert_eq!(
+            response_json["token_generation"],
+            contract["verify_response"]["token_generation"]
+        );
+    }
+
+    #[tokio::test]
+    async fn health_advertises_token_generation_contract() {
+        let contract: serde_json::Value = serde_json::from_str(TOKEN_GENERATION_CONTRACT).unwrap();
+        let Json(response) = health().await;
+
+        assert_eq!(response, contract["health_response"]);
     }
 }

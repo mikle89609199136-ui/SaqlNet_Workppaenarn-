@@ -64,6 +64,38 @@ UpdateProfileRequest:
     lastName: { type: string }
     bio: { type: string }
     avatarUrl: { type: string }
+RenameUsernameRequest:
+  type: object
+  required: [username]
+  properties:
+    username: { $ref: '#/Username' }
+ProfileResponse:
+  type: object
+  required: [user]
+  properties:
+    user: { $ref: '#/User' }
+PrivacyVisibility:
+  type: string
+  enum: [all, nobody]
+  description: >-
+    Who else sees it. There are no contacts yet, so only everyone or nobody.
+    Being blocked by the owner hides it regardless of the rule.
+PrivacySettings:
+  type: object
+  additionalProperties: false
+  description: >-
+    Privacy rules. Absent rules take their defaults (phoneVisibility nobody,
+    the rest all); a corrupted stored value reads as nobody.
+  properties:
+    lastSeen: { $ref: '#/PrivacyVisibility' }
+    photoVisibility: { $ref: '#/PrivacyVisibility' }
+    phoneVisibility: { $ref: '#/PrivacyVisibility' }
+    forwards: { $ref: '#/PrivacyVisibility' }
+    calls: { $ref: '#/PrivacyVisibility' }
+    groupsAdd: { $ref: '#/PrivacyVisibility' }
+    messagesFromStrangers: { type: boolean }
+    twoFactorAuth: { type: boolean }
+    autoDeleteAccount: { type: boolean }
 Chat:
   type: object
   required: [id, type]
@@ -72,7 +104,12 @@ Chat:
     type: { type: string, enum: [private, group, channel] }
     title: { type: string }
     description: { type: string }
-    avatarUrl: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        For a private chat, the peer's avatar. Empty when the peer's
+        photoVisibility hides it (contacts and nobody both hide: there are no
+        contacts).
     ownerId: { type: string, format: uuid }
     role: { type: string }
     isPinned: { type: boolean }
@@ -80,6 +117,19 @@ Chat:
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
+    peerId: { type: string, format: uuid, description: Private chats only. }
+    peerIsOnline:
+      type: boolean
+      description: >-
+        Private chats only. True while the peer has a live WebSocket connection
+        (heartbeat within 75 seconds). Omitted when false or hidden by the
+        peer's lastSeen privacy setting. Changes arrive as the presence_changed
+        WebSocket event.
+    peerLastSeen:
+      type: string
+      description: >-
+        Private chats only. ISO 8601 UTC time of the peer's last activity.
+        Omitted when unknown or hidden by the peer's lastSeen privacy setting.
 ChatMember:
   allOf:
     - { $ref: '#/User' }
@@ -138,6 +188,16 @@ SendMessageRequest:
     mediaEncrypted: { type: boolean }
     mediaEncryption: { type: object, additionalProperties: true }
     isEncrypted: { type: boolean }
+    forwardedFrom:
+      type: string
+      format: uuid
+      nullable: true
+      description: >-
+        Message being forwarded, for clients that re-encrypt content for the
+        target chat instead of calling /messages/{messageId}/forward. The
+        requester must be a member of that message's chat, otherwise 400. When
+        it is itself a forward, the original author is kept. The author name is
+        resolved by the server.
 EditMessageRequest:
   type: object
   required: [content]
@@ -150,6 +210,47 @@ Reaction:
     emoji: { type: string }
     count: { type: integer, minimum: 1 }
     myReaction: { type: boolean }
+EncryptedMediaUploadRequest:
+  type: object
+  required: [purpose, file]
+  description: |
+    Encrypted media envelope v2. Unknown fields are ignored for server-first
+    format rollouts. Missing required fields return validation_failed.
+    Invalid sizeBytes returns invalid_size; invalid ciphertext returns
+    invalid_ciphertext. Other invalid envelope fields return validation_failed.
+  properties:
+    purpose: { type: string, enum: [message] }
+    fileName: { type: string, maxLength: 255, description: Fallback filename; at most 255 UTF-8 bytes. }
+    file:
+      type: object
+      required: [encrypted, version, algorithm, iv, keyEpoch, sizeBytes, ciphertext]
+      properties:
+        encrypted: { type: boolean, enum: [true] }
+        version: { type: integer, enum: [2] }
+        algorithm: { type: string, enum: [AES-GCM] }
+        iv:
+          type: string
+          maxLength: 4096
+          pattern: '^[A-Za-z0-9+/]{16}$'
+          description: Canonical standard base64 encoding of exactly 12 bytes; at most 4096 UTF-8 bytes.
+        keyEpoch: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        sizeBytes:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Client plaintext size, preserved on upload and download; not the stored ciphertext size.
+        ciphertext:
+          type: string
+          format: byte
+          description: Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+        mimeType:
+          type: string
+          maxLength: 255
+          description: At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies.
+        fileName:
+          type: string
+          maxLength: 255
+          description: At most 255 UTF-8 bytes. Empty or absent uses the request filename, then filename sanitization applies.
 MessageResponse:
   type: object
   required: [message]
@@ -442,3 +543,163 @@ UpdateGroupRequest:
         Optional avatar URL. Trimmed of leading and trailing whitespace
         before storage.
       example: 'https://cdn.example.com/avatars/team.png'
+KeyBackupSlots:
+  type: array
+  description: Ways to open the master key (cloud password, passkey). Opaque to the server.
+  minItems: 1
+  maxItems: 8
+  items: { type: object, additionalProperties: true }
+KeyBackup:
+  type: object
+  required: [version, formatVersion, identity, slots, updatedAt]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384, description: Encrypted identity keys. }
+    slots: { $ref: '#/KeyBackupSlots' }
+    updatedAt: { type: string }
+PutKeyBackupRequest:
+  type: object
+  required: [expectedVersion, formatVersion, identity, slots]
+  properties:
+    expectedVersion: { type: integer, format: int64, minimum: 0 }
+    formatVersion: { type: integer, minimum: 1 }
+    identity: { type: string, format: byte, maxLength: 16384 }
+    slots: { $ref: '#/KeyBackupSlots' }
+KeyBackupVersionResponse:
+  type: object
+  required: [version]
+  properties:
+    version: { type: integer, format: int64, minimum: 1 }
+BackupChatKey:
+  type: object
+  required: [chatId, epoch, encryptedKey]
+  properties:
+    chatId: { type: string, format: uuid }
+    epoch: { type: integer, minimum: 1 }
+    encryptedKey: { type: string, format: byte, maxLength: 1024 }
+BackupChatKeysPage:
+  type: object
+  required: [keys, next]
+  properties:
+    keys:
+      type: array
+      items: { $ref: '#/BackupChatKey' }
+    next: { type: string, description: Cursor for the next page; empty when there is none. }
+SaveBackupChatKeysRequest:
+  type: object
+  required: [keys]
+  properties:
+    keys:
+      type: array
+      minItems: 1
+      maxItems: 500
+      items: { $ref: '#/BackupChatKey' }
+SaveBackupChatKeysResponse:
+  type: object
+  required: [stored]
+  properties:
+    stored: { type: integer, minimum: 0 }
+QrTokenRequest:
+  type: object
+  required: [publicKey]
+  properties:
+    publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI), base64 or base64url. }
+    deviceName: { type: string, maxLength: 64 }
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+    secret: { type: string, description: Secret of the replaced code. }
+QrTokenResponse:
+  type: object
+  required: [qrToken, secret, expiresAt]
+  properties:
+    qrToken: { type: string }
+    secret: { type: string, description: Kept by the device showing the code and never drawn into it. }
+    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrSecretRequest:
+  type: object
+  required: [secret]
+  properties:
+    secret: { type: string }
+QrLoginRequest:
+  type: object
+  required: [publicKey, deviceName, userAgent, createdAt, expiresAt]
+  properties:
+    publicKey: { type: string }
+    deviceName: { type: string }
+    userAgent: { type: string }
+    createdAt: { type: integer, format: int64 }
+    expiresAt: { type: integer, format: int64 }
+QrKeyPayload:
+  type: object
+  description: The key backup master key encrypted to the new device's publicKey. Opaque to the server.
+  required: [senderPublicKey, iv, ct]
+  properties:
+    senderPublicKey: { type: string }
+    iv: { type: string }
+    ct: { type: string }
+QrConfirmRequest:
+  type: object
+  required: [qrToken, payload]
+  properties:
+    qrToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }
+QrOfferRequest:
+  type: object
+  properties:
+    replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
+QrOfferResponse:
+  type: object
+  required: [offerToken, expiresAt]
+  properties:
+    offerToken: { type: string }
+    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+QrOfferClaim:
+  type: object
+  required: [publicKey, mac, deviceName, userAgent, claimedAt]
+  properties:
+    publicKey: { type: string }
+    mac: { type: string }
+    deviceName: { type: string }
+    userAgent: { type: string }
+    claimedAt: { type: integer, format: int64 }
+QrOfferState:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, claimed, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    claim: { $ref: '#/QrOfferClaim' }
+QrOfferClaimRequest:
+  type: object
+  required: [publicKey, mac]
+  properties:
+    publicKey: { type: string, description: One-time ECDH P-256 public key (SPKI) of the new device, base64 or base64url. }
+    mac: { type: string, description: 'base64url HMAC-SHA-256 over "craneapp/qr-offer/v1|<token>|<publicKey>" with the MAC key from the QR code.' }
+    deviceName: { type: string, maxLength: 64 }
+QrOfferClaimResponse:
+  type: object
+  required: [claimSecret, expiresAt]
+  properties:
+    claimSecret: { type: string }
+    expiresAt: { type: integer, format: int64 }
+QrOfferStatusResponse:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    authToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }
+QrOfferConfirmRequest:
+  type: object
+  required: [payload]
+  properties:
+    payload: { $ref: '#/QrKeyPayload' }
+QrStatusResponse:
+  type: object
+  required: [status]
+  properties:
+    status: { type: string, enum: [pending, scanned, confirmed, expired] }
+    expiresAt: { type: integer, format: int64 }
+    authToken: { type: string }
+    payload: { $ref: '#/QrKeyPayload' }

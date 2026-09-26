@@ -24,6 +24,37 @@ x-error: &error
           },
       }
     responses: { '200': { description: Updated profile }, '400': *error }
+/users/me/username:
+  put:
+    tags: [Users]
+    summary: Change the current user's username
+    description: >-
+      Normalizes the username to lowercase and changes it atomically. A successful
+      change invalidates old username deep links; user IDs and existing chats remain
+      unchanged. The operation is limited to once every 24 hours.
+    operationId: renameCurrentUser
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/RenameUsernameRequest' }
+    responses:
+      '200':
+        description: Updated canonical profile
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ProfileResponse' }
+      '400': *error
+      '401': *error
+      '409': *error
+      '429':
+        description: Rename cooldown is active; Retry-After contains seconds remaining
+        headers:
+          Retry-After: { schema: { type: integer, minimum: 1 } }
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
 /users/avatar:
   put:
     tags: [Users]
@@ -51,7 +82,6 @@ x-error: &error
     tags: [Users]
     summary: Check username availability
     operationId: checkUsername
-    security: *secure
     parameters:
       [
         {
@@ -61,7 +91,17 @@ x-error: &error
           schema: { $ref: '../components/schemas.yaml#/Username' },
         },
       ]
-    responses: { '200': { description: Availability }, '400': *error }
+    responses:
+      '200':
+        description: Availability
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [available]
+              properties: { available: { type: boolean } }
+      '400': *error
+      '429': *error
 /users/search:
   get:
     tags: [Users]
@@ -150,18 +190,27 @@ x-error: &error
     }
 /users/privacy:
   put:
-    {
-      tags: [Users],
-      summary: Update privacy,
-      operationId: updatePrivacy,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated privacy } },
-    }
+    tags: [Users]
+    summary: Update privacy
+    operationId: updatePrivacy
+    security: *secure
+    description: >-
+      Partial update. Unknown keys or values are rejected with 400
+      validation_failed. Visibility rules take all or nobody; the legacy
+      contacts and none are accepted and stored as nobody, everyone as all.
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/PrivacySettings' } } }
+    responses:
+      '200':
+        description: Updated privacy
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privacy]
+              properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
 /users/notifications:
   get:
     {

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -43,7 +44,7 @@ type tokenVerifier interface {
 type Client struct {
 	UserID        string
 	Conn          *websocket.Conn
-	Send          chan []byte
+	Send          chan []byte // не закрывается; завершение сигнализируется через done
 	done          chan struct{}
 	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
 	closeOnce     sync.Once
@@ -62,6 +63,7 @@ func (c *Client) close() {
 type WSServer struct {
 	db             *sql.DB
 	crypto         tokenVerifier
+	tokenChecker   authctx.TokenChecker
 	clients        map[string]map[*Client]bool
 	mu             sync.RWMutex
 	register       chan *Client
@@ -70,7 +72,11 @@ type WSServer struct {
 	pendingInvites map[string]json.RawMessage
 	inviteMu       sync.Mutex
 	presence       presence.Store
-	pingInterval   time.Duration // интервал heartbeat; 0 → wsPingInterval
+	activity       presenceActivity // время активности и собеседники; nil — не ведётся
+	pingInterval   time.Duration    // интервал heartbeat; 0 → wsPingInterval
+	stop           chan struct{}
+	stopped        chan struct{}
+	stopOnce       sync.Once
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -79,6 +85,7 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 	ws := &WSServer{
 		db:             db,
 		crypto:         crypto,
+		tokenChecker:   authctx.NewDBTokenChecker(db),
 		clients:        make(map[string]map[*Client]bool),
 		register:       make(chan *Client),
 		unreg:          make(chan *Client),
@@ -86,9 +93,24 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 		pendingInvites: make(map[string]json.RawMessage),
 		presence:       store,
 		pingInterval:   wsPingInterval,
+		stop:           make(chan struct{}),
+		stopped:        make(chan struct{}),
+	}
+	if db != nil {
+		ws.activity = dbPresenceActivity{db: db}
 	}
 	go ws.run()
 	return ws
+}
+
+// Close stops the server's registration loop. Call it after the HTTP server
+// has stopped accepting handshakes and active test connections are closed.
+func (ws *WSServer) Close() {
+	if ws == nil || ws.stop == nil || ws.stopped == nil {
+		return
+	}
+	ws.stopOnce.Do(func() { close(ws.stop) })
+	<-ws.stopped
 }
 
 func (ws *WSServer) CallRooms() *CallRoomManager {
@@ -105,8 +127,13 @@ func (ws *WSServer) IsUserConnected(userID string) bool {
 }
 
 func (ws *WSServer) run() {
+	if ws.stopped != nil {
+		defer close(ws.stopped)
+	}
 	for {
 		select {
+		case <-ws.stop:
+			return
 		case client := <-ws.register:
 			ws.mu.Lock()
 			if ws.clients[client.UserID] == nil {
@@ -121,7 +148,6 @@ func (ws *WSServer) run() {
 				if _, ok := conns[client]; ok {
 					delete(conns, client)
 					client.close()
-					close(client.Send)
 					if len(conns) == 0 {
 						delete(ws.clients, client.UserID)
 					}
@@ -154,12 +180,25 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims, err := ws.crypto.VerifyToken(r.Context(), token)
+	if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {
+		http.Error(w, "crypto token-generation protocol is not ready", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil || claims.Subject == "" {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	if authctx.NewDBTokenChecker(ws.db).IsTokenRevoked(r.Context(), token) {
+	if ws.tokenChecker == nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	revoked, err := ws.tokenChecker.IsTokenRevoked(r.Context(), token, claims)
+	if err != nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if revoked {
 		http.Error(w, "token revoked", http.StatusUnauthorized)
 		return
 	}
@@ -177,6 +216,9 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	connID := newConnectionID()
 	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	// Второе окно или вкладка — не новость: о входе сообщаем только тогда,
+	// когда до этого соединений не было вовсе.
+	firstConnection := !ws.isOnlineElsewhere(r.Context(), client.UserID, client)
 	if ws.presence != nil {
 		if err := ws.presence.Connect(r.Context(), client.UserID, client.ConnectionID); err != nil {
 			slog.Error("presence connect error", "userID", client.UserID, "err", err)
@@ -205,6 +247,11 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	go ws.readPump(client)
 	// #nosec - горутина долгоживущая, r.Context() отменяется после завершения HTTP-upgrade
 	go ws.heartbeat(client)
+	if firstConnection {
+		go ws.announcePresence(client.UserID, true)
+	} else {
+		go ws.touchPresence(client.UserID)
+	}
 }
 
 // newConnectionID генерирует случайный UUID v4 для идентификации
@@ -233,6 +280,8 @@ func (ws *WSServer) readPump(client *Client) {
 				slog.Error("presence disconnect error", "userID", client.UserID, "err", err)
 			}
 		}
+		// Закрыто последнее соединение — человек вышел из сети.
+		go ws.announceOffline(client)
 		ws.unreg <- client
 		_ = client.Conn.Close()
 	}()
@@ -519,6 +568,7 @@ func (ws *WSServer) heartbeat(client *Client) {
 			default:
 			}
 			ws.sendPresenceHeartbeat(client)
+			ws.touchPresence(client.UserID)
 			select {
 			case client.Send <- ping:
 			case <-client.done:
@@ -547,19 +597,25 @@ func (ws *WSServer) sendPresenceHeartbeat(client *Client) {
 func (ws *WSServer) writePump(client *Client) {
 	defer client.Conn.Close()
 	for {
-		message, ok := <-client.Send
-		if !ok {
+		select {
+		case <-client.done:
 			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
 				return
 			}
 			_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
-		}
-		if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
-			return
-		}
-		if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			return
+		case message, ok := <-client.Send:
+			// Send принадлежит производителям сообщений и намеренно не закрывается:
+			// завершение жизненного цикла клиента сигнализируется через done.
+			if !ok {
+				return
+			}
+			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+				return
+			}
+			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				return
+			}
 		}
 	}
 }

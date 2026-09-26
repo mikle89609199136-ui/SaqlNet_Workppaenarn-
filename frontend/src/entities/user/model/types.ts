@@ -22,8 +22,8 @@ export interface ISettingsDto {
   avatarShape: 'letter' | 'grid';
 }
 
-/** Кто видит время последнего входа. */
-export type TLastSeenVisibility = 'all' | 'contacts' | 'nobody';
+/** Кто видит время последнего входа. Контактов нет — только «все» и «никто». */
+export type TLastSeenVisibility = 'all' | 'nobody';
 
 export interface IPrivacyDto {
   lastSeen: TLastSeenVisibility;

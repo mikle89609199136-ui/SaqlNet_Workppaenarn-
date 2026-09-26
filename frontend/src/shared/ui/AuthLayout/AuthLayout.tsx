@@ -1,5 +1,6 @@
 import { cn } from '@/shared/lib';
 import type { ReactNode } from 'react';
+import { AnimatedHeight } from '../AnimatedHeight';
 
 interface Props {
   /* Что написано под логотипом крупным шрифтом. */
@@ -26,6 +27,10 @@ interface Props {
  *
  * Отступы учитывают вырез экрана: на телефоне карточка иначе уезжает под
  * системную панель.
+ *
+ * Размер карточки меняется плавно: страница может её раздвинуть (вход по
+ * QR) или сменить содержимое на другое по высоте, и скачок выглядел как
+ * поломка.
  */
 export function AuthLayout({ title, subtitle, children, footer, header, className }: Props) {
   return (
@@ -39,6 +44,7 @@ export function AuthLayout({ title, subtitle, children, footer, header, classNam
       <section
         className={cn(
           'w-[min(100%,400px)] rounded-window border border-line bg-sheet px-5 py-6 text-center',
+          'transition-[width] duration-panel ease-out motion-reduce:transition-none',
           'shadow-[var(--elev-3)] md:p-10',
           className
         )}
@@ -53,7 +59,7 @@ export function AuthLayout({ title, subtitle, children, footer, header, classNam
           </>
         )}
 
-        {children}
+        <AnimatedHeight>{children}</AnimatedHeight>
 
         {footer && <div className="mt-6 text-caption text-ink-2">{footer}</div>}
       </section>
