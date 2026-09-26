@@ -219,20 +219,26 @@ func assertFileTooLargeResponse(t *testing.T, response *httptest.ResponseRecorde
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	var body struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		RequestID string `json:"requestId"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Error.Code != "file_too_large" {
-		t.Fatalf("code=%q, want file_too_large", body.Error.Code)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["error"]; exists {
+		t.Fatal("unexpected nested error envelope")
+	}
+	if body.Code != "file_too_large" {
+		t.Fatalf("code=%q, want file_too_large", body.Code)
 	}
 	wantMessage := uploadLimitMessage(maxBytes)
-	if body.Error.Message != wantMessage {
-		t.Fatalf("message=%q, want %q", body.Error.Message, wantMessage)
+	if body.Message != wantMessage {
+		t.Fatalf("message=%q, want %q", body.Message, wantMessage)
 	}
 }
 

@@ -107,13 +107,7 @@ func uploadLimitMessage(maxBytes int64) string {
 }
 
 func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
-	httpx.JSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-		"error": httpx.Error{
-			Code:      "file_too_large",
-			Message:   uploadLimitMessage(h.service.maxUploadBytes),
-			RequestID: r.Header.Get("X-Request-ID"),
-		},
-	})
+	httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
 }
 
 func (h *Handler) writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
