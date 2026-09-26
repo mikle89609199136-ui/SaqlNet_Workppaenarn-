@@ -304,6 +304,18 @@ describe('пересланное сообщение (#169)', () => {
     expect(screen.queryByText(/Переслано от/)).not.toBeInTheDocument();
   });
 
+  it('при скрытой ссылке на автора — только имя, без перехода (#785)', () => {
+    renderForwarded({
+      isForwarded: true,
+      forwardedSenderName: 'Анна',
+      metadata: { forwardedHidden: true, forwardedSenderName: 'Анна' },
+    });
+
+    expect(screen.getByText(/Переслано от/)).toHaveTextContent('Переслано от Анна');
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Анна/ })).not.toBeInTheDocument();
+  });
+
   it('молчит у обычного сообщения', () => {
     renderForwarded({ isForwarded: false, forwardedSenderName: 'Максим' });
 

@@ -23,6 +23,9 @@ func TestForwardMessagePreservesMediaMetadata(t *testing.T) {
 			AddRow("message-id", "source-chat", "sender-id", "Anna", "", "file", nil, []byte(metadata), "created", "updated", nil))
 	mock.ExpectQuery("SELECT EXISTS").WithArgs("user-id", "source-chat").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Правило «Пересылка» автора (#785): настроек нет — ссылка остаётся.
+	mock.ExpectQuery("FROM auth.users").WithArgs("sender-id", "user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions"}).AddRow(nil, false, nil))
 	mock.ExpectQuery("SELECT cm.role").WithArgs("target-chat", "user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
 

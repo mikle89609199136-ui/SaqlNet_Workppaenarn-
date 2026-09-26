@@ -5,7 +5,10 @@ export type TMessageType =
 export type TMediaMessageType = 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file';
 
 interface IForwardedMetadata {
-  forwardedFrom: string;
+  /** Исходное сообщение. Нет, если автор запретил ссылку на себя (#785). */
+  forwardedFrom?: string;
+  /** Автор запретил пересылающему ссылку на себя: осталось только имя. */
+  forwardedHidden?: boolean;
   forwardedSenderName: string;
 }
 

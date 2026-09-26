@@ -2324,10 +2324,12 @@ export interface components {
             replySenderName?: string;
             replyToSenderName?: string;
             reactions: components["schemas"]["Reaction"][];
+            /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
                 [key: string]: unknown;
             };
             isForwarded: boolean;
+            /** @description Name of the original author, shown as text even when the link is hidden. */
             forwardedSenderName?: string;
             isPinned: boolean;
             isEdited: boolean;
@@ -2752,7 +2754,7 @@ export interface components {
             isEncrypted?: boolean;
             /**
              * Format: uuid
-             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server.
+             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server. If the original author's forwards rule (with the block list and exceptions) forbids the requester, only the name is kept and metadata gets forwardedHidden instead of forwardedFrom; a hidden forward stays hidden when forwarded again.
              */
             forwardedFrom?: string | null;
         };

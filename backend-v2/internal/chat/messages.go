@@ -157,7 +157,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// Service.ForwardOrigin), so the author is resolved here. The name is
 	// never taken from the client.
 	if input.ForwardedFrom != nil && *input.ForwardedFrom != "" {
-		originID, originName, err := h.service.ForwardOrigin(r.Context(), current.ID, *input.ForwardedFrom)
+		source, err := h.service.ForwardOrigin(r.Context(), current.ID, *input.ForwardedFrom)
 		if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid forwardedFrom")
 			return
@@ -170,8 +170,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		if metadata == nil {
 			metadata = map[string]any{}
 		}
-		metadata["forwardedFrom"] = originID
-		metadata["forwardedSenderName"] = originName
+		source.Apply(metadata)
 	}
 
 	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata)
