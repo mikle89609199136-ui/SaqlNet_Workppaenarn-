@@ -81,10 +81,10 @@ describe('переключатели настроек', () => {
       })
     );
 
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+    renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: { lastSeen: 'all' } });
 
     // Контактов в приложении нет — и варианта «Контакты» тоже (#726).
-    const lastSeen = await screen.findByRole('group', { name: 'Последняя активность' });
+    const lastSeen = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
     expect(within(lastSeen).getByRole('radio', { name: 'Никто' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'Контакты' })).not.toBeInTheDocument();
 
@@ -102,9 +102,11 @@ describe('переключатели настроек', () => {
       })
     );
 
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+    renderSettings({ section: 'privacy', subsection: 'forwards', privacy: { lastSeen: 'all' } });
 
-    const forwards = await screen.findByRole('group', { name: 'Пересылка сообщений' });
+    const forwards = await screen.findByRole('group', {
+      name: 'Кто может ссылаться на мой аккаунт при пересылке',
+    });
     // Настройки ещё нет — по умолчанию «Все», как и на сервере.
     expect(within(forwards).getByRole('radio', { name: 'Все' })).toBeChecked();
     expect(forwards).toHaveAccessibleDescription(/останется только ваше имя/);
@@ -141,9 +143,9 @@ describe('переключатели настроек', () => {
   });
 
   it('объясняет, что будет при «Никто», и связывает подсказку с выбором', async () => {
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+    renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: { lastSeen: 'all' } });
 
-    const group = await screen.findByRole('group', { name: 'Последняя активность' });
+    const group = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
     // Взаимность и приблизительное время (#791) — в описании группы, которое
     // зачитает и диктор.
     expect(group).toHaveAccessibleDescription(/только приблизительное/);

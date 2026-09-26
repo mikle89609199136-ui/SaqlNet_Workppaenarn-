@@ -17,9 +17,13 @@ describe('оснастка настроек', () => {
   });
 
   it('показывает значение из кеша, не обращаясь к серверу', async () => {
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'nobody' } });
+    renderSettings({
+      section: 'privacy',
+      subsection: 'last-seen',
+      privacy: { lastSeen: 'nobody' },
+    });
 
-    const lastSeen = await screen.findByRole('group', { name: 'Последняя активность' });
+    const lastSeen = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
     expect(within(lastSeen).getByRole('radio', { name: 'Никто' })).toBeChecked();
   });
 

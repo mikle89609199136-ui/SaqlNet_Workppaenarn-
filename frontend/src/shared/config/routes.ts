@@ -46,8 +46,8 @@ export const ACCOUNT_SUBSECTIONS = [
 
 export type TAccountSubsection = (typeof ACCOUNT_SUBSECTIONS)[number];
 
-/* Подстраницы конфиденциальности: /settings/privacy/blocked (#727). */
-export const PRIVACY_SUBSECTIONS = ['blocked'] as const;
+/* Подстраницы конфиденциальности: правила (#786) и чёрный список (#727). */
+export const PRIVACY_SUBSECTIONS = ['last-seen', 'photo', 'forwards', 'blocked'] as const;
 
 export type TPrivacySubsection = (typeof PRIVACY_SUBSECTIONS)[number];
 
