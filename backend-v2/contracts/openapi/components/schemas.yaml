@@ -79,6 +79,7 @@ Chat:
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
+    lastMessage: { $ref: '#/LastMessagePreview' }
 ChatMember:
   allOf:
     - { $ref: '#/User' }
@@ -94,16 +95,75 @@ ChatMember:
             description: 'set when muted; mutedUntil null = permanent mute',
           }
         joinedAt: { type: string }
+MessageEntity:
+  type: object
+  required: [type, offset, length]
+  description: >-
+    A range in UTF-16 code units. Both boundaries must be between Unicode code
+    points (never inside a surrogate pair), and offset + length must not exceed
+    the content length. Inline ranges may overlap, except links cannot overlap
+    other links. Blockquotes cover whole lines (start at 0 or after LF; end at
+    content end or before LF), cannot overlap other blockquotes, and any inline
+    range intersecting a blockquote must be fully contained within it.
+    data is required for link and must be absent for every other type.
+  properties:
+    type:
+      type: string
+      enum: [bold, italic, underline, strikethrough, spoiler, monospace, link, blockquote]
+    offset: { type: integer, minimum: 0, description: Offset in UTF-16 code units. }
+    length: { type: integer, minimum: 1, description: Length in UTF-16 code units. }
+    data:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute http or https URL with a nonempty host; at most 2048 UTF-16 code units.
+  oneOf:
+    - required: [data]
+      properties:
+        type: { enum: [link] }
+    - properties:
+        type: { enum: [bold, italic, underline, strikethrough, spoiler, monospace, blockquote] }
+      not: { required: [data] }
+MessageEntities:
+  type: array
+  maxItems: 100
+  default: []
+  description: >-
+    At most 100 entities. Omitted on send or edit means an empty array; edit
+    always replaces existing entities. Must be empty for E2E envelopes and
+    stickers. Invalid schema, ranges, URLs or limits return 400 validation_failed.
+  items: { $ref: '#/MessageEntity' }
+LastMessagePreview:
+  type: object
+  required: [id, content, entities, type, senderName, reactions]
+  properties:
+    id: { type: string, format: uuid }
+    content: { type: string }
+    entities: { $ref: '#/MessageEntities' }
+    type: { type: string }
+    senderId: { type: string, format: uuid }
+    senderName: { type: string }
+    reactions: { type: array, items: { $ref: '#/Reaction' } }
 Message:
   type: object
-  required: [id, chatId, senderId, content, type, createdAt]
+  required: [id, chatId, senderId, content, entities, type, createdAt]
   properties:
     id: { type: string, format: uuid }
     chatId: { type: string, format: uuid }
     senderId: { type: string, format: uuid }
-    content: { type: string }
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the 256 KiB request body limit.
+    entities: { $ref: '#/MessageEntities' }
     type: { type: string }
     replyTo: { type: string, format: uuid, nullable: true }
+    replyPreview: { $ref: '#/LastMessagePreview' }
     metadata: { type: object, additionalProperties: true }
     isForwarded: { type: boolean }
     isPinned: { type: boolean }
@@ -113,7 +173,13 @@ Message:
 SendMessageRequest:
   type: object
   properties:
-    content: { type: string }
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the 256 KiB request body limit.
+    entities: { $ref: '#/MessageEntities' }
     type:
       { type: string, default: text, enum: [text, image, audio, video, voice, sticker, gif, file] }
     replyTo: { type: string, format: uuid, nullable: true }
@@ -128,7 +194,13 @@ EditMessageRequest:
   type: object
   required: [content]
   properties:
-    content: { type: string }
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the 256 KiB request body limit.
+    entities: { $ref: '#/MessageEntities' }
 Reaction:
   type: object
   properties:

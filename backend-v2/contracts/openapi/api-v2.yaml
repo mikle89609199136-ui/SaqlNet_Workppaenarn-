@@ -144,3 +144,6 @@ components:
     Error: { $ref: './components/schemas.yaml#/Error' }
     User: { $ref: './components/schemas.yaml#/User' }
     Message: { $ref: './components/schemas.yaml#/Message' }
+    MessageEntity: { $ref: './components/schemas.yaml#/MessageEntity' }
+    MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
+    LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }

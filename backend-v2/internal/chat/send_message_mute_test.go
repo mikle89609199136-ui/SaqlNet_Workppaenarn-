@@ -49,7 +49,7 @@ func TestSendMessage_MutedMember(t *testing.T) {
 
 	expectMutedMembership(mock, "member")
 
-	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil, nil)
 	require.ErrorIs(t, err, chat.ErrMemberMuted)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -70,7 +70,7 @@ func TestSendMessage_MutedAdmin(t *testing.T) {
 
 	expectMutedMembership(mock, "admin")
 
-	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil, nil)
 	require.ErrorIs(t, err, chat.ErrMemberMuted)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

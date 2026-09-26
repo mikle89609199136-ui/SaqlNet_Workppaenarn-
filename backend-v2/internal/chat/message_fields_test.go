@@ -16,7 +16,7 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 
 	replyID := "reply-id"
 	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID, "chat-id").
-		WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("Анна"))
+		WillReturnRows(sqlmock.NewRows([]string{"name", "id", "content", "entities", "type", "sender_id"}).AddRow("Анна", replyID, "Привет", []byte(`[{"type":"bold","offset":0,"length":6}]`), "text", "sender-id"))
 
 	msg := Message{ChatID: "chat-id", SenderName: "Иван", ReplyTo: &replyID}
 	if err := NewService(db, nil).hydrateMessageFields(context.Background(), &msg); err != nil {
@@ -27,6 +27,9 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 	}
 	if msg.ReplySenderName != "Анна" || msg.ReplyToSenderName != "Анна" {
 		t.Fatalf("reply sender was not populated: %#v", msg)
+	}
+	if msg.ReplyPreview == nil || msg.ReplyPreview.Content != "Привет" || len(msg.ReplyPreview.Entities) != 1 || msg.ReplyPreview.Entities[0].Length != 6 {
+		t.Fatalf("reply preview entities were not populated: %#v", msg.ReplyPreview)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

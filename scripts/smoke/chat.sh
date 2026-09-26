@@ -67,11 +67,11 @@ run_chat_tests() {
 		"import sys,json; print(json.load(sys.stdin).get('message',{}).get('id',''))" \
 		2>/dev/null || true)
 
-	if [[ "$HTTP_CODE" == "200" && -n "$MESSAGE_ID" ]]; then
+	if [[ "$HTTP_CODE" == "201" && -n "$MESSAGE_ID" ]]; then
 		echo "✓ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID"
 		PASS=$((PASS + 1))
 	else
-		echo "✗ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID — expected 200 with message.id"
+		echo "✗ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID — expected 201 with message.id"
 		echo "  ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
 		return

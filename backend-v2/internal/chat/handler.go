@@ -757,6 +757,10 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
+		if errors.Is(err, ErrInvalidInput) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
 			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			return

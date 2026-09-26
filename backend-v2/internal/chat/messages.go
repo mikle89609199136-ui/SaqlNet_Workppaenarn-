@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -56,16 +57,17 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Content         *string        `json:"content"`
-		Type            string         `json:"type"`
-		ReplyTo         *string        `json:"replyTo"`
-		MediaURL        string         `json:"mediaUrl"`
-		MediaType       string         `json:"mediaType"`
-		FileName        string         `json:"fileName"`
-		SizeBytes       int64          `json:"sizeBytes"`
-		MediaEncrypted  bool           `json:"mediaEncrypted"`
-		MediaEncryption map[string]any `json:"mediaEncryption"`
-		IsEncrypted     bool           `json:"isEncrypted"`
+		Entities        json.RawMessage `json:"entities"`
+		Content         *string         `json:"content"`
+		Type            string          `json:"type"`
+		ReplyTo         *string         `json:"replyTo"`
+		MediaURL        string          `json:"mediaUrl"`
+		MediaType       string          `json:"mediaType"`
+		FileName        string          `json:"fileName"`
+		SizeBytes       int64           `json:"sizeBytes"`
+		MediaEncrypted  bool            `json:"mediaEncrypted"`
+		MediaEncryption map[string]any  `json:"mediaEncryption"`
+		IsEncrypted     bool            `json:"isEncrypted"`
 	}
 
 	if !decode(w, r, &input) {
@@ -92,6 +94,16 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		content = *input.Content
 	}
 
+	entities, err := parseMessageEntities(content, input.Entities)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	if input.Type == "sticker" && len(entities) != 0 {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "entities must be empty for sticker")
+		return
+	}
+
 	switch input.Type {
 	case "text":
 		if strings.TrimSpace(content) == "" {
@@ -105,7 +117,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "sticker":
-		if strings.TrimSpace(content) != "" {
+		if content != "" {
 			httpx.ErrorJSON(
 				w, r,
 				http.StatusBadRequest,
@@ -150,7 +162,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			"isEncrypted":     input.IsEncrypted,
 		}
 	}
-	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata)
+	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata, entities)
 
 	if errors.Is(err, ErrMemberMuted) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "member_muted", "member is muted")
@@ -167,7 +179,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			w, r,
 			http.StatusBadRequest,
 			"validation_failed",
-			"invalid replyTo",
+			err.Error(),
 		)
 		return
 	}
@@ -188,7 +200,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
+	httpx.JSON(w, http.StatusCreated, map[string]any{"message": msg})
 }
 
 func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +218,8 @@ func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Content *string `json:"content"`
+		Entities json.RawMessage `json:"entities"`
+		Content  *string         `json:"content"`
 	}
 
 	if !decode(w, r, &input) {
@@ -224,8 +237,13 @@ func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content := *input.Content
+	entities, err := parseMessageEntities(content, input.Entities)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 
-	msg, err := h.service.EditMessage(r.Context(), current.ID, targetID, content)
+	msg, err := h.service.EditMessage(r.Context(), current.ID, targetID, content, entities)
 
 	switch {
 	case errors.Is(err, ErrInvalidInput):
