@@ -84,14 +84,20 @@ export const SETTINGS_INDEX: ISettingsEntry[] = [
   {
     title: 'Последняя активность',
     section: 'Конфиденциальность',
-    path: ROUTES.SETTINGS_SECTION('privacy'),
-    synonyms: ['был в сети', 'кто видит', 'приватность'],
+    path: ROUTES.SETTINGS_SUBSECTION('privacy', 'last-seen'),
+    synonyms: ['был в сети', 'кто видит', 'приватность', 'исключения'],
+  },
+  {
+    title: 'Фото профиля',
+    section: 'Конфиденциальность',
+    path: ROUTES.SETTINGS_SUBSECTION('privacy', 'photo'),
+    synonyms: ['аватар', 'кто видит фото', 'приватность', 'исключения'],
   },
   {
     title: 'Пересылка сообщений',
     section: 'Конфиденциальность',
-    path: ROUTES.SETTINGS_SECTION('privacy'),
-    synonyms: ['пересылка', 'ссылка на профиль', 'приватность'],
+    path: ROUTES.SETTINGS_SUBSECTION('privacy', 'forwards'),
+    synonyms: ['пересылка', 'ссылка на профиль', 'приватность', 'исключения'],
   },
   {
     title: 'Чёрный список',

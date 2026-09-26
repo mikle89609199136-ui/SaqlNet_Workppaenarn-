@@ -53,6 +53,9 @@ export const API_ENDPOINTS = {
   USER_EXPORT: '/users/export',
   USER_BLOCKED: '/users/blocked',
   USER_BLOCKED_BY_ID: (userId: string) => `/users/blocked/${userId}`,
+  USER_PRIVACY_EXCEPTIONS: '/users/privacy/exceptions',
+  USER_PRIVACY_EXCEPTION: (rule: string, userId: string) =>
+    `/users/privacy/exceptions/${rule}/${userId}`,
   USER_DEVICES: '/users/devices',
   USER_DEVICE_REGISTER: '/users/devices/register',
   USER_DEVICE_DELETE: (sessionId: string) => `/users/devices/${sessionId}`,

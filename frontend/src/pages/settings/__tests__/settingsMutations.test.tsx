@@ -79,9 +79,9 @@ describe('сохранение настроек', () => {
       )
     );
 
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+    renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: { lastSeen: 'all' } });
 
-    const lastSeen = await screen.findByRole('group', { name: 'Последняя активность' });
+    const lastSeen = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
     await userEvent.click(within(lastSeen).getByRole('radio', { name: 'Никто' }));
 
     expect(
