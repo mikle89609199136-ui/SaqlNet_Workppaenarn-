@@ -1,5 +1,5 @@
 export { APP_VERSION } from './appVersion';
-export { CHAT_ROLES, CHAT_TYPES } from './chat';
+export { CHAT_ROLES, CHAT_TYPES, MAX_MESSAGES_PER_SEND } from './chat';
 export { REACT_ROUTES, ROUTES } from './routes';
 export { STORAGE_KEYS } from './storageKeys';
 export { WS_EVENTS } from './wsEvents';

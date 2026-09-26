@@ -1731,29 +1731,12 @@ export interface paths {
         /** Edit a message */
         put: operations["editMessage"];
         /**
-         * Send a message to a chat
-         * @description 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — the message is neither stored nor delivered.
+         * Send messages to a chat
+         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
          */
-        post: operations["sendMessage"];
+        post: operations["sendMessages"];
         /** Delete a message */
         delete: operations["deleteMessage"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/messages/{messageId}/forward": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Forward a message */
-        post: operations["forwardMessage"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2806,12 +2789,13 @@ export interface components {
             isEncrypted?: boolean;
             /**
              * Format: uuid
-             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server. If the original author's forwards rule (with the block list and exceptions) forbids the requester, only the name is kept and metadata gets forwardedHidden instead of forwardedFrom; a hidden forward stays hidden when forwarded again.
+             * @description Message being forwarded: the client re-encrypts its content for the target chat and sends it as a regular item. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server. If the original author's forwards rule (with the block list and exceptions) forbids the requester, only the name is kept and metadata gets forwardedHidden instead of forwardedFrom; a hidden forward stays hidden when forwarded again.
              */
             forwardedFrom?: string | null;
         };
-        MessageResponse: {
-            message: components["schemas"]["Message"];
+        SendMessagesRequest: {
+            /** @description The whole request body is limited to 2 MiB. */
+            messages: components["schemas"]["SendMessageRequest"][];
         };
         DeleteMessageResponse: {
             /** @enum {boolean} */
@@ -5865,7 +5849,7 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
-    sendMessage: {
+    sendMessages: {
         parameters: {
             query?: never;
             header?: never;
@@ -5877,17 +5861,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SendMessageRequest"];
+                "application/json": components["schemas"]["SendMessagesRequest"];
             };
         };
         responses: {
-            /** @description Sent message */
+            /** @description Sent messages, in the order of the request */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageResponse"];
+                    "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
             400: components["responses"]["Error"];
@@ -5915,39 +5899,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteMessageResponse"];
-                };
-            };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-        };
-    };
-    forwardMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                messageId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: uuid */
-                    targetChatId: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Forwarded message */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             400: components["responses"]["Error"];

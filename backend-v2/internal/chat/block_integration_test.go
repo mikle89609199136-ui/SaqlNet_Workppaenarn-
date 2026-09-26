@@ -72,7 +72,7 @@ func TestBlockOnRealSchema(t *testing.T) {
 	}
 
 	// До блокировки писать можно.
-	_, err = chats.SendMessage(ctx, blocked, chatID, "до блокировки", "text", nil, nil)
+	_, err = chats.SendMessages(ctx, blocked, chatID, []OutgoingMessage{{Content: "до блокировки", Type: "text"}})
 	require.NoError(t, err)
 
 	require.NoError(t, users.Block(ctx, blocker, blocked))
@@ -83,14 +83,14 @@ func TestBlockOnRealSchema(t *testing.T) {
 	// Повторная блокировка: ошибка и без второго уведомления.
 	require.ErrorIs(t, users.Block(ctx, blocker, blocked), user.ErrAlreadyBlocked)
 
-	_, err = chats.SendMessage(ctx, blocked, chatID, "после блокировки", "text", nil, nil)
+	_, err = chats.SendMessages(ctx, blocked, chatID, []OutgoingMessage{{Content: "после блокировки", Type: "text"}})
 	require.ErrorIs(t, err, ErrBlockedByUser)
 	var stored int
 	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM messages.messages WHERE content = 'после блокировки'`).Scan(&stored))
 	require.Zero(t, stored, "сообщение не сохранено")
 
 	// Заблокировавший может писать — ограничение одностороннее.
-	_, err = chats.SendMessage(ctx, blocker, chatID, "от заблокировавшего", "text", nil, nil)
+	_, err = chats.SendMessages(ctx, blocker, chatID, []OutgoingMessage{{Content: "от заблокировавшего", Type: "text"}})
 	require.NoError(t, err)
 
 	seenByBlocked, err := chats.Get(ctx, blocked, chatID)
@@ -107,7 +107,7 @@ func TestBlockOnRealSchema(t *testing.T) {
 	require.Equal(t, "user_unblocked", event["type"])
 	require.Equal(t, 2, events.count(), "повторная блокировка не дала лишнего события")
 
-	_, err = chats.SendMessage(ctx, blocked, chatID, "после разблокировки", "text", nil, nil)
+	_, err = chats.SendMessages(ctx, blocked, chatID, []OutgoingMessage{{Content: "после разблокировки", Type: "text"}})
 	require.NoError(t, err)
 	afterUnblock, err := chats.Get(ctx, blocked, chatID)
 	require.NoError(t, err)

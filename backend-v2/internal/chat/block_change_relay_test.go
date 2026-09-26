@@ -73,7 +73,7 @@ func TestSendMessageAnswersBlockedByUser(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	handler.SendMessage(recorder, messageValidationRequest(
-		http.MethodPost, "/api/v2/messages/"+messageValidationChatID, `{"type":"text","content":"привет"}`,
+		http.MethodPost, "/api/v2/messages/"+messageValidationChatID, sendBody(`{"type":"text","content":"привет"}`),
 		"chatId", messageValidationChatID,
 	))
 

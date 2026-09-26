@@ -33,12 +33,15 @@ function setupChat(overrides: Partial<IChatDto> = {}) {
     http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
     http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [] })),
     http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+    // Отправка — всегда пачкой (#808): каждое сообщение пачки — отдельное тело.
     http.post(api(`/messages/${chat.id}`), async ({ request }) => {
-      const body = (await request.json()) as ISendRequestBody;
-      sentBodies.push(body);
+      const { messages } = (await request.json()) as { messages: ISendRequestBody[] };
+      sentBodies.push(...messages);
 
       return HttpResponse.json({
-        message: makeMessage({ chatId: chat.id, senderId: me.id, content: body.content }),
+        messages: messages.map((item) =>
+          makeMessage({ chatId: chat.id, senderId: me.id, content: item.content })
+        ),
       });
     })
   );

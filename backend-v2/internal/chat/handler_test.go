@@ -462,7 +462,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			body, _ := json.Marshal(map[string]string{"content": "hello"})
+			body := []byte(sendBody(`{"content":"hello"}`))
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
 			req.SetPathValue("chatId", handlerChatID)
 

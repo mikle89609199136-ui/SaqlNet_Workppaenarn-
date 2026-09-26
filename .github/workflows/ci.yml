@@ -155,7 +155,7 @@ jobs:
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema' ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema' ./internal/chat
 
       - name: Build services
         run: go build ./...

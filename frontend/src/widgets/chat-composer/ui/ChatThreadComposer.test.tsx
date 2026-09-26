@@ -138,20 +138,18 @@ describe('ChatThreadComposer', () => {
       expect(useForwardStore.getState().pending).toBeNull();
     });
 
-    it('«Отправить» уносит комментарий, а затем пересланное', async () => {
+    it('«Отправить» уносит комментарий и пересланное одной пачкой', async () => {
       const order: string[] = [];
-      vi.spyOn(services.messageService, 'sendMessage').mockImplementation(
-        async (chatId, content) => {
-          order.push(`комментарий: ${content}`);
-          return makeMessage({ chatId, content });
-        }
-      );
-      vi.spyOn(services.messageService, 'forwardMessage').mockImplementation(
-        async (message, chatId) => {
-          order.push(`пересылка: ${message.content}`);
-          return makeMessage({ chatId, content: message.content });
-        }
-      );
+      const send = vi.spyOn(services.messageService, 'sendMessage');
+      const forward = vi
+        .spyOn(services.messageService, 'forwardMessages')
+        .mockImplementation(async (chatId, originals, comment = '') => {
+          if (comment) order.push(`комментарий: ${comment}`);
+          originals.forEach((message) => order.push(`пересылка: ${message.content}`));
+          return [comment, ...originals.map((message) => message.content)]
+            .filter(Boolean)
+            .map((content) => makeMessage({ chatId, content }));
+        });
 
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
       const input = screen.getByRole('textbox', { name: /сообщение/i });
@@ -160,6 +158,9 @@ describe('ChatThreadComposer', () => {
 
       await vi.waitFor(() => expect(useForwardStore.getState().pending).toBeNull());
       expect(order).toEqual(['комментарий: посмотри', 'пересылка: релиз в пятницу']);
+      // Комментарий не уходит отдельной отправкой: он в той же пачке (#808).
+      expect(forward).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
       expect(input).toHaveValue('');
     });
   });

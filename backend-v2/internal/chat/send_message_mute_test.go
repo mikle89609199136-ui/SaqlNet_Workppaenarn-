@@ -40,7 +40,7 @@ func TestSendMessage_MutedMember(t *testing.T) {
 
 	expectMutedMembership(mock, "member")
 
-	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+	_, err = svc.SendMessages(context.Background(), muteTestUserID, muteTestChatID, []chat.OutgoingMessage{{Content: "hello", Type: "text"}})
 	require.ErrorIs(t, err, chat.ErrMemberMuted)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -61,7 +61,7 @@ func TestSendMessage_MutedAdmin(t *testing.T) {
 
 	expectMutedMembership(mock, "admin")
 
-	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+	_, err = svc.SendMessages(context.Background(), muteTestUserID, muteTestChatID, []chat.OutgoingMessage{{Content: "hello", Type: "text"}})
 	require.ErrorIs(t, err, chat.ErrMemberMuted)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -76,7 +76,7 @@ func TestSendMessage_BlockedByPeer(t *testing.T) {
 		WithArgs(muteTestChatID, muteTestUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, true))
 
-	_, err = chat.NewService(db, nil, nil).SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+	_, err = chat.NewService(db, nil, nil).SendMessages(context.Background(), muteTestUserID, muteTestChatID, []chat.OutgoingMessage{{Content: "hello", Type: "text"}})
 
 	require.ErrorIs(t, err, chat.ErrBlockedByUser)
 	// Ни INSERT, ни других запросов.
