@@ -24,6 +24,27 @@ interface Props {
   className?: string;
 }
 
+/* Прокрутку держит счётчик открытых окон, а не каждое окно своим
+   «запомнил — вернул». Окна бывают одно поверх другого, а снимая дерево,
+   React очищает внешнее раньше внутреннего: внутреннее возвращало
+   «hidden», запомненный при своём открытии, и страница переставала
+   прокручиваться после ухода с экрана с двумя окнами (#90). */
+let openModals = 0;
+let overflowBeforeModals = '';
+
+function lockPageScroll() {
+  if (openModals === 0) {
+    overflowBeforeModals = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  openModals += 1;
+}
+
+function unlockPageScroll() {
+  openModals -= 1;
+  if (openModals === 0) document.body.style.overflow = overflowBeforeModals;
+}
+
 /**
  * Модальное окно.
  *
@@ -93,12 +114,9 @@ export function Modal({
 
     // Нативный <dialog> прокрутку под собой не блокирует: страница
     // продолжает ехать колесом, пока окно висит поверх.
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockPageScroll();
 
-    return () => {
-      document.body.style.overflow = previous;
-    };
+    return unlockPageScroll;
   }, [open]);
 
   return (
