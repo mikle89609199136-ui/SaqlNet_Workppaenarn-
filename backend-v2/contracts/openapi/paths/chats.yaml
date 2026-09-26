@@ -278,11 +278,39 @@ x-secure: &secure [{ bearerAuth: [] }]
   get:
     {
       tags: [Chats],
-      summary: List online members,
+      summary: List online members of a group chat,
       operationId: listOnlineChatMembers,
       security: *secure,
       parameters: [*chatId],
-      responses: { '200': { description: Online user IDs } },
+      responses:
+        {
+          '200':
+            {
+              description: Online member UUIDs,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          type: object,
+                          required: [members],
+                          properties:
+                            {
+                              members:
+                                {
+                                  type: array,
+                                  items: { type: string, format: uuid },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403': { $ref: '../components/responses.yaml#/Error' },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+        },
     }
 /chats/{chatId}/bans:
   get:
@@ -297,6 +325,82 @@ x-secure: &secure [{ bearerAuth: [] }]
           '200': { description: Bans },
           '400': { $ref: '../components/responses.yaml#/Error' },
           '403': { $ref: '../components/responses.yaml#/Error' },
+        },
+    }
+/chats/{chatId}/leave:
+  post:
+    {
+      tags: [Chats],
+      summary: Leave a group chat,
+      description: 'Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".',
+      operationId: leaveChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses:
+        {
+          '200': { description: Left },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403':
+            {
+              description: 'access_denied: the caller is not a member (including a repeated leave)',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '409':
+            {
+              description: 'ownership_transfer_required: the caller owns the chat',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+        },
+    }
+/chats/{chatId}/transfer-ownership:
+  post:
+    {
+      tags: [Chats],
+      summary: Transfer group ownership,
+      description: 'Makes another member the owner; the previous owner becomes a regular member. Owner only, group chats only.',
+      operationId: transferChatOwnership,
+      security: *secure,
+      parameters: [*chatId],
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [userId],
+                      properties: { userId: { type: string, format: uuid } },
+                    },
+                },
+            },
+        },
+      responses:
+        {
+          '200': { description: Ownership transferred },
+          '400':
+            {
+              description: 'validation_failed (including transfer to self), not_member, invalid_chat_type',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '403':
+            {
+              description: 'access_denied: the caller is not the owner',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+          '409':
+            {
+              description: 'ownership_conflict: the owner changed concurrently',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
         },
     }
 /chats/{chatId}/members/{userId}:

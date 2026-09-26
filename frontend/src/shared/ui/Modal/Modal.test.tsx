@@ -70,6 +70,28 @@ describe('модальное окно', () => {
     );
     expect(document.body.style.overflow).not.toBe('hidden');
   });
+
+  it('возвращает прокрутку, когда окно поверх окна закрываются разом', () => {
+    // Так бывает при уходе со страницы: подтверждение открыли поверх
+    // сведений о группе, и оба снимаются одним переходом (#90). Снимая
+    // дерево, React очищает внешнее окно раньше внутреннего, и внутреннее
+    // возвращало «hidden», запомненный при своём открытии, — страница
+    // переставала прокручиваться.
+    const nested = (innerOpen: boolean) => (
+      <Modal onClose={() => {}} open title="Снаружи">
+        <Modal onClose={() => {}} open={innerOpen} title="Внутри">
+          Содержимое
+        </Modal>
+      </Modal>
+    );
+    const { rerender, unmount } = render(nested(false));
+    rerender(nested(true));
+    expect(document.body.style.overflow).toBe('hidden');
+
+    unmount();
+
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
 });
 
 describe('подтверждение действия', () => {

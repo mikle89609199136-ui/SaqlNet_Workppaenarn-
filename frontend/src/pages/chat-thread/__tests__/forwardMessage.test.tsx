@@ -16,13 +16,13 @@ import { server } from '@/test/msw/server';
  */
 
 interface IForwardCall {
-  messageId: string;
+  chatId: string;
   body: unknown;
 }
 
 /**
  * Исходный чат с историей, целевой чат со своей историей и перехват
- * запроса пересылки. Список чатов для модалки сервер отдаёт по GET /chats.
+ * отправки: пересылка — это обычная отправка пачкой (#808). Список чатов для модалки сервер отдаёт по GET /chats.
  */
 function setupForwardScenario() {
   const { chat, messages } = makeChatScenario({ messages: 3 });
@@ -49,9 +49,9 @@ function setupForwardScenario() {
     ),
     http.get(api(`/chats/${targetChat.id}/pins`), () => HttpResponse.json({ pins: [] })),
     http.get(api('/chats'), () => HttpResponse.json({ chats: [chat, targetChat] })),
-    http.post(api('/messages/:messageId/forward'), async ({ params, request }) => {
-      forwardCalls.push({ messageId: String(params.messageId), body: await request.json() });
-      return HttpResponse.json({ message: forwarded });
+    http.post(api('/messages/:chatId'), async ({ params, request }) => {
+      forwardCalls.push({ chatId: String(params.chatId), body: await request.json() });
+      return HttpResponse.json({ messages: [forwarded] });
     })
   );
 
@@ -104,7 +104,7 @@ describe('пересылка сообщения в другой чат', () => {
     // ФАКТИЧЕСКОЕ ПОВЕДЕНИЕ: список чатов в модалке пуст, хотя GET /chats
     // отдаёт два чата. Страница чата сама список не запрашивает — его
     // наполняет родительская страница списка чатов, которой в этом дереве нет.
-    // Дальше сценария (клик по целевому чату → POST .../forward) отсюда не пройти.
+    // Дальше сценария (клик по целевому чату → отправка) отсюда не пройти.
     expect(screen.getByText('Чаты не найдены')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: new RegExp(targetChat.title) })).toBeNull();
     expect(forwardCalls).toHaveLength(0);

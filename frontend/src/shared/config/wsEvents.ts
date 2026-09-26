@@ -25,6 +25,11 @@ export const WS_EVENTS = {
   },
   USER: {
     TYPING: 'typing',
+    // Собеседник вошёл в сеть или вышел из неё (#780).
+    PRESENCE: 'presence_changed',
+    // Блокировка и её снятие — приходят обоим (#760).
+    BLOCKED: 'user_blocked',
+    UNBLOCKED: 'user_unblocked',
   },
   CALL: {
     ERROR: 'call_error',

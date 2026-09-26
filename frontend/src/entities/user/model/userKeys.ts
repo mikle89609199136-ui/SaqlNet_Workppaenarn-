@@ -8,4 +8,8 @@ export const userKeys = {
   settings: () => [...userKeys.all, 'settings'] as const,
   sessions: () => [...userKeys.all, 'sessions'] as const,
   search: (query: string) => [...userKeys.all, 'search', query] as const,
+  /** Чёрный список (#727). */
+  blocked: () => [...userKeys.all, 'blocked'] as const,
+  /** Исключения из правил приватности, все правила сразу (#786). */
+  privacyExceptions: () => [...userKeys.all, 'privacyExceptions'] as const,
 };

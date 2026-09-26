@@ -115,7 +115,7 @@ func newMemberManagementService(t *testing.T) (*Service, sqlmock.Sqlmock, *recor
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	realtime := &recordingRealtime{}
-	return NewService(db, realtime), mock, realtime
+	return NewService(db, realtime, nil), mock, realtime
 }
 
 func TestSetMemberRole_OwnerUpdatesMemberAndBroadcasts(t *testing.T) {

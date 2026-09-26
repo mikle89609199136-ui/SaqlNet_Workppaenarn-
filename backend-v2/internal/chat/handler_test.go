@@ -2,7 +2,9 @@ package chat
 
 import (
 	"bytes"
+	"context"
 	"craneapp/backend-v2/internal/platform/authctx"
+	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -37,17 +39,8 @@ const (
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
 	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`
-	// sendMessageMuteQuery — точная копия SQL проверки mute в Service.SendMessage.
-	sendMessageMuteQuery = `
-	SELECT cm.role,
-	       (
-	         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-	         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
-	       )
-	FROM chats.members cm
-	JOIN auth.users u ON u.id = cm.user_id
-	WHERE cm.chat_id = $1 AND cm.user_id = $2
-	`
+	// sendMessageMuteQuery — проверка права писать в Service.SendMessage.
+	sendMessageMuteQuery = sendPermissionQuery
 	// muteMemberSelectQuery — точная копия SQL чтения состояния цели в Service.MuteMember.
 	muteMemberTargetQuery = `
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
@@ -57,9 +50,17 @@ const (
 	banTargetRoleQuery = `
 		SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2
 		`
-	banSelectQuery = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
-	banInsertQuery = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
+	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
+	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
+	onlineMemberIDsQuery = membersWithPrivacyQuery
 )
+
+// onlineMemberColumns — столбцы membersWithPrivacyQuery.
+var onlineMemberColumns = []string{
+	"user_id", "privacy_settings", "blocked", "exceptions",
+	"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+}
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
 func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
@@ -69,7 +70,7 @@ func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 // newAuthedRequest создаёт запрос с контекстом пользователя-актора.
@@ -151,7 +152,7 @@ func TestHandler_AddMember(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := NewService(db, nil)
+	svc := NewService(db, nil, nil)
 	h := NewHandler(svc)
 
 	tests := []struct {
@@ -442,7 +443,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 			"MemberMuted",
 			func() {
 				mock.ExpectQuery(sendMessageMuteQuery).
-					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", true))
+					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", true, false))
 			},
 			http.StatusForbidden, // 403
 			"member_muted",
@@ -461,7 +462,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			body, _ := json.Marshal(map[string]string{"content": "hello"})
+			body := []byte(sendBody(`{"content":"hello"}`))
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
 			req.SetPathValue("chatId", handlerChatID)
 
@@ -629,7 +630,120 @@ func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// newTestHandler builds a Handler backed by a fresh sqlmock instance and
+// TestHandler_GetOnlineMembers проверяет маппинг ошибок GetOnlineMembers
+// в HTTP-статусы и JSON-коды: по одному кейсу на каждый sentinel сервиса.
+func TestHandler_GetOnlineMembers(t *testing.T) {
+	onlineStore := presence.NewMemoryStore(time.Now)
+	if err := onlineStore.Connect(context.Background(), handlerActorID, handlerTargetID); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		chatID      string
+		store       presence.Store
+		setupMock   func(sqlmock.Sqlmock)
+		wantStatus  int
+		wantCode    string
+		wantMembers []string
+	}{
+		{
+			name:       "InvalidInput",
+			chatID:     "not-a-uuid",
+			setupMock:  func(sqlmock.Sqlmock) {},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "validation_failed",
+		},
+		{
+			name:   "ChatNotFound",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}))
+			},
+			wantStatus: http.StatusNotFound,
+			wantCode:   "chat_not_found",
+		},
+		{
+			name:   "NotMember",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}))
+			},
+			wantStatus: http.StatusForbidden,
+			wantCode:   "access_denied",
+		},
+		{
+			name:   "InvalidChatType",
+			chatID: handlerChatID,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("private"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_chat_type",
+		},
+		{
+			name:   "OK",
+			chatID: handlerChatID,
+			store:  onlineStore,
+			setupMock: func(m sqlmock.Sqlmock) {
+				m.ExpectQuery(onlineTypeQuery).
+					WithArgs(handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("group"))
+				m.ExpectQuery(memberRoleQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+				m.ExpectQuery(onlineMemberIDsQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows(onlineMemberColumns).
+						AddRow(handlerActorID, nil, false, nil, nil, false, nil).
+						AddRow(handlerTargetID, nil, false, nil, nil, false, nil))
+			},
+			wantStatus:  http.StatusOK,
+			wantMembers: []string{handlerActorID},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+
+			tt.setupMock(mock)
+
+			h := NewHandler(NewService(db, nil, tt.store))
+			req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+tt.chatID+"/members-online", nil, handlerActorID)
+			req.SetPathValue("chatID", tt.chatID)
+
+			rr := httptest.NewRecorder()
+			h.GetOnlineMembers(rr, req)
+
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
+			if tt.wantMembers != nil {
+				var body struct {
+					Members []string `json:"members"`
+				}
+				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+				require.Equal(t, tt.wantMembers, body.Members)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// newTestHandlerQueryMatcher builds a Handler backed by a fresh sqlmock instance and
 // registers cleanup for the underlying DB. Creating the mock per subtest
 // keeps test cases independent: a failure in one case cannot leak
 // expectations into the next.
@@ -642,7 +756,7 @@ func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 func TestHandler_List(t *testing.T) {
@@ -655,6 +769,7 @@ func TestHandler_List(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	tests := []struct {
@@ -900,6 +1015,7 @@ func TestParseArchived(t *testing.T) {
 			if got != tt.want {
 				t.Fatalf("got %v, want %v", got, tt.want)
 			}
+
 		})
 	}
 }
@@ -1142,13 +1258,14 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", "", "",
+			3, "", "", false, "", 0, "", "", "", "", "", nil, false, nil, nil, false, nil,
 		)
 	}
 

@@ -26,7 +26,7 @@ func (s handlerCryptoStub) VerifyPassword(context.Context, string, string) (bool
 	return s.verifyResult, nil
 }
 
-func (handlerCryptoStub) IssueToken(context.Context, string, string) (string, error) {
+func (handlerCryptoStub) IssueToken(context.Context, string, string, int64) (string, error) {
 	return "token", nil
 }
 
@@ -54,6 +54,64 @@ func TestLoginRejectsUnsupportedMethod(t *testing.T) {
 	}
 }
 
+func TestLogoutAllIsDisabledUntilRolloutIsActivated(t *testing.T) {
+	handler := NewHandler(nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout-all", nil)
+	response := httptest.NewRecorder()
+
+	handler.LogoutAll(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d", response.Code)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "logout_all_unavailable" {
+		t.Fatalf("expected logout_all_unavailable, got %q", body.Code)
+	}
+}
+
+func TestLogoutAllCanBeActivatedAfterCompatibleRollout(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE auth.users").
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(1))
+	mock.ExpectExec("UPDATE auth.sessions").
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE public.user_sessions").
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler := NewHandler(
+		NewService(db, handlerCryptoStub{}),
+		WithLogoutAllGenerationEnabled(true),
+	)
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout-all", nil)
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	response := httptest.NewRecorder()
+
+	handler.LogoutAll(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublicKeysMigrationExists(t *testing.T) {
 	sql, err := os.ReadFile("../../migrations/0001_auth.sql")
 	if err != nil {
@@ -61,6 +119,16 @@ func TestPublicKeysMigrationExists(t *testing.T) {
 	}
 	if !strings.Contains(string(sql), "CREATE TABLE IF NOT EXISTS auth.public_keys") {
 		t.Fatal("auth public keys migration is missing")
+	}
+}
+
+func TestTokenGenerationMigrationExists(t *testing.T) {
+	sql, err := os.ReadFile("../../migrations/0025_auth_token_generation.sql")
+	if err != nil {
+		t.Fatalf("read token generation migration: %v", err)
+	}
+	if !strings.Contains(string(sql), "ADD COLUMN IF NOT EXISTS token_generation BIGINT NOT NULL DEFAULT 0") {
+		t.Fatal("auth token generation migration is missing")
 	}
 }
 

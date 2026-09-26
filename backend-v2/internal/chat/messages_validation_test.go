@@ -8,9 +8,15 @@ import (
 	"testing"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
+
+// sendBody — тело отправки: пачка из переданных сообщений (#808).
+func sendBody(messages ...string) string {
+	return `{"messages":[` + strings.Join(messages, ",") + `]}`
+}
 
 const (
 	messageValidationUserID    = "550e8400-e29b-41d4-a716-446655440001"
@@ -25,7 +31,7 @@ func messageValidationHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	return NewHandler(NewService(db, nil)), mock
+	return NewHandler(NewService(db, nil, nil)), mock
 }
 
 func messageValidationRequest(method, target, body, pathKey, pathValue string) *http.Request {
@@ -61,7 +67,7 @@ func TestSendMessageRejectsInvalidPayloadWithoutDatabaseWrites(t *testing.T) {
 			req := messageValidationRequest(
 				http.MethodPost,
 				"/api/v2/messages/"+messageValidationChatID,
-				tt.body,
+				sendBody(tt.body),
 				"chatId",
 				messageValidationChatID,
 			)
@@ -78,13 +84,13 @@ func TestSendMessageRejectsMalformedReplyToWithoutInsert(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 
 	recorder := httptest.NewRecorder()
 	req := messageValidationRequest(
 		http.MethodPost,
 		"/api/v2/messages/"+messageValidationChatID,
-		`{"type":"text","content":"reply","replyTo":"not-a-uuid"}`,
+		sendBody(`{"type":"text","content":"reply","replyTo":"not-a-uuid"}`),
 		"chatId",
 		messageValidationChatID,
 	)
@@ -109,7 +115,7 @@ func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
 			handler, mock := messageValidationHandler(t)
 			mock.ExpectQuery(`SELECT cm\.role`).
 				WithArgs(messageValidationChatID, messageValidationUserID).
-				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 			mock.ExpectBegin()
 			mock.ExpectQuery(`SELECT id::text`).
 				WithArgs(messageValidationMessageID, messageValidationChatID).
@@ -120,7 +126,7 @@ func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
 			req := messageValidationRequest(
 				http.MethodPost,
 				"/api/v2/messages/"+messageValidationChatID,
-				`{"type":"text","content":"reply","replyTo":"`+messageValidationMessageID+`"}`,
+				sendBody(`{"type":"text","content":"reply","replyTo":"`+messageValidationMessageID+`"}`),
 				"chatId",
 				messageValidationChatID,
 			)
@@ -137,7 +143,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(
@@ -147,6 +153,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 			"text",
 			sql.NullString{},
 			[]byte("null"),
+			0,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
@@ -174,7 +181,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 	req := messageValidationRequest(
 		http.MethodPost,
 		"/api/v2/messages/"+messageValidationChatID,
-		`{"type":"text","content":"some message","replyTo":""}`,
+		sendBody(`{"type":"text","content":"some message","replyTo":""}`),
 		"chatId",
 		messageValidationChatID,
 	)
@@ -225,7 +232,7 @@ func TestEditMessageRejectsInvalidContentForStoredTypeWithoutUpdate(t *testing.T
 				WithArgs(messageValidationMessageID, messageValidationUserID).
 				WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow(tt.msgType))
 
-			_, err = NewService(db, nil).EditMessage(
+			_, err = NewService(db, nil, nil).EditMessage(
 				t.Context(),
 				messageValidationUserID,
 				messageValidationMessageID,
@@ -269,7 +276,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 			nil,
 		))
 
-	message, err := NewService(db, nil).EditMessage(
+	message, err := NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
@@ -291,7 +298,7 @@ func TestEditMessageReturnsNotFoundWhenMessageIsNotEditable(t *testing.T) {
 		WithArgs(messageValidationMessageID, messageValidationUserID).
 		WillReturnError(sql.ErrNoRows)
 
-	_, err = NewService(db, nil).EditMessage(
+	_, err = NewService(db, nil, nil).EditMessage(
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,

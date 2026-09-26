@@ -9,21 +9,42 @@ import {
   useProfileStore,
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
-import { getChatSubtitle } from '@/shared/lib';
-import { memo, useMemo } from 'react';
+import { getChatSubtitle, useNow } from '@/shared/lib';
+import { memo, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
 import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 
+/** Чей профиль открыт — для действий, которые приходят сверху. */
+export interface IProfileActionsTarget {
+  id: string;
+  name: string;
+}
+
 interface Props {
   profileState: IProfileState;
   onClose: () => void;
+  /**
+   * Действия с чужим профилем — сейчас блокировка (#727). Приходят от
+   * страницы: блокировка — отдельная фича, и панель о ней не знает.
+   */
+  renderActions?: (target: IProfileActionsTarget) => ReactNode;
 }
 
-export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
+export const UserProfilePanel = memo(({ profileState, onClose, renderActions }: Props) => {
   const { t } = useTranslation();
+  const now = useNow();
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
+  /* Чат и его лента — только если это личный чат именно с этим человеком.
+     Профиль открывается и по имени автора пересланного сообщения (#785):
+     тогда открытый чат чужой, и его статус, общие медиа и звонок
+     относились бы к другому собеседнику. */
+  const chat =
+    profileState.chat?.type === 'private' && profileState.chat.peerId === profileState.userId
+      ? profileState.chat
+      : null;
+  const chatMessages = chat ? profileState.messages : undefined;
   const {
     data: profileUser,
     isLoading,
@@ -33,7 +54,7 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
     profileUser?.username ||
-    profileState.chat?.title ||
+    chat?.title ||
     t('user', 'Пользователь');
 
   const {
@@ -50,13 +71,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const isMyProfile = currentUser?.id === profileUser?.id;
 
   const sharedMedia = useMemo(
-    () => (profileState.messages || []).filter(isDisplayableMedia),
-    [profileState.messages]
+    () => (chatMessages || []).filter(isDisplayableMedia),
+    [chatMessages]
   );
 
   const profileSubtitle = useMemo(
-    () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t) : null),
-    [profileState.chat, t]
+    () => (chat ? getChatSubtitle(chat, null, t, now) : null),
+    [chat, t, now]
   );
 
   if (isLoading) {
@@ -82,18 +103,13 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
     <aside className="h-full flex flex-col bg-sheet overflow-hidden" role="complementary">
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         <ProfileHeader
-          hasChat={Boolean(profileState.chat)}
+          /* Звонить есть куда — общий личный чат — и можно: блокировка в
+             любую сторону звонки запрещает, сервер их отклонит (#760). */
+          hasChat={Boolean(chat) && !chat?.isBlockedByPeer && !chat?.isPeerBlocked}
           isMyProfile={isMyProfile}
           isPeerOnline={Boolean(profileUser.isOnline)}
           onCall={(kind) =>
-            profileState.chat &&
-            initiateCall(
-              profileState.chat.id,
-              'private',
-              profileUser.username,
-              kind,
-              profileUser.id
-            )
+            chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
           }
           onClose={onClose}
           onStartEdit={startEdit}
@@ -112,7 +128,12 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
           profileUser={profileUser}
         />
 
-        {profileState.chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
+        {/* Блокировка — из профиля человека, как в Telegram (#727). */}
+        {!isMyProfile &&
+          profileUser.id &&
+          renderActions?.({ id: profileUser.id, name: displayName })}
+
+        {chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
       </div>
     </aside>
   );

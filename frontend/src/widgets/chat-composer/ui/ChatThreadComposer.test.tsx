@@ -8,7 +8,9 @@ import { ChatThreadComposer } from './ChatThreadComposer';
 import { clearOutbox } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { makeMessage } from '@/test/fixtures';
+import { makeChat, makeMessage } from '@/test/fixtures';
+import { chatKeys } from '@/entities/chat';
+import { useForwardStore } from '@/features/forward-messages';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -110,5 +112,110 @@ describe('ChatThreadComposer', () => {
 
     expect(screen.getByText('photo.png')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
+  });
+
+  describe('пересылка ждёт над полем ввода (#93)', () => {
+    const original = makeMessage({ id: 'orig-1', content: 'релиз в пятницу', senderName: 'Анна' });
+
+    beforeEach(() => {
+      useForwardStore.getState().start('chat-test-1', [original]);
+    });
+
+    it('показывает, что будет переслано, и даёт отправить без текста', () => {
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByText('Переслать сообщение')).toBeInTheDocument();
+      expect(screen.getByText(/релиз в пятницу/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /отправить сообщение/i })).toHaveClass('is-active');
+    });
+
+    it('крестик отменяет пересылку', async () => {
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Отменить пересылку' }));
+
+      expect(screen.queryByText('Переслать сообщение')).not.toBeInTheDocument();
+      expect(useForwardStore.getState().pending).toBeNull();
+    });
+
+    it('«Отправить» уносит комментарий и пересланное одной пачкой', async () => {
+      const order: string[] = [];
+      const send = vi.spyOn(services.messageService, 'sendMessage');
+      const forward = vi
+        .spyOn(services.messageService, 'forwardMessages')
+        .mockImplementation(async (chatId, originals, comment = '') => {
+          if (comment) order.push(`комментарий: ${comment}`);
+          originals.forEach((message) => order.push(`пересылка: ${message.content}`));
+          return [comment, ...originals.map((message) => message.content)]
+            .filter(Boolean)
+            .map((content) => makeMessage({ chatId, content }));
+        });
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      fireEvent.change(input, { target: { value: 'посмотри' } });
+      fireEvent.submit(input.closest('form')!);
+
+      await vi.waitFor(() => expect(useForwardStore.getState().pending).toBeNull());
+      expect(order).toEqual(['комментарий: посмотри', 'пересылка: релиз в пятницу']);
+      // Комментарий не уходит отдельной отправкой: он в той же пачке (#808).
+      expect(forward).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
+      expect(input).toHaveValue('');
+    });
+  });
+
+  describe('блокировка в личном чате (#760)', () => {
+    function seedChat(extra: object) {
+      queryClient.setQueryData(
+        chatKeys.detail('chat-test-1'),
+        makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer', ...extra })
+      );
+    }
+
+    it('вас заблокировали — вместо поля ввода объяснение, писать нечем', () => {
+      seedChat({ isBlockedByPeer: true });
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Этот человек ограничил переписку с вами'
+      );
+      expect(screen.queryByRole('textbox', { name: /сообщение/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /отправить сообщение/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('вы заблокировали — «Разблокировать» снимает блокировку и перечитывает чат', async () => {
+      seedChat({ isPeerBlocked: true });
+      const unblock = vi
+        .spyOn(services.userService, 'unblockUser')
+        .mockResolvedValue({ success: true });
+      // Чат с этим человеком перечитывается — с сервера он придёт уже без флага.
+      const refetch = vi
+        .spyOn(services.chatService, 'getChat')
+        .mockResolvedValue(
+          makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer' }) as never
+        );
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого пользователя');
+      await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
+
+      expect(unblock).toHaveBeenCalledWith('user-peer');
+      await vi.waitFor(() => expect(refetch).toHaveBeenCalledWith('chat-test-1'));
+      // Флага больше нет — вернулось обычное поле ввода.
+      expect(await screen.findByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
+    });
+
+    it('без блокировки — обычное поле ввода', () => {
+      seedChat({});
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
+    });
   });
 });

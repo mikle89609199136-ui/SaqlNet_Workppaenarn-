@@ -9,6 +9,7 @@ import { NavLink } from 'react-router-dom';
 import { Avatar, Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
+import { chatRowStyles } from './chatRowStyles';
 import type { IChatDto } from '../../model/types';
 import type { RefObject } from 'react';
 
@@ -74,15 +75,15 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
   return (
     <>
       <NavLink
-        className="chat-row"
+        className={chatRowStyles}
         onContextMenu={handleContextMenu}
         to={ROUTES.CHAT_BY_ID(chat.id)}
         {...longPress}
       >
         <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
-        <div className="chat-main">
-          <div className="chat-topline">
-            <span className="chat-title">{title}</span>
+        <div className="flex min-w-0 flex-col justify-center gap-1.5">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <span className="truncate text-base font-semibold text-ink">{title}</span>
             {chat.isPinned && (
               <span
                 aria-label={t('pinnedChat', 'Закреплён')}
@@ -93,20 +94,23 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
               </span>
             )}
             {chat.lastMessageAt && (
-              <time className="chat-time" dateTime={new Date(chat.lastMessageAt).toISOString()}>
+              <time
+                className="shrink-0 font-mono text-micro text-ink-3"
+                dateTime={new Date(chat.lastMessageAt).toISOString()}
+              >
                 {formatChatListTime(chat.lastMessageAt, i18n.language)}
               </time>
             )}
           </div>
-          <div className="chat-subline">
+          <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-ink-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
             {draft && !typingUserId ? (
-              <span className="chat-draft">
-                <span className="chat-draft-label">{t('draft', 'Черновик')}: </span>
+              <span className="truncate">
+                <span className="text-danger">{t('draft', 'Черновик')}: </span>
                 {draft}
               </span>
             ) : (
-              <span>{lastMessage}</span>
+              <span className="truncate">{lastMessage}</span>
             )}
             {/* Приглушённый оттенок ждёт своего часа: состояние звука живёт
               на участнике и в списке чатов не приходит вовсе — #387.

@@ -7,7 +7,17 @@ import { useTranslation } from 'react-i18next';
 
 export type TFeedItem =
   | { id: string; type: 'date'; label: string }
-  | { id: string; type: 'message'; message: IMessageDto };
+  | {
+      id: string;
+      type: 'message';
+      message: IMessageDto;
+      /** Первое сообщение в непрерывной цепочке одного автора. */
+      isFirstInGroup: boolean;
+      /** Последнее сообщение в группе — рисуется с «хвостиком» (срезанный угол). */
+      isLastInGroup: boolean;
+      /** Идёт сразу после сообщения другого автора (нужен увеличенный gap). */
+      isDifferentAuthor: boolean;
+    };
 
 interface IUseVirtualMessagesFeedOptions {
   messages: TMessagesList;
@@ -70,9 +80,15 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     return index;
   }, [messages]);
 
-  /* Формирование элементов ленты с инлайн-разделителями между днями */
+  /* Формирование элементов ленты с инлайн-разделителями между днями
+     и расчётом непрерывных групп одного автора (Telegram-стиль). */
   const feedItems = useMemo<TFeedItem[]>(() => {
-    const items: TFeedItem[] = [];
+    /* 1. Сообщения + разделители дат */
+    const raw: Array<
+      | { type: 'date'; id: string; label: string }
+      | { type: 'message'; id: string; message: IMessageDto }
+    > = [];
+
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
       const prevMessage = i > 0 ? messages[i - 1] : undefined;
@@ -80,7 +96,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       if (!prevMessage || isDifferentDay(prevMessage.createdAt, message.createdAt)) {
         const dateLabel = formatDateDivider(message.createdAt, t);
         if (dateLabel) {
-          items.push({
+          raw.push({
             id: `date-${String(message.createdAt).slice(0, 10)}-${i}`,
             type: 'date',
             label: dateLabel,
@@ -88,12 +104,34 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
         }
       }
 
-      items.push({
-        id: message.id,
-        type: 'message',
-        message,
-      });
+      raw.push({ id: message.id, type: 'message', message });
     }
+
+    /* 2. Группировка: вычисление флагов первого/последнего в группе одного автора */
+    const items: TFeedItem[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const entry = raw[i];
+      if (entry.type === 'date') {
+        items.push(entry);
+      } else {
+        const prev = i > 0 ? raw[i - 1] : null;
+        const next = i < raw.length - 1 ? raw[i + 1] : null;
+        const sameAsPrev =
+          prev?.type === 'message' && prev.message.senderId === entry.message.senderId;
+        const sameAsNext =
+          next?.type === 'message' && next.message.senderId === entry.message.senderId;
+        const isDifferentAuthor =
+          prev?.type === 'message' && prev.message.senderId !== entry.message.senderId;
+
+        items.push({
+          ...entry,
+          isFirstInGroup: !sameAsPrev,
+          isLastInGroup: !sameAsNext,
+          isDifferentAuthor,
+        });
+      }
+    }
+
     return items;
   }, [messages, t]);
 
@@ -108,7 +146,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       (index: number) => feedItems[index]?.id ?? `item-${index}`,
       [feedItems]
     ),
-    gap: 10,
+    gap: 4,
     overscan: 8,
     useFlushSync: false,
   });

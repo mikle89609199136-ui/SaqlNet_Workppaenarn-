@@ -27,6 +27,8 @@ npm run test:watch
 npm run build
 npm run typecheck        # см. ниже, сейчас падает
 npm run check:cycles     # циклические импорты, dpdm
+npm run format:check     # prettier по src, те же исключения, что у хука
+npm run format           # то же с исправлением
 npm run e2e              # playwright, тестов пока нет (#277)
 ```
 
@@ -38,7 +40,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
   docker compose -f infrastructure/docker/docker-compose.v2.yml up -d
 ```
 
-Двенадцать сервисов: `postgres`, `redis`, `nats`, `minio`, `crypto` (Rust), одноразовый `migrate` (отрабатывает и выходит) и шесть Go-сервисов из `backend-v2/cmd/` — `edge`, `auth`, `user`, `chat`, `media`, `admin`. Точка входа для клиента — `edge` на `:8080`.
+Двенадцать сервисов: `postgres`, `redis`, `nats`, `minio`, `crypto` (Rust), одноразовый `migrate` (Go-мигратор из `backend-v2/cmd/migrate`, как на проде: применяет новые миграции, записывает их в `schema_migrations` и выходит) и шесть Go-сервисов из `backend-v2/cmd/` — `edge`, `auth`, `user`, `chat`, `media`, `admin`. Точка входа для клиента — `edge` на `:8080`.
 
 Сидера в репозитории нет: на свежем стенде пользователей не будет, их заводят руками через `POST /api/v2/auth/register`.
 
@@ -88,9 +90,11 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
 
 - **`npx vite` без аргументов слушает `[::1]:3000`**, то есть по `127.0.0.1` не отвечает. `npm run dev` привязывается правильно. Открывать через `localhost`.
 - **`DEV_API_PROXY_TARGET` должен смотреть на `127.0.0.1:8080`, а не на `localhost:8080`.** На порту 8080 у Docker Desktop два слушателя: `com.docker.backend` на IPv4 и `wslrelay` на `[::1]`. Node резолвит `localhost` в IPv6 первым, и запрос уходит в relay. После `docker compose up -d --build` relay остаётся со ссылкой на прежние контейнеры: порт держит, соединение принимает, ответа не даёт. Выглядит как вечная загрузка без единой ошибки в консоли — приложение ждёт загрузчик сессии, а `HydrateFallback` у корневого маршрута нет, поэтому вместо спиннера белый экран.
+- **Prettier и концы строк.** Git на Windows отдаёт файлы с CRLF (`core.autocrlf`), а в репозиторий они попадают с LF. Поэтому в `.prettierrc` стоит `endOfLine: "auto"`: иначе prettier ругался бы на каждый файл. Исключения — в корневом `.prettierignore`: сгенерированные типы, контракт OpenAPI и `tailwind.css`, у каждого там указана причина. Из папки `frontend` prettier запускать через `npm run format:check`: голый `npx prettier` оттуда корневых исключений не видит.
 - **`lefthook` на pre-commit прогоняет prettier по всем файлам в коммите.** При массовых переносах это даёт тысячи строк лишних изменений — тогда `--no-verify` и объяснение в теле коммита.
 - **`npm run typecheck` сейчас падает**: около 600 ошибок, проверка убрана из CI (#253). Включать ступенчато, разом не выйдет.
 - **`legacy/mobile-client/`** — клиент до React. Ничем не собирается и не раздаётся: `edge` отдаёт только сборку Vite из `dist/`. Заморожен, править не нужно, см. `legacy/README.md`.
+- **Миграции обязаны переживать повторный прогон.** База, созданная до `schema_migrations`, при первом запуске мигратора получает все файлы подряд. Поэтому `CREATE … IF NOT EXISTS`, `DROP … IF EXISTS`, условия в `DO $ … $` — и никаких безусловных `ALTER COLUMN … TYPE`: после `0025_username_changes` на `auth.users.username` висит триггер, и Postgres отказывается менять тип такой колонки. Проверяет CI (`go test -tags=integration ./cmd/migrate`). Уже применённые миграции не правятся — кроме как ради повторяемости без изменения результата.
 - Сборка клиента кладётся в **корневой `dist/`**, а не в `frontend/dist` — на этот путь рассчитывают compose и `edge`.
 
 ## Задачи

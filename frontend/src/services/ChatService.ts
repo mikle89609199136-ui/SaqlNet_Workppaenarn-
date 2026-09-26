@@ -126,8 +126,22 @@ export class ChatService {
     return response.data;
   }
 
-  async muteChat(chatId: string, duration: number) {
-    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
+  /**
+   * Выйти из группы самому (#90). Удалить себя через `removeMember` нельзя:
+   * это действие модератора над другим участником, и сервер его отклоняет.
+   * Владельцу выйти нельзя (409 `ownership_transfer_required`), пока он не
+   * передал права.
+   */
+  async leaveChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_LEAVE(chatId));
+    return response.data;
+  }
+
+  /** Сделать участника владельцем; прежний владелец становится участником. */
+  async transferOwnership(chatId: string, userId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_TRANSFER_OWNERSHIP(chatId), {
+      userId,
+    });
     return response.data;
   }
 
@@ -148,6 +162,22 @@ export class ChatService {
 
   async unarchiveChat(chatId: string) {
     const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
+    return response.data;
+  }
+
+  /**
+   * Отметить чат прочитанным целиком.
+   *
+   * Не то же самое, что отметки по отдельным сообщениям
+   * (`POST /messages/read`): там список идентификаторов того, что попало в
+   * поле зрения, и чат с сотней непрочитанных пришлось бы пролистать
+   * целиком. Здесь чат закрывается разом.
+   *
+   * События о прочтении сервер не рассылает никому — ни нам, ни
+   * собеседнику, — поэтому счётчик в списке обновляет вызывающая сторона.
+   */
+  async markChatRead(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_READ(chatId));
     return response.data;
   }
 }
