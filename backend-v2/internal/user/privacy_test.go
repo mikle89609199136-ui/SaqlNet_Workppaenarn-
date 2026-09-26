@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
@@ -16,35 +17,93 @@ import (
 
 const privacyStatusPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1`
 
-func statusRows(privacyJSON string, blocked bool) *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}).
-		AddRow([]byte(privacyJSON), blocked, "2026-09-26T12:00:00Z", true)
+// statusSide — настройки, блокировка и исключения одной стороны.
+type statusSide struct {
+	privacy    string
+	blocks     bool
+	exceptions string
 }
 
-// Статус глазами зрителя: одна проверка приватности на всё (#783).
+func rawOrNil(value string) any {
+	if value == "" {
+		return nil
+	}
+	return []byte(value)
+}
+
+func statusRows(owner, viewer statusSide, lastActive string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"privacy_settings", "blocked", "exceptions",
+		"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+		"last_active", "is_online",
+	}).AddRow(
+		rawOrNil(owner.privacy), owner.blocks, rawOrNil(owner.exceptions),
+		rawOrNil(viewer.privacy), viewer.blocks, rawOrNil(viewer.exceptions),
+		rawOrNil(lastActive), true,
+	)
+}
+
+// Статус глазами зрителя: одна проверка приватности на всё (#783, #784),
+// в обе стороны и с приблизительным временем вместо скрытого (#791).
 func TestStatusFollowsUnifiedPrivacy(t *testing.T) {
-	visible := map[string]any{"isOnline": true, "lastSeen": "2026-09-26T12:00:00Z"}
-	hidden := map[string]any{"isOnline": false, "lastSeen": "recently"}
+	lastActive := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	visible := map[string]any{"isOnline": true, "lastSeen": lastActive}
+	approx := func(value string) map[string]any {
+		return map[string]any{"isOnline": false, "lastSeen": "", "lastSeenApprox": value}
+	}
+	recently := approx("recently")
+	open := `{"lastSeen":"all"}`
+	closed := `{"lastSeen":"nobody"}`
 
 	for name, tt := range map[string]struct {
-		viewer  string
-		privacy string
-		blocked bool
-		want    map[string]any
+		viewer        string
+		owner, seeing statusSide
+		lastActive    string
+		want          map[string]any
 	}{
-		"открытый статус":                  {viewer: "viewer", privacy: `{"lastSeen":"all"}`, want: visible},
-		"закрытый статус":                  {viewer: "viewer", privacy: `{"lastSeen":"nobody"}`, want: hidden},
-		"старое contacts — закрыто":        {viewer: "viewer", privacy: `{"lastSeen":"contacts"}`, want: hidden},
-		"заблокировал зрителя — закрыто":   {viewer: "viewer", privacy: `{"lastSeen":"all"}`, blocked: true, want: hidden},
-		"себе видно при любых настройках":  {viewer: "owner", privacy: `{"lastSeen":"nobody"}`, want: visible},
-		"повреждённые настройки — закрыто": {viewer: "viewer", privacy: `{oops`, want: hidden},
+		"открытый статус":                  {owner: statusSide{privacy: open}, want: visible},
+		"настроек нет — открыто":           {want: visible},
+		"закрытый статус":                  {owner: statusSide{privacy: closed}, want: recently},
+		"старое contacts — закрыто":        {owner: statusSide{privacy: `{"lastSeen":"contacts"}`}, want: recently},
+		"себе видно при любых настройках":  {viewer: "owner", owner: statusSide{privacy: closed}, seeing: statusSide{privacy: closed}, want: visible},
+		"повреждённые настройки — закрыто": {owner: statusSide{privacy: `{oops`}, want: recently},
+		"«всегда разрешать» открывает":     {owner: statusSide{privacy: closed, exceptions: `{"lastSeen":true}`}, want: visible},
+		"«никогда не разрешать» закрывает": {owner: statusSide{privacy: open, exceptions: `{"lastSeen":false}`}, want: recently},
+		"исключение на другое правило":     {owner: statusSide{privacy: open, exceptions: `{"photoVisibility":false}`}, want: visible},
+		"заблокировал зрителя — «давно»":   {owner: statusSide{privacy: open, blocks: true}, want: approx("long_ago")},
+		"блокировка сильнее «всегда»":      {owner: statusSide{privacy: closed, blocks: true, exceptions: `{"lastSeen":true}`}, want: approx("long_ago")},
+		"зритель скрыл своё — взаимно":     {owner: statusSide{privacy: open}, seeing: statusSide{privacy: closed}, want: recently},
+		"зритель скрыл, но владельцу «всегда»": {
+			owner: statusSide{privacy: open}, seeing: statusSide{privacy: closed, exceptions: `{"lastSeen":true}`}, want: visible,
+		},
+		"зритель поставил владельцу «никогда»": {
+			owner: statusSide{privacy: open}, seeing: statusSide{privacy: open, exceptions: `{"lastSeen":false}`}, want: recently,
+		},
+		"зритель заблокировал владельца — «недавно», не «давно»": {
+			owner: statusSide{privacy: open}, seeing: statusSide{blocks: true}, want: recently,
+		},
+		"скрыто, заходил 10 дней назад": {
+			owner:      statusSide{privacy: closed},
+			lastActive: time.Now().Add(-10 * 24 * time.Hour).UTC().Format(time.RFC3339),
+			want:       approx("within_month"),
+		},
+		"скрыто, не заходил никогда": {owner: statusSide{privacy: closed}, lastActive: "-", want: approx("long_ago")},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tt.viewer == "" {
+				tt.viewer = "viewer"
+			}
+			switch tt.lastActive {
+			case "":
+				tt.lastActive = lastActive
+			case "-":
+				tt.lastActive = ""
+			}
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer db.Close()
 			mock.ExpectQuery(privacyStatusPattern).WithArgs("owner", tt.viewer).
-				WillReturnRows(statusRows(tt.privacy, tt.blocked))
+				WillReturnRows(statusRows(tt.owner, tt.seeing, tt.lastActive))
 
 			status, err := NewService(db).Status(context.Background(), tt.viewer, "owner")
 

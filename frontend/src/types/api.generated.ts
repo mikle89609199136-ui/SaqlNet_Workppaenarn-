@@ -615,6 +615,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/privacy/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List privacy exceptions
+         * @description People the owner let see a closed rule (allow) or hid an open one from (deny), newest first. Without rule, exceptions of every rule.
+         */
+        get: operations["listPrivacyExceptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/privacy/exceptions/{rule}/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add or switch a privacy exception
+         * @description One exception per person and rule: putting someone on the allow list moves them off the deny list. Order of the check: the owner themself, the block list, the exception, the rule. Yourself is 400 self_exception; an unknown or disabled user is 404 user_not_found.
+         */
+        put: operations["setPrivacyException"];
+        post?: never;
+        /**
+         * Remove a privacy exception
+         * @description Removing an exception that is not there is not an error.
+         */
+        delete: operations["removePrivacyException"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/notifications": {
         parameters: {
             query?: never;
@@ -2423,6 +2470,17 @@ export interface components {
         ProfileResponse: {
             user: components["schemas"]["User"];
         };
+        /**
+         * @description Approximate last activity, given instead of the exact time when it is hidden. The exact time is shown only if both people share it with each other (lastSeen rule, exceptions and the block list, checked both ways); otherwise recently is up to 3 days, within_week up to 7, within_month up to 30, long_ago beyond that or never. Someone blocked by the owner always gets long_ago.
+         * @enum {string}
+         */
+        LastSeenApprox: "recently" | "within_week" | "within_month" | "long_ago";
+        UserStatus: {
+            isOnline: boolean;
+            /** @description ISO 8601 UTC time of the last activity; empty when unknown or hidden. */
+            lastSeen: string;
+            lastSeenApprox?: components["schemas"]["LastSeenApprox"];
+        };
         Object: {
             [key: string]: unknown;
         };
@@ -2442,6 +2500,28 @@ export interface components {
             messagesFromStrangers?: boolean;
             twoFactorAuth?: boolean;
             autoDeleteAccount?: boolean;
+        };
+        /**
+         * @description Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
+         * @enum {string}
+         */
+        PrivacyExceptionRule: "lastSeen" | "photoVisibility" | "phoneVisibility" | "forwards" | "calls" | "groupsAdd";
+        /**
+         * @description allow — always let this person see it; deny — never.
+         * @enum {string}
+         */
+        PrivacyExceptionMode: "allow" | "deny";
+        PrivacyException: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            avatarUrl: string;
+            rule: components["schemas"]["PrivacyExceptionRule"];
+            mode: components["schemas"]["PrivacyExceptionMode"];
+            /** Format: date-time */
+            createdAt: string;
         };
         PublicEncryptionKey: {
             /** Format: byte */
@@ -2621,10 +2701,12 @@ export interface components {
              * @description Private chats only.
              */
             peerId?: string;
-            /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden by the peer's lastSeen privacy setting. Changes arrive as the presence_changed WebSocket event. */
+            /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden, see peerLastSeenApprox. Changes arrive as the presence_changed WebSocket event. */
             peerIsOnline?: boolean;
-            /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden by the peer's lastSeen privacy setting. */
+            /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden, see peerLastSeenApprox. */
             peerLastSeen?: string;
+            /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
+            peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
         MarkMessagesReadRequest: {
             /** Format: uuid */
@@ -3601,12 +3683,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description User status */
+            /** @description User status as the caller may see it */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserStatus"];
+                };
             };
             /** @description User not found */
             404: {
@@ -3746,6 +3830,86 @@ export interface operations {
                         privacy: components["schemas"]["PrivacySettings"];
                     };
                 };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    listPrivacyExceptions: {
+        parameters: {
+            query?: {
+                rule?: components["schemas"]["PrivacyExceptionRule"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Privacy exceptions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        exceptions: components["schemas"]["PrivacyException"][];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    setPrivacyException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: components["schemas"]["PrivacyExceptionMode"];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved exception */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        exception: components["schemas"]["PrivacyException"];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    removePrivacyException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["PrivacyExceptionRule"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["Error"];
         };
@@ -5516,6 +5680,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

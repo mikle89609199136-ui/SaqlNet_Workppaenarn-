@@ -56,6 +56,8 @@ func main() {
 	mux.Handle("/api/v2/users/all-settings", authenticated(http.HandlerFunc(handler.AllSettings)))
 	mux.Handle("/api/v2/users/settings", authenticated(http.HandlerFunc(handler.Settings)))
 	mux.Handle("/api/v2/users/privacy", authenticated(http.HandlerFunc(handler.Privacy)))
+	mux.Handle("/api/v2/users/privacy/exceptions", authenticated(http.HandlerFunc(handler.PrivacyExceptions)))
+	mux.Handle("/api/v2/users/privacy/exceptions/", authenticated(http.HandlerFunc(handler.PrivacyExceptions)))
 	mux.Handle("/api/v2/users/notifications", authenticated(http.HandlerFunc(handler.Preference)))
 	mux.Handle("/api/v2/users/sounds", authenticated(http.HandlerFunc(handler.Preference)))
 	mux.Handle("/api/v2/users/advanced-settings", authenticated(http.HandlerFunc(handler.Preference)))

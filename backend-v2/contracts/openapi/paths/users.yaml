@@ -134,7 +134,9 @@ x-error: &error
     security: *secure
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     responses:
-      '200': { description: User status }
+      '200':
+        description: User status as the caller may see it
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UserStatus' } } }
       '404':
         description: User not found
         content:
@@ -210,6 +212,82 @@ x-error: &error
               type: object
               required: [privacy]
               properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+/users/privacy/exceptions:
+  get:
+    tags: [Users]
+    summary: List privacy exceptions
+    operationId: listPrivacyExceptions
+    security: *secure
+    description: >-
+      People the owner let see a closed rule (allow) or hid an open one from
+      (deny), newest first. Without rule, exceptions of every rule.
+    parameters:
+      - name: rule
+        in: query
+        required: false
+        schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+    responses:
+      '200':
+        description: Privacy exceptions
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exceptions]
+              properties:
+                exceptions:
+                  type: array
+                  items: { $ref: '../components/schemas.yaml#/PrivacyException' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+/users/privacy/exceptions/{rule}/{userId}:
+  parameters:
+    - name: rule
+      in: path
+      required: true
+      schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+    - name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  put:
+    tags: [Users]
+    summary: Add or switch a privacy exception
+    operationId: setPrivacyException
+    security: *secure
+    description: >-
+      One exception per person and rule: putting someone on the allow list
+      moves them off the deny list. Order of the check: the owner themself,
+      the block list, the exception, the rule. Yourself is 400
+      self_exception; an unknown or disabled user is 404 user_not_found.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [mode]
+            additionalProperties: false
+            properties: { mode: { $ref: '../components/schemas.yaml#/PrivacyExceptionMode' } }
+    responses:
+      '200':
+        description: Saved exception
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exception]
+              properties: { exception: { $ref: '../components/schemas.yaml#/PrivacyException' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+  delete:
+    tags: [Users]
+    summary: Remove a privacy exception
+    operationId: removePrivacyException
+    security: *secure
+    description: Removing an exception that is not there is not an error.
+    responses:
+      '200': { description: Removed }
       '400': { $ref: '../components/responses.yaml#/Error' }
 /users/notifications:
   get:

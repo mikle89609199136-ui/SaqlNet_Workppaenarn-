@@ -96,6 +96,45 @@ PrivacySettings:
     messagesFromStrangers: { type: boolean }
     twoFactorAuth: { type: boolean }
     autoDeleteAccount: { type: boolean }
+LastSeenApprox:
+  type: string
+  enum: [recently, within_week, within_month, long_ago]
+  description: >-
+    Approximate last activity, given instead of the exact time when it is
+    hidden. The exact time is shown only if both people share it with each
+    other (lastSeen rule, exceptions and the block list, checked both ways);
+    otherwise recently is up to 3 days, within_week up to 7, within_month up
+    to 30, long_ago beyond that or never. Someone blocked by the owner always
+    gets long_ago.
+UserStatus:
+  type: object
+  required: [isOnline, lastSeen]
+  properties:
+    isOnline: { type: boolean }
+    lastSeen:
+      type: string
+      description: ISO 8601 UTC time of the last activity; empty when unknown or hidden.
+    lastSeenApprox: { $ref: '#/LastSeenApprox' }
+PrivacyExceptionRule:
+  type: string
+  enum: [lastSeen, photoVisibility, phoneVisibility, forwards, calls, groupsAdd]
+  description: Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
+PrivacyExceptionMode:
+  type: string
+  enum: [allow, deny]
+  description: allow — always let this person see it; deny — never.
+PrivacyException:
+  type: object
+  required: [id, username, firstName, lastName, avatarUrl, rule, mode, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    username: { type: string }
+    firstName: { type: string }
+    lastName: { type: string }
+    avatarUrl: { type: string }
+    rule: { $ref: '#/PrivacyExceptionRule' }
+    mode: { $ref: '#/PrivacyExceptionMode' }
+    createdAt: { type: string, format: date-time }
 Chat:
   type: object
   required: [id, type]
@@ -122,14 +161,19 @@ Chat:
       type: boolean
       description: >-
         Private chats only. True while the peer has a live WebSocket connection
-        (heartbeat within 75 seconds). Omitted when false or hidden by the
-        peer's lastSeen privacy setting. Changes arrive as the presence_changed
-        WebSocket event.
+        (heartbeat within 75 seconds). Omitted when false or hidden, see
+        peerLastSeenApprox. Changes arrive as the presence_changed WebSocket
+        event.
     peerLastSeen:
       type: string
       description: >-
         Private chats only. ISO 8601 UTC time of the peer's last activity.
-        Omitted when unknown or hidden by the peer's lastSeen privacy setting.
+        Omitted when unknown or hidden, see peerLastSeenApprox.
+    peerLastSeenApprox:
+      allOf: [{ $ref: '#/LastSeenApprox' }]
+      description: >-
+        Private chats only. Present instead of peerLastSeen and peerIsOnline
+        when the exact time is hidden from the viewer.
 ChatMember:
   allOf:
     - { $ref: '#/User' }

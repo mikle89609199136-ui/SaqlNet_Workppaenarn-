@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
+
+	"craneapp/backend-v2/internal/platform/privacy"
 )
 
 // Присутствие собеседников (#780).
@@ -26,20 +29,8 @@ type presenceActivity interface {
 	// Touch отмечает пользователя в сети или вне её и возвращает время
 	// последней активности.
 	Touch(ctx context.Context, userID string, online bool) (time.Time, error)
-	// Audience — собеседники по личным чатам и можно ли им видеть статус.
-	Audience(ctx context.Context, userID string) (peers []string, visible bool, err error)
-}
-
-// lastSeenVisible — правило приватности «Последняя активность». Контактов
-// у нас нет, поэтому «contacts» скрывает статус так же, как «nobody»; так
-// же его понимает GET /users/{id}/status.
-func lastSeenVisible(value string) bool {
-	switch value {
-	case "", "all", "everyone":
-		return true
-	default:
-		return false
-	}
+	// Audience — собеседники по личным чатам, которым виден статус.
+	Audience(ctx context.Context, userID string) (peers []string, err error)
 }
 
 type dbPresenceActivity struct {
@@ -56,37 +47,55 @@ func (a dbPresenceActivity) Touch(ctx context.Context, userID string, online boo
 	return lastSeen, err
 }
 
-func (a dbPresenceActivity) Audience(ctx context.Context, userID string) ([]string, bool, error) {
-	var setting sql.NullString
+// Audience решает по каждому собеседнику общей проверкой приватности
+// (#783, #784): правило «Последняя активность», блокировка и исключения —
+// в обе стороны (#791), так же, как GET /users/{id}/status и данные чата.
+// Скрывший своё время не получает событий о чужом.
+func (a dbPresenceActivity) Audience(ctx context.Context, userID string) ([]string, error) {
+	var raw []byte
 	err := a.db.QueryRowContext(ctx, `
-		SELECT privacy_settings->>'lastSeen' FROM users.settings WHERE user_id = $1`, userID).Scan(&setting)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, false, err
+		SELECT privacy_settings FROM users.settings WHERE user_id = $1`, userID).Scan(&raw)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
-	if !lastSeenVisible(setting.String) {
-		return nil, false, nil
-	}
+	settings := privacy.Parse(raw)
 
 	rows, err := a.db.QueryContext(ctx, `
-		SELECT DISTINCT peer.user_id::text
+		SELECT DISTINCT peer.user_id::text,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $1 AND b.blocked_user_id = peer.user_id),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $1 AND e.user_id = peer.user_id),
+		       ps.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = peer.user_id AND b.blocked_user_id = $1),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = peer.user_id AND e.user_id = $1)
 		FROM chats.members me
 		JOIN chats.chats c ON c.id = me.chat_id AND c.type = 'private'
 		JOIN chats.members peer ON peer.chat_id = me.chat_id AND peer.user_id <> me.user_id
+		LEFT JOIN users.settings ps ON ps.user_id = peer.user_id
 		WHERE me.user_id = $1`, userID)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
 	var peers []string
 	for rows.Next() {
 		var peer string
-		if err := rows.Scan(&peer); err != nil {
-			return nil, false, err
+		var blocked, peerBlocks bool
+		var exceptions, peerSettings, peerExceptions []byte
+		if err := rows.Scan(&peer, &blocked, &exceptions, &peerSettings, &peerBlocks, &peerExceptions); err != nil {
+			return nil, err
 		}
-		peers = append(peers, peer)
+		pair := privacy.Pair{
+			Owner:         settings,
+			Viewer:        privacy.Parse(peerSettings),
+			OwnerToViewer: privacy.Relation{Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)},
+			ViewerToOwner: privacy.Relation{Blocked: peerBlocks, Exceptions: privacy.ParseExceptions(peerExceptions)},
+		}
+		if pair.ExactLastSeen() {
+			peers = append(peers, peer)
+		}
 	}
-	return peers, true, rows.Err()
+	return peers, rows.Err()
 }
 
 // isOnlineElsewhere — есть ли у пользователя живые соединения, кроме
@@ -125,14 +134,14 @@ func (ws *WSServer) announcePresence(userID string, online bool) {
 		slog.Error("presence touch error", "userID", userID, "err", err)
 		return
 	}
-	peers, visible, err := ws.activity.Audience(ctx, userID)
+	peers, err := ws.activity.Audience(ctx, userID)
 	if err != nil {
 		slog.Error("presence audience error", "userID", userID, "err", err)
 		return
 	}
-	// Скрытый статус не рассылается вовсе: собеседник и так видит
+	// Тем, от кого статус скрыт, событие не уходит вовсе: они и так видят
 	// «был(а) недавно», а само событие выдало бы, когда человек в сети.
-	if !visible || len(peers) == 0 {
+	if len(peers) == 0 {
 		return
 	}
 
