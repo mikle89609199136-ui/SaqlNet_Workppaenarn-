@@ -56,6 +56,17 @@ func TestPresenceAudienceOnRealSchema(t *testing.T) {
 	_, err = db.Exec(`INSERT INTO users.settings (user_id, privacy_settings) VALUES ($1, '{"lastSeen":"nobody"}')`, owner)
 	require.NoError(t, err)
 	require.Equal(t, []string{allowed}, audience(), "закрытый статус — только «всегда разрешать»")
+
+	// Взаимность (#791): собеседник, скрывший своё время, событий не
+	// получает — если только не открыл его владельцу исключением.
+	_, err = db.Exec(`UPDATE users.settings SET privacy_settings = '{"lastSeen":"all"}' WHERE user_id = $1`, owner)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO users.settings (user_id, privacy_settings) VALUES ($1, '{"lastSeen":"nobody"}')`, plain)
+	require.NoError(t, err)
+	require.Equal(t, []string{allowed}, audience(), "plain скрыл своё")
+	_, err = db.Exec(`INSERT INTO users.privacy_exceptions (owner_id, user_id, rule, allow) VALUES ($1, $2, 'lastSeen', TRUE)`, plain, owner)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{plain, allowed}, audience(), "plain открыл своё владельцу")
 }
 
 // Настоящий SQL списка «в сети» в группе: скрывший статус участник в него
@@ -76,8 +87,8 @@ func TestOnlineMembersOnRealSchema(t *testing.T) {
 	}
 	_, err := db.Exec(`
 		INSERT INTO users.settings (user_id, privacy_settings) VALUES
-		($1, '{"lastSeen":"nobody"}'), ($2, '{"lastSeen":"nobody"}'), ($3, '{"lastSeen":"nobody"}')`,
-		viewer, hidden, allowed)
+		($1, '{"lastSeen":"nobody"}'), ($2, '{"lastSeen":"nobody"}')`,
+		hidden, allowed)
 	require.NoError(t, err)
 	_, err = db.Exec(`
 		INSERT INTO users.privacy_exceptions (owner_id, user_id, rule, allow) VALUES
@@ -101,4 +112,20 @@ func TestOnlineMembersOnRealSchema(t *testing.T) {
 	require.NoError(t, err)
 	// Себя видно всегда; скрытый, «никогда» и заблокировавший — нет.
 	require.ElementsMatch(t, []string{viewer, allowed, open}, online)
+
+	// Взаимность (#791): зритель скрыл своё — видит только себя...
+	_, err = db.Exec(`INSERT INTO users.settings (user_id, privacy_settings) VALUES ($1, '{"lastSeen":"nobody"}')`, viewer)
+	require.NoError(t, err)
+	online, err = service.GetOnlineMembers(ctx, chatID, viewer)
+	require.NoError(t, err)
+	require.Equal(t, []string{viewer}, online)
+
+	// ...и тех, кому открыл своё исключением, если они открыли своё ему.
+	_, err = db.Exec(`
+		INSERT INTO users.privacy_exceptions (owner_id, user_id, rule, allow) VALUES
+		($1, $2, 'lastSeen', TRUE), ($1, $3, 'lastSeen', TRUE)`, viewer, open, hidden)
+	require.NoError(t, err)
+	online, err = service.GetOnlineMembers(ctx, chatID, viewer)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{viewer, open}, online, "hidden скрыл своё от зрителя — взаимность в обе стороны")
 }

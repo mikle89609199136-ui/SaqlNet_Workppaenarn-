@@ -49,7 +49,8 @@ func (a dbPresenceActivity) Touch(ctx context.Context, userID string, online boo
 
 // Audience решает по каждому собеседнику общей проверкой приватности
 // (#783, #784): правило «Последняя активность», блокировка и исключения —
-// так же, как GET /users/{id}/status и данные чата.
+// в обе стороны (#791), так же, как GET /users/{id}/status и данные чата.
+// Скрывший своё время не получает событий о чужом.
 func (a dbPresenceActivity) Audience(ctx context.Context, userID string) ([]string, error) {
 	var raw []byte
 	err := a.db.QueryRowContext(ctx, `
@@ -62,10 +63,14 @@ func (a dbPresenceActivity) Audience(ctx context.Context, userID string) ([]stri
 	rows, err := a.db.QueryContext(ctx, `
 		SELECT DISTINCT peer.user_id::text,
 		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $1 AND b.blocked_user_id = peer.user_id),
-		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $1 AND e.user_id = peer.user_id)
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $1 AND e.user_id = peer.user_id),
+		       ps.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = peer.user_id AND b.blocked_user_id = $1),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = peer.user_id AND e.user_id = $1)
 		FROM chats.members me
 		JOIN chats.chats c ON c.id = me.chat_id AND c.type = 'private'
 		JOIN chats.members peer ON peer.chat_id = me.chat_id AND peer.user_id <> me.user_id
+		LEFT JOIN users.settings ps ON ps.user_id = peer.user_id
 		WHERE me.user_id = $1`, userID)
 	if err != nil {
 		return nil, err
@@ -75,13 +80,18 @@ func (a dbPresenceActivity) Audience(ctx context.Context, userID string) ([]stri
 	var peers []string
 	for rows.Next() {
 		var peer string
-		var blocked bool
-		var exceptions []byte
-		if err := rows.Scan(&peer, &blocked, &exceptions); err != nil {
+		var blocked, peerBlocks bool
+		var exceptions, peerSettings, peerExceptions []byte
+		if err := rows.Scan(&peer, &blocked, &exceptions, &peerSettings, &peerBlocks, &peerExceptions); err != nil {
 			return nil, err
 		}
-		relation := privacy.Relation{Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)}
-		if privacy.Decide(settings, relation, privacy.LastSeen) {
+		pair := privacy.Pair{
+			Owner:         settings,
+			Viewer:        privacy.Parse(peerSettings),
+			OwnerToViewer: privacy.Relation{Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)},
+			ViewerToOwner: privacy.Relation{Blocked: peerBlocks, Exceptions: privacy.ParseExceptions(peerExceptions)},
+		}
+		if pair.ExactLastSeen() {
 			peers = append(peers, peer)
 		}
 	}

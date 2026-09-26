@@ -39,26 +39,29 @@ var (
 )
 
 type Chat struct {
-	ID            string              `json:"id"`
-	Type          string              `json:"type"`
-	Title         string              `json:"title"`
-	Description   string              `json:"description"`
-	AvatarURL     string              `json:"avatarUrl"`
-	PeerPublicKey string              `json:"peerPublicKey,omitempty"`
-	PeerID        string              `json:"peerId,omitempty"`
-	PeerIsOnline  bool                `json:"peerIsOnline,omitempty"`
-	PeerLastSeen  string              `json:"peerLastSeen,omitempty"`
-	OwnerID       string              `json:"ownerId"`
-	Role          string              `json:"role"`
-	IsPinned      bool                `json:"isPinned"`
-	IsArchived    bool                `json:"isArchived"`
-	LastReadAt    string              `json:"lastReadAt,omitempty"`
-	CreatedAt     string              `json:"createdAt"`
-	UpdatedAt     string              `json:"updatedAt"`
-	MemberCount   int                 `json:"memberCount"`
-	LastMessageAt string              `json:"lastMessageAt,omitempty"`
-	UnreadCount   int                 `json:"unreadCount"`
-	LastMessage   *LastMessagePreview `json:"lastMessage,omitempty"`
+	ID            string `json:"id"`
+	Type          string `json:"type"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	AvatarURL     string `json:"avatarUrl"`
+	PeerPublicKey string `json:"peerPublicKey,omitempty"`
+	PeerID        string `json:"peerId,omitempty"`
+	PeerIsOnline  bool   `json:"peerIsOnline,omitempty"`
+	PeerLastSeen  string `json:"peerLastSeen,omitempty"`
+	// PeerLastSeenApprox — приблизительное время вместо скрытого (#791):
+	// recently, within_week, within_month, long_ago.
+	PeerLastSeenApprox string              `json:"peerLastSeenApprox,omitempty"`
+	OwnerID            string              `json:"ownerId"`
+	Role               string              `json:"role"`
+	IsPinned           bool                `json:"isPinned"`
+	IsArchived         bool                `json:"isArchived"`
+	LastReadAt         string              `json:"lastReadAt,omitempty"`
+	CreatedAt          string              `json:"createdAt"`
+	UpdatedAt          string              `json:"updatedAt"`
+	MemberCount        int                 `json:"memberCount"`
+	LastMessageAt      string              `json:"lastMessageAt,omitempty"`
+	UnreadCount        int                 `json:"unreadCount"`
+	LastMessage        *LastMessagePreview `json:"lastMessage,omitempty"`
 }
 
 type LastMessagePreview struct {
@@ -355,7 +358,8 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
-		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
+		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -376,7 +380,11 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
 			         ps.privacy_settings AS privacy,
 			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer,
-			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions,
+			         -- Взаимность (#791): то же о зрителе по отношению к собеседнику.
+			         (SELECT vs.privacy_settings FROM users.settings vs WHERE vs.user_id = $1) AS viewer_privacy,
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $1 AND b.blocked_user_id = pm.user_id) AS viewer_blocks,
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $1 AND e.user_id = pm.user_id) AS viewer_exceptions
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
@@ -398,6 +406,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
+			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
@@ -438,7 +447,8 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
-		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
+		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -459,7 +469,11 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
 			         ps.privacy_settings AS privacy,
 			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer,
-			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = pm.user_id AND e.user_id = $1) AS exceptions,
+			         -- Взаимность (#791): то же о зрителе по отношению к собеседнику.
+			         (SELECT vs.privacy_settings FROM users.settings vs WHERE vs.user_id = $1) AS viewer_privacy,
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $1 AND b.blocked_user_id = pm.user_id) AS viewer_blocks,
+			         (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $1 AND e.user_id = pm.user_id) AS viewer_exceptions
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
@@ -481,6 +495,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
+			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
@@ -1687,13 +1702,15 @@ func (s *Service) peerPublicKey(ctx context.Context, userID, chatID string) (str
 }
 
 // applyPeerPrivacy прячет в личном чате то, что собеседник закрыл от
-// зрителя (#463, #783, #784): статус и время активности, фото.
-func applyPeerPrivacy(chat *Chat, settings privacy.Settings, rel privacy.Relation) {
-	if !privacy.Decide(settings, rel, privacy.LastSeen) {
+// зрителя (#463, #783, #784): статус и время активности, фото. Время —
+// взаимно и с приблизительным вместо скрытого (#791); фото — нет.
+func applyPeerPrivacy(chat *Chat, pair privacy.Pair, now time.Time) {
+	if view := pair.LastSeen(privacy.ParseLastSeen(chat.PeerLastSeen), now); !view.Exact {
 		chat.PeerIsOnline = false
 		chat.PeerLastSeen = ""
+		chat.PeerLastSeenApprox = view.Approx
 	}
-	if !privacy.Decide(settings, rel, privacy.Photo) {
+	if !privacy.Decide(pair.Owner, pair.OwnerToViewer, privacy.Photo) {
 		chat.AvatarURL = ""
 	}
 }
@@ -1704,8 +1721,8 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 		var chat Chat
 		var unreadCount int
 		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
-		var peerPrivacy, peerExceptions []byte
-		var peerBlocksViewer bool
+		var peerPrivacy, peerExceptions, viewerPrivacy, viewerExceptions []byte
+		var peerBlocksViewer, viewerBlocksPeer bool
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
@@ -1713,14 +1730,17 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
 			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
+			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions,
 		); err != nil {
 			return nil, err
 		}
 		if chat.Type == "private" {
-			applyPeerPrivacy(&chat, privacy.Parse(peerPrivacy), privacy.Relation{
-				Blocked:    peerBlocksViewer,
-				Exceptions: privacy.ParseExceptions(peerExceptions),
-			})
+			applyPeerPrivacy(&chat, privacy.Pair{
+				Owner:         privacy.Parse(peerPrivacy),
+				Viewer:        privacy.Parse(viewerPrivacy),
+				OwnerToViewer: privacy.Relation{Blocked: peerBlocksViewer, Exceptions: privacy.ParseExceptions(peerExceptions)},
+				ViewerToOwner: privacy.Relation{Blocked: viewerBlocksPeer, Exceptions: privacy.ParseExceptions(viewerExceptions)},
+			}, time.Now())
 		}
 		chat.UnreadCount = unreadCount
 		if lmContent.Valid || lmType.Valid {
@@ -3315,11 +3335,14 @@ func (s *Service) ensureGroupMember(ctx context.Context, chatID, userID string) 
 }
 
 // membersWithPrivacyQuery — участники чата $1 и всё, что нужно проверке
-// приватности для зрителя $2.
+// приватности для зрителя $2, в обе стороны (#791).
 const membersWithPrivacyQuery = `
 		SELECT cm.user_id::text, ms.privacy_settings,
 		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = cm.user_id AND b.blocked_user_id = $2),
-		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = cm.user_id AND e.user_id = $2)
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = cm.user_id AND e.user_id = $2),
+		       (SELECT vs.privacy_settings FROM users.settings vs WHERE vs.user_id = $2),
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $2 AND b.blocked_user_id = cm.user_id),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $2 AND e.user_id = cm.user_id)
 		FROM chats.members cm
 		LEFT JOIN users.settings ms ON ms.user_id = cm.user_id
 		WHERE cm.chat_id = $1`
@@ -3327,7 +3350,8 @@ const membersWithPrivacyQuery = `
 // statusVisibleMemberIDs возвращает UUID участников чата, чей статус виден
 // viewerID, в порядке их хранения в БД. Решает общая проверка приватности
 // (#783, #784): правило «Последняя активность», блокировка и исключения —
-// так же, как для статуса, данных личного чата и рассылки присутствия.
+// в обе стороны (#791), так же, как для статуса, данных личного чата и
+// рассылки присутствия.
 func (s *Service) statusVisibleMemberIDs(ctx context.Context, chatID, viewerID string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, membersWithPrivacyQuery, chatID, viewerID)
 	if err != nil {
@@ -3338,13 +3362,18 @@ func (s *Service) statusVisibleMemberIDs(ctx context.Context, chatID, viewerID s
 	memberIDs := make([]string, 0)
 	for rows.Next() {
 		var id string
-		var settings, exceptions []byte
-		var blocked bool
-		if err := rows.Scan(&id, &settings, &blocked, &exceptions); err != nil {
+		var settings, exceptions, viewerSettings, viewerExceptions []byte
+		var blocked, viewerBlocks bool
+		if err := rows.Scan(&id, &settings, &blocked, &exceptions, &viewerSettings, &viewerBlocks, &viewerExceptions); err != nil {
 			return nil, err
 		}
-		relation := privacy.Relation{Self: id == viewerID, Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)}
-		if privacy.Decide(privacy.Parse(settings), relation, privacy.LastSeen) {
+		pair := privacy.Pair{
+			Owner:         privacy.Parse(settings),
+			Viewer:        privacy.Parse(viewerSettings),
+			OwnerToViewer: privacy.Relation{Self: id == viewerID, Blocked: blocked, Exceptions: privacy.ParseExceptions(exceptions)},
+			ViewerToOwner: privacy.Relation{Blocked: viewerBlocks, Exceptions: privacy.ParseExceptions(viewerExceptions)},
+		}
+		if pair.ExactLastSeen() {
 			memberIDs = append(memberIDs, id)
 		}
 	}
