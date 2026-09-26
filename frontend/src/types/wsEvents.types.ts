@@ -88,6 +88,14 @@ export interface IPresenceChangedEvent {
   lastSeen: string;
 }
 
+/** Блокировка или её снятие (#760): кто, кого и их личный чат, если он есть. */
+export interface IUserBlockEvent {
+  type: string;
+  userId: string;
+  blockedUserId: string;
+  chatId: string;
+}
+
 export interface ITypingEvent {
   type: string;
   chatId: string;
@@ -226,4 +234,6 @@ export interface IWsEventMap {
 
   [WS_EVENTS.USER.TYPING]: ITypingEvent;
   [WS_EVENTS.USER.PRESENCE]: IPresenceChangedEvent;
+  [WS_EVENTS.USER.BLOCKED]: IUserBlockEvent;
+  [WS_EVENTS.USER.UNBLOCKED]: IUserBlockEvent;
 }

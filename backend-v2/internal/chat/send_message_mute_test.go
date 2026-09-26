@@ -10,21 +10,12 @@ import (
 )
 
 const (
-	// memberMuteQuery фиксирует целевой SQL проверки mute в SendMessage:
-	// блокируются участники любой роли (включая admin) с активным
-	// временным или перманентным mute (muted_at IS NOT NULL).
-	memberMuteQuery = `
-		SELECT cm.role,
-		       (
-		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
-		       )
-		FROM chats.members cm
-		JOIN auth.users u ON u.id = cm.user_id
-		WHERE cm.chat_id = $1 AND cm.user_id = $2
-		`
-	muteTestChatID = "550e8400-e29b-41d4-a716-446655440002"
-	muteTestUserID = "550e8400-e29b-41d4-a716-446655440003"
+	// memberMuteQuery — проверка права писать в SendMessage: mute для
+	// участников любой роли (включая admin) и блокировка собеседником по
+	// личному чату (#760).
+	memberMuteQuery = `(?s)SELECT cm\.role,.*JOIN users\.blocked_users b.*WHERE cm\.chat_id = \$1 AND cm\.user_id = \$2`
+	muteTestChatID  = "550e8400-e29b-41d4-a716-446655440002"
+	muteTestUserID  = "550e8400-e29b-41d4-a716-446655440003"
 )
 
 // expectMutedMembership мокирует выборку membership с активным mute
@@ -32,13 +23,13 @@ const (
 func expectMutedMembership(mock sqlmock.Sqlmock, role string) {
 	mock.ExpectQuery(memberMuteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow(role, true))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow(role, true, false))
 }
 
 // TestSendMessage_MutedMember проверяет, что замьюченный member не может
 // отправить сообщение: возвращается ErrMemberMuted, INSERT не выполняется.
 func TestSendMessage_MutedMember(t *testing.T) {
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +50,7 @@ func TestSendMessage_MutedMember(t *testing.T) {
 // `cm.role = 'member' AND cm.muted_until > NOW()`, при которой
 // замьюченный admin мог писать в чат.
 func TestSendMessage_MutedAdmin(t *testing.T) {
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,5 +63,22 @@ func TestSendMessage_MutedAdmin(t *testing.T) {
 
 	_, err = svc.SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
 	require.ErrorIs(t, err, chat.ErrMemberMuted)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestSendMessage_BlockedByPeer: собеседник по личному чату заблокировал
+// отправителя — сообщение не сохраняется и не рассылается (#760).
+func TestSendMessage_BlockedByPeer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(memberMuteQuery).
+		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, true))
+
+	_, err = chat.NewService(db, nil, nil).SendMessage(context.Background(), muteTestUserID, muteTestChatID, "hello", "text", nil, nil)
+
+	require.ErrorIs(t, err, chat.ErrBlockedByUser)
+	// Ни INSERT, ни других запросов.
 	require.NoError(t, mock.ExpectationsWereMet())
 }

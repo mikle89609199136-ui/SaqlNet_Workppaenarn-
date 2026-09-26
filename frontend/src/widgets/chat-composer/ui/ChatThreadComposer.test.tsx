@@ -8,7 +8,8 @@ import { ChatThreadComposer } from './ChatThreadComposer';
 import { clearOutbox } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
-import { makeMessage } from '@/test/fixtures';
+import { makeChat, makeMessage } from '@/test/fixtures';
+import { chatKeys } from '@/entities/chat';
 import { useForwardStore } from '@/features/forward-messages';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -160,6 +161,57 @@ describe('ChatThreadComposer', () => {
       await vi.waitFor(() => expect(useForwardStore.getState().pending).toBeNull());
       expect(order).toEqual(['комментарий: посмотри', 'пересылка: релиз в пятницу']);
       expect(input).toHaveValue('');
+    });
+  });
+
+  describe('блокировка в личном чате (#760)', () => {
+    function seedChat(extra: object) {
+      queryClient.setQueryData(
+        chatKeys.detail('chat-test-1'),
+        makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer', ...extra })
+      );
+    }
+
+    it('вас заблокировали — вместо поля ввода объяснение, писать нечем', () => {
+      seedChat({ isBlockedByPeer: true });
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Этот человек ограничил переписку с вами'
+      );
+      expect(screen.queryByRole('textbox', { name: /сообщение/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /отправить сообщение/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('вы заблокировали — «Разблокировать» снимает блокировку и перечитывает чат', async () => {
+      seedChat({ isPeerBlocked: true });
+      const unblock = vi
+        .spyOn(services.userService, 'unblockUser')
+        .mockResolvedValue({ success: true });
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого пользователя');
+      await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
+
+      expect(unblock).toHaveBeenCalledWith('user-peer');
+      await vi.waitFor(() =>
+        expect(invalidate).toHaveBeenCalledWith(
+          expect.objectContaining({ queryKey: chatKeys.detail('chat-test-1') })
+        )
+      );
+    });
+
+    it('без блокировки — обычное поле ввода', () => {
+      seedChat({});
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
     });
   });
 });

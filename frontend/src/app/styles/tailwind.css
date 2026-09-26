@@ -395,6 +395,9 @@
   .thread-call-button:hover { background: var(--color-brand-soft); transform: translateY(-1px); }
   .thread-call-button:active { transform: translateY(0); background: var(--color-brand-soft); }
   .thread-call-button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+  /* Звонить нельзя — блокировка в личном чате (#760). */
+  .thread-call-button:disabled,
+  .thread-call-button:disabled:hover { @apply opacity-40 cursor-not-allowed bg-transparent; transform: none; }
   .thread-call-icon { @apply block w-6 h-6; }
   /* Шапка треда лежала во втором файле, ChatThreadPage.css, и перекрывала
      всё, что объявлено выше: grid становился flex, фон — прозрачным,

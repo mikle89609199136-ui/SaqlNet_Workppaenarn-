@@ -6,7 +6,8 @@ import {
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { chatQuery, clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
@@ -25,6 +26,7 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
 import { AttachmentPreview } from './AttachmentPreview';
+import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
@@ -116,6 +118,9 @@ export const ChatThreadComposer = ({
     setPendingAttachment,
   });
   const forward = useForwardSend(chatId);
+  // Блокировка в личном чате (#760) — вместо поля ввода. Проверка после
+  // всех хуков: их порядок не должен зависеть от данных.
+  const { data: chat } = useQuery(chatQuery(chatId));
 
   /* Пересылка ждёт в этом чате: «Отправить» уносит комментарий из поля
      (если он есть) и пересланные сообщения, а не обычное сообщение. */
@@ -151,6 +156,10 @@ export const ChatThreadComposer = ({
     // символы состояние не трогают.
     setHasText(text.trim().length > 0);
     sendTyping();
+  }
+
+  if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
+    return <BlockedComposer chat={chat} />;
   }
 
   return (

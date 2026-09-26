@@ -56,6 +56,8 @@ export const ChatThreadHeader = ({
   const noticeSubtitle = connectionSubtitle(connection, t);
   const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t, now);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
+  // Блокировка в любую сторону — звонков нет (#760).
+  const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
 
   const handleCallClick = () => {
     if (isLongPress.current) return;
@@ -172,6 +174,7 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-actions thread-call-desktop">
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
                 title={t('audioCall', 'Аудиозвонок')}
                 type="button"
@@ -181,6 +184,7 @@ export const ChatThreadHeader = ({
 
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
                 title={t('videoCall', 'Видео')}
                 type="button"
@@ -192,6 +196,7 @@ export const ChatThreadHeader = ({
             <div className="thread-header-card thread-call-mobile">
               <button
                 className="thread-call-button"
+                disabled={callsBlocked}
                 onClick={handleCallClick}
                 onMouseDown={handleTouchStart}
                 onMouseUp={handleTouchEnd}

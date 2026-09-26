@@ -49,6 +49,14 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
     chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
 
   [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: ({ chatId }) => (chatId ? [chatKeys.members(chatId)] : []),
+
+  // Блокировка (#760): флаги чата и статус собеседника считает сервер —
+  // перечитываем личный чат и список.
+  [WS_EVENTS.USER.BLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
+
+  [WS_EVENTS.USER.UNBLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 };
 
 /**

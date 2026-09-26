@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"craneapp/backend-v2/internal/platform/blockevent"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
@@ -868,11 +869,17 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 	if !exists {
 		return ErrNotFound
 	}
+	// Уведомление — тем же запросом (#760): уходит, только если строка
+	// вставлена, и доставляется после коммита.
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO users.blocked_users (user_id, blocked_user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (user_id, blocked_user_id) DO NOTHING
-	`, userID, blockedUserID)
+		WITH inserted AS (
+			INSERT INTO users.blocked_users (user_id, blocked_user_id)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, blocked_user_id) DO NOTHING
+			RETURNING 1
+		)
+		SELECT pg_notify($3, $4) FROM inserted
+	`, userID, blockedUserID, blockevent.Channel, blockEventPayload(userID, blockedUserID, true))
 	if err != nil {
 		return err
 	}
@@ -883,8 +890,19 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 	return nil
 }
 
+func blockEventPayload(userID, blockedUserID string, blocked bool) string {
+	payload, _ := json.Marshal(blockevent.Changed{UserID: userID, BlockedUserID: blockedUserID, Blocked: blocked})
+	return string(payload)
+}
+
 func (s *Service) Unblock(ctx context.Context, userID, blockedUserID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2`, userID, blockedUserID)
+	_, err := s.db.ExecContext(ctx, `
+		WITH deleted AS (
+			DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2
+			RETURNING 1
+		)
+		SELECT pg_notify($3, $4) FROM deleted
+	`, userID, blockedUserID, blockevent.Channel, blockEventPayload(userID, blockedUserID, false))
 	return err
 }
 

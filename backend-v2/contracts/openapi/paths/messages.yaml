@@ -87,6 +87,10 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     summary: Send a message to a chat
     operationId: sendMessage
     security: *secure
+    description: >-
+      403 member_muted when the sender is muted; 403 blocked_by_user when the
+      other member of a private chat has blocked the sender — the message is
+      neither stored nor delivered.
     requestBody:
       required: true
       content:

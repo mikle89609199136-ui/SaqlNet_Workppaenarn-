@@ -27,7 +27,7 @@ func TestForwardMessagePreservesMediaMetadata(t *testing.T) {
 	mock.ExpectQuery("FROM auth.users").WithArgs("sender-id", "user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions"}).AddRow(nil, false, nil))
 	mock.ExpectQuery("SELECT cm.role").WithArgs("target-chat", "user-id").
-		WillReturnRows(sqlmock.NewRows([]string{"role", "muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer"}).AddRow("member", false, false))
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO messages\\.messages").

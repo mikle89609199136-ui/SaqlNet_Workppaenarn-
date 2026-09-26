@@ -55,6 +55,20 @@ export function useComposerSendMessage({
 
   const [isSending, setIsSending] = useState(false);
 
+  /* Ошибка отправки — человеку словами. blocked_by_user значит, что
+     собеседник заблокировал, а событие об этом могло не дойти: чат
+     перечитывается, и вместо поля ввода встаёт плашка (#760). */
+  const showSendError = useCallback(
+    (err: unknown) => {
+      const error = err as { code?: string; message?: string };
+      if (error?.code === 'blocked_by_user') {
+        void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId), exact: true });
+      }
+      setError(describeApiError(error, t, t('messageSendError', 'Не удалось отправить сообщение')));
+    },
+    [chatId, queryClient, setError, t]
+  );
+
   function scrollToBottom() {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }
@@ -64,20 +78,14 @@ export function useComposerSendMessage({
       setError('');
       void retryOutboxMessage(queryClient, message.tempId || message.id, {
         onError: (err) => {
-          setError(
-            describeApiError(
-              err as { code?: string; message?: string },
-              t,
-              t('messageSendError', 'Не удалось отправить сообщение')
-            )
-          );
+          showSendError(err);
         },
         onSuccess: () => {
           setError('');
         },
       });
     },
-    [queryClient, setError, t]
+    [queryClient, setError, showSendError]
   );
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -106,13 +114,7 @@ export function useComposerSendMessage({
         setComposerText(draftRef.current, '');
         setError('');
       } catch (err: unknown) {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
+        showSendError(err);
       } finally {
         setIsSending(false);
       }
@@ -177,13 +179,7 @@ export function useComposerSendMessage({
     // 3. Отправляем в фоне через outboxSender
     void sendOutboxItem(queryClient, outboxItem, {
       onError: (err) => {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
+        showSendError(err);
       },
       onSuccess: () => {
         setError('');

@@ -79,7 +79,7 @@ func TestSendMessageRejectsMalformedReplyToWithoutInsert(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 
 	recorder := httptest.NewRecorder()
 	req := messageValidationRequest(
@@ -110,7 +110,7 @@ func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
 			handler, mock := messageValidationHandler(t)
 			mock.ExpectQuery(`SELECT cm\.role`).
 				WithArgs(messageValidationChatID, messageValidationUserID).
-				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 			mock.ExpectBegin()
 			mock.ExpectQuery(`SELECT id::text`).
 				WithArgs(messageValidationMessageID, messageValidationChatID).
@@ -138,7 +138,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(
