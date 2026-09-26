@@ -290,3 +290,121 @@ func TestLastSeenOnRealSchema(t *testing.T) {
 	_, approx = seen()
 	require.Equal(t, privacy.LongAgo, approx, "заблокированный видит «давно»")
 }
+
+// recorder записывает рассылки чата.
+type recorder struct{ payloads []string }
+
+func (r *recorder) CallRooms() *chat.CallRoomManager  { return nil }
+func (r *recorder) IsUserConnected(string) bool       { return false }
+func (r *recorder) BroadcastToUsers([]string, []byte) {}
+func (r *recorder) BroadcastToChat(_ string, payload []byte, _ string) {
+	r.payloads = append(r.payloads, string(payload))
+}
+
+// Правило «Фото» за пределами личного чата (#789) и в профиле (#440): одно
+// и то же решение во всех ответах, аватара нет ни в одной рассылке.
+func TestPhotoHiddenEverywhere(t *testing.T) {
+	db := startDatabase(t)
+	dbtest.User(t, db, other, "other_user")
+	ctx := context.Background()
+	const avatar = "/api/v2/media/owner-avatar"
+	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name, avatar_url) VALUES ($1, 'Owner', $2), ($3, 'Other', '/api/v2/media/other')`, owner, avatar, other)
+	require.NoError(t, err)
+
+	users := user.NewService(db)
+	events := &recorder{}
+	chats := chat.NewService(db, events, nil)
+	groupID, err := chats.CreateGroup(ctx, owner, "group", "", "", []string{viewer})
+	require.NoError(t, err)
+	sent, err := chats.SendMessage(ctx, owner, groupID, "фото-проверка", "text", nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, avatar, sent.SenderAvatar, "себе — свой аватар")
+	require.NoError(t, chats.PinMessage(ctx, owner, groupID, sent.ID))
+
+	// Что зритель видит об аватаре владельца в каждом ответе.
+	seen := func() map[string]string {
+		t.Helper()
+		out := map[string]string{}
+		members, err := chats.Members(ctx, viewer, groupID)
+		require.NoError(t, err)
+		for _, m := range members {
+			if m.ID == owner {
+				out["участники"] = m.AvatarURL
+			}
+		}
+		history, err := chats.ListMessages(ctx, viewer, groupID, 50, 0)
+		require.NoError(t, err)
+		for _, m := range history {
+			if m.ID == sent.ID {
+				out["история"] = m.SenderAvatar
+			}
+		}
+		found, err := chats.SearchMessages(ctx, viewer, "фото-проверка", 10)
+		require.NoError(t, err)
+		require.Len(t, found, 1)
+		out["поиск сообщений"] = found[0].SenderAvatar
+		pins, err := chats.ListPins(ctx, viewer, groupID)
+		require.NoError(t, err)
+		require.Len(t, pins, 1)
+		out["закреплённые"] = pins[0].Message.SenderAvatar
+		people, err := users.Search(ctx, viewer, "owner_user")
+		require.NoError(t, err)
+		require.Len(t, people, 1)
+		out["поиск людей"] = people[0].AvatarURL
+		profile, err := users.ProfileByID(ctx, viewer, owner)
+		require.NoError(t, err)
+		out["профиль"] = profile.AvatarURL
+		return out
+	}
+	everywhere := func(value string) map[string]string {
+		return map[string]string{
+			"участники": value, "история": value, "поиск сообщений": value,
+			"закреплённые": value, "поиск людей": value, "профиль": value,
+		}
+	}
+
+	require.Equal(t, everywhere(avatar), seen(), "по умолчанию фото открыто")
+
+	setPrivacy(t, db, owner, `{"photoVisibility":"nobody"}`)
+	require.Equal(t, everywhere(""), seen(), "фото закрыто от всех")
+
+	own, err := chats.Members(ctx, owner, groupID)
+	require.NoError(t, err)
+	for _, m := range own {
+		if m.ID == owner {
+			require.Equal(t, avatar, m.AvatarURL, "себе — всегда")
+		}
+	}
+
+	_, err = users.SetPrivacyException(ctx, owner, privacy.Photo, viewer, true)
+	require.NoError(t, err)
+	require.Equal(t, everywhere(avatar), seen(), "зрителю открыто исключением")
+
+	block(t, db, owner, viewer)
+	require.Equal(t, everywhere(""), seen(), "блокировка сильнее исключения")
+
+	// Списки самого зрителя: чёрный список и исключения тоже не раскрывают
+	// фото, закрытое от него.
+	block(t, db, viewer, owner)
+	blocked, err := users.Blocked(ctx, viewer)
+	require.NoError(t, err)
+	require.Len(t, blocked, 1)
+	require.Empty(t, blocked[0].AvatarURL, "чёрный список")
+	exception, err := users.SetPrivacyException(ctx, viewer, privacy.LastSeen, owner, false)
+	require.NoError(t, err)
+	require.Empty(t, exception.AvatarURL, "ответ на добавление исключения")
+	listed, err := users.PrivacyExceptions(ctx, viewer, "")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Empty(t, listed[0].AvatarURL, "список исключений")
+
+	// Рассылки уходят всем участникам сразу — аватара в них нет никогда,
+	// даже когда фото открыто.
+	_, err = chats.AddMember(ctx, owner, groupID, other)
+	require.NoError(t, err)
+	require.NotEmpty(t, events.payloads)
+	for _, payload := range events.payloads {
+		require.NotContains(t, payload, "owner-avatar", payload)
+		require.NotContains(t, payload, "/api/v2/media/other", payload)
+	}
+}

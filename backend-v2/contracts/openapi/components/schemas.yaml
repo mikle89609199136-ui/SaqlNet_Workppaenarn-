@@ -16,7 +16,12 @@ User:
     lastName: { type: string }
     language: { type: string }
     bio: { type: string }
-    avatarUrl: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        Empty when the user's photoVisibility rule (with the block list and
+        exceptions) hides the photo from the caller. The caller always sees
+        their own.
 Password:
   # Требования задаёт internal/auth/password_validator.go и применяет во
   # всех трёх местах, где пароль задаётся: регистрация, смена, включение
@@ -198,7 +203,12 @@ Message:
     senderId: { type: string, format: uuid }
     senderName: { type: string }
     senderFirstName: { type: string }
-    senderAvatar: { type: string }
+    senderAvatar:
+      type: string
+      description: >-
+        Empty when the sender's photoVisibility rule hides the photo from the
+        caller. Never sent in WebSocket events, which go to every member at
+        once.
     content: { type: string }
     type: { type: string, enum: [text, image, audio, video, voice, sticker, gif, file, call] }
     replyTo: { type: string, format: uuid, nullable: true }

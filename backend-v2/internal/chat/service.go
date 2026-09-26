@@ -874,7 +874,10 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 		member.Permissions = map[string]any(permissions)
 		members = append(members, member)
 	}
-	return members, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return members, s.hideMemberPhotos(ctx, userID, members)
 }
 
 func (s *Service) SetMemberRole(ctx context.Context, actorID, chatID, memberID, role string) error {
@@ -1235,7 +1238,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		event := MemberAddedEvent{
 			Type:   "chat_member_added",
 			ChatID: chatID,
-			Member: &m,
+			Member: memberForBroadcast(m),
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
@@ -1245,7 +1248,12 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		}
 	}
 
-	return &m, nil
+	// Ответ — глазами добавившего.
+	members := []Member{m}
+	if err := s.hideMemberPhotos(ctx, actorID, members); err != nil {
+		return nil, err
+	}
+	return &members[0], nil
 }
 
 // BanMember банит пользователя в групповом чате. Если цель — текущий
@@ -1806,7 +1814,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
-	return messages, nil
+	return messages, s.hideMessageListPhotos(ctx, userID, messages)
 }
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
@@ -1967,7 +1975,7 @@ func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgT
 		payload, _ := json.Marshal(map[string]any{
 			"type":    "new_message",
 			"chatId":  chatID,
-			"message": msg,
+			"message": forBroadcast(&msg),
 		})
 		s.ws.BroadcastToChat(chatID, payload, userID)
 	}
@@ -2076,7 +2084,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		s.ws.BroadcastToChat(msg.ChatID, payload, userID)
 	}
 
-	return msg, nil
+	return msg, s.hideSenderPhotos(ctx, userID, &msg)
 }
 
 func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (*Message, error) {
@@ -2135,12 +2143,12 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 			"type":            "message_deleted",
 			"chatId":          chatID,
 			"messageId":       messageID,
-			"previousMessage": previousMessage,
+			"previousMessage": forBroadcast(previousMessage),
 		})
 		s.ws.BroadcastToChat(chatID, payload, userID)
 	}
 
-	return lastMessage, nil
+	return lastMessage, s.hideSenderPhotos(ctx, userID, lastMessage)
 }
 
 // loadMessageAfterDelete returns either the newest message before the deleted
@@ -2846,7 +2854,11 @@ func (s *Service) ListPins(
 		}
 	}
 
-	return pins, nil
+	pinned := make([]*Message, len(pins))
+	for i := range pins {
+		pinned[i] = &pins[i].Message
+	}
+	return pins, s.hideSenderPhotos(ctx, userID, pinned...)
 }
 
 func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID string) error {
@@ -2912,6 +2924,8 @@ func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID stri
 }
 
 func messagePinnedPayload(pin Pin) ([]byte, error) {
+	// Событие уходит всем участникам — без аватара отправителя (#789).
+	pin.Message.SenderAvatar = ""
 	return json.Marshal(map[string]any{
 		"type":      "message_pinned",
 		"chatId":    pin.ChatID,
@@ -3001,7 +3015,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
-	return messages, nil
+	return messages, s.hideMessageListPhotos(ctx, userID, messages)
 }
 
 func (s *Service) ToggleFavorite(ctx context.Context, userID, messageID string) (bool, error) {

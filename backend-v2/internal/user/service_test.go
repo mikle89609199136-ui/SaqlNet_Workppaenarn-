@@ -375,7 +375,7 @@ func TestProfileByID_ReturnsUsernameAsIs(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
 			AddRow("user-id", "ivan.7", "Ivan", "", "", "", "{}", false))
 
-	profile, err := svc.ProfileByID(context.Background(), "user-id")
+	profile, err := svc.ProfileByID(context.Background(), "user-id", "user-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -435,12 +435,23 @@ const searchSQL = `
 		LIMIT 50
 	`
 
+// expectPhotoCheck — проверка правила «Фото» у найденных с аватарами (#789).
+// Настроек нет — фото по умолчанию открыто.
+func expectPhotoCheck(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`FROM auth\.users u\s+LEFT JOIN users\.settings s`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "privacy_settings", "blocked", "exceptions"}).
+			AddRow("user-1", nil, false, nil).
+			AddRow("user-2", nil, false, nil).
+			AddRow("user-3", nil, false, nil))
+}
+
 // TestSearch covers all branches of Service.Search:
 //   - early returns without a DB call (empty query, whitespace-only query,
 //     bare '@' after stripping, queries that become empty after TrimPrefix);
 //   - successful searches with and without a leading '@';
 //   - SQL LIKE wildcard escaping (%, _, \);
 //   - DB and row-scan errors.
+
 func TestSearch(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -506,6 +517,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -523,6 +535,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -723,6 +736,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-1", Username: "john_doe", FirstName: "John", LastName: "Doe", AvatarURL: "http://a.com/1"},
