@@ -2300,6 +2300,7 @@ export interface components {
             lastName?: string;
             language?: string;
             bio?: string;
+            /** @description Empty when the user's photoVisibility rule (with the block list and exceptions) hides the photo from the caller. The caller always sees their own. */
             avatarUrl?: string;
         };
         Message: {
@@ -2311,6 +2312,7 @@ export interface components {
             senderId: string;
             senderName?: string;
             senderFirstName: string;
+            /** @description Empty when the sender's photoVisibility rule hides the photo from the caller. Never sent in WebSocket events, which go to every member at once. */
             senderAvatar?: string;
             content: string;
             /** @enum {string} */

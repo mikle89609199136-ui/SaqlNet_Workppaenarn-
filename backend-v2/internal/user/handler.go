@@ -229,7 +229,7 @@ func (h *Handler) PublicProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
 		return
 	}
-	p, err := h.service.ProfileByID(r.Context(), userID)
+	p, err := h.service.ProfileByID(r.Context(), authctx.MustUser(r).ID, userID)
 	respondProfile(w, r, p, err)
 }
 

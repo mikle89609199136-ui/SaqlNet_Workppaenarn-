@@ -376,6 +376,10 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 		)
 		return nil, err
 	}
+	// Фото тех, кто закрыл его от ищущего, в выдаче нет (#789).
+	if err := privacy.HidePhotos(ctx, s.db, viewerID, photoSlots(users)); err != nil {
+		return nil, err
+	}
 
 	slog.InfoContext(ctx, "search completed successfully",
 		"layer", "service",
@@ -454,8 +458,24 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 	return available, nil
 }
 
-func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {
-	return s.profileByID(ctx, userID)
+// ProfileByID — профиль userID глазами viewerID: фото — по правилу «Фото»
+// с блокировкой и исключениями (#440).
+func (s *Service) ProfileByID(ctx context.Context, viewerID, userID string) (Profile, error) {
+	profile, err := s.profileByID(ctx, userID)
+	if err != nil {
+		return profile, err
+	}
+	err = privacy.HidePhotos(ctx, s.db, viewerID, []privacy.PhotoSlot{{OwnerID: profile.ID, URL: &profile.AvatarURL}})
+	return profile, err
+}
+
+// photoSlots — аватары из списка людей для privacy.HidePhotos.
+func photoSlots(people []SearchResult) []privacy.PhotoSlot {
+	slots := make([]privacy.PhotoSlot, len(people))
+	for i := range people {
+		slots[i] = privacy.PhotoSlot{OwnerID: people[i].ID, URL: &people[i].AvatarURL}
+	}
+	return slots
 }
 
 func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername string) (Profile, error) {
@@ -827,7 +847,14 @@ func (s *Service) Blocked(ctx context.Context, userID string) ([]BlockedUser, er
 		}
 		blocked = append(blocked, item)
 	}
-	return blocked, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slots := make([]privacy.PhotoSlot, len(blocked))
+	for i := range blocked {
+		slots[i] = privacy.PhotoSlot{OwnerID: blocked[i].ID, URL: &blocked[i].AvatarURL}
+	}
+	return blocked, privacy.HidePhotos(ctx, s.db, userID, slots)
 }
 
 func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error {
