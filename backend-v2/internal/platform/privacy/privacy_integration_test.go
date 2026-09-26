@@ -186,7 +186,11 @@ func TestExceptionsOnRealSchema(t *testing.T) {
 func TestChatDataHidesWhatThePeerClosed(t *testing.T) {
 	db := startDatabase(t)
 	ctx := context.Background()
-	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name, avatar_url) VALUES ($1, 'Owner', '/api/v2/media/avatar')`, owner)
+	_, err := db.Exec(`
+		UPDATE users.profiles
+		SET first_name = 'Owner', avatar_url = '/api/v2/media/avatar'
+		WHERE user_id = $1
+	`, owner)
 	require.NoError(t, err)
 	_, err = db.Exec(`INSERT INTO users.presence (user_id, online, last_seen_at) VALUES ($1, TRUE, NOW())`, owner)
 	require.NoError(t, err)
