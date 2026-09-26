@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 	"github.com/lib/pq"
@@ -28,6 +29,7 @@ var (
 	ErrSelfBlock             = errors.New("cannot block yourself")
 	ErrAlreadyBlocked        = errors.New("user already blocked")
 	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidPrivacy        = errors.New("invalid privacy settings")
 	ErrInvalidUsernameFormat = errors.New("wrong username format")
 	ErrUsernameTaken         = errors.New("username already exists")
 	ErrUsernameCooldown      = errors.New("username change cooldown is active")
@@ -547,25 +549,26 @@ func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername strin
 	return s.profileByID(ctx, userID)
 }
 
-func (s *Service) Status(ctx context.Context, userID string) (map[string]any, error) {
+// Status — «в сети» и «был(а)» пользователя userID глазами viewerID. Что
+// из этого можно показать, решает общая проверка приватности (#783):
+// правило «Последняя активность» и блокировка.
+func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[string]any, error) {
 	var privacyJSON []byte
+	var blocked bool
 	var lastActive sql.NullString
 	var online bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(settings.privacy_settings, '{}'::jsonb),
-		       latest_session.last_active::text,
-		       COALESCE(latest_session.last_active > NOW() - INTERVAL '5 minutes', FALSE)
+		SELECT settings.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = auth.users.id AND b.blocked_user_id = $2),
+		       to_char(presence.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       -- «В сети» — живое WebSocket-подключение (#780): отметку ведёт
+		       -- чат-сервис, свежей она считается 75 секунд.
+		       COALESCE(presence.online AND presence.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE)
 		FROM auth.users
 		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
-		LEFT JOIN LATERAL (
-			SELECT last_active
-			FROM public.user_sessions
-			WHERE user_id = auth.users.id
-			ORDER BY last_active DESC
-			LIMIT 1
-		) AS latest_session ON TRUE
+		LEFT JOIN users.presence AS presence ON presence.user_id = auth.users.id
 		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
-	`, userID).Scan(&privacyJSON, &lastActive, &online)
+	`, userID, viewerID).Scan(&privacyJSON, &blocked, &lastActive, &online)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -573,24 +576,13 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 		return nil, err
 	}
 
-	lastSeenPrivacy := "everyone"
-	if len(privacyJSON) > 0 {
-		var privacy struct {
-			LastSeen string `json:"lastSeen"`
-		}
-		if err := json.Unmarshal(privacyJSON, &privacy); err == nil && privacy.LastSeen != "" {
-			lastSeenPrivacy = privacy.LastSeen
-		}
+	relation := privacy.Relation{Self: viewerID == userID, Blocked: blocked}
+	if !privacy.Decide(privacy.Parse(privacyJSON), relation, privacy.LastSeen) {
+		return map[string]any{"isOnline": false, "lastSeen": "recently"}, nil
 	}
-
 	if !lastActive.Valid {
 		return map[string]any{"isOnline": false, "lastSeen": ""}, nil
 	}
-
-	if lastSeenPrivacy == "nobody" || lastSeenPrivacy == "contacts" || lastSeenPrivacy == "none" {
-		return map[string]any{"isOnline": false, "lastSeen": "recently"}, nil
-	}
-
 	return map[string]any{"isOnline": online, "lastSeen": lastActive.String}, nil
 }
 
@@ -598,11 +590,16 @@ func (s *Service) Settings(ctx context.Context, userID string) (map[string]any, 
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, nil, err
 	}
-	var settings, privacy map[string]any
+	var settings map[string]any
+	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings FROM users.settings WHERE user_id = $1
-	`, userID).Scan((*jsonMap)(&settings), (*jsonMap)(&privacy))
-	return settings, privacy, err
+	`, userID).Scan((*jsonMap)(&settings), &rawPrivacy)
+	if err != nil {
+		return settings, nil, err
+	}
+	// Отдаём канонический вид: старые «contacts» и «none» — уже «nobody».
+	return settings, privacy.Parse(rawPrivacy).Map(), nil
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
@@ -611,13 +608,14 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 	}
 	var out AllSettings
 	var folders jsonArray
+	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings, notification_settings, sound_settings,
 		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
 		FROM users.settings WHERE user_id = $1
 	`, userID).Scan(
 		(*jsonMap)(&out.Settings),
-		(*jsonMap)(&out.PrivacySettings),
+		&rawPrivacy,
 		(*jsonMap)(&out.NotificationSettings),
 		(*jsonMap)(&out.SoundSettings),
 		(*jsonMap)(&out.StorageSettings),
@@ -627,10 +625,22 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 		&out.PasscodeTimeout,
 	)
 	out.Folders = []any(folders)
+	if err == nil {
+		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
+	}
 	return out, err
 }
 
 func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input AllSettings) error {
+	// Тот же вход в настройки приватности, что и PUT /users/privacy: без
+	// проверки здесь её можно было бы обойти.
+	if input.PrivacySettings != nil {
+		normalized, err := privacy.Normalize(input.PrivacySettings)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidPrivacy, err)
+		}
+		input.PrivacySettings = normalized
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
@@ -685,13 +695,17 @@ func (s *Service) UpdateSettings(ctx context.Context, userID string, settings ma
 	return next, err
 }
 
-func (s *Service) UpdatePrivacy(ctx context.Context, userID string, privacy map[string]any) (map[string]any, error) {
+func (s *Service) UpdatePrivacy(ctx context.Context, userID string, patch map[string]any) (map[string]any, error) {
+	normalized, err := privacy.Normalize(patch)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidPrivacy, err)
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE users.settings SET privacy_settings = privacy_settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
-	`, userID, jsonMap(privacy))
+	`, userID, jsonMap(normalized))
 	if err != nil {
 		return nil, err
 	}

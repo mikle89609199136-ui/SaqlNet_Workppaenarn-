@@ -60,6 +60,9 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
 export const IGNORED_EVENTS: string[] = [
   // Эфемерное состояние: живёт три секунды и не кешируется.
   WS_EVENTS.USER.TYPING,
+  // Статус кладётся в кеш прямо из события, без перезапроса —
+  // см. applyPresence.
+  WS_EVENTS.USER.PRESENCE,
   // Служебные события транспорта. Восстановление связи таблице не
   // подчиняется: там не инвалидация, а догрузка пропущенного —
   // см. resyncAfterReconnect.

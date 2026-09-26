@@ -25,15 +25,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 50
-	offset := 0
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-		limit = l
-	}
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
-		offset = o
-	}
+	limit, offset := parsePagination(r)
 	msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat_not_found")
+		return
+	}
+	if errors.Is(err, ErrForbidden) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access_denied")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
 		return
@@ -350,4 +351,18 @@ func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"reactions": reactions,
 	})
+}
+
+// parsePagination извлекает limit и offset из query-параметров запроса
+// с дефолтными значениями (50 и 0 соответственно).
+func parsePagination(r *http.Request) (int, int) {
+	limit := 50
+	offset := 0
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = l
+	}
+	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
+		offset = o
+	}
+	return limit, offset
 }

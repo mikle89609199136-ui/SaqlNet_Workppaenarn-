@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/presence"
 	"database/sql"
 	"encoding/json"
@@ -353,7 +354,8 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE)
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -363,13 +365,22 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         -- Сырые данные: что из них видно зрителю, решает
+			         -- privacy.Decide в scanChats (#783) — по настройкам собеседника
+			         -- и блокировке, как во всех остальных местах.
 			         COALESCE(up.avatar_url, '') AS avatar_url,
 			         au.username AS display_username,
-			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
-			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
+			         -- presence.LeaseTTL (75 секунд).
+			         COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
+			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
+			         ps.privacy_settings AS privacy,
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			  LEFT JOIN users.settings ps ON ps.user_id = pm.user_id
+			  LEFT JOIN users.presence pr ON pr.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -385,7 +396,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			WHERE COALESCE(cs.is_archived, FALSE) = $2
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-			         peer.is_online, peer.last_seen,
+			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
@@ -400,7 +411,6 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
 		return nil, err
 	}
-	s.hydrateRealtimePresence(chats)
 	return chats, nil
 }
 
@@ -426,7 +436,8 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, '')
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
+		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE)
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -436,13 +447,22 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
 			         COALESCE(up.last_name,  au.last_name,  '') AS last_name,
+			         -- Сырые данные: что из них видно зрителю, решает
+			         -- privacy.Decide в scanChats (#783) — по настройкам собеседника
+			         -- и блокировке, как во всех остальных местах.
 			         COALESCE(up.avatar_url, '') AS avatar_url,
 			         au.username AS display_username,
-			         EXISTS(SELECT 1 FROM public.user_sessions us WHERE us.user_id = au.id AND us.last_active > NOW() - INTERVAL '5 minutes') AS is_online,
-			         COALESCE((SELECT MAX(us.last_active)::text FROM public.user_sessions us WHERE us.user_id = au.id), '') AS last_seen
+			         -- «В сети» — живое WebSocket-подключение (#780): отметка свежее
+			         -- presence.LeaseTTL (75 секунд).
+			         COALESCE(pr.online AND pr.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE) AS is_online,
+			         COALESCE(to_char(pr.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '') AS last_seen,
+			         ps.privacy_settings AS privacy,
+			         EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = pm.user_id AND b.blocked_user_id = $1) AS blocks_viewer
 			  FROM chats.members pm
 			  JOIN auth.users au ON au.id = pm.user_id
 			  LEFT JOIN users.profiles up ON up.user_id = pm.user_id
+			  LEFT JOIN users.settings ps ON ps.user_id = pm.user_id
+			  LEFT JOIN users.presence pr ON pr.user_id = pm.user_id
 		  WHERE pm.chat_id = c.id AND pm.user_id != $1
 		  LIMIT 1
 		) peer ON c.type = 'private'
@@ -458,7 +478,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			WHERE c.id = $2
 			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
-			         peer.is_online, peer.last_seen,
+			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer,
 			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
@@ -482,9 +502,6 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			return Chat{}, err
 		}
 	}
-	if chat.Type == "private" && s.ws != nil && s.ws.IsUserConnected(chat.PeerID) {
-		chat.PeerIsOnline = true
-	}
 	return chat, nil
 }
 
@@ -494,17 +511,6 @@ func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (strin
 	FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`, userID, chatID).Scan(&chatType, &role)
 
 	return chatType, role, err
-}
-
-func (s *Service) hydrateRealtimePresence(chats []Chat) {
-	if s.ws == nil {
-		return
-	}
-	for i := range chats {
-		if chats[i].Type == "private" && s.ws.IsUserConnected(chats[i].PeerID) {
-			chats[i].PeerIsOnline = true
-		}
-	}
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
@@ -1678,20 +1684,38 @@ func (s *Service) peerPublicKey(ctx context.Context, userID, chatID string) (str
 	return key.String, nil
 }
 
+// applyPeerPrivacy прячет в личном чате то, что собеседник закрыл от
+// зрителя (#463, #783): статус и время активности, фото.
+func applyPeerPrivacy(chat *Chat, settings privacy.Settings, rel privacy.Relation) {
+	if !privacy.Decide(settings, rel, privacy.LastSeen) {
+		chat.PeerIsOnline = false
+		chat.PeerLastSeen = ""
+	}
+	if !privacy.Decide(settings, rel, privacy.Photo) {
+		chat.AvatarURL = ""
+	}
+}
+
 func scanChats(rows *sql.Rows) ([]Chat, error) {
 	var chats []Chat
 	for rows.Next() {
 		var chat Chat
 		var unreadCount int
 		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
+		var peerPrivacy []byte
+		var peerBlocksViewer bool
 		if err := rows.Scan(
 			&chat.ID, &chat.Type, &chat.Title, &chat.Description, &chat.AvatarURL,
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
+			&peerPrivacy, &peerBlocksViewer,
 		); err != nil {
 			return nil, err
+		}
+		if chat.Type == "private" {
+			applyPeerPrivacy(&chat, privacy.Parse(peerPrivacy), privacy.Relation{Blocked: peerBlocksViewer})
 		}
 		chat.UnreadCount = unreadCount
 		if lmContent.Valid || lmType.Valid {
@@ -1709,12 +1733,22 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 }
 
 func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit, offset int) ([]Message, error) {
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+	ok, err := s.IsMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		var chatExists bool
+		err = s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM chats.chats WHERE id = $1)", chatID).Scan(&chatExists)
 		if err != nil {
 			return nil, err
 		}
+		if !chatExists {
+			return nil, ErrNotFound
+		}
 		return nil, ErrForbidden
 	}
+
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
 		FROM (

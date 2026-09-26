@@ -4,13 +4,13 @@ import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
 import { useSettingsData } from './useSettingsData';
 
-/* Три варианта показаны сразу, а не спрятаны в список: выбор из трёх
-   читается одним взглядом, и лишнее нажатие ради этого не нужно. */
-const LAST_SEEN_VALUES = ['all', 'contacts', 'nobody'] as const;
+/* Варианты показаны сразу, а не спрятаны в список: выбор читается одним
+   взглядом. «Контакты» убраны (#726): контактов в приложении нет, и сервер
+   всё равно сохранял этот вариант как «Никто». */
+const LAST_SEEN_VALUES = ['all', 'nobody'] as const;
 
-/* Сервер значение не проверяет: `{"lastSeen": 123}` сохранится и вернёт
-   200 (#439). Поэтому допустимость решает клиент — наверх уходит только
-   то, что есть в списке. */
+/* Сервер проверяет значение и ответит 400 на незнакомое (#783), но наверх
+   и так уходит только то, что предложено человеку. */
 function isLastSeenVisibility(value: string): value is TLastSeenVisibility {
   return (LAST_SEEN_VALUES as readonly string[]).includes(value);
 }
@@ -21,7 +21,6 @@ export function PrivacySection() {
 
   const lastSeenOptions = [
     { value: 'all', label: t('settings.privacy.lastSeenAll', 'Все') },
-    { value: 'contacts', label: t('settings.privacy.lastSeenContacts', 'Контакты') },
     { value: 'nobody', label: t('settings.privacy.lastSeenNobody', 'Никто') },
   ];
 

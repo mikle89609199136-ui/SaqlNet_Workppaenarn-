@@ -12,6 +12,7 @@ import {
 } from '@/entities/message';
 import { useTypingStore, resolveChat } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
+import { applyPresence, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
@@ -26,6 +27,9 @@ import { resyncAfterReconnect } from './resyncAfterReconnect';
  * Исключение сделано для нового сообщения: инвалидация означала бы поход
  * на сервер и задержку в ленте, поэтому оно кладётся в кеш напрямую.
  */
+/** Не чаще — перечитывание статусов при возврате во вкладку. */
+const PRESENCE_REFRESH_MS = 30_000;
+
 export function useServerEvents(enabled: boolean): void {
   const queryClient = useQueryClient();
   const { eventBus } = useRealtimeSocket(enabled);
@@ -111,7 +115,25 @@ export function useServerEvents(enabled: boolean): void {
     // появилось бы в разговоре никогда.
     const unsubscribeReconnect = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
       void resyncAfterReconnect(queryClient);
+      // Пока связи не было, собеседники могли войти и выйти.
+      refreshPresence(queryClient);
     });
+
+    // Статус собеседника кладётся в кеш прямо из события (#780).
+    const unsubscribePresence = eventBus.on(WS_EVENTS.USER.PRESENCE, (event) => {
+      applyPresence(queryClient, event);
+    });
+
+    // Вкладка спала: браузер мог придержать сокет, и события прошли мимо.
+    // Перечитываем статусы при возврате, но не чаще раза в полминуты.
+    let lastPresenceRefresh = Date.now();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastPresenceRefresh < PRESENCE_REFRESH_MS) return;
+      lastPresenceRefresh = Date.now();
+      refreshPresence(queryClient);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Состав чата изменился — ключ чата пора менять: вошедший не должен
     // читать написанное до него, вышедший — написанное после.
@@ -158,6 +180,8 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
       unsubscribeReconnect();
+      unsubscribePresence();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubscribeMemberAdded();
       unsubscribeMemberRemoved();
       stopConnectionWatch();

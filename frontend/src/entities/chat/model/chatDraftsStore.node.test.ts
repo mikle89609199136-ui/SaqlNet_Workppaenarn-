@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAllDrafts, clearDraft, readDraft, subscribeToDraft, writeDraft } from './chatDraftsStore';
+import {
+  clearAllDrafts,
+  clearDraft,
+  readDraft,
+  subscribeToDraft,
+  writeDraft,
+} from './chatDraftsStore';
 
 beforeEach(() => {
   vi.useFakeTimers();

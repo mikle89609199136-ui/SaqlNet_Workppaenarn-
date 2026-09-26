@@ -82,6 +82,10 @@
   "firstName": "First name",
   "firstNamePlaceholder": "Your name",
   "forward": "Forward",
+  "forward.bannerMany": "Forward messages: {{count}}",
+  "forward.bannerOne": "Forward message",
+  "forward.cancel": "Cancel forwarding",
+  "forward.partial": "Forwarded {{sent}} of {{total}}. The rest are still above the message field — press Send to try again. {{reason}}",
   "forwardMessages": "Forward messages",
   "forwarded": "Forwarded",
   "forwardedFrom": "Forwarded from",
@@ -392,7 +396,6 @@
   "settings.privacy.description": "Choose who can see your details.",
   "settings.privacy.lastSeen": "Last seen",
   "settings.privacy.lastSeenAll": "Everyone",
-  "settings.privacy.lastSeenContacts": "Contacts",
   "settings.privacy.lastSeenNobody": "Nobody",
   "settings.privacy.strangers": "Messages from strangers",
   "settings.privacy.title": "Privacy",
@@ -456,5 +459,6 @@
   "welcomeFeaturePrivacy": "Full data protection and privacy",
   "welcomeRegisterTitle": "Welcome to CraneApp",
   "whatIsYourName": "What is your name?",
-  "yesterday": "Yesterday"
+  "yesterday": "Yesterday",
+  "you": "You"
 }

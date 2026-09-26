@@ -142,6 +142,17 @@ jobs:
       - name: Run auth revocation integration tests
         run: go test -count=1 -tags=integration -v ./internal/platform/authctx
 
+      # Все миграции на настоящем Postgres: по одному разу на чистой базе и
+      # повторный прогон с данными — так приходят базы, созданные до
+      # schema_migrations. Неповторяемая миграция упадёт здесь, а не у
+      # разработчиков на стенде.
+      - name: Run migration integration tests
+        run: go test -count=1 -tags=integration -v ./cmd/migrate
+
+      # Единая проверка приватности и настоящий SQL данных чата (#783).
+      - name: Run privacy integration tests
+        run: go test -count=1 -tags=integration -v ./internal/platform/privacy
+
       - name: Build services
         run: go build ./...
 

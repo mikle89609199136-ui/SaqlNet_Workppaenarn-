@@ -934,7 +934,7 @@ func TestEscapeLikeOrder(t *testing.T) {
 	}
 }
 
-const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 	tests := []struct {
@@ -954,10 +954,10 @@ func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 			defer db.Close()
 
 			mock.ExpectQuery(statusSQLPattern).
-				WithArgs(tt.userID).
-				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+				WithArgs(tt.userID, "viewer-1").
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}))
 
-			status, err := user.NewService(db).Status(context.Background(), tt.userID)
+			status, err := user.NewService(db).Status(context.Background(), "viewer-1", tt.userID)
 			if !errors.Is(err, user.ErrNotFound) {
 				t.Fatalf("expected ErrNotFound, got %v", err)
 			}
@@ -982,11 +982,11 @@ func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
 
 	svc := user.NewService(db)
 	mock.ExpectQuery(statusSQLPattern).
-		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}).
-			AddRow([]byte(`{}`), nil, false))
+		WithArgs(userID, "viewer-1").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "last_active", "is_online"}).
+			AddRow([]byte(`{}`), false, nil, false))
 
-	status, err := svc.Status(context.Background(), userID)
+	status, err := svc.Status(context.Background(), "viewer-1", userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

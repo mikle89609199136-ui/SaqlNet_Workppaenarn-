@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MAX_AVATAR_SIZE_BYTES,
-  validateAvatarFile,
-} from './validateAvatarFile';
+import { MAX_AVATAR_SIZE_BYTES, validateAvatarFile } from './validateAvatarFile';
 
 describe('validateAvatarFile', () => {
   it('should accept valid jpeg file under 5 MB', () => {
