@@ -10,18 +10,28 @@ import {
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
 import { getChatSubtitle, useNow } from '@/shared/lib';
-import { BlockUserButton } from '@/features/block-user';
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
 import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
 
+/** Чей профиль открыт — для действий, которые приходят сверху. */
+export interface IProfileActionsTarget {
+  id: string;
+  name: string;
+}
+
 interface Props {
   profileState: IProfileState;
   onClose: () => void;
+  /**
+   * Действия с чужим профилем — сейчас блокировка (#727). Приходят от
+   * страницы: блокировка — отдельная фича, и панель о ней не знает.
+   */
+  renderActions?: (target: IProfileActionsTarget) => ReactNode;
 }
 
-export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
+export const UserProfilePanel = memo(({ profileState, onClose, renderActions }: Props) => {
   const { t } = useTranslation();
   const now = useNow();
   const { initiateCall } = useCall();
@@ -119,9 +129,9 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
         />
 
         {/* Блокировка — из профиля человека, как в Telegram (#727). */}
-        {!isMyProfile && profileUser.id && (
-          <BlockUserButton name={displayName} userId={profileUser.id} />
-        )}
+        {!isMyProfile &&
+          profileUser.id &&
+          renderActions?.({ id: profileUser.id, name: displayName })}
 
         {chat && <ProfileSharedMedia sharedMedia={sharedMedia} />}
       </div>

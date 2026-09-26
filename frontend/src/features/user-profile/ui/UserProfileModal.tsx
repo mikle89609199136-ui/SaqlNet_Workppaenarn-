@@ -1,16 +1,18 @@
 import { chatQuery } from '@/entities/chat';
 import { useThreadMessagesData } from '@/entities/message';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { UserProfilePanel } from './UserProfilePanel';
+import { UserProfilePanel, type IProfileActionsTarget } from './UserProfilePanel';
 import type { IProfileModal } from '@/entities/user';
 
 interface Props {
   onClose: () => void;
+  renderActions?: (target: IProfileActionsTarget) => ReactNode;
   profileModal: IProfileModal;
 }
 
-export const UserProfileModal = ({ onClose, profileModal }: Props) => {
+export const UserProfileModal = ({ onClose, profileModal, renderActions }: Props) => {
   const { chatId = '' } = useParams<{ chatId: string }>();
   // Панель показывает общие медиа, поэтому ей нужна история открытого чата.
   const { data: chat = null } = useQuery(chatQuery(chatId));
@@ -30,7 +32,11 @@ export const UserProfileModal = ({ onClose, profileModal }: Props) => {
         onClick={(e) => e.stopPropagation()}
         role="dialog"
       >
-        <UserProfilePanel profileState={{ ...profileModal, chat, messages }} onClose={onClose} />
+        <UserProfilePanel
+          onClose={onClose}
+          profileState={{ ...profileModal, chat, messages }}
+          renderActions={renderActions}
+        />
       </div>
     </div>
   );

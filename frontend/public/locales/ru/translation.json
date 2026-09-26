@@ -419,6 +419,8 @@
   "settings.privacy.blockedDescription": "Эти люди не могут писать вам и звонить. Заблокировать можно из профиля человека.",
   "settings.privacy.blockedEmpty": "Вы никого не заблокировали",
   "settings.privacy.blockedError": "Не удалось загрузить чёрный список. Попробуйте обновить страницу.",
+  "settings.privacy.blockedNotFound": "Никого не нашлось",
+  "settings.privacy.blockedSearch": "Поиск в чёрном списке",
   "settings.privacy.blockedUnavailable": "Список недоступен",
   "settings.privacy.description": "Управляйте тем, кто видит ваши данные.",
   "settings.privacy.forwards": "Пересылка сообщений",

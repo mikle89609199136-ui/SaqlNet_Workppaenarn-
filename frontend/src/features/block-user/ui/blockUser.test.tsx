@@ -180,6 +180,36 @@ describe('экран «Чёрный список» (#727)', () => {
     expect(calls).toEqual(['unblock user-anna']);
   });
 
+  it('поиск по имени и логину, в том числе с «@» (идея из #761)', async () => {
+    serveBlocked([
+      anna,
+      { ...anna, id: 'user-boris', username: 'bob77', firstName: 'Борис', lastName: 'Петров' },
+    ]);
+    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    const search = await screen.findByRole('searchbox', { name: 'Поиск в чёрном списке' });
+
+    await userEvent.type(search, 'петр');
+    expect(screen.getByText('Борис Петров')).toBeInTheDocument();
+    expect(screen.queryByText('Анна')).not.toBeInTheDocument();
+
+    await userEvent.clear(search);
+    await userEvent.type(search, '@anna');
+    expect(screen.getByText('Анна')).toBeInTheDocument();
+    expect(screen.queryByText('Борис Петров')).not.toBeInTheDocument();
+
+    await userEvent.clear(search);
+    await userEvent.type(search, 'никто');
+    expect(screen.getByText('Никого не нашлось')).toBeInTheDocument();
+  });
+
+  it('пустой список — без поля поиска', async () => {
+    serveBlocked([]);
+    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+
+    expect(await screen.findByText('Вы никого не заблокировали')).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+
   it('пустой список — понятная надпись, а не пустота', async () => {
     serveBlocked([]);
     renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);

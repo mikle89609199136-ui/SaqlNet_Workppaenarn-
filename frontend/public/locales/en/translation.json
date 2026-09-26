@@ -419,6 +419,8 @@
   "settings.privacy.blockedDescription": "These people can't message or call you. You can block someone from their profile.",
   "settings.privacy.blockedEmpty": "You haven't blocked anyone",
   "settings.privacy.blockedError": "Could not load blocked users. Try reloading the page.",
+  "settings.privacy.blockedNotFound": "No one found",
+  "settings.privacy.blockedSearch": "Search blocked users",
   "settings.privacy.blockedUnavailable": "The list is unavailable",
   "settings.privacy.description": "Choose who can see your details.",
   "settings.privacy.forwards": "Forwarded messages",

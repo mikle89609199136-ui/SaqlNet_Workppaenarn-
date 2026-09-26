@@ -295,34 +295,38 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(screen.getByRole('button', { name: /видеозвонок/i })).toBeDisabled();
     });
 
-    it('в чужом профиле — «Заблокировать», в своём — нет (#727)', async () => {
+    it('действия с профилем приходят сверху: только для чужого (#727)', async () => {
       const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
       const me = makeUser({ id: 'user-1', username: 'me', firstName: 'Я' });
       server.use(
         http.get(api('/users/:userId/profile'), ({ params }) =>
           HttpResponse.json({ user: params.userId === 'user-1' ? me : peer })
-        ),
-        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: null }))
+        )
       );
       useProfileStore.setState({ user: me });
+      const renderActions = vi.fn(() => <button type="button">Действие</button>);
 
       const { unmount } = renderPanelWithProviders(
         <UserProfilePanel
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-2', chat: null, messages: [] }}
+          renderActions={renderActions}
         />
       );
-      expect(await screen.findByRole('button', { name: 'Заблокировать' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Действие' })).toBeInTheDocument();
+      expect(renderActions).toHaveBeenCalledWith({ id: 'user-2', name: 'Алексей Пользователь' });
       unmount();
+      renderActions.mockClear();
 
       renderPanelWithProviders(
         <UserProfilePanel
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-1', chat: null, messages: [] }}
+          renderActions={renderActions}
         />
       );
       expect(await screen.findByRole('heading', { level: 2, name: 'Я' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Заблокировать' })).not.toBeInTheDocument();
+      expect(renderActions).not.toHaveBeenCalled();
     });
 
     it('профиль из пересланного сообщения не берёт чужой чат (#785)', async () => {

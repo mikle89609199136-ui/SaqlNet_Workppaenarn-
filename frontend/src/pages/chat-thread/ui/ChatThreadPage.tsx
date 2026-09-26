@@ -1,6 +1,7 @@
 import { ChatThreadHeader, SafetyCodeNotice } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
-import { NewChatBanner } from '@/features/block-user';
+import { BlockUserButton, NewChatBanner } from '@/features/block-user';
+import type { IProfileActionsTarget } from '@/features/user-profile';
 import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-composer';
 import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
@@ -17,6 +18,12 @@ import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
 import type { IProfileState } from '@/entities/user';
+
+/* Действия с чужим профилем — блокировка (#727). На уровне модуля:
+   стабильная ссылка не перерисовывает мемоизированную панель. */
+const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
+  <BlockUserButton name={name} userId={id} />
+);
 
 interface IOutletContext {
   onProfileStateChange: Dispatch<SetStateAction<IProfileState>>;
@@ -210,6 +217,7 @@ export function ChatThreadPage() {
             <UserProfileModal
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
               profileModal={profileModal}
+              renderActions={renderProfileActions}
             />
           )}
 
