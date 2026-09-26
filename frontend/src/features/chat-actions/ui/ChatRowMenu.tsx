@@ -19,7 +19,12 @@ export interface IChatRowMenuProps {
    * блокировок — отдельная фича, и меню о ней не знает.
    */
   block?: IChatRowBlockAction;
-  /** Спрятать меню, не закрывая: пока открыто подтверждение блокировки. */
+  /**
+   * Выход из группы (#90). Тоже приходит сверху: подтверждение и передача
+   * прав — забота фичи управления группой.
+   */
+  onLeave?: () => void;
+  /** Спрятать меню, не закрывая: пока открыто подтверждение блокировки или выхода. */
   hidden?: boolean;
 }
 
@@ -45,6 +50,7 @@ export function ChatRowMenu({
   returnFocusRef,
   onClose,
   block,
+  onLeave,
   hidden = false,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
@@ -111,6 +117,13 @@ export function ChatRowMenu({
             {t('block', 'Заблокировать')}
           </ContextMenu.Item>
         ))}
+
+      {/* Меню не закрывается: сверху откроется подтверждение. */}
+      {onLeave && (
+        <ContextMenu.Item icon={<Icon name="logOut" />} onClick={onLeave} variant="danger">
+          {t('leaveGroupAction', 'Покинуть группу')}
+        </ContextMenu.Item>
+      )}
     </ContextMenu>
   );
 }

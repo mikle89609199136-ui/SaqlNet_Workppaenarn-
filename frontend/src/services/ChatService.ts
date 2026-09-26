@@ -126,8 +126,22 @@ export class ChatService {
     return response.data;
   }
 
-  async muteChat(chatId: string, duration: number) {
-    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
+  /**
+   * Выйти из группы самому (#90). Удалить себя через `removeMember` нельзя:
+   * это действие модератора над другим участником, и сервер его отклоняет.
+   * Владельцу выйти нельзя (409 `ownership_transfer_required`), пока он не
+   * передал права.
+   */
+  async leaveChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_LEAVE(chatId));
+    return response.data;
+  }
+
+  /** Сделать участника владельцем; прежний владелец становится участником. */
+  async transferOwnership(chatId: string, userId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_TRANSFER_OWNERSHIP(chatId), {
+      userId,
+    });
     return response.data;
   }
 

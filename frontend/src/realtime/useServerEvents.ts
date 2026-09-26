@@ -10,7 +10,7 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/entities/message';
-import { useTypingStore, resolveChat } from '@/entities/chat';
+import { chatQuery, useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -144,12 +144,21 @@ export function useServerEvents(enabled: boolean): void {
     // услышал событие, несколько участников одновременно записали бы разные
     // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
     // сервере идёт построчно, без транзакции.
-    const rotateIfOwner = async (chatId?: string) => {
+    //
+    // Зависеть от того, в сети ли владелец, — слабое место; как от него
+    // уйти, описано в #806.
+    const rotateIfOwner = async (chatId?: string, removedUserId?: string) => {
       if (!chatId) return;
 
+      const me = services.cryptoService.getAccountId();
+      // Ушли мы сами: в этом чате нас больше нет, и ключ менять не нам.
+      if (removedUserId && removedUserId === me) return;
+
       try {
-        const chat = await resolveChat(chatId);
-        const me = services.cryptoService.getAccountId();
+        // Владельца берём с сервера, а не из кеша: права могли только что
+        // передать, а события о передаче сервер не шлёт (#105). Из кеша
+        // новый владелец видел бы прежнего и ключ после его ухода не менял.
+        const chat = await queryClient.fetchQuery({ ...chatQuery(chatId), staleTime: 0 });
 
         if (chat?.ownerId && me && chat.ownerId === me) {
           await services.cryptoService.rotateChatKey(chatId);
@@ -164,7 +173,7 @@ export function useServerEvents(enabled: boolean): void {
     });
 
     const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateIfOwner(event?.chatId, event?.userId);
     });
 
     // «Печатает» живёт три секунды и не кешируется — это не данные,
