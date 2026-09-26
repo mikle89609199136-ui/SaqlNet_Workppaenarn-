@@ -1,5 +1,6 @@
 import { ChatThreadHeader, SafetyCodeNotice } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
+import { NewChatBanner } from '@/features/block-user';
 import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-composer';
 import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
@@ -112,6 +113,10 @@ export function ChatThreadPage() {
             messages={pinnedMessages}
             setPinnedMessagesOpen={modals.setPinnedMessagesOpen}
           />
+          {/* Новый чат от незнакомого: заблокировать или пожаловаться (#465). */}
+          {chat && (
+            <NewChatBanner chat={chat} hasOlder={hasOlder} key={chat.id} messages={messages} />
+          )}
           <MessagesList
             bottomRef={bottomRef}
             error={threadError}

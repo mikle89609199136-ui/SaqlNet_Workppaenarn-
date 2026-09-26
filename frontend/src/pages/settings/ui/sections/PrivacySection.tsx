@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { blockedUsersQuery } from '@/entities/user';
 import { BlockedUsersManager } from '@/features/block-user';
 import { ROUTES, isPrivacySubsection } from '@/shared/config/routes';
-import { Icon, RadioGroup, Switch } from '@/shared/ui';
+import { Icon, RadioGroup } from '@/shared/ui';
 import type { TPrivacyVisibility } from '@/types';
-import { SettingsRow, SettingsSection } from '../SettingsControls';
+import { SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
 import { useSettingsData } from './useSettingsData';
 
@@ -20,10 +20,9 @@ function isVisibility(value: string): value is TPrivacyVisibility {
   return (VISIBILITY_VALUES as readonly string[]).includes(value);
 }
 
-/* Подпись группы приводится к виду подписи ряда: рядом стоит
-   «Сообщения от незнакомых», и названия настроек не должны выглядеть
-   по-разному. Компонент рисует legend как подпись поля, поэтому вид
-   задаётся здесь, а не внутри него. */
+/* Подпись группы приводится к виду подписи ряда, чтобы названия настроек
+   на экране не выглядели по-разному. Компонент рисует legend как подпись
+   поля, поэтому вид задаётся здесь, а не внутри него. */
 const GROUP_LABEL = '[&>legend]:text-body [&>legend]:mb-2 [&>legend]:text-ink';
 
 export function PrivacySection() {
@@ -83,18 +82,9 @@ export function PrivacySection() {
         value={privacy.forwards ?? 'all'}
       />
 
-      {/* Умолчание — «разрешено»: отсутствие настройки не должно выглядеть
-          как запрет, которого человек не ставил. */}
-      <SettingsRow
-        controlId="setting-strangers"
-        label={t('settings.privacy.strangers', 'Сообщения от незнакомых')}
-      >
-        <Switch
-          checked={privacy.messagesFromStrangers !== false}
-          id="setting-strangers"
-          onChange={(event) => savePrivacy({ messagesFromStrangers: event.target.checked })}
-        />
-      </SettingsRow>
+      {/* «Сообщения от незнакомых» убраны (#465): сервер этот переключатель
+          не применял, а без контактов незнакомого не определить. Вместо
+          запрета — плашка «Заблокировать / Пожаловаться» в новом чате. */}
 
       {/* Чёрный список — отдельной подстраницей (#727): список людей не
           помещается рядом с переключателями. */}
