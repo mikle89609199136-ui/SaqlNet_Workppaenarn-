@@ -38,6 +38,12 @@ export function PrivacySection() {
            выглядеть по-разному. Компонент рисует legend как подпись поля,
            поэтому вид задаётся здесь, а не внутри него. */
         className="[&>legend]:text-body [&>legend]:mb-2 [&>legend]:text-ink"
+        /* Что будет при «Никто» (#791): другие видят промежуток вместо
+           времени, и это взаимно — как в Telegram. */
+        hint={t(
+          'settings.privacy.lastSeenHint',
+          'Если скрыть время, собеседники увидят только приблизительное: «недавно», «на этой неделе», «в этом месяце» или «давно». Но и вы не будете видеть точное время других.'
+        )}
         label={t('settings.privacy.lastSeen', 'Последняя активность')}
         name="lastSeen"
         onChange={(value) => isLastSeenVisibility(value) && savePrivacy({ lastSeen: value })}

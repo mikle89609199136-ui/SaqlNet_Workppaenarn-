@@ -1,3 +1,4 @@
+import type { TLastSeenApprox } from '@/shared/lib';
 import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
 export type TChatType = 'private' | 'group' | 'channel';
@@ -32,6 +33,8 @@ export interface IChatDto {
      ошибкой типов. Работало только потому, что проверка не запускалась. */
   peerIsOnline?: boolean;
   peerLastSeen?: string;
+  /** Промежуток вместо скрытого времени (#791): recently, within_week, within_month, long_ago. */
+  peerLastSeenApprox?: TLastSeenApprox;
   ownerId: string;
   role: TChatRole;
   isPinned: boolean;

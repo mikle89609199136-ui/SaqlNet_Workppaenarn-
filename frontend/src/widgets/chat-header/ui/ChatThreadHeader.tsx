@@ -2,7 +2,7 @@ import { useCall } from '@/features/call';
 import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/entities/user';
 import { chatQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle, useConnectionStatus } from '@/shared/lib';
+import { cn, getChatSubtitle, useConnectionStatus, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
@@ -48,11 +48,13 @@ export const ChatThreadHeader = ({
   const isLongPress = useRef(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
   const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
+  // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
+  const now = useNow();
 
   if (!chat) return;
 
   const noticeSubtitle = connectionSubtitle(connection, t);
-  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
+  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t, now);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
 
   const handleCallClick = () => {

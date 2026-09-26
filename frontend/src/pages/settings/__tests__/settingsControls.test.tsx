@@ -91,4 +91,14 @@ describe('переключатели настроек', () => {
 
     await waitFor(() => expect(sent).toEqual([{ lastSeen: 'nobody' }]));
   });
+
+  it('объясняет, что будет при «Никто», и связывает подсказку с выбором', async () => {
+    renderSettings({ section: 'privacy', privacy: { lastSeen: 'all' } });
+
+    const group = await screen.findByRole('group', { name: 'Последняя активность' });
+    // Взаимность и приблизительное время (#791) — в описании группы, которое
+    // зачитает и диктор.
+    expect(group).toHaveAccessibleDescription(/только приблизительное/);
+    expect(group).toHaveAccessibleDescription(/вы не будете видеть точное время других/);
+  });
 });

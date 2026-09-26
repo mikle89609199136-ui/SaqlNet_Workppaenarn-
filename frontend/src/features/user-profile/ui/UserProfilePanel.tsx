@@ -9,7 +9,7 @@ import {
   useProfileStore,
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
-import { getChatSubtitle } from '@/shared/lib';
+import { getChatSubtitle, useNow } from '@/shared/lib';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
@@ -22,6 +22,7 @@ interface Props {
 
 export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   const { t } = useTranslation();
+  const now = useNow();
   const { initiateCall } = useCall();
   const currentUser = useProfileStore((state) => state.user);
   const {
@@ -55,8 +56,8 @@ export const UserProfilePanel = memo(({ profileState, onClose }: Props) => {
   );
 
   const profileSubtitle = useMemo(
-    () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t) : null),
-    [profileState.chat, t]
+    () => (profileState.chat ? getChatSubtitle(profileState.chat, null, t, now) : null),
+    [profileState.chat, t, now]
   );
 
   if (isLoading) {
