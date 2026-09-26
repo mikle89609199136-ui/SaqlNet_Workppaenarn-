@@ -1733,12 +1733,22 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 }
 
 func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit, offset int) ([]Message, error) {
-	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+	ok, err := s.IsMember(ctx, userID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		var chatExists bool
+		err = s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM chats.chats WHERE id = $1)", chatID).Scan(&chatExists)
 		if err != nil {
 			return nil, err
 		}
+		if !chatExists {
+			return nil, ErrNotFound
+		}
 		return nil, ErrForbidden
 	}
+
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
 		FROM (
