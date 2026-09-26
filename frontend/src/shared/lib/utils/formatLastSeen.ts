@@ -31,24 +31,12 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function parseLastSeenDate(value: string | Date): Date {
-  if (value instanceof Date) return value;
-  let str = value.trim();
-  if (str.includes(' ') && !str.includes('T')) {
-    str = str.replace(' ', 'T');
-  }
-  if (/[+-]\d{2}$/.test(str)) {
-    str = `${str}:00`;
-  }
-  return new Date(str);
-}
-
 export const formatLastSeen = (
   value: string | Date,
   t: TFunction,
   { now = new Date(), locale = i18n.language || 'ru' }: IFormatLastSeenOptions = {}
 ): string => {
-  const date = parseLastSeenDate(value);
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return formatLastSeenApprox('recently', t);
 
   // Часы клиента и сервера расходятся: «из будущего» — тоже «только что».

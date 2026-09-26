@@ -8,13 +8,17 @@ import type { IUserStatusDto } from './types';
  *
  * Опрашивается с интервалом 30 секунд при открытом профиле.
  */
+interface IStatusQueryError {
+  status?: number;
+}
+
 export function userStatusQuery(userId: string, options?: { enabled?: boolean }) {
-  return queryOptions<IUserStatusDto>({
+  return queryOptions<IUserStatusDto, IStatusQueryError>({
     queryKey: userKeys.status(userId),
     queryFn: () => services.userService.getStatus(userId),
     staleTime: 30 * 1000,
-    refetchInterval: (query) => ((query.state.error as any)?.status === 404 ? false : 30 * 1000),
-    retry: (failureCount, error: any) => (error?.status === 404 ? false : failureCount < 3),
+    refetchInterval: (query) => (query.state.error?.status === 404 ? false : 30 * 1000),
+    retry: (failureCount, error) => (error?.status === 404 ? false : failureCount < 3),
     enabled: Boolean(userId) && (options?.enabled ?? true),
   });
 }

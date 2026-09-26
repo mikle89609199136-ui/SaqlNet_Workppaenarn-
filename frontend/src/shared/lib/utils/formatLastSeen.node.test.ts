@@ -76,12 +76,6 @@ describe('«был(а)» — точное время относительно (#
   it('нечитаемое время — «недавно»', () => {
     expect(formatLastSeen('not a date', ru, { now, locale: 'ru' })).toBe('был(а) недавно');
   });
-
-  it('разбирает дату в формате Postgres (с пробелом вместо T)', () => {
-    const postgresDate = '2026-09-26 14:55:00.123456+00';
-    const at = new Date('2026-09-26T15:00:01Z');
-    expect(formatLastSeen(postgresDate, ru, { now: at, locale: 'ru' })).toBe('был(а) 5 минут назад');
-  });
 });
 
 describe('«был(а)» — приблизительное время вместо скрытого (#791)', () => {

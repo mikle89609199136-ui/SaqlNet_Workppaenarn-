@@ -441,6 +441,41 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
       expect(await screen.findByText('был(а) на этой неделе')).toBeInTheDocument();
     });
+
+    it('при личном чате запрос /status не выполняется, статус берётся из чата', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      let statusCalled = false;
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/:userId/status'), () => {
+          statusCalled = true;
+          return HttpResponse.json({ isOnline: false, lastSeen: '' });
+        })
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+      const chat = makeChat({
+        id: 'chat-1',
+        type: 'private',
+        peerId: 'user-2',
+        peerIsOnline: true,
+      });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{
+            isOpen: true,
+            userId: 'user-2',
+            chat,
+            messages: [],
+          }}
+        />
+      );
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
+      expect(screen.getByText('онлайн')).toBeInTheDocument();
+      expect(statusCalled).toBe(false);
+    });
   });
 });
 

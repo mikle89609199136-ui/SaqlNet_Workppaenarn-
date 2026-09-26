@@ -56,7 +56,9 @@ export const UserProfilePanel = memo(({ profileState, onClose, renderActions }: 
   const isMyProfile = Boolean(
     currentUser?.id && (currentUser.id === targetUserId || currentUser.id === profileUser?.id)
   );
-  const { data: statusData } = useQuery(userStatusQuery(targetUserId, { enabled: !isMyProfile }));
+  const { data: statusData } = useQuery(
+    userStatusQuery(targetUserId, { enabled: !isMyProfile && !chat })
+  );
 
   const displayName =
     [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' ') ||
@@ -81,17 +83,19 @@ export const UserProfilePanel = memo(({ profileState, onClose, renderActions }: 
   );
 
   const isPeerOnline =
-    !isMyProfile && (statusData ? statusData.isOnline : Boolean(profileUser?.isOnline));
+    !isMyProfile &&
+    Boolean(chat ? chat.peerIsOnline : statusData ? statusData.isOnline : profileUser?.isOnline);
 
   const profileSubtitle = useMemo(() => {
     if (isMyProfile) return null;
+    if (chat) return getChatSubtitle(chat, null, t, now);
     if (statusData) {
       if (statusData.isOnline) return t('online', 'онлайн');
       if (statusData.lastSeen) return formatLastSeen(statusData.lastSeen, t, { now });
       return formatLastSeenApprox(statusData.lastSeenApprox ?? 'long_ago', t);
     }
-    return chat ? getChatSubtitle(chat, null, t, now) : null;
-  }, [isMyProfile, statusData, chat, t, now]);
+    return null;
+  }, [isMyProfile, chat, statusData, t, now]);
 
   if (isLoading) {
     return (
