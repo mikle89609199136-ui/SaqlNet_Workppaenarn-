@@ -2340,11 +2340,14 @@ export interface components {
             senderFirstName: string;
             /** @description Empty when the sender's photoVisibility rule hides the photo from the caller. Never sent in WebSocket events, which go to every member at once. */
             senderAvatar?: string;
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the request body limit. */
             content: string;
+            entities: components["schemas"]["MessageEntities"];
             /** @enum {string} */
             type: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file" | "call";
             /** Format: uuid */
             replyTo?: string | null;
+            replyPreview?: components["schemas"]["LastMessagePreview"];
             /** Format: uuid */
             replyToMessageId?: string | null;
             replySenderName?: string;
@@ -2367,6 +2370,44 @@ export interface components {
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+        };
+        /** @description A range in UTF-16 code units. Both boundaries must be between Unicode code points (never inside a surrogate pair), and offset + length must not exceed the content length. Inline ranges may overlap, except links cannot overlap other links. Blockquotes cover whole lines (start at 0 or after LF; end at content end or before LF), cannot overlap other blockquotes, and any inline range intersecting a blockquote must be fully contained within it. data is required for link and must be absent for every other type. */
+        MessageEntity: {
+            /** @enum {string} */
+            type: "bold" | "italic" | "underline" | "strikethrough" | "spoiler" | "monospace" | "link" | "blockquote";
+            /** @description Offset in UTF-16 code units. */
+            offset: number;
+            /** @description Length in UTF-16 code units. */
+            length: number;
+            data?: {
+                /**
+                 * Format: uri
+                 * @description Absolute http or https URL with a nonempty host; at most 2048 UTF-16 code units.
+                 */
+                url: string;
+            };
+        } & ({
+            /** @enum {unknown} */
+            type?: "link";
+        } | {
+            /** @enum {unknown} */
+            type?: "bold" | "italic" | "underline" | "strikethrough" | "spoiler" | "monospace" | "blockquote";
+        });
+        /**
+         * @description At most 100 entities. Omitted on send or edit means an empty array; edit always replaces existing entities. Must be empty for E2E envelopes and stickers. Invalid schema, ranges, URLs or limits return 400 validation_failed.
+         * @default []
+         */
+        MessageEntities: components["schemas"]["MessageEntity"][];
+        LastMessagePreview: {
+            /** Format: uuid */
+            id: string;
+            content: string;
+            entities: components["schemas"]["MessageEntities"];
+            type: string;
+            /** Format: uuid */
+            senderId?: string;
+            senderName: string;
+            reactions: components["schemas"]["Reaction"][];
         };
         /** @example john_doe */
         Username: string;
@@ -2714,6 +2755,11 @@ export interface components {
              */
             avatarUrl?: string;
         };
+        Reaction: {
+            emoji: string;
+            count: number;
+            myReaction: boolean;
+        };
         Chat: {
             /** Format: uuid */
             id: string;
@@ -2731,6 +2777,7 @@ export interface components {
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
+            lastMessage?: components["schemas"]["LastMessagePreview"];
             /**
              * Format: uuid
              * @description Private chats only.
@@ -2757,19 +2804,18 @@ export interface components {
             /** @enum {boolean} */
             success: true;
         };
-        Reaction: {
-            emoji: string;
-            count: number;
-            myReaction: boolean;
-        };
         MessageListResponse: {
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the 256 KiB request body limit. */
             content: string;
+            entities?: components["schemas"]["MessageEntities"];
         };
         SendMessageRequest: {
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the 256 KiB request body limit. */
             content?: string;
+            entities?: components["schemas"]["MessageEntities"];
             /**
              * @description Defaults to text when omitted.
              * @enum {string}
@@ -5866,7 +5912,7 @@ export interface operations {
         };
         responses: {
             /** @description Sent messages, in the order of the request */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

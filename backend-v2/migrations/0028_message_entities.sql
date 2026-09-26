@@ -1,0 +1,2 @@
+ALTER TABLE messages.messages
+    ADD COLUMN IF NOT EXISTS entities JSONB NOT NULL DEFAULT '[]';

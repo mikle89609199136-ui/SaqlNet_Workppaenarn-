@@ -67,11 +67,11 @@ run_chat_tests() {
 		"import sys,json; print((json.load(sys.stdin).get('messages') or [{}])[0].get('id',''))" \
 		2>/dev/null || true)
 
-	if [[ "$HTTP_CODE" == "200" && -n "$MESSAGE_ID" ]]; then
+	if [[ "$HTTP_CODE" == "201" && -n "$MESSAGE_ID" ]]; then
 		echo "✓ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID"
 		PASS=$((PASS + 1))
 	else
-		echo "✗ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID — expected 200 with messages[0].id"
+		echo "✗ [$HTTP_CODE] POST /api/v2/messages/$CHAT_ID — expected 201 with messages[0].id"
 		echo "  ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
 		return
@@ -113,7 +113,7 @@ if not any(
 		-H "Authorization: Bearer $TOKEN" \
 		-d "{\"messages\":[{\"content\":\"$smoke_message-a\",\"type\":\"text\"},{\"content\":\"$smoke_message-b\",\"type\":\"text\"}]}"
 
-	if [[ "$HTTP_CODE" == "200" ]] &&
+	if [[ "$HTTP_CODE" == "201" ]] &&
 		printf '%s' "$HTTP_BODY" | python3 -c '
 import sys, json
 

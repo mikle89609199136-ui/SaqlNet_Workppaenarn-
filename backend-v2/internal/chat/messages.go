@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -54,17 +55,18 @@ const sendBodyLimit = 2 << 20
 // sendMessageItem — одно сообщение из отправки: то же тело, что раньше
 // принимала одиночная отправка.
 type sendMessageItem struct {
-	Content         *string        `json:"content"`
-	Type            string         `json:"type"`
-	ReplyTo         *string        `json:"replyTo"`
-	MediaURL        string         `json:"mediaUrl"`
-	MediaType       string         `json:"mediaType"`
-	FileName        string         `json:"fileName"`
-	SizeBytes       int64          `json:"sizeBytes"`
-	MediaEncrypted  bool           `json:"mediaEncrypted"`
-	MediaEncryption map[string]any `json:"mediaEncryption"`
-	IsEncrypted     bool           `json:"isEncrypted"`
-	ForwardedFrom   *string        `json:"forwardedFrom"`
+	Entities        json.RawMessage `json:"entities"`
+	Content         *string         `json:"content"`
+	Type            string          `json:"type"`
+	ReplyTo         *string         `json:"replyTo"`
+	MediaURL        string          `json:"mediaUrl"`
+	MediaType       string          `json:"mediaType"`
+	FileName        string          `json:"fileName"`
+	SizeBytes       int64           `json:"sizeBytes"`
+	MediaEncrypted  bool            `json:"mediaEncrypted"`
+	MediaEncryption map[string]any  `json:"mediaEncryption"`
+	IsEncrypted     bool            `json:"isEncrypted"`
+	ForwardedFrom   *string         `json:"forwardedFrom"`
 }
 
 // SendMessage — отправка сообщений в чат, всегда пачкой (#808).
@@ -135,7 +137,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if errors.As(err, &itemErr) {
 		switch {
 		case errors.Is(itemErr.Err, ErrInvalidInput):
-			itemErrorJSON(w, r, itemErr.Index, http.StatusBadRequest, "validation_failed", "invalid replyTo")
+			itemErrorJSON(w, r, itemErr.Index, http.StatusBadRequest, "validation_failed", itemErr.Err.Error())
 			return
 		case errors.Is(itemErr.Err, ErrNotFound):
 			itemErrorJSON(w, r, itemErr.Index, http.StatusNotFound, "reply_not_found", "reply message not found")
@@ -149,7 +151,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
+	httpx.JSON(w, http.StatusCreated, map[string]any{"messages": msgs})
 }
 
 // prepareOutgoing проверяет одно сообщение из пачки и собирает его
@@ -170,6 +172,16 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 		content = *item.Content
 	}
 
+	entities, err := parseMessageEntities(content, item.Entities)
+	if err != nil {
+		itemErrorJSON(w, r, index, http.StatusBadRequest, "validation_failed", err.Error())
+		return OutgoingMessage{}, false
+	}
+	if item.Type == "sticker" && len(entities) != 0 {
+		itemErrorJSON(w, r, index, http.StatusBadRequest, "validation_failed", "entities must be empty for sticker")
+		return OutgoingMessage{}, false
+	}
+
 	switch item.Type {
 	case "text":
 		if strings.TrimSpace(content) == "" {
@@ -178,7 +190,7 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 		}
 
 	case "sticker":
-		if strings.TrimSpace(content) != "" {
+		if content != "" {
 			itemErrorJSON(w, r, index, http.StatusBadRequest, "validation_failed", "sticker cannot have a caption")
 			return OutgoingMessage{}, false
 		}
@@ -235,6 +247,7 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 
 	return OutgoingMessage{
 		Content:  content,
+		Entities: entities,
 		Type:     item.Type,
 		ReplyTo:  item.ReplyTo,
 		Metadata: metadata,
@@ -267,7 +280,8 @@ func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Content *string `json:"content"`
+		Entities json.RawMessage `json:"entities"`
+		Content  *string         `json:"content"`
 	}
 
 	if !decode(w, r, &input) {
@@ -285,8 +299,13 @@ func (h *Handler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content := *input.Content
+	entities, err := parseMessageEntities(content, input.Entities)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 
-	msg, err := h.service.EditMessage(r.Context(), current.ID, targetID, content)
+	msg, err := h.service.EditMessage(r.Context(), current.ID, targetID, content, entities)
 
 	switch {
 	case errors.Is(err, ErrInvalidInput):

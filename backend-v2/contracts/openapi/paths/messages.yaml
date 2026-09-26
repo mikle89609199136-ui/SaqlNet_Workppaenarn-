@@ -102,7 +102,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
         application/json:
           schema: { $ref: '../components/schemas.yaml#/SendMessagesRequest' }
     responses:
-      '200':
+      '201':
         description: Sent messages, in the order of the request
         content:
           application/json:

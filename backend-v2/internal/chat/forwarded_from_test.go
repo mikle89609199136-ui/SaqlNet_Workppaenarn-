@@ -261,14 +261,14 @@ func sendForwarded(t *testing.T, rule func(sqlmock.Sqlmock), stored forwardMetad
 		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
-		WithArgs(messageValidationChatID, messageValidationUserID, "forwarded text", "text", sql.NullString{}, stored, 0).
+		WithArgs(messageValidationChatID, messageValidationUserID, "forwarded text", "text", sql.NullString{}, stored, 0, []byte("[]")).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
-			"content", "type", "reply_to", "metadata", "is_pinned", "is_edited",
+			"content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited",
 			"created_at", "updated_at", "deleted_at",
 		}).AddRow(
 			"550e8400-e29b-41d4-a716-446655440020", messageValidationChatID, messageValidationUserID, "Alice", "",
-			"forwarded text", "text", nil, []byte(storedJSON), false, false,
+			"forwarded text", []byte("[]"), "text", nil, []byte(storedJSON), false, false,
 			"2026-09-24T00:00:00Z", "2026-09-24T00:00:00Z", nil,
 		))
 	mock.ExpectCommit()
@@ -283,7 +283,7 @@ func sendForwarded(t *testing.T, rule func(sqlmock.Sqlmock), stored forwardMetad
 	)
 	handler.SendMessage(recorder, req)
 
-	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
 	require.NoError(t, mock.ExpectationsWereMet())
 	return recorder.Body.String()
 }

@@ -50,14 +50,14 @@ func expectSendAllowed(mock sqlmock.Sqlmock) {
 
 func expectInsert(mock sqlmock.Sqlmock, content string, index int) {
 	mock.ExpectQuery(`WITH inserted AS`).
-		WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), index).
+		WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), index, []byte("[]")).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
-			"content", "type", "reply_to", "metadata", "is_pinned", "is_edited",
+			"content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited",
 			"created_at", "updated_at", "deleted_at",
 		}).AddRow(
 			fmt.Sprintf("550e8400-e29b-41d4-a716-4466554401%02d", index), messageValidationChatID, messageValidationUserID, "Alice", "",
-			content, "text", nil, []byte("null"), false, false,
+			content, []byte("[]"), "text", nil, []byte("null"), false, false,
 			"2026-09-26T00:00:00Z", "2026-09-26T00:00:00Z", nil,
 		))
 }
@@ -116,7 +116,7 @@ func TestSendAcceptsBatchAtTheLimit(t *testing.T) {
 
 	recorder := sendBatch(handler, sendBody(items...))
 
-	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
 	require.Len(t, realtime.broadcasts, maxMessagesPerSend)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -145,7 +145,7 @@ func TestSendWritesBatchInOrderInOneTransaction(t *testing.T) {
 
 	recorder := sendBatch(handler, sendBody(textItem("комментарий"), textItem("первое"), textItem("второе")))
 
-	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
 	var response struct {
 		Messages []struct {
 			Content string `json:"content"`
@@ -186,9 +186,8 @@ func TestSendRollsBackWholeBatchWhenReplyIsUnavailable(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestSendRejectsMalformedReplyByIndexBeforeTransaction(t *testing.T) {
+func TestSendRejectsMalformedReplyByIndexBeforeDatabase(t *testing.T) {
 	handler, mock, _ := batchHandler(t)
-	expectSendAllowed(mock)
 
 	recorder := sendBatch(handler, sendBody(
 		textItem("первое"),

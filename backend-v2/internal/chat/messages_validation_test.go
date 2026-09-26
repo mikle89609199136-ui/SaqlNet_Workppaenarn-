@@ -81,10 +81,8 @@ func TestSendMessageRejectsInvalidPayloadWithoutDatabaseWrites(t *testing.T) {
 }
 
 func TestSendMessageRejectsMalformedReplyToWithoutInsert(t *testing.T) {
+	// Кривой replyTo отклоняется до базы: запроса прав нет.
 	handler, mock := messageValidationHandler(t)
-	mock.ExpectQuery(`SELECT cm\.role`).
-		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
 
 	recorder := httptest.NewRecorder()
 	req := messageValidationRequest(
@@ -154,10 +152,11 @@ func TestSendMessageValidateReply(t *testing.T) {
 			sql.NullString{},
 			[]byte("null"),
 			0,
+			[]byte("[]"),
 		).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
-			"content", "type", "reply_to", "metadata", "is_pinned", "is_edited",
+			"content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited",
 			"created_at", "updated_at", "deleted_at",
 		}).AddRow(
 			messageValidationMessageID,
@@ -166,6 +165,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 			"Alice",
 			"",
 			"some message",
+			[]byte("[]"),
 			"text",
 			nil,
 			[]byte("null"),
@@ -188,7 +188,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 
 	handler.SendMessage(recorder, req)
 
-	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -236,7 +236,7 @@ func TestEditMessageRejectsInvalidContentForStoredTypeWithoutUpdate(t *testing.T
 				t.Context(),
 				messageValidationUserID,
 				messageValidationMessageID,
-				tt.content,
+				tt.content, nil,
 			)
 
 			require.ErrorIs(t, err, tt.wantError)
@@ -254,10 +254,10 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 		WithArgs(messageValidationMessageID, messageValidationUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("image"))
 	mock.ExpectQuery(`WITH updated AS`).
-		WithArgs("", messageValidationMessageID, messageValidationUserID).
+		WithArgs("", messageValidationMessageID, messageValidationUserID, []byte("[]")).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
-			"content", "type", "reply_to", "metadata", "is_pinned", "is_edited",
+			"content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited",
 			"created_at", "updated_at", "deleted_at",
 		}).AddRow(
 			messageValidationMessageID,
@@ -266,6 +266,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 			"Alice",
 			"",
 			"",
+			[]byte("[]"),
 			"image",
 			nil,
 			[]byte(`{}`),
@@ -280,7 +281,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
-		"",
+		"", nil,
 	)
 
 	require.NoError(t, err)
@@ -302,7 +303,7 @@ func TestEditMessageReturnsNotFoundWhenMessageIsNotEditable(t *testing.T) {
 		t.Context(),
 		messageValidationUserID,
 		messageValidationMessageID,
-		"updated",
+		"updated", nil,
 	)
 
 	require.ErrorIs(t, err, ErrNotFound)
@@ -330,7 +331,7 @@ func TestEditMessageHTTPReturnsNotFoundWhenMessageCannotBeEdited(t *testing.T) {
 			if tt.messageTypeIsVisible {
 				typeQuery.WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("text"))
 				mock.ExpectQuery(`WITH updated AS`).
-					WithArgs("updated", messageValidationMessageID, messageValidationUserID).
+					WithArgs("updated", messageValidationMessageID, messageValidationUserID, []byte("[]")).
 					WillReturnError(sql.ErrNoRows)
 			} else {
 				typeQuery.WillReturnError(sql.ErrNoRows)
