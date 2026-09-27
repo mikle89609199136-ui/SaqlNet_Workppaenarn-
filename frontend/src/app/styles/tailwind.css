@@ -122,6 +122,9 @@
 @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes lock-bounce { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-3px); } }
 @keyframes rec-wave { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+/* Круг записи на телефоне (#843) вырастает из кнопки. Анимируется `scale`,
+   а не transform: transform круга занят смещением за пальцем. */
+@keyframes voice-circle-in { from { scale: 0.55; opacity: 0.5; } to { scale: 1; opacity: 1; } }
 
 /* Голосовое при воспроизведении: столбики волны «дышат». */
 @keyframes voice-bar { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
