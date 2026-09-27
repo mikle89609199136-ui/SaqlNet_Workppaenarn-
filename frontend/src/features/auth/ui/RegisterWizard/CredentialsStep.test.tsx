@@ -80,9 +80,8 @@ describe('CredentialsStep: проверка доступности имени п
       http.get(api('/users/check-username'), () => HttpResponse.json({ available: true }))
     );
 
-    renderCredentialsStep(
-      { username: 'valid_name' },
-      (field) => (field === 'username' ? 'Ошибка валидации формы' : undefined)
+    renderCredentialsStep({ username: 'valid_name' }, (field) =>
+      field === 'username' ? 'Ошибка валидации формы' : undefined
     );
 
     expect(await screen.findByText('Ошибка валидации формы')).toBeInTheDocument();

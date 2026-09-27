@@ -40,7 +40,8 @@ export function LoginForm() {
     try {
       const data: IAuthResponse = await services.authService.login({
         password: values.password,
-        username: values.username.trim(),
+        // «@» в начале набирают по привычке — сервер ждёт имя без него.
+        username: values.username.trim().replace(/^@/, ''),
       });
 
       /* Второй пароль сервер ещё принимает, но интерфейса у него больше
@@ -94,7 +95,10 @@ export function LoginForm() {
         autoCorrect="off"
         error={errorOf('username')}
         label={t('username', 'Имя пользователя')}
-        placeholder="@username.123"
+        /* «@» — префиксом, как в регистрации (#827), а не в подсказке. */
+        inputClassName="pl-8.5"
+        placeholder="username"
+        prefix="@"
         {...register('username')}
       />
 
@@ -106,11 +110,11 @@ export function LoginForm() {
                 ? t('hidePassword', 'Скрыть пароль')
                 : t('showPassword', 'Показать пароль')
             }
-            className="text-ink-2 transition-colors hover:text-ink"
+            className="flex size-10 cursor-pointer items-center justify-center rounded-field text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
             onClick={() => setShowPassword((value) => !value)}
             type="button"
           >
-            <Icon name={showPassword ? 'eyeOff' : 'eye'} size="md" />
+            <Icon className="stroke-[1.8px]" name={showPassword ? 'eyeOff' : 'eye'} size="md" />
           </button>
         }
         autoComplete="current-password"

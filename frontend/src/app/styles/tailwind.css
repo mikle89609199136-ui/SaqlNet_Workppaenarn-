@@ -442,3 +442,23 @@
     color: var(--code-fn);
   }
 }
+
+/* Пятна акцента на фоне входа (#827): медленно плывут и дышат. */
+@keyframes auth-glow {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(40px, -24px) scale(1.1); }
+}
+.auth-glow { animation: auth-glow 10s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-glow { animation: none; }
+}
+
+/* Линия видоискателя QR (#827): ходит вверх-вниз по рамке. */
+@keyframes qr-scanline {
+  from { top: 14%; }
+  to   { top: 84%; }
+}
+.qr-scanline { animation: qr-scanline 2.2s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  .qr-scanline { animation: none; }
+}

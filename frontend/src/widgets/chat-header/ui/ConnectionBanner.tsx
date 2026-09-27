@@ -23,7 +23,7 @@ export function ConnectionBanner() {
   return (
     <div
       className={cn(
-        'flex min-h-10 shrink-0 items-center gap-2.5 border-b border-line px-4 py-2 text-caption text-ink',
+        'flex min-h-10 shrink-0 items-center gap-2.5 border-b border-divider px-4 py-2 text-caption text-ink',
         offline ? 'bg-warn-soft' : 'bg-sheet-2'
       )}
       role="status"

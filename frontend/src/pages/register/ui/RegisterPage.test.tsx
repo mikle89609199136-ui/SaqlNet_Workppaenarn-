@@ -121,7 +121,7 @@ describe('регистрация', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
     await userEvent.type(screen.getByLabelText('Имя'), 'Максим');
-    await userEvent.type(screen.getByLabelText('Фамилия'), 'Донской');
+    await userEvent.type(screen.getByLabelText(/^Фамилия/), 'Донской');
     await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     await userEvent.type(screen.getByLabelText('Имя пользователя'), 'maximdon');

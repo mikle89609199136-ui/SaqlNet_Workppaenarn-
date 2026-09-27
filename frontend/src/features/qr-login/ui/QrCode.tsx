@@ -2,8 +2,9 @@ import qrcode from 'qrcode-generator';
 import { useMemo, type ReactNode } from 'react';
 import { cn } from '@/shared/lib';
 
-/** Размер места под код — один для кода и для всего, что стоит вместо него. */
-const FRAME = 'mx-auto aspect-square w-[min(100%,260px)] rounded-field';
+/** Размер места под код — один для кода и для всего, что стоит вместо
+    него. По макету (#827): 224 px, скругление 22, тонкое кольцо линии. */
+const FRAME = 'mx-auto aspect-square w-[min(100%,224px)] rounded-[22px] ring-1 ring-divider';
 
 interface Props {
   value: string;
@@ -25,17 +26,26 @@ export function QrCode({ value, label }: Props) {
     const code = qrcode(0, 'M');
     code.addData(value);
     code.make();
-    return code.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    return code.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
   }, [value]);
 
+  /* Наш журавль в центре кода — по макету. Закрывает около 4% модулей;
+     уровень коррекции M восстанавливает до 15%, камеры читают уверенно. */
   return (
     <div
       aria-label={label}
-      className={cn(FRAME, 'animate-fade-in bg-white p-2 [&>svg]:h-full [&>svg]:w-full')}
-      dangerouslySetInnerHTML={{ __html: svg }}
+      className={cn(FRAME, 'relative animate-fade-in bg-white p-3.5')}
       key={value}
       role="img"
-    />
+    >
+      <div className="size-full [&>svg]:size-full" dangerouslySetInnerHTML={{ __html: svg }} />
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 left-1/2 size-11 -translate-1/2 overflow-hidden rounded-icon border-4 border-white bg-white"
+      >
+        <img alt="" className="size-full object-cover" src="/logo.png" />
+      </span>
+    </div>
   );
 }
 
@@ -48,7 +58,7 @@ export function QrFrame({ children }: { children: ReactNode }) {
     <div
       className={cn(
         FRAME,
-        'grid animate-fade-in place-content-center justify-items-center gap-3 border border-line bg-sheet-2 p-4 text-center'
+        'grid animate-fade-in place-content-center justify-items-center gap-3 border border-divider bg-sheet-2 p-4 text-center'
       )}
     >
       {children}

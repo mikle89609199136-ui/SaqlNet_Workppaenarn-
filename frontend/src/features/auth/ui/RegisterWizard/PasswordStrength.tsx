@@ -19,7 +19,7 @@ export function PasswordStrength({ score }: Props) {
   ];
 
   return (
-    <div className="mt-1.5 h-1 overflow-hidden rounded-pill bg-line-soft" aria-hidden>
+    <div className="mt-2 h-1 overflow-hidden rounded-pill bg-divider" aria-hidden>
       <div
         className="h-full transition-all duration-[var(--transition-duration-panel)]"
         style={{
