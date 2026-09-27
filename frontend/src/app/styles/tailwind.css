@@ -41,6 +41,15 @@
 @utility glass    { backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
 @utility glass-sm { backdrop-filter: blur(14px);                -webkit-backdrop-filter: blur(14px); }
 
+/* Наведение и нажатие — слоем поверх фона, а не заменой (#817). Пункт
+   меню бывает отмечен подложкой brand-soft, строка списка — выбрана:
+   сменой фона наведение стёрло бы эту отметку, а полупрозрачный слой
+   ложится сверху и сохраняет её. Слой — градиентом, потому что
+   background-image рисуется поверх background-color того же элемента.
+   В разметке: hover:layer-hover active:layer-press. */
+@utility layer-hover { background-image: linear-gradient(var(--color-hover), var(--color-hover)); }
+@utility layer-press { background-image: linear-gradient(var(--color-press), var(--color-press)); }
+
 /* Gradient text */
 @utility text-gradient {
   background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
@@ -55,7 +64,6 @@
 /* Полоса времени до закрытия уведомления. Считает не она — считает
    таймер в компоненте, — но останавливаются они вместе: под курсором и
    тому и другому ставится пауза. */
-@keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 

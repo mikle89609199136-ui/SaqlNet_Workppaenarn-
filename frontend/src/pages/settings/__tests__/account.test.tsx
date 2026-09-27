@@ -57,7 +57,7 @@ describe('выход из аккаунта', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
 
-    const dialog = await screen.findByRole('dialog', { name: 'Завершить все сеансы?' });
+    const dialog = await screen.findByRole('alertdialog', { name: 'Завершить все сеансы?' });
     expect(dialog).toHaveTextContent('ключи шифрования');
     // Пока не подтвердили — ключи на месте.
     expect(wipeDevice).not.toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe('выход из аккаунта', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Отмена' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(logoutAll).not.toHaveBeenCalled();
     expect(wipeDevice).not.toHaveBeenCalled();
 

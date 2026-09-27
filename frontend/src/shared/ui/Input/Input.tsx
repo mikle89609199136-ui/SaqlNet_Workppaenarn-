@@ -1,33 +1,35 @@
+import { Button } from '@/shared/ui/Button';
 import { FieldCaption, FieldLabel, useField } from '@/shared/ui/Field';
 import { Icon } from '@/shared/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
-/* Отступы подобраны так, чтобы поле и кнопка того же размера выходили
-   одной высоты: они постоянно стоят в одной строке — поиск, форма с
-   кнопкой отправки. Проверено замером: 31.6 / 44.1 / 52.9. */
+/* md — поле формы дизайн-системы (#817): 48px, скругление кнопки.
+   Высота набирается отступом, интерлиньяжем и рамкой: 12 + 22 + 12 + 2.
+   sm — поиск и поля в плотных панелях, lg — крупный ввод кодов. */
 const sizes = {
   sm: {
-    field: 'text-caption px-3 py-1.5 rounded-control',
+    field: 'text-caption px-3 py-1.5 rounded-field',
     icon: 'left-2.5',
     withIcon: 'pl-8',
-    addon: 'right-1.5',
+    addon: 'right-1',
     withAddon: 'pr-9',
   },
   md: {
-    field: 'text-body px-3.5 py-2.5 rounded-field',
-    icon: 'left-3.5',
-    withIcon: 'pl-10',
-    addon: 'right-2',
-    withAddon: 'pr-11',
-  },
-  lg: {
-    field: 'text-title px-4 py-3.5 rounded-field',
+    field: 'text-body px-4 py-3 rounded-button',
     icon: 'left-4',
     withIcon: 'pl-11',
-    addon: 'right-2.5',
+    addon: 'right-1',
     withAddon: 'pr-12',
+  },
+  lg: {
+    field: 'text-title px-4 py-3.5 rounded-button',
+    icon: 'left-4',
+    withIcon: 'pl-11',
+    addon: 'right-1.5',
+    withAddon: 'pr-13',
   },
 } as const;
 
@@ -40,6 +42,8 @@ interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
      заставить читать две строки там, где важна одна. */
   hint?: string;
   error?: string;
+  /* «Необязательно» в подписи. */
+  optional?: boolean;
   size?: keyof typeof sizes;
   /* Слева внутри поля, украшение — лупа в поиске. */
   icon?: TIconTypes;
@@ -47,6 +51,10 @@ interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
      спиннер проверки юзернейма, галочка «свободен». Отступ поля
      подстраивается сам, чтобы текст не заезжал под содержимое. */
   addon?: ReactNode;
+  /* У поля пароля — кнопка-глаз справа. Включена по умолчанию: пароль,
+     который нельзя проверить глазами, набирают вслепую и ошибаются.
+     Свой addon её заменяет. */
+  revealable?: boolean;
   className?: string;
   inputClassName?: string;
 }
@@ -56,6 +64,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
     label,
     hint,
     error,
+    optional,
     size = 'md',
     icon,
     addon,
@@ -65,17 +74,39 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
     disabled,
     readOnly,
     required,
+    revealable = true,
+    type,
     ...rest
   },
   ref
 ) {
+  const { t } = useTranslation();
   const { fieldId, captionId, caption, isError, controlProps } = useField({ id, hint, error });
+  const [revealed, setRevealed] = useState(false);
   const s = sizes[size];
+
+  const isPassword = type === 'password';
+  const eye =
+    isPassword && revealable && !addon ? (
+      <Button
+        aria-label={
+          revealed ? t('hidePassword', 'Скрыть пароль') : t('showPassword', 'Показать пароль')
+        }
+        disabled={disabled}
+        iconOnly
+        onClick={() => setRevealed((value) => !value)}
+        size={size === 'sm' ? 'sm' : 'md'}
+        variant="ghost"
+      >
+        <Icon name={revealed ? 'eyeOff' : 'eye'} size="md" />
+      </Button>
+    ) : null;
+  const trailing = addon ?? eye;
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <FieldLabel htmlFor={fieldId} required={required}>
+        <FieldLabel htmlFor={fieldId} optional={optional} required={required}>
           {label}
         </FieldLabel>
       )}
@@ -92,32 +123,36 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
 
         <input
           className={cn(
-            'w-full border bg-ground text-ink transition-colors duration-fast',
+            /* Поле узнаётся по фону ленты на панели и по рамке. Рамка —
+               декоративная линия дизайн-системы, при наведении она
+               уплотняется до очертания элемента управления. */
+            'w-full border bg-chat-bg text-ink transition-[border-color,box-shadow] duration-fast',
             'placeholder:text-ink-3',
             /* Кольцо вместо смещённого контура, как у кнопки: у поля
                важно видеть, что печатать будут именно в него, и видно
                это должно быть при любом способе фокуса, не только с
                клавиатуры. */
             'focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand-soft',
-            isError ? 'border-danger' : 'border-line hover:border-ink-3',
+            isError ? 'border-danger' : 'border-divider hover:border-line',
             'disabled:cursor-not-allowed disabled:opacity-42',
             /* Только для чтения — не ошибка и не запрет: поле живое, из
                него можно копировать, поэтому гасим лишь фон. */
-            'read-only:bg-sheet-2 read-only:hover:border-line',
+            'read-only:bg-sheet-2 read-only:hover:border-divider',
             s.field,
             icon && s.withIcon,
-            addon && s.withAddon,
+            trailing && s.withAddon,
             inputClassName
           )}
           disabled={disabled}
           readOnly={readOnly}
           ref={ref}
           required={required}
+          type={isPassword && revealed ? 'text' : type}
           {...controlProps}
           {...rest}
         />
 
-        {addon && <span className={cn('absolute flex items-center', s.addon)}>{addon}</span>}
+        {trailing && <span className={cn('absolute flex items-center', s.addon)}>{trailing}</span>}
       </div>
 
       {caption && (

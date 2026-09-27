@@ -95,7 +95,7 @@ describe('меню строки чата вместе с блокировкой 
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Заблокировать' }));
 
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('Заблокировать Борис?');
     expect(screen.queryByRole('menuitem', { name: 'Закрепить' })).not.toBeInTheDocument();
 
@@ -118,7 +118,7 @@ describe('меню строки чата вместе с блокировкой 
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Заблокировать' }));
     await userEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /отмена/i })
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /отмена/i })
     );
 
     expect(props.onClose).toHaveBeenCalled();
@@ -194,7 +194,7 @@ function serveLeave({
 const openLeave = () => userEvent.click(screen.getByRole('menuitem', { name: 'Покинуть группу' }));
 
 const confirmIn = (name: string) =>
-  userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name }));
+  userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name }));
 
 describe('выход из группы из меню строки чата (#90)', () => {
   beforeEach(() => {
@@ -216,7 +216,7 @@ describe('выход из группы из меню строки чата (#90)
 
     await openLeave();
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('Покинуть «Проект»?');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Покинуть «Проект»?');
     expect(screen.queryByRole('menuitem', { name: 'Закрепить' })).not.toBeInTheDocument();
 
     await confirmIn('Покинуть');
@@ -249,7 +249,7 @@ describe('выход из группы из меню строки чата (#90)
     renderWith(<ChatRowMenuWithActions {...menuProps(groupChat({ role: 'owner' }))} />);
 
     await openLeave();
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('alertdialog');
 
     // Себя в списке нет; админ стоит первым и уже отмечен.
     expect(await within(dialog).findByRole('radio', { name: 'Борис · админ' })).toBeChecked();
@@ -266,7 +266,7 @@ describe('выход из группы из меню строки чата (#90)
     renderWith(<ChatRowMenuWithActions {...menuProps(groupChat({ role: 'owner' }))} />);
 
     await openLeave();
-    await within(screen.getByRole('dialog')).findByRole('button', { name: 'Удалить группу' });
+    await within(screen.getByRole('alertdialog')).findByRole('button', { name: 'Удалить группу' });
     await confirmIn('Удалить группу');
 
     await waitFor(() => expect(calls).toEqual(['delete group-1']));

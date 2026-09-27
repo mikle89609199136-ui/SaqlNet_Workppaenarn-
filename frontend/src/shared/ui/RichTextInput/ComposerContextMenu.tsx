@@ -22,7 +22,6 @@ import { $findMatchingParent } from '@lexical/utils';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { ContextMenu } from '@/shared/ui/ContextMenu';
 import { Icon } from '@/shared/ui/Icon';
-import { cn } from '@/shared/lib';
 import type { TIconTypes } from '@/types';
 import { isLinkShortcut, shortcutHint } from './formatShortcuts';
 import { LinkDialog } from './LinkDialog';
@@ -90,9 +89,6 @@ interface ISelectionInfo {
 }
 
 const NOTHING: ISelectionInfo = { hasText: false, formats: new Set(), linkUrl: null, quote: false };
-
-/** Уже применённое к выделению — подсвечено, как нажатая кнопка. */
-const ACTIVE = 'bg-brand-soft text-brand hover:text-brand';
 
 /**
  * Своё контекстное меню поля ввода, как в Telegram (#656).
@@ -244,16 +240,11 @@ export function ComposerContextMenu() {
       >
         {menu?.view === 'format' ? (
           <>
-            <ContextMenu.Item
-              icon={<Icon className="rotate-180" name="chevronRight" />}
-              onClick={() => setMenu({ ...menu, view: 'main' })}
-            >
-              {t('back', 'Назад')}
-            </ContextMenu.Item>
+            <ContextMenu.Back onClick={() => setMenu({ ...menu, view: 'main' })} />
             <ContextMenu.Separator />
             {FORMAT_ITEMS.map(({ format, icon, labelKey, label, shortcut }) => (
               <ContextMenu.Item
-                className={cn(info.formats.has(format) && ACTIVE)}
+                checked={info.formats.has(format)}
                 icon={<Icon name={icon} />}
                 key={format}
                 onClick={() =>
@@ -265,7 +256,7 @@ export function ComposerContextMenu() {
               </ContextMenu.Item>
             ))}
             <ContextMenu.Item
-              className={cn(info.linkUrl && ACTIVE)}
+              checked={Boolean(info.linkUrl)}
               icon={<Icon name="link" />}
               onClick={openLink}
               shortcut="Ctrl+K"
@@ -273,7 +264,7 @@ export function ComposerContextMenu() {
               {t('format.link', 'Ссылка')}
             </ContextMenu.Item>
             <ContextMenu.Item
-              className={cn(info.quote && ACTIVE)}
+              checked={info.quote}
               icon={<Icon name="quote" />}
               onClick={toggleQuote}
             >
@@ -366,11 +357,9 @@ export function ComposerContextMenu() {
               disabled={!info.hasText}
               icon={<Icon name="type" />}
               onClick={() => menu && setMenu({ ...menu, view: 'format' })}
+              submenu
             >
-              <span className="flex items-center justify-between gap-2">
-                {t('format.menu', 'Форматирование')}
-                <Icon className="size-4 text-ink-3" name="chevronRight" />
-              </span>
+              {t('format.menu', 'Форматирование')}
             </ContextMenu.Item>
           </>
         )}

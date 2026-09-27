@@ -1,4 +1,5 @@
 import { ChoiceField, useField } from '@/shared/ui/Field';
+import { Icon } from '@/shared/ui/Icon';
 import { cn } from '@/shared/lib';
 import { forwardRef, type InputHTMLAttributes } from 'react';
 
@@ -32,7 +33,7 @@ export const Radio = forwardRef<HTMLInputElement, Props>(function Radio(
       label={label}
       required={required}
     >
-      <span className="flex">
+      <span className="relative flex">
         <input
           className="peer sr-only"
           disabled={disabled}
@@ -42,16 +43,20 @@ export const Radio = forwardRef<HTMLInputElement, Props>(function Radio(
           {...controlProps}
           {...rest}
         />
+        {/* Кружок 22 с рамкой 2px; выбранный залит акцентом и несёт
+            белую галочку (дизайн-система, #817). */}
         <span
           className={cn(
-            'flex size-5 shrink-0 items-center justify-center rounded-pill border-[1.5px] transition-colors duration-fast',
-            'bg-ground',
-            showsError ? 'border-danger' : 'border-line hover:border-ink-3',
-            'peer-checked:border-brand-fill',
-            'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2',
-            'after:size-2.5 after:scale-0 after:rounded-pill after:bg-brand-fill after:transition-transform after:duration-fast',
-            'peer-checked:after:scale-100'
+            'flex size-5.5 shrink-0 items-center justify-center rounded-pill border-2 transition-colors duration-fast',
+            showsError ? 'border-danger' : 'border-ink-3',
+            'peer-checked:border-brand-fill peer-checked:bg-brand-fill',
+            'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2'
           )}
+        />
+        <Icon
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-1/2 size-3.5 -translate-1/2 scale-0 text-on-brand transition-transform duration-fast peer-checked:scale-100"
+          name="check"
         />
       </span>
     </ChoiceField>

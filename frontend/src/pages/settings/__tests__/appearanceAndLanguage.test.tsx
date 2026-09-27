@@ -89,6 +89,19 @@ describe('внешний вид и язык', () => {
   });
 
   it('меняет вид аватарки вместе с выбором', async () => {
+    /* Сервер помнит сохранённое: после ответа настройки перечитываются,
+       и сервер-заглушка с пустыми настройками вернул бы букву. Прежде
+       это пряталось — проверку проходил значок уведомления «Настройки
+       сохранены», а не сетка аватарки. */
+    let saved: Record<string, unknown> = { avatarShape: 'letter' };
+    server.use(
+      http.get(api('/users/settings'), () => HttpResponse.json({ settings: saved, privacy: {} })),
+      http.put(api('/users/settings'), async ({ request }) => {
+        saved = { ...saved, ...((await request.json()) as Record<string, unknown>) };
+        return HttpResponse.json({ settings: saved });
+      })
+    );
+
     const { container } = renderSettings({
       section: 'appearance',
       settings: { avatarShape: 'letter' },

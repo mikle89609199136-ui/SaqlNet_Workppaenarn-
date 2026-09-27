@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from './Modal';
 
@@ -29,20 +30,32 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = 'Отмена',
+  cancelLabel,
   danger = false,
   confirming = false,
   onConfirm,
   onCancel,
 }: Props) {
+  const { t } = useTranslation();
+
+  /* Диалог дизайн-системы (#817): узкий, кнопки маленькие; «Отмена» без
+     фона, действие справа. Опасное — на подложке ошибки, и окно
+     объявляется предупреждением. */
   return (
     <Modal
+      alert={danger}
+      className="w-[min(360px,calc(100vw-32px))]"
       footer={
         <>
-          <Button onClick={onCancel} variant="ghost">
-            {cancelLabel}
+          <Button onClick={onCancel} size="sm" variant="ghost">
+            {cancelLabel ?? t('cancel', 'Отмена')}
           </Button>
-          <Button loading={confirming} onClick={onConfirm} variant={danger ? 'danger' : 'primary'}>
+          <Button
+            loading={confirming}
+            onClick={onConfirm}
+            size="sm"
+            variant={danger ? 'danger' : 'primary'}
+          >
             {confirmLabel}
           </Button>
         </>

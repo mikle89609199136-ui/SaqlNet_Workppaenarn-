@@ -55,15 +55,15 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(function Textarea
 
       <textarea
         className={cn(
-          'w-full rounded-field border bg-ground px-3.5 py-2.5 text-body text-ink',
+          'w-full rounded-button border bg-chat-bg px-4 py-3 text-body text-ink',
           'transition-colors duration-fast placeholder:text-ink-3',
           /* Только по вертикали: вбок область растягивать некуда — она
              и так во всю ширину, а рывок вширь ломает раскладку. */
           'resize-y',
           'focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand-soft',
-          isError ? 'border-danger' : 'border-line hover:border-ink-3',
+          isError ? 'border-danger' : 'border-divider hover:border-line',
           'disabled:cursor-not-allowed disabled:opacity-42',
-          'read-only:bg-sheet-2 read-only:hover:border-line',
+          'read-only:bg-sheet-2 read-only:hover:border-divider',
           textareaClassName
         )}
         disabled={disabled}

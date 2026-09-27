@@ -3,21 +3,23 @@ import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import type { ReactNode } from 'react';
 
-/* Подложка и рамка — прозрачность от статусного токена, а не свой оттенок:
-   так плашка следует за темой и за сменой акцента. */
+/* Плашка дизайн-системы (#817): без рамки, на мягкой подложке своего
+   вида; сведения — на приподнятой поверхности. Значок несёт цвет вида,
+   текст остаётся нейтральным: полужирное начало говорит, что случилось,
+   продолжение — почему. */
 const tones = {
   info: {
-    box: 'border-brand-fill/35 bg-brand-soft',
+    box: 'bg-sheet-2',
     icon: 'text-brand',
     defaultIcon: 'info',
   },
   warn: {
-    box: 'border-warn/40 bg-warn/10',
+    box: 'bg-warn-soft',
     icon: 'text-warn',
     defaultIcon: 'warning',
   },
   danger: {
-    box: 'border-danger/40 bg-danger/10',
+    box: 'bg-danger-soft',
     icon: 'text-danger',
     defaultIcon: 'warning',
   },
@@ -40,7 +42,8 @@ export function Banner({ action, children, className, icon, tone = 'info' }: Pro
   return (
     <div
       className={cn(
-        'text-body flex items-center gap-3 rounded-field border px-4 py-3.5 leading-normal text-ink',
+        'flex min-h-13.5 items-center gap-3 rounded-dialog px-4 py-3 text-ui leading-[1.4] text-ink-2',
+        '[&_b]:font-semibold [&_b]:text-ink [&_strong]:font-semibold [&_strong]:text-ink',
         style.box,
         className
       )}

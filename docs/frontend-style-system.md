@@ -141,7 +141,36 @@ styles/keyframes.css     анимации — их Tailwind не выражае�
 | `scrim` | `bg-backdrop` | затемнение под диалогом; `scrim-*` заняты подложками поверх медиа |
 | `call-ground`, `call-accept`, `call-decline` | `bg-call-ground`, `bg-call-accept`, `bg-call-reject` | звонок |
 
-Тени дизайн-системы — переменные `--shadow-menu`, `--shadow-composer`, `--shadow-tab`, `--shadow-card`, в разметке через `shadow-[var(--shadow-menu)]`: утилита `shadow-*` из `@theme` подставляет значение, и подмена по теме не сработала бы. Скругления, размеры и шкала текста дизайн-системы приходят вместе с компонентами (#817): их значения меняют геометрию того, что уже свёрстано.
+Тени дизайн-системы — переменные `--shadow-menu`, `--shadow-composer`, `--shadow-tab`, `--shadow-card`, в разметке через `shadow-[var(--shadow-menu)]`: утилита `shadow-*` из `@theme` подставляет значение, и подмена по теме не сработала бы. Скругления и шкала текста названы по назначению, а не по величине: имена `sm`/`md`/`lg` заняты у Tailwind, и переопределить их значило бы сдвинуть всё, что уже свёрстано.
+
+| Дизайн-система | Утилита | Где |
+|---|---|---|
+| `radius-xs` 6 | `rounded-control` | угол пузыря со стороны автора, код в тексте |
+| `radius-sm` 10 | `rounded-field` | пункт меню, маленькая кнопка, сегмент |
+| `radius-md` 12 | `rounded-icon` | кнопка-иконка |
+| `radius-lg` 14 | `rounded-button` | кнопка, поле формы, переключатель |
+| `radius-xl` 16 | `rounded-bubble` | строка списка, меню, пузырь |
+| `radius-2xl` 18 | `rounded-dialog` | диалог, плашка |
+| `radius-3xl` 20 | `rounded-window` | поле ввода сообщения, пост, панель |
+| `radius-card` 28 | `rounded-card` | карточка входа |
+| `meta` 12 · `body` 14 · `body-lg` 15 · `title-sm` 16 · `title-lg` 20 | `text-meta` · `text-ui` · `text-body` · `text-subtitle` · `text-section` | остальные размеры текста совпадают по имени |
+
+Новое имя шкалы добавляется и в `shared/lib/utils/cn.ts`: иначе tailwind-merge не знает, с чем оно спорит, и молча выбрасывает размер шрифта.
+
+### Наведение и нажатие
+
+Слоем поверх фона, а не заменой: `hover:layer-hover active:layer-press`. Отмеченный пункт меню и выбранная строка при наведении сохраняют свою подложку. Утилиты объявлены в `tailwind.css`; погасить слой там, где он не нужен, — `hover:bg-none`.
+
+### Кнопка
+
+| Дизайн-система | `Button` |
+|---|---|
+| `primary` | `variant="primary"` |
+| `secondary` | `variant="secondary"` |
+| `ghost` — ссылка-действие цветом акцента | `variant="accent"` |
+| «Отмена» без фона, кнопка-иконка | `variant="ghost"` |
+| `danger` | `variant="danger"` |
+| `--sm` | `size="sm"` |
 
 Эмодзи в тексте рисует Noto Color Emoji — он стоит вторым в `--font-sans`, сразу за Geologica, и грузится с Google Fonts вместе с остальными шрифтами.
 

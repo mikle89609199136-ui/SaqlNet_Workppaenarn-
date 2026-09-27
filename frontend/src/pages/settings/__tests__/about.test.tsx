@@ -21,7 +21,7 @@ describe('о приложении', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
 
     // Окно открылось — но пока человек не подтвердил, ничего не произошло.
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     expect(wipeDevice).not.toHaveBeenCalled();
 
     wipeDevice.mockRestore();
@@ -35,7 +35,7 @@ describe('о приложении', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Отмена' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(wipeDevice).not.toHaveBeenCalled();
 
     wipeDevice.mockRestore();

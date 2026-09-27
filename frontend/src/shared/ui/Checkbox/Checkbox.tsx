@@ -59,7 +59,7 @@ export const Checkbox = forwardRef<HTMLInputElement, Props>(function Checkbox(
         <span
           className={cn(
             'flex size-5 shrink-0 items-center justify-center rounded-control border-[1.5px] transition-colors duration-fast',
-            'bg-ground text-transparent',
+            'bg-chat-bg text-transparent',
             isError ? 'border-danger' : 'border-line hover:border-ink-3',
             'peer-checked:border-brand-fill peer-checked:bg-brand-fill peer-checked:text-on-brand',
             'peer-indeterminate:border-brand-fill peer-indeterminate:bg-brand-fill peer-indeterminate:text-on-brand',

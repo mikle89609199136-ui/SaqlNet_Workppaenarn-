@@ -12,7 +12,13 @@ export const SegmentedControl = forwardRef<HTMLDivElement, SegmentedControlProps
     return (
       <div
         ref={ref}
-        className={cn('inline-flex bg-sheet-2 rounded-field p-1 gap-1', className)}
+        /* Сегменты равной ширины (дизайн-система, #817): переключатель из
+           двух-трёх вариантов читается как одно целое, а не как ряд кнопок
+           по длине подписи. */
+        className={cn(
+          'inline-grid grid-flow-col auto-cols-fr gap-1 rounded-button bg-sheet-2 p-1',
+          className
+        )}
         role="group"
         {...rest}
       >
@@ -27,18 +33,17 @@ export const SegmentedControl = forwardRef<HTMLDivElement, SegmentedControlProps
               aria-pressed={isActive}
               onClick={() => onChange(opt.value)}
               className={cn(
-                'text-caption font-medium bg-transparent text-ink-2 px-3.5 py-1.5 rounded-control cursor-pointer transition-all duration-fast',
-                'disabled:opacity-42 disabled:cursor-not-allowed',
+                'h-9.5 px-3.5 rounded-field text-ui font-semibold bg-transparent text-ink-2 cursor-pointer transition-all duration-fast',
+                'hover:text-ink',
+                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-2',
                 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
-                'data-[state=active]:bg-sheet data-[state=active]:text-ink data-[state=active]:shadow-[var(--elev-1)] data-[state=active]:font-semibold'
+                'data-[state=active]:bg-sheet data-[state=active]:text-ink data-[state=active]:shadow-[var(--shadow-tab)]'
               )}
             >
-              <span
-                className="inline-flex flex-col items-center justify-center after:content-[attr(data-text)] after:font-semibold after:h-0 after:invisible after:overflow-hidden after:pointer-events-none after:select-none"
-                data-text={opt.label}
-              >
-                {opt.label}
-              </span>
+              {/* Вес у всех сегментов один, выбранный отличается фоном и
+                  цветом: жирный текст шире, и полоса дёргалась бы при
+                  каждом переключении. */}
+              {opt.label}
             </button>
           );
         })}

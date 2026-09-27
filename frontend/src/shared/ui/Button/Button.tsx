@@ -2,33 +2,48 @@ import { Spinner } from '@/shared/ui/Spinner';
 import { cn } from '@/shared/lib';
 import { forwardRef, type ButtonHTMLAttributes, type MouseEvent } from 'react';
 
+/* Высоты — из дизайн-системы (#817): md — основная кнопка формы, 50px;
+   sm — кнопки диалогов и форм внутри меню, 34px. xs и lg она не знает:
+   xs остался у крестиков в плотных местах, lg — у крупных действий.
+
+   Высота набирается отступом и интерлиньяжем (14 + 22 + 14 = 50), а не
+   задаётся h-*: кнопки с содержимым в две строки растут, а не режут
+   его, и место, где высоту надо переопределить, делает это как раньше —
+   своим py-*. */
 const sizes = {
   xs: 'text-micro px-2 py-1 rounded-control gap-1',
-  sm: 'text-caption px-3 py-1.5 rounded-control gap-1.5',
-  md: 'text-body px-4.5 py-2.5 rounded-field gap-2',
-  lg: 'text-title px-6 py-3.5 rounded-field gap-2',
+  sm: 'text-caption px-4 py-2 rounded-field gap-1.5',
+  md: 'text-body px-5 py-3.5 rounded-button gap-2.5',
+  lg: 'text-title px-6 py-4 rounded-button gap-2.5',
 } as const;
 
+/* Кнопка-иконка — квадрат. md — кнопка-иконка дизайн-системы: 40×40,
+   в шапке чата, в поле ввода, в панелях. */
 const iconOnlySizes = {
-  xs: 'p-0.5 rounded-control',
-  sm: 'p-1.5 rounded-control',
-  md: 'p-2.5 rounded-field',
-  lg: 'p-3.5 rounded-field',
+  xs: 'size-6 rounded-control',
+  sm: 'size-8 rounded-field',
+  md: 'size-10 rounded-icon',
+  lg: 'size-12 rounded-button',
 } as const;
 
-/* Рамка есть у каждого варианта: её ширина объявлена в общей части, а
-   цвет — здесь, у всех четырёх. Без рамки кнопка на два пикселя ниже, и
-   в подвале окна «Удалить» и «Отмена» встают разной высоты.
+/* Варианты — по весу действия, рамок нет ни у одного: кнопка узнаётся
+   по заливке или по месту, как в дизайн-системе.
 
-   Цвет обязан задаваться именно тут, а не общим border-transparent с
-   перекрытием в варианте: обе утилиты пишут border-color, и побеждает
-   та, что стоит позже в собранном CSS, а не в атрибуте. Прозрачная
-   рамка у secondary — ровно этот случай, пойман измерением. */
+   ghost — «Отмена» и кнопки-иконки: без фона, цвет ink-2. accent —
+   ссылка-действие («Забыли пароль?»), в дизайн-системе это ghost; здесь
+   имя занято нейтральным вариантом, на котором держатся полсотни мест.
+   danger — удаление и выход, на мягкой подложке ошибки.
+
+   Наведение у всех, кроме основной, — слой поверх фона (layer-hover), а
+   не замена фона: так у кнопки-иконки, включённой через aria-pressed,
+   подсветка не стирает состояние. */
 const variants = {
-  primary: 'bg-brand-fill text-on-brand border-transparent hover:bg-brand-fill-hover',
-  secondary: 'bg-sheet-2 text-ink border-line hover:border-ink-3',
-  ghost: 'bg-transparent text-ink-2 border-transparent hover:bg-sheet-2 hover:text-ink',
-  danger: 'bg-transparent border-danger text-danger hover:bg-danger/10',
+  primary: 'bg-brand-fill text-on-brand hover:bg-brand-fill-hover',
+  secondary: 'bg-sheet-2 text-ink hover:layer-hover active:layer-press',
+  ghost:
+    'bg-transparent text-ink-2 hover:layer-hover hover:text-ink active:layer-press aria-pressed:text-brand',
+  accent: 'bg-transparent text-brand hover:layer-hover active:layer-press',
+  danger: 'bg-danger-soft text-danger hover:layer-hover active:layer-press',
 } as const;
 
 /* Круг — не украшение, а отдельная роль: кнопка при иконке, которая
@@ -61,9 +76,10 @@ export const buttonStyles = ({
 }: StyleProps = {}) =>
   cn(
     'inline-flex items-center justify-center font-semibold transition-colors duration-fast cursor-pointer',
-    'border',
-    'disabled:opacity-42 disabled:cursor-not-allowed',
-    'aria-disabled:opacity-42 aria-disabled:cursor-not-allowed',
+    /* Выключенная кнопка остаётся на месте и видна: пусть будет понятно,
+       какое действие есть и что для него нужно. */
+    'disabled:opacity-50 disabled:cursor-not-allowed',
+    'aria-disabled:opacity-50 aria-disabled:cursor-not-allowed',
     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
     iconOnly ? iconOnlySizes[size] : sizes[size],
     variants[variant],

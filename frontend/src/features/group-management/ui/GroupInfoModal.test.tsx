@@ -103,7 +103,7 @@ describe('сведения о группе', () => {
     // Одно нажатие ещё ничего не делает: сначала подтверждение.
     expect(calls).toEqual([]);
 
-    const dialog = screen.getByRole('dialog', { name: 'Покинуть «Проект»?' });
+    const dialog = screen.getByRole('alertdialog', { name: 'Покинуть «Проект»?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Покинуть' }));
 
     await waitFor(() => expect(calls).toEqual(['leave group-1']));

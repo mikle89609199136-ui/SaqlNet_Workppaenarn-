@@ -169,7 +169,7 @@ describe('кнопка', () => {
     expect(button).not.toHaveClass('rounded-control');
   });
 
-  it('should give the extra small icon button a tighter padding than the small one', () => {
+  it('should make the icon button a square of the design-system size', () => {
     render(
       <>
         <Button aria-label="Закрыть" iconOnly size="xs">
@@ -181,7 +181,48 @@ describe('кнопка', () => {
       </>
     );
 
-    expect(screen.getByRole('button', { name: 'Закрыть' })).toHaveClass('p-0.5');
-    expect(screen.getByRole('button', { name: 'Вложение' })).toHaveClass('p-1.5');
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toHaveClass('size-6');
+    expect(screen.getByRole('button', { name: 'Вложение' })).toHaveClass('size-8');
+  });
+
+  it('should render the design-system icon button at 40 pixels by default', () => {
+    render(
+      <Button aria-label="Позвонить" iconOnly variant="ghost">
+        <span aria-hidden>+</span>
+      </Button>
+    );
+
+    expect(screen.getByRole('button', { name: 'Позвонить' })).toHaveClass(
+      'size-10',
+      'rounded-icon',
+      'text-ink-2'
+    );
+  });
+
+  it('should put the danger action on the soft danger background without a border', () => {
+    /* Дизайн-система: опасное действие — на подложке danger-soft. Рамки
+       нет ни у одного варианта: высоту держат отступы, а не бордюр. */
+    render(<Button variant="danger">Удалить</Button>);
+
+    const button = screen.getByRole('button', { name: 'Удалить' });
+
+    expect(button).toHaveClass('bg-danger-soft', 'text-danger');
+    expect(button.className.split(' ')).not.toContain('border');
+  });
+
+  it('should paint hover as a layer over the background, not instead of it', () => {
+    /* Замена фона при наведении стирала бы состояние: у включённой
+       кнопки-иконки — цвет, у отмеченного пункта меню — подложку. */
+    render(<Button variant="secondary">Отмена</Button>);
+
+    const button = screen.getByRole('button', { name: 'Отмена' });
+
+    expect(button).toHaveClass('bg-sheet-2', 'hover:layer-hover', 'active:layer-press');
+  });
+
+  it('should color the link-like action with the accent', () => {
+    render(<Button variant="accent">Забыли пароль?</Button>);
+
+    expect(screen.getByRole('button', { name: 'Забыли пароль?' })).toHaveClass('text-brand');
   });
 });
