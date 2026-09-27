@@ -1,4 +1,4 @@
-import { ChatThreadHeader, SafetyCodeNotice } from '@/widgets/chat-header';
+import { ChatThreadHeader, ConnectionBanner, SafetyCodeNotice } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
 import { BlockUserButton, NewChatBanner } from '@/features/block-user';
 import type { IProfileActionsTarget } from '@/features/user-profile';
@@ -111,6 +111,8 @@ export function ChatThreadPage() {
       {!modals.isPinnedMessagesOpen && (
         <main className="thread-page">
           <ChatThreadHeader setProfileModal={setProfileModal} profileModal={profileModal} />
+          {/* Нет связи или идёт переподключение — плашкой под шапкой (#826). */}
+          <ConnectionBanner />
 
           <PinnedMessagesNavigator
             messages={pinnedMessages}

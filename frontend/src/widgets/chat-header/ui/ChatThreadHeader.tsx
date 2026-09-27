@@ -1,27 +1,12 @@
 import { useCall } from '@/features/call';
-import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/entities/user';
 import { chatQuery, onlineMembersQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle, useConnectionStatus, useNow } from '@/shared/lib';
+import { cn, getChatSubtitle, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Button, buttonStyles, Icon } from '@/shared/ui';
-
-/**
- * Что сказать вместо «был(а) недавно», пока связи нет.
- *
- * Состояние связи важнее всего остального: если сообщения не ходят, знать
- * о собеседнике, что он «онлайн», человеку незачем — эти сведения тех же
- * секунд, что и молчащий чат.
- */
-function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | null {
-  if (status === 'connected') return null;
-
-  return status === 'offline' ? t('noNetwork', 'Нет сети') : t('connecting', 'Соединяемся…');
-}
 
 interface Props {
   profileModal?: IProfileModal;
@@ -39,7 +24,6 @@ export const ChatThreadHeader = ({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { chatId = '' } = useParams<{ chatId: string }>();
-  const connection = useConnectionStatus();
   // Заголовок читает чат из кеша запросов — того же, что наполняет страница.
   const { data: chat } = useQuery(chatQuery(chatId));
   const { data: onlineMembers } = useQuery({
@@ -53,9 +37,9 @@ export const ChatThreadHeader = ({
 
   if (!chat) return;
 
-  const noticeSubtitle = connectionSubtitle(connection, t);
-  const subtitle =
-    noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t, now, onlineMembers?.length);
+  // О связи говорит плашка под шапкой (ConnectionBanner, #826); подзаголовок
+  // — всегда о собеседнике.
+  const subtitle = getChatSubtitle(chat, typingUserId, t, now, onlineMembers?.length);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
   // Блокировка в любую сторону — звонков нет (#760).
   const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
@@ -152,9 +136,7 @@ export const ChatThreadHeader = ({
           <span
             className={cn(
               'truncate text-caption leading-[1.3] text-ink-2',
-              isPeerOnline && !noticeSubtitle && !typingUserId && 'text-brand',
-              typingUserId && !noticeSubtitle && 'text-brand',
-              noticeSubtitle && 'thread-subtitle-notice'
+              (isPeerOnline || typingUserId) && 'text-brand'
             )}
           >
             {subtitle}
