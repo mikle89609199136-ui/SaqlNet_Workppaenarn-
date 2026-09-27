@@ -9,3 +9,8 @@ export function claimPlayback(media: HTMLMediaElement): void {
   if (current && current !== media && !current.paused) current.pause();
   current = media;
 }
+
+/** Остановить то, что играет, — перед записью голосового: микрофон не должен слышать динамик. */
+export function pauseActivePlayback(): void {
+  if (current && !current.paused) current.pause();
+}

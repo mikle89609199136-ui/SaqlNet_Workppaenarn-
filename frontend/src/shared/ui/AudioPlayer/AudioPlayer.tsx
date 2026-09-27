@@ -1,8 +1,16 @@
 import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 import { Icon } from '@/shared/ui/Icon';
-import { claimPlayback, cn, useAudio, useIsMobile, VOICE_LEVEL_MAX } from '@/shared/lib';
-import { useState, type ReactNode } from 'react';
+import {
+  applyPlaybackGain,
+  claimPlayback,
+  cn,
+  releasePlaybackGain,
+  useAudio,
+  useIsMobile,
+  VOICE_LEVEL_MAX,
+} from '@/shared/lib';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {
@@ -22,6 +30,8 @@ interface AudioPlayerProps {
    */
   durationMs?: number;
   waveform?: number[];
+  /** Поправка громкости голосового, дБ (#843): все голосовые звучат ровно. */
+  gainDb?: number;
 }
 
 const VOICE_BARS = 28;
@@ -53,6 +63,7 @@ export const AudioPlayer = ({
   trailing,
   durationMs,
   waveform,
+  gainDb,
 }: AudioPlayerProps) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -74,6 +85,14 @@ export const AudioPlayer = ({
     formatTime,
   } = useAudio();
   const [unplayable, setUnplayable] = useState(false);
+
+  // Элемент уходит — отцепляем его от графа громкости, узлы не копятся.
+  useEffect(() => {
+    const media = mediaRef.current;
+    return () => {
+      if (media) releasePlaybackGain(media);
+    };
+  }, [mediaRef]);
 
   if (variant === 'voice') {
     /* Длительность — из метаданных: у записи Ogg/Opus элемент <audio>
@@ -125,6 +144,8 @@ export const AudioPlayer = ({
           )}
           onClick={(event) => {
             event.stopPropagation();
+            // Громкость — до запуска и в жесте: иначе браузер не даст звук.
+            if (!isPlaying && mediaRef.current) applyPlaybackGain(mediaRef.current, gainDb);
             togglePlay();
           }}
           type="button"

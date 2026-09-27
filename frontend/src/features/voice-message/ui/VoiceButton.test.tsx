@@ -23,6 +23,7 @@ function makeRecorder(status: IVoiceRecorderState['status'] = 'idle') {
       cancel: vi.fn(),
       finish: vi.fn(async () => recording),
       getState: vi.fn(() => state),
+      preload: vi.fn(),
     } as unknown as VoiceRecorder & Record<string, ReturnType<typeof vi.fn>>,
   };
 }
@@ -137,6 +138,13 @@ describe('кнопка голосового', () => {
     press();
     fireEvent.click(mic(), { detail: 0 });
     expect(recorder.start).not.toHaveBeenCalled();
+  });
+
+  it('наведение и фокус заранее грузят кодировщик и шумодав', () => {
+    const { recorder } = renderButton();
+    fireEvent.pointerEnter(mic());
+    fireEvent.focus(mic());
+    expect(recorder.preload).toHaveBeenCalledTimes(2);
   });
 
   it('правая кнопка и повторное нажатие во время записи ничего не начинают', () => {

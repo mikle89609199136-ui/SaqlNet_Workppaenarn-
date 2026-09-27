@@ -144,7 +144,9 @@ describe('AudioPlayer', () => {
         durationMs: 5000,
         waveform: [0, 0, 31, 31],
       });
-      const heights = [...container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]')]
+      const heights = Array.from(
+        container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]')
+      )
         .map((bar) => parseInt(bar.style.height, 10))
         .filter(Number.isFinite);
 
@@ -177,7 +179,7 @@ describe('AudioPlayer', () => {
           <AudioPlayer seed="b" src="b.ogg" variant="voice" />
         </I18nextProvider>
       );
-      const [first, second] = [...document.querySelectorAll('audio')];
+      const [first, second] = Array.from(document.querySelectorAll('audio'));
       const [playFirst, playSecond] = screen.getAllByRole('button', {
         name: 'Прослушать голосовое',
       });

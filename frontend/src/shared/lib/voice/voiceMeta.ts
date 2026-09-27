@@ -29,20 +29,60 @@ const DURATION_TOLERANCE_MS = 5000;
 /** Длиннее — это уже не наша волна, а мусор или попытка раздуть память. */
 const MAX_WAVEFORM_LENGTH = 128;
 
+/**
+ * Выравнивание громкости (#843): к какому уровню речи тянем и в каких
+ * пределах. −18 дБFS по среднеквадратичному — разборчиво и с запасом до
+ * перегрузки; тихое не усиливаем больше чем на 18 дБ (вытащили бы шум),
+ * громкое ослабляем не больше чем на 12.
+ */
+export const VOICE_TARGET_DBFS = -18;
+export const VOICE_GAIN_MIN_DB = -12;
+export const VOICE_GAIN_MAX_DB = 18;
+/** Тише этого — пауза, а не речь: в громкость речи не входит (−40 дБFS). */
+const SPEECH_RMS_FLOOR = 0.01;
+
 export interface IVoiceMeta {
   durationMs: number;
   /** Уровни 0…VOICE_LEVEL_MAX, обычно VOICE_WAVEFORM_BARS штук. */
   waveform: number[];
+  /**
+   * Поправка громкости при воспроизведении, дБ: голосовые звучат одинаково
+   * громко. Нет — играем как есть (старые сообщения).
+   */
+  gainDb?: number;
 }
 
 /** Вид в конверте — короткие имена: каждое сообщение платит за них байтами. */
 export interface IVoiceMetaWire {
   d: number;
   w: number[];
+  g?: number;
 }
 
 export function toVoiceWire(meta: IVoiceMeta): IVoiceMetaWire {
-  return { d: Math.round(meta.durationMs), w: meta.waveform };
+  return {
+    d: Math.round(meta.durationMs),
+    w: meta.waveform,
+    ...(meta.gainDb !== undefined ? { g: meta.gainDb } : {}),
+  };
+}
+
+/**
+ * Поправка до целевой громкости по среднеквадратичным уровням пачек
+ * (0…1). Паузы не считаются: иначе голосовое с долгим молчанием
+ * усиливалось бы лишний раз. Округление до 0,5 дБ — точнее ухо не слышит.
+ */
+export function loudnessGainDb(rmsLevels: number[]): number {
+  const speech = rmsLevels.filter((rms) => rms > SPEECH_RMS_FLOOR);
+  if (speech.length === 0) return 0;
+  const meanSquare = speech.reduce((sum, rms) => sum + rms * rms, 0) / speech.length;
+  const loudnessDb = 10 * Math.log10(meanSquare);
+  const gain = Math.min(
+    VOICE_GAIN_MAX_DB,
+    Math.max(VOICE_GAIN_MIN_DB, VOICE_TARGET_DBFS - loudnessDb)
+  );
+  // `|| 0`: округление даёт −0, а это та же нулевая поправка.
+  return Math.round(gain * 2) / 2 || 0;
 }
 
 /**
@@ -52,14 +92,22 @@ export function toVoiceWire(meta: IVoiceMeta): IVoiceMetaWire {
  */
 export function normalizeVoiceMeta(raw: unknown): IVoiceMeta | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { d, w } = raw as Partial<IVoiceMetaWire>;
+  const { d, w, g } = raw as Partial<IVoiceMetaWire>;
 
   if (typeof d !== 'number' || !Number.isFinite(d) || d <= 0) return null;
   if (d > MAX_VOICE_DURATION_MS + DURATION_TOLERANCE_MS) return null;
   if (!Array.isArray(w) || w.length > MAX_WAVEFORM_LENGTH) return null;
 
+  // Поправка громкости необязательна: не число — не применяется, лишнее
+  // обрезается до наших пределов (громче +18 дБ собеседник не усилит).
+  const gainDb =
+    typeof g === 'number' && Number.isFinite(g)
+      ? Math.min(VOICE_GAIN_MAX_DB, Math.max(VOICE_GAIN_MIN_DB, g))
+      : undefined;
+
   return {
     durationMs: Math.round(d),
+    ...(gainDb !== undefined ? { gainDb } : {}),
     waveform: w.map((level) =>
       typeof level === 'number' && Number.isFinite(level)
         ? Math.min(VOICE_LEVEL_MAX, Math.max(0, Math.round(level)))

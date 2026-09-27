@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildWaveform, normalizeVoiceMeta, VOICE_LEVEL_MAX } from './voiceMeta';
+import {
+  buildWaveform,
+  loudnessGainDb,
+  normalizeVoiceMeta,
+  toVoiceWire,
+  VOICE_GAIN_MAX_DB,
+  VOICE_GAIN_MIN_DB,
+  VOICE_LEVEL_MAX,
+} from './voiceMeta';
 
 describe('волна голосового (#843)', () => {
   it('ровно столько столбиков, сколько просили, самый громкий — полный', () => {
@@ -34,5 +42,40 @@ describe('проверка пришедших метаданных', () => {
       durationMs: 1500,
       waveform: [3, 31],
     });
+  });
+});
+
+describe('выравнивание громкости', () => {
+  it('тянет речь к −18 дБFS', () => {
+    // 0,0398 ≈ −28 дБFS: усилить на 10.
+    expect(loudnessGainDb([0.0398, 0.0398])).toBe(10);
+    // 0,126 ≈ −18 дБFS: уже как надо.
+    expect(loudnessGainDb([0.126])).toBe(0);
+  });
+
+  it('паузы не считаются: долгое молчание не делает голос громче', () => {
+    expect(loudnessGainDb([0.126, 0, 0, 0, 0.001, 0.005])).toBe(0);
+  });
+
+  it('тишина — без поправки; крайности обрезаются', () => {
+    expect(loudnessGainDb([])).toBe(0);
+    expect(loudnessGainDb([0, 0.002])).toBe(0);
+    expect(loudnessGainDb([0.011])).toBe(VOICE_GAIN_MAX_DB);
+    expect(loudnessGainDb([1, 1])).toBe(VOICE_GAIN_MIN_DB);
+  });
+
+  it('поправка едет в конверте и проверяется на входе', () => {
+    const wire = toVoiceWire({ durationMs: 1000, waveform: [1], gainDb: 6.5 });
+    expect(wire.g).toBe(6.5);
+    expect(normalizeVoiceMeta(wire)?.gainDb).toBe(6.5);
+    expect(toVoiceWire({ durationMs: 1000, waveform: [1] })).not.toHaveProperty('g');
+
+    expect(normalizeVoiceMeta({ d: 1000, w: [1], g: 1000 })?.gainDb).toBe(VOICE_GAIN_MAX_DB);
+    expect(normalizeVoiceMeta({ d: 1000, w: [1], g: -25 })?.gainDb).toBe(VOICE_GAIN_MIN_DB);
+    for (const g of [Number.NaN, Infinity, '6', null]) {
+      const meta = normalizeVoiceMeta({ d: 1000, w: [1], g });
+      expect(meta).not.toBeNull();
+      expect(meta).not.toHaveProperty('gainDb');
+    }
   });
 });

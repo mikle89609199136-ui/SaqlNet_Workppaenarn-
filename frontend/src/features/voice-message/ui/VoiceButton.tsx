@@ -159,7 +159,11 @@ export function VoiceButton({ recorder, state, onRecorded, onCancelProgress, dis
         iconOnly
         onClick={onClick}
         onContextMenu={(event) => event.preventDefault()}
+        // Кодировщик и шумодав грузятся, пока курсор или фокус на кнопке:
+        // запись начнётся без паузы на загрузку.
+        onFocus={() => recorder.preload()}
         onKeyDown={onKeyDown}
+        onPointerEnter={() => recorder.preload()}
         onPointerCancel={onPointerCancel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

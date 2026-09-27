@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { claimPlayback } from '@/shared/lib';
 import { MAX_VOICE_DURATION_MS, VOICE_WAVEFORM_BARS } from '@/shared/lib/voice';
 import type { IOpusEncoder } from './opusEncoder';
 import { VoiceRecorder, type IVoiceEnvironment } from './voiceRecorder';
@@ -8,6 +9,7 @@ const RATE = 48000;
 class FakeTrack {
   readyState: 'live' | 'ended' = 'live';
   private endedListeners: (() => void)[] = [];
+  applyConstraints = vi.fn(async () => undefined);
   stop = vi.fn(() => {
     // Как в браузере: stop() не порождает события ended.
     this.readyState = 'ended';
@@ -32,7 +34,14 @@ function fakeStream(track = new FakeTrack()) {
 }
 
 function setup(
-  options: { getUserMedia?: () => Promise<MediaStream>; secure?: boolean; supported?: boolean } = {}
+  options: {
+    getUserMedia?: () => Promise<MediaStream>;
+    secure?: boolean;
+    supported?: boolean;
+    /** Окружение со своим шумодавом; `denoised` — поднялся ли он. */
+    denoises?: boolean;
+    denoised?: boolean;
+  } = {}
 ) {
   const { track, stream } = fakeStream();
   let emit: (samples: Float32Array) => void = () => {};
@@ -49,7 +58,11 @@ function setup(
     close: vi.fn(),
   } satisfies IOpusEncoder;
   const getUserMedia = vi.fn(options.getUserMedia ?? (async () => stream));
+  const disposeCapture = vi.fn();
+  const preload = vi.fn();
   const env: IVoiceEnvironment = {
+    denoises: options.denoises,
+    preload,
     isSecureContext: () => options.secure ?? true,
     isSupported: () => options.supported ?? true,
     getUserMedia,
@@ -59,6 +72,8 @@ function setup(
       onSamples: (listener) => {
         emit = listener;
       },
+      denoised: options.denoised,
+      dispose: disposeCapture,
     }),
     createEncoder: () => encoder,
   };
@@ -69,7 +84,17 @@ function setup(
       emit(new Float32Array((RATE / 1000) * Math.min(100, left)).fill(amplitude));
     }
   };
-  return { recorder, track, stream, context, encoder, getUserMedia, speak };
+  return {
+    recorder,
+    track,
+    stream,
+    context,
+    encoder,
+    getUserMedia,
+    speak,
+    disposeCapture,
+    preload,
+  };
 }
 
 const released = (s: ReturnType<typeof setup>) => {
@@ -269,5 +294,65 @@ describe('запись голосового (#843)', () => {
     expect(await s.recorder.finish()).toBeNull();
     expect(s.recorder.getState().error).toBe('unknown');
     released(s);
+  });
+
+  describe('громкость и шумоподавление', () => {
+    it('поправка громкости считается по записи и едет в метаданных', async () => {
+      const s = setup();
+      await s.recorder.start();
+      // Среднеквадратичный 0,3 ≈ −10,5 дБFS: до −18 — ослабить на 7,5 дБ.
+      s.speak(2000, 0.3);
+      const recording = await s.recorder.finish();
+
+      expect(recording?.meta.gainDb).toBe(-7.5);
+    });
+
+    it('своё шумоподавление: браузерное выключено, узел освобождается', async () => {
+      const s = setup({ denoises: true, denoised: true });
+      await s.recorder.start();
+
+      expect(s.getUserMedia).toHaveBeenCalledWith({
+        audio: expect.objectContaining({ noiseSuppression: false }),
+      });
+      expect(s.track.applyConstraints).not.toHaveBeenCalled();
+
+      s.recorder.cancel();
+      expect(s.disposeCapture).toHaveBeenCalled();
+    });
+
+    it('шумодав не поднялся — возвращается браузерное шумоподавление', async () => {
+      const s = setup({ denoises: true, denoised: false });
+      await s.recorder.start();
+
+      expect(s.track.applyConstraints).toHaveBeenCalledWith({ noiseSuppression: true });
+      s.recorder.cancel();
+    });
+
+    it('без своего шумодава — браузерное с самого начала', async () => {
+      const s = setup();
+      await s.recorder.start();
+
+      expect(s.getUserMedia).toHaveBeenCalledWith({
+        audio: expect.objectContaining({ noiseSuppression: true }),
+      });
+      expect(s.track.applyConstraints).not.toHaveBeenCalled();
+      s.recorder.cancel();
+    });
+
+    it('запись ставит играющее голосовое на паузу: микрофон не пишет динамик', async () => {
+      const media = { paused: false, pause: vi.fn() } as unknown as HTMLMediaElement;
+      claimPlayback(media);
+      const s = setup();
+      await s.recorder.start();
+
+      expect(media.pause).toHaveBeenCalled();
+      s.recorder.cancel();
+    });
+
+    it('preload прогревает окружение', () => {
+      const s = setup();
+      s.recorder.preload();
+      expect(s.preload).toHaveBeenCalled();
+    });
   });
 });

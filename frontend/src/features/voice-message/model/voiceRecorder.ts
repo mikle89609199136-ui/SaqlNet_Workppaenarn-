@@ -1,5 +1,7 @@
+import { pauseActivePlayback } from '@/shared/lib';
 import {
   buildWaveform,
+  loudnessGainDb,
   MAX_VOICE_DURATION_MS,
   MIN_VOICE_DURATION_MS,
   type IVoiceMeta,
@@ -59,12 +61,26 @@ export interface IVoiceEnvironment {
   isSupported(): boolean;
   getUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream>;
   createAudioContext(): AudioContext;
-  /** Узел захвата: присылает отсчёты пачками. */
+  /**
+   * Цепочка захвата: `node` — вход (микрофон подключается к нему),
+   * отсчёты приходят пачками. `denoised` — в цепочке своё шумоподавление
+   * (RNNoise); `dispose` освобождает его память.
+   */
   createCapture(context: AudioContext): Promise<{
     node: AudioNode;
     onSamples(listener: (samples: Float32Array) => void): void;
+    denoised?: boolean;
+    dispose?(): void;
   }>;
   createEncoder(): IOpusEncoder;
+  /**
+   * Окружение подавляет шум само (RNNoise): браузерное шумоподавление при
+   * записи выключается, чтобы голос не обрабатывался дважды и не звучал
+   * «из ваты».
+   */
+  denoises?: boolean;
+  /** Прогреть тяжёлое заранее: кодировщик, шумодав. */
+  preload?(): void;
 }
 
 const LIVE_LEVELS = 40;
@@ -93,11 +109,15 @@ function mediaError(error: unknown): TVoiceRecorderError {
   return 'unknown';
 }
 
-/** Громкость пачки: корень среднего квадрата, растянутый под речь. */
-function levelOf(samples: Float32Array): number {
+/** Среднеквадратичный уровень пачки, 0…1. */
+function rmsOf(samples: Float32Array): number {
   let sum = 0;
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  const rms = Math.sqrt(sum / Math.max(1, samples.length));
+  return Math.sqrt(sum / Math.max(1, samples.length));
+}
+
+/** Высота столбика волны: уровень, растянутый под речь. */
+function levelOf(rms: number): number {
   return Math.min(1, Math.sqrt(rms) * 1.6);
 }
 
@@ -115,6 +135,9 @@ export class VoiceRecorder {
   private sampleRate = 48000;
   private samples = 0;
   private allLevels: number[] = [];
+  /** Сырые уровни — для выравнивания громкости. */
+  private allRms: number[] = [];
+  private disposeCapture: (() => void) | null = null;
   private capturing = false;
   /**
    * Закрепить, как только запись начнётся: щелчок пришёлся на время, пока
@@ -133,6 +156,11 @@ export class VoiceRecorder {
 
   constructor(env: IVoiceEnvironment) {
     this.env = env;
+  }
+
+  /** Прогреть кодировщик и шумодав, пока человек тянется к кнопке. */
+  preload(): void {
+    this.env.preload?.();
   }
 
   getState(): IVoiceRecorderState {
@@ -168,13 +196,16 @@ export class VoiceRecorder {
     }
 
     this.set({ ...IDLE, status: 'requesting' });
+    // Играющее голосовое — на паузу: иначе микрофон запишет динамик.
+    pauseActivePlayback();
     let stream: MediaStream;
     try {
       stream = await this.env.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: true,
+          // Своё шумоподавление (RNNoise) — вместо браузерного, не вместе.
+          noiseSuppression: !this.env.denoises,
           autoGainControl: true,
         },
       });
@@ -218,6 +249,13 @@ export class VoiceRecorder {
         return;
       }
 
+      this.disposeCapture = capture.dispose ?? null;
+      // Своё шумоподавление не поднялось — возвращаем браузерное.
+      if (this.env.denoises && !capture.denoised) {
+        stream.getAudioTracks().forEach((track) => {
+          void track.applyConstraints?.({ noiseSuppression: true }).catch(() => undefined);
+        });
+      }
       capture.onSamples((chunk) => this.onSamples(session, chunk));
       this.source = context.createMediaStreamSource(stream);
       this.source.connect(capture.node);
@@ -268,6 +306,7 @@ export class VoiceRecorder {
     const encoder = this.encoder;
     const durationMs = this.durationMs();
     const levels = this.allLevels;
+    const gainDb = loudnessGainDb(this.allRms);
     let pages: Uint8Array[];
     try {
       // Сначала кодировщик дописывает накопленное до его готовности.
@@ -290,7 +329,7 @@ export class VoiceRecorder {
     this.set(IDLE);
     return {
       blob: new Blob(pages as BlobPart[], { type: MIME_TYPE }),
-      meta: { durationMs, waveform: buildWaveform(levels) },
+      meta: { durationMs, waveform: buildWaveform(levels), gainDb },
     };
   }
 
@@ -309,7 +348,9 @@ export class VoiceRecorder {
     if (this.encoderIsReady) this.encoder?.encode(chunk);
     else this.pending.push(chunk);
     this.samples += chunk.length;
-    const level = levelOf(chunk);
+    const rms = rmsOf(chunk);
+    this.allRms.push(rms);
+    const level = levelOf(rms);
     this.allLevels.push(level);
 
     const elapsedMs = this.durationMs();
@@ -351,6 +392,8 @@ export class VoiceRecorder {
       // Узел уже отключён.
     }
     this.capture = null;
+    this.disposeCapture?.();
+    this.disposeCapture = null;
     void this.context?.close().catch(() => undefined);
     this.context = null;
     this.encoder?.close();
@@ -360,5 +403,6 @@ export class VoiceRecorder {
     this.pending = [];
     this.samples = 0;
     this.allLevels = [];
+    this.allRms = [];
   }
 }
