@@ -55,18 +55,20 @@ const sendBodyLimit = 2 << 20
 // sendMessageItem — одно сообщение из отправки: то же тело, что раньше
 // принимала одиночная отправка.
 type sendMessageItem struct {
-	Entities        json.RawMessage `json:"entities"`
-	Content         *string         `json:"content"`
-	Type            string          `json:"type"`
-	ReplyTo         *string         `json:"replyTo"`
-	MediaURL        string          `json:"mediaUrl"`
-	MediaType       string          `json:"mediaType"`
-	FileName        string          `json:"fileName"`
-	SizeBytes       int64           `json:"sizeBytes"`
-	MediaEncrypted  bool            `json:"mediaEncrypted"`
-	MediaEncryption map[string]any  `json:"mediaEncryption"`
-	IsEncrypted     bool            `json:"isEncrypted"`
-	ForwardedFrom   *string         `json:"forwardedFrom"`
+	Entities       json.RawMessage `json:"entities"`
+	Content        *string         `json:"content"`
+	Type           string          `json:"type"`
+	ReplyTo        *string         `json:"replyTo"`
+	MediaURL       string          `json:"mediaUrl"`
+	MediaType      string          `json:"mediaType"`
+	FileName       string          `json:"fileName"`
+	SizeBytes      int64           `json:"sizeBytes"`
+	MediaEncrypted bool            `json:"mediaEncrypted"`
+	// MediaEncryption принимается для совместимости и не используется:
+	// конверт берётся из записи загрузки (#871).
+	MediaEncryption map[string]any `json:"mediaEncryption"`
+	IsEncrypted     bool           `json:"isEncrypted"`
+	ForwardedFrom   *string        `json:"forwardedFrom"`
 }
 
 // SendMessage — отправка сообщений в чат, всегда пачкой (#808).
@@ -203,9 +205,9 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 
 	var metadata map[string]any
 	if item.MediaURL != "" {
-		fileName, sizeBytes, err := h.service.ValidateMediaMetadata(r.Context(), item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
+		attachment, err := h.service.ValidateMediaMetadata(r.Context(), userID, item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
 		if errors.Is(err, ErrInvalidInput) {
-			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "fileName or sizeBytes does not match the uploaded file")
+			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must be the sender's own upload matching fileName and sizeBytes")
 			return OutgoingMessage{}, false
 		}
 
@@ -214,13 +216,15 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 			return OutgoingMessage{}, false
 		}
 
+		// Конверт шифрования — из записи загрузки, а не от клиента (#871):
+		// лишнее поле, присланное клиентом, открытым в сообщение не попадёт.
 		metadata = map[string]any{
 			"mediaUrl":        item.MediaURL,
 			"mediaType":       item.MediaType,
-			"fileName":        fileName,
-			"sizeBytes":       sizeBytes,
+			"fileName":        attachment.FileName,
+			"sizeBytes":       attachment.SizeBytes,
 			"mediaEncrypted":  item.MediaEncrypted,
-			"mediaEncryption": item.MediaEncryption,
+			"mediaEncryption": attachment.Encryption,
 			"isEncrypted":     item.IsEncrypted,
 		}
 	}

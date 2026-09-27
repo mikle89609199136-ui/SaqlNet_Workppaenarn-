@@ -33,6 +33,16 @@ interface IPreparedSend {
 
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
 
+/** Загрузка в сервисе медиа — единственный адрес вложения, который скачиваем (#871). */
+const OWN_MEDIA_URL =
+  /^\/api\/v2\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isOwnMediaUrl(url: string): boolean {
+  return OWN_MEDIA_URL.test(url);
+}
+
+const FOREIGN_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не из этого приложения';
+
 export class MessageService {
   private apiClient: ApiClient;
   private cryptoService: CryptoService;
@@ -377,6 +387,18 @@ export class MessageService {
     }
     const mediaUrl = metadata.mediaUrl;
     if (!mediaUrl) return {};
+
+    /* Скачиваем только загрузки сервиса медиа (#871). Любой другой адрес —
+       чужой сервер или другой маршрут API — не трогаем: запрос ушёл бы
+       теми же средствами, что и запросы к API. */
+    if (!isOwnMediaUrl(mediaUrl)) {
+      return {
+        mediaUrl: null,
+        mediaEncrypted: Boolean(metadata.mediaEncrypted),
+        mediaUnavailable: true,
+        mediaUnavailableReason: FOREIGN_MEDIA_UNAVAILABLE,
+      };
+    }
 
     const mediaEncrypted = metadata.mediaEncrypted ?? false;
     if (!mediaEncrypted) {
