@@ -29,7 +29,7 @@ function withHashtags(text: string, keyPrefix: string): ReactNode[] {
     parts.push(
       <span
         key={`${keyPrefix}-${index}`}
-        className="cursor-pointer font-bold text-brand hover:underline"
+        className="cursor-pointer font-bold text-brand hover:underline group-data-[mine]/bubble:text-on-brand"
         onClick={() => {
           const searchFn = (window as unknown as { handleUnifiedSearch?: (tag: string) => void })
             .handleUnifiedSearch;
@@ -55,12 +55,17 @@ function Spoiler({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [revealed, setRevealed] = useState(false);
 
-  if (revealed) return <span className="rounded bg-sheet-2/60">{children}</span>;
+  if (revealed)
+    return (
+      <span className="rounded bg-sheet-2/60 group-data-[mine]/bubble:bg-on-brand/16">
+        {children}
+      </span>
+    );
 
   return (
     <span
       aria-label={t('format.spoilerHidden', 'Скрытый текст — нажмите, чтобы показать')}
-      className="cursor-pointer select-none rounded bg-ink-3 text-transparent"
+      className="cursor-pointer select-none rounded bg-spoiler text-transparent group-data-[mine]/bubble:bg-on-brand/40"
       onClick={(event) => {
         event.stopPropagation();
         setRevealed(true);
@@ -84,7 +89,11 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
   let node: ReactNode = url ? segment.text : withHashtags(segment.text, key);
 
   if (formats.includes('monospace')) {
-    node = <code className="rounded bg-sheet-2 px-1 font-mono text-[0.92em]">{node}</code>;
+    node = (
+      <code className="rounded-[5px] bg-sheet-2 px-1.25 py-px font-mono text-[0.9em] group-data-[mine]/bubble:bg-on-brand/18">
+        {node}
+      </code>
+    );
   }
 
   const classes = cn(
@@ -98,7 +107,7 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
   if (url) {
     node = (
       <a
-        className="text-brand underline"
+        className="text-brand underline underline-offset-3 group-data-[mine]/bubble:text-on-brand"
         href={url}
         onClick={(event) => event.stopPropagation()}
         rel="noopener noreferrer nofollow"
@@ -127,7 +136,10 @@ export const MessageContentRenderer = memo(({ content, entities, trailing }: Pro
           renderSegment(segment, `${blockIndex}-${index}`)
         );
         return block.quote ? (
-          <blockquote className="my-1 border-l-2 border-brand pl-2 text-ink-2" key={blockIndex}>
+          <blockquote
+            className="my-0.5 border-l-3 border-brand pl-2 text-ink-2 group-data-[mine]/bubble:border-on-brand group-data-[mine]/bubble:text-on-brand/90"
+            key={blockIndex}
+          >
             {segments}
           </blockquote>
         ) : (

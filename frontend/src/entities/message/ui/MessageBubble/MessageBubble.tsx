@@ -1,4 +1,4 @@
-import { Button, Icon, Spinner } from '@/shared/ui';
+import { Avatar, Icon, Spinner } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto } from '../../model/types';
@@ -39,7 +39,10 @@ interface Props {
   onReact: (message: IMessageDto, emoji: string) => void;
   /** Переход к цитируемому сообщению по клику на плашку ответа (#553). */
   onJumpToMessage?: (messageId: string) => void;
-  /** Профиль автора пересланного сообщения по клику на его имя (#785). */
+  /**
+   * Профиль человека: автора пересланного сообщения (#785) и участника
+   * группы — по имени и аватарке над его сообщениями (#820).
+   */
   onOpenProfile?: (userId: string) => void;
   /** Повторная отправка сообщения из Outbox при ошибке сети (#552). */
   onRetryMessage?: (message: IMessageDto) => void;
@@ -54,12 +57,34 @@ interface Props {
    * судьбу моего сообщения, а не про чужие глаза.
    */
   showDeliveryStatus?: boolean;
+  /** Группа: у чужих сообщений — имя автора и его аватарка (#820). */
+  isGroupChat?: boolean;
   /** Первое сообщение в непрерывной цепочке одного автора. */
   isFirstInGroup?: boolean;
-  /** Последнее сообщение в группе — рисуется с «хвостиком» (срезанный угол). */
+  /** Последнее сообщение в серии: у него аватарка автора в группе. */
   isLastInGroup?: boolean;
 }
 
+/* Цвет имени автора — из его идентификатора: соседние реплики разных
+   людей различаются с первого взгляда, а у одного человека цвет всегда
+   тот же. Готовыми именами классов — иначе Tailwind их не увидит. */
+const AUTHOR_INKS = ['text-author-1', 'text-author-2', 'text-author-3', 'text-author-4'] as const;
+
+function authorInk(senderId: string) {
+  let sum = 0;
+  for (let i = 0; i < senderId.length; i++) sum = (sum + senderId.charCodeAt(i)) % 997;
+  return AUTHOR_INKS[sum % AUTHOR_INKS.length];
+}
+
+/**
+ * Пузырь сообщения — по дизайн-системе (Bubble) и доске «Чат» (#820).
+ *
+ * Чужое — на bubble-in, своё — на заливке акцента, белым. Серия (подряд
+ * одного автора) сглаживает угол со стороны автора у всех, кроме первого:
+ * снизу он срезан у каждого, сверху — у продолжений. В группе у чужих над
+ * первым сообщением серии — имя автора, у последнего слева — аватарка;
+ * по ним открывается профиль. Реакции и ошибка отправки — под пузырём.
+ */
 export const MessageBubble = memo(
   ({
     currentUserId,
@@ -74,6 +99,7 @@ export const MessageBubble = memo(
     onRetryMessage,
     onCancelMessage,
     showDeliveryStatus = false,
+    isGroupChat = false,
     isFirstInGroup = true,
     isLastInGroup = true,
   }: Props) => {
@@ -99,54 +125,58 @@ export const MessageBubble = memo(
 
     const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
+    const isCall = message.type === 'call';
     const targetReplyId = message.replyTo || message.replyToMessageId;
     const hasReply = Boolean(targetReplyId || repliedMessage);
-    const hasInlineMeta =
-      message.type !== 'call' && (Boolean(message.content) || Boolean(message.undecryptable));
+    const hasInlineMeta = !isCall && (Boolean(message.content) || Boolean(message.undecryptable));
 
-    const renderMeta = (inline = true) => (
+    const groupIn = isGroupChat && !mine;
+    const authorName = message.senderName || message.senderFirstName;
+    const showAuthor = groupIn && isFirstInGroup && Boolean(authorName);
+    const failed = mine && message.status === 'failed';
+
+    /* Мета — булавка, «изменено», время, статус — строкой в конце текста.
+       Своё — чистым белым: полупрозрачный на части акцентов не держит
+       контраст. */
+    const meta = (
       <span
         className={cn(
-          'message-meta font-mono text-micro text-ink-3 tabular-nums select-none whitespace-nowrap',
-          inline
-            ? 'float-right inline-flex items-center gap-1 ml-3 mt-2 leading-none'
-            : 'mt-1 flex items-center justify-end gap-1'
+          'message-meta ml-2.5 inline-flex items-center gap-0.75 align-[-2px] text-micro whitespace-nowrap tabular-nums select-none',
+          mine ? 'text-out-meta' : 'text-ink-3'
         )}
       >
         {message.isPinned && (
-          <span
-            aria-label={t('pinned', 'Закреплено')}
-            className="inline-flex items-center text-ink-3"
-            title={t('pinned', 'Закреплено')}
-          >
-            <Icon className="rotate-45 fill-current" name="pin" size="xs" />
+          <span aria-label={t('pinned', 'Закреплено')} className="flex" role="img">
+            <Icon className="size-3 stroke-2" name="pin" />
           </span>
         )}
         {message.isEdited && <span>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
         {mine && (message.status === 'pending' || message.status === 'uploading') && (
-          <span
-            className="inline-flex items-center gap-1 text-ink-3"
-            title={
+          <Spinner
+            className="size-3 border-[1.5px]"
+            label={
               message.status === 'uploading'
                 ? t('uploading', 'Загрузка...')
                 : t('sending', 'Отправка...')
             }
-          >
-            <Spinner
-              size="sm"
-              label={
-                message.status === 'uploading'
-                  ? t('uploading', 'Загрузка...')
-                  : t('sending', 'Отправка...')
-              }
-            />
-          </span>
+            tone="current"
+          />
         )}
-
-        {mine && showDeliveryStatus && message.status === 'sent' && (
-          <span className="inline-flex items-center text-ink-3" title={t('sent', 'Отправлено')}>
-            <Icon name="check" size="xs" />
+        {mine && showDeliveryStatus && (message.status === 'sent' || message.status === 'read') && (
+          <span
+            aria-label={
+              message.status === 'read'
+                ? t('messageStatus.read', 'Прочитано')
+                : t('messageStatus.sent', 'Отправлено')
+            }
+            className="flex"
+            role="img"
+          >
+            <Icon
+              className="size-4 stroke-2"
+              name={message.status === 'read' ? 'checkCheck' : 'check'}
+            />
           </span>
         )}
       </span>
@@ -155,177 +185,247 @@ export const MessageBubble = memo(
     return (
       <article
         id={message.id}
-        className={cn('flex justify-between gap-x-2', mine && 'justify-end')}
+        className="flex flex-col"
         data-first-in-group={isFirstInGroup ? 'true' : undefined}
         data-last-in-group={isLastInGroup ? 'true' : undefined}
         {...longPressHandlers}
       >
-        <div
-          data-state={isSelected ? 'selected' : undefined}
-          className={cn(
-            'message-bubble relative w-fit min-w-20 max-w-[min(76%,560px)] px-3 py-1.5 text-body text-ink shadow-[var(--elev-1)] transition-[box-shadow,filter] duration-fast ease-out rounded-bubble',
-            mine
-              ? cn(
-                  'is-mine self-end bg-bubble-out text-bubble-out-ink mr-2.5 rounded-br-control',
-                  !isFirstInGroup && 'rounded-tr-control'
-                )
-              : cn('bg-bubble-in rounded-bl-control', !isFirstInGroup && 'rounded-tl-control'),
-            hasMessageMedia(message) && 'has-media w-fit max-w-[min(384px,calc(100%-20px))]',
-            isAudio && 'w-full',
-            isActionTarget &&
-              'is-action-target z-20 max-md:z-[1201] shadow-[0_0_0_2px_var(--color-brand),var(--elev-3)]',
-            isSelected &&
-              'is-selected data-[state=selected]:bg-brand-soft ring-2 ring-brand ring-offset-2 ring-offset-ground shadow-sm',
-            isHighlighted &&
-              'ring-2 ring-brand ring-offset-2 ring-offset-ground bg-brand-soft/25 transition-all duration-500'
-          )}
-        >
-          {!mine && isFirstInGroup && message.senderStatusEmoji && (
-            <div className="mb-[3px] text-brand text-xs font-semibold">
-              <span className="ml-1.5 inline-block">{message.senderStatusEmoji}</span>
-            </div>
-          )}
+        <div className="flex items-center gap-2.5">
+          {selectionMode && <MessageCheckbox isChecked={isSelected} />}
 
-          {/* Имя автора подставляет сервер, проверив доступ к исходному
-              сообщению. Пустым оно бывает только у старых пересылок.
-              Профиль открывается, только если автор разрешил ссылку на
-              себя: иначе сервер не присылает forwardedSenderId (#785). */}
-          {message.isForwarded && (
-            <p className="mb-1 text-caption text-ink-3">
-              {message.forwardedSenderName ? (
-                <>
-                  {t('forwardedFrom', 'Переслано от')}{' '}
-                  {message.forwardedSenderId && onOpenProfile ? (
-                    <button
-                      className="font-semibold text-brand hover:underline focus-visible:underline"
-                      onClick={(event) => {
-                        // Клик по пузырю выделяет сообщение — здесь не нужно.
-                        event.stopPropagation();
-                        onOpenProfile(message.forwardedSenderId!);
-                      }}
-                      type="button"
-                    >
-                      {message.forwardedSenderName}
-                    </button>
-                  ) : (
-                    <b className="font-semibold text-ink-2">{message.forwardedSenderName}</b>
-                  )}
-                </>
-              ) : (
-                t('forwarded', 'Переслано')
-              )}
-            </p>
-          )}
-
-          {hasReply && (
-            <MessageReplyPreview
-              message={message}
-              onJumpToMessage={onJumpToMessage}
-              repliedMessage={repliedMessage}
-            />
-          )}
-
-          <MessageMedia message={message} onOpenImage={onOpenImage} />
-
-          {message.senderVerified === false && (
-            <p className="mb-1 text-xs text-warn">
-              {t('senderNotConfirmed', '⚠️ Не удалось подтвердить отправителя')}
-            </p>
-          )}
-
-          {message.type === 'call' ? (
-            <CallMessageContent message={message} />
-          ) : message.undecryptable ? (
-            /* Подпись к нечитаемому сообщению собирается здесь: причину
-               назвал слой шифрования, а язык знает интерфейс. */
-            <p className="message-content text-body whitespace-pre-wrap leading-snug [overflow-wrap:anywhere] opacity-70 flow-root">
-              🔒 {t(`undecryptable.${message.undecryptable}`, message.content)}
-              {renderMeta(true)}
-            </p>
-          ) : (
-            <MessageContentRenderer
-              content={translations[message.id] || message.content}
-              // У перевода свой текст и свои смещения: форматирование оригинала
-              // к нему не приложить.
-              entities={translations[message.id] ? undefined : message.entities}
-              trailing={hasInlineMeta ? renderMeta(true) : undefined}
-            />
-          )}
-
-          {message.reactions?.length > 0 && (
-            <div className="message-reactions mt-[7px] flex flex-wrap gap-[5px]">
-              {message.reactions.map((reaction) => (
-                /* Нажатие по реакции ставит свою или снимает — как в
-                   привычных мессенджерах. Прежде это был `span`, и
-                   единственным способом снять реакцию оставалось меню по
-                   правой кнопке. */
+          {/* Место под аватарку есть у каждого чужого сообщения группы, а
+              сама она — у последнего в серии: столбец пузырей не ломается. */}
+          {groupIn && (
+            <span className={cn('flex shrink-0 self-end', !isLastInGroup && 'invisible')}>
+              {onOpenProfile && isLastInGroup ? (
                 <button
-                  aria-label={`${reaction.emoji} ${reaction.count}`}
-                  aria-pressed={reaction.myReaction}
-                  className={cn(
-                    'min-h-[22px] px-[7px] py-0.5 rounded-pill bg-sheet-2 text-[12px] cursor-pointer border border-transparent transition-[background-color,border-color] duration-fast ease-out hover:border-line focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
-                    reaction.myReaction && 'is-mine bg-brand-soft'
-                  )}
-                  key={reaction.emoji}
+                  aria-label={`${t('profileOf', 'Профиль')}: ${authorName}`}
+                  className="rounded-pill focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
                   onClick={(event) => {
-                    // Иначе нажатие уходит выше и открывает меню действий.
                     event.stopPropagation();
-                    onReact(message, reaction.emoji);
+                    onOpenProfile(message.senderId);
                   }}
+                  tabIndex={-1}
                   type="button"
                 >
-                  {reaction.emoji} {reaction.count}
+                  <Avatar id={message.senderId} name={authorName} size="sm" />
                 </button>
-              ))}
-            </div>
+              ) : (
+                <Avatar id={message.senderId} name={authorName} size="sm" />
+              )}
+            </span>
           )}
 
-          {!hasInlineMeta && renderMeta(false)}
-
-          {mine && message.status === 'failed' && (
-            <div className="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-danger/20 text-danger text-caption">
-              <span className="flex items-center gap-1 font-medium">
-                <Icon name="warning" size="sm" />
-                {t('sendFailed', 'Не удалось отправить')}
-              </span>
-              <div className="flex items-center gap-1">
-                {onRetryMessage && (
-                  <Button
-                    aria-label={t('retrySend', 'Повторить отправку')}
-                    className="text-danger border-danger/30 hover:bg-danger/10 text-micro px-2 py-0.5 h-auto min-h-0"
+          <div
+            data-mine={mine ? 'true' : undefined}
+            data-state={isSelected ? 'selected' : undefined}
+            className={cn(
+              'group/bubble message-bubble relative w-fit min-w-0 max-w-[min(280px,100%)] md:max-w-[380px] lg:max-w-[440px] xl:max-w-[520px]',
+              'px-3 py-2 text-body leading-[1.45] transition-shadow duration-[160ms]',
+              'rounded-bubble',
+              mine
+                ? cn(
+                    'is-mine ml-auto bg-brand-fill text-on-brand rounded-br-control',
+                    !isFirstInGroup && 'rounded-tr-control'
+                  )
+                : cn(
+                    'bg-bubble-in text-ink rounded-bl-control',
+                    !isFirstInGroup && 'rounded-tl-control'
+                  ),
+              isCall && 'py-2.5 pr-3.5 pl-2.5',
+              message.undecryptable && 'px-3.5 py-2.5',
+              hasMessageMedia(message) && 'has-media',
+              isAudio && 'w-full',
+              /* Выбранное и то, над которым открыто меню, — обводкой через
+                 зазор цвета ленты, как в макете. */
+              (isSelected || isActionTarget) &&
+                'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
+              isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
+              isSelected && 'is-selected',
+              isHighlighted &&
+                'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)] duration-500'
+            )}
+          >
+            {showAuthor && (
+              <div className="mb-0.5 flex items-center gap-1.5">
+                {onOpenProfile ? (
+                  <button
+                    className={cn(
+                      'block text-left text-caption font-semibold hover:underline focus-visible:underline',
+                      authorInk(message.senderId)
+                    )}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onRetryMessage(message);
+                      onOpenProfile(message.senderId);
                     }}
-                    size="xs"
                     type="button"
-                    variant="ghost"
                   >
-                    <Icon name="rotateCw" size="sm" />
-                    {t('retry', 'Повторить')}
-                  </Button>
+                    {authorName}
+                  </button>
+                ) : (
+                  <span className={cn('text-caption font-semibold', authorInk(message.senderId))}>
+                    {authorName}
+                  </span>
                 )}
-                {onCancelMessage && (
-                  <Button
-                    aria-label={t('delete', 'Удалить')}
-                    className="text-danger border-transparent hover:bg-danger/10 text-micro p-1 h-auto min-h-0"
-                    iconOnly
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onCancelMessage(message);
-                    }}
-                    size="xs"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Icon name="cross" size="sm" />
-                  </Button>
+                {message.senderStatusEmoji && (
+                  <span className="text-caption">{message.senderStatusEmoji}</span>
                 )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Имя автора подставляет сервер, проверив доступ к исходному
+                сообщению. Пустым оно бывает только у старых пересылок.
+                Профиль открывается, только если автор разрешил ссылку на
+                себя: иначе сервер не присылает forwardedSenderId (#785). */}
+            {message.isForwarded && (
+              <p className={cn('mb-0.5 text-caption', mine ? 'text-out-meta' : 'text-brand')}>
+                {message.forwardedSenderName ? (
+                  <>
+                    {t('forwardedFrom', 'Переслано от')}{' '}
+                    {message.forwardedSenderId && onOpenProfile ? (
+                      <button
+                        className="font-semibold hover:underline focus-visible:underline"
+                        onClick={(event) => {
+                          // Клик по пузырю выделяет сообщение — здесь не нужно.
+                          event.stopPropagation();
+                          onOpenProfile(message.forwardedSenderId!);
+                        }}
+                        type="button"
+                      >
+                        {message.forwardedSenderName}
+                      </button>
+                    ) : (
+                      <b className="font-semibold">{message.forwardedSenderName}</b>
+                    )}
+                  </>
+                ) : (
+                  t('forwarded', 'Переслано')
+                )}
+              </p>
+            )}
+
+            {hasReply && (
+              <MessageReplyPreview
+                message={message}
+                mine={mine}
+                onJumpToMessage={onJumpToMessage}
+                repliedMessage={repliedMessage}
+              />
+            )}
+
+            <MessageMedia message={message} onOpenImage={onOpenImage} />
+
+            {message.senderVerified === false && (
+              <p className={cn('mb-1 text-meta', mine ? 'text-out-meta' : 'text-warn')}>
+                {t('senderNotConfirmed', '⚠️ Не удалось подтвердить отправителя')}
+              </p>
+            )}
+
+            {isCall ? (
+              <CallMessageContent message={message} trailing={meta} />
+            ) : message.undecryptable ? (
+              /* Подпись к нечитаемому сообщению собирается здесь: причину
+                 назвал слой шифрования, а язык знает интерфейс. */
+              <p
+                className={cn(
+                  'flex items-center gap-2 text-ui italic',
+                  mine ? 'text-out-meta' : 'text-ink-3'
+                )}
+              >
+                <Icon className="size-4.5 shrink-0" name="lock" />
+                <span className="[overflow-wrap:anywhere]">
+                  {t(`undecryptable.${message.undecryptable}`, message.content)}
+                  <span className="not-italic">{meta}</span>
+                </span>
+              </p>
+            ) : (
+              <MessageContentRenderer
+                content={translations[message.id] || message.content}
+                // У перевода свой текст и свои смещения: форматирование оригинала
+                // к нему не приложить.
+                entities={translations[message.id] ? undefined : message.entities}
+                trailing={hasInlineMeta ? meta : undefined}
+              />
+            )}
+
+            {!hasInlineMeta && !isCall && <div className="mt-1 flex justify-end">{meta}</div>}
+          </div>
         </div>
-        {selectionMode && <MessageCheckbox isChecked={isSelected} className="grow-0 self-end" />}
+
+        {failed && (
+          <div className="mt-1 flex items-center justify-end gap-3 text-meta">
+            <span className="flex items-center gap-1 text-danger">
+              <Icon className="size-3.5" name="warning" />
+              {t('notSent', 'Не отправлено')}
+            </span>
+            {onRetryMessage && (
+              <button
+                aria-label={t('retrySend', 'Повторить отправку')}
+                className="font-semibold text-brand hover:underline focus-visible:underline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRetryMessage(message);
+                }}
+                type="button"
+              >
+                {t('retry', 'Повторить')}
+              </button>
+            )}
+            {onCancelMessage && (
+              <button
+                className="text-ink-3 hover:underline focus-visible:underline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCancelMessage(message);
+                }}
+                type="button"
+              >
+                {t('delete', 'Удалить')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {message.reactions?.length > 0 && (
+          <div
+            className={cn(
+              'message-reactions mt-0.5 flex flex-wrap gap-1.5',
+              mine && 'justify-end',
+              /* Под пузырём, а не под аватаркой и флажком выбора. */
+              groupIn && (selectionMode ? 'pl-[74px]' : 'pl-10.5'),
+              !groupIn && !mine && selectionMode && 'pl-8'
+            )}
+          >
+            {message.reactions.map((reaction) => (
+              /* Нажатие по реакции ставит свою или снимает — как в
+                 привычных мессенджерах. */
+              <button
+                aria-label={`${reaction.emoji} ${reaction.count}`}
+                aria-pressed={reaction.myReaction}
+                className={cn(
+                  'flex h-7 cursor-pointer items-center gap-1.25 rounded-pill pr-2.25 pl-1.5 text-caption font-semibold',
+                  'transition-colors duration-fast hover:layer-hover',
+                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+                  reaction.myReaction
+                    ? 'is-mine bg-brand-soft text-brand shadow-[inset_0_0_0_1px_var(--color-brand)]'
+                    : 'bg-sheet-2 text-ink-2'
+                )}
+                key={reaction.emoji}
+                onClick={(event) => {
+                  // Иначе нажатие уходит выше и открывает меню действий.
+                  event.stopPropagation();
+                  onReact(message, reaction.emoji);
+                }}
+                type="button"
+              >
+                <span aria-hidden="true" className="text-section leading-none">
+                  {reaction.emoji}
+                </span>
+                {reaction.count}
+              </button>
+            ))}
+          </div>
+        )}
       </article>
     );
   }

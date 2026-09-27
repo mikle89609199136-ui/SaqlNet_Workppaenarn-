@@ -101,6 +101,12 @@
   --color-muted-badge: var(--muted-badge-light);
   --color-spoiler: var(--spoiler-light);
 
+  /* --- Имена авторов в группе -------------------------------- */
+  --color-author-1: var(--author-1-light);
+  --color-author-2: var(--author-2-light);
+  --color-author-3: var(--author-3-light);
+  --color-author-4: var(--author-4-light);
+
   /* --- Аватарки --------------------------------------------- */
   --color-av-1: var(--av-1);
   --color-av-2: var(--av-2);

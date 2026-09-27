@@ -533,7 +533,7 @@
 
   }
 
-  .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
+  .thread-messages { @apply min-h-0 h-full overflow-y-auto; }
 
 
   .message-media { @apply block mb-[7px] rounded-[10px] object-contain; width: min(100%,360px); max-height: 360px; background: rgba(0,0,0,0.18); }

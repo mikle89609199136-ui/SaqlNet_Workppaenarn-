@@ -63,12 +63,21 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     const sizeBytes = mediaEncryption?.sizeBytes ?? meta?.sizeBytes;
 
     return (
-      <a className="message-media-file flex gap-x-1" download={fileName} href={mediaUrl}>
-        <Icon name="file" size="xl" />
-        <div className="flex flex-col">
-          <span className="text-sm">{fileName}</span>
+      <a
+        className="message-media-file mb-1 flex items-center gap-2.5 no-underline"
+        download={fileName}
+        href={mediaUrl}
+      >
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-soft text-brand group-data-[mine]/bubble:bg-on-brand/16 group-data-[mine]/bubble:text-on-brand"
+        >
+          <Icon className="size-5" name="file" />
+        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-ui font-semibold">{fileName}</span>
           {typeof sizeBytes === 'number' && (
-            <span className="text-xs text-[rgba(255,255,255,0.58)]">
+            <span className="text-meta text-ink-3 group-data-[mine]/bubble:text-out-meta">
               {formatFileSize(sizeBytes)}
             </span>
           )}

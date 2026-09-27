@@ -9,6 +9,10 @@ interface Props {
   paddingRight?: number;
 }
 
+/* Дата — таблетка по центру, как в макете (#820): приподнятая
+   поверхность, 12px. Липкая копия сверху — та же таблетка. */
+const pill = 'rounded-pill bg-sheet-2 px-3 py-1 text-meta font-medium text-ink-2';
+
 export const DateDivider = memo(
   ({ label, variant = 'inline', visible = true, pushOffset = 0, paddingRight = 0 }: Props) => {
     if (!label) return null;
@@ -25,18 +29,14 @@ export const DateDivider = memo(
             paddingRight: paddingRight ? `${paddingRight}px` : undefined,
           }}
         >
-          <span className="px-3.5 py-1 rounded-pill bg-sheet-2/90 backdrop-blur-md border border-line-soft text-caption font-medium text-ink-3 shadow-xs">
-            {label}
-          </span>
+          <span className={pill}>{label}</span>
         </div>
       );
     }
 
     return (
-      <div className="flex justify-center my-2 select-none pointer-events-none">
-        <span className="px-3.5 py-1 rounded-pill bg-sheet-2/90 backdrop-blur-md border border-line-soft text-caption font-medium text-ink-3 shadow-xs">
-          {label}
-        </span>
+      <div className="flex justify-center py-2 select-none pointer-events-none">
+        <span className={pill}>{label}</span>
       </div>
     );
   }

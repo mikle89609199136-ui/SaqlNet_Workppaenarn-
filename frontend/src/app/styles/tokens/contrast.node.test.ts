@@ -257,6 +257,21 @@ describe('токены: контраст во всех палитрах, тем�
     expect(result).toEqual([]);
   });
 
+  it('имя автора в группе читается на чужом пузыре', () => {
+    const result = failures((color, scope) =>
+      [1, 2, 3, 4].flatMap((n) =>
+        need(
+          scope,
+          `author-${n} на bubble-in`,
+          ratio(color(`author-${n}`), color('bubble-in')),
+          4.5
+        )
+      )
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it('свой пузырь читается', () => {
     const result = failures((color, scope) =>
       need(

@@ -66,6 +66,7 @@ export type TIconTypes =
   | 'strikethrough'
   | 'code'
   | 'link'
+  | 'list'
   | 'quote'
   | 'scissors'
   | 'paste'
