@@ -60,7 +60,7 @@ describe('реакции на чужое сообщение', () => {
     // с мышью: долгое нажатие обработчик принимает только от touch и pen.
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: 'Нравится' });
     await userEvent.click(thumbsUp);
 
     await waitFor(() => expect(requests).toHaveLength(1));
@@ -105,7 +105,7 @@ describe('реакции на чужое сообщение', () => {
     const bubbleText = await screen.findByText('сообщение с моей реакцией');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: 'Нравится' });
     await userEvent.click(thumbsUp);
 
     /* Без подписки реакция одна, поэтому прежняя снимается и ставится
@@ -155,10 +155,10 @@ describe('реакции на чужое сообщение', () => {
 
     const bubbleText = await screen.findByText('сообщение для гонки');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '👍' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Нравится' }));
 
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Сердце' }));
 
     // Ждём дольше задержки первого ответа: если бы он применялся, эмодзи
     // сменился бы обратно.
@@ -207,7 +207,7 @@ describe('реакции на чужое сообщение', () => {
 
     const bubbleText = await screen.findByText('сообщение с эхом');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Сердце' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: '❤️ 1' })).toBeInTheDocument());
     expect(await screen.findByRole('button', { name: '❤️ 2' })).toBeInTheDocument();
