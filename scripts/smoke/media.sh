@@ -78,6 +78,49 @@ assert json.load(sys.stdin)["code"] == sys.argv[1]
 	done
 }
 
+run_gif_tests() {
+	local text_url="$1"
+	local gif_url payload
+	http_request -X POST "$BASE_URL/api/v2/media" \
+		-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+		-d '{"file":"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7","fileName":"smoke.gif"}'
+	gif_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url", ""))' 2>/dev/null || true)
+	if [[ "$HTTP_CODE" == "201" && -n "$gif_url" ]]; then
+		echo "✓ [$HTTP_CODE] upload one-pixel GIF"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] upload one-pixel GIF — expected 201 with url"
+		echo "  ${HTTP_BODY:0:160}"
+		FAIL=$((FAIL + 1))
+		return
+	fi
+	printf -v payload '{"url":"%s","name":"smoke GIF"}' "$gif_url"
+	auth_json "POST /api/v2/gifs with own GIF upload" 201 \
+		-X POST "$BASE_URL/api/v2/gifs" -d "$payload"
+
+	local source_url expected_code
+	for expected_code in invalid_url invalid_gif_source; do
+		source_url='javascript:alert(1)'
+		if [[ "$expected_code" == "invalid_gif_source" ]]; then
+			source_url="$text_url"
+		fi
+		printf -v payload '{"url":"%s"}' "$source_url"
+		http_request -X POST "$BASE_URL/api/v2/gifs" \
+			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+		if [[ "$HTTP_CODE" == "400" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+assert json.load(sys.stdin)["code"] == sys.argv[1]
+' "$expected_code"; then
+			echo "✓ [$HTTP_CODE] POST /api/v2/gifs rejects $expected_code"
+			PASS=$((PASS + 1))
+		else
+			echo "✗ [$HTTP_CODE] POST /api/v2/gifs — expected 400 $expected_code"
+			echo "  ${HTTP_BODY:0:160}"
+			FAIL=$((FAIL + 1))
+		fi
+	done
+}
+
 run_media_tests() {
 	echo ""
 	echo "→ Media"
@@ -167,4 +210,6 @@ run_media_tests() {
 		echo "  body: ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
 	fi
+
+	run_gif_tests "$MEDIA_URL"
 }
