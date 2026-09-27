@@ -1,19 +1,21 @@
 import { render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NotoEmoji } from './NotoEmoji';
 
-/* Тесты идут без изоляции (isolate: false), и чужой файл может оставить
-   свою подмену matchMedia. Поэтому «уменьшить движение» задаём явно. */
+/* Тесты идут без изоляции (isolate: false): matchMedia общий на файлы, и
+   чужой файл мог оставить свою подмену. «Уменьшить движение» задаём своей
+   функцией и после возвращаем прежнюю как есть. Не spyOn: если прежняя —
+   сама vi.fn, spyOn вернул бы её же, и восстановление сбросило бы
+   заглушку всем соседям. */
+const originalMatchMedia = window.matchMedia;
+
 function mockReducedMotion(reduce: boolean) {
-  vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query: string) =>
-      ({
-        matches: reduce && query.includes('prefers-reduced-motion'),
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      }) as unknown as MediaQueryList
-  );
+  window.matchMedia = ((query: string) => ({
+    matches: reduce && query.includes('prefers-reduced-motion'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
 }
 
 const srcs = (container: HTMLElement) =>
@@ -22,7 +24,9 @@ const srcs = (container: HTMLElement) =>
 /* Эмодзи картинкой Noto из статики приложения (#824). */
 describe('NotoEmoji', () => {
   beforeEach(() => mockReducedMotion(false));
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+  });
 
   it('из набора — статичная SVG, «❤️» без селектора вида', () => {
     const { container } = render(<NotoEmoji emoji="❤️" size={20} />);
