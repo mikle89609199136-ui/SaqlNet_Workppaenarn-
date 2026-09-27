@@ -11,13 +11,16 @@
      :root                  светлая (semantic.css)
      [data-theme='dark']    тёмная
 
+   Нейтральные цвета здесь не упоминаются: их по теме и палитре
+   выбирает palette.css, и семантика ссылается на уже выбранное.
+   Здесь остаётся то, что от палитры не зависит, — акцент как текст,
+   состояния, подсветки.
+
    Режима «как в системе» нет. Он был описан здесь раньше — через
    prefers-color-scheme и :not([data-theme='light']), — но выбора
    «системная» в интерфейсе не появилось, а атрибут проставлен всегда,
    так что те правила не срабатывали ни разу. Мёртвый код, который
-   выглядит работающим, хуже отсутствующего: если режим понадобится,
-   вернуть эти двенадцать строк проще, чем однажды поверить, что они
-   действуют.
+   выглядит работающим, хуже отсутствующего.
 
    Объявления идут обычными правилами, а не внутри @theme. Так и
    надо: утилиты Tailwind ссылаются на var(), поэтому подмена
@@ -25,32 +28,29 @@
    ============================================================= */
 
 :root[data-theme='dark'] {
-  --color-ground: var(--n-1000);
-  --color-sheet: var(--n-950);
-  --color-sheet-2: var(--n-850);
+  --color-brand: var(--brand-hi);
+  /* На тёмном фоне десятой доли акцента не видно. */
+  --color-brand-soft: var(--brand-soft-dark);
 
-  --color-line: var(--n-500);
-  --color-line-soft: var(--n-800);
-  /* Темнее поверхности, а не светлее: на --n-850 ступень --n-800
-     подсвечивала линию, и ряды карточки читались полосками. В светлой
-     теме разделитель темнее фона всегда — теперь темы ведут себя
-     одинаково. */
-  --color-divider: var(--n-900);
-
-  --color-ink: var(--n-100);
-  --color-ink-2: var(--n-400);
-  --color-ink-3: var(--n-450);
-
-  --color-bubble-in: var(--n-bubble-in-dark);
   --color-bubble-out: var(--bubble-out-dark);
   --color-bubble-out-ink: var(--bubble-out-ink-dark);
 
   --color-ok: var(--ok-dark);
+  --color-ok-soft: var(--ok-soft-dark);
   --color-warn: var(--warn-dark);
+  --color-warn-soft: var(--warn-soft-dark);
   --color-danger: var(--danger-dark);
+  --color-danger-soft: var(--danger-soft-dark);
+  --color-info: var(--info-dark);
+  --color-info-soft: var(--info-soft-dark);
+  --color-rec: var(--rec-dark);
 
-  --color-brand: var(--brand-hi);
+  --color-hover: var(--hover-dark);
+  --color-press: var(--press-dark);
+  --color-hl: var(--hl-dark);
+  --color-hl-current: var(--hl-current-dark);
+  --color-muted-badge: var(--muted-badge-dark);
+  --color-spoiler: var(--spoiler-dark);
 
-  --color-skeleton: var(--n-900);
-  --color-skeleton-sweep: var(--n-850);
+  --color-backdrop: var(--backdrop-dark);
 }
