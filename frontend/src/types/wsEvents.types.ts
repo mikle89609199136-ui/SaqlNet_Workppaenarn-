@@ -101,6 +101,8 @@ export interface ITypingEvent {
   chatId: string;
   userId: string;
   senderId: string;
+  /** Имя печатающего — сервер добавляет его в #866; до того поля нет. */
+  firstName?: string;
 }
 
 export interface ILastMessagePayloadDto {

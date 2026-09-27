@@ -5,6 +5,7 @@ import {
   chatQuery,
   chatsQuery,
   clearDraft,
+  getChatSubtitle,
   membersQuery,
   onlineMembersQuery,
 } from '@/entities/chat';
@@ -12,7 +13,7 @@ import { messagesQuery } from '@/entities/message';
 import { type IProfileState, ProfilePanelBar, useProfileStore } from '@/entities/user';
 import { BlockUserButton } from '@/features/block-user';
 import { UserProfilePanel } from '@/features/user-profile';
-import { cn, getChatSubtitle } from '@/shared/lib';
+import { cn } from '@/shared/lib';
 import { Avatar, Button, Chip, ConfirmDialog, Icon, showToast } from '@/shared/ui';
 import type { IMemberDto, ISearchUserDto, TChatRole, TIconTypes } from '@/types';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';

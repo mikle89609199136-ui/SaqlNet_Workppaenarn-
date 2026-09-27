@@ -1,7 +1,7 @@
 import { ROUTES } from '@/shared/config';
 import { cn, formatChatListTime, useLongPress } from '@/shared/lib';
 import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
-import { useTypingStore } from '../../model/typingStore';
+import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,7 +37,7 @@ interface Props {
 export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
+  const typingLabel = useTypingLabel(chat);
   const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
 
   /* Долгое нажатие — тот же вызов меню, что правой кнопкой. Хук принимает
@@ -63,19 +63,17 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
     useCallback(() => readDraft(chat.id), [chat.id])
   );
 
-  const lastMessage = typingUserId
-    ? t('typing', 'печатает...')
-    : getLastMessageText(chat.lastMessage, t);
+  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
-  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
+  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingLabel));
 
   /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
      чате чужое без подписи: собеседник там один. */
   const last = chat.lastMessage;
   const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
   const prefix =
-    !typingUserId && last
+    !typingLabel && last
       ? isOwnLast
         ? `${t('chatList.you', 'Вы')}: `
         : chat.type === 'group' && last.senderName
@@ -169,13 +167,16 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
           <div className="flex items-center gap-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
             <span className={cn('min-w-0 flex-1 truncate text-ui text-ink-2', onCurrentRow)}>
-              {draft && !typingUserId ? (
+              {draft && !typingLabel ? (
                 <>
                   <span className={cn('text-danger', onCurrentRow)}>
                     {t('draft', 'Черновик')}:{' '}
                   </span>
                   {draft}
                 </>
+              ) : typingLabel ? (
+                // Кто печатает — цветом акцента, как живое событие (#837).
+                <span className={cn('text-brand', onCurrentRow)}>{typingLabel}</span>
               ) : (
                 <>
                   {prefix}

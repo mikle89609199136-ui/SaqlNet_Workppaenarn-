@@ -34,6 +34,7 @@ export function useServerEvents(enabled: boolean): void {
   const queryClient = useQueryClient();
   const { eventBus } = useRealtimeSocket(enabled);
   const setTyping = useTypingStore((state) => state.setTyping);
+  const clearTyping = useTypingStore((state) => state.clearTyping);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -51,6 +52,9 @@ export function useServerEvents(enabled: boolean): void {
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём
         // в кеш, вместо того чтобы запрашивать историю заново.
         if (eventType === WS_EVENTS.MESSAGE.NEW && payload?.chatId && payload?.message) {
+          // Сообщение пришло — автор больше не печатает: не ждём три
+          // секунды таймера над его же сообщением (#837).
+          if (payload.message.senderId) clearTyping(payload.chatId, payload.message.senderId);
           void services.messageService
             .processMessageForDisplay(payload.chatId, payload.message)
             // Превью в списке чатов обновит сама запись в ленту: правило
@@ -170,7 +174,7 @@ export function useServerEvents(enabled: boolean): void {
     // а эфемерное состояние интерфейса.
     const unsubscribeTyping = eventBus.on(WS_EVENTS.USER.TYPING, (event) => {
       const userId = event.userId || event.senderId;
-      if (event.chatId && userId) setTyping(event.chatId, userId);
+      if (event.chatId && userId) setTyping(event.chatId, userId, event.firstName || undefined);
     });
 
     // Состояние связи отслеживается здесь, а не там, где показывается:
@@ -188,7 +192,7 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribeMemberRemoved();
       stopConnectionWatch();
     };
-  }, [enabled, eventBus, queryClient, setTyping]);
+  }, [enabled, eventBus, queryClient, setTyping, clearTyping]);
 }
 
 /** Типы, которые адаптер сознательно пропускает. Экспорт для тестов. */
