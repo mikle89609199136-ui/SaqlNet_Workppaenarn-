@@ -1,7 +1,7 @@
 import { useCall } from '@/features/call';
 import type { IProfileModal } from '@/entities/user';
-import { chatQuery, onlineMembersQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle, useNow } from '@/shared/lib';
+import { chatQuery, getChatSubtitle, onlineMembersQuery, useTypingLabel } from '@/entities/chat';
+import { cn, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -31,7 +31,7 @@ export const ChatThreadHeader = ({
     enabled: chat?.type === 'group' && locationPage === 'chat-thread',
   });
   const { initiateCall } = useCall();
-  const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
+  const typingLabel = useTypingLabel(chat);
   // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
   const now = useNow();
 
@@ -39,7 +39,7 @@ export const ChatThreadHeader = ({
 
   // О связи говорит плашка под шапкой (ConnectionBanner, #826); подзаголовок
   // — всегда о собеседнике.
-  const subtitle = getChatSubtitle(chat, typingUserId, t, now, onlineMembers?.length);
+  const subtitle = getChatSubtitle(chat, typingLabel, t, now, onlineMembers?.length);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
   // Блокировка в любую сторону — звонков нет (#760).
   const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
@@ -136,7 +136,7 @@ export const ChatThreadHeader = ({
           <span
             className={cn(
               'truncate text-caption leading-[1.3] text-ink-2',
-              (isPeerOnline || typingUserId) && 'text-brand'
+              (isPeerOnline || typingLabel) && 'text-brand'
             )}
           >
             {subtitle}

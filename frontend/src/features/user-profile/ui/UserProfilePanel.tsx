@@ -11,7 +11,8 @@ import {
   useProfileStore,
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
-import { formatLastSeen, formatLastSeenApprox, getChatSubtitle, useNow } from '@/shared/lib';
+import { formatLastSeen, formatLastSeenApprox, useNow } from '@/shared/lib';
+import { getChatSubtitle } from '@/entities/chat';
 import { memo, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';

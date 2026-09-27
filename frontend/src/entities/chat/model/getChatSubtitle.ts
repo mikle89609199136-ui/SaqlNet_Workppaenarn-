@@ -1,7 +1,11 @@
-import { formatLastSeen, formatLastSeenApprox } from './formatLastSeen';
+import { formatLastSeen, formatLastSeenApprox } from '@/shared/lib';
 
 /**
  * Генерирует подзаголовок для чата (статус онлайн / печатает / последнее посещение).
+ *
+ * Живёт в сущности чата, а не в shared: знает про группы, участников и
+ * присутствие собеседника. Кто печатает, приходит готовой подписью —
+ * её собирает useTypingLabel (#837).
  *
  * now — текущее время: строка вида «5 минут назад» пересчитывается от него,
  * поэтому вызывающий обновляет его по таймеру (useNow).
@@ -11,12 +15,12 @@ import { formatLastSeen, formatLastSeenApprox } from './formatLastSeen';
  */
 export const getChatSubtitle = (
   chat,
-  typingUserId,
+  typingLabel,
   t,
   now = new Date(),
   onlineCount = undefined
 ) => {
-  if (typingUserId) return t('typing', 'печатает...');
+  if (typingLabel) return typingLabel;
   if (chat?.type === 'group') {
     if (!chat.memberCount) return t('groupChat', 'Группа');
     const members = t('membersCount', {

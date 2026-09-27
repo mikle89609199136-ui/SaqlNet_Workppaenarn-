@@ -42,6 +42,6 @@ describe('подзаголовок группы (#822)', () => {
   });
 
   it('печатает — важнее числа участников', () => {
-    expect(getChatSubtitle(group, 'user-2', t, new Date(), 2)).toBe('печатает...');
+    expect(getChatSubtitle(group, 'Игорь печатает…', t, new Date(), 2)).toBe('Игорь печатает…');
   });
 });
