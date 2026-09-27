@@ -208,7 +208,7 @@ export const MessageActionsPopover = ({
           весь ряд. */}
       <div
         aria-label={t('messageActions.reactions', 'Реакции')}
-        className="mb-1 flex justify-between border-b border-line px-0.5 pt-0.5 pb-1.75"
+        className="mb-1 flex justify-between border-b border-divider px-0.5 pt-0.5 pb-1.75"
         role="group"
       >
         {QUICK_REACTIONS.map(({ emoji, label }) => {

@@ -63,7 +63,7 @@ export const EmojiPicker = forwardRef<HTMLDivElement, Props>(function EmojiPicke
     <div
       aria-label={t('emoji.title', 'Эмодзи')}
       className={cn(
-        'flex flex-col gap-2 rounded-dialog border border-line bg-menu p-2.5 shadow-[var(--shadow-menu)]',
+        'flex flex-col gap-2 rounded-dialog border border-divider bg-menu p-2.5 shadow-[var(--shadow-menu)]',
         className
       )}
       id={id}

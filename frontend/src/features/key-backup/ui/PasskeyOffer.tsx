@@ -77,7 +77,7 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
 
   return (
     <div className="grid gap-4 text-left">
-      <p className="text-body text-ink-2">
+      <p className="text-center text-ui leading-[1.55] text-ink-2">
         {t(
           'keyBackup.passkey.offer',
           'Если забудете облачный пароль, историю можно будет открыть отпечатком пальца или лицом. Passkey хранится в вашем менеджере паролей и переходит на новые устройства сам.'
@@ -93,7 +93,7 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
       <Button className="w-full" loading={busy} onClick={addPasskey}>
         {t('keyBackup.passkey.add', 'Добавить passkey')}
       </Button>
-      <Button className="w-full" disabled={busy} onClick={onDone} variant="ghost">
+      <Button className="w-full text-brand" disabled={busy} onClick={onDone} variant="ghost">
         {skipLabel ?? t('keyBackup.passkey.later', 'Позже')}
       </Button>
     </div>

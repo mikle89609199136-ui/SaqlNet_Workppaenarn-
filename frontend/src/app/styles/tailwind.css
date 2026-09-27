@@ -442,3 +442,40 @@
     color: var(--code-fn);
   }
 }
+
+/* Пятна акцента на фоне входа (#827): медленно плывут и дышат. */
+@keyframes auth-glow {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(40px, -24px) scale(1.1); }
+}
+.auth-glow { animation: auth-glow 10s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-glow { animation: none; }
+}
+
+/* Линия видоискателя QR (#827): ходит вверх-вниз по рамке. */
+@keyframes qr-scanline {
+  from { top: 14%; }
+  to   { top: 84%; }
+}
+.qr-scanline { animation: qr-scanline 2.2s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  .qr-scanline { animation: none; }
+}
+
+/* Автозаполнение (#827). Браузер красит заполненное поле своим белым
+   фоном и тёмным текстом, и в тёмной теме оно светилось пятном. Фон
+   браузера перебить нельзя, но можно бесконечно отложить его появление;
+   цвет текста и курсора задаём свои. Кольцо фокуса и рамка поля не
+   затрагиваются. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--color-ink);
+  caret-color: var(--color-ink);
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+input:autofill {
+  filter: none;
+}

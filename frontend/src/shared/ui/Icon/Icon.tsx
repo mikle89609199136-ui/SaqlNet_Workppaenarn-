@@ -87,6 +87,11 @@ import {
   PinOff,
   Inbox,
   WifiOff,
+  ChevronLeft,
+  Cloud,
+  Fingerprint,
+  QrCode,
+  CircleAlert,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -181,6 +186,11 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   pinOff: PinOff,
   inbox: Inbox,
   wifiOff: WifiOff,
+  chevronLeft: ChevronLeft,
+  cloud: Cloud,
+  fingerprint: Fingerprint,
+  qrCode: QrCode,
+  circleAlert: CircleAlert,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

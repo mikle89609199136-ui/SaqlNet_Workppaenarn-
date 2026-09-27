@@ -82,4 +82,9 @@ export type TIconTypes =
   | 'archiveRestore'
   | 'pinOff'
   | 'inbox'
-  | 'wifiOff';
+  | 'wifiOff'
+  | 'chevronLeft'
+  | 'cloud'
+  | 'fingerprint'
+  | 'qrCode'
+  | 'circleAlert';
