@@ -216,33 +216,6 @@
 	}
 
 /* =========================================================
-   Components — Contacts / Settings / Create-group  (was features.css)
-   ========================================================= */
-@layer components {
-
-  .settings-page {
-    @apply w-full box-border;
-    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(90px + env(safe-area-inset-bottom, 0px));
-    @media (min-width: 768px) { @apply h-full overflow-y-auto; padding: 48px 64px; min-height: unset; }
-  }
-  .settings-header {
-    @apply flex items-center gap-[14px] mb-6;
-    & h1 {
-      @apply m-0 text-[22px] font-bold;
-      @media (min-width: 768px) { @apply text-[30px] font-extrabold; }
-    }
-    @media (min-width: 768px) { @apply mb-9; }
-  }
-  /* Group info modal */
-  .close-btn {
-    @apply w-8 h-8 rounded-full text-white text-base cursor-pointer flex items-center justify-center transition-colors duration-200 border-none;
-    background: var(--color-line);
-    &:hover { background: var(--color-line); }
-  }
-  .group-info-body { @apply p-0 overflow-y-auto flex-1; }
-}
-
-/* =========================================================
    Components — Call overlay  (was features.css)
    ========================================================= */
 @layer components {
@@ -313,7 +286,6 @@
     color: inherit;
     & .message-media { margin-bottom: 7px; }
   }
-  .message-media-sticker { background: transparent; width: min(180px,100%); }
   .message-media-file, .message-media-unavailable {
     @apply block max-w-full mb-[7px] rounded-lg text-white;
     padding: 9px 10px; background: rgba(0,0,0,0.2); overflow-wrap: anywhere;
