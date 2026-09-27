@@ -1,10 +1,10 @@
-import { Avatar, Icon, Spinner } from '@/shared/ui';
+import { Avatar, Icon, NotoEmoji } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
-import { memo, type Dispatch, type SetStateAction } from 'react';
+import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';
 import { MessageCheckbox } from './MessageCheckbox';
@@ -49,12 +49,12 @@ interface Props {
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
   /**
-   * Показывать ли статус доставки у своих сообщений.
+   * Показывать ли «прочитано» у своих сообщений.
    *
    * Только личные чаты: в группе у «прочитано» нет одного значения —
-   * непонятно, прочитал один участник или все, — и галочка начинала бы
-   * врать. Спиннер отправки и ошибка показываются в любом чате: это про
-   * судьбу моего сообщения, а не про чужие глаза.
+   * непонятно, прочитал один участник или все, — и двойная галочка
+   * начинала бы врать. «Отправляется» и «отправлено» показываются в любом
+   * чате: это про судьбу моего сообщения, а не про чужие глаза.
    */
   showDeliveryStatus?: boolean;
   /** Группа: у чужих сообщений — имя автора и его аватарка (#820). */
@@ -74,6 +74,71 @@ function authorInk(senderId: string) {
   let sum = 0;
   for (let i = 0; i < senderId.length; i++) sum = (sum + senderId.charCodeAt(i)) % 997;
   return AUTHOR_INKS[sum % AUTHOR_INKS.length];
+}
+
+/* Анимированная картинка Noto играет столько, потом — снова статичная. */
+const REACTION_PLAY_MS = 1800;
+
+interface IReactionPillProps {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * Реакция под пузырём — по макету: картинка Noto 20px и число; своя —
+ * на мягкой подложке акцента с обводкой. Когда своя реакция появляется
+ * (нажатием здесь или из меню сообщения), отметка «хлопает» и эмодзи
+ * проигрывает анимацию.
+ */
+function ReactionPill({ emoji, count, mine, onToggle }: IReactionPillProps) {
+  const [wasMine, setWasMine] = useState(mine);
+  const [playing, setPlaying] = useState(false);
+
+  // Появление своей реакции ловится при отрисовке: так анимация стартует
+  // в том же кадре, что и смена подложки.
+  if (mine !== wasMine) {
+    setWasMine(mine);
+    if (mine) setPlaying(true);
+  }
+
+  useEffect(() => {
+    if (!playing) return undefined;
+    const timer = setTimeout(() => setPlaying(false), REACTION_PLAY_MS);
+    return () => clearTimeout(timer);
+  }, [playing]);
+
+  return (
+    <button
+      aria-label={`${emoji} ${count}`}
+      aria-pressed={mine}
+      className={cn(
+        'flex h-7 cursor-pointer items-center gap-1.25 rounded-pill pr-2.25 pl-1.5 text-caption font-semibold',
+        'transition-colors duration-fast hover:layer-hover',
+        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+        mine
+          ? 'is-mine bg-brand-soft text-brand shadow-[inset_0_0_0_1px_var(--color-brand)]'
+          : 'bg-sheet-2 text-ink-2'
+      )}
+      onClick={(event) => {
+        // Иначе нажатие уходит выше и открывает меню действий.
+        event.stopPropagation();
+        onToggle();
+      }}
+      type="button"
+    >
+      <NotoEmoji
+        animated={playing}
+        className={cn(
+          playing && 'animate-[rx-pop_420ms_cubic-bezier(.2,1.6,.4,1)] motion-reduce:animate-none'
+        )}
+        emoji={emoji}
+        size={20}
+      />
+      {count}
+    </button>
+  );
 }
 
 /**
@@ -125,15 +190,40 @@ export const MessageBubble = memo(
 
     const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
+    const isVoice = (message.mediaType || actualType) === 'voice';
     const isCall = message.type === 'call';
     const targetReplyId = message.replyTo || message.replyToMessageId;
     const hasReply = Boolean(targetReplyId || repliedMessage);
-    const hasInlineMeta = !isCall && (Boolean(message.content) || Boolean(message.undecryptable));
+    const hasInlineMeta =
+      !isCall && !isVoice && (Boolean(message.content) || Boolean(message.undecryptable));
 
     const groupIn = isGroupChat && !mine;
     const authorName = message.senderName || message.senderFirstName;
     const showAuthor = groupIn && isFirstInGroup && Boolean(authorName);
     const failed = mine && message.status === 'failed';
+
+    /* Статус своего сообщения, как в макете: часы — пока уходит, одна
+       галочка — отправлено, две — прочитано. Всё, что пришло с сервера и
+       не в очереди отправки, отправлено; «прочитано» бывает, только когда
+       о нём известно (личный чат). */
+    const sending = message.status === 'pending' || message.status === 'uploading';
+    const delivery: 'sending' | 'sent' | 'read' | null = !mine
+      ? null
+      : sending
+        ? 'sending'
+        : failed
+          ? null
+          : message.status === 'read' && showDeliveryStatus
+            ? 'read'
+            : 'sent';
+    const deliveryLabel = {
+      sending:
+        message.status === 'uploading'
+          ? t('uploading', 'Загрузка...')
+          : t('sending', 'Отправка...'),
+      sent: t('messageStatus.sent', 'Отправлено'),
+      read: t('messageStatus.read', 'Прочитано'),
+    };
 
     /* Мета — булавка, «изменено», время, статус — строкой в конце текста.
        Своё — чистым белым: полупрозрачный на части акцентов не держит
@@ -152,30 +242,11 @@ export const MessageBubble = memo(
         )}
         {message.isEdited && <span>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
-        {mine && (message.status === 'pending' || message.status === 'uploading') && (
-          <Spinner
-            className="size-3 border-[1.5px]"
-            label={
-              message.status === 'uploading'
-                ? t('uploading', 'Загрузка...')
-                : t('sending', 'Отправка...')
-            }
-            tone="current"
-          />
-        )}
-        {mine && showDeliveryStatus && (message.status === 'sent' || message.status === 'read') && (
-          <span
-            aria-label={
-              message.status === 'read'
-                ? t('messageStatus.read', 'Прочитано')
-                : t('messageStatus.sent', 'Отправлено')
-            }
-            className="flex"
-            role="img"
-          >
+        {delivery && (
+          <span aria-label={deliveryLabel[delivery]} className="flex" role="img">
             <Icon
               className="size-4 stroke-2"
-              name={message.status === 'read' ? 'checkCheck' : 'check'}
+              name={delivery === 'sending' ? 'clock' : delivery === 'read' ? 'checkCheck' : 'check'}
             />
           </span>
         )}
@@ -222,6 +293,11 @@ export const MessageBubble = memo(
             className={cn(
               'group/bubble message-bubble relative w-fit min-w-0 max-w-[min(280px,100%)] md:max-w-[380px] lg:max-w-[440px] xl:max-w-[520px]',
               'px-3 py-2 text-body leading-[1.45] transition-shadow duration-[160ms]',
+              /* Цвет «пыли» закрытого спойлера: текст пузыря с прозрачностью,
+                 на своём — белый. */
+              mine
+                ? '[--dust:var(--color-on-brand)]'
+                : '[--dust:color-mix(in_srgb,var(--color-ink)_80%,transparent)]',
               'rounded-bubble',
               mine
                 ? cn(
@@ -233,6 +309,7 @@ export const MessageBubble = memo(
                     !isFirstInGroup && 'rounded-tl-control'
                   ),
               isCall && 'py-2.5 pr-3.5 pl-2.5',
+              isVoice && 'py-2 pr-3 pl-2',
               message.undecryptable && 'px-3.5 py-2.5',
               hasMessageMedia(message) && 'has-media',
               isAudio && 'w-full',
@@ -242,8 +319,8 @@ export const MessageBubble = memo(
                 'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
               isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
               isSelected && 'is-selected',
-              isHighlighted &&
-                'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)] duration-500'
+              /* Переход к сообщению — вспышкой, как в макете. */
+              isHighlighted && 'animate-[msg-flash_1200ms_ease-out] motion-reduce:animate-none'
             )}
           >
             {showAuthor && (
@@ -313,7 +390,11 @@ export const MessageBubble = memo(
               />
             )}
 
-            <MessageMedia message={message} onOpenImage={onOpenImage} />
+            <MessageMedia
+              message={message}
+              onOpenImage={onOpenImage}
+              trailing={isVoice ? meta : undefined}
+            />
 
             {message.senderVerified === false && (
               <p className={cn('mb-1 text-meta', mine ? 'text-out-meta' : 'text-warn')}>
@@ -348,7 +429,9 @@ export const MessageBubble = memo(
               />
             )}
 
-            {!hasInlineMeta && !isCall && <div className="mt-1 flex justify-end">{meta}</div>}
+            {!hasInlineMeta && !isCall && !isVoice && (
+              <div className="mt-1 flex justify-end">{meta}</div>
+            )}
           </div>
         </div>
 
@@ -397,32 +480,13 @@ export const MessageBubble = memo(
             )}
           >
             {message.reactions.map((reaction) => (
-              /* Нажатие по реакции ставит свою или снимает — как в
-                 привычных мессенджерах. */
-              <button
-                aria-label={`${reaction.emoji} ${reaction.count}`}
-                aria-pressed={reaction.myReaction}
-                className={cn(
-                  'flex h-7 cursor-pointer items-center gap-1.25 rounded-pill pr-2.25 pl-1.5 text-caption font-semibold',
-                  'transition-colors duration-fast hover:layer-hover',
-                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
-                  reaction.myReaction
-                    ? 'is-mine bg-brand-soft text-brand shadow-[inset_0_0_0_1px_var(--color-brand)]'
-                    : 'bg-sheet-2 text-ink-2'
-                )}
+              <ReactionPill
+                count={reaction.count}
+                emoji={reaction.emoji}
                 key={reaction.emoji}
-                onClick={(event) => {
-                  // Иначе нажатие уходит выше и открывает меню действий.
-                  event.stopPropagation();
-                  onReact(message, reaction.emoji);
-                }}
-                type="button"
-              >
-                <span aria-hidden="true" className="text-section leading-none">
-                  {reaction.emoji}
-                </span>
-                {reaction.count}
-              </button>
+                mine={reaction.myReaction}
+                onToggle={() => onReact(message, reaction.emoji)}
+              />
             ))}
           </div>
         )}

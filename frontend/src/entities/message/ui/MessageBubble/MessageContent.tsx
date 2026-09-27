@@ -55,25 +55,26 @@ function Spoiler({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [revealed, setRevealed] = useState(false);
 
-  if (revealed)
-    return (
-      <span className="rounded bg-sheet-2/60 group-data-[mine]/bubble:bg-on-brand/16">
-        {children}
-      </span>
-    );
-
   return (
     <span
-      aria-label={t('format.spoilerHidden', 'Скрытый текст — нажмите, чтобы показать')}
-      className="cursor-pointer select-none rounded bg-spoiler text-transparent group-data-[mine]/bubble:bg-on-brand/40"
+      aria-label={
+        revealed
+          ? t('format.spoilerShown', 'Скрыть текст')
+          : t('format.spoilerHidden', 'Скрытый текст — нажмите, чтобы показать')
+      }
+      aria-pressed={revealed}
+      className={cn(
+        'mx-px cursor-pointer rounded-[5px] px-[3px] transition-colors duration-[360ms]',
+        revealed ? 'spoiler-open' : 'spoiler-dust'
+      )}
       onClick={(event) => {
         event.stopPropagation();
-        setRevealed(true);
+        setRevealed((value) => !value);
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          setRevealed(true);
+          setRevealed((value) => !value);
         }
       }}
       role="button"

@@ -6,6 +6,7 @@ export type TIconTypes =
   | 'channel'
   | 'chat'
   | 'check'
+  | 'clock'
   | 'checkCheck'
   | 'chevronDown'
   | 'chevronRight'

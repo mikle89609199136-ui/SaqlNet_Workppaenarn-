@@ -138,7 +138,7 @@ describe('MessageBubble', () => {
     expect(bubble).toHaveClass('is-selected');
   });
 
-  it('показывает индикатор отправки со спиннером для исходящего сообщения со статусом uploading', () => {
+  it('показывает часы «Загрузка...» у исходящего сообщения со статусом uploading', () => {
     const message = makeMessage({
       id: 'msg-uploading-1',
       senderId: 'user-1',
@@ -157,9 +157,8 @@ describe('MessageBubble', () => {
       />
     );
 
-    const spinner = screen.getByRole('status');
-    expect(spinner).toBeInTheDocument();
-    expect(screen.getByText(/загрузка/i)).toBeInTheDocument();
+    // Как в макете: пока сообщение уходит — часы вместо галочки.
+    expect(screen.getByRole('img', { name: 'Загрузка...' })).toBeInTheDocument();
   });
 
   it('отображает плашку ошибки и вызывает onRetryMessage по клику на кнопку повтора', async () => {
@@ -505,6 +504,87 @@ describe('закреплённое сообщение (#170)', () => {
       const reactions = container.querySelector('.message-reactions');
       expect(reactions).not.toBeNull();
       expect(container.querySelector('.message-bubble')!.contains(reactions)).toBe(false);
+    });
+  });
+
+  describe('статусы и реакции по макету', () => {
+    const base = {
+      onOpenImage: vi.fn(),
+      onReact: vi.fn(),
+      onSelection: vi.fn(),
+      translations: {},
+    };
+
+    it('у своего сообщения из истории — галочка «Отправлено» в любом чате', () => {
+      /* Сервер статуса отправки не присылает: всё, что пришло с него, уже
+         отправлено. Раньше галочки стояли только сразу после отправки. */
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          isGroupChat
+          message={makeMessage({ senderId: 'me', content: 'моё' })}
+        />
+      );
+
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+    });
+
+    it('«Прочитано» — только в личном чате и только когда известно', () => {
+      const read = makeMessage({ senderId: 'me', content: 'моё', status: 'read' });
+
+      const { unmount } = renderBubble(
+        <MessageBubble {...base} currentUserId="me" message={read} showDeliveryStatus />
+      );
+      expect(screen.getByRole('img', { name: 'Прочитано' })).toBeInTheDocument();
+      unmount();
+
+      renderBubble(<MessageBubble {...base} currentUserId="me" isGroupChat message={read} />);
+      expect(screen.queryByRole('img', { name: 'Прочитано' })).not.toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+    });
+
+    it('у чужого сообщения статуса нет', () => {
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'u-2', content: 'чужое' })}
+        />
+      );
+
+      expect(screen.queryByRole('img', { name: /Отправлено|Прочитано/ })).not.toBeInTheDocument();
+    });
+
+    it('реакция — картинка Noto, при появлении своей играет анимация', () => {
+      const message = makeMessage({
+        senderId: 'u-2',
+        content: 'привет',
+        reactions: [{ emoji: '👍', count: 1, myReaction: false }] as never,
+      });
+      const { container, rerender } = renderBubble(
+        <MessageBubble {...base} currentUserId="me" message={message} />
+      );
+
+      const img = container.querySelector('.message-reactions img')!;
+      expect(img.getAttribute('src')).toContain('/notoemoji/latest/1f44d/emoji.svg');
+
+      rerender(
+        <I18nextProvider i18n={testI18n}>
+          <MessageBubble
+            {...base}
+            currentUserId="me"
+            message={{
+              ...message,
+              reactions: [{ emoji: '👍', count: 2, myReaction: true }] as never,
+            }}
+          />
+        </I18nextProvider>
+      );
+
+      expect(container.querySelector('.message-reactions img')!.getAttribute('src')).toContain(
+        '/notoemoji/latest/1f44d/512.webp'
+      );
     });
   });
 });

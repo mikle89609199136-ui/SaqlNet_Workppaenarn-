@@ -1,15 +1,17 @@
 import { AudioPlayer, Icon, VideoPlayer } from '@/shared/ui';
 import type { IMessageDto } from '../../model/types';
 import { formatFileSize } from '@/shared/lib';
-import { type Dispatch, type SetStateAction } from 'react';
+import { type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   message: IMessageDto;
   onOpenImage: Dispatch<SetStateAction<string | null>>;
+  /** Время и статус: у голосового они стоят под его длительностью. */
+  trailing?: ReactNode;
 }
 
-export const MessageMedia = ({ message, onOpenImage }: Props) => {
+export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
   const { t } = useTranslation();
   const { mediaUnavailable, mediaUnavailableReason, mediaUrl, mediaType, type, mediaEncryption } =
     message;
@@ -50,8 +52,13 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     }
 
     return (
-      <div className="mt-1 mb-2 w-full">
-        <AudioPlayer src={mediaUrl} />
+      <div className={actualType === 'voice' ? undefined : 'mt-1 mb-2 w-full'}>
+        <AudioPlayer
+          seed={message.id}
+          src={mediaUrl}
+          trailing={actualType === 'voice' ? trailing : undefined}
+          variant={actualType === 'voice' ? 'voice' : 'audio'}
+        />
       </div>
     );
   }

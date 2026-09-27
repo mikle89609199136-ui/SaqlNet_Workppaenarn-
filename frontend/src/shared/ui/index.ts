@@ -9,6 +9,7 @@ export { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } fr
 export { Icon } from './Icon';
 export { Input } from './Input';
 export { ConfirmDialog, Modal } from './Modal';
+export { NotoEmoji, notoAnimatedUrl, notoCode, notoStaticUrl } from './NotoEmoji';
 export { Progress } from './Progress';
 export { Radio, RadioGroup } from './Radio';
 export { SegmentedControl } from './SegmentedControl';
