@@ -193,8 +193,9 @@ export const ChatThreadComposer = ({
   const canSend = hasText || Boolean(forward.pending) || Boolean(pendingAttachment);
   const recordingVoice = voice.state.status !== 'idle';
   // Микрофон — когда отправлять нечего: пустое поле, без вложения, не
-  // правка и не пересылка.
-  const showMic = !canSend && !editingMessage && encryption.status === 'ready';
+  // правка и не пересылка. Пока шифрование не готово, он виден, но
+  // выключен — как «Отправить»: голосовое открытым не уйдёт.
+  const showMic = !canSend && !editingMessage;
 
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
@@ -259,6 +260,7 @@ export const ChatThreadComposer = ({
         {showMic || recordingVoice ? (
           <VoiceButton
             onCancelProgress={setVoiceCancelProgress}
+            disabled={encryption.status !== 'ready'}
             onRecorded={sendVoice}
             recorder={voice.recorder}
             state={voice.state}

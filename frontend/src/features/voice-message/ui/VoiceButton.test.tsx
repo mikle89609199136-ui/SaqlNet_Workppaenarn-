@@ -125,6 +125,20 @@ describe('кнопка голосового', () => {
     await vi.waitFor(() => expect(onRecorded).toHaveBeenCalledWith(recording));
   });
 
+  it('выключена, пока шифрование не готово: нажатия ничего не начинают', () => {
+    const { recorder, state } = makeRecorder();
+    render(
+      <I18nextProvider i18n={testI18n}>
+        <VoiceButton disabled onRecorded={vi.fn()} recorder={recorder} state={state} />
+      </I18nextProvider>
+    );
+
+    expect(mic()).toBeDisabled();
+    press();
+    fireEvent.click(mic(), { detail: 0 });
+    expect(recorder.start).not.toHaveBeenCalled();
+  });
+
   it('правая кнопка и повторное нажатие во время записи ничего не начинают', () => {
     const { recorder } = renderButton();
     fireEvent.pointerDown(mic(), { button: 2, pointerId: 1, clientX: 1, clientY: 1 });
