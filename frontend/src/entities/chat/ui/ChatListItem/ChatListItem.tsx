@@ -1,15 +1,15 @@
 import { ROUTES } from '@/shared/config';
-import { formatChatListTime, useLongPress } from '@/shared/lib';
+import { cn, formatChatListTime, useLongPress } from '@/shared/lib';
 import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
 import { useTypingStore } from '../../model/typingStore';
 import { getLastMessageText } from '../../model/getLastMessageText';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useMatch } from 'react-router-dom';
 import { Avatar, Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
-import { chatRowStyles } from './chatRowStyles';
+import { chatRowStyles, onCurrentRow } from './chatRowStyles';
 import type { IChatDto } from '../../model/types';
 import type { RefObject } from 'react';
 
@@ -26,10 +26,15 @@ interface Props {
   chat: IChatDto;
   /** Сколько чатов уже закреплено: больше пяти держать не даём. */
   pinnedCount?: number;
+  /**
+   * Кто смотрит список: своё последнее сообщение подписывается «Вы:» и
+   * несёт галочки. Приходит сверху — сущность чата о профиле не знает.
+   */
+  currentUserId?: string;
   renderMenu?: (props: IChatListItemMenuProps) => React.ReactNode;
 }
 
-export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
+export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
   const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
@@ -65,6 +70,27 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
 
+  /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
+     чате чужое без подписи: собеседник там один. */
+  const last = chat.lastMessage;
+  const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
+  const prefix =
+    !typingUserId && last
+      ? isOwnLast
+        ? `${t('chatList.you', 'Вы')}: `
+        : chat.type === 'group' && last.senderName
+          ? `${last.senderName}: `
+          : ''
+      : '';
+  const status = isOwnLast ? last?.status : undefined;
+
+  /* Открытый чат прочитан — счётчик на нём не нужен, а на заливке он и
+     не виден. Булавка — только у закреплённого без непрочитанных: иначе
+     её место занимает счётчик. */
+  const isCurrent = Boolean(useMatch(ROUTES.CHAT_BY_ID(chat.id)));
+  const hasUnread = (chat.unreadCount > 0 || Boolean(chat.isMarkedUnread)) && !isCurrent;
+  const showPin = chat.isPinned && !hasUnread;
+
   /* Имя ссылки собирается из её содержимого, а не задаётся
      `aria-label`: тот заменяет собой всё внутри, и диктор объявлял одно
      название чата — ни последнего сообщения, ни времени, ни счётчика
@@ -75,50 +101,108 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
   return (
     <>
       <NavLink
+        aria-haspopup="menu"
         className={chatRowStyles}
+        data-menu={contextMenu?.open ? 'open' : undefined}
         onContextMenu={handleContextMenu}
         to={ROUTES.CHAT_BY_ID(chat.id)}
         {...longPress}
       >
         <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
-        <div className="flex min-w-0 flex-col justify-center gap-1.5">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <span className="truncate text-base font-semibold text-ink">{title}</span>
-            {chat.isPinned && (
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.75">
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-body font-semibold text-ink',
+                onCurrentRow
+              )}
+            >
+              {title}
+            </span>
+            {chat.isMuted && (
               <span
-                aria-label={t('pinnedChat', 'Закреплён')}
-                className="shrink-0 text-ink-3 [&>svg]:size-3.5"
+                aria-label={t('chatList.muted', 'Без звука')}
+                className={cn('flex self-center text-ink-3', onCurrentRow)}
                 role="img"
               >
-                <Icon name="pin" />
+                <Icon className="size-3.5" name="bellOff" />
               </span>
             )}
-            {chat.lastMessageAt && (
-              <time
-                className="shrink-0 font-mono text-micro text-ink-3"
-                dateTime={new Date(chat.lastMessageAt).toISOString()}
-              >
-                {formatChatListTime(chat.lastMessageAt, i18n.language)}
-              </time>
-            )}
+            <span
+              className={cn(
+                'flex shrink-0 items-center gap-0.75 text-meta text-ink-3',
+                onCurrentRow
+              )}
+            >
+              {status && (
+                <span
+                  aria-label={
+                    status === 'read'
+                      ? t('messageStatus.read', 'Прочитано')
+                      : t('messageStatus.sent', 'Отправлено')
+                  }
+                  className={cn(
+                    'flex',
+                    status === 'read' ? 'text-brand' : 'text-ink-3',
+                    onCurrentRow
+                  )}
+                  role="img"
+                >
+                  <Icon
+                    className="size-4 stroke-2"
+                    name={status === 'read' ? 'checkCheck' : 'check'}
+                  />
+                </span>
+              )}
+              {chat.lastMessageAt && (
+                <time
+                  className="tabular-nums"
+                  dateTime={new Date(chat.lastMessageAt).toISOString()}
+                >
+                  {formatChatListTime(chat.lastMessageAt, i18n.language)}
+                </time>
+              )}
+            </span>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-ink-2">
+
+          <div className="flex items-center gap-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
-            {draft && !typingUserId ? (
-              <span className="truncate">
-                <span className="text-danger">{t('draft', 'Черновик')}: </span>
-                {draft}
-              </span>
-            ) : (
-              <span className="truncate">{lastMessage}</span>
-            )}
-            {/* Приглушённый оттенок ждёт своего часа: состояние звука живёт
-              на участнике и в списке чатов не приходит вовсе — #387.
-              Пока метка всегда акцентная. */}
-            {chat.unreadCount > 0 && (
-              <Badge label={`${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`}>
-                {chat.unreadCount}
+            <span className={cn('min-w-0 flex-1 truncate text-ui text-ink-2', onCurrentRow)}>
+              {draft && !typingUserId ? (
+                <>
+                  <span className={cn('text-danger', onCurrentRow)}>
+                    {t('draft', 'Черновик')}:{' '}
+                  </span>
+                  {draft}
+                </>
+              ) : (
+                <>
+                  {prefix}
+                  {lastMessage}
+                </>
+              )}
+            </span>
+            {hasUnread && (
+              <Badge
+                label={
+                  chat.isMarkedUnread && chat.unreadCount === 0
+                    ? t('chatList.markedUnread', 'Отмечен непрочитанным')
+                    : `${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`
+                }
+                tone={chat.isMuted ? 'quiet' : 'brand'}
+              >
+                {chat.isMarkedUnread ? undefined : chat.unreadCount}
               </Badge>
+            )}
+            {showPin && (
+              <span
+                aria-label={t('pinnedChat', 'Закреплён')}
+                className={cn('flex shrink-0 text-ink-3', onCurrentRow)}
+                role="img"
+              >
+                <Icon className="size-3.75 stroke-2" name="pin" />
+              </span>
             )}
           </div>
         </div>

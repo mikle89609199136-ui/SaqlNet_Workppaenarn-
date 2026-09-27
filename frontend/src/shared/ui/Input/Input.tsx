@@ -24,6 +24,14 @@ const sizes = {
     addon: 'right-1',
     withAddon: 'pr-12',
   },
+  /* Поиск над списком (#819): 42px — 10 + 20 + 10 + рамка, значок 18. */
+  search: {
+    field: 'text-ui px-3.5 py-2.5 rounded-icon',
+    icon: 'left-3.5 size-4.5',
+    withIcon: 'pl-10.5',
+    addon: 'right-1',
+    withAddon: 'pr-10',
+  },
   lg: {
     field: 'text-title px-4 py-3.5 rounded-button',
     icon: 'left-4',
