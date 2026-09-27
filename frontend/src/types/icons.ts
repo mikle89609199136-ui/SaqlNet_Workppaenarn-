@@ -77,4 +77,8 @@ export type TIconTypes =
   | 'paperclip'
   | 'image'
   | 'mic'
-  | 'smile';
+  | 'smile'
+  | 'archive'
+  | 'archiveRestore'
+  | 'pinOff'
+  | 'inbox';

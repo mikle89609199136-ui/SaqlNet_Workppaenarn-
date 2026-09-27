@@ -128,7 +128,7 @@ export const MessageActionsPopover = ({
         show: true,
         icon: 'copy',
         key: 'copy',
-        def: t('messageActions.copy', 'Скопировать'),
+        def: t('messageActions.copy', 'Копировать'),
         action: () => actions.handleCopyMessage(message),
       },
       {
@@ -173,6 +173,14 @@ export const MessageActionsPopover = ({
         def: t('messageActions.forward', 'Переслать'),
         action: () => actions.handleForward(message),
       },
+      // «Выбрать» — перед удалением: опасное действие по макету последнее.
+      {
+        show: true,
+        icon: 'checkCircle',
+        key: 'select',
+        def: isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать'),
+        action: () => (selectionMode ? onSelection(message) : actions.startSelection(message)),
+      },
       {
         show: mine,
         icon: 'trash',
@@ -182,12 +190,13 @@ export const MessageActionsPopover = ({
         className: 'is-danger',
       },
     ],
-    [actions, isPinned, message, mine, selectionMode, t]
+    [actions, isPinned, isSelected, message, mine, onSelection, selectionMode, t]
   );
 
   return (
     <ContextMenu
       aria-label={t('messageActions.title', 'Действия с сообщением')}
+      className="w-61 min-w-0"
       onClose={() => setActionMenu(null)}
       open
       x={actionMenu?.x}
@@ -230,20 +239,11 @@ export const MessageActionsPopover = ({
             onClick={() => actions.runMessageAction(b.action)}
             variant={b.className?.includes('danger') ? 'danger' : 'default'}
           >
-            {t(b.key, b.def)}
+            {/* Подпись уже переведена: по короткому ключу (`edit`, `copy`)
+                подставлялись чужие строки — «Редактировать» вместо «Изменить». */}
+            {b.def}
           </ContextMenu.Item>
         ))}
-
-      <ContextMenu.Item
-        icon={<Icon className="fill-transparent" name="checkCircle" />}
-        onClick={() =>
-          actions.runMessageAction(() =>
-            selectionMode ? onSelection(message) : actions.startSelection(message)
-          )
-        }
-      >
-        {isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать')}
-      </ContextMenu.Item>
     </ContextMenu>
   );
 };
