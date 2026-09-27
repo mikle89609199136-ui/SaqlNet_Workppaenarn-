@@ -494,11 +494,20 @@ SaveChatKeysRequest:
     keyEpoch: { type: integer, minimum: 0 }
 ChatKeysResponse:
   type: object
-  required: [keys]
+  required: [keys, keyEpoch, rotationNeeded]
   properties:
     keys:
       type: array
       items: { $ref: '#/ChatEncryptedKey' }
+    keyEpoch:
+      type: integer
+      minimum: 0
+      description: Current key epoch of the chat — the highest written; 0 before the first key.
+    rotationNeeded:
+      type: boolean
+      description: >-
+        Membership changed after the current epoch was written. The current key
+        must not be handed out any more: the next writer publishes epoch keyEpoch + 1.
 KeyEpochResponse:
   type: object
   required: [ok, keyEpoch]
