@@ -558,6 +558,16 @@ func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (strin
 	return chatType, role, err
 }
 
+// markKeyRotationNeeded поднимает пометку «нужна смена ключа» (#806).
+//
+// Вызывается в той же транзакции, что и изменение состава: иначе между
+// ними ключ мог бы успеть раздаться новичку или остаться у ушедшего.
+// Снимает пометку первая успешная запись новой эпохи — любым участником.
+func markKeyRotationNeeded(ctx context.Context, tx *sql.Tx, chatID string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`, chatID)
+	return err
+}
+
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
 	if peerID == "" || peerID == userID {
 		return "", false, ErrInvalidInput
@@ -1014,9 +1024,16 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 		return ErrForbidden
 	}
 
+	// Удаление и пометка «нужна смена ключа» — одним запросом: исключённый
+	// не должен читать то, что напишут после него (#806).
 	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM chats.members
-		WHERE chat_id = $1 AND user_id = $2 AND role = $3
+		WITH removed AS (
+			DELETE FROM chats.members
+			WHERE chat_id = $1 AND user_id = $2 AND role = $3
+			RETURNING chat_id
+		)
+		UPDATE chats.chats SET key_rotation_needed = TRUE
+		WHERE id IN (SELECT chat_id FROM removed)
 	`, chatID, memberID, memberRole)
 	if err != nil {
 		return err
@@ -1228,6 +1245,12 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		return nil, errors.New("member insert conflict without known reason")
 	}
 
+	// Новичок не должен читать написанное до него: текущий ключ ему не
+	// раздаётся, сначала — новая эпоха (#806).
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		return nil, err
+	}
+
 	// 8. Получение и возврат объекта Member
 	var permissions jsonMap
 	var m Member
@@ -1397,6 +1420,11 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 			return err
 		}
 		memberRemoved = affected == 1
+	}
+	if memberRemoved {
+		if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+			return err
+		}
 	}
 
 	// Единый upsert: атомарен при гонке ban/unban, всегда затрагивает строку.
@@ -3289,6 +3317,10 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		_ = tx.Rollback()
 		return ErrForbidden
+	}
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		_ = tx.Rollback()
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err

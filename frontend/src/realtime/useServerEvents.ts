@@ -10,7 +10,7 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/entities/message';
-import { chatQuery, useTypingStore } from '@/entities/chat';
+import { useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -140,40 +140,30 @@ export function useServerEvents(enabled: boolean): void {
     // Состав чата изменился — ключ чата пора менять: вошедший не должен
     // читать написанное до него, вышедший — написанное после.
     //
-    // Ротацию делает только владелец чата. Если бы её начинал каждый, кто
-    // услышал событие, несколько участников одновременно записали бы разные
-    // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
-    // сервере идёт построчно, без транзакции.
-    //
-    // Зависеть от того, в сети ли владелец, — слабое место; как от него
-    // уйти, описано в #806.
-    const rotateIfOwner = async (chatId?: string, removedUserId?: string) => {
+    // Менять может любой участник, кто в сети (#806). Сервер при изменении
+    // состава поднимает пометку «нужна смена ключа» и принимает смену
+    // атомарно: из одновременных проходит одна, остальные принимают её ключ.
+    // Кто услышал событие позже, видит снятую пометку и ничего не делает.
+    // Если в сети никого не было, ключ сменит первый, кто откроет чат.
+    const rotateAfterMembershipChange = async (chatId?: string, removedUserId?: string) => {
       if (!chatId) return;
 
-      const me = services.cryptoService.getAccountId();
       // Ушли мы сами: в этом чате нас больше нет, и ключ менять не нам.
-      if (removedUserId && removedUserId === me) return;
+      if (removedUserId && removedUserId === services.cryptoService.getAccountId()) return;
 
       try {
-        // Владельца берём с сервера, а не из кеша: права могли только что
-        // передать, а события о передаче сервер не шлёт (#105). Из кеша
-        // новый владелец видел бы прежнего и ключ после его ухода не менял.
-        const chat = await queryClient.fetchQuery({ ...chatQuery(chatId), staleTime: 0 });
-
-        if (chat?.ownerId && me && chat.ownerId === me) {
-          await services.cryptoService.rotateChatKey(chatId);
-        }
+        await services.cryptoService.rotateChatKeyIfNeeded(chatId);
       } catch (error) {
         console.warn('Не удалось обновить ключ чата после смены состава', error);
       }
     };
 
     const unsubscribeMemberAdded = eventBus.on(WS_EVENTS.CHAT.MEMBER_ADDED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateAfterMembershipChange(event?.chatId);
     });
 
     const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
-      void rotateIfOwner(event?.chatId, event?.userId);
+      void rotateAfterMembershipChange(event?.chatId, event?.userId);
     });
 
     // «Печатает» живёт три секунды и не кешируется — это не данные,

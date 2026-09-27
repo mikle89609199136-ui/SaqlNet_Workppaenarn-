@@ -169,6 +169,7 @@ func TestHandler_AddMember(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectExec(`UPDATE chats\.chats SET key_rotation_needed = TRUE`).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery(`SELECT .* FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at"}).AddRow(handlerTargetID, "u", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
 				mock.ExpectCommit()
 			},
@@ -251,6 +252,8 @@ func TestHandler_LeaveChat(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(leaveMembershipDelete).
 					WithArgs(handlerChatID, handlerActorID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
@@ -579,6 +582,8 @@ func TestHandler_BanMember_Body(t *testing.T) {
 					WillReturnError(sql.ErrNoRows)
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(banUpsertQuery).
 					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
