@@ -14,6 +14,14 @@ async function goToCredentials(name = 'Максим') {
   await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 }
 
+/* Token redirects RegisterPage before the async submit tail has necessarily
+   published its final side effects. Waiting for both prevents that tail from
+   leaking authentication and a toast into the following test. */
+async function expectSuccessfulRegistration() {
+  expect(await screen.findByText('Список чатов')).toBeInTheDocument();
+  expect(await screen.findByText('Добро пожаловать!')).toBeInTheDocument();
+}
+
 describe('регистрация', () => {
   it('не пускает дальше с пустым именем', async () => {
     renderAuth({ page: 'register' });
@@ -121,7 +129,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.lastName).toBe('Донской');
     // Язык — тот, на котором человек сейчас видит мастер.
     expect(body.language).toBe('ru');
@@ -144,7 +152,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.lastName).toBe('');
   });
 
@@ -231,7 +239,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    expect(await screen.findByText('Список чатов')).toBeInTheDocument();
+    await expectSuccessfulRegistration();
   });
 
   it('отправляет имя и имя пользователя без лишних пробелов', async () => {
@@ -251,7 +259,7 @@ describe('регистрация', () => {
     await userEvent.type(screen.getByLabelText('Повторите пароль'), 'Parol123456!');
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
-    await screen.findByText('Список чатов');
+    await expectSuccessfulRegistration();
     expect(body.firstName).toBe('Максим');
     expect(body.username).toBe('maximdon');
   });

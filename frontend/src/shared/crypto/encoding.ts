@@ -20,7 +20,7 @@ export function bytesToBase64(input: ArrayBuffer | Uint8Array): string {
   return btoa(binary);
 }
 
-export function base64ToBytes(value: string): Uint8Array {
+export function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
 
@@ -41,7 +41,7 @@ export function bytesToBase64Url(input: ArrayBuffer | Uint8Array): string {
   return bytesToBase64(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function utf8ToBytes(text: string): Uint8Array {
+export function utf8ToBytes(text: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(text);
 }
 

@@ -81,6 +81,8 @@
      спиннер выглядит вялым. Переопределяем здесь, а не в компоненте,
      потому что это скорость дизайн-системы, а не одного элемента. */
   --animate-spin: spin 0.7s linear infinite;
+  /* Смена содержимого на месте — keyframes fade-in в tailwind.css. */
+  --animate-fade-in: fade-in var(--transition-duration-panel) var(--ease-out) both;
 }
 
 /* =============================================================

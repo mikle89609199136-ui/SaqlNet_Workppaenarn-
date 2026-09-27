@@ -49,8 +49,12 @@ export class ApiClient {
     this.onUnauthorized = handler;
   }
 
-  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  get<T = unknown>(
+    endpoint: string,
+    params: TQueryParams = {},
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
   post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
@@ -65,8 +69,16 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
-  delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  /**
+   * `keepalive` — для запроса, который уходит при закрытии вкладки:
+   * без него браузер обрывает его вместе со страницей.
+   */
+  delete<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    options: Pick<IRequestOptions, 'keepalive'> = {}
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE', data });
   }
 
   private async request<T = unknown>(
@@ -106,9 +118,20 @@ export class ApiClient {
       }
     });
 
+    const base = this.baseUrl.replace(/\/+$/, '');
+    // Путь базы — '/api/v2' и у относительной базы, и у абсолютной.
+    const basePath = base.replace(/^https?:\/\/[^/]+/, '');
+    const relative = endpoint.replace(/^\/+/, '');
+
+    // Сервер отдаёт часть адресов уже с базой: mediaUrl вложений —
+    // '/api/v2/media/<id>'. Приклеенная второй раз база давала
+    // '/api/v2/api/v2/media/…' и 404: вложения не открывались ни у
+    // получателя, ни у отправителя после перезагрузки.
     const path = /^https?:\/\//.test(endpoint)
       ? endpoint
-      : `${this.baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+      : basePath && `/${relative}`.startsWith(`${basePath}/`)
+        ? `${base.slice(0, base.length - basePath.length)}/${relative}`
+        : `${base}/${relative}`;
 
     const qs = query.toString();
     return qs ? `${path}?${qs}` : path;

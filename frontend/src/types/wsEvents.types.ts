@@ -75,6 +75,19 @@ export interface IChatMemberRoleUpdatedEvent {
   role: string;
 }
 
+/**
+ * Статус собеседника по личному чату (#780). Приходит, когда закрыто
+ * последнее соединение или открыто первое; скрытый приватностью статус
+ * не присылается вовсе.
+ */
+export interface IPresenceChangedEvent {
+  type: string;
+  userId: string;
+  isOnline: boolean;
+  /** ISO 8601, UTC. */
+  lastSeen: string;
+}
+
 export interface ITypingEvent {
   type: string;
   chatId: string;
@@ -212,4 +225,5 @@ export interface IWsEventMap {
   [WS_EVENTS.REACTIONS.REACTION_UPDATED]: IReactionUpdatedEvent;
 
   [WS_EVENTS.USER.TYPING]: ITypingEvent;
+  [WS_EVENTS.USER.PRESENCE]: IPresenceChangedEvent;
 }

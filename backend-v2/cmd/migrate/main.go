@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"craneapp/backend-v2/internal/migrations"
-	migrationsql "craneapp/backend-v2/migrations"
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 
@@ -28,12 +25,7 @@ func main() {
 		log.Fatalf("failed to ping database: %v", err)
 	}
 
-	ctx := context.Background()
-
-	if err := migrations.Run(ctx, db, migrationsql.FS, "."); err != nil {
-		log.Fatalf("migrate: %v", err)
+	if err := migrate(context.Background(), db, "migrations", os.Stdout); err != nil {
+		log.Fatalf("migration failed: %v", err)
 	}
-	log.Println("all migrations applied")
-
-	fmt.Println("All migrations applied successfully.")
 }

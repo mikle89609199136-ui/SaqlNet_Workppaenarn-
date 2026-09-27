@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/skip2/go-qrcode"
@@ -49,15 +51,22 @@ func (h *Handler) QRCode(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	username := r.URL.Query().Get("username")
-	if username == "" {
+	requestedUsername := r.URL.Query().Get("username")
+	if requestedUsername == "" {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username is required")
 		return
 	}
-	// Verify user exists
-	users, err := h.service.Search(r.Context(), "", username)
-	if err != nil || len(users) == 0 {
+	profile, err := h.service.ProfileByUsername(r.Context(), requestedUsername)
+	if errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username is invalid")
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
+		return
+	}
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "profile lookup failed")
 		return
 	}
 
@@ -67,7 +76,7 @@ func (h *Handler) QRCode(w http.ResponseWriter, r *http.Request) {
 		protocol = "http"
 	}
 
-	url := fmt.Sprintf("%s://%s/user/@%s", protocol, host, username)
+	url := fmt.Sprintf("%s://%s/user/@%s", protocol, host, profile.Username)
 	png, err := qrcode.Encode(url, qrcode.Medium, 256)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "qr generation failed")
@@ -102,6 +111,36 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	}
+}
+
+func (h *Handler) Username(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	current := authctx.MustUser(r)
+	var input struct {
+		Username string `json:"username"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	profile, err := h.service.RenameUsername(r.Context(), current.ID, input.Username)
+	if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrInvalidUsernameFormat) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username is invalid")
+		return
+	}
+	if errors.Is(err, ErrUsernameTaken) {
+		httpx.ErrorJSON(w, r, http.StatusConflict, "username_taken", "username already exists")
+		return
+	}
+	var cooldown *UsernameCooldownError
+	if errors.As(err, &cooldown) {
+		w.Header().Set("Retry-After", strconv.FormatInt(max(1, int64(time.Until(cooldown.AvailableAt).Seconds())), 10))
+		httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "username_change_cooldown", "username can only be changed once every 24 hours")
+		return
+	}
+	respondProfile(w, r, profile, err)
 }
 
 func (h *Handler) Avatar(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +247,9 @@ func (h *Handler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid userId")
 		return
 	}
-	status, err := h.service.Status(r.Context(), userID)
+	// Статус зависит от того, кто смотрит: блокировка и правило приватности.
+	viewer, _ := authctx.UserFromContext(r.Context())
+	status, err := h.service.Status(r.Context(), viewer.ID, userID)
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
 		return
@@ -262,6 +303,10 @@ func (h *Handler) AllSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.service.UpdateAllSettings(r.Context(), current.ID, input); err != nil {
+			if errors.Is(err, ErrInvalidPrivacy) {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "all settings update failed")
 			return
 		}
@@ -282,6 +327,11 @@ func (h *Handler) Privacy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	privacy, err := h.service.UpdatePrivacy(r.Context(), current.ID, body)
+	if errors.Is(err, ErrInvalidPrivacy) {
+		// Текст — от проверки: какой ключ или значение не подошли.
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "privacy update failed")
 		return

@@ -26,22 +26,23 @@ type testStore struct {
 	putCalls    int
 	deleteCalls int
 	lastPutSize int64
+	lastPutType string
+	lastPutData []byte
 }
 
-func (testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
-	return &ObjectResponse{
-		Body:       io.NopCloser(bytes.NewReader(nil)),
-		StatusCode: http.StatusOK,
-	}, nil
+func (s *testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+	return objectResponse(http.StatusOK, string(s.lastPutData)), nil
 }
 
-func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, _ string) error {
+func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, contentType string) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 	s.putCalls++
 	s.lastPutSize = int64(len(data))
+	s.lastPutType = contentType
+	s.lastPutData = data
 	return nil
 }
 
@@ -131,7 +132,7 @@ func TestJSONUploadReturnsFileMetadata(t *testing.T) {
 
 func TestEncryptedUploadReturnsOriginalMetadata(t *testing.T) {
 	handler, mock := newUploadHandler(t, "secret.pdf", "application/pdf", 6)
-	req := httptest.NewRequest(http.MethodPost, "/api/v2/media", bytes.NewBufferString(`{"purpose":"message","file":{"ciphertext":"Y2lwaGVy","mimeType":"application/pdf","fileName":"/tmp/secret.pdf","sizeBytes":245760}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/media", bytes.NewBufferString(`{"purpose":"message","file":{"version":2,"encrypted":true,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":1,"ciphertext":"Y2lwaGVy","mimeType":"application/pdf","fileName":"/tmp/secret.pdf","sizeBytes":245760}}`))
 	req.Header.Set("Content-Type", "application/json")
 	got := performUpload(t, handler, req)
 	if got["fileName"] != "secret.pdf" || got["sizeBytes"] != float64(245760) || got["encrypted"] != true {
@@ -193,9 +194,11 @@ func encryptedUploadRequest(t *testing.T, filename, contentType string, data []b
 	payload, err := json.Marshal(map[string]any{
 		"purpose": "message",
 		"file": map[string]any{
-			"version":    1,
+			"version":    2,
+			"encrypted":  true,
 			"algorithm":  "AES-GCM",
-			"iv":         "aXY=",
+			"iv":         "AAECAwQFBgcICQoL",
+			"keyEpoch":   1,
 			"ciphertext": base64.StdEncoding.EncodeToString(data),
 			"mimeType":   contentType,
 			"fileName":   filename,
@@ -295,6 +298,11 @@ func TestEncryptedUploadUsesDecodedCiphertextSizeInsteadOfClientSize(t *testing.
 	payload, err := json.Marshal(map[string]any{
 		"purpose": "message",
 		"file": map[string]any{
+			"version":    2,
+			"encrypted":  true,
+			"algorithm":  "AES-GCM",
+			"iv":         "AAECAwQFBgcICQoL",
+			"keyEpoch":   1,
 			"ciphertext": "YQ==",
 			"fileName":   "secret.bin",
 			"sizeBytes":  999,

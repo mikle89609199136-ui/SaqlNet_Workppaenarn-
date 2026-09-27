@@ -117,16 +117,15 @@ func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, ErrBadType) {
+		httpx.ErrorJSON(w, r, http.StatusUnsupportedMediaType, "unsupported_type", "file type not allowed")
+		return
+	}
 	if errors.Is(err, ErrTooBig) {
 		h.writeFileTooLarge(w, r)
 		return
 	}
 	httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", "upload failed")
-}
-
-func metadataStringTooLong(values map[string]any, key string, maxBytes int) bool {
-	value, ok := values[key].(string)
-	return ok && len(value) > maxBytes
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -142,9 +141,9 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(contentType, "application/json") {
 		r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 		var req struct {
-			Purpose  string `json:"purpose"`
-			File     any    `json:"file"`
-			FileName string `json:"fileName"`
+			Purpose  string          `json:"purpose"`
+			File     json.RawMessage `json:"file"`
+			FileName string          `json:"fileName"`
 		}
 		if err := decodeSingleJSON(r.Body, &req); err != nil {
 			if isMaxBytesError(err) {
@@ -160,66 +159,20 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.Purpose == "message" {
-			fileMap, ok := req.File.(map[string]any)
-			if !ok {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "file must be an object for message purpose")
-				return
-			}
-			if metadataStringTooLong(fileMap, "version", maxEncryptionVersionBytes) ||
-				metadataStringTooLong(fileMap, "algorithm", maxEncryptionAlgorithmBytes) ||
-				metadataStringTooLong(fileMap, "iv", maxEncryptionIVBytes) ||
-				metadataStringTooLong(fileMap, "mimeType", maxUploadMIMETypeBytes) ||
-				metadataStringTooLong(fileMap, "fileName", maxFilenameBytes) {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
+			envelope, validationErr := validateEncryptedEnvelope(req.File, req.FileName)
+			if validationErr != nil {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, validationErr.code, validationErr.message)
 				return
 			}
 
-			// Extract encrypted metadata
-			enc := map[string]any{
-				"encrypted": true,
-			}
-			if v, ok := fileMap["version"]; ok {
-				enc["version"] = v
-			}
-			if v, ok := fileMap["algorithm"]; ok {
-				enc["algorithm"] = v
-			}
-			if v, ok := fileMap["iv"]; ok {
-				enc["iv"] = v
-			}
+			encJson, _ := json.Marshal(envelope)
 
-			mimeType, _ := fileMap["mimeType"].(string)
-			if mimeType == "" {
-				mimeType = "application/octet-stream"
-			}
-			enc["mimeType"] = mimeType
-
-			var originalSize int64
-			if sizeBytes, ok := fileMap["sizeBytes"].(float64); ok {
-				if sizeBytes < 0 || sizeBytes > maxJSONSafeInteger || math.Trunc(sizeBytes) != sizeBytes {
-					httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_size", "sizeBytes must be a non-negative integer")
+			up, err := h.service.UploadEncrypted(r.Context(), current.ID, envelope.FileName, envelope.Ciphertext, string(encJson), envelope.MIMEType)
+			if err != nil {
+				if errors.Is(err, ErrInvalidCiphertext) {
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_ciphertext", "failed to decode ciphertext base64")
 					return
 				}
-				originalSize = int64(sizeBytes)
-				enc["sizeBytes"] = originalSize
-			}
-			fileName, _ := fileMap["fileName"].(string)
-			if fileName == "" {
-				fileName = req.FileName
-			}
-			fileName = sanitizeFilename(fileName)
-			enc["fileName"] = fileName
-
-			ciphertext, ok := fileMap["ciphertext"].(string)
-			if !ok {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_ciphertext", "ciphertext must be a string")
-				return
-			}
-
-			encJson, _ := json.Marshal(enc)
-
-			up, err := h.service.UploadEncrypted(r.Context(), current.ID, fileName, ciphertext, string(encJson), mimeType)
-			if err != nil {
 				h.writeUploadError(w, r, err)
 				return
 			}
@@ -230,8 +183,8 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 				"url":         "/api/v2/media/" + up.ID,
 				"encrypted":   true,
 				"encryption":  string(encJson),
-				"fileName":    fileName,
-				"sizeBytes":   originalSize,
+				"fileName":    envelope.FileName,
+				"sizeBytes":   envelope.SizeBytes,
 				"contentType": up.ContentType,
 			}
 			httpx.JSON(w, http.StatusCreated, resp)
@@ -239,27 +192,28 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Plain data URL
-		fileStr, ok := req.File.(string)
-		if !ok || !strings.HasPrefix(fileStr, "data:") {
+		var fileStr string
+		if err := json.Unmarshal(req.File, &fileStr); err != nil || !strings.HasPrefix(fileStr, "data:") {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "plain uploads must be data URLs")
 			return
 		}
 
 		parts := strings.SplitN(fileStr, ",", 2)
-		if len(parts) != 2 {
+		if len(parts) != 2 || !strings.HasSuffix(parts[0], ";base64") {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_file", "invalid data url")
 			return
 		}
 
-		mimeType := "application/octet-stream"
 		header := parts[0]
 		if len(header) > maxDataURLHeaderBytes {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 			return
 		}
-		if strings.Contains(header, ";base64") {
-			mimeType = strings.TrimPrefix(header, "data:")
-			mimeType = strings.TrimSuffix(mimeType, ";base64")
+		mimeType := strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
+		mimeType, allowed := allowedMediaType(mimeType)
+		if !allowed {
+			h.writeUploadError(w, r, ErrBadType)
+			return
 		}
 
 		data, err := decodeBase64Payload(parts[1], h.service.maxUploadBytes)
@@ -295,27 +249,21 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_form", "failed to parse multipart form")
 		return
 	}
-	file, fh, err := r.FormFile("file")
-	if err != nil {
+	if r.MultipartForm == nil || len(r.MultipartForm.File["file"]) == 0 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "missing_file", "field 'file' is required")
 		return
 	}
-	_ = file.Close()
+	fh := r.MultipartForm.File["file"][0]
 	if len(fh.Filename) > maxFilenameBytes || len(fh.Header.Get("Content-Type")) > maxUploadMIMETypeBytes {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "media metadata exceeds allowed length")
 		return
 	}
 	up, err := h.service.Upload(r.Context(), current.ID, fh)
-	switch {
-	case errors.Is(err, ErrTooBig):
-		h.writeFileTooLarge(w, r)
-	case errors.Is(err, ErrBadType):
-		httpx.ErrorJSON(w, r, http.StatusUnsupportedMediaType, "unsupported_type", "file type not allowed")
-	case err != nil:
-		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "upload_failed", "upload failed")
-	default:
-		httpx.JSON(w, http.StatusCreated, uploadResponse(up))
+	if err != nil {
+		h.writeUploadError(w, r, err)
+		return
 	}
+	httpx.JSON(w, http.StatusCreated, uploadResponse(up))
 }
 
 func uploadResponse(up Upload) map[string]any {

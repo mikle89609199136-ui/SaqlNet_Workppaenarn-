@@ -8,6 +8,7 @@ import { type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
+import { rememberLoginPassword } from '@/shared/crypto';
 import { validateAvatarFile } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import {
@@ -151,6 +152,8 @@ export function RegisterWizard() {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
+      // Следующий шаг — облачный пароль, и он не должен совпасть с этим.
+      await rememberLoginPassword(values.password);
       saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
          неудачная загрузка значит лишь аватарку по умолчанию. */

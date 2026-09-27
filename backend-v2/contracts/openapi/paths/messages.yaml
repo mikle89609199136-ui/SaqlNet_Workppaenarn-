@@ -79,6 +79,8 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
           application/json:
             schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
       '400': *error
+      '403': *error
+      '404': *error
       '500': *error
   post:
     tags: [Messages]

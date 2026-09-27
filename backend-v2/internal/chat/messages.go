@@ -25,15 +25,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 50
-	offset := 0
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-		limit = l
-	}
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
-		offset = o
-	}
+	limit, offset := parsePagination(r)
 	msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
+	if errors.Is(err, ErrNotFound) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat_not_found")
+		return
+	}
+	if errors.Is(err, ErrForbidden) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access_denied")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
 		return
@@ -66,6 +67,7 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		MediaEncrypted  bool           `json:"mediaEncrypted"`
 		MediaEncryption map[string]any `json:"mediaEncryption"`
 		IsEncrypted     bool           `json:"isEncrypted"`
+		ForwardedFrom   *string        `json:"forwardedFrom"`
 	}
 
 	if !decode(w, r, &input) {
@@ -150,6 +152,28 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			"isEncrypted":     input.IsEncrypted,
 		}
 	}
+
+	// The client forwards encrypted messages through this route (see
+	// Service.ForwardOrigin), so the author is resolved here. The name is
+	// never taken from the client.
+	if input.ForwardedFrom != nil && *input.ForwardedFrom != "" {
+		originID, originName, err := h.service.ForwardOrigin(r.Context(), current.ID, *input.ForwardedFrom)
+		if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrNotFound) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid forwardedFrom")
+			return
+		}
+		if err != nil {
+			slog.Error("resolve forwarded message failed", "err", err, "chatId", targetID, "userId", current.ID)
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to send message")
+			return
+		}
+		if metadata == nil {
+			metadata = map[string]any{}
+		}
+		metadata["forwardedFrom"] = originID
+		metadata["forwardedSenderName"] = originName
+	}
+
 	msg, err := h.service.SendMessage(r.Context(), current.ID, targetID, content, input.Type, input.ReplyTo, metadata)
 
 	if errors.Is(err, ErrMemberMuted) {
@@ -327,4 +351,18 @@ func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"reactions": reactions,
 	})
+}
+
+// parsePagination извлекает limit и offset из query-параметров запроса
+// с дефолтными значениями (50 и 0 соответственно).
+func parsePagination(r *http.Request) (int, int) {
+	limit := 50
+	offset := 0
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = l
+	}
+	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
+		offset = o
+	}
+	return limit, offset
 }

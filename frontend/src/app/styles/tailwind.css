@@ -59,6 +59,13 @@
 @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
 
+/* Появление содержимого, которое сменилось целиком: вкладка, шаг, новый
+   код. Сдвиг в четыре пикселя — смену видно, но блок не «въезжает». */
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in { animation: none; }
+}
+
 /* Бег полосы, когда доля неизвестна. Отрезок уходит за левый край и
    выходит за правый: так видно, что работа идёт, и не обещано, сколько
    осталось. Значения из кита — 38% ширины и полтора шага в секунду. */
@@ -617,55 +624,9 @@
 
   .thread-messages { @apply min-h-0 h-full overflow-y-auto px-3 py-4.5; }
 
-  /* Свой и чужой пузырь разведены не яркостью, а температурой: своё
-     тёплое, чужое холодное, оба спокойные. Раньше своё было ярко-синим
-     и выбивалось из всего остального. Срезанный угол — с той стороны,
-     откуда пришло сообщение. */
-  .message-bubble {
-    @apply relative w-fit bg-bubble-in text-ink;
-    max-width: min(76%,560px); padding: 5px 8px 4px;
-    border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) 5px;
-    box-shadow: var(--elev-1);
-    transition: box-shadow var(--transition-duration-fast) ease-out, filter var(--transition-duration-fast) ease-out;
-    &.is-mine {
-      @apply self-end bg-bubble-out text-bubble-out-ink;
-      margin-right: 10px;
-      border-radius: var(--radius-bubble) var(--radius-bubble) 5px var(--radius-bubble);
-    }
-    &.is-action-target {
-      z-index: 20;
-      box-shadow: 0 0 0 2px var(--color-brand), var(--elev-3);
-    }
-  }
-  .message-bubble.has-media {
-    width: fit-content;
-    max-width: min(384px, calc(100% - 20px));
-  }
-  .message-content { @apply whitespace-pre-wrap leading-[1.38]; overflow-wrap: anywhere; }
-  .message-call-content {
-    @apply flex items-center gap-3;
-    min-width: 190px;
-  }
-  .message-call-icon {
-    @apply flex shrink-0 items-center justify-center rounded-full;
-    width: 42px;
-    height: 42px;
-    background: var(--color-line);
-    color: var(--color-ink);
-  }
-  .message-call-copy {
-    @apply min-w-0 flex flex-col gap-0.5;
-    & strong {
-      @apply text-[16px] font-extrabold leading-tight;
-      color: var(--color-ink);
-    }
-    & span {
-      @apply text-[13px] font-semibold;
-      color: var(--color-ink-2);
-    }
-  }
+
   .message-media { @apply block mb-[7px] rounded-[10px] object-contain; width: min(100%,360px); max-height: 360px; background: rgba(0,0,0,0.18); }
-  .message-bubble .message-media-open {
+  .message-media-open {
     @apply block max-w-full border-0 bg-transparent cursor-zoom-in;
     width: auto;
     min-height: 0;
@@ -710,22 +671,7 @@
     font-size: 30px;
     line-height: 1;
   }
-  .message-reactions {
-    @apply mt-[7px] flex flex-wrap gap-[5px];
-    /* Реакция — кнопка: по ней ставят свою и снимают. Раньше здесь был
-       span, и правило `is-mine` не применялось ни к чему — своя реакция
-       красилась утилитой `bg-accent-2` из старой палитры. */
-    & button {
-      min-height: 22px; padding: 2px 7px; border-radius: var(--radius-pill);
-      background: var(--color-sheet-2); font-size: 12px; cursor: pointer;
-      border: 1px solid transparent;
-      transition: background-color var(--transition-duration-fast) ease-out, border-color var(--transition-duration-fast) ease-out;
-      &:hover { border-color: var(--color-line); }
-      &.is-mine { background: var(--color-brand-soft); }
-      &:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-    }
-  }
-  .message-meta { @apply mt-1 flex justify-end gap-[6px] text-micro text-ink-3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
   .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
   .thread-composer {
     background: transparent;
@@ -844,12 +790,6 @@
     display: none !important;
   }
 
-  @media (max-width: 768px) {
-
-    .message-bubble.is-action-target {
-      z-index: 1201;
-    }
-  }
 }
 
 /* =========================================================

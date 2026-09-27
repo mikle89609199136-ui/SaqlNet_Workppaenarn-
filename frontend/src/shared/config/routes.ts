@@ -8,6 +8,11 @@ export const REACT_ROUTES = {
   COMMUNITIES: '/communities',
   MEETINGS: '/meetings',
   SETTINGS: '/settings',
+  /* Подтверждение входа нового устройства по QR: сюда ведёт ссылка из кода. */
+  LINK: '/link',
+  /* Вход нового устройства по коду с вошедшего (#754): сюда ведёт ссылка
+     из кода в настройках. */
+  QR_LOGIN: '/qr-login',
   /* Раздел настроек живёт в адресе, а не в состоянии: иначе на него нельзя
      дать ссылку, перезагрузка возвращает к первому разделу, а «назад» в
      браузере уводит со всей страницы вместо предыдущего раздела. */
@@ -31,7 +36,13 @@ export type TSettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEFAULT_SETTINGS_SECTION: TSettingsSection = 'account';
 
 /* Подстраницы аккаунта — второй уровень: /settings/account/password. */
-export const ACCOUNT_SUBSECTIONS = ['profile', 'email', 'password', 'sessions'] as const;
+export const ACCOUNT_SUBSECTIONS = [
+  'profile',
+  'email',
+  'password',
+  'sessions',
+  'encryption',
+] as const;
 
 export type TAccountSubsection = (typeof ACCOUNT_SUBSECTIONS)[number];
 
