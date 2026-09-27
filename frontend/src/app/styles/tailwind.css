@@ -79,9 +79,8 @@
    осталось. Значения из кита — 38% ширины и полтора шага в секунду. */
 @keyframes progress-crawl { from { margin-left: -38%; } to { margin-left: 100%; } }
 
-/* Перелив скелетона. Значения из кита: полотно вдвое шире блока, чтобы
-   блик успел пройти насквозь, и линейное движение — с ускорением видно,
-   что он «дышит», а не едет. */
+/* Перелив скелетона: полотно вдвое шире блока, чтобы блик успел пройти
+   насквозь. Скорость и плавность — у утилиты в Skeleton (по макету #826). */
 @keyframes skeleton-sheen {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
@@ -131,7 +130,6 @@
   .spoiler-dust, .spoiler-open { animation: none; }
 }
 
-@keyframes bgPulse { from { opacity: 0.6; }            to { opacity: 1; } }
 @keyframes cardIn  { from { opacity: 0; transform: translateY(32px) scale(0.92); } to { opacity: 1; transform: none; } }
 /* =========================================================
    Base layer — global resets + CSS var aliases
@@ -301,16 +299,6 @@
     @apply flex flex-col relative max-w-[920px] mx-auto;
     min-height: 100dvh;
     background: var(--color-sheet);
-  }
-
-  /* Шапка чата — в разметке ChatThreadHeader (#822). Здесь остаётся
-     только мерцание подзаголовка, пока связи нет: он говорит о связи, а
-     не о собеседнике. */
-  .thread-subtitle-notice {
-    animation: bgPulse 1.1s ease-in-out infinite alternate;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .thread-subtitle-notice { animation: none; }
   }
 
   .thread-messages { @apply min-h-0 h-full overflow-y-auto; }

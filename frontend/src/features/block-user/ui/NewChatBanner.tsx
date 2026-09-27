@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import type { IChatDto } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { describeApiError } from '@/shared/api';
-import { Button, Icon, showToast } from '@/shared/ui';
+import { cn } from '@/shared/lib';
+import { Button, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import type { IMessageDto } from '@/types';
 import { BlockUserButton } from './BlockUserButton';
@@ -79,20 +80,28 @@ export function NewChatBanner({ chat, messages, hasOlder }: Props) {
 
   if (!isNewFromStranger || chat.isPeerBlocked || chat.isBlockedByPeer || dismissed) return null;
 
+  /* По макету (#826): карточка по центру ленты, заголовок, пояснение и
+     три действия в ряд — опасное, нейтральное и тихое. */
+  const action = 'h-9 rounded-field px-3.5 text-caption font-semibold';
+
   return (
     <section
       aria-label={t('newChatBanner.label', 'Новый собеседник')}
-      className="mx-3 mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-bubble border border-line bg-sheet px-4 py-3"
+      className="mx-auto mt-3 flex w-[calc(100%-32px)] max-w-130 shrink-0 flex-col gap-2.5 rounded-bubble bg-sheet-2 px-4 py-3.5 text-center"
     >
-      <p className="text-caption min-w-0 flex-1 basis-60 text-ink-2">
+      <h2 className="m-0 text-ui font-semibold text-ink">
+        {t('newChatBanner.label', 'Новый собеседник')}
+      </h2>
+      <p className="m-0 text-caption leading-[1.45] text-ink-2">
         {t(
           'newChatBanner.text',
-          'Этот человек написал вам первым. Если вы его не знаете, можно заблокировать или пожаловаться.'
+          'Вы ещё не переписывались с этим человеком. Если не знаете его — заблокируйте или пожалуйтесь.'
         )}
       </p>
-      <div className="flex items-center gap-2">
-        <BlockUserButton name={chat.title} userId={peerId ?? ''} />
+      <div className="flex flex-wrap justify-center gap-2">
+        <BlockUserButton className={action} name={chat.title} userId={peerId ?? ''} />
         <Button
+          className={cn(action, 'bg-sheet')}
           disabled={report.isPending || report.isSuccess}
           onClick={() => report.mutate()}
           variant="secondary"
@@ -101,17 +110,16 @@ export function NewChatBanner({ chat, messages, hasOlder }: Props) {
             ? t('reportSentShort', 'Жалоба отправлена')
             : t('report', 'Пожаловаться')}
         </Button>
-        <button
-          aria-label={t('newChatBanner.dismiss', 'Скрыть')}
-          className="rounded-control p-1.5 text-ink-3 transition-colors duration-fast hover:bg-sheet-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
+        <Button
+          className={cn(action, 'font-normal text-ink-2')}
           onClick={() => {
             writeDismissed(chat.id);
             setDismissed(true);
           }}
-          type="button"
+          variant="ghost"
         >
-          <Icon name="cross" size="sm" />
-        </button>
+          {t('newChatBanner.dismiss', 'Скрыть')}
+        </Button>
       </div>
     </section>
   );

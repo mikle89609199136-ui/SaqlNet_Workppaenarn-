@@ -28,6 +28,7 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
 import { EmojiControl } from './EmojiControl';
+import { EncryptionUnavailableComposer } from './EncryptionUnavailableComposer';
 import { AttachmentPreview } from './AttachmentPreview';
 import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
@@ -173,6 +174,11 @@ export const ChatThreadComposer = ({
 
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
+  }
+
+  // Без ключа писать некуда — плашка с «Проверить» вместо поля (#826).
+  if (encryption.status === 'unavailable') {
+    return <EncryptionUnavailableComposer chatId={chatId} />;
   }
 
   return (

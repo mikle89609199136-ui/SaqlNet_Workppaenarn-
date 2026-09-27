@@ -81,4 +81,5 @@ export type TIconTypes =
   | 'archive'
   | 'archiveRestore'
   | 'pinOff'
-  | 'inbox';
+  | 'inbox'
+  | 'wifiOff';

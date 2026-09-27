@@ -207,7 +207,7 @@ describe('ChatThreadComposer', () => {
 
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
 
-      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого пользователя');
+      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого человека.');
       await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
 
       expect(unblock).toHaveBeenCalledWith('user-peer');

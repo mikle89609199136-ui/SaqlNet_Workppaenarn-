@@ -49,9 +49,11 @@ export function BlockedComposer({ chat }: { chat: IChatDto }) {
             </Button>
           }
           icon="lock"
-          tone="warn"
+          role="status"
+          tone="danger"
         >
-          <b>{t('chatPeerBlocked', 'Вы заблокировали этого пользователя')}</b>
+          <b>{t('chatPeerBlocked', 'Вы заблокировали этого человека.')}</b>{' '}
+          {t('chatPeerBlockedText', 'Он не может писать и звонить вам.')}
         </Banner>
       ) : (
         <Banner icon="lock" tone="warn">
