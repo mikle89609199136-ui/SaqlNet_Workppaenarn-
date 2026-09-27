@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
 import { createApiClient } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
@@ -8,6 +8,8 @@ import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
 import { MessageService } from './MessageService';
+import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import type { IMessageEntity } from '@/shared/lib/richText';
 
 const TARGET_CHAT = 'chat-target';
 
@@ -225,5 +227,66 @@ describe('сторож открытого текста', () => {
 
     const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
     expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+  });
+});
+
+describe('MessageService: форматирование (#656)', () => {
+  const bold: IMessageEntity[] = [{ type: 'bold', offset: 0, length: 6 }];
+
+  afterEach(() => setChatResolver(null));
+
+  function sealingCrypto() {
+    const encryptMessage = vi.fn(
+      async (_chatId: string, content: string, entities: IMessageEntity[] = []) =>
+        `sealed(${content}|${JSON.stringify(entities)})`
+    );
+    const crypto = { ...passthroughCrypto, encryptMessage } as unknown as CryptoService;
+    return { service: new MessageService(createApiClient(), crypto), encryptMessage };
+  }
+
+  it('в шифрованном чате форматирование уходит внутри конверта, открытого поля нет', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    const sent = await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
+    expect(requests[0].messages[0]).not.toHaveProperty('entities');
+    expect(sent).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('в канале текст открытый — и форматирование тоже', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).not.toHaveBeenCalled();
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пробелы по краям срезаются вместе со сдвигом форматирования', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+
+    await createService().sendMessage(TARGET_CHAT, '  привет  ', 'text', null, [
+      { type: 'bold', offset: 2, length: 6 },
+    ]);
+
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пересылка сохраняет форматирование исходного сообщения', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.forwardMessages(TARGET_CHAT, [
+      { ...message('source', 'chat-source', 'привет'), entities: bold },
+    ]);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
   });
 });

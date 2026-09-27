@@ -1,3 +1,4 @@
+import type { IRichTextInputHandle } from '@/shared/ui';
 import { describeApiError, useRealtimeSocket } from '@/shared/api';
 import { useChatEncryption } from '@/features/chat-encryption';
 import { usePhotoEditor } from '@/entities/media';
@@ -48,7 +49,7 @@ export function useChatThreadPage({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const draftRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));

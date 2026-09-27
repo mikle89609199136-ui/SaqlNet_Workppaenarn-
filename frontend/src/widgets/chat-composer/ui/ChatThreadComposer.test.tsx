@@ -13,6 +13,9 @@ import { chatKeys } from '@/entities/chat';
 import { useForwardStore } from '@/features/forward-messages';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { createRef } from 'react';
+import type { IRichTextInputHandle } from '@/shared/ui';
+import { typeIntoComposer } from '@/test/harness/composer';
 
 vi.mock('@/features/chat-encryption', () => ({
   useEncryptionState: () => ({ status: 'ready', unreachable: [] }),
@@ -52,7 +55,6 @@ describe('ChatThreadComposer', () => {
   });
 
   function setupProps(overrides = {}) {
-    const draftInput = document.createElement('input');
     const attachmentInput = document.createElement('input');
     const bottomDiv = document.createElement('div');
 
@@ -62,7 +64,7 @@ describe('ChatThreadComposer', () => {
       setPendingAttachment: vi.fn(),
       bottomRef: { current: bottomDiv },
       attachmentInputRef: { current: attachmentInput },
-      draftRef: { current: draftInput },
+      draftRef: createRef<IRichTextInputHandle>(),
       setPhotoEditorFile: vi.fn(),
       setOpenedImage: vi.fn(),
       ...overrides,
@@ -88,15 +90,15 @@ describe('ChatThreadComposer', () => {
     const sendButton = screen.getByRole('button', { name: /отправить сообщение/i });
 
     // Вводим текст
-    fireEvent.change(input, { target: { value: 'Привет' } });
-    expect(input).toHaveValue('Привет');
+    await typeIntoComposer(input, 'Привет');
+    expect(input.textContent).toBe('Привет');
     expect(sendButton).toHaveClass('is-active');
 
     // Нажимаем Отправить (отправляем форму)
     fireEvent.submit(sendButton.closest('form')!);
 
     // Поле мгновенно очищено
-    expect(input).toHaveValue('');
+    expect(input.textContent).toBe('');
   });
 
   it('отображает блок превью вложения, если pendingAttachment передан', () => {
@@ -153,7 +155,7 @@ describe('ChatThreadComposer', () => {
 
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
       const input = screen.getByRole('textbox', { name: /сообщение/i });
-      fireEvent.change(input, { target: { value: 'посмотри' } });
+      await typeIntoComposer(input, 'посмотри');
       fireEvent.submit(input.closest('form')!);
 
       await vi.waitFor(() => expect(useForwardStore.getState().pending).toBeNull());
@@ -161,7 +163,7 @@ describe('ChatThreadComposer', () => {
       // Комментарий не уходит отдельной отправкой: он в той же пачке (#808).
       expect(forward).toHaveBeenCalledTimes(1);
       expect(send).not.toHaveBeenCalled();
-      expect(input).toHaveValue('');
+      expect(input.textContent).toBe('');
     });
   });
 

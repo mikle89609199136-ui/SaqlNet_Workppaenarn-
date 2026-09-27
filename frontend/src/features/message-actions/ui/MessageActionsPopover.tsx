@@ -1,3 +1,4 @@
+import type { IRichTextInputHandle } from '@/shared/ui';
 import { ContextMenu, Icon } from '@/shared/ui';
 import { cn } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
@@ -15,7 +16,7 @@ const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 interface Props {
   message: IMessageDto;
   onSelection: (message: IMessageDto) => void;
-  draftRef?: RefObject<HTMLInputElement | null>;
+  draftRef?: RefObject<IRichTextInputHandle | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
 }
 

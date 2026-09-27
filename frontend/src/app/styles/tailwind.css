@@ -708,21 +708,6 @@
     width: 100%;
   }
 
-  .thread-composer-input {
-    flex: 1;
-    min-width: 0;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--color-ink);
-    font-size: 15px;
-    padding: 8px 4px;
-
-    &::placeholder {
-      color: var(--color-ink-3);
-    }
-  }
-
   .thread-composer-action-btn {
     background: transparent;
     border: none;

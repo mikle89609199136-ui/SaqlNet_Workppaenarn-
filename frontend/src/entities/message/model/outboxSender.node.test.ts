@@ -55,7 +55,8 @@ describe('outboxSender', () => {
       chatId,
       'Привет',
       'text',
-      null
+      null,
+      []
     );
 
     // Проверяем, что элемент удалён из outbox
@@ -133,7 +134,8 @@ describe('outboxSender', () => {
       chatId,
       'Повтор',
       'text',
-      null
+      null,
+      []
     );
     expect(getOutboxItem(tempId)).toBeUndefined();
   });
@@ -173,7 +175,8 @@ describe('outboxSender', () => {
       file,
       'image',
       'Картинка',
-      null
+      null,
+      []
     );
     expect(getOutboxItem(tempId)).toBeUndefined();
   });
@@ -249,7 +252,7 @@ describe('outboxSender', () => {
     await sendOutboxItem(queryClient, item);
 
     // sendMessage ОБЯЗАН вызываться — повтор сообщения не должен пропадать молча
-    expect(sendSpy).toHaveBeenCalledWith(chatId, 'ок', 'text', null);
+    expect(sendSpy).toHaveBeenCalledWith(chatId, 'ок', 'text', null, []);
     expect(getOutboxItem(tempId)).toBeUndefined();
     const cached: any = queryClient.getQueryData(chatKeys.messages(chatId));
     expect(cached.pages[0].some((m: any) => m.id === 'server-second-dup')).toBe(true);

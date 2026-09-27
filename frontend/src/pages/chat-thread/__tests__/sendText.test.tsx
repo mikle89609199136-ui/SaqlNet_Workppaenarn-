@@ -10,6 +10,8 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import { stubCrypto } from '@/test/harness/stubCrypto';
+import { typeIntoComposer } from '@/test/harness/composer';
+import type { IRichText } from '@/shared/lib/richText';
 
 // ── Наблюдение за отправкой ──────────────────────────────────────────────────
 
@@ -17,6 +19,7 @@ interface ISendRequestBody {
   content: string;
   type: string;
   replyTo: string | null;
+  entities?: unknown[];
 }
 
 /**
@@ -49,11 +52,12 @@ function setupChat(overrides: Partial<IChatDto> = {}) {
   return { me, chat, sentBodies };
 }
 
-async function typeAndPressEnter(text: string) {
+async function typeAndPressEnter(text: string | IRichText) {
   const user = userEvent.setup();
-  const input = await screen.findByPlaceholderText('Сообщение...');
+  const input = await screen.findByRole('textbox', { name: 'Сообщение' });
 
-  await user.type(input, text);
+  await user.click(input);
+  await typeIntoComposer(input, text);
   await user.keyboard('{Enter}');
 
   return input;
@@ -89,7 +93,21 @@ describe('отправка текста', () => {
     await waitFor(() => expect(sentBodies).toHaveLength(1));
     await waitFor(() => expect(screen.getAllByText(text)).toHaveLength(1));
 
-    expect(input).toHaveValue('');
+    expect(input.textContent).toBe('');
+  });
+
+  it('форматирование уходит внутри шифртекста и видно в ленте (#656)', async () => {
+    const { me, chat, sentBodies } = setupChat();
+    const text = secretText('важное');
+
+    renderChatThread({ chat, messages: [], currentUser: me });
+    await typeAndPressEnter({ text, entities: [{ type: 'bold', offset: 0, length: text.length }] });
+
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    expect(sentBodies[0]).not.toHaveProperty('entities');
+    expect(sentBodies[0].content).not.toContain(text);
+
+    await waitFor(() => expect(screen.getByText(text)).toHaveClass('font-semibold'));
   });
 
   it('should not let the message be typed while the chat key is not ready', async () => {
@@ -100,9 +118,10 @@ describe('отправка текста', () => {
 
     renderChatThread({ chat, messages: [], currentUser: me, keyUnavailable: true });
 
-    const input = await screen.findByPlaceholderText('Шифрование недоступно');
+    const input = await screen.findByRole('textbox', { name: 'Сообщение' });
 
-    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute('contenteditable', 'false');
+    expect(screen.getByText('Шифрование недоступно')).toBeInTheDocument();
     expect(sentBodies).toHaveLength(0);
   });
 });
