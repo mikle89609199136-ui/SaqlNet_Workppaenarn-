@@ -27,6 +27,7 @@ import {
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
+import { EmojiControl } from './EmojiControl';
 import { AttachmentPreview } from './AttachmentPreview';
 import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
@@ -208,9 +209,10 @@ export const ChatThreadComposer = ({
           ref={draftRef}
         />
 
-        {/* Эмодзи (#824) и запись голосового (#843) появятся здесь, когда
-            будут сами функции. Кнопка справа пока одна — отправка: залита
-            акцентом, когда есть что отправить. */}
+        <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+
+        {/* Запись голосового (#843) появится здесь, когда будет сама
+            функция. Отправка залита акцентом, когда есть что отправить. */}
         <Button
           aria-label={t('sendMessage', 'Отправить сообщение')}
           className={cn(!canSend && 'text-ink-3')}

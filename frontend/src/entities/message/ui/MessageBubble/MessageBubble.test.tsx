@@ -557,6 +557,15 @@ describe('закреплённое сообщение (#170)', () => {
     });
 
     it('реакция — картинка Noto, при появлении своей играет анимация', () => {
+      // Без изоляции тестов matchMedia может остаться чужим — движение явно
+      // не уменьшено; прежний matchMedia возвращаем как есть.
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
       const message = makeMessage({
         senderId: 'u-2',
         content: 'привет',
@@ -566,8 +575,12 @@ describe('закреплённое сообщение (#170)', () => {
         <MessageBubble {...base} currentUserId="me" message={message} />
       );
 
-      const img = container.querySelector('.message-reactions img')!;
-      expect(img.getAttribute('src')).toContain('/notoemoji/latest/1f44d/emoji.svg');
+      // Картинки — из статики приложения, без запросов к Google (#824).
+      const srcs = () =>
+        [...container.querySelectorAll('.message-reactions img')].map((img) =>
+          img.getAttribute('src')
+        );
+      expect(srcs()).toEqual(['/emoji/noto/1f44d.svg']);
 
       rerender(
         <I18nextProvider i18n={testI18n}>
@@ -582,9 +595,9 @@ describe('закреплённое сообщение (#170)', () => {
         </I18nextProvider>
       );
 
-      expect(container.querySelector('.message-reactions img')!.getAttribute('src')).toContain(
-        '/notoemoji/latest/1f44d/512.webp'
-      );
+      // Анимация ложится поверх статичной, статичная остаётся до загрузки.
+      expect(srcs()).toEqual(['/emoji/noto/1f44d.svg', '/emoji/noto/1f44d.webp']);
+      window.matchMedia = originalMatchMedia;
     });
   });
 });

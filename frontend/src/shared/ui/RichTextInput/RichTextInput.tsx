@@ -2,6 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import {
   $createParagraphNode,
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
@@ -38,6 +40,8 @@ export interface IRichTextInputHandle {
   setValue(value: IRichText | string): void;
   focus(): void;
   clear(): void;
+  /** Вставить текст на место курсора (эмодзи из панели, #824). */
+  insertText(text: string): void;
 }
 
 interface Props {
@@ -93,6 +97,16 @@ function HandlePlugin({ handleRef }: { handleRef: React.Ref<IRichTextInputHandle
           { discrete: true, tag: EXTERNAL }
         ),
       focus: () => editor.focus(),
+      insertText: (text) =>
+        // Курсор редактор помнит и без фокуса; если его не было — в конец.
+        editor.update(() => {
+          let selection = $getSelection();
+          if (!$isRangeSelection(selection)) {
+            $getRoot().selectEnd();
+            selection = $getSelection();
+          }
+          if ($isRangeSelection(selection)) selection.insertText(text);
+        }),
       clear: () =>
         editor.update(
           () => {

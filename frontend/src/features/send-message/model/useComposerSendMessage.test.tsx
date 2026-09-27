@@ -55,6 +55,9 @@ describe('useComposerSendMessage', () => {
       clear: () => {
         value = { text: '', entities: [] };
       },
+      insertText: (text) => {
+        value = { ...value, text: value.text + text };
+      },
     };
   }
 

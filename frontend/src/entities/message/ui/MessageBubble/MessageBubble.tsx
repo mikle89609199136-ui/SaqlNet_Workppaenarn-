@@ -77,7 +77,7 @@ function authorInk(senderId: string) {
 }
 
 /* Анимированная картинка Noto играет столько, потом — снова статичная. */
-const REACTION_PLAY_MS = 1800;
+const REACTION_PLAY_MS = 2500;
 
 interface IReactionPillProps {
   emoji: string;
