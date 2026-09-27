@@ -63,7 +63,7 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
           <span
             className={cn(
               'absolute top-[3px] left-[3px] rounded-pill bg-on-brand shadow-[0_1px_3px_rgb(0_0_0/0.3)]',
-              'transition-transform duration-panel ease-out',
+              'transition-transform duration-[220ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
               s.thumb
             )}
           />

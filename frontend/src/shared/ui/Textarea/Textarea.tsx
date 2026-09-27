@@ -61,9 +61,9 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(function Textarea
              и так во всю ширину, а рывок вширь ломает раскладку. */
           'resize-y',
           'focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand-soft',
-          isError ? 'border-danger' : 'border-divider hover:border-line',
+          isError ? 'border-danger' : 'border-divider',
           'disabled:cursor-not-allowed disabled:opacity-42',
-          'read-only:bg-sheet-2 read-only:hover:border-divider',
+          'read-only:bg-sheet-2',
           textareaClassName
         )}
         disabled={disabled}

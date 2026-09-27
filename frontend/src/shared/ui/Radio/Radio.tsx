@@ -55,7 +55,7 @@ export const Radio = forwardRef<HTMLInputElement, Props>(function Radio(
         />
         <Icon
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-1/2 size-3.5 -translate-1/2 scale-0 text-on-brand transition-transform duration-fast peer-checked:scale-100"
+          className="pointer-events-none absolute top-1/2 left-1/2 size-3.5 -translate-1/2 scale-0 stroke-[3px] text-on-brand transition-transform duration-fast peer-checked:scale-100"
           name="check"
         />
       </span>

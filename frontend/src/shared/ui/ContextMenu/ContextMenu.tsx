@@ -91,7 +91,7 @@ export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProp
           'flex min-h-9.5 w-full shrink-0 cursor-pointer items-center gap-3 rounded-field px-2.5 py-2 text-left text-ui',
           'transition-colors duration-fast',
           'enabled:hover:layer-hover enabled:active:layer-press',
-          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
           'disabled:cursor-default disabled:opacity-40',
           variant === 'danger' ? 'text-danger' : 'text-ink',
           checked && 'bg-brand-soft text-brand',

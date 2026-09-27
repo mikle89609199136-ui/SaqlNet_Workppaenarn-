@@ -234,7 +234,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
           /* Выглядит как поле, а не как кнопка: фон ленты, рамка, та же
              высота 48 (py-3 + 22 + рамка), что у Input. */
           'w-full justify-between text-left font-normal group',
-          'border bg-chat-bg border-divider hover:border-line hover:bg-none active:bg-none',
+          'border bg-chat-bg border-divider not-disabled:hover:brightness-100',
           size === 'md' && 'py-3',
           open && 'border-brand ring-3 ring-brand-soft',
           isError && !open && 'border-danger'

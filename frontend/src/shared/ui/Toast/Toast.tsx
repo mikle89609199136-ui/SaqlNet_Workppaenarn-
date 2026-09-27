@@ -64,7 +64,7 @@ export const Toast = ({ toast, onHide }: Props) => {
         /* Скругление окна, а не таблетка: в одну строку оно и выглядит
            таблеткой, а длинная ошибка в две строки не становится овалом. */
         'pointer-events-auto flex max-w-full items-center gap-2 rounded-window',
-        'bg-ink px-3.5 py-2 text-caption text-sheet shadow-[var(--shadow-menu)]',
+        'bg-ink px-3.5 py-2 text-caption text-sheet',
         leaving
           ? 'animate-[toast-out_160ms_ease-in_forwards]'
           : 'animate-[toast-in_200ms_var(--ease-out)_both]',

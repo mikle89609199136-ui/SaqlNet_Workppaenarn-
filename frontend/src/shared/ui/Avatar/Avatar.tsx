@@ -7,7 +7,8 @@ import { useAvatarShape, type TAvatarShape } from './avatarShape';
    единственные, что были написаны целиком. */
 const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6'] as const;
 
-/* Ступени дизайн-системы (#817):
+/* Ступени дизайн-системы (#817) и макета:
+     xs  24 — в чипе выбранного участника
      sm  32 — комментарии, участники группы
      md  40 — шапка чата
      lg  46 — строка списка: имя и превью в два ряда
@@ -16,6 +17,7 @@ const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6']
 
    Точка «в сети» — 12px с обводкой цвета панели, на крупных — больше. */
 const sizes = {
+  xs: { box: 'size-6 text-micro', dot: 'size-2', grid: 24 },
   sm: { box: 'size-8 text-caption', dot: 'size-2.5', grid: 32 },
   md: { box: 'size-10 text-body', dot: 'size-3', grid: 40 },
   lg: { box: 'size-11.5 text-title', dot: 'size-3', grid: 46 },

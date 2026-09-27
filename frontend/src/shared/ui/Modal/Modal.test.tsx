@@ -119,7 +119,10 @@ describe('подтверждение действия', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it('закрытие крестиком — это отказ', async () => {
+  it('у подтверждения нет крестика: отказ — это «Отмена»', async () => {
+    /* Дизайн-система: в окне подтверждения две кнопки и ничего больше.
+       Escape и клик мимо по-прежнему отказ — их проверить в jsdom нельзя,
+       см. шапку файла. */
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
     render(
@@ -134,7 +137,9 @@ describe('подтверждение действия', () => {
       </ConfirmDialog>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('button', { name: 'Закрыть' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).not.toHaveBeenCalled();

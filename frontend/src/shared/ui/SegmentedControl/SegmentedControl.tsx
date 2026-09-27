@@ -34,8 +34,7 @@ export const SegmentedControl = forwardRef<HTMLDivElement, SegmentedControlProps
               onClick={() => onChange(opt.value)}
               className={cn(
                 'h-9.5 px-3.5 rounded-field text-ui font-semibold bg-transparent text-ink-2 cursor-pointer transition-all duration-fast',
-                'hover:text-ink',
-                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-ink-2',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
                 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
                 'data-[state=active]:bg-sheet data-[state=active]:text-ink data-[state=active]:shadow-[var(--shadow-tab)]'
               )}

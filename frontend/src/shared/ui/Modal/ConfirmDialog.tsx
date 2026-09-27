@@ -45,6 +45,7 @@ export function ConfirmDialog({
     <Modal
       alert={danger}
       className="w-[min(360px,calc(100vw-32px))]"
+      closeButton={false}
       footer={
         <>
           <Button onClick={onCancel} size="sm" variant="ghost">

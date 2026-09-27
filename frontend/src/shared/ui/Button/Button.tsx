@@ -12,7 +12,7 @@ import { forwardRef, type ButtonHTMLAttributes, type MouseEvent } from 'react';
    своим py-*. */
 const sizes = {
   xs: 'text-micro px-2 py-1 rounded-control gap-1',
-  sm: 'text-caption px-4 py-2 rounded-field gap-1.5',
+  sm: 'text-caption px-4 py-2 rounded-field gap-2.5',
   md: 'text-body px-5 py-3.5 rounded-button gap-2.5',
   lg: 'text-title px-6 py-4 rounded-button gap-2.5',
 } as const;
@@ -34,17 +34,23 @@ const iconOnlySizes = {
    имя занято нейтральным вариантом, на котором держатся полсотни мест.
    danger — удаление и выход, на мягкой подложке ошибки.
 
-   Наведение у всех, кроме основной, — слой поверх фона (layer-hover), а
-   не замена фона: так у кнопки-иконки, включённой через aria-pressed,
-   подсветка не стирает состояние. */
+   Наведение — как в дизайн-системе. У кнопок с заливкой и у ссылки-
+   действия она светлеет (яркость 1.08); у ghost, то есть у кнопки-
+   иконки, появляется слой поверх фона, а цвет не меняется: включённая
+   через aria-pressed кнопка остаётся цвета акцента. not-disabled, а не
+   enabled: оформление берут и ссылки, а :enabled бывает только у
+   элементов формы. */
 const variants = {
-  primary: 'bg-brand-fill text-on-brand hover:bg-brand-fill-hover',
-  secondary: 'bg-sheet-2 text-ink hover:layer-hover active:layer-press',
-  ghost:
-    'bg-transparent text-ink-2 hover:layer-hover hover:text-ink active:layer-press aria-pressed:text-brand',
-  accent: 'bg-transparent text-brand hover:layer-hover active:layer-press',
-  danger: 'bg-danger-soft text-danger hover:layer-hover active:layer-press',
+  primary: 'bg-brand-fill text-on-brand not-disabled:hover:brightness-108',
+  secondary: 'bg-sheet-2 text-ink not-disabled:hover:brightness-108',
+  ghost: 'bg-transparent text-ink-2 hover:layer-hover active:layer-press aria-pressed:text-brand',
+  accent: 'bg-transparent text-brand not-disabled:hover:brightness-108',
+  danger: 'bg-danger-soft text-danger not-disabled:hover:brightness-108',
 } as const;
+
+/* Ссылка-действие обычного размера в дизайн-системе ниже и мельче
+   кнопки: 44px и 14px. */
+const accentMd = 'py-3 text-ui';
 
 /* Круг — не украшение, а отдельная роль: кнопка при иконке, которая
    стоит в ряду других элементов и не должна выглядеть блоком. До этой
@@ -75,13 +81,14 @@ export const buttonStyles = ({
   className,
 }: StyleProps = {}) =>
   cn(
-    'inline-flex items-center justify-center font-semibold transition-colors duration-fast cursor-pointer',
+    'inline-flex items-center justify-center font-semibold transition-[color,background-color,filter] duration-fast cursor-pointer',
     /* Выключенная кнопка остаётся на месте и видна: пусть будет понятно,
        какое действие есть и что для него нужно. */
     'disabled:opacity-50 disabled:cursor-not-allowed',
     'aria-disabled:opacity-50 aria-disabled:cursor-not-allowed',
     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
     iconOnly ? iconOnlySizes[size] : sizes[size],
+    variant === 'accent' && size === 'md' && !iconOnly && accentMd,
     variants[variant],
     /* После размера: радиус приходит оттуда, и round обязан его перебить. */
     shapes[shape],

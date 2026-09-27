@@ -92,6 +92,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
         aria-label={
           revealed ? t('hidePassword', 'Скрыть пароль') : t('showPassword', 'Показать пароль')
         }
+        className={cn('rounded-field', revealed ? 'text-brand' : 'text-ink-3')}
         disabled={disabled}
         iconOnly
         onClick={() => setRevealed((value) => !value)}
@@ -123,9 +124,8 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
 
         <input
           className={cn(
-            /* Поле узнаётся по фону ленты на панели и по рамке. Рамка —
-               декоративная линия дизайн-системы, при наведении она
-               уплотняется до очертания элемента управления. */
+            /* Поле узнаётся по фону ленты на панели и по рамке —
+               декоративной линии дизайн-системы. */
             'w-full border bg-chat-bg text-ink transition-[border-color,box-shadow] duration-fast',
             'placeholder:text-ink-3',
             /* Кольцо вместо смещённого контура, как у кнопки: у поля
@@ -133,11 +133,11 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
                это должно быть при любом способе фокуса, не только с
                клавиатуры. */
             'focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand-soft',
-            isError ? 'border-danger' : 'border-divider hover:border-line',
+            isError ? 'border-danger' : 'border-divider',
             'disabled:cursor-not-allowed disabled:opacity-42',
             /* Только для чтения — не ошибка и не запрет: поле живое, из
                него можно копировать, поэтому гасим лишь фон. */
-            'read-only:bg-sheet-2 read-only:hover:border-divider',
+            'read-only:bg-sheet-2',
             s.field,
             icon && s.withIcon,
             trailing && s.withAddon,

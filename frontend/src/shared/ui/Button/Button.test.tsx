@@ -210,14 +210,34 @@ describe('кнопка', () => {
     expect(button.className.split(' ')).not.toContain('border');
   });
 
-  it('should paint hover as a layer over the background, not instead of it', () => {
-    /* Замена фона при наведении стирала бы состояние: у включённой
-       кнопки-иконки — цвет, у отмеченного пункта меню — подложку. */
-    render(<Button variant="secondary">Отмена</Button>);
+  it('should brighten a filled button on hover, as the design system does', () => {
+    render(<Button variant="secondary">Сохранить</Button>);
 
-    const button = screen.getByRole('button', { name: 'Отмена' });
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toHaveClass(
+      'bg-sheet-2',
+      'not-disabled:hover:brightness-108'
+    );
+  });
 
-    expect(button).toHaveClass('bg-sheet-2', 'hover:layer-hover', 'active:layer-press');
+  it('should paint an icon button hover as a layer, keeping its pressed color', () => {
+    /* Слой поверх фона, а не смена цвета: включённая кнопка-иконка при
+       наведении остаётся цвета акцента. */
+    render(
+      <Button aria-label="Без звука" aria-pressed iconOnly variant="ghost">
+        <span aria-hidden>🔕</span>
+      </Button>
+    );
+
+    expect(screen.getByRole('button', { name: 'Без звука' })).toHaveClass(
+      'hover:layer-hover',
+      'aria-pressed:text-brand'
+    );
+  });
+
+  it('should make the regular link-like action 44 pixels at 14px, as in the design system', () => {
+    render(<Button variant="accent">Забыли пароль?</Button>);
+
+    expect(screen.getByRole('button', { name: 'Забыли пароль?' })).toHaveClass('py-3', 'text-ui');
   });
 
   it('should color the link-like action with the accent', () => {

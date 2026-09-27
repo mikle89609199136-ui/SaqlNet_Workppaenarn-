@@ -23,6 +23,11 @@ interface Props {
   /** Крестик в шапке. Убирают там, где выбор обязателен. */
   closable?: boolean;
   /**
+   * Показывать ли крестик у закрываемого окна. У подтверждения его нет
+   * (дизайн-система): отказ там — кнопка «Отмена», Escape и клик мимо.
+   */
+  closeButton?: boolean;
+  /**
    * Окно требует ответа, прежде чем идти дальше: подтверждение опасного
    * действия. Диктор объявит его как предупреждение (alertdialog), а не
    * как обычное окно.
@@ -77,6 +82,7 @@ export function Modal({
   children,
   footer,
   closable = true,
+  closeButton = true,
   alert = false,
   onClose,
   className,
@@ -167,7 +173,7 @@ export function Modal({
             <h2 className="text-title font-semibold" id={titleId}>
               {title}
             </h2>
-            {closable && (
+            {closable && closeButton && (
               <Button
                 aria-label={t('close', 'Закрыть')}
                 className="-m-1.5"
@@ -183,7 +189,7 @@ export function Modal({
 
           <div className="text-ui leading-[1.45] text-ink-2">{children}</div>
 
-          {footer && <div className="mt-1 flex justify-end gap-2">{footer}</div>}
+          {footer && <div className="flex justify-end gap-2">{footer}</div>}
         </div>
       ) : (
         children
