@@ -26,6 +26,12 @@ export interface IMessageDeletedEvent {
   previousMessage: IMessageDto | null;
   chatId: string;
 }
+/** Удалены у всех или скрыты у себя — пачкой (#840). */
+export interface IMessagesRemovedEvent {
+  type: string;
+  chatId: string;
+  messageIds: string[];
+}
 export interface IMessagePinEvent {
   type: string;
   chatId: string;
@@ -233,6 +239,8 @@ export interface IWsEventMap {
   [WS_EVENTS.CHAT.UPDATED]: IChatUpdatedEvent;
 
   [WS_EVENTS.MESSAGE.DELETED]: IMessageDeletedEvent;
+  [WS_EVENTS.MESSAGE.BATCH_DELETED]: IMessagesRemovedEvent;
+  [WS_EVENTS.MESSAGE.HIDDEN]: IMessagesRemovedEvent;
   [WS_EVENTS.MESSAGE.EDITED]: IMessageEditedEvent;
   [WS_EVENTS.MESSAGE.NEW]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;

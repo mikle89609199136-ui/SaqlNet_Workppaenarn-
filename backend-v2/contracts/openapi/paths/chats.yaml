@@ -621,6 +621,34 @@ x-secure: &secure [{ bearerAuth: [] }]
       parameters: [*chatId],
       responses: { '200': { description: Marked read } },
     }
+/chats/{chatId}/messages/delete:
+  post:
+    {
+      tags: [Messages],
+      summary: Delete messages for everyone or only for me,
+      description: "Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.",
+      operationId: deleteMessages,
+      security: *secure,
+      parameters: [*chatId],
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '../components/schemas.yaml#/DeleteMessagesRequest' } } },
+        },
+      responses:
+        {
+          '200':
+            {
+              description: Deleted; lastMessage is the chat's last message as the caller now sees it,
+              content:
+                { application/json: { schema: { $ref: '../components/schemas.yaml#/DeleteMessageResponse' } } },
+            },
+          '400': { description: Empty or more than 100 ids, or an invalid id },
+          '403': { description: Not a member, or forEveryone with someone else's message },
+          '404': { description: A message is not in this chat or already deleted },
+        },
+    }
 /chats/{chatId}/pins:
   get:
     {

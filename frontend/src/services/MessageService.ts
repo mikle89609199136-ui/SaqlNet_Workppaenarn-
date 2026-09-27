@@ -456,9 +456,14 @@ export class MessageService {
     return message;
   }
 
-  async deleteMessage(messageId: string) {
-    const response = await this.apiClient.delete<IDeleteMessageResponse>(
-      API_ENDPOINTS.MESSAGE_BY_ID(messageId)
+  /**
+   * Удаляет сообщения одного чата (#840): `forEveryone` — у всех (только
+   * свои), иначе только у себя. До 100 за раз, всё или ничего.
+   */
+  async deleteMessages(chatId: string, messageIds: string[], forEveryone: boolean) {
+    const response = await this.apiClient.post<IDeleteMessageResponse>(
+      API_ENDPOINTS.CHAT_MESSAGES_DELETE(chatId),
+      { messageIds, forEveryone }
     );
     return response.data;
   }

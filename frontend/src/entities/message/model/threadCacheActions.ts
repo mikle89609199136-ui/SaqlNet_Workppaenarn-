@@ -142,6 +142,20 @@ export function dropThreadMessage(
   markChatListStale(queryClient);
 }
 
+/** То же для пачки (#840): одна перерисовка ленты и одно обновление списка. */
+export function dropThreadMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  messageIds: string[]
+): void {
+  if (messageIds.length === 0) return;
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? messageIds.reduce((thread, id) => removeMessage(thread, id), current) : current
+  );
+  void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
+  markChatListStale(queryClient);
+}
+
 export function putPinnedMessage(
   queryClient: QueryClient,
   chatId: string,

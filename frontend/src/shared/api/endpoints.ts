@@ -40,6 +40,8 @@ export const API_ENDPOINTS = {
   CHAT_PIN: (chatId: string) => `/chats/${chatId}/pin`,
   CHAT_ARCHIVE: (chatId: string) => `/chats/${chatId}/archive`,
   CHAT_READ: (chatId: string) => `/chats/${chatId}/read`,
+  /** Удаление выбранных сообщений у всех или у себя (#840). */
+  CHAT_MESSAGES_DELETE: (chatId: string) => `/chats/${chatId}/messages/delete`,
 
   USER_SEARCH: '/users/search',
   USER_CHECK_USERNAME: '/users/check-username',

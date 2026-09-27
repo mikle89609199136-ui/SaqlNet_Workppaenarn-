@@ -42,9 +42,15 @@ func expectDeleteUpdate(mock sqlmock.Sqlmock) {
 		WillReturnRows(sqlmock.NewRows([]string{"chat_id", "created_at"}).AddRow(deleteMessageChatID, deleteMessageCreatedAt))
 }
 
+// Соседнее сообщение (before задан) считается для рассылки — без учёта
+// скрытых; последнее — для удалившего, без скрытых им (#840).
 func expectMessageAfterDelete(mock sqlmock.Sqlmock, before any, rows *sqlmock.Rows) {
+	var hiddenFor any = deleteMessageUserID
+	if before != nil {
+		hiddenFor = nil
+	}
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR[\s\S]*ORDER BY m\.created_at DESC, m\.id DESC`).
-		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID).WillReturnRows(rows)
+		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID, hiddenFor).WillReturnRows(rows)
 }
 
 func TestDeleteMessage_ReturnsChatLastMessageAndBroadcastsPreviousMessage(t *testing.T) {
@@ -187,7 +193,7 @@ func TestDeleteMessage_LastMessageLookupErrorRollsBackWithoutBroadcast(t *testin
 	expectDeleteUpdate(mock)
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR`).
-		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID).
+		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID, deleteMessageUserID).
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
 	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)

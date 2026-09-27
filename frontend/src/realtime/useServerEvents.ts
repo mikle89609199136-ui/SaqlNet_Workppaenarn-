@@ -5,6 +5,7 @@ import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,
+  dropThreadMessages,
   isReactionChangePending,
   patchThreadMessage,
   putPinnedMessage,
@@ -66,6 +67,19 @@ export function useServerEvents(enabled: boolean): void {
               console.warn('Не удалось обработать входящее сообщение', error);
               invalidate(eventType, payload);
             });
+          return;
+        }
+
+        // Пачка удалена у всех или скрыта у себя (#840): убираем из ленты на
+        // месте, без перезапроса истории. Своё устройство, которое удаляло,
+        // получает то же событие — повторное удаление ничего не меняет.
+        if (
+          (eventType === WS_EVENTS.MESSAGE.BATCH_DELETED ||
+            eventType === WS_EVENTS.MESSAGE.HIDDEN) &&
+          payload?.chatId &&
+          Array.isArray(payload?.messageIds)
+        ) {
+          dropThreadMessages(queryClient, payload.chatId, payload.messageIds);
           return;
         }
 

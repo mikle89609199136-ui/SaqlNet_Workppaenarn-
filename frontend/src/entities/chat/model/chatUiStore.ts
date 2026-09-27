@@ -33,6 +33,8 @@ interface IChatState {
   translations: TTranslations;
   actionMenu: IActionMenu | null;
   highlightedMessageId: string | null;
+  /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
+  deleteTargets: TMessagesList | null;
 }
 
 type Updater<T> = (updater: T | ((prev: T) => T)) => void;
@@ -46,6 +48,7 @@ interface IChatActions {
   setTranslations: Updater<TTranslations>;
   setActionMenu: (menu: IActionMenu | null) => void;
   setHighlightedMessageId: (id: string | null) => void;
+  setDeleteTargets: (targets: TMessagesList | null) => void;
   resetChatState: () => void;
 }
 
@@ -58,6 +61,7 @@ const initialChatState: IChatState = {
   translations: {},
   actionMenu: null,
   highlightedMessageId: null,
+  deleteTargets: null,
 };
 
 type InitialState = IChatState & IChatActions;
@@ -86,6 +90,7 @@ export const useChatUiStore = create<InitialState>((set) => {
     setTranslations: withUpdater('translations'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
+    setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
     resetChatState: () => set(initialChatState),
   };
 });
