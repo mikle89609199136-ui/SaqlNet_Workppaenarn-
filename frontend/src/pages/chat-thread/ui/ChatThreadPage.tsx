@@ -22,7 +22,7 @@ import type { IProfileState } from '@/entities/user';
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
    стабильная ссылка не перерисовывает мемоизированную панель. */
 const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
-  <BlockUserButton name={name} userId={id} />
+  <BlockUserButton className="w-full py-3 text-ui font-medium" name={name} userId={id} />
 );
 
 interface IOutletContext {
@@ -110,11 +110,7 @@ export function ChatThreadPage() {
       )}
       {!modals.isPinnedMessagesOpen && (
         <main className="thread-page">
-          <ChatThreadHeader
-            setIsGroupInfoOpen={modals.setIsGroupInfoOpen}
-            setProfileModal={setProfileModal}
-            profileModal={profileModal}
-          />
+          <ChatThreadHeader setProfileModal={setProfileModal} profileModal={profileModal} />
 
           <PinnedMessagesNavigator
             messages={pinnedMessages}
@@ -207,14 +203,14 @@ export function ChatThreadPage() {
             />
           )}
 
-          {chat?.type === 'group' && (
+          {profileMode === 'modal' && chat?.type === 'group' && (
             <GroupInfoModal
-              isOpen={modals.isGroupInfoOpen}
-              onClose={() => modals.setIsGroupInfoOpen(false)}
+              isOpen={profileModal.isOpen && profileModal.kind === 'group'}
+              onClose={() => setProfileModal({ isOpen: false, userId: null })}
             />
           )}
 
-          {profileMode === 'modal' && (
+          {profileMode === 'modal' && profileModal.kind !== 'group' && (
             <UserProfileModal
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
               profileModal={profileModal}

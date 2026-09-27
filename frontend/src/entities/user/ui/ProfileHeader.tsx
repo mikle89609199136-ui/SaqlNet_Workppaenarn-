@@ -1,5 +1,5 @@
-import { Avatar, Button, Icon } from '@/shared/ui';
-import type { TCallKind } from '@/types';
+import { Avatar, Icon } from '@/shared/ui';
+import type { TCallKind, TIconTypes } from '@/types';
 import type { IUserDto } from '../model/types';
 import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
@@ -10,96 +10,114 @@ interface Props {
   isPeerOnline: boolean;
   profileSubtitle: string | null;
   hasChat: boolean;
-  onClose: () => void;
   onCall: (kind: TCallKind) => void;
   onStartEdit: () => void;
 }
 
+interface ITile {
+  key: string;
+  icon: TIconTypes;
+  label: string;
+  /** Полное имя для диктора, когда подпись на плитке короткая. */
+  ariaLabel?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+/**
+ * Шапка профиля — по макету (#822): без фона и рамок, аватар 96, имя
+ * 20px, под ним «@ник · статус» (в сети — акцентом), ниже плитки действий
+ * на приподнятой поверхности.
+ *
+ * Плиток «Поиск» и «Звук» из макета пока нет — их функции делаются в
+ * #841 и #559; плитки появятся вместе с ними.
+ */
 export function ProfileHeader({
   profileUser,
   isMyProfile,
   isPeerOnline,
   profileSubtitle,
   hasChat,
-  onClose,
   onCall,
   onStartEdit,
 }: Props) {
   const { t } = useTranslation();
+  const name = profileUser.firstName || profileUser.username || t('user', 'Пользователь');
+
+  const tiles: ITile[] = isMyProfile
+    ? [
+        {
+          key: 'edit',
+          icon: 'edit',
+          label: t('editProfile', 'Редактировать'),
+          onClick: onStartEdit,
+        },
+      ]
+    : [
+        {
+          key: 'call',
+          icon: 'phone',
+          label: t('profile.call', 'Звонок'),
+          ariaLabel: t('audioCall', 'Аудиозвонок'),
+          onClick: () => onCall('audio'),
+          disabled: !hasChat,
+        },
+        {
+          key: 'video',
+          icon: 'video',
+          label: t('profile.video', 'Видео'),
+          ariaLabel: t('profile.videoCall', 'Видеозвонок'),
+          onClick: () => onCall('video'),
+          disabled: !hasChat,
+        },
+      ];
 
   return (
-    <div className="flex flex-col items-center text-center">
-      <div className="w-full flex items-center justify-between pb-3 border-b border-line">
-        <h3 className="text-title font-semibold text-ink">{t('profile', 'Профиль')}</h3>
-        <Button
-          aria-label={t('close', 'Закрыть')}
-          iconOnly
-          onClick={onClose}
-          size="sm"
-          variant="ghost"
-        >
-          <Icon name="cross" />
-        </Button>
-      </div>
-
-      <div className="mt-4">
+    <>
+      <div className="flex flex-col items-center gap-1.5 px-5 pb-5 text-center">
         <Avatar
+          className="mb-2"
           id={profileUser.id}
-          name={profileUser.username}
+          name={name}
           online={isPeerOnline}
-          size="xl"
+          size="2xl"
           src={profileUser.avatarUrl}
         />
-      </div>
-
-      <h2 className="mt-3 text-title font-bold text-ink">
-        {profileUser.firstName || profileUser.username || t('user', 'Пользователь')}
-      </h2>
-
-      <p className="text-caption text-ink-2">@{profileUser.username}</p>
-
-      {profileSubtitle && (
-        <p
-          className={cn(
-            'mt-1 text-caption font-medium',
-            isPeerOnline ? 'text-brand' : 'text-ink-2'
+        <h2 className="text-section font-semibold text-ink">{name}</h2>
+        <p className="text-ui text-ink-2">
+          {profileUser.username && `@${profileUser.username}`}
+          {profileUser.username && profileSubtitle && ' · '}
+          {profileSubtitle && (
+            <span className={cn(isPeerOnline ? 'text-brand' : 'text-ink-3')}>
+              {profileSubtitle}
+            </span>
           )}
-        >
-          {profileSubtitle}
         </p>
-      )}
-
-      <div className="mt-4 flex items-center justify-center gap-3 w-full">
-        {isMyProfile ? (
-          <Button onClick={onStartEdit} size="md" variant="secondary">
-            <Icon name="edit" />
-            {t('editProfile', 'Редактировать')}
-          </Button>
-        ) : (
-          <>
-            <Button
-              disabled={!hasChat}
-              onClick={() => onCall('audio')}
-              size="md"
-              title={t('audioCall', 'Аудиозвонок')}
-              variant="secondary"
-            >
-              <Icon name="phone" />
-              {t('audioCall', 'Аудиозвонок')}
-            </Button>
-            <Button
-              disabled={!hasChat}
-              onClick={() => onCall('video')}
-              size="md"
-              title={t('videoCall', 'Видеозвонок')}
-              variant="secondary"
-            >
-              <Icon name="video" />
-              {t('videoCall', 'Видеозвонок')}
-            </Button>
-          </>
-        )}
       </div>
-    </div>
+
+      <div
+        className="grid gap-2 px-4 pb-5"
+        style={{ gridTemplateColumns: `repeat(${Math.max(tiles.length, 1)}, minmax(0, 1fr))` }}
+      >
+        {tiles.map((tile) => (
+          <button
+            aria-label={tile.ariaLabel}
+            className={cn(
+              'flex cursor-pointer flex-col items-center gap-1.5 rounded-button bg-sheet-2 pt-3 pb-2.5 text-meta text-brand',
+              'transition-colors duration-fast hover:layer-hover active:layer-press',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2'
+            )}
+            disabled={tile.disabled}
+            key={tile.key}
+            onClick={tile.onClick}
+            type="button"
+          >
+            <Icon className="size-5" name={tile.icon} />
+            <span className="text-ink-2">{tile.label}</span>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }

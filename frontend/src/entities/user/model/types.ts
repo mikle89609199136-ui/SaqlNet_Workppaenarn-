@@ -102,6 +102,11 @@ export interface IProfileModal {
   isOpen: boolean;
   /** Чей профиль показывать. Сами данные читает панель — по этому идентификатору. */
   userId: string | null;
+  /**
+   * Что в панели: профиль человека или сведения о группе (#822). Группа
+   * берётся из открытого чата, поэтому userId у неё пустой.
+   */
+  kind?: 'user' | 'group';
 }
 
 export interface IProfileState extends IProfileModal {

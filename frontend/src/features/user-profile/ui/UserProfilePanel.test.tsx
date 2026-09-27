@@ -49,7 +49,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
     it('рендерит профиль собеседника с кнопками аудио и видео звонков', async () => {
       const peer = makeUser({ id: 'user-2', username: 'peer_user', firstName: 'Алексей' });
       const onCall = vi.fn();
-      const onClose = vi.fn();
       const onStartEdit = vi.fn();
 
       renderWithI18n(
@@ -58,7 +57,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
           isMyProfile={false}
           isPeerOnline={true}
           onCall={onCall}
-          onClose={onClose}
           onStartEdit={onStartEdit}
           profileSubtitle="в сети"
           profileUser={peer}
@@ -78,10 +76,9 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       await userEvent.click(videoBtn);
       expect(onCall).toHaveBeenCalledWith('video');
-
-      const closeBtn = screen.getByRole('button', { name: /закрыть/i });
-      await userEvent.click(closeBtn);
-      expect(onClose).toHaveBeenCalled();
+      // Плитки — как в макете: короткие подписи «Звонок» и «Видео».
+      expect(phoneBtn).toHaveTextContent('Звонок');
+      expect(videoBtn).toHaveTextContent('Видео');
     });
 
     it('для своего профиля показывает кнопку редактирования', async () => {
@@ -94,7 +91,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
           isMyProfile={true}
           isPeerOnline={false}
           onCall={vi.fn()}
-          onClose={vi.fn()}
           onStartEdit={onStartEdit}
           profileSubtitle={null}
           profileUser={me}
@@ -125,9 +121,28 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         />
       );
 
-      expect(screen.getByText('Иван')).toBeInTheDocument();
+      // Имя и ник — в шапке профиля; здесь — только «О себе», как в макете.
+      expect(screen.getByText('О себе')).toBeInTheDocument();
       expect(screen.getByText('Привет миру')).toBeInTheDocument();
-      expect(screen.getByText(/ivan/)).toBeInTheDocument();
+    });
+
+    it('без «О себе» блок не показывается', () => {
+      const user = makeUser({ firstName: 'Иван', bio: '' });
+
+      const { container } = renderWithI18n(
+        <ProfileDetails
+          editDraft={{ firstName: 'Иван', bio: '' }}
+          editError=""
+          isEditing={false}
+          isSaving={false}
+          onCancelEdit={vi.fn()}
+          onDraftChange={vi.fn()}
+          onSave={vi.fn()}
+          profileUser={user}
+        />
+      );
+
+      expect(container).toBeEmptyDOMElement();
     });
 
     it('в режиме редактирования позволяет менять поля и отправлять форму', async () => {
@@ -168,8 +183,8 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
   describe('ProfileSharedMedia', () => {
     it('показывает заглушку при отсутствии медиа', () => {
-      renderWithI18n(<ProfileSharedMedia sharedMedia={[]} />);
-      expect(screen.getByText(/медиафайлы отсутствуют/i)).toBeInTheDocument();
+      renderWithI18n(<ProfileSharedMedia messages={[]} />);
+      expect(screen.getByText('Медиафайлов пока нет')).toBeInTheDocument();
     });
 
     it('рендерит изображения и видео при их наличии', () => {
@@ -179,7 +194,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
       const videoMsg = makeMediaMessage('msg-2', 'video', 'blob:crane/video');
 
-      const { container } = renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg, videoMsg]} />);
+      const { container } = renderWithI18n(<ProfileSharedMedia messages={[imgMsg, videoMsg]} />);
 
       expect(screen.getAllByRole('button')).toHaveLength(2);
       expect(container.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
@@ -189,12 +204,67 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
     it('открывает изображение в окне просмотра, а не в соседней вкладке', async () => {
       const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
 
-      renderWithI18n(<ProfileSharedMedia sharedMedia={[imgMsg]} />);
+      renderWithI18n(<ProfileSharedMedia messages={[imgMsg]} />);
       await userEvent.click(screen.getByRole('button'));
 
       const viewer = screen.getByRole('dialog', { name: /просмотр изображения/i });
       expect(viewer).toBeInTheDocument();
       expect(viewer.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
+    });
+  });
+
+  /* Вкладки общего по макету (#822): собираются из загруженной истории. */
+  describe('вкладки «Медиа», «Файлы», «Ссылки»', () => {
+    it('три вкладки, выбрана «Медиа»', () => {
+      renderWithI18n(<ProfileSharedMedia messages={[]} />);
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map((tab) => tab.textContent)).toEqual(['Медиа', 'Файлы', 'Ссылки']);
+      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tabpanel', { name: 'Медиа' })).toBeInTheDocument();
+    });
+
+    it('файлы — с расширением, именем и ссылкой на скачивание', async () => {
+      const file: IMediaItem = {
+        ...makeMessage({ id: 'f-1', type: 'file' }),
+        mediaUrl: 'blob:crane/report',
+        mediaEncryption: { fileName: 'Отчёт.pdf', sizeBytes: 2048 } as never,
+      };
+
+      renderWithI18n(<ProfileSharedMedia messages={[file]} />);
+      await userEvent.click(screen.getByRole('tab', { name: 'Файлы' }));
+
+      const link = screen.getByRole('link', { name: /Скачать Отчёт\.pdf/ });
+      expect(link).toHaveAttribute('href', 'blob:crane/report');
+      expect(link).toHaveAttribute('download', 'Отчёт.pdf');
+      expect(link).toHaveTextContent('PDF');
+    });
+
+    it('ссылки — из расшифрованного текста, открываются в новой вкладке', async () => {
+      const withLink = makeMessage({
+        id: 'm-1',
+        content: 'смотри https://www.example.com/docs и напиши',
+      });
+      const locked = {
+        ...makeMessage({ id: 'm-2', content: 'https://secret.example' }),
+        undecryptable: 'keyUnavailable' as const,
+      };
+
+      renderWithI18n(<ProfileSharedMedia messages={[withLink, locked]} />);
+      await userEvent.click(screen.getByRole('tab', { name: 'Ссылки' }));
+
+      const links = screen.getAllByRole('link');
+      expect(links).toHaveLength(1);
+      expect(links[0]).toHaveAttribute('href', 'https://www.example.com/docs');
+      expect(links[0]).toHaveAttribute('target', '_blank');
+      expect(links[0]).toHaveTextContent('example.com');
+    });
+
+    it('пустая вкладка — сообщение', async () => {
+      renderWithI18n(<ProfileSharedMedia messages={[]} />);
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Ссылки' }));
+      expect(screen.getByText('Ссылок пока нет')).toBeInTheDocument();
     });
   });
 
@@ -478,4 +548,3 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
     });
   });
 });
-

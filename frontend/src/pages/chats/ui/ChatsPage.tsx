@@ -1,5 +1,5 @@
 import { ChatsList } from '@/widgets/chats-list';
-import { CreateGroupModal } from '@/features/group-management';
+import { CreateGroupModal, GroupInfoPanel } from '@/features/group-management';
 import { UserProfilePanel } from '@/features/user-profile';
 import { cn, useIsMobile, usePaneWidth } from '@/shared/lib';
 import { PaneResizer } from '@/shared/ui';
@@ -13,7 +13,7 @@ import type { IProfileActionsTarget } from '@/features/user-profile';
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
    стабильная ссылка не перерисовывает мемоизированную панель. */
 const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
-  <BlockUserButton name={name} userId={id} />
+  <BlockUserButton className="w-full py-3 text-ui font-medium" name={name} userId={id} />
 );
 
 /* Границы ширины списка при перетаскивании. Ниже нижней строка чата
@@ -206,6 +206,7 @@ export function ChatsPage() {
           'lg:data-[state=open]:ml-2.5 lg:data-[state=open]:w-75 xl:data-[state=open]:ml-3 xl:data-[state=open]:w-80'
         )}
         data-state={profileOpen ? 'open' : 'closed'}
+        id="profile-slot"
         inert={!profileOpen}
       >
         {shownProfile && (
@@ -219,11 +220,15 @@ export function ChatsPage() {
               'group-data-[state=closed]:translate-x-12 group-data-[state=closed]:opacity-0'
             )}
           >
-            <UserProfilePanel
-              onClose={closeProfile}
-              profileState={shownProfile}
-              renderActions={renderProfileActions}
-            />
+            {shownProfile.kind === 'group' && chatId ? (
+              <GroupInfoPanel chatId={chatId} key={chatId} onClose={closeProfile} />
+            ) : (
+              <UserProfilePanel
+                onClose={closeProfile}
+                profileState={shownProfile}
+                renderActions={renderProfileActions}
+              />
+            )}
           </div>
         )}
       </div>

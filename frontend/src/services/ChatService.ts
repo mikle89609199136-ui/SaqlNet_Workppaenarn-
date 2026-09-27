@@ -94,6 +94,18 @@ export class ChatService {
       .then((response) => response.data.members ?? []);
   }
 
+  /** Кто из участников группы сейчас в сети — идентификаторы (#822). */
+  async getOnlineMembers(chatId: string): Promise<string[]> {
+    return this.apiClient
+      .get<{ members?: string[] }>(API_ENDPOINTS.CHAT_MEMBERS_ONLINE(chatId))
+      .then((response) => response.data.members ?? []);
+  }
+
+  /** Добавить участника в группу: владелец или админ, по одному (#822). */
+  async addMember(chatId: string, userId: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MEMBER_ADD(chatId), { userId });
+  }
+
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
     return this.apiClient
       .post(API_ENDPOINTS.CHAT_MEMBER_ROLE(chatId, userId), { role })
