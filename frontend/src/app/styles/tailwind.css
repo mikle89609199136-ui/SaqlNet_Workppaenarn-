@@ -382,3 +382,75 @@
     color: var(--color-line);
   }
 }
+
+/* =========================================================
+   Блок кода в сообщении (#823). Цвета — по макету, свои у светлой
+   темы, у тёмной и у своего пузыря на заливке акцента. Классы hljs-*
+   ставит highlight.js (shared/lib/highlightCode).
+   ========================================================= */
+@layer components {
+  .code-block {
+    --code-bg: #f4f6fa;
+    --code-head: #e9edf3;
+    --code-line: #dfe4ed;
+    --code-ink: #1f252e;
+    --code-lang: #566172;
+    --code-kw: #8250df;
+    --code-str: #0a7d39;
+    --code-num: #b35900;
+    --code-com: #5f6b7c;
+    --code-fn: #0550ae;
+  }
+  :root[data-theme='dark'] .code-block {
+    --code-bg: rgba(0, 0, 0, 0.28);
+    --code-head: rgba(0, 0, 0, 0.22);
+    --code-line: rgba(255, 255, 255, 0.06);
+    --code-ink: #d7dde8;
+    --code-lang: #a3adbc;
+    --code-kw: #c792ea;
+    --code-str: #9ece6a;
+    --code-num: #ff9e64;
+    --code-com: #8c97a8;
+    --code-fn: #7aa2f7;
+  }
+  .message-bubble[data-mine] .code-block {
+    --code-bg: rgba(0, 0, 0, 0.24);
+    --code-head: rgba(0, 0, 0, 0.18);
+    --code-line: rgba(255, 255, 255, 0.12);
+    --code-ink: #ffffff;
+    --code-lang: rgba(255, 255, 255, 0.85);
+    --code-kw: #ffd3f8;
+    --code-str: #dcffc0;
+    --code-num: #ffdcb8;
+    --code-com: rgba(255, 255, 255, 0.8);
+    --code-fn: #d5e4ff;
+  }
+
+  .code-block
+    :is(.hljs-keyword, .hljs-literal, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword) {
+    color: var(--code-kw);
+  }
+  .code-block :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-template-tag, .hljs-addition) {
+    color: var(--code-str);
+  }
+  .code-block :is(.hljs-number, .hljs-variable.constant_) {
+    color: var(--code-num);
+  }
+  .code-block :is(.hljs-comment, .hljs-quote, .hljs-deletion) {
+    color: var(--code-com);
+    font-style: italic;
+  }
+  .code-block
+    :is(
+      .hljs-title,
+      .hljs-built_in,
+      .hljs-attr,
+      .hljs-name,
+      .hljs-section,
+      .hljs-selector-class,
+      .hljs-selector-id,
+      .hljs-type
+    ) {
+    color: var(--code-fn);
+  }
+}

@@ -7,6 +7,7 @@ import {
   type IRichSegment,
 } from '@/shared/lib/richText';
 import { cn } from '@/shared/lib';
+import { CodeBlock } from './CodeBlock';
 
 interface Props {
   content: string;
@@ -85,13 +86,27 @@ function Spoiler({ children }: { children: ReactNode }) {
   );
 }
 
+/** Кавычки в углу цитаты — по макету. */
+function QuoteMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute top-1.75 right-2 size-3.5 text-brand opacity-55 group-data-[mine]/bubble:text-on-brand"
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M9.5 6C6.5 6 4 8.5 4 11.5V18h6v-6H7c0-1.7 1.1-3 2.5-3V6zm10 0c-3 0-5.5 2.5-5.5 5.5V18h6v-6h-3c0-1.7 1.1-3 2.5-3V6z" />
+    </svg>
+  );
+}
+
 function renderSegment(segment: IRichSegment, key: string): ReactNode {
   const { formats, url } = segment;
   let node: ReactNode = url ? segment.text : withHashtags(segment.text, key);
 
   if (formats.includes('monospace')) {
     node = (
-      <code className="rounded-[5px] bg-sheet-2 px-1.25 py-px font-mono text-[0.9em] group-data-[mine]/bubble:bg-on-brand/18">
+      <code className="rounded-control bg-brand-soft px-1.5 py-0.5 font-mono text-[0.88em] [font-variant-ligatures:none] text-brand group-data-[mine]/bubble:bg-on-brand/18 group-data-[mine]/bubble:text-on-brand">
         {node}
       </code>
     );
@@ -101,14 +116,16 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
     formats.includes('bold') && 'font-semibold',
     formats.includes('italic') && 'italic',
     formats.includes('underline') && 'underline',
-    formats.includes('strikethrough') && 'line-through'
+    formats.includes('strikethrough') && 'line-through',
+    (formats.includes('underline') || formats.includes('strikethrough')) &&
+      'decoration-[1.5px] underline-offset-3'
   );
   if (classes) node = <span className={classes}>{node}</span>;
 
   if (url) {
     node = (
       <a
-        className="text-brand underline underline-offset-3 group-data-[mine]/bubble:text-on-brand"
+        className="text-brand underline decoration-1 underline-offset-3 group-data-[mine]/bubble:text-on-brand"
         href={url}
         onClick={(event) => event.stopPropagation()}
         rel="noopener noreferrer nofollow"
@@ -136,12 +153,16 @@ export const MessageContentRenderer = memo(({ content, entities, trailing }: Pro
         const segments = block.segments.map((segment, index) =>
           renderSegment(segment, `${blockIndex}-${index}`)
         );
-        return block.quote ? (
+        if (block.kind === 'code') {
+          return <CodeBlock code={block.code ?? ''} key={blockIndex} lang={block.lang ?? ''} />;
+        }
+        return block.kind === 'quote' ? (
           <blockquote
-            className="my-0.5 border-l-3 border-brand pl-2 text-ink-2 group-data-[mine]/bubble:border-on-brand group-data-[mine]/bubble:text-on-brand/90"
+            className="relative my-1 rounded-[8px] border-l-3 border-brand bg-brand-soft py-1.5 pr-7.5 pl-2.5 group-data-[mine]/bubble:border-on-brand group-data-[mine]/bubble:bg-on-brand/14"
             key={blockIndex}
           >
             {segments}
+            <QuoteMark />
           </blockquote>
         ) : (
           <span key={blockIndex}>{segments}</span>
