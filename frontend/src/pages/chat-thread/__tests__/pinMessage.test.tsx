@@ -56,7 +56,7 @@ function messageBubble(content: string): HTMLElement {
 /** Меню действий открывается правой кнопкой по сообщению. */
 async function openMessageActions(content: string) {
   fireEvent.contextMenu(messageBubble(content));
-  await screen.findByRole('menuitem', { name: 'Скопировать' });
+  await screen.findByRole('menuitem', { name: 'Копировать' });
 }
 
 describe('закрепление сообщения', () => {
