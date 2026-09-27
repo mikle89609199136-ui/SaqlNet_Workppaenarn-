@@ -54,8 +54,10 @@ export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
     return (
       <div className={actualType === 'voice' ? undefined : 'mt-1 mb-2 w-full'}>
         <AudioPlayer
+          durationMs={actualType === 'voice' ? message.voice?.durationMs : undefined}
           seed={message.id}
           src={mediaUrl}
+          waveform={actualType === 'voice' ? message.voice?.waveform : undefined}
           trailing={actualType === 'voice' ? trailing : undefined}
           variant={actualType === 'voice' ? 'voice' : 'audio'}
         />

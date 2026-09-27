@@ -1,5 +1,5 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
-import type { IVoiceMeta } from '@/shared/lib/voice';
+import { toPlayableVoiceBlob, type IVoiceMeta } from '@/shared/lib/voice';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
@@ -202,9 +202,10 @@ export class MessageService {
           typeof URL.createObjectURL === 'function';
         const localUrl =
           canRegister && uploadedUrl
-            ? await resolveMediaObjectUrl(uploadedUrl, () =>
-                this.cryptoService.decryptMedia(chatId, encryptedMedia)
-              )
+            ? await resolveMediaObjectUrl(uploadedUrl, async () => {
+                const blob = await this.cryptoService.decryptMedia(chatId, encryptedMedia);
+                return mediaType === 'voice' ? toPlayableVoiceBlob(blob) : blob;
+              })
             : uploadedUrl;
 
         return {
@@ -447,7 +448,9 @@ export class MessageService {
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
               const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-              return this.cryptoService.decryptMedia(chatId, response.data);
+              const blob = await this.cryptoService.decryptMedia(chatId, response.data);
+              // Голосовое, которое браузер сам не проиграет, — перекодируется (#843).
+              return item.type === 'voice' ? toPlayableVoiceBlob(blob) : blob;
             })
           : mediaUrl;
 

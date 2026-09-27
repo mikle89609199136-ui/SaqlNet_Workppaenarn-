@@ -9,3 +9,4 @@ export * from './formatLastSeen';
 export * from './getAttachmentIcon';
 export * from './passwordRules';
 export * from './sortMessagesChronologically';
+export * from './singlePlayback';

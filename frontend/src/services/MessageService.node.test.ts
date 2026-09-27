@@ -334,3 +334,114 @@ describe('MessageService: адрес вложения', () => {
     expect(requested).toHaveBeenCalled();
   });
 });
+
+/* Голосовое (#843): длительность и волна — только внутри шифровки. */
+describe('MessageService: голосовое', () => {
+  const voice = { durationMs: 7300, waveform: [1, 20, 31] };
+
+  afterEach(() => setChatResolver(null));
+
+  function voiceCrypto() {
+    const encryptMessage = vi.fn(async () => 'sealed-envelope');
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMessage,
+      encryptMedia: vi.fn(async () => ({
+        version: 2,
+        encrypted: true,
+        algorithm: 'AES-GCM',
+        iv: 'AAAAAAAAAAAAAAAA',
+        ciphertext: 'AAAA',
+        mimeType: 'audio/ogg; codecs=opus',
+        sizeBytes: 3,
+        keyEpoch: 1,
+      })),
+      decryptMedia: vi.fn(async () => new Blob(['ogg'])),
+    } as unknown as CryptoService;
+    return { service: new MessageService(createApiClient(), crypto), encryptMessage };
+  }
+
+  it('без подписи всё равно конверт, метаданных открытым полем нет', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    server.use(
+      http.post(api('/media'), () =>
+        HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-000000000009' })
+      )
+    );
+    const requests = serveSend();
+    const { service, encryptMessage } = voiceCrypto();
+
+    const sent = await service.sendMediaMessage(
+      TARGET_CHAT,
+      new Blob(['ogg'], { type: 'audio/ogg; codecs=opus' }),
+      'voice',
+      '',
+      null,
+      [],
+      voice
+    );
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+    const item = requests[0].messages[0];
+    expect(item).toMatchObject({ type: 'voice', content: 'sealed-envelope', isEncrypted: true });
+    expect(JSON.stringify(item)).not.toMatch(/7300|durationMs|waveform/);
+    expect(item).not.toHaveProperty('fileName');
+    // У себя пузырь сразу с метаданными.
+    expect(sent).toMatchObject({ voice });
+  });
+});
+
+describe('MessageService: пересылка голосового (#843)', () => {
+  afterEach(() => setChatResolver(null));
+
+  it('длительность и волна уезжают в конверт целевого чата', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    server.use(
+      http.post(api('/media'), () =>
+        HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-00000000000a' })
+      )
+    );
+    serveSend();
+    const encryptMessage = vi.fn(async () => 'sealed');
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMessage,
+      encryptMedia: vi.fn(async () => ({
+        version: 2,
+        encrypted: true,
+        algorithm: 'AES-GCM',
+        iv: 'AAAAAAAAAAAAAAAA',
+        ciphertext: 'AAAA',
+        mimeType: 'audio/ogg; codecs=opus',
+        sizeBytes: 3,
+        keyEpoch: 1,
+      })),
+      decryptMedia: vi.fn(async () => new Blob(['ogg'])),
+    } as unknown as CryptoService;
+    // Файл пересылаемого уже расшифрован и лежит по адресу blob: — отдаём его.
+    // Остальное — в тот fetch, что сейчас действует (его подменяет msw).
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) =>
+        String(input).startsWith('blob:')
+          ? Promise.resolve(new Response(new Blob(['ogg'])))
+          : originalFetch(input, init)
+      );
+    const voice = { durationMs: 9100, waveform: [4, 31] };
+    const original = {
+      ...message('m-voice', 'chat-source', ''),
+      type: 'voice',
+      mediaUrl: 'blob:local-voice',
+      voice,
+    } as IMessageDto;
+
+    try {
+      await new MessageService(createApiClient(), crypto).forwardMessages(TARGET_CHAT, [original]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+  });
+});
