@@ -462,3 +462,20 @@
 @media (prefers-reduced-motion: reduce) {
   .qr-scanline { animation: none; }
 }
+
+/* Автозаполнение (#827). Браузер красит заполненное поле своим белым
+   фоном и тёмным текстом, и в тёмной теме оно светилось пятном. Фон
+   браузера перебить нельзя, но можно бесконечно отложить его появление;
+   цвет текста и курсора задаём свои. Кольцо фокуса и рамка поля не
+   затрагиваются. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--color-ink);
+  caret-color: var(--color-ink);
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+input:autofill {
+  filter: none;
+}
