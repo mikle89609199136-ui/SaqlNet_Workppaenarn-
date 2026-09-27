@@ -51,8 +51,12 @@ function ReactionPick({
       onBlur={() => setActive(false)}
       onClick={onPick}
       // Меню ставит фокус на первую реакцию само — играть она должна только
-      // при обходе с клавиатуры, как `:focus-visible` в макете.
-      onFocus={(event) => setActive(focusVisible(event.currentTarget))}
+      // при обходе с клавиатуры, как `:focus-visible` в макете. Выключать
+      // по фокусу нельзя: мышь фокусирует кнопку при нажатии, и анимация,
+      // пропав между нажатием и отпусканием, съедала бы сам клик.
+      onFocus={(event) => {
+        if (focusVisible(event.currentTarget)) setActive(true);
+      }}
       onPointerEnter={() => setActive(true)}
       onPointerLeave={() => setActive(false)}
       role="menuitem"

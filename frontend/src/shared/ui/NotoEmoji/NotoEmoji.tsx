@@ -41,7 +41,10 @@ export function NotoEmoji({ emoji, size, animated = false, className }: Props) {
     return (
       <span
         aria-hidden="true"
-        className={cn('inline-block shrink-0 text-center leading-none', className)}
+        className={cn(
+          'pointer-events-none inline-block shrink-0 text-center leading-none',
+          className
+        )}
         style={{ ...box, fontSize: size * 0.85 }}
       >
         {emoji}
@@ -56,7 +59,15 @@ export function NotoEmoji({ emoji, size, animated = false, className }: Props) {
   const showAnimation = playing && animationReady;
 
   return (
-    <span aria-hidden="true" className={cn('relative block shrink-0', className)} style={box}>
+    // Картинки прозрачны для курсора: нажатие всегда приходится на кнопку
+    // вокруг. Иначе смена картинки между нажатием и отпусканием (анимация
+    // появилась или ушла) отменяла бы клик — браузер не считает кликом
+    // нажатие на элемент, которого уже нет.
+    <span
+      aria-hidden="true"
+      className={cn('pointer-events-none relative block shrink-0', className)}
+      style={box}
+    >
       <img
         alt=""
         className={cn('absolute inset-0 block select-none', showAnimation && 'opacity-0')}
