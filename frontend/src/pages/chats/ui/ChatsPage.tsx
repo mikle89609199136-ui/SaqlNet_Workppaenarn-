@@ -206,6 +206,7 @@ export function ChatsPage() {
           'lg:data-[state=open]:ml-2.5 lg:data-[state=open]:w-75 xl:data-[state=open]:ml-3 xl:data-[state=open]:w-80'
         )}
         data-state={profileOpen ? 'open' : 'closed'}
+        id="profile-slot"
         inert={!profileOpen}
       >
         {shownProfile && (

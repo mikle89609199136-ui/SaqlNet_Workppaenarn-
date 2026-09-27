@@ -22,7 +22,7 @@ describe('профиль собеседника из шапки', () => {
 
     renderChatThread({ chat, messages: [makeMessage({ chatId: chat.id })], onProfileStateChange });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Максим' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^Максим — / }));
 
     await waitFor(() =>
       expect(onProfileStateChange).toHaveBeenCalledWith(
@@ -37,7 +37,7 @@ describe('профиль собеседника из шапки', () => {
 
     renderChatThread({ chat, messages: [makeMessage({ chatId: chat.id })], onProfileStateChange });
 
-    const avatar = await screen.findByRole('button', { name: 'Максим' });
+    const avatar = await screen.findByRole('button', { name: /^Максим — / });
     await userEvent.click(avatar);
     await waitFor(() =>
       expect(onProfileStateChange).toHaveBeenCalledWith(expect.objectContaining({ isOpen: true }))
@@ -59,7 +59,7 @@ describe('профиль собеседника из шапки', () => {
 
     renderChatThread({ chat, messages: [makeMessage({ chatId: chat.id })], onProfileStateChange });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Проверка окон' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^Проверка окон — / }));
 
     expect(await screen.findByRole('dialog', { name: /группе/i })).toBeInTheDocument();
     // Профиль собеседника у группы не спрашивают: собеседников много.

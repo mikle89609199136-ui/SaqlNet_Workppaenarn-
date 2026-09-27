@@ -94,6 +94,13 @@ export class ChatService {
       .then((response) => response.data.members ?? []);
   }
 
+  /** Кто из участников группы сейчас в сети — идентификаторы (#822). */
+  async getOnlineMembers(chatId: string): Promise<string[]> {
+    return this.apiClient
+      .get<{ members?: string[] }>(API_ENDPOINTS.CHAT_MEMBERS_ONLINE(chatId))
+      .then((response) => response.data.members ?? []);
+  }
+
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
     return this.apiClient
       .post(API_ENDPOINTS.CHAT_MEMBER_ROLE(chatId, userId), { role })

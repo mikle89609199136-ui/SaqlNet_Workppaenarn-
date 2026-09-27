@@ -31,6 +31,7 @@ export const API_ENDPOINTS = {
   CHAT_GROUPS: '/chats/groups',
   CHAT_BY_ID: (chatId: string) => `/chats/${chatId}`,
   CHAT_MEMBERS: (chatId: string) => `/chats/${chatId}/members`,
+  CHAT_MEMBERS_ONLINE: (chatId: string) => `/chats/${chatId}/members-online`,
   CHAT_MEMBER: (chatId: string, userId: string) => `/chats/${chatId}/members/${userId}`,
   CHAT_MEMBER_ROLE: (chatId: string, userId: string) => `/chats/${chatId}/members/${userId}/role`,
   CHAT_LEAVE: (chatId: string) => `/chats/${chatId}/leave`,

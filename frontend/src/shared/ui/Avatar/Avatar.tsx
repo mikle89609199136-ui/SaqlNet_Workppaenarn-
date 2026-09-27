@@ -112,10 +112,22 @@ interface Props {
      Без пропа вид берётся из настроек оформления (#375). */
   shape?: TAvatarShape;
   online?: boolean;
+  /* На чём лежит аватарка: обводка точки «в сети» — цвета этого фона.
+     Панель — по умолчанию; шапка чата лежит на фоне ленты. */
+  surface?: 'sheet' | 'chat';
   className?: string;
 }
 
-export const Avatar = ({ id, name, src, size = 'md', shape, online = false, className }: Props) => {
+export const Avatar = ({
+  id,
+  name,
+  src,
+  size = 'md',
+  shape,
+  online = false,
+  surface = 'sheet',
+  className,
+}: Props) => {
   /* Проп важнее настройки: он ставится там, где вид выбран замыслом
      экрана, а не человеком в настройках. */
   const preferredShape = useAvatarShape();
@@ -147,7 +159,14 @@ export const Avatar = ({ id, name, src, size = 'md', shape, online = false, clas
       </span>
 
       {online && (
-        <span aria-hidden="true" className={cn('absolute rounded-pill border-sheet bg-ok', dot)} />
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute rounded-pill bg-ok',
+            surface === 'chat' ? 'border-chat-bg' : 'border-sheet',
+            dot
+          )}
+        />
       )}
     </span>
   );
