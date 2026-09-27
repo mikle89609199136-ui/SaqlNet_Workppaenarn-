@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { useUnblockUser } from '@/features/block-user';
 import { describeApiError } from '@/shared/api';
-import { Button, showToast } from '@/shared/ui';
+import { Banner, Button, showToast } from '@/shared/ui';
 import type { IChatDto } from '@/types';
-import { ComposerForm } from './ComposerForm';
+import { composerFooter } from './composerStyles';
 
 /**
  * Вместо поля ввода в личном чате с блокировкой (#760).
@@ -31,27 +31,33 @@ export function BlockedComposer({ chat }: { chat: IChatDto }) {
         ),
     });
 
+  /* Плашка вместо поля — «нотис» из макета (#821, #826): замок,
+     полужирное начало, действие справа на мягкой подложке акцента. */
   return (
-    <ComposerForm onSubmit={(event) => event.preventDefault()}>
-      <div
-        className="flex min-h-11 items-center justify-center gap-3 px-2 text-center"
-        role="status"
-      >
-        {chat.isPeerBlocked ? (
-          <>
-            <span className="text-body text-ink-2">
-              {t('chatPeerBlocked', 'Вы заблокировали этого пользователя')}
-            </span>
-            <Button disabled={unblock.isPending} onClick={handleUnblock} size="sm">
+    <div className={composerFooter}>
+      {chat.isPeerBlocked ? (
+        <Banner
+          action={
+            <Button
+              className="bg-brand-soft"
+              disabled={unblock.isPending}
+              onClick={handleUnblock}
+              size="sm"
+              variant="accent"
+            >
               {t('unblock', 'Разблокировать')}
             </Button>
-          </>
-        ) : (
-          <span className="text-body text-ink-2">
-            {t('errors.blockedByUser', 'Этот человек ограничил переписку с вами')}
-          </span>
-        )}
-      </div>
-    </ComposerForm>
+          }
+          icon="lock"
+          tone="warn"
+        >
+          <b>{t('chatPeerBlocked', 'Вы заблокировали этого пользователя')}</b>
+        </Banner>
+      ) : (
+        <Banner icon="lock" tone="warn">
+          <b>{t('errors.blockedByUser', 'Этот человек ограничил переписку с вами')}</b>
+        </Banner>
+      )}
+    </div>
   );
 }

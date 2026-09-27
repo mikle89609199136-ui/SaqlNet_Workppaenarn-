@@ -195,7 +195,7 @@ export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function Ri
           }
           placeholder={
             placeholder ? (
-              <div className="pointer-events-none absolute inset-x-1 top-2.5 truncate text-[15px] leading-snug text-ink-3 select-none">
+              <div className="pointer-events-none absolute inset-x-2 top-2.25 truncate text-body leading-[22px] text-ink-3 select-none">
                 {placeholder}
               </div>
             ) : null

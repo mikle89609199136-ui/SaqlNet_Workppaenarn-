@@ -13,7 +13,7 @@ import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
 import { cn } from '@/shared/lib';
 import type { IRichText } from '@/shared/lib/richText';
-import { RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
+import { Button, Icon, RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
 import {
   useEffect,
   useCallback,
@@ -34,7 +34,11 @@ import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
-function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
+function composerPlaceholder(
+  encryption: IEncryptionState,
+  t: TFunction,
+  hasAttachment: boolean
+): string {
   if (encryption.status === 'preparing') {
     return t('encryptionPreparing', 'Готовим шифрование...');
   }
@@ -47,7 +51,10 @@ function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string
     return t('peerNeedsUpdate', 'Собеседник прочтёт после обновления приложения');
   }
 
-  return t('messagePlaceholder', 'Сообщение...');
+  // С вложением текст — подпись к нему, как в макете.
+  if (hasAttachment) return t('captionPlaceholder', 'Добавьте подпись');
+
+  return t('messagePlaceholder', 'Сообщение');
 }
 
 interface Props {
@@ -161,6 +168,7 @@ export const ChatThreadComposer = ({
   }
 
   const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
+  const canSend = hasText || Boolean(forward.pending) || Boolean(pendingAttachment);
 
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
@@ -188,36 +196,31 @@ export const ChatThreadComposer = ({
           onChange={handleAttachmentChange}
         />
 
+        {/* Поле: 40px в одну строку, растёт до ~7 строк (164px), текст
+            15/22 — как в макете. */}
         <RichTextInput
           ariaLabel={t('message', 'Сообщение')}
-          className="min-h-11 max-h-40 overflow-y-auto px-1 py-2.5 text-[15px] leading-snug text-ink"
+          className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
           disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
           onSubmit={submitForm}
-          placeholder={composerPlaceholder(encryption, t)}
+          placeholder={composerPlaceholder(encryption, t, Boolean(pendingAttachment))}
           ref={draftRef}
         />
 
-        <button
+        {/* Эмодзи (#824) и запись голосового (#843) появятся здесь, когда
+            будут сами функции. Кнопка справа пока одна — отправка: залита
+            акцентом, когда есть что отправить. */}
+        <Button
           aria-label={t('sendMessage', 'Отправить сообщение')}
-          className={cn('thread-composer-action-btn', (hasText || forward.pending) && 'is-active')}
+          className={cn(!canSend && 'text-ink-3')}
           disabled={encryption.status !== 'ready' || forward.isForwarding}
+          iconOnly
           type="submit"
+          variant={canSend ? 'primary' : 'ghost'}
         >
-          <svg
-            fill="none"
-            height="18"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-            width="18"
-          >
-            <line x1="22" x2="11" y1="2" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+          <Icon className="size-4.75 stroke-2" name="send" />
+        </Button>
       </ComposerRow>
     </ComposerForm>
   );
