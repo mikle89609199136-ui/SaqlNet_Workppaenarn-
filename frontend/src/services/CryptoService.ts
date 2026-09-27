@@ -379,6 +379,12 @@ export class CryptoService {
     return this.chatKeys.rotate(chatId);
   }
 
+  /** Смена ключа после изменения состава, если её ещё никто не сделал (#806). */
+  async rotateChatKeyIfNeeded(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.rotateIfNeeded(chatId);
+  }
+
   async healChatKeys(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
     return this.chatKeys.heal(chatId);

@@ -52,6 +52,7 @@ export function stubCrypto({ keyUnavailable = false }: IStubCryptoOptions = {}):
   vi.spyOn(services.cryptoService, 'ensureChatKey').mockResolvedValue(ready);
   vi.spyOn(services.cryptoService, 'healChatKeys').mockResolvedValue(ready);
   vi.spyOn(services.cryptoService, 'rotateChatKey').mockResolvedValue(ready);
+  vi.spyOn(services.cryptoService, 'rotateChatKeyIfNeeded').mockResolvedValue(ready);
 
   vi.spyOn(services.cryptoService, 'encryptMessage').mockImplementation(
     async (_chatId: string, text: string, entities: IMessageEntity[] = []) => {

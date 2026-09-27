@@ -67,6 +67,24 @@ interface IServerChatKey {
   keyEpoch: number;
 }
 
+/** Ключ чата на сервере: строки участников, текущая эпоха и нужна ли смена (#806). */
+interface IServerKeyState {
+  rows: IServerChatKey[];
+  keyEpoch: number;
+  rotationNeeded: boolean;
+}
+
+/**
+ * Чем кончилась запись ключей.
+ *
+ * Сервер пишет атомарно и принимает только текущую эпоху (доворачивание)
+ * или следующую (новый ключ). `conflict` — ключ уже сменил кто-то другой;
+ * `rotation-required` — состав изменился, текущий ключ раздавать нельзя.
+ */
+type TPublishOutcome = 'written' | 'conflict' | 'rotation-required';
+
+type TDistribution = IKeyDistribution & { outcome: TPublishOutcome };
+
 /**
  * Резервная копия ключей чатов (#743).
  *
@@ -122,6 +140,11 @@ function parseWrappedKey(encryptedKey: string): IWrappedKey | null {
   } catch {
     return null;
   }
+}
+
+/** Итог раздачи без служебного поля `outcome`. */
+function strip({ chatKey, membersWithoutIdentity }: TDistribution): IKeyDistribution {
+  return { chatKey, membersWithoutIdentity };
 }
 
 export class ChatKeyManager {
@@ -372,24 +395,30 @@ export class ChatKeyManager {
     }
   }
 
-  private async publish(chatId: string, rows: IServerChatKey[], epoch: number, rotate: boolean) {
+  private async publish(
+    chatId: string,
+    rows: IServerChatKey[],
+    epoch: number,
+    rotate: boolean
+  ): Promise<TPublishOutcome> {
     const payload = { encryptedKeys: rows, keyEpoch: epoch };
-
-    if (!rotate) {
-      await this.deps.apiClient.post(API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId), payload);
-      return;
-    }
+    const endpoint = rotate
+      ? API_ENDPOINTS.ENCRYPTION_CHAT_KEY_ROTATE(chatId)
+      : API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId);
 
     try {
-      await this.deps.apiClient.post(API_ENDPOINTS.ENCRYPTION_CHAT_KEY_ROTATE(chatId), payload);
+      await this.deps.apiClient.post(endpoint, payload);
+      return 'written';
     } catch (error) {
-      // Ротаций разрешено десять в час, у обычной записи предела нет.
-      // Упереться в лимит и остаться без ключей — хуже, чем потерять
-      // запись в журнале ротаций.
-      const status = (error as { status?: number })?.status;
-      if (status !== 429) throw error;
+      const { status, code } = (error ?? {}) as { status?: number; code?: string };
+      if (status === 409)
+        return code === 'key_rotation_required' ? 'rotation-required' : 'conflict';
 
-      await this.deps.apiClient.post(API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId), payload);
+      // Ротаций разрешено десять в час, у обычной записи предела нет, а
+      // следующую эпоху она принимает так же. Упереться в лимит и остаться
+      // без ключей — хуже, чем потерять запись в журнале ротаций.
+      if (!rotate || status !== 429) throw error;
+      return this.publish(chatId, rows, epoch, false);
     }
   }
 
@@ -398,7 +427,7 @@ export class ChatKeyManager {
     chatKey: IChatKey,
     memberIds: string[],
     rotate: boolean
-  ): Promise<IKeyDistribution> {
+  ): Promise<TDistribution> {
     const identity = await this.deps.identity();
     const rows: IServerChatKey[] = [];
     const withoutIdentity: string[] = [];
@@ -417,38 +446,57 @@ export class ChatKeyManager {
       rows.push(await this.wrapFor(chatId, chatKey, memberId, recipient));
     }
 
-    if (rows.length > 0) await this.publish(chatId, rows, chatKey.epoch, rotate);
+    const outcome =
+      rows.length > 0 ? await this.publish(chatId, rows, chatKey.epoch, rotate) : 'written';
+
+    if (outcome !== 'written') {
+      // Свой ключ не запоминаем: на сервер он не лёг, и им не завёрнут ничей
+      // экземпляр. Принимаем то, что там лежит.
+      return {
+        chatKey: await this.acceptFromServer(chatId),
+        membersWithoutIdentity: withoutIdentity,
+        outcome,
+      };
+    }
 
     await this.remember(chatId, chatKey);
 
-    // Запись не транзакционна, а понижение эпохи сервер отбрасывает молча:
-    // по ответу не понять, чей ключ в итоге лежит. Поэтому — перечитать и
-    // принять то, что там оказалось.
+    // Перечитываем и принимаем то, что лежит на сервере: своей строки может
+    // не оказаться — например, если своей связки нет среди получателей.
     const accepted = await this.acceptFromServer(chatId);
 
     return {
       chatKey: accepted ?? chatKey,
       membersWithoutIdentity: withoutIdentity,
+      outcome,
     };
   }
 
   /**
-   * Наибольшая эпоха, до которой чат уже дожил.
+   * Ключ чата на сервере: строки нынешних участников, текущая эпоха и
+   * пометка «нужна смена» (#806).
    *
    * Нумерацию нельзя начинать заново, даже когда своя строка не
-   * разворачивается: сервер молча отбрасывает запись с эпохой ниже
-   * имеющейся, и новый ключ никуда бы не лёг — а клиент считал бы, что
-   * лёг, и шифровал бы им сообщения, которых не прочтёт никто.
+   * разворачивается: сервер принимает только текущую эпоху и следующую.
+   * Сервер без `keyEpoch` в ответе — эпоха считается по строкам.
    */
-  private async highestEpoch(chatId: string): Promise<number> {
+  private async serverState(chatId: string): Promise<IServerKeyState> {
     try {
-      const response = await this.deps.apiClient.get<{ keys?: IServerChatKey[] }>(
-        API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId)
-      );
+      const response = await this.deps.apiClient.get<{
+        keys?: IServerChatKey[];
+        keyEpoch?: number;
+        rotationNeeded?: boolean;
+      }>(API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId));
+      const rows = response.data?.keys ?? [];
 
-      return (response.data?.keys ?? []).reduce((top, row) => Math.max(top, row.keyEpoch), 0);
+      return {
+        rows,
+        keyEpoch:
+          response.data?.keyEpoch ?? rows.reduce((top, row) => Math.max(top, row.keyEpoch), 0),
+        rotationNeeded: Boolean(response.data?.rotationNeeded),
+      };
     } catch {
-      return 0;
+      return { rows: [], keyEpoch: 0, rotationNeeded: false };
     }
   }
 
@@ -463,6 +511,13 @@ export class ChatKeyManager {
       }
 
       this.lastVerifiedAt.set(chatId, Date.now());
+
+      // Состав мог смениться, пока нас не было, и ключ после этого ещё никто
+      // не сменил: сначала новая эпоха, иначе шифровали бы ключом, который
+      // есть у ушедшего (#806).
+      const state = await this.serverState(chatId);
+      if (state.rotationNeeded) return this.rotateNow(chatId, state);
+
       const current = await this.acceptFromServer(chatId);
 
       return {
@@ -471,46 +526,82 @@ export class ChatKeyManager {
       };
     }
 
+    this.lastVerifiedAt.set(chatId, Date.now());
+    const state = await this.serverState(chatId);
+
+    // Новичок, открывший чат первым после своего добавления, сам начинает
+    // новую эпоху: прежний ключ ему не положен.
+    if (state.rotationNeeded && state.keyEpoch > 0) return this.rotateNow(chatId, state);
+
     const remote = await this.acceptFromServer(chatId);
     if (remote) return { chatKey: remote, membersWithoutIdentity: [] };
 
-    this.lastVerifiedAt.set(chatId, Date.now());
-
     // Своей строки нет, но ключ текущей эпохи может лежать в копии: тогда
     // новая эпоха не нужна, а строку завернёт доворачивание.
-    const highest = await this.highestEpoch(chatId);
     const restored = await this.restoreFromBackup(chatId);
-    if (restored && restored.epoch >= highest) {
+    if (restored && restored.epoch >= state.keyEpoch) {
       return { chatKey: restored, membersWithoutIdentity: [] };
     }
 
     const memberIds = await this.deps.members(chatId);
     const fresh: IChatKey = {
       key: crypto.getRandomValues(new Uint8Array(KEY_BYTES)),
-      epoch: highest + 1,
+      epoch: state.keyEpoch + 1,
     };
 
-    return this.distribute(chatId, fresh, memberIds, false);
+    return strip(await this.distribute(chatId, fresh, memberIds, false));
   }
 
-  /** Новый ключ и новая эпоха: состав чата изменился. */
+  /**
+   * Новый ключ и новая эпоха.
+   *
+   * Две смены подряд в пределах минуты не делаются: событий о смене состава
+   * может прийти несколько, а каждая смена — это запись для всех.
+   */
   async rotate(chatId: string): Promise<IKeyDistribution> {
     const last = this.lastRotateAt.get(chatId) ?? 0;
     if (Date.now() - last < ROTATE_INTERVAL_MS) {
       const current = await this.local(chatId);
       return { chatKey: current, membersWithoutIdentity: [] };
     }
+
+    return this.rotateNow(chatId, await this.serverState(chatId));
+  }
+
+  /**
+   * Смена ключа после изменения состава — если её ещё никто не сделал (#806).
+   *
+   * Менять может любой участник: сервер пишет атомарно и из двух
+   * одновременных смен принимает одну, второй отвечает конфликтом, и она
+   * принимает ключ первой. Без проверки пометки каждый, до кого событие
+   * дошло позже, начинал бы ещё одну эпоху.
+   */
+  async rotateIfNeeded(chatId: string): Promise<IKeyDistribution> {
+    const state = await this.serverState(chatId);
+
+    if (!state.rotationNeeded) {
+      const current = await this.acceptFromServer(chatId);
+      return { chatKey: current ?? (await this.local(chatId)), membersWithoutIdentity: [] };
+    }
+
+    return this.rotateNow(chatId, state);
+  }
+
+  private async rotateNow(chatId: string, state: IServerKeyState): Promise<IKeyDistribution> {
     this.lastRotateAt.set(chatId, Date.now());
 
-    const current = (await this.local(chatId)) ?? (await this.acceptFromServer(chatId));
     const memberIds = await this.deps.members(chatId);
-
     const next: IChatKey = {
       key: crypto.getRandomValues(new Uint8Array(KEY_BYTES)),
-      epoch: Math.max(current?.epoch ?? 0, await this.highestEpoch(chatId)) + 1,
+      epoch: state.keyEpoch + 1,
     };
 
-    return this.distribute(chatId, next, memberIds, true);
+    const result = await this.distribute(chatId, next, memberIds, true);
+
+    return {
+      chatKey: result.chatKey ?? (await this.local(chatId)),
+      membersWithoutIdentity: result.membersWithoutIdentity,
+    };
   }
 
   /**
@@ -520,6 +611,10 @@ export class ChatKeyManager {
    * эпохе (вернулся в чат — прежняя строка воскресает) или быть завёрнутой
    * для другого ключа (человек сменил устройство). Во всех трёх случаях
    * ключ надо завернуть заново.
+   *
+   * Если состав изменился, а ключ ещё нет, текущий ключ не раздаётся:
+   * новичок прочёл бы им написанное до своего прихода. Сначала новая эпоха
+   * — она достанется всем, кто сейчас в чате (#806).
    */
   async heal(chatId: string): Promise<IKeyDistribution> {
     const last = this.lastHealAt.get(chatId) ?? 0;
@@ -531,15 +626,14 @@ export class ChatKeyManager {
     const chatKey = await this.local(chatId);
     if (!chatKey) return { chatKey: null, membersWithoutIdentity: [] };
 
-    const [rows, memberIds] = await Promise.all([
-      this.deps.apiClient
-        .get<{ keys?: IServerChatKey[] }>(API_ENDPOINTS.ENCRYPTION_CHAT_KEYS(chatId))
-        .then((response) => response.data?.keys ?? [])
-        .catch(() => [] as IServerChatKey[]),
+    const [state, memberIds] = await Promise.all([
+      this.serverState(chatId),
       this.deps.members(chatId),
     ]);
 
-    const byUser = new Map(rows.map((row) => [row.userId, row]));
+    if (state.rotationNeeded) return this.rotateNow(chatId, state);
+
+    const byUser = new Map(state.rows.map((row) => [row.userId, row]));
     const identity = await this.deps.identity();
     const stale: string[] = [];
     const withoutIdentity: string[] = [];
@@ -567,7 +661,15 @@ export class ChatKeyManager {
 
     if (stale.length === 0) return { chatKey, membersWithoutIdentity: withoutIdentity };
 
-    return this.distribute(chatId, chatKey, stale, false);
+    const result = await this.distribute(chatId, chatKey, stale, false);
+
+    // Состав сменился между чтением и записью: сервер не дал раздать
+    // прежний ключ — меняем его.
+    if (result.outcome === 'rotation-required') {
+      return this.rotateNow(chatId, await this.serverState(chatId));
+    }
+
+    return strip(result);
   }
 
   /** Для кого завёрнута строка. Читается без расшифровки — это не тайна. */

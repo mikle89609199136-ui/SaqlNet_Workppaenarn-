@@ -1053,7 +1053,10 @@ export interface paths {
         /** Get encrypted chat keys */
         get: operations["getChatKeys"];
         put?: never;
-        /** Save encrypted chat keys */
+        /**
+         * Save encrypted chat keys
+         * @description Accepts the current epoch (keys for members who lack a row) or the next one (a new key for everyone, clears rotationNeeded). Written in one transaction under a lock on the chat.
+         */
         post: operations["saveChatKeys"];
         delete?: never;
         options?: never;
@@ -1070,7 +1073,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotate a chat key */
+        /**
+         * Rotate a chat key
+         * @description Any member may rotate. Only the next epoch (current + 1) is accepted, in one transaction under a lock on the chat; of two concurrent rotations the second gets 409 and adopts the key of the first. Clears rotationNeeded.
+         */
         post: operations["rotateChatKey"];
         delete?: never;
         options?: never;
@@ -2619,6 +2625,10 @@ export interface components {
         };
         ChatKeysResponse: {
             keys: components["schemas"]["ChatEncryptedKey"][];
+            /** @description Current key epoch of the chat — the highest written; 0 before the first key. */
+            keyEpoch: number;
+            /** @description Membership changed after the current epoch was written. The current key must not be handed out any more: the next writer publishes epoch keyEpoch + 1. */
+            rotationNeeded: boolean;
         };
         SaveChatKeysRequest: {
             encryptedKeys: components["schemas"]["ChatEncryptedKey"][];
@@ -4622,6 +4632,15 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            /** @description key_epoch_conflict — the epoch is neither current nor next, someone already changed the key; key_rotation_required — membership changed, the current key must not be handed out, publish the next epoch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rotateChatKey: {
@@ -4650,6 +4669,15 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            /** @description key_epoch_conflict — the epoch is not current + 1, someone already rotated. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["Error"];
         };
     };
