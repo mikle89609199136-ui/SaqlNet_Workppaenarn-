@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
+import { toPlayableVoiceBlob, type IVoiceMeta } from '@/shared/lib/voice';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
@@ -145,7 +146,8 @@ export class MessageService {
     replyTo: string | null,
     forwardedFrom: string | null,
     chatContext: IChatContext,
-    captionEntities: IMessageEntity[] = []
+    captionEntities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<IPreparedSend> {
     if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {
       throw new Error(`Unsupported media message type: ${mediaType}`);
@@ -160,9 +162,17 @@ export class MessageService {
 
     const plainCaption = trimRichText({ text: caption || '', entities: captionEntities });
     const trimmedCaption = plainCaption.text;
-    const sealedCaption = trimmedCaption
-      ? await this.encryptContent(chatId, trimmedCaption, chatContext, plainCaption.entities)
-      : { content: '', entities: [] };
+    // Голосовое без подписи — тоже конверт: в нём длительность и волна (#843).
+    const sealedCaption =
+      trimmedCaption || voice
+        ? await this.encryptContent(
+            chatId,
+            trimmedCaption,
+            chatContext,
+            plainCaption.entities,
+            voice
+          )
+        : { content: '', entities: [] };
     // Never copy the upload response wholesale into message metadata. Some
     // deployments return the ciphertext inside `encryption`, which makes the
     // subsequent /messages request as large as the file and trips the chat
@@ -180,7 +190,7 @@ export class MessageService {
         mediaType,
         mediaEncrypted: true,
         mediaEncryption,
-        isEncrypted: Boolean(trimmedCaption),
+        isEncrypted: Boolean(sealedCaption.content),
         ...(forwardedFrom ? { forwardedFrom } : {}),
       },
       toDisplay: async (sent) => {
@@ -192,15 +202,17 @@ export class MessageService {
           typeof URL.createObjectURL === 'function';
         const localUrl =
           canRegister && uploadedUrl
-            ? await resolveMediaObjectUrl(uploadedUrl, () =>
-                this.cryptoService.decryptMedia(chatId, encryptedMedia)
-              )
+            ? await resolveMediaObjectUrl(uploadedUrl, async () => {
+                const blob = await this.cryptoService.decryptMedia(chatId, encryptedMedia);
+                return mediaType === 'voice' ? toPlayableVoiceBlob(blob) : blob;
+              })
             : uploadedUrl;
 
         return {
           ...sent,
           content: trimmedCaption,
           entities: plainCaption.entities,
+          ...(voice ? { voice } : {}),
           mediaUrl: localUrl,
           mediaEncrypted: true,
           mediaEncryption,
@@ -237,7 +249,8 @@ export class MessageService {
     mediaType: TMediaMessageType,
     caption: string = '',
     replyTo: string | null = null,
-    captionEntities: IMessageEntity[] = []
+    captionEntities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<IMediaItem> {
     const chatContext = await this.getChatContext(chatId, 'media encryption');
     const prepared = await this.prepareMedia(
@@ -248,7 +261,8 @@ export class MessageService {
       replyTo,
       null,
       chatContext,
-      captionEntities
+      captionEntities,
+      voice
     );
     const [message] = await this.sendPrepared(chatId, [prepared]);
 
@@ -266,6 +280,7 @@ export class MessageService {
     // из конверта: серверное поле там всегда пустое.
     let entities = item.entities ?? [];
     let senderVerified: boolean | undefined;
+    let voice: IVoiceMeta | undefined;
     /* Причина, по которой сообщение не прочиталось, едет вместе с ним:
        подпись подставит тот, кто рисует, — он знает язык. */
     let undecryptable: TUndecryptableReason | undefined;
@@ -276,10 +291,20 @@ export class MessageService {
       if (decrypted.entities) entities = decrypted.entities;
       senderVerified = decrypted.senderVerified;
       undecryptable = decrypted.undecryptable;
+      // Только у голосового: у прочих метаданные из конверта не нужны.
+      if (item.type === 'voice') voice = decrypted.voice;
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return { ...item, content, entities, senderVerified, undecryptable, ...mediaPatch };
+    return {
+      ...item,
+      content,
+      entities,
+      senderVerified,
+      undecryptable,
+      ...(voice ? { voice } : {}),
+      ...mediaPatch,
+    };
   }
 
   async processPinnedMessageForDisplay(
@@ -358,12 +383,16 @@ export class MessageService {
     chatId: string,
     content: string,
     chatContext: IChatContext,
-    entities: IMessageEntity[] = []
+    entities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<{ content: string; entities: IMessageEntity[] }> {
-    if (!content || !this.isEncrypted(chatContext)) return { content, entities };
+    /* Метаданные голосового — только внутри шифровки (#843): в открытом
+       чате их нет вовсе, открыто их не отправляем. */
+    if (!this.isEncrypted(chatContext)) return { content, entities };
+    if (!content && !voice) return { content, entities };
 
     return {
-      content: await this.cryptoService.encryptMessage(chatId, content, entities),
+      content: await this.cryptoService.encryptMessage(chatId, content, entities, voice),
       entities: [],
     };
   }
@@ -419,7 +448,9 @@ export class MessageService {
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
               const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-              return this.cryptoService.decryptMedia(chatId, response.data);
+              const blob = await this.cryptoService.decryptMedia(chatId, response.data);
+              // Голосовое, которое браузер сам не проиграет, — перекодируется (#843).
+              return item.type === 'voice' ? toPlayableVoiceBlob(blob) : blob;
             })
           : mediaUrl;
 
@@ -587,7 +618,8 @@ export class MessageService {
         null,
         message.id,
         chatContext,
-        message.entities ?? []
+        message.entities ?? [],
+        message.type === 'voice' ? message.voice : undefined
       );
     }
 

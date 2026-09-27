@@ -2966,6 +2966,8 @@ export interface components {
         EncryptedMediaUploadRequest: {
             /** @enum {string} */
             purpose: "message";
+            /** @description Attachment kind (image, voice, file…). A voice upload over 8 MB of ciphertext returns 413 file_too_large (#843). */
+            type?: string;
             /** @description Fallback filename; at most 255 UTF-8 bytes. */
             fileName?: string;
             file: {

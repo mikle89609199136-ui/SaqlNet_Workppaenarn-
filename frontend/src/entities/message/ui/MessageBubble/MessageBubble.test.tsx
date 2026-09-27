@@ -624,3 +624,38 @@ describe('закреплённое сообщение (#170)', () => {
     });
   });
 });
+
+/* Ширина пузыря (#843): голосовое — по содержимому, аудиофайл — во всю
+   доступную ширину под ползунок; максимум у обоих общий. */
+describe('ширина пузыря с аудио', () => {
+  const bubbleOf = (type: 'voice' | 'audio') => {
+    const message = {
+      ...makeMessage({ id: `m-${type}`, content: '' }),
+      type,
+      mediaUrl: 'blob:audio',
+      voice: type === 'voice' ? { durationMs: 3000, waveform: [1, 2] } : undefined,
+    } as never;
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+    return container.querySelector('.message-bubble')!;
+  };
+
+  it('голосовое не растягивается, но ограничено максимумом', () => {
+    const bubble = bubbleOf('voice');
+    expect(bubble).toHaveClass('w-fit');
+    expect(bubble).not.toHaveClass('w-full');
+    expect(bubble.className).toMatch(/max-w-/);
+  });
+
+  it('аудиофайл — во всю ширину под ползунок', () => {
+    expect(bubbleOf('audio')).toHaveClass('w-full');
+  });
+});

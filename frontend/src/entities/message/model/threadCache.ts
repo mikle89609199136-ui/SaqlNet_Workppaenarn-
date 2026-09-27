@@ -64,6 +64,8 @@ export function patchMessage(
         type: outboxItem.type,
         mediaType: outboxItem.type !== 'text' ? (outboxItem.type as TMediaMessageType) : undefined,
         mediaUrl: outboxItem.blobUrl,
+        // Голосовое из очереди — со своими длительностью и волной (#843).
+        ...(outboxItem.voice ? { voice: outboxItem.voice } : {}),
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,
         senderId: '',

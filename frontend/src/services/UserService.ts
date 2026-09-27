@@ -36,9 +36,7 @@ export class UserService {
   }
 
   getStatus(userId) {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_STATUS(userId))
-      .then((response) => response.data);
+    return this.apiClient.get(API_ENDPOINTS.USER_STATUS(userId)).then((response) => response.data);
   }
 
   getSettings() {

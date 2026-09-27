@@ -328,7 +328,9 @@ export const MessageBubble = memo(
               isVoice && 'py-2 pr-3 pl-2',
               message.undecryptable && 'px-3.5 py-2.5',
               hasMessageMedia(message) && 'has-media',
-              isAudio && 'w-full',
+              /* Плееру аудиофайла нужна ширина под ползунок. Голосовое — по
+                 содержимому (кнопка, волна, время), в пределах максимума. */
+              isAudio && !isVoice && 'w-full',
               /* Выбранное и то, над которым открыто меню, — обводкой через
                  зазор цвета ленты, как в макете. */
               (isSelected || isActionTarget) &&

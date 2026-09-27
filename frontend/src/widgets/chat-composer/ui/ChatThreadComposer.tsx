@@ -2,11 +2,24 @@ import { useEncryptionState } from '@/features/chat-encryption';
 import { PendingForwardBanner, useForwardSend } from '@/features/forward-messages';
 import { useTypingIndicator } from '@/features/typing-indicator';
 import {
+  useSendVoiceMessage,
+  useVoiceErrorToast,
+  useVoiceRecorder,
+  VoiceButton,
+} from '@/features/voice-message';
+import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { chatQuery, clearDraft, readDraft, readRichDraft, writeDraft } from '@/entities/chat';
+import {
+  chatQuery,
+  clearDraft,
+  readDraft,
+  readRichDraft,
+  useChatUiStore,
+  writeDraft,
+} from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
@@ -34,6 +47,7 @@ import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
+import { VoiceRecordingBar } from './VoiceRecordingBar';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
 function composerPlaceholder(
@@ -129,6 +143,12 @@ export const ChatThreadComposer = ({
     setPendingAttachment,
   });
   const forward = useForwardSend(chatId);
+  // Голосовые (#843): запись живёт, пока открыт этот чат.
+  const voice = useVoiceRecorder(chatId);
+  const sendVoice = useSendVoiceMessage(chatId);
+  useVoiceErrorToast(voice.state);
+  const [voiceCancelProgress, setVoiceCancelProgress] = useState(0);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
   // Блокировка в личном чате (#760) — вместо поля ввода. Проверка после
   // всех хуков: их порядок не должен зависеть от данных.
   const { data: chat } = useQuery(chatQuery(chatId));
@@ -171,6 +191,11 @@ export const ChatThreadComposer = ({
 
   const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
   const canSend = hasText || Boolean(forward.pending) || Boolean(pendingAttachment);
+  const recordingVoice = voice.state.status !== 'idle';
+  // Микрофон — когда отправлять нечего: пустое поле, без вложения, не
+  // правка и не пересылка. Пока шифрование не готово, он виден, но
+  // выключен — как «Отправить»: голосовое открытым не уйдёт.
+  const showMic = !canSend && !editingMessage;
 
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
@@ -195,40 +220,63 @@ export const ChatThreadComposer = ({
         onRemove={removePendingAttachment}
       />
       <ComposerRow>
-        {/* К пересылке прикладывается только комментарий: вложение ушло бы
+        {/* Идёт запись голосового — полоса записи вместо поля. Поле не
+            размонтируется: скрыто, и его состояние остаётся на месте. */}
+        {recordingVoice && (
+          <VoiceRecordingBar
+            cancelProgress={voiceCancelProgress}
+            levels={voice.state.levels}
+            locked={voice.state.status === 'locked' || voice.state.status === 'stopping'}
+            onCancel={() => voice.recorder.cancel()}
+            seconds={voice.state.elapsedMs / 1000}
+          />
+        )}
+        <div className={cn('contents', recordingVoice && 'hidden')}>
+          {/* К пересылке прикладывается только комментарий: вложение ушло бы
             отдельным сообщением неизвестно где в очереди. */}
-        <AttachmentControl
-          isSending={isSending || Boolean(forward.pending)}
-          inputRef={attachmentInputRef}
-          onChange={handleAttachmentChange}
-        />
+          <AttachmentControl
+            isSending={isSending || Boolean(forward.pending)}
+            inputRef={attachmentInputRef}
+            onChange={handleAttachmentChange}
+          />
 
-        {/* Поле: 40px в одну строку, растёт до ~7 строк (164px), текст
+          {/* Поле: 40px в одну строку, растёт до ~7 строк (164px), текст
             15/22 — как в макете. */}
-        <RichTextInput
-          ariaLabel={t('message', 'Сообщение')}
-          className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
-          disabled={encryption.status !== 'ready'}
-          onChange={handleDraftChange}
-          onSubmit={submitForm}
-          placeholder={composerPlaceholder(encryption, t, Boolean(pendingAttachment))}
-          ref={draftRef}
-        />
+          <RichTextInput
+            ariaLabel={t('message', 'Сообщение')}
+            className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
+            disabled={encryption.status !== 'ready'}
+            onChange={handleDraftChange}
+            onSubmit={submitForm}
+            placeholder={composerPlaceholder(encryption, t, Boolean(pendingAttachment))}
+            ref={draftRef}
+          />
 
-        <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+          <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+        </div>
 
-        {/* Запись голосового (#843) появится здесь, когда будет сама
-            функция. Отправка залита акцентом, когда есть что отправить. */}
-        <Button
-          aria-label={t('sendMessage', 'Отправить сообщение')}
-          className={cn(!canSend && 'text-ink-3')}
-          disabled={encryption.status !== 'ready' || forward.isForwarding}
-          iconOnly
-          type="submit"
-          variant={canSend ? 'primary' : 'ghost'}
-        >
-          <Icon className="size-4.75 stroke-2" name="send" />
-        </Button>
+        {/* Отправлять нечего — микрофон (#843); иначе «Отправить», залитая
+            акцентом, когда есть что отправить. */}
+        {showMic || recordingVoice ? (
+          <VoiceButton
+            onCancelProgress={setVoiceCancelProgress}
+            disabled={encryption.status !== 'ready'}
+            onRecorded={sendVoice}
+            recorder={voice.recorder}
+            state={voice.state}
+          />
+        ) : (
+          <Button
+            aria-label={t('sendMessage', 'Отправить сообщение')}
+            className={cn(!canSend && 'text-ink-3')}
+            disabled={encryption.status !== 'ready' || forward.isForwarding}
+            iconOnly
+            type="submit"
+            variant={canSend ? 'primary' : 'ghost'}
+          >
+            <Icon className="size-4.75 stroke-2" name="send" />
+          </Button>
+        )}
       </ComposerRow>
     </ComposerForm>
   );

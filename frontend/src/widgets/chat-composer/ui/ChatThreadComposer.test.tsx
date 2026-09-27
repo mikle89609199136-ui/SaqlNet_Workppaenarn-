@@ -71,12 +71,15 @@ describe('ChatThreadComposer', () => {
     };
   }
 
-  it('рендерит поле ввода и кнопку отправки', () => {
+  // Пустое поле — вместо «Отправить» микрофон (#843), как в макете.
+  it('рендерит поле ввода и, пока отправлять нечего, микрофон', async () => {
     const props = setupProps();
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /отправить сообщение/i })).toBeInTheDocument();
+    // Микрофон — когда шифрование готово: голосовое открытым не уйдёт.
+    expect(await screen.findByRole('button', { name: 'Записать голосовое' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /отправить сообщение/i })).not.toBeInTheDocument();
   });
 
   it('активирует кнопку отправки при вводе текста и отправляет сообщение по клику', async () => {
@@ -87,11 +90,12 @@ describe('ChatThreadComposer', () => {
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     const input = screen.getByRole('textbox', { name: /сообщение/i });
-    const sendButton = screen.getByRole('button', { name: /отправить сообщение/i });
 
-    // Вводим текст
+    // Вводим текст — микрофон уступает место «Отправить».
     await typeIntoComposer(input, 'Привет');
     expect(input.textContent).toBe('Привет');
+    expect(screen.queryByRole('button', { name: 'Записать голосовое' })).not.toBeInTheDocument();
+    const sendButton = screen.getByRole('button', { name: /отправить сообщение/i });
     // Есть что отправить — кнопка залита акцентом, как в макете.
     expect(sendButton).toHaveClass('bg-brand-fill');
 
