@@ -170,6 +170,29 @@ describe('сведения о группе', () => {
     await userEvent.click(await screen.findByRole('button', { name: /^anna/ }));
     await screen.findByRole('complementary', { name: /Профиль/ });
     expect(screen.queryByRole('button', { name: 'Удалить из группы' })).not.toBeInTheDocument();
+    // Блокировка — как в личном профиле, она от прав в группе не зависит.
+    expect(screen.getByRole('button', { name: /Заблокировать/ })).toBeInTheDocument();
+  });
+
+  it('профиль участника — тот же, что из личного чата: звонок и общее из личной переписки', async () => {
+    serveGroup('owner');
+    server.use(
+      http.get(api('/chats'), () =>
+        HttpResponse.json({
+          chats: [{ id: 'dm-anna', type: 'private', title: 'anna', peerId: 'u-anna' }],
+        })
+      ),
+      http.get(api('/messages/dm-anna'), () => HttpResponse.json({ messages: [] }))
+    );
+    renderModal();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^anna/ }));
+    await screen.findByRole('complementary', { name: /Профиль/ });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Аудиозвонок' })).toBeEnabled());
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Удалить из группы' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Заблокировать/ })).toBeInTheDocument();
   });
 
   it('«Покинуть чат» выходит через подтверждение и уводит к списку (#90)', async () => {

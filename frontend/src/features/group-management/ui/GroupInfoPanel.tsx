@@ -1,13 +1,22 @@
 import { describeApiError } from '@/shared/api';
 import { services } from '@/services';
-import { chatKeys, chatQuery, clearDraft, membersQuery, onlineMembersQuery } from '@/entities/chat';
-import { ProfilePanelBar, useProfileStore } from '@/entities/user';
+import {
+  chatKeys,
+  chatQuery,
+  chatsQuery,
+  clearDraft,
+  membersQuery,
+  onlineMembersQuery,
+} from '@/entities/chat';
+import { messagesQuery } from '@/entities/message';
+import { type IProfileState, ProfilePanelBar, useProfileStore } from '@/entities/user';
+import { BlockUserButton } from '@/features/block-user';
 import { UserProfilePanel } from '@/features/user-profile';
 import { cn, getChatSubtitle } from '@/shared/lib';
 import { Avatar, Button, Chip, ConfirmDialog, Icon, showToast } from '@/shared/ui';
 import type { IMemberDto, ISearchUserDto, TChatRole, TIconTypes } from '@/types';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { usePeopleSearch } from '../model/usePeopleSearch';
@@ -318,6 +327,8 @@ function InfoView({
 
 /* --- Участник ------------------------------------------------------ */
 
+const NO_MESSAGES: IProfileState['messages'] = [];
+
 function MemberView({
   chatId,
   memberId,
@@ -337,6 +348,19 @@ function MemberView({
   const member = members.find((item) => item.id === memberId);
   const myRole = members.find((item) => item.id === me)?.role;
 
+  /* Профиль участника — тот же, что из личного чата: звонок, общие медиа
+     и файлы берутся из личной переписки с ним, если она есть. */
+  const { data: chats = [] } = useQuery(chatsQuery());
+  const personal =
+    chats.find((chat) => chat.type === 'private' && chat.peerId === memberId) ?? null;
+  const { data: personalMessages = NO_MESSAGES } = useInfiniteQuery(
+    messagesQuery(personal?.id ?? '')
+  );
+  const profileState = useMemo<IProfileState>(
+    () => ({ isOpen: true, userId: memberId, chat: personal, messages: personalMessages }),
+    [memberId, personal, personalMessages]
+  );
+
   const run = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -349,17 +373,17 @@ function MemberView({
     }
   };
 
-  /* Что можно сделать с участником — по макету, только владельцу и
-     админу и не с собой: права и владение, исключение из группы. */
+  /* Внизу — как в личном профиле: блокировка. Над ней то, что можно
+     сделать с участником владельцу и админу: права и владение,
+     исключение из группы. */
   const renderActions = (): ReactNode => {
-    if (!member || member.id === me || member.role === 'owner') return null;
-    const canManage = myRole === 'owner' || myRole === 'admin';
-    if (!canManage) return null;
+    if (!member || member.id === me) return null;
+    const canManage = (myRole === 'owner' || myRole === 'admin') && member.role !== 'owner';
 
     const nextRole: TChatRole = member.role === 'admin' ? 'member' : 'admin';
     return (
       <div className="flex flex-col gap-2">
-        {myRole === 'owner' && (
+        {canManage && myRole === 'owner' && (
           <>
             <Button
               className={panelButton}
@@ -377,18 +401,21 @@ function MemberView({
             </Button>
           </>
         )}
-        <Button
-          className={panelButton}
-          onClick={() =>
-            run(async () => {
-              await services.chatService.removeMember(chatId, member.id);
-              onBack();
-            })
-          }
-          variant="danger"
-        >
-          {t('group.remove', 'Удалить из группы')}
-        </Button>
+        {canManage && (
+          <Button
+            className={panelButton}
+            onClick={() =>
+              run(async () => {
+                await services.chatService.removeMember(chatId, member.id);
+                onBack();
+              })
+            }
+            variant="danger"
+          >
+            {t('group.remove', 'Удалить из группы')}
+          </Button>
+        )}
+        <BlockUserButton className={panelButton} name={memberName(member)} userId={member.id} />
         <ConfirmDialog
           confirmLabel={t('group.makeOwner', 'Сделать владельцем')}
           onCancel={() => setOwnerAsked(false)}
@@ -415,7 +442,7 @@ function MemberView({
       backLabel={t('group.backToInfo', 'Назад к сведениям о группе')}
       onBack={onBack}
       onClose={onClose}
-      profileState={{ isOpen: true, userId: memberId, chat: null, messages: [] }}
+      profileState={profileState}
       renderActions={renderActions}
     />
   );
