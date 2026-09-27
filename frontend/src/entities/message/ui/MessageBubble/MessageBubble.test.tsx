@@ -557,6 +557,16 @@ describe('закреплённое сообщение (#170)', () => {
     });
 
     it('реакция — картинка Noto, при появлении своей играет анимация', () => {
+      // Без изоляции тестов matchMedia может остаться чужим — движение явно не уменьшено.
+      const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: false,
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+          }) as unknown as MediaQueryList
+      );
       const message = makeMessage({
         senderId: 'u-2',
         content: 'привет',
@@ -588,6 +598,7 @@ describe('закреплённое сообщение (#170)', () => {
 
       // Анимация ложится поверх статичной, статичная остаётся до загрузки.
       expect(srcs()).toEqual(['/emoji/noto/1f44d.svg', '/emoji/noto/1f44d.webp']);
+      matchMedia.mockRestore();
     });
   });
 });

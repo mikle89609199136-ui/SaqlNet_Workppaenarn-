@@ -1,12 +1,27 @@
 import { render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotoEmoji } from './NotoEmoji';
+
+/* Тесты идут без изоляции (isolate: false), и чужой файл может оставить
+   свою подмену matchMedia. Поэтому «уменьшить движение» задаём явно. */
+function mockReducedMotion(reduce: boolean) {
+  vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: reduce && query.includes('prefers-reduced-motion'),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList
+  );
+}
 
 const srcs = (container: HTMLElement) =>
   [...container.querySelectorAll('img')].map((img) => img.getAttribute('src'));
 
 /* Эмодзи картинкой Noto из статики приложения (#824). */
 describe('NotoEmoji', () => {
+  beforeEach(() => mockReducedMotion(false));
   afterEach(() => vi.restoreAllMocks());
 
   it('из набора — статичная SVG, «❤️» без селектора вида', () => {
@@ -24,15 +39,7 @@ describe('NotoEmoji', () => {
   });
 
   it('при «уменьшить движение» анимация не грузится', () => {
-    vi.spyOn(window, 'matchMedia').mockImplementation(
-      (query: string) =>
-        ({
-          matches: query.includes('prefers-reduced-motion'),
-          media: query,
-          addEventListener: () => {},
-          removeEventListener: () => {},
-        }) as unknown as MediaQueryList
-    );
+    mockReducedMotion(true);
     const { container } = render(<NotoEmoji animated emoji="🔥" size={20} />);
     expect(srcs(container)).toEqual(['/emoji/noto/1f525.svg']);
   });
