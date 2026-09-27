@@ -7,7 +7,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { ROUTES } from '@/shared/config/routes';
-import { Avatar, Button, buttonStyles, Icon, SegmentedControl } from '@/shared/ui';
+import { Avatar, buttonStyles, Icon, SegmentedControl } from '@/shared/ui';
 import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useState, type ReactNode } from 'react';
@@ -104,14 +104,34 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       />
     );
   } else if (tab === 'groups') {
-    content =
-      groups.length > 0 ? (
-        renderRows(groups)
-      ) : (
-        <p className="px-5 py-8 text-center text-ui text-ink-3">
-          {t('chatList.groupsEmpty', 'Групп пока нет')}
-        </p>
-      );
+    content = (
+      <>
+        {/* Новая группа — первой строкой своей вкладки: там её и ищут.
+            Строка по размерам как строка чата, чтобы список не прыгал;
+            цвет акцента говорит, что это действие, а не переписка. */}
+        <button
+          className="flex w-full shrink-0 items-center gap-3 rounded-bubble px-3 py-2.25 text-left text-brand transition-colors duration-fast hover:layer-hover active:layer-press focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2"
+          onClick={onOpenCreateGroup}
+          type="button"
+        >
+          <span
+            aria-hidden="true"
+            className="flex size-11.5 shrink-0 items-center justify-center rounded-pill bg-brand-soft"
+          >
+            <Icon name="groupAdd" size="md" />
+          </span>
+          <span className="text-body font-semibold">{t('newGroup', 'Новая группа')}</span>
+        </button>
+
+        {groups.length > 0 ? (
+          renderRows(groups)
+        ) : (
+          <p className="px-5 py-8 text-center text-ui text-ink-3">
+            {t('chatList.groupsEmpty', 'Групп пока нет')}
+          </p>
+        )}
+      </>
+    );
   } else if (tab === 'archive') {
     content = (
       <>
@@ -170,21 +190,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         />
       </nav>
 
-      <div className="flex items-center gap-2 px-4 pb-2.5">
+      <div className="px-4 pb-2.5">
         <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
-
-        {/* Кнопка новой группы. В макете её нет, но создавать группы
-            приложение уже умеет, и прятать работающую функцию незачем. */}
-        <Button
-          aria-label={t('newGroup', 'Новая группа')}
-          className="shrink-0 text-ink-2"
-          iconOnly
-          onClick={onOpenCreateGroup}
-          title={t('newGroup', 'Новая группа')}
-          variant="secondary"
-        >
-          <Icon name="groupAdd" size="md" />
-        </Button>
       </div>
 
       <div

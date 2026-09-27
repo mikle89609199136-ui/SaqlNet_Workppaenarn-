@@ -31,18 +31,29 @@ describe('ChatsList widget', () => {
     vi.restoreAllMocks();
   });
 
-  it('рендерит поле поиска и кнопку новой группы', () => {
+  it('рендерит поле поиска', () => {
+    queryClient.setQueryData(chatKeys.list(), []);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    renderChatsList(vi.fn(), queryClient);
+
+    expect(screen.getByRole('searchbox', { name: /поиск/i })).toBeInTheDocument();
+  });
+
+  it('новая группа создаётся из вкладки «Группы», а не из общего списка', () => {
     queryClient.setQueryData(chatKeys.list(), []);
     queryClient.setQueryData(chatKeys.archived(), []);
     const onOpenCreateGroup = vi.fn();
 
     renderChatsList(onOpenCreateGroup, queryClient);
 
-    expect(screen.getByRole('searchbox', { name: /поиск/i })).toBeInTheDocument();
-    const newGroupBtn = screen.getByRole('button', { name: /Новая группа/i });
-    expect(newGroupBtn).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Новая группа' })).not.toBeInTheDocument();
 
-    fireEvent.click(newGroupBtn);
+    fireEvent.click(screen.getByRole('tab', { name: 'Группы' }));
+    // Кнопка есть и тогда, когда групп ещё нет: с неё первая и начинается.
+    expect(screen.getByText('Групп пока нет')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Новая группа' }));
+
     expect(onOpenCreateGroup).toHaveBeenCalledTimes(1);
   });
 
