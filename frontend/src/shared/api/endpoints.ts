@@ -93,5 +93,7 @@ export const API_ENDPOINTS = {
   ADMIN_REPORT_RESOLVE: (reportId: string) => `/admin/reports/${reportId}/resolve`,
 
   CALL_ROOMS: '/calls/rooms',
+  CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
+  CALL_ICE_SERVERS: '/calls/ice-servers',
   EMOJIS: '/emojis',
 };

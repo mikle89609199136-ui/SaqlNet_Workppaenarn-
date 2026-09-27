@@ -1,5 +1,5 @@
 import { Avatar, Icon } from '@/shared/ui';
-import type { TCallKind, TIconTypes } from '@/types';
+import type { TIconTypes } from '@/types';
 import type { IUserDto } from '../model/types';
 import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,7 @@ interface Props {
   isPeerOnline: boolean;
   profileSubtitle: string | null;
   hasChat: boolean;
-  onCall: (kind: TCallKind) => void;
+  onCall: (kind: 'audio' | 'video') => void;
   onStartEdit: () => void;
 }
 

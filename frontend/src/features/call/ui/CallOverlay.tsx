@@ -71,7 +71,7 @@ export function CallOverlay() {
               <button className="minimized-return-btn" onClick={maximizeCall}>
                 Вернуться
               </button>
-              <button className="minimized-end-btn" onClick={endCall}>
+              <button className="minimized-end-btn" onClick={() => endCall('completed')}>
                 ×
               </button>
             </div>
