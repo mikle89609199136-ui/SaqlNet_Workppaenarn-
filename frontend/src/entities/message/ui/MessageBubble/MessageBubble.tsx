@@ -225,16 +225,14 @@ export const MessageBubble = memo(
       read: t('messageStatus.read', 'Прочитано'),
     };
 
-    /* Мета — булавка, «изменено», время, статус — строкой в конце текста.
-       Своё — чистым белым: полупрозрачный на части акцентов не держит
-       контраст. */
-    const meta = (
-      <span
-        className={cn(
-          'message-meta ml-2.5 inline-flex items-center gap-0.75 align-[-2px] text-micro whitespace-nowrap tabular-nums select-none',
-          mine ? 'text-out-meta' : 'text-ink-3'
-        )}
-      >
+    /* Мета — булавка, «изменено», время, статус. Своё — чистым белым:
+       полупрозрачный на части акцентов не держит контраст. */
+    const metaClass = cn(
+      'message-meta ml-2.5 items-center gap-0.75 text-micro whitespace-nowrap tabular-nums select-none',
+      mine ? 'text-out-meta' : 'text-ink-3'
+    );
+    const metaContent = (
+      <>
         {message.isPinned && (
           <span aria-label={t('pinned', 'Закреплено')} className="flex" role="img">
             <Icon className="size-3 stroke-2" name="pin" />
@@ -250,7 +248,15 @@ export const MessageBubble = memo(
             />
           </span>
         )}
-      </span>
+      </>
+    );
+    /* В звонке, голосовом и под медиа — строкой рядом с содержимым. */
+    const meta = <span className={cn(metaClass, 'inline-flex align-[-2px]')}>{metaContent}</span>;
+    /* В тексте — всегда в правом нижнем углу: прижата вправо в конце
+       текста. Помещается на последней строке — встаёт на неё справа, нет —
+       переносится ниже, тоже справа. */
+    const cornerMeta = (
+      <span className={cn(metaClass, 'float-right mt-1 flex')}>{metaContent}</span>
     );
 
     return (
@@ -424,9 +430,9 @@ export const MessageBubble = memo(
                 )}
               >
                 <Icon className="size-4.5 shrink-0" name="lock" />
-                <span className="[overflow-wrap:anywhere]">
+                <span className="flow-root min-w-0 [overflow-wrap:anywhere]">
                   {t(`undecryptable.${message.undecryptable}`, message.content)}
-                  <span className="not-italic">{meta}</span>
+                  <span className="not-italic">{cornerMeta}</span>
                 </span>
               </p>
             ) : (
@@ -435,7 +441,7 @@ export const MessageBubble = memo(
                 // У перевода свой текст и свои смещения: форматирование оригинала
                 // к нему не приложить.
                 entities={translations[message.id] ? undefined : message.entities}
-                trailing={hasInlineMeta ? meta : undefined}
+                trailing={hasInlineMeta ? cornerMeta : undefined}
               />
             )}
 

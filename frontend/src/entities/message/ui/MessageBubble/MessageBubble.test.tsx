@@ -397,6 +397,29 @@ describe('закреплённое сообщение (#170)', () => {
       translations: {},
     };
 
+    it('время и статус у текста — в правом нижнем углу, у звонка — строкой', () => {
+      const text = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'текст', status: 'read' })}
+        />
+      );
+      // Прижаты вправо в конце текста: на последней строке, если влезают,
+      // иначе строкой ниже — но всегда справа.
+      expect(text.container.querySelector('.message-meta')).toHaveClass('float-right');
+      text.unmount();
+
+      const call = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', type: 'call', content: '{}' })}
+        />
+      );
+      expect(call.container.querySelector('.message-meta')).not.toHaveClass('float-right');
+    });
+
     it('своё — на заливке акцента, белым; чужое — на bubble-in', () => {
       const { container, unmount } = renderBubble(
         <MessageBubble
