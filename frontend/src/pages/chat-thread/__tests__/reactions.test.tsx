@@ -54,7 +54,7 @@ describe('реакции на чужое сообщение', () => {
     renderChatThread({ chat, messages: [message], currentUser });
 
     const bubbleText = await screen.findByText('сообщение собеседника');
-    expect(screen.getByText('❤️ 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '❤️ 2' })).toBeInTheDocument();
 
     // Меню действий открывается контекстным меню — это единственный путь к нему
     // с мышью: долгое нажатие обработчик принимает только от touch и pen.
@@ -70,8 +70,8 @@ describe('реакции на чужое сообщение', () => {
 
     // Реакции в разметке — ровно те, что прислал сервер, включая ту,
     // которая в ответе осталась чужой.
-    expect(await screen.findByText('👍 1')).toBeInTheDocument();
-    expect(screen.getByText('❤️ 2')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '👍 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '❤️ 2' })).toBeInTheDocument();
   });
 
   it('заменяет прежнюю реакцию выбранной', async () => {
@@ -115,8 +115,8 @@ describe('реакции на чужое сообщение', () => {
 
        Показывается замена сразу, не дожидаясь ответа: реакция — жест
        мгновенный. */
-    await waitFor(() => expect(screen.getByText('👍 1')).toBeInTheDocument());
-    expect(screen.queryByText('❤️ 1')).toBeNull();
+    await waitFor(() => expect(screen.getByRole('button', { name: '👍 1' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: '❤️ 1' })).toBeNull();
 
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests.map((request) => request.body.emoji)).toEqual(['❤️', '👍']);
@@ -164,8 +164,8 @@ describe('реакции на чужое сообщение', () => {
     // сменился бы обратно.
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(screen.getByText('❤️ 1')).toBeInTheDocument();
-    expect(screen.queryByText('👍 1')).toBeNull();
+    expect(screen.getByRole('button', { name: '❤️ 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '👍 1' })).toBeNull();
   });
   it('не показывает промежуточное состояние, пока идёт своя замена', async () => {
     /* Замена — два запроса, и между ними сервер рассылает всем «реакции
@@ -209,8 +209,8 @@ describe('реакции на чужое сообщение', () => {
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
     await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
 
-    await waitFor(() => expect(screen.getByText('❤️ 1')).toBeInTheDocument());
-    expect(await screen.findByText('❤️ 2')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '❤️ 1' })).toBeInTheDocument());
+    expect(await screen.findByRole('button', { name: '❤️ 2' })).toBeInTheDocument();
   });
   it('снимает реакцию нажатием по ней самой, без меню', async () => {
     /* Прежде реакция была `span`, и убрать её можно было только через

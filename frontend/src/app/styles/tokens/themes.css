@@ -53,4 +53,9 @@
   --color-spoiler: var(--spoiler-dark);
 
   --color-backdrop: var(--backdrop-dark);
+
+  --color-author-1: var(--author-1-dark);
+  --color-author-2: var(--author-2-dark);
+  --color-author-3: var(--author-3-dark);
+  --color-author-4: var(--author-4-dark);
 }

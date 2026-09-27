@@ -138,7 +138,7 @@ describe('MessageBubble', () => {
     expect(bubble).toHaveClass('is-selected');
   });
 
-  it('показывает индикатор отправки со спиннером для исходящего сообщения со статусом uploading', () => {
+  it('показывает часы «Загрузка...» у исходящего сообщения со статусом uploading', () => {
     const message = makeMessage({
       id: 'msg-uploading-1',
       senderId: 'user-1',
@@ -157,9 +157,8 @@ describe('MessageBubble', () => {
       />
     );
 
-    const spinner = screen.getByRole('status');
-    expect(spinner).toBeInTheDocument();
-    expect(screen.getByText(/загрузка/i)).toBeInTheDocument();
+    // Как в макете: пока сообщение уходит — часы вместо галочки.
+    expect(screen.getByRole('img', { name: 'Загрузка...' })).toBeInTheDocument();
   });
 
   it('отображает плашку ошибки и вызывает onRetryMessage по клику на кнопку повтора', async () => {
@@ -184,7 +183,8 @@ describe('MessageBubble', () => {
       />
     );
 
-    expect(screen.getByText(/не удалось отправить/i)).toBeInTheDocument();
+    // Под пузырём, как в макете: «Не отправлено», «Повторить», «Удалить».
+    expect(screen.getByText('Не отправлено')).toBeInTheDocument();
     const retryButton = screen.getByRole('button', { name: /повторить отправку/i });
     await user.click(retryButton);
 
@@ -237,7 +237,7 @@ describe('статус доставки', () => {
     );
 
     expect(screen.getByText('моё сообщение')).toBeInTheDocument();
-    expect(screen.getByTitle('Отправлено')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
   });
 
   it('молчит в групповом чате: там у «прочитано» нет одного значения', () => {
@@ -374,23 +374,217 @@ describe('закреплённое сообщение (#170)', () => {
     );
   }
 
-  it('показывает иконку pin с заливкой и поворотом 45 градусов, когда сообщение закреплено', () => {
+  it('показывает булавку 12px в строке времени, когда сообщение закреплено', () => {
     renderPinned({ isPinned: true });
 
-    const pinWrapper = screen.getByLabelText('Закреплено');
-    expect(pinWrapper).toBeInTheDocument();
-    expect(screen.getByTitle('Закреплено')).toBeInTheDocument();
-
-    const svg = pinWrapper.querySelector('svg');
-    expect(svg).toHaveClass('size-3');
-    expect(svg).toHaveClass('rotate-45');
-    expect(svg).toHaveClass('fill-current');
+    const pin = screen.getByRole('img', { name: 'Закреплено' });
+    expect(pin.querySelector('svg')).toHaveClass('size-3');
   });
 
   it('не показывает иконку pin у обычного сообщения', () => {
     renderPinned({ isPinned: false });
 
     expect(screen.queryByLabelText('Закреплено')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Закреплено')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Закреплено' })).not.toBeInTheDocument();
+  });
+
+  /* Пузырь по дизайн-системе (#820). */
+  describe('по дизайн-системе', () => {
+    const base = {
+      onOpenImage: vi.fn(),
+      onReact: vi.fn(),
+      onSelection: vi.fn(),
+      translations: {},
+    };
+
+    it('своё — на заливке акцента, белым; чужое — на bubble-in', () => {
+      const { container, unmount } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё' })}
+        />
+      );
+      expect(container.querySelector('.message-bubble')).toHaveClass(
+        'bg-brand-fill',
+        'text-on-brand'
+      );
+      unmount();
+
+      const other = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'u-2', content: 'чужое' })}
+        />
+      );
+      expect(other.container.querySelector('.message-bubble')).toHaveClass(
+        'bg-bubble-in',
+        'text-ink'
+      );
+    });
+
+    it('в группе у первого в серии — имя автора, по нему открывается профиль', async () => {
+      const user = userEvent.setup();
+      const onOpenProfile = vi.fn();
+
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          isFirstInGroup
+          isGroupChat
+          isLastInGroup={false}
+          message={makeMessage({ senderId: 'u-2', senderName: 'Игорь', content: 'привет' })}
+          onOpenProfile={onOpenProfile}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Игорь' }));
+      expect(onOpenProfile).toHaveBeenCalledWith('u-2');
+    });
+
+    it('аватарка автора — у последнего в серии, у остальных место под неё пустое', () => {
+      const message = makeMessage({ senderId: 'u-2', senderName: 'Игорь', content: 'привет' });
+
+      const { unmount } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          isGroupChat
+          isLastInGroup
+          message={message}
+          onOpenProfile={vi.fn()}
+        />
+      );
+      expect(screen.getByRole('button', { name: 'Профиль: Игорь' })).toBeInTheDocument();
+      unmount();
+
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          isFirstInGroup={false}
+          isGroupChat
+          isLastInGroup={false}
+          message={message}
+          onOpenProfile={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole('button', { name: 'Профиль: Игорь' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Игорь' })).not.toBeInTheDocument();
+    });
+
+    it('в личном чате ни имени, ни аватарки', () => {
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'u-2', senderName: 'Игорь', content: 'привет' })}
+          onOpenProfile={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /Игорь/ })).not.toBeInTheDocument();
+    });
+
+    it('реакции — под пузырём, а не внутри', () => {
+      const { container } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({
+            senderId: 'u-2',
+            content: 'привет',
+            reactions: [{ emoji: '👍', count: 2, myReaction: false }] as never,
+          })}
+        />
+      );
+
+      const reactions = container.querySelector('.message-reactions');
+      expect(reactions).not.toBeNull();
+      expect(container.querySelector('.message-bubble')!.contains(reactions)).toBe(false);
+    });
+  });
+
+  describe('статусы и реакции по макету', () => {
+    const base = {
+      onOpenImage: vi.fn(),
+      onReact: vi.fn(),
+      onSelection: vi.fn(),
+      translations: {},
+    };
+
+    it('у своего сообщения из истории — галочка «Отправлено» в любом чате', () => {
+      /* Сервер статуса отправки не присылает: всё, что пришло с него, уже
+         отправлено. Раньше галочки стояли только сразу после отправки. */
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          isGroupChat
+          message={makeMessage({ senderId: 'me', content: 'моё' })}
+        />
+      );
+
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+    });
+
+    it('«Прочитано» — только в личном чате и только когда известно', () => {
+      const read = makeMessage({ senderId: 'me', content: 'моё', status: 'read' });
+
+      const { unmount } = renderBubble(
+        <MessageBubble {...base} currentUserId="me" message={read} showDeliveryStatus />
+      );
+      expect(screen.getByRole('img', { name: 'Прочитано' })).toBeInTheDocument();
+      unmount();
+
+      renderBubble(<MessageBubble {...base} currentUserId="me" isGroupChat message={read} />);
+      expect(screen.queryByRole('img', { name: 'Прочитано' })).not.toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+    });
+
+    it('у чужого сообщения статуса нет', () => {
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'u-2', content: 'чужое' })}
+        />
+      );
+
+      expect(screen.queryByRole('img', { name: /Отправлено|Прочитано/ })).not.toBeInTheDocument();
+    });
+
+    it('реакция — картинка Noto, при появлении своей играет анимация', () => {
+      const message = makeMessage({
+        senderId: 'u-2',
+        content: 'привет',
+        reactions: [{ emoji: '👍', count: 1, myReaction: false }] as never,
+      });
+      const { container, rerender } = renderBubble(
+        <MessageBubble {...base} currentUserId="me" message={message} />
+      );
+
+      const img = container.querySelector('.message-reactions img')!;
+      expect(img.getAttribute('src')).toContain('/notoemoji/latest/1f44d/emoji.svg');
+
+      rerender(
+        <I18nextProvider i18n={testI18n}>
+          <MessageBubble
+            {...base}
+            currentUserId="me"
+            message={{
+              ...message,
+              reactions: [{ emoji: '👍', count: 2, myReaction: true }] as never,
+            }}
+          />
+        </I18nextProvider>
+      );
+
+      expect(container.querySelector('.message-reactions img')!.getAttribute('src')).toContain(
+        '/notoemoji/latest/1f44d/512.webp'
+      );
+    });
   });
 });

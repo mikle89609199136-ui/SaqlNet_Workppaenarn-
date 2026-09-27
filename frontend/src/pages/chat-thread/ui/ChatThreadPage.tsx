@@ -128,6 +128,7 @@ export function ChatThreadPage() {
             bottomRef={bottomRef}
             error={threadError}
             hasOlder={hasOlder}
+            isGroupChat={chat?.type === 'group'}
             isLoading={isLoading}
             loadOlder={loadOlder}
             messages={messages}

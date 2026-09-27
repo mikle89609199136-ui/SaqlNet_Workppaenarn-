@@ -93,7 +93,7 @@ describe('закрепление сообщения', () => {
     });
 
     const navigator = await screen.findByRole('button', { name: 'Закреплённые сообщения' });
-    expect(within(navigator).getByText(/Закреплённое сообщение\s*#1/)).toBeInTheDocument();
+    expect(within(navigator).getByText('Закреплённое сообщение')).toBeInTheDocument();
     expect(within(navigator).getByText('сообщение 1')).toBeInTheDocument();
   });
 

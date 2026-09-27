@@ -55,12 +55,19 @@ describe('текст сообщения с форматированием (#656)
     renderContent('ответ: 42', [{ type: 'spoiler', offset: 7, length: 2 }]);
 
     const spoiler = screen.getByRole('button', { name: /Скрытый текст/ });
-    expect(spoiler).toHaveClass('text-transparent');
+    // Закрытый — «пыль», как в макете: текст прозрачный под точками.
+    expect(spoiler).toHaveClass('spoiler-dust');
+    expect(spoiler).toHaveAttribute('aria-pressed', 'false');
 
     await userEvent.click(spoiler);
 
-    expect(screen.queryByRole('button', { name: /Скрытый текст/ })).not.toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
+    const open = screen.getByRole('button', { name: 'Скрыть текст' });
+    expect(open).toHaveClass('spoiler-open');
+    expect(open).toHaveTextContent('42');
+
+    // И прячется обратно тем же нажатием.
+    await userEvent.click(open);
+    expect(screen.getByRole('button', { name: /Скрытый текст/ })).toHaveClass('spoiler-dust');
   });
 
   it('цитата — отдельным блоком', () => {

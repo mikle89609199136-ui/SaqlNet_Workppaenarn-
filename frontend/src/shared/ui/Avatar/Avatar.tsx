@@ -16,15 +16,18 @@ const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6']
      xl  56 — крупные строки настроек
      2xl 96 — профиль, сведения о группе и канале, входящий звонок
 
-   Точка «в сети» — 12px с обводкой цвета панели, на крупных — больше. */
+   Точка «в сети» — по макету, для каждой ступени своя. Размер указан
+   вместе с обводкой: в строке списка зелёный круг 12px и обводка 2px
+   снаружи, всего 16; в шапке — 12 вместе с обводкой, на пиксель наружу;
+   в профиле — 18 с обводкой 3 и отступом 4 от края. */
 const sizes = {
-  xs: { box: 'size-6 text-micro', dot: 'size-2', grid: 24 },
-  sm: { box: 'size-8 text-caption', dot: 'size-2.5', grid: 32 },
-  header: { box: 'size-9 text-ui', dot: 'size-2.5', grid: 36 },
-  md: { box: 'size-10 text-body', dot: 'size-3', grid: 40 },
-  lg: { box: 'size-11.5 text-title', dot: 'size-3', grid: 46 },
-  xl: { box: 'size-14 text-section', dot: 'size-3.5', grid: 56 },
-  '2xl': { box: 'size-24 text-display', dot: 'size-5', grid: 96 },
+  xs: { box: 'size-6 text-micro', dot: 'size-2 border-2 right-0 bottom-0', grid: 24 },
+  sm: { box: 'size-8 text-caption', dot: 'size-2.5 border-2 right-0 bottom-0', grid: 32 },
+  header: { box: 'size-9 text-ui', dot: 'size-3 border-2 -right-px -bottom-px', grid: 36 },
+  md: { box: 'size-10 text-body', dot: 'size-3 border-2 -right-px -bottom-px', grid: 40 },
+  lg: { box: 'size-11.5 text-title', dot: 'size-4 border-2 right-0 bottom-0', grid: 46 },
+  xl: { box: 'size-14 text-section', dot: 'size-4 border-2 right-0 bottom-0', grid: 56 },
+  '2xl': { box: 'size-24 text-display', dot: 'size-4.5 border-3 right-1 bottom-1', grid: 96 },
 } as const;
 
 /* Тот же хеш, что был в Identicon: он уже разложен по чужим аватаркам,
@@ -144,10 +147,7 @@ export const Avatar = ({ id, name, src, size = 'md', shape, online = false, clas
       </span>
 
       {online && (
-        <span
-          aria-hidden="true"
-          className={cn('absolute right-0 bottom-0 rounded-pill border-2 border-sheet bg-ok', dot)}
-        />
+        <span aria-hidden="true" className={cn('absolute rounded-pill border-sheet bg-ok', dot)} />
       )}
     </span>
   );
