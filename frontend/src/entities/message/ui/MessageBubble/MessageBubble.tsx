@@ -279,10 +279,20 @@ export const MessageBubble = memo(
                   tabIndex={-1}
                   type="button"
                 >
-                  <Avatar id={message.senderId} name={authorName} size="sm" />
+                  <Avatar
+                    id={message.senderId}
+                    name={authorName}
+                    size="sm"
+                    src={message.senderAvatar}
+                  />
                 </button>
               ) : (
-                <Avatar id={message.senderId} name={authorName} size="sm" />
+                <Avatar
+                  id={message.senderId}
+                  name={authorName}
+                  size="sm"
+                  src={message.senderAvatar}
+                />
               )}
             </span>
           )}

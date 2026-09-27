@@ -39,6 +39,8 @@ export interface IMessageDto {
   chatId: string;
   senderId: string;
   senderFirstName: string;
+  /** Фото автора — сервер присылает, аватарка в группе берёт его (#820). */
+  senderAvatar?: string;
   senderName: string;
   content: string;
   /**
