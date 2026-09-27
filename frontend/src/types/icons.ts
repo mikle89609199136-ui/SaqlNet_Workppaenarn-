@@ -72,4 +72,9 @@ export type TIconTypes =
   | 'scissors'
   | 'paste'
   | 'selectAll'
-  | 'clearFormatting';
+  | 'clearFormatting'
+  | 'send'
+  | 'paperclip'
+  | 'image'
+  | 'mic'
+  | 'smile';

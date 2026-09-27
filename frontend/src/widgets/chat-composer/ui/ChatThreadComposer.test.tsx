@@ -92,7 +92,8 @@ describe('ChatThreadComposer', () => {
     // Вводим текст
     await typeIntoComposer(input, 'Привет');
     expect(input.textContent).toBe('Привет');
-    expect(sendButton).toHaveClass('is-active');
+    // Есть что отправить — кнопка залита акцентом, как в макете.
+    expect(sendButton).toHaveClass('bg-brand-fill');
 
     // Нажимаем Отправить (отправляем форму)
     fireEvent.submit(sendButton.closest('form')!);
@@ -112,7 +113,8 @@ describe('ChatThreadComposer', () => {
 
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
-    expect(screen.getByText('photo.png')).toBeInTheDocument();
+    // Фото — плиткой с превью, имя файла — в подписи для диктора.
+    expect(screen.getByRole('button', { name: /photo.png/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
   });
 
@@ -128,7 +130,9 @@ describe('ChatThreadComposer', () => {
 
       expect(screen.getByText('Переслать сообщение')).toBeInTheDocument();
       expect(screen.getByText(/релиз в пятницу/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /отправить сообщение/i })).toHaveClass('is-active');
+      expect(screen.getByRole('button', { name: /отправить сообщение/i })).toHaveClass(
+        'bg-brand-fill'
+      );
     });
 
     it('крестик отменяет пересылку', async () => {
