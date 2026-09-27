@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { clearToasts, getToasts } from '@/shared/ui';
 import type { IMessageEntity } from '@/shared/lib/richText';
 import { testI18n } from '@/test/harness/i18n';
 import { MessageContentRenderer } from './MessageContent';
@@ -82,5 +83,38 @@ describe('текст сообщения с форматированием (#656)
     renderContent('смотри #релиз');
 
     expect(screen.getByText('#релиз')).toHaveClass('text-brand');
+  });
+});
+
+describe('блок кода (#823)', () => {
+  beforeEach(() => clearToasts());
+
+  it('```язык — карточка с языком, код подсвечивается, «Копировать» кладёт код в буфер', async () => {
+    const user = userEvent.setup();
+    const { container } = renderContent('Вот:\n```js\nconst a = 1;\n```\nвсё');
+
+    expect(screen.getByText('js')).toBeInTheDocument();
+    expect(container.querySelector('pre')).toHaveTextContent('const a = 1;');
+    // Подсветка догружается отдельным куском.
+    await waitFor(() =>
+      expect(container.querySelector('pre .hljs-keyword')).toHaveTextContent('const')
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Скопировать код' }));
+
+    expect(await navigator.clipboard.readText()).toBe('const a = 1;');
+    await waitFor(() =>
+      expect(getToasts()).toEqual([expect.objectContaining({ message: 'Код скопирован' })])
+    );
+  });
+
+  it('строки подряд моноширинные — тоже блок кода', () => {
+    const { container } = renderContent('a()\nb()', [
+      { type: 'monospace', offset: 0, length: 3 },
+      { type: 'monospace', offset: 4, length: 3 },
+    ]);
+
+    expect(container.querySelector('pre')).toHaveTextContent('a() b()');
+    expect(screen.getByRole('button', { name: 'Скопировать код' })).toBeInTheDocument();
   });
 });

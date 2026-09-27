@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildRichBlocks, isSafeLinkUrl, normalizeEntities, trimRichText } from './richText';
+import {
+  buildRichBlocks,
+  isSafeLinkUrl,
+  normalizeEntities,
+  trimRichText,
+  type IMessageEntity,
+} from './richText';
 
 describe('форматированный текст (#656)', () => {
   describe('очистка диапазонов', () => {
@@ -67,29 +73,71 @@ describe('форматированный текст (#656)', () => {
         { type: 'link', offset: 3, length: 2, data: { url: 'https://example.com' } },
       ]);
 
-      expect(block.quote).toBe(false);
+      expect(block.kind).toBe('text');
       expect(block.segments).toEqual([
         { text: 'ab ', formats: ['bold'] },
         { text: 'cd', formats: ['bold', 'link'], url: 'https://example.com' },
       ]);
     });
 
-    it('выносит цитату отдельным блоком', () => {
-      const text = 'до\nцитата\nпосле';
-      const blocks = buildRichBlocks(text, [{ type: 'blockquote', offset: 3, length: 6 }]);
+    const outline = (text: string, entities: IMessageEntity[] = []) =>
+      buildRichBlocks(text, entities).map((block) =>
+        block.kind === 'code'
+          ? [block.kind, block.code, block.lang]
+          : [block.kind, block.segments.map((s) => s.text).join('')]
+      );
+    const mono = (offset: number, length: number): IMessageEntity => ({
+      type: 'monospace',
+      offset,
+      length,
+    });
 
-      expect(
-        blocks.map((block) => [block.quote, block.segments.map((s) => s.text).join('')])
-      ).toEqual([
-        [false, 'до\n'],
-        [true, 'цитата'],
-        [false, '\nпосле'],
+    it('выносит цитату отдельным блоком, переводы строк на границах — сама граница', () => {
+      expect(outline('до\nцитата\nпосле', [{ type: 'blockquote', offset: 3, length: 6 }])).toEqual([
+        ['text', 'до'],
+        ['quote', 'цитата'],
+        ['text', 'после'],
       ]);
     });
 
     it('без форматирования — один кусок как есть', () => {
       expect(buildRichBlocks('просто текст', [])).toEqual([
-        { quote: false, segments: [{ text: 'просто текст', formats: [] }] },
+        { kind: 'text', segments: [{ text: 'просто текст', formats: [] }] },
+      ]);
+    });
+
+    it('```язык … ``` в тексте — блок кода с языком', () => {
+      expect(outline('Смотри:\n```js\nconst a = 1;\nlog(a);\n```\nГотово')).toEqual([
+        ['text', 'Смотри:'],
+        ['code', 'const a = 1;\nlog(a);', 'js'],
+        ['text', 'Готово'],
+      ]);
+    });
+
+    it('ограждение без языка и в одну строку; непарное остаётся текстом', () => {
+      expect(outline('```npm i```')).toEqual([['code', 'npm i', '']]);
+      expect(outline('```\nx = 1\n```')).toEqual([['code', 'x = 1', '']]);
+      expect(outline('три ``` кавычки')).toEqual([['text', 'три ``` кавычки']]);
+    });
+
+    it('строки подряд целиком моноширинные — блок кода, пустая строка его не рвёт', () => {
+      const text = 'Вот:\nif (a) {\n\n  go();\n}\nи всё, x';
+
+      expect(outline(text, [mono(5, 8), mono(15, 7), mono(23, 1), mono(32, 1)])).toEqual([
+        ['text', 'Вот:'],
+        ['code', 'if (a) {\n\n  go();\n}', ''],
+        ['text', 'и всё, x'],
+      ]);
+    });
+
+    it('одна моноширинная строка — код в строке, а не блок', () => {
+      expect(outline('npm i', [mono(0, 5)])).toEqual([['text', 'npm i']]);
+    });
+
+    it('ограждение внутри цитаты — часть цитаты', () => {
+      const text = '```a```';
+      expect(outline(text, [{ type: 'blockquote', offset: 0, length: text.length }])).toEqual([
+        ['quote', text],
       ]);
     });
   });

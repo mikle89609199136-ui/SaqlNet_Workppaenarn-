@@ -129,36 +129,173 @@ export interface IRichSegment {
   url?: string;
 }
 
+export type TRichBlockKind = 'text' | 'quote' | 'code';
+
 export interface IRichBlock {
-  quote: boolean;
+  kind: TRichBlockKind;
+  /** Куски с одинаковыми форматами; у блока кода пусто — там `code`. */
   segments: IRichSegment[];
+  /** Только у блока кода: сам код, без ограждения. */
+  code?: string;
+  /** Только у блока кода: язык из «```язык»; пусто — угадывается при показе. */
+  lang?: string;
+}
+
+interface IBlockRange {
+  kind: TRichBlockKind;
+  start: number;
+  end: number;
+  code?: string;
+  lang?: string;
+}
+
+const FENCE = '```';
+const FENCE_LANG = /^([A-Za-z0-9+#-]{1,12})\n([\s\S]*)$/;
+
+const overlaps = (a: IBlockRange, b: IBlockRange) => a.start < b.end && b.start < a.end;
+
+/**
+ * Блоки кода, набранные прямо в тексте: «```» или «```язык» с новой строки,
+ * код, «```». Непарное ограждение остаётся текстом.
+ */
+function fencedCode(text: string): IBlockRange[] {
+  const ranges: IBlockRange[] = [];
+  let from = 0;
+
+  for (;;) {
+    const open = text.indexOf(FENCE, from);
+    if (open < 0) break;
+    const close = text.indexOf(FENCE, open + FENCE.length);
+    if (close < 0) break;
+
+    const inner = text.slice(open + FENCE.length, close);
+    const withLang = inner.match(FENCE_LANG);
+    const code = (withLang ? withLang[2] : inner.replace(/^\n/, '')).replace(/\n$/, '');
+    if (code.trim()) {
+      ranges.push({
+        kind: 'code',
+        start: open,
+        end: close + FENCE.length,
+        code,
+        lang: withLang?.[1] ?? '',
+      });
+    }
+    from = close + FENCE.length;
+  }
+
+  return ranges;
 }
 
 /**
- * Текст, нарезанный для отрисовки: цитаты — отдельными блоками, внутри
- * блока — куски с одинаковым набором форматов.
+ * Блоки кода из поля ввода: моноширинный там ставится на строку, и через
+ * перевод строки диапазон не переходит. Две и больше строки подряд, целиком
+ * моноширинные (пустые между ними не прерывают), — это код, а не слово в
+ * строке.
+ */
+function monospaceCode(
+  text: string,
+  entities: IMessageEntity[],
+  taken: IBlockRange[]
+): IBlockRange[] {
+  const mono = entities
+    .filter((entity) => entity.type === 'monospace')
+    .sort((a, b) => a.offset - b.offset);
+  if (mono.length === 0) return [];
+
+  const covered = (from: number, to: number) => {
+    let reach = from;
+    for (const entity of mono) {
+      if (entity.offset > reach) break;
+      reach = Math.max(reach, entity.offset + entity.length);
+    }
+    return reach >= to;
+  };
+
+  const ranges: IBlockRange[] = [];
+  let run: { start: number; end: number; lines: number } | null = null;
+  const flush = () => {
+    if (run && run.lines >= 2) {
+      ranges.push({
+        kind: 'code',
+        start: run.start,
+        end: run.end,
+        code: text.slice(run.start, run.end),
+        lang: '',
+      });
+    }
+    run = null;
+  };
+
+  let start = 0;
+  for (const line of text.split('\n')) {
+    const end = start + line.length;
+    const free = !taken.some((range) => range.start < end + 1 && start < range.end);
+
+    if (free && line.length > 0 && covered(start, end)) {
+      if (run) {
+        run.end = end;
+        run.lines += 1;
+      } else {
+        run = { start, end, lines: 1 };
+      }
+    } else if (!(free && run && line.trim() === '')) {
+      flush();
+    }
+    start = end + 1;
+  }
+  flush();
+
+  return ranges;
+}
+
+/**
+ * Текст, нарезанный для отрисовки: цитаты и блоки кода — отдельными
+ * блоками, внутри остальных — куски с одинаковым набором форматов.
+ *
+ * Перевод строки на границе блока — сама граница: блок и так начинается
+ * с новой строки, иначе над ним и под ним появлялись бы пустые строки.
  */
 export function buildRichBlocks(text: string, entities: IMessageEntity[]): IRichBlock[] {
-  const quotes = entities
-    .filter((entity) => entity.type === 'blockquote')
-    .map((entity) => [entity.offset, entity.offset + entity.length] as const);
   const inline = entities.filter((entity) => entity.type !== 'blockquote');
 
-  // Границы блоков: начала и концы цитат; пересекающиеся цитаты склеиваются.
-  const ranges: Array<{ quote: boolean; start: number; end: number }> = [];
-  let cursor = 0;
-  for (const [from, to] of [...quotes].sort((a, b) => a[0] - b[0])) {
-    const start = Math.max(from, cursor);
-    if (to <= start) continue;
-    if (start > cursor) ranges.push({ quote: false, start: cursor, end: start });
-    ranges.push({ quote: true, start, end: to });
-    cursor = to;
-  }
-  if (cursor < text.length || ranges.length === 0) {
-    ranges.push({ quote: false, start: cursor, end: text.length });
+  // Пересекающиеся цитаты склеиваются.
+  const quotes: IBlockRange[] = [];
+  let quoteEnd = 0;
+  for (const entity of entities
+    .filter((item) => item.type === 'blockquote')
+    .sort((a, b) => a.offset - b.offset)) {
+    const start = Math.max(entity.offset, quoteEnd);
+    const end = entity.offset + entity.length;
+    if (end <= start) continue;
+    quotes.push({ kind: 'quote', start, end });
+    quoteEnd = end;
   }
 
-  return ranges.map(({ quote, start, end }) => {
+  const fences = fencedCode(text).filter(
+    (fence) => !quotes.some((quote) => overlaps(quote, fence))
+  );
+  const blocks = [
+    ...quotes,
+    ...fences,
+    ...monospaceCode(text, inline, [...quotes, ...fences]),
+  ].sort((a, b) => a.start - b.start);
+
+  const ranges: IBlockRange[] = [];
+  let cursor = 0;
+  for (const block of blocks) {
+    const end =
+      block.start > cursor && text[block.start - 1] === '\n' ? block.start - 1 : block.start;
+    if (end > cursor) ranges.push({ kind: 'text', start: cursor, end });
+    ranges.push(block);
+    cursor = text[block.end] === '\n' ? block.end + 1 : block.end;
+  }
+  if (cursor < text.length || ranges.length === 0) {
+    ranges.push({ kind: 'text', start: cursor, end: text.length });
+  }
+
+  return ranges.map(({ kind, start, end, code, lang }) => {
+    if (kind === 'code') return { kind, segments: [], code, lang };
+
     const cuts = new Set([start, end]);
     for (const entity of inline) {
       for (const point of [entity.offset, entity.offset + entity.length]) {
@@ -182,6 +319,6 @@ export function buildRichBlocks(text: string, entities: IMessageEntity[]): IRich
       });
     }
 
-    return { quote, segments };
+    return { kind, segments };
   });
 }

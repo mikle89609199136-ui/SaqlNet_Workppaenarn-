@@ -8,6 +8,7 @@ export {
   type IRichBlock,
   type IRichSegment,
   type IRichText,
+  type TRichBlockKind,
   type TEntityType,
   type TInlineEntityType,
 } from './richText';
