@@ -1,4 +1,5 @@
 import type { IMessageEntity } from '@/shared/lib/richText';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IEncryptedMedia } from '@/types/encryption.types';
 
 export type TMessageType =
@@ -74,6 +75,8 @@ export interface IMessageDto {
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
+  /** Длительность и волна голосового (#843): из шифрованного конверта. */
+  voice?: IVoiceMeta;
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   /** Статус доставки/отправки сообщения (#552 Outbox) */

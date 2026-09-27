@@ -251,7 +251,7 @@ describe('MessageService: форматирование (#656)', () => {
 
     const sent = await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
 
-    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold, undefined);
     expect(requests[0].messages[0]).not.toHaveProperty('entities');
     expect(sent).toMatchObject({ content: 'привет', entities: bold });
   });
@@ -287,7 +287,7 @@ describe('MessageService: форматирование (#656)', () => {
       { ...message('source', 'chat-source', 'привет'), entities: bold },
     ]);
 
-    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold, undefined);
   });
 });
 
