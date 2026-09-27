@@ -189,33 +189,26 @@ describe('ChatsList widget', () => {
     expect(screen.getByRole('link', { name: 'Настройки' })).toHaveAttribute('href', '/settings');
   });
 
-  it('закреплённые — своим разделом над «Всеми чатами»', () => {
+  it('закреплённые идут первыми, без отдельного раздела', () => {
+    // Закреплённый во входных данных вторым: наверх его поднимает сам список.
     queryClient.setQueryData(chatKeys.list(), [
+      makeChat({ id: 'c-2', title: 'Петя', lastMessage: makeMessage({ content: 'б' }) }),
       makeChat({
         id: 'c-1',
         title: 'Вася',
         isPinned: true,
         lastMessage: makeMessage({ content: 'а' }),
       }),
-      makeChat({ id: 'c-2', title: 'Петя', lastMessage: makeMessage({ content: 'б' }) }),
     ]);
     queryClient.setQueryData(chatKeys.archived(), []);
 
     renderChatsList(vi.fn(), queryClient);
 
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Закреплённые', 'Все чаты']);
-  });
-
-  it('без закреплённых раздела «Закреплённые» нет', () => {
-    queryClient.setQueryData(chatKeys.list(), [
-      makeChat({ id: 'c-2', title: 'Петя', lastMessage: makeMessage({ content: 'б' }) }),
-    ]);
-    queryClient.setQueryData(chatKeys.archived(), []);
-
-    renderChatsList(vi.fn(), queryClient);
-
-    expect(screen.queryByRole('heading', { name: 'Закреплённые' })).not.toBeInTheDocument();
+    const names = screen
+      .getAllByRole('link', { name: /Вася|Петя/ })
+      .map((link) => link.textContent);
+    expect(names[0]).toMatch(/Вася/);
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
   });
 
   it.each([

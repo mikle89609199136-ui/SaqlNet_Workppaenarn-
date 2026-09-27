@@ -34,9 +34,6 @@ const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
 
 const VISIBLE_TABS = LIST_TABS.filter((tab) => !tab.hidden);
 
-/* Заголовок раздела над строками — стиль label дизайн-системы. */
-const sectionLabel = 'px-3 text-meta font-semibold tracking-[0.04em] text-ink-3 uppercase';
-
 interface Props {
   onOpenCreateGroup: () => void;
 }
@@ -91,10 +88,6 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
       />
     ));
-
-  /* Закреплённые — своим разделом сверху, остальные под «Все чаты». */
-  const pinnedChats = visibleChats.filter((chat) => chat.isPinned);
-  const otherChats = visibleChats.filter((chat) => !chat.isPinned);
 
   let content: ReactNode;
   if (isLoading) {
@@ -157,25 +150,10 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         )}
       </>
     );
-  } else if (visibleChats.length === 0) {
-    content = <EmptyChatListPlaceholder />;
   } else {
-    content = (
-      <>
-        {pinnedChats.length > 0 && (
-          <>
-            <h2 className={`${sectionLabel} py-1.5`}>{t('chatList.pinned', 'Закреплённые')}</h2>
-            {renderRows(pinnedChats)}
-          </>
-        )}
-        {otherChats.length > 0 && (
-          <>
-            <h2 className={`${sectionLabel} pt-3 pb-1.5`}>{t('chatList.allChats', 'Все чаты')}</h2>
-            {renderRows(otherChats)}
-          </>
-        )}
-      </>
-    );
+    /* Закреплённые — просто первыми, без отдельного раздела: порядок
+       держат сервер и chatsQuery, строку отмечает булавка. */
+    content = visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />;
   }
 
   /* Заголовок говорит и о связи (#819): пока её нет, «Сообщения» меняются
