@@ -6,7 +6,7 @@ import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-
 import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
 import { GroupInfoModal } from '@/features/group-management';
-import { MessageActionsPopover } from '@/features/message-actions';
+import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/entities/media';
@@ -17,7 +17,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
-import type { IProfileState } from '@/entities/user';
+import { useProfileStore, type IProfileState } from '@/entities/user';
 
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
    стабильная ссылка не перерисовывает мемоизированную панель. */
@@ -71,11 +71,14 @@ export function ChatThreadPage() {
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
     handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
+
+  const currentUserId = useProfileStore((state) => state.user?.id);
 
   // Автор пересланного сообщения (#785). Стабильная ссылка: пузыри
   // мемоизированы и не должны перерисовываться всей лентой.
@@ -196,6 +199,12 @@ export function ChatThreadPage() {
               setOpenedImage={modals.setOpenedImage}
             />
           )}
+          {/* Подтверждение удаления — одно на чат: из меню и из выбора (#840). */}
+          <DeleteMessagesDialog
+            currentUserId={currentUserId}
+            isGroup={chat?.type === 'group'}
+            onConfirm={confirmDelete}
+          />
           {selectionMode && (
             <ChatSelectedMessagesActions
               handleCancelSelection={handleCancelSelection}

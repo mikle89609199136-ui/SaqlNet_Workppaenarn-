@@ -1630,6 +1630,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/messages/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete messages for everyone or only for me
+         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
+         */
+        post: operations["deleteMessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/pins": {
         parameters: {
             query?: never;
@@ -1741,7 +1761,11 @@ export interface paths {
          * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
          */
         post: operations["sendMessages"];
-        /** Delete a message */
+        /**
+         * Delete a message for everyone
+         * @deprecated
+         * @description Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+         */
         delete: operations["deleteMessage"];
         options?: never;
         head?: never;
@@ -2804,6 +2828,15 @@ export interface components {
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
+        DeleteMessagesRequest: {
+            messageIds: string[];
+            forEveryone: boolean;
+        };
+        DeleteMessageResponse: {
+            /** @enum {boolean} */
+            success: true;
+            lastMessage: components["schemas"]["Message"] | null;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
@@ -2852,11 +2885,6 @@ export interface components {
         SendMessagesRequest: {
             /** @description The whole request body is limited to 2 MiB. */
             messages: components["schemas"]["SendMessageRequest"][];
-        };
-        DeleteMessageResponse: {
-            /** @enum {boolean} */
-            success: true;
-            lastMessage: components["schemas"]["Message"] | null;
         };
         ReactionListResponse: {
             reactions: components["schemas"]["Reaction"][];
@@ -5719,6 +5747,53 @@ export interface operations {
         responses: {
             /** @description Marked read */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteMessagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted; lastMessage is the chat's last message as the caller now sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteMessageResponse"];
+                };
+            };
+            /** @description Empty or more than 100 ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A message is not in this chat or already deleted */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

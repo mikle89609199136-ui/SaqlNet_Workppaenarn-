@@ -360,6 +360,27 @@ func (h *Handler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// deleteMessages — POST /chats/{chatId}/messages/delete (#840): выбранные
+// сообщения чата у всех или только у себя, до 100 за раз.
+func (h *Handler) deleteMessages(w http.ResponseWriter, r *http.Request, userID, chatID string) {
+	var input struct {
+		MessageIDs  []string `json:"messageIds"`
+		ForEveryone bool     `json:"forEveryone"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	lastMessage, err := h.service.DeleteMessages(r.Context(), userID, chatID, input.MessageIDs, input.ForEveryone)
+	if err != nil {
+		respondSuccess(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"success":     true,
+		"lastMessage": lastMessage,
+	})
+}
+
 func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("messageId")

@@ -181,8 +181,9 @@ export const MessageActionsPopover = ({
         def: isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать'),
         action: () => (selectionMode ? onSelection(message) : actions.startSelection(message)),
       },
+      // Удалить можно и чужое — у себя (#840); у кого, решает диалог.
       {
-        show: mine,
+        show: true,
         icon: 'trash',
         key: 'delete',
         def: t('messageActions.delete', 'Удалить'),

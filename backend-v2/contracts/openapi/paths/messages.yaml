@@ -132,7 +132,9 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '500': *error
   delete:
     tags: [Messages]
-    summary: Delete a message
+    summary: Delete a message for everyone
+    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    deprecated: true
     operationId: deleteMessage
     security: *secure
     responses:

@@ -198,7 +198,9 @@ func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service
 	return &Service{db: db, ws: ws, presence: presence}
 }
 
-func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {
+// hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
+// ответа на скрытое им сообщение показывается как на удалённое (#840).
+func (s *Service) hydrateMessageFields(ctx context.Context, viewerID string, msg *Message) error {
 	msg.SenderFirstName = msg.SenderName
 	if msg.ReplyTo != nil {
 		msg.ReplyToMessageID = msg.ReplyTo
@@ -209,7 +211,8 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 				LEFT JOIN auth.users au ON au.id = m.sender_id
 				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
-			`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+				  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3)
+			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -254,9 +257,9 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 	return nil
 }
 
-func (s *Service) hydrateMessagesFields(ctx context.Context, messages []Message) error {
+func (s *Service) hydrateMessagesFields(ctx context.Context, viewerID string, messages []Message) error {
 	for i := range messages {
-		if err := s.hydrateMessageFields(ctx, &messages[i]); err != nil {
+		if err := s.hydrateMessageFields(ctx, viewerID, &messages[i]); err != nil {
 			return err
 		}
 	}
@@ -393,6 +396,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -422,10 +426,11 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, entities, type
-		  FROM messages.messages
-		  WHERE chat_id = c.id AND deleted_at IS NULL
-		  ORDER BY created_at DESC
+		  SELECT lmm.id, lmm.sender_id, lmm.content, lmm.entities, lmm.type
+		  FROM messages.messages lmm
+		  WHERE lmm.chat_id = c.id AND lmm.deleted_at IS NULL
+		    AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = lmm.id AND hm.user_id = $1)
+		  ORDER BY lmm.created_at DESC
 		  LIMIT 1
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
@@ -482,6 +487,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -511,10 +517,11 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, entities, type
-		  FROM messages.messages
-		  WHERE chat_id = c.id AND deleted_at IS NULL
-		  ORDER BY created_at DESC
+		  SELECT lmm.id, lmm.sender_id, lmm.content, lmm.entities, lmm.type
+		  FROM messages.messages lmm
+		  WHERE lmm.chat_id = c.id AND lmm.deleted_at IS NULL
+		    AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = lmm.id AND hm.user_id = $1)
+		  ORDER BY lmm.created_at DESC
 		  LIMIT 1
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
@@ -1855,11 +1862,12 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $4)
 		ORDER BY m.created_at DESC
 		LIMIT $2 OFFSET $3
 		) recent_messages
 		ORDER BY created_at ASC
-	`, chatID, limit, offset)
+	`, chatID, limit, offset, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1871,7 +1879,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err := s.hydrateMessagesReactions(ctx, userID, messages); err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -2102,7 +2110,7 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	}
 
 	for i := range msgs {
-		if err := s.hydrateMessageFields(ctx, &msgs[i]); err != nil {
+		if err := s.hydrateMessageFields(ctx, userID, &msgs[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -2213,7 +2221,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		}
 	}
 
-	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
+	if err := s.hydrateMessageFields(ctx, userID, &msg); err != nil {
 		return Message{}, err
 	}
 
@@ -2270,11 +2278,11 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 		return nil, err
 	}
 
-	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID)
+	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID, "")
 	if err != nil {
 		return nil, err
 	}
-	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID)
+	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -2290,7 +2298,10 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 			"messageId":       messageID,
 			"previousMessage": forBroadcast(previousMessage),
 		})
-		s.ws.BroadcastToChat(chatID, payload, userID)
+		// Без исключения удалившего: его другие устройства тоже должны
+		// убрать сообщение (#840). Своё устройство событие про уже
+		// удалённое просто перечитает.
+		s.ws.BroadcastToChat(chatID, payload, "")
 	}
 
 	return lastMessage, s.hideSenderPhotos(ctx, userID, lastMessage)
@@ -2298,7 +2309,9 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 
 // loadMessageAfterDelete returns either the newest message before the deleted
 // message (when before is non-nil), or the newest remaining message in the chat.
-func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string) (*Message, error) {
+// hiddenFor — чьи скрытые сообщения пропустить (#840); пусто — ничьи: так
+// считается соседнее сообщение для рассылки остальным участникам.
+func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string, hiddenFor string) (*Message, error) {
 	var msg Message
 	var replyTo sql.NullString
 	var metadataBytes, reactionsBytes []byte
@@ -2330,9 +2343,10 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		WHERE m.chat_id = $1
 		  AND m.deleted_at IS NULL
 		  AND ($2::timestamptz IS NULL OR (m.created_at, m.id) < ($2, $3::uuid))
+		  AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $5))
 		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 1
-	`, chatID, before, messageID, userID).Scan(
+	`, chatID, before, messageID, userID, nullableUUID(hiddenFor)).Scan(
 		&msg.ID, &msg.ChatID, &msg.SenderID,
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
@@ -2944,8 +2958,9 @@ func (s *Service) ListPins(
 			ON up.user_id = m.sender_id
 		WHERE p.chat_id = $1
 			AND m.deleted_at IS NULL
+			AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
 		ORDER BY p.pinned_at DESC
-	`, chatID)
+	`, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -3004,7 +3019,7 @@ func (s *Service) ListPins(
 		return nil, err
 	}
 	for i := range pins {
-		if err := s.hydrateMessageFields(ctx, &pins[i].Message); err != nil {
+		if err := s.hydrateMessageFields(ctx, userID, &pins[i].Message); err != nil {
 			return nil, err
 		}
 	}
@@ -3155,6 +3170,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		  AND to_tsvector('simple', m.content) @@ plainto_tsquery('simple', $2)
 		ORDER BY m.created_at DESC
 		LIMIT $3
@@ -3167,7 +3183,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 	if err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -3202,6 +3218,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE f.user_id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		ORDER BY f.created_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
@@ -3213,7 +3230,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 	if err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
