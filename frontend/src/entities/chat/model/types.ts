@@ -18,6 +18,12 @@ export interface ILastMessageDto {
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
+  /**
+   * Дошло ли своё сообщение и прочитано ли (#819). Список рисует по нему
+   * галочки; сервер в списке чатов его пока не присылает — тогда галочек
+   * нет, а не выдуманное «отправлено».
+   */
+  status?: 'sent' | 'read';
 }
 
 export interface IChatDto {
@@ -50,6 +56,16 @@ export interface IChatDto {
   lastMessageAt?: Date;
   unreadCount: number;
   lastMessage?: ILastMessageDto;
+  /**
+   * Звук чата выключен (#559, #467): приглушённый счётчик и значок после
+   * имени. Сервер в списке чатов его пока не присылает.
+   */
+  isMuted?: boolean;
+  /**
+   * Отмечен непрочитанным вручную — пустой кружок вместо числа. Функции
+   * пока нет, строка к ней готова (#819).
+   */
+  isMarkedUnread?: boolean;
 }
 
 export type TChatsList = IChatDto[];

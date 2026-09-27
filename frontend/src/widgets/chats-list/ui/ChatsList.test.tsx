@@ -8,6 +8,15 @@ import { makeChat, makeMessage } from '@/test/fixtures';
 import { chatKeys } from '@/entities/chat';
 import { ChatsList } from './ChatsList';
 
+/* Состояние связи подменяется: заголовок списка обязан его отражать. */
+const connection = vi.hoisted(() => ({
+  status: 'connected' as 'connected' | 'connecting' | 'offline',
+}));
+vi.mock('@/shared/lib', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useConnectionStatus: () => connection.status,
+}));
+
 function renderChatsList(
   onOpenCreateGroup = vi.fn(),
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -178,5 +187,42 @@ describe('ChatsList widget', () => {
 
     expect(screen.getByRole('heading', { name: 'Сообщения' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Настройки' })).toHaveAttribute('href', '/settings');
+  });
+
+  it('закреплённые идут первыми, без отдельного раздела', () => {
+    // Закреплённый во входных данных вторым: наверх его поднимает сам список.
+    queryClient.setQueryData(chatKeys.list(), [
+      makeChat({ id: 'c-2', title: 'Петя', lastMessage: makeMessage({ content: 'б' }) }),
+      makeChat({
+        id: 'c-1',
+        title: 'Вася',
+        isPinned: true,
+        lastMessage: makeMessage({ content: 'а' }),
+      }),
+    ]);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    renderChatsList(vi.fn(), queryClient);
+
+    const names = screen
+      .getAllByRole('link', { name: /Вася|Петя/ })
+      .map((link) => link.textContent);
+    expect(names[0]).toMatch(/Вася/);
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['connected', 'Сообщения'],
+    ['connecting', 'Соединение…'],
+    ['offline', 'Ожидание сети…'],
+  ] as const)('заголовок при связи «%s» — «%s»', (status, title) => {
+    connection.status = status;
+    queryClient.setQueryData(chatKeys.list(), []);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    renderChatsList(vi.fn(), queryClient);
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(title);
+    connection.status = 'connected';
   });
 });

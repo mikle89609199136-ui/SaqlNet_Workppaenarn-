@@ -1,10 +1,12 @@
 export type TIconTypes =
   | 'bell'
+  | 'bellOff'
   | 'burger'
   | 'camera'
   | 'channel'
   | 'chat'
   | 'check'
+  | 'checkCheck'
   | 'chevronDown'
   | 'chevronRight'
   | 'checkCircle'

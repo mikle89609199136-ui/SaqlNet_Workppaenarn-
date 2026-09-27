@@ -7,7 +7,8 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { ROUTES } from '@/shared/config/routes';
-import { Avatar, buttonStyles, Icon, SegmentedControl } from '@/shared/ui';
+import { useConnectionStatus } from '@/shared/lib';
+import { Avatar, buttonStyles, Icon, SegmentedControl, Spinner } from '@/shared/ui';
 import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useState, type ReactNode } from 'react';
@@ -49,6 +50,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   const tabsId = useId();
   const me = useProfileStore((state) => state.user);
   const [tab, setTab] = useState<TListTab>('chats');
+  const connection = useConnectionStatus();
 
   const {
     data: chats = [],
@@ -81,6 +83,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       <ChatListItem
         chat={chat}
         key={chat.id}
+        currentUserId={me?.id}
         pinnedCount={pinnedCount}
         renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
       />
@@ -148,8 +151,19 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       </>
     );
   } else {
+    /* Закреплённые — просто первыми, без отдельного раздела: порядок
+       держат сервер и chatsQuery, строку отмечает булавка. */
     content = visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />;
   }
+
+  /* Заголовок говорит и о связи (#819): пока её нет, «Сообщения» меняются
+     на то, чего ждём, со спиннером. Объявляется вежливо — не перебивая. */
+  const title =
+    connection === 'offline'
+      ? t('chatList.waitingForNetwork', 'Ожидание сети…')
+      : connection === 'connecting'
+        ? t('chatList.connecting', 'Соединение…')
+        : t('chatList.title', 'Сообщения');
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-sheet">
@@ -160,8 +174,12 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
           size="header"
           src={me?.avatarUrl}
         />
-        <h1 className="min-w-0 flex-1 truncate text-section font-semibold tracking-[-0.01em]">
-          {t('chatList.title', 'Сообщения')}
+        <h1
+          aria-live="polite"
+          className="flex min-w-0 flex-1 items-center gap-2 text-section font-semibold tracking-[-0.01em]"
+        >
+          {connection !== 'connected' && <Spinner className="size-3.5 border-2" tone="current" />}
+          <span className="truncate">{title}</span>
         </h1>
         <Link
           aria-label={t('settings.menu.title', 'Настройки')}
