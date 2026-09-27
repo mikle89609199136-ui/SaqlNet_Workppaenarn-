@@ -119,7 +119,10 @@ describe('подтверждение действия', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it('закрытие крестиком — это отказ', async () => {
+  it('у подтверждения нет крестика: отказ — это «Отмена»', async () => {
+    /* Дизайн-система: в окне подтверждения две кнопки и ничего больше.
+       Escape и клик мимо по-прежнему отказ — их проверить в jsdom нельзя,
+       см. шапку файла. */
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
     render(
@@ -134,9 +137,49 @@ describe('подтверждение действия', () => {
       </ConfirmDialog>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('button', { name: 'Закрыть' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('should announce a dangerous confirmation as an alert dialog', () => {
+    /* Дизайн-система: подтверждение опасного действия — alertdialog,
+       действие на подложке ошибки, «Отмена» без фона. */
+    render(
+      <ConfirmDialog
+        confirmLabel="Удалить"
+        danger
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        open
+        title="Удалить чат?"
+      >
+        История пропадёт у вас.
+      </ConfirmDialog>
+    );
+
+    expect(screen.getByRole('alertdialog', { name: 'Удалить чат?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Удалить' })).toHaveClass('bg-danger-soft');
+    expect(screen.getByRole('button', { name: 'Отмена' })).toHaveClass('bg-transparent');
+  });
+
+  it('should keep an ordinary confirmation an ordinary dialog', () => {
+    render(
+      <ConfirmDialog
+        confirmLabel="Выйти"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        open
+        title="Выйти?"
+      >
+        Вернуться можно в любой момент.
+      </ConfirmDialog>
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Выйти?' })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });

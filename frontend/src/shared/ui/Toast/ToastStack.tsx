@@ -13,7 +13,10 @@ export function ToastStack() {
   const toasts = useSyncExternalStore(subscribeToToasts, getToasts, getToasts);
 
   return (
-    <div className="pointer-events-none fixed inset-x-3 bottom-[calc(20px+env(safe-area-inset-bottom,0px))] z-[99999] flex flex-col gap-1.5 md:left-auto md:w-90">
+    /* По центру снизу, над полем ввода, — как в дизайн-системе: это
+       подтверждение сделанного, оно должно попасть в поле зрения, а не
+       прятаться в углу. */
+    <div className="pointer-events-none fixed inset-x-4 bottom-[calc(96px+env(safe-area-inset-bottom,0px))] z-[99999] flex flex-col items-center gap-1.5">
       {toasts.map((toast) => (
         <Toast key={toast.id} onHide={hideToast} toast={toast} />
       ))}

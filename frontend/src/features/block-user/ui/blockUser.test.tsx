@@ -55,7 +55,7 @@ function serveBlocked(initial: (typeof anna)[]) {
 }
 
 async function confirmBlock() {
-  const dialog = screen.getByRole('dialog');
+  const dialog = screen.getByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Заблокировать' }));
 }
 
@@ -72,15 +72,15 @@ describe('кнопка в профиле (#727)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Заблокировать' }));
     // Без подтверждения ничего не происходит.
-    expect(screen.getByRole('dialog')).toHaveTextContent('Заблокировать Анна?');
-    expect(screen.getByRole('dialog')).toHaveTextContent('не сможет писать вам и звонить');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Заблокировать Анна?');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('не сможет писать вам и звонить');
     expect(calls).toEqual([]);
 
     await confirmBlock();
 
     expect(await screen.findByRole('button', { name: 'Разблокировать' })).toBeInTheDocument();
     expect(calls).toEqual(['block user-anna']);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('отмена в диалоге ничего не блокирует', async () => {
@@ -89,11 +89,11 @@ describe('кнопка в профиле (#727)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Заблокировать' }));
     await userEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /отмена/i })
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /отмена/i })
     );
 
     expect(calls).toEqual([]);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('разблокирует без подтверждения', async () => {

@@ -60,7 +60,7 @@ describe('контекстное меню поля ввода (#656)', () => {
 
     await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
     expect(screen.getByRole('menu', { name: 'Форматирование' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('menuitem', { name: /Жирный/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Жирный/ }));
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(handle.current?.getValue()).toEqual({
@@ -89,7 +89,7 @@ describe('контекстное меню поля ввода (#656)', () => {
     const { handle } = await setup('см. доки', 4, 8);
 
     await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
-    await userEvent.click(screen.getByRole('menuitem', { name: /Ссылка/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Ссылка/ }));
     await userEvent.type(screen.getByLabelText('Адрес ссылки'), 'example.com/docs');
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
@@ -114,7 +114,7 @@ describe('контекстное меню поля ввода (#656)', () => {
     const { handle } = await setup('нажми', 0, 5);
 
     await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
-    await userEvent.click(screen.getByRole('menuitem', { name: /Ссылка/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Ссылка/ }));
     await userEvent.type(screen.getByLabelText('Адрес ссылки'), 'javascript:alert(1)');
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
@@ -146,7 +146,7 @@ describe('контекстное меню поля ввода (#656)', () => {
     const { handle } = await setup('кто-то сказал', 0, 6);
 
     await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
-    await userEvent.click(screen.getByRole('menuitem', { name: /Цитата/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Цитата/ }));
 
     expect(handle.current?.getValue().entities).toEqual([
       { type: 'blockquote', offset: 0, length: 13 },

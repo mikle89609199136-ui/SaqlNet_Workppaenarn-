@@ -50,6 +50,13 @@ describe('чип', () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
+  it('should look like the chosen-member chip of the mockup', () => {
+    const { container } = render(<Chip leading={<i data-testid="аватар" />}>Борис</Chip>);
+
+    expect(container.firstChild).toHaveClass('h-7.5', 'bg-brand-soft', 'text-brand', 'pl-0.75');
+    expect(screen.getByTestId('аватар')).toBeInTheDocument();
+  });
+
   it('should cut a long name instead of stretching the row', () => {
     render(<Chip>Константин Константинопольский</Chip>);
 

@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Button } from '@/shared/ui/Button';
 import { Icon } from '@/shared/ui/Icon';
 import { cn } from '@/shared/lib';
 
@@ -20,6 +22,17 @@ interface Props {
   footer?: ReactNode;
   /** Крестик в шапке. Убирают там, где выбор обязателен. */
   closable?: boolean;
+  /**
+   * Показывать ли крестик у закрываемого окна. У подтверждения его нет
+   * (дизайн-система): отказ там — кнопка «Отмена», Escape и клик мимо.
+   */
+  closeButton?: boolean;
+  /**
+   * Окно требует ответа, прежде чем идти дальше: подтверждение опасного
+   * действия. Диктор объявит его как предупреждение (alertdialog), а не
+   * как обычное окно.
+   */
+  alert?: boolean;
   onClose: () => void;
   className?: string;
 }
@@ -69,9 +82,12 @@ export function Modal({
   children,
   footer,
   closable = true,
+  closeButton = true,
+  alert = false,
   onClose,
   className,
 }: Props) {
+  const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<Element | null>(null);
   const titleId = useId();
@@ -127,9 +143,12 @@ export function Modal({
         /* m-auto возвращает центрирование: браузер центрирует <dialog>
            автоматическими полями, а сброс стилей Tailwind обнуляет margin
            у всех элементов — без этого окно прилипает к левому верхнему
-           углу. */
-        'm-auto w-[min(460px,calc(100vw-32px))] rounded-window border border-line bg-sheet p-0 text-ink shadow-[var(--elev-3)]',
-        'backdrop:bg-black/50',
+           углу.
+
+           Вид — диалог дизайн-системы (#817): фон всплывающих окон, тень
+           меню, без рамки; под ним затемнение своей темы. */
+        'm-auto w-[min(460px,calc(100vw-32px))] rounded-dialog bg-menu p-0 text-ink shadow-[var(--shadow-menu)]',
+        'backdrop:bg-backdrop',
         className
       )}
       onCancel={(event) => {
@@ -144,30 +163,33 @@ export function Modal({
         if (event.target === dialogRef.current && closable) onClose();
       }}
       ref={dialogRef}
+      role={alert ? 'alertdialog' : undefined}
     >
       {/* Шапка и подвал рисуются, только когда о них попросили: окна со
           своей вёрсткой передают одно лишь содержимое. */}
       {title ? (
-        <div className="flex flex-col gap-3 p-5">
+        <div className="flex flex-col gap-3.5 p-5">
           <header className="flex items-start justify-between gap-3">
             <h2 className="text-title font-semibold" id={titleId}>
               {title}
             </h2>
-            {closable && (
-              <button
-                aria-label="Закрыть"
-                className="-m-1 rounded-control p-1 text-ink-3 transition-colors duration-fast hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            {closable && closeButton && (
+              <Button
+                aria-label={t('close', 'Закрыть')}
+                className="-m-1.5"
+                iconOnly
                 onClick={onClose}
-                type="button"
+                size="sm"
+                variant="ghost"
               >
                 <Icon name="cross" size="sm" />
-              </button>
+              </Button>
             )}
           </header>
 
-          <div className="text-body text-ink-2">{children}</div>
+          <div className="text-ui leading-[1.45] text-ink-2">{children}</div>
 
-          {footer && <div className="mt-2 flex justify-end gap-2">{footer}</div>}
+          {footer && <div className="flex justify-end gap-2">{footer}</div>}
         </div>
       ) : (
         children
