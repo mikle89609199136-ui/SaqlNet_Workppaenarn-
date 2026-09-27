@@ -14,10 +14,10 @@ export function SettingsPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-ground text-ink md:h-full md:flex-row">
+    <div className="flex min-h-full w-full flex-col overflow-hidden bg-ground text-ink md:h-full md:flex-row md:rounded-window">
       {/* На узком экране меню ложится полосой сверху, на широком — колонкой
           слева. Отсюда и граница: снизу в первом случае, справа во втором. */}
-      <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-line bg-sheet md:min-h-screen md:w-[340px] md:border-r md:border-b-0">
+      <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-line bg-sheet md:h-full md:w-[340px] md:border-r md:border-b-0">
         <SettingsSearch />
         <SettingsSidebar t={t} />
       </div>
@@ -31,10 +31,8 @@ export function SettingsPage() {
             узком занимает ширину за вычетом полей. Прежний ручной порог
             760px сведён к md — восемь пикселей разницы на границе.
 
-            Снизу на узком экране — место под плавающую панель навигации
-            (BottomNav: 60px высоты на 32px от края, всего 92px) и 20px
-            воздуха, иначе она закрывает последние пункты (идея из #761). */}
-        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-28 md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px] md:pb-16">
+            Снизу на узком экране — отступ от края и выреза экрана. */}
+        <main className="mx-auto w-[calc(100%-28px)] pt-5 pb-[calc(40px+env(safe-area-inset-bottom,0px))] md:mx-0 md:ml-12 md:w-[min(760px,calc(100%-40px))] md:pt-[34px] md:pb-16">
           <Outlet />
         </main>
       </div>

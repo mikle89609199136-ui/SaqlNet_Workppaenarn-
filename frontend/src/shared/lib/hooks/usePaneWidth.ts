@@ -40,6 +40,11 @@ function readStored(): Partial<Record<TPane, number>> {
 export function usePaneWidth(pane: TPane, { min, max, fallback }: Limits) {
   const clamp = useCallback((value: number) => Math.min(Math.max(value, min), max), [min, max]);
 
+  /* Задана ли ширина человеком — перетаскиванием сейчас или раньше.
+     Пока нет, колонка берёт ширину из раскладки для своего экрана
+     (#818): одно число по умолчанию не подходит и ПК, и планшету. */
+  const [custom, setCustom] = useState(() => typeof readStored()[pane] === 'number');
+
   const [width, setWidthState] = useState(() => {
     const stored = readStored()[pane];
     if (typeof stored !== 'number' || Number.isNaN(stored)) return fallback;
@@ -66,6 +71,7 @@ export function usePaneWidth(pane: TPane, { min, max, fallback }: Limits) {
   const setWidth = useCallback((value: number) => {
     widthRef.current = value;
     setWidthState(value);
+    setCustom(true);
   }, []);
 
   /** Шаг клавишей: считается от последнего значения, а не от отрисованного. */
@@ -87,5 +93,5 @@ export function usePaneWidth(pane: TPane, { min, max, fallback }: Limits) {
     [min, max, remember, setWidth]
   );
 
-  return { width, setWidth, remember, nudge, jump };
+  return { width, custom, setWidth, remember, nudge, jump };
 }

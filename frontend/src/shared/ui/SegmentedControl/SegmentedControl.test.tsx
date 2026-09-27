@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SegmentedControl } from './SegmentedControl';
@@ -73,6 +73,29 @@ describe('переключение разделов', () => {
     await user.keyboard('{Enter}');
 
     expect(onChange).toHaveBeenCalledWith('personal');
+  });
+
+  it('should become tabs when asked, with a panel to name', () => {
+    render(<SegmentedControl onChange={vi.fn()} options={OPTIONS} tabs="list" value="personal" />);
+
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    const tab = screen.getByRole('tab', { name: 'Личные' });
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(tab).toHaveAttribute('id', 'list-personal');
+    expect(tab).toHaveAttribute('aria-controls', 'list-panel');
+    // В вкладки табом попадают один раз — на выбранную.
+    expect(tab).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'Все' })).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('should skip a switched-off tab when walking with arrows', () => {
+    const onChange = vi.fn();
+    render(<SegmentedControl onChange={onChange} options={OPTIONS} tabs="list" value="personal" />);
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Личные' }), { key: 'ArrowRight' });
+
+    // «Работа» выключена — следующей идёт первая.
+    expect(onChange).toHaveBeenCalledWith('all');
   });
 
   it('should hold the width when the choice moves', () => {

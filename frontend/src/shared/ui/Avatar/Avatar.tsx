@@ -9,6 +9,7 @@ const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6']
 
 /* Ступени дизайн-системы (#817) и макета:
      xs  24 — в чипе выбранного участника
+     header 36 — своя аватарка в шапке списка чатов (макет, #818)
      sm  32 — комментарии, участники группы
      md  40 — шапка чата
      lg  46 — строка списка: имя и превью в два ряда
@@ -19,6 +20,7 @@ const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6']
 const sizes = {
   xs: { box: 'size-6 text-micro', dot: 'size-2', grid: 24 },
   sm: { box: 'size-8 text-caption', dot: 'size-2.5', grid: 32 },
+  header: { box: 'size-9 text-ui', dot: 'size-2.5', grid: 36 },
   md: { box: 'size-10 text-body', dot: 'size-3', grid: 40 },
   lg: { box: 'size-11.5 text-title', dot: 'size-3', grid: 46 },
   xl: { box: 'size-14 text-section', dot: 'size-3.5', grid: 56 },
