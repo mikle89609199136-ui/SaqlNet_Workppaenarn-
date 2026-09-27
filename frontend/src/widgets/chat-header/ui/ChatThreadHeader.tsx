@@ -24,7 +24,6 @@ function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | n
 }
 
 interface Props {
-  setIsGroupInfoOpen?: Dispatch<SetStateAction<boolean>>;
   profileModal?: IProfileModal;
   setProfileModal?: Dispatch<SetStateAction<IProfileModal>>;
   locationPage?: 'pinned-messages' | 'chat-thread';
@@ -32,7 +31,6 @@ interface Props {
 }
 
 export const ChatThreadHeader = ({
-  setIsGroupInfoOpen,
   profileModal,
   setProfileModal,
   locationPage = 'chat-thread',
@@ -74,8 +72,8 @@ export const ChatThreadHeader = ({
       return;
     }
 
-    if (chat?.type === 'group' && setIsGroupInfoOpen) {
-      setIsGroupInfoOpen(true);
+    if (chat?.type === 'group') {
+      setProfileModal({ isOpen: true, userId: null, kind: 'group' });
       return;
     }
     if (chat?.type !== 'private' || !chat.peerId) return;

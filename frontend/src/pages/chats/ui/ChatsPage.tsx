@@ -1,5 +1,5 @@
 import { ChatsList } from '@/widgets/chats-list';
-import { CreateGroupModal } from '@/features/group-management';
+import { CreateGroupModal, GroupInfoPanel } from '@/features/group-management';
 import { UserProfilePanel } from '@/features/user-profile';
 import { cn, useIsMobile, usePaneWidth } from '@/shared/lib';
 import { PaneResizer } from '@/shared/ui';
@@ -220,11 +220,15 @@ export function ChatsPage() {
               'group-data-[state=closed]:translate-x-12 group-data-[state=closed]:opacity-0'
             )}
           >
-            <UserProfilePanel
-              onClose={closeProfile}
-              profileState={shownProfile}
-              renderActions={renderProfileActions}
-            />
+            {shownProfile.kind === 'group' && chatId ? (
+              <GroupInfoPanel chatId={chatId} key={chatId} onClose={closeProfile} />
+            ) : (
+              <UserProfilePanel
+                onClose={closeProfile}
+                profileState={shownProfile}
+                renderActions={renderProfileActions}
+              />
+            )}
           </div>
         )}
       </div>

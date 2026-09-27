@@ -101,6 +101,11 @@ export class ChatService {
       .then((response) => response.data.members ?? []);
   }
 
+  /** Добавить участника в группу: владелец или админ, по одному (#822). */
+  async addMember(chatId: string, userId: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MEMBER_ADD(chatId), { userId });
+  }
+
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
     return this.apiClient
       .post(API_ENDPOINTS.CHAT_MEMBER_ROLE(chatId, userId), { role })

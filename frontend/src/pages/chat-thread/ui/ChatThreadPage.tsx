@@ -110,11 +110,7 @@ export function ChatThreadPage() {
       )}
       {!modals.isPinnedMessagesOpen && (
         <main className="thread-page">
-          <ChatThreadHeader
-            setIsGroupInfoOpen={modals.setIsGroupInfoOpen}
-            setProfileModal={setProfileModal}
-            profileModal={profileModal}
-          />
+          <ChatThreadHeader setProfileModal={setProfileModal} profileModal={profileModal} />
 
           <PinnedMessagesNavigator
             messages={pinnedMessages}
@@ -207,14 +203,14 @@ export function ChatThreadPage() {
             />
           )}
 
-          {chat?.type === 'group' && (
+          {profileMode === 'modal' && chat?.type === 'group' && (
             <GroupInfoModal
-              isOpen={modals.isGroupInfoOpen}
-              onClose={() => modals.setIsGroupInfoOpen(false)}
+              isOpen={profileModal.isOpen && profileModal.kind === 'group'}
+              onClose={() => setProfileModal({ isOpen: false, userId: null })}
             />
           )}
 
-          {profileMode === 'modal' && (
+          {profileMode === 'modal' && profileModal.kind !== 'group' && (
             <UserProfileModal
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
               profileModal={profileModal}

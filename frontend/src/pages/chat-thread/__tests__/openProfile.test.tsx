@@ -61,10 +61,12 @@ describe('профиль собеседника из шапки', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /^Проверка окон — / }));
 
-    expect(await screen.findByRole('dialog', { name: /группе/i })).toBeInTheDocument();
-    // Профиль собеседника у группы не спрашивают: собеседников много.
-    expect(onProfileStateChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ isOpen: true })
+    // Сведения о группе — в правой панели (#822): тред просит открыть
+    // её, а не профиль одного собеседника — собеседников много.
+    await waitFor(() =>
+      expect(onProfileStateChange).toHaveBeenCalledWith(
+        expect.objectContaining({ isOpen: true, kind: 'group', userId: null })
+      )
     );
   });
 });
