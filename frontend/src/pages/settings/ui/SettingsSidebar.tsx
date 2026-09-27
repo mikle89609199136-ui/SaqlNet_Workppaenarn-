@@ -1,5 +1,7 @@
 import type { TFunction } from 'i18next';
-import { SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
+import { ROUTES, SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
+import { buttonStyles, Icon } from '@/shared/ui';
+import { Link } from 'react-router-dom';
 import type { TIconTypes } from '@/types';
 import { SettingsMenuItem } from './SettingsMenuItem';
 
@@ -26,6 +28,15 @@ export function SettingsSidebar({ t }: Props) {
   return (
     <aside className="flex min-h-0 flex-1 flex-col pb-4">
       <div className="flex items-center gap-2.5 px-8 pt-2 pb-5">
+        {/* Назад к чатам: прежде туда вела боковая панель, которой больше
+            нет (#818). Как в макете — стрелка цветом акцента. */}
+        <Link
+          aria-label={t ? t('backToChats', 'Назад к чатам') : 'Назад к чатам'}
+          className={buttonStyles({ variant: 'accent', iconOnly: true, className: '-ml-3' })}
+          to={ROUTES.CHATS}
+        >
+          <Icon className="size-5.5 rotate-180 stroke-2" name="chevronRight" />
+        </Link>
         <h2 className="text-body font-bold text-ink">
           {t ? t('settings.menu.title', 'Настройки') : 'Настройки'}
         </h2>

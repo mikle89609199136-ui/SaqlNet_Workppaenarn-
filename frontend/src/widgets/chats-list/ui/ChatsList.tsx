@@ -4,58 +4,51 @@ import {
   chatsQuery,
   isConversationStarted,
 } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
-import { Button, Icon } from '@/shared/ui';
+import { ROUTES } from '@/shared/config/routes';
+import { Avatar, Button, buttonStyles, Icon, SegmentedControl } from '@/shared/ui';
+import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArchiveEntry } from './ArchiveEntry';
+import { Link } from 'react-router-dom';
 import { ChatRowMenuWithActions } from './ChatRowMenuWithActions';
 import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
 
-/* Экран списка чатов — один и тот же на телефоне и на настольном, но
-   собран по-разному, и это не вкус: на телефоне прокручивается вся
-   страница целиком, на настольном — только список внутри колонки,
-   а колонка занимает высоту экрана. Поэтому всё, что относится к
-   настольному, помечено `md:`.
+/* Разделы списка — вкладками, как в макете (#818). Каналы и встречи
+   спрятаны, пока нет самих функций (#815): вкладка без содержимого — та
+   же неработающая кнопка. Порядок — как в макете, чтобы открытая вкладка
+   встала на своё место без перестановки соседей. */
+type TListTab = 'chats' | 'channels' | 'groups' | 'meetings' | 'archive';
 
-   Порог здесь тот же, что у `useIsMobile`: им решается, какое дерево
-   вообще отрисуется — `mobile-layout` или `app-sidebar-pane`. Разойдись
-   они хоть на пиксель, и часть правил применилась бы к чужому дереву.
+const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
+  { key: 'chats', fallback: 'Чаты' },
+  { key: 'channels', fallback: 'Каналы', hidden: true },
+  { key: 'groups', fallback: 'Группы' },
+  { key: 'meetings', fallback: 'Встречи', hidden: true },
+  { key: 'archive', fallback: 'Архив' },
+];
 
-   Отступ сверху — 18 пикселей плюс вырез экрана, и он остаётся и на
-   настольном: значения из кита, менять их здесь нельзя, иначе список
-   уедет под строку состояния. Внизу на телефоне те же 24 пикселя
-   заменяются на высоту нижней навигации — список уходит под неё. */
-const pageStyles =
-  'relative mx-auto min-h-dvh max-w-[920px] px-3.5 ' +
-  'pt-[calc(18px_+_env(safe-area-inset-top,0px))] ' +
-  'pb-[calc(24px_+_env(safe-area-inset-bottom,0px))] ' +
-  'max-md:pb-safe-nav ' +
-  'md:flex md:h-full md:min-h-full md:w-full md:max-w-full md:flex-col md:overflow-hidden md:px-0 md:pb-0';
-
-/* Панель над списком. На телефоне прокручивается вся страница, и панель
-   уезжала вверх вместе с ней — на настольном она остаётся на месте,
-   потому что там прокручивается только список. Липкой она ведёт себя
-   одинаково в обоих случаях; фон обязателен, иначе под ней просвечивают
-   строки. */
-const toolbarStyles =
-  'mb-3 flex items-center gap-2 ' +
-  'md:mb-4 md:px-4 ' +
-  'max-md:sticky max-md:top-[env(safe-area-inset-top,0px)] max-md:z-10 max-md:bg-ground max-md:py-2';
-
-/* Прокрутка на настольном — у списка, а не у страницы: шапка с поиском
-   обязана остаться на виду. */
-const listStyles = 'styled-scrollbar overflow-hidden md:flex-1 md:overflow-y-auto';
+const VISIBLE_TABS = LIST_TABS.filter((tab) => !tab.hidden);
 
 interface Props {
   onOpenCreateGroup: () => void;
 }
 
+/**
+ * Список чатов — колонка на ПК и планшете, главный экран на телефоне.
+ *
+ * Сверху вниз, как в макете: шапка со своей аватаркой, заголовком и
+ * входом в настройки, вкладки разделов, поиск и сам список. Прокручивается
+ * только список: шапка, вкладки и поиск остаются на виду.
+ */
 export function ChatsList({ onOpenCreateGroup }: Props) {
   const { t } = useTranslation();
-  const [isArchiveOpen, setArchiveOpen] = useState(false);
+  const tabsId = useId();
+  const me = useProfileStore((state) => state.user);
+  const [tab, setTab] = useState<TListTab>('chats');
 
   const {
     data: chats = [],
@@ -74,112 +67,135 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
     () => visibleChats.filter((chat) => chat.isPinned).length,
     [visibleChats]
   );
+  const groups = useMemo(
+    () => visibleChats.filter((chat) => chat.type === 'group'),
+    [visibleChats]
+  );
   const search = useChatsSearch(visibleChats);
 
-  /* Архив грузится всегда, даже когда закрыт: по нему решается, показывать
-     ли строку входа и сколько там непрочитанных. Запрос лёгкий и живёт в
-     том же кеше, что и основной список. */
+  /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
 
-  /* Опустевший архив закрывается сам: человек вернул оттуда последний чат
-     и остался бы смотреть в пустой экран, из которого надо выбираться
-     кнопкой. Состояние при этом не сбрасывается — архив снова наполнится,
-     и он откроется там же. */
-  const showArchive = isArchiveOpen && archivedChats.length > 0;
+  const renderRows = (list: IChatDto[]) =>
+    list.map((chat) => (
+      <ChatListItem
+        chat={chat}
+        key={chat.id}
+        pinnedCount={pinnedCount}
+        renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
+      />
+    ));
 
-  const archiveHeader = (
-    <section className={toolbarStyles}>
-      <Button
-        aria-label={t('back', 'Назад')}
-        className="size-11 shrink-0 p-0 text-ink-2 hover:text-ink"
-        iconOnly
-        onClick={() => setArchiveOpen(false)}
-        size="lg"
-        variant="secondary"
-      >
-        <Icon name="chevronRight" className="rotate-180" />
-      </Button>
-      <h1 className="text-section font-semibold text-ink">{t('archive', 'Архив')}</h1>
-    </section>
-  );
+  let content: ReactNode;
+  if (isLoading) {
+    content = <ChatListItemSkeleton />;
+  } else if (error) {
+    content = <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />;
+  } else if (search.isSearching) {
+    /* Пока идёт поиск, список подменяется найденным — в любой вкладке:
+       ищут человека или чат, а не раздел. Открытая переписка справа при
+       этом остаётся на месте. */
+    content = (
+      <ChatsSearchResults
+        chats={search.chats}
+        isEmpty={search.isEmpty}
+        isLoadingPeople={search.isLoadingPeople}
+        people={search.people}
+      />
+    );
+  } else if (tab === 'groups') {
+    content =
+      groups.length > 0 ? (
+        renderRows(groups)
+      ) : (
+        <p className="px-5 py-8 text-center text-ui text-ink-3">
+          {t('chatList.groupsEmpty', 'Групп пока нет')}
+        </p>
+      );
+  } else if (tab === 'archive') {
+    content = (
+      <>
+        <p className="mx-2 mb-2 rounded-button bg-sheet-2 px-3 py-2.5 text-meta leading-[1.45] text-ink-2">
+          {t('chatList.archiveNote', 'Здесь чаты, которые вы убрали из основного списка.')}
+        </p>
+        {archivedChats.length > 0 ? (
+          renderRows(archivedChats)
+        ) : (
+          <p className="px-5 py-8 text-center text-ui text-ink-3">
+            {t('chatList.archiveEmpty', 'В архиве пусто')}
+          </p>
+        )}
+      </>
+    );
+  } else {
+    content = visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />;
+  }
 
-  const archiveContent = (
-    <>
-      {archiveHeader}
-      <section className={listStyles}>
-        {archivedChats.map((chat) => (
-          <ChatListItem
-            chat={chat}
-            key={chat.id}
-            pinnedCount={pinnedCount}
-            renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
-          />
-        ))}
-      </section>
-    </>
-  );
+  return (
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-sheet">
+      <header className="flex items-center gap-3 pt-[calc(18px+env(safe-area-inset-top,0px))] pr-4 pb-3.5 pl-5 md:pt-4.5">
+        <Avatar
+          id={me?.id}
+          name={me?.firstName || me?.username}
+          size="header"
+          src={me?.avatarUrl}
+        />
+        <h1 className="min-w-0 flex-1 truncate text-section font-semibold tracking-[-0.01em]">
+          {t('chatList.title', 'Сообщения')}
+        </h1>
+        <Link
+          aria-label={t('settings.menu.title', 'Настройки')}
+          className={buttonStyles({
+            variant: 'secondary',
+            iconOnly: true,
+            className: 'text-ink-2',
+          })}
+          title={t('settings.menu.title', 'Настройки')}
+          to={ROUTES.SETTINGS}
+        >
+          <Icon name="settings" size="md" />
+        </Link>
+      </header>
 
-  const listContent = (
-    <>
-      <section className={toolbarStyles}>
+      <nav aria-label={t('chatList.sections', 'Разделы')} className="mx-4 mb-3">
+        <SegmentedControl
+          className="w-full"
+          onChange={(value) => setTab(value as TListTab)}
+          options={VISIBLE_TABS.map(({ key, fallback }) => ({
+            value: key,
+            label: t(`chatList.tab.${key}`, fallback),
+          }))}
+          tabs={tabsId}
+          value={tab}
+        />
+      </nav>
+
+      <div className="flex items-center gap-2 px-4 pb-2.5">
         <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
 
-        {/* Кнопка новой группы: раньше создать её было нельзя вовсе —
-            страница существовала, а ссылки на неё не было ни на одном
-            экране. */}
+        {/* Кнопка новой группы. В макете её нет, но создавать группы
+            приложение уже умеет, и прятать работающую функцию незачем. */}
         <Button
           aria-label={t('newGroup', 'Новая группа')}
-          className="size-11 shrink-0 p-0 text-ink-2 hover:text-ink"
+          className="shrink-0 text-ink-2"
           iconOnly
           onClick={onOpenCreateGroup}
-          size="lg"
           title={t('newGroup', 'Новая группа')}
           variant="secondary"
         >
-          <Icon name="groupAdd" />
+          <Icon name="groupAdd" size="md" />
         </Button>
-      </section>
+      </div>
 
-      <section aria-busy={isLoading} className={listStyles}>
-        {isLoading ? <ChatListItemSkeleton /> : null}
-        {!isLoading && error && (
-          <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
-        )}
-
-        {/* Пока идёт поиск, список подменяется найденным — как в
-            привычных мессенджерах. Открытая переписка справа при этом
-            остаётся на месте: раньше поиск уводил на отдельную страницу
-            и закрывал её. */}
-        {!isLoading && !error && search.isSearching && (
-          <ChatsSearchResults
-            chats={search.chats}
-            isEmpty={search.isEmpty}
-            isLoadingPeople={search.isLoadingPeople}
-            people={search.people}
-          />
-        )}
-
-        {!isLoading && !error && !search.isSearching && (
-          <ArchiveEntry chats={archivedChats} onOpen={() => setArchiveOpen(true)} />
-        )}
-
-        {!isLoading && !error && !search.isSearching && visibleChats.length === 0 && (
-          <EmptyChatListPlaceholder />
-        )}
-        {!isLoading &&
-          !error &&
-          !search.isSearching &&
-          visibleChats.map((chat) => (
-            <ChatListItem
-              chat={chat}
-              key={chat.id}
-              pinnedCount={pinnedCount}
-              renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
-            />
-          ))}
-      </section>
-    </>
+      <div
+        aria-busy={isLoading}
+        aria-labelledby={`${tabsId}-${tab}`}
+        className="styled-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+      >
+        {content}
+      </div>
+    </div>
   );
-
-  return <main className={pageStyles}>{showArchive ? archiveContent : listContent}</main>;
 }

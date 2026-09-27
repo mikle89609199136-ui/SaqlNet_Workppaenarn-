@@ -4,9 +4,6 @@ export const REACT_ROUTES = {
   REGISTER: 'register',
   CHATS: '/chats',
   CHAT_BY_ID: '/chats/:chatId',
-  CHANNELS: '/channels',
-  COMMUNITIES: '/communities',
-  MEETINGS: '/meetings',
   SETTINGS: '/settings',
   /* Подтверждение входа нового устройства по QR: сюда ведёт ссылка из кода. */
   LINK: '/link',
@@ -77,9 +74,6 @@ class Routes {
   LOGIN = '/login';
   REGISTER = '/register';
   MENU = '/menu';
-  CHANNELS = '/channels';
-  COMMUNITIES = '/communities';
-  MEETINGS = '/meetings';
 }
 
 export const ROUTES = new Routes();

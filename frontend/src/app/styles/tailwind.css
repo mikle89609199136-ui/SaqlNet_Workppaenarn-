@@ -143,126 +143,26 @@
     &.success { border-left-color: var(--color-ok); }
   }
 
-  .app-layout {
-    @apply flex flex-col relative overflow-hidden;
-    min-height: 100vh; min-height: 100dvh;
-    background: var(--color-bg);
-    /* Плавная смена темы. Раньше это правило лежало в стилях настроек и
-       оттуда, вне слоёв, перекрывало фон всему приложению. */
-    transition: background-color 0.25s ease, color 0.25s ease;
-  }
-  .app-main-content { @apply flex-1 flex flex-col overflow-hidden; }
 }
 
 /* =========================================================
-   Components — Desktop layout / nav rail  (was desktop.css)
+   Лента в колонке переписки на ПК и планшете (#818)
    ========================================================= */
 @layer components {
 
-  .app-layout {
-    @media (min-width: 768px) { @apply flex-row; height: 100vh; height: 100dvh; }
-  }
-  .app-main-content {
-    @media (min-width: 768px) { @apply flex-row; }
-  }
-  .app-sidebar-pane {
-    @media (min-width: 768px) {
-      /* Мягкий по той же причине, что рельс и ресайзер: край колонки во
-         всю высоту экрана. */
-      @apply w-[360px] min-w-[320px] border-r border-line-soft flex flex-col overflow-hidden h-full bg-sheet;
-    }
-  }
-  .app-chat-pane {
-    @media (min-width: 768px) {
-      @apply flex-1 flex flex-col overflow-hidden h-full bg-ground;
-      min-width: 420px;
-    }
-  }
-  .chat-workspace {
-    @media (min-width: 768px) { @apply flex w-full h-full overflow-hidden; }
-  }
-  .app-pane-resizer {
-    @media (min-width: 768px) {
-      /* В покое — мягкий: опознаётся он не цветом, а курсором
-         col-resize, зоной захвата в 11px ниже и подсветкой брендовым
-         при наведении. */
-      @apply relative shrink-0 w-[1px] cursor-col-resize bg-line-soft;
-    }
-  }
-  .app-pane-resizer::after {
-    @media (min-width: 768px) {
-      content: "";
-      position: absolute;
-      inset: 0 -5px;
-    }
-  }
-  .app-pane-resizer:hover {
-    @media (min-width: 768px) { background: var(--color-brand); }
-  }
-  .app-profile-pane {
-    @media (min-width: 768px) {
-      @apply shrink-0 h-full overflow-hidden;
-      flex-basis: 30%;
-      min-width: 300px;
-      max-width: 560px;
-      background: var(--color-sheet);
-    }
-  }
-  @media (min-width: 768px) and (max-width: 1180px) {
-    .chat-workspace.has-profile .app-sidebar-pane,
-    .chat-workspace.has-profile .app-pane-resizer-sidebar {
-      display: none;
-    }
-  }
-  @media (min-width: 768px) and (max-width: 920px) {
-    .chat-workspace:not(.has-profile) .app-sidebar-pane,
-    .chat-workspace:not(.has-profile) .app-pane-resizer-sidebar {
-      display: none;
-    }
-  }
-  @media (min-width: 768px) and (max-width: 980px) {
-    .chat-workspace.has-profile .app-chat-pane,
-    .chat-workspace.has-profile .app-pane-resizer-profile {
-      display: none;
-    }
-    .chat-workspace.has-profile .app-profile-pane {
-      flex: 1 1 auto;
-      min-width: 0;
-      max-width: none;
-    }
-  }
   .app-chat-pane .thread-page {
     @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 m-0 flex flex-col; background: transparent; }
   }
   .app-chat-pane .thread-messages {
     @media (min-width: 768px) { @apply flex-1 overflow-y-auto; }
   }
-  .app-main-content > .settings-page {
-    @media (min-width: 768px) { @apply flex-1; }
-  }
-
-  /* Всплывающая подсказка у кнопок рельса. Раньше это правило было
-     трижды скопировано — у бургера, вкладки и помощи. */
-  .empty-chat-placeholder {
-    @media (min-width: 768px) { @apply flex-1 flex flex-col items-center justify-center text-center p-10 text-ink-3; }
-  }
-  .empty-chat-icon { @media (min-width: 768px) { @apply text-[56px] mb-3 opacity-50; } }
-  .empty-chat-placeholder h3 { @media (min-width: 768px) { @apply m-0 mb-2 text-title font-semibold text-ink; } }
-  .empty-chat-placeholder p  { @media (min-width: 768px) { @apply m-0 max-w-[280px] text-caption leading-[1.5] text-ink-2; } }
 }
 
 /* =========================================================
-   Components — Mobile layout / nav bar  (was mobile.css)
+   Лента на телефоне: открытый чат во весь экран (#818)
    ========================================================= */
 @layer components {
 
-  .mobile-layout {
-    @apply flex flex-col relative overflow-hidden;
-    min-height: 100vh; min-height: 100dvh;
-    background: var(--color-bg);
-
-    & .settings-page { @apply pb-safe-nav; }
-  }
 	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
 	  .mobile-content:has(> .thread-page) {
 	    overflow: hidden;

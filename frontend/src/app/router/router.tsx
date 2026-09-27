@@ -173,30 +173,9 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
-              /* Разделы, которых ещё нет. Без своих маршрутов их ловил общий
-                 перехват и возвращал в чаты: адрес менялся, экран оставался
-                 прежним, и выходило, будто кнопка сломана. */
-              {
-                path: REACT_ROUTES.CHANNELS,
-                lazy: () =>
-                  import('@/pages/channels').then((m) => ({
-                    Component: m.ChannelsPage,
-                  })),
-              },
-              {
-                path: REACT_ROUTES.COMMUNITIES,
-                lazy: () =>
-                  import('@/pages/communities').then((m) => ({
-                    Component: m.CommunitiesPage,
-                  })),
-              },
-              {
-                path: REACT_ROUTES.MEETINGS,
-                lazy: () =>
-                  import('@/pages/meetings').then((m) => ({
-                    Component: m.MeetingsPage,
-                  })),
-              },
+              /* Страниц-заглушек каналов, сообществ и встреч больше нет
+                 (#818): разделы стали вкладками списка чатов. Старые
+                 адреса ловит общий перехват ниже и ведёт в чаты. */
               {
                 path: REACT_ROUTES.SETTINGS,
                 lazy: () =>
