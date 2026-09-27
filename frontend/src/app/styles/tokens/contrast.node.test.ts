@@ -320,6 +320,7 @@ describe('токены: палитра и акцент меняют только
     'sheet-2',
     'chat-bg',
     'composer',
+    'card',
     'menu',
     'line',
     'line-soft',

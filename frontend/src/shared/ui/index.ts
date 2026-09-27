@@ -29,3 +29,12 @@ export { AnimatedHeight } from './AnimatedHeight';
 export { AuthLayout } from './AuthLayout';
 export { PaneResizer } from './PaneResizer';
 export { RichTextInput, type IRichTextInputHandle } from './RichTextInput';
+export {
+  ListGroup,
+  ListIntro,
+  ListNavItem,
+  ListRadioItem,
+  ListItemButton,
+  ListStaticItem,
+  ListSwitchItem,
+} from './List';

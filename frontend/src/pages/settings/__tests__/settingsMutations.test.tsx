@@ -24,7 +24,7 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark', language: 'ru' } });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
+    await userEvent.click(await screen.findByRole('radio', { name: /^Светлая/ }));
 
     await waitFor(() => expect(sent).toEqual({ theme: 'light' }));
   });
@@ -41,14 +41,9 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark' } });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
+    await userEvent.click(await screen.findByRole('radio', { name: /^Светлая/ }));
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Светлая' })).toHaveAttribute(
-        'aria-pressed',
-        'true'
-      )
-    );
+    await waitFor(() => expect(screen.getByRole('radio', { name: /^Светлая/ })).toBeChecked());
   });
 
   it('возвращает прежнее значение, когда сервер ответил ошибкой', async () => {
@@ -63,12 +58,10 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'appearance', settings: { theme: 'dark' } });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Светлая' }));
+    await userEvent.click(await screen.findByRole('radio', { name: /^Светлая/ }));
 
     expect(await screen.findByText('Не удалось сохранить настройки')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Тёмная' })).toHaveAttribute('aria-pressed', 'true')
-    );
+    await waitFor(() => expect(screen.getByRole('radio', { name: /^Тёмная/ })).toBeChecked());
   });
 
   it('возвращает прежнее значение приватности, когда сервер ответил ошибкой', async () => {
@@ -81,7 +74,9 @@ describe('сохранение настроек', () => {
 
     renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: { lastSeen: 'all' } });
 
-    const lastSeen = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
+    const lastSeen = await screen.findByRole('radiogroup', {
+      name: 'Кто видит, когда я был(а) в сети',
+    });
     await userEvent.click(within(lastSeen).getByRole('radio', { name: 'Никто' }));
 
     expect(

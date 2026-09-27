@@ -92,6 +92,11 @@ import {
   Fingerprint,
   QrCode,
   CircleAlert,
+  Mail,
+  MonitorSmartphone,
+  Ban,
+  Laptop,
+  Smartphone,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -191,6 +196,11 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   fingerprint: Fingerprint,
   qrCode: QrCode,
   circleAlert: CircleAlert,
+  mail: Mail,
+  devices: MonitorSmartphone,
+  ban: Ban,
+  laptop: Laptop,
+  smartphone: Smartphone,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

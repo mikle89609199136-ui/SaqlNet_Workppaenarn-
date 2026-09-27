@@ -30,6 +30,22 @@
         } catch (e) {
           /* приватный режим — останется значение по умолчанию */
         }
+
+        /* Палитра и акцент (#828): пока их хранит только браузер, это не
+           проекция, а сам выбор — см. entities/user/model/appearanceStore.
+           Незнакомое значение пропускается: без атрибута действует
+           палитра и акцент по умолчанию. */
+        try {
+          var look = JSON.parse(localStorage.getItem('craneapp_appearance') || '{}');
+          if (look.palette === 'midnight' || look.palette === 'warm') {
+            document.documentElement.setAttribute('data-palette', look.palette);
+          }
+          if (/^(plum|orchid|indigo|amber|teal)$/.test(look.accent)) {
+            document.documentElement.setAttribute('data-accent', look.accent);
+          }
+        } catch (e) {
+          /* приватный режим — палитра и акцент по умолчанию */
+        }
       })();
     </script>
 </head>

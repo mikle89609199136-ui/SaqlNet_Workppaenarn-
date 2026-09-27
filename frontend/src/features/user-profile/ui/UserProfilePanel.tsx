@@ -34,10 +34,17 @@ interface Props {
   /** «Назад» — когда профиль открыт из другой панели (участник группы). */
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * «Изменить» своего профиля ведёт не в правку на месте, а сюда — в
+   * настройках это отдельная форма (#828).
+   */
+  onEdit?: () => void;
+  /** Своя полоса «Назад / Закрыть» сверху. В настройках её заменяет шапка раздела. */
+  bar?: boolean;
 }
 
 export const UserProfilePanel = memo(
-  ({ profileState, onClose, renderActions, onBack, backLabel }: Props) => {
+  ({ profileState, onClose, renderActions, onBack, backLabel, onEdit, bar = true }: Props) => {
     const { t } = useTranslation();
     const now = useNow();
     const { initiateCall } = useCall();
@@ -122,7 +129,11 @@ export const UserProfilePanel = memo(
         className="flex h-full flex-col overflow-hidden bg-sheet"
         role="complementary"
       >
-        <ProfilePanelBar backLabel={backLabel} onBack={onBack} onClose={onClose} />
+        {bar ? (
+          <ProfilePanelBar backLabel={backLabel} onBack={onBack} onClose={onClose} />
+        ) : (
+          <div className="h-6 shrink-0" />
+        )}
 
         <ProfileHeader
           /* Звонить есть куда — общий личный чат — и можно: блокировка в
@@ -133,7 +144,7 @@ export const UserProfilePanel = memo(
           onCall={(kind) =>
             chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
           }
-          onStartEdit={startEdit}
+          onStartEdit={onEdit ?? startEdit}
           profileSubtitle={profileSubtitle}
           profileUser={profileUser}
         />
