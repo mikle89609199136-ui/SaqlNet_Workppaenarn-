@@ -11,7 +11,17 @@ import {
 } from '@/entities/user';
 import { describeApiError } from '@/shared/api';
 import { useDebounce } from '@/shared/lib';
-import { Avatar, Banner, Button, Icon, Input, showToast } from '@/shared/ui';
+import {
+  Avatar,
+  Banner,
+  Icon,
+  Input,
+  ListGroup,
+  ListItemButton,
+  ListNavItem,
+  ListStaticItem,
+  showToast,
+} from '@/shared/ui';
 import { useRemovePrivacyException, useSetPrivacyException } from '../model/useExceptionActions';
 
 interface Props {
@@ -67,39 +77,47 @@ export function PrivacyExceptionsEditor({ rule, mode }: Props) {
       ? t('privacyExceptions.neverHint', 'Этим людям — как при «Никто», хотя остальным открыто.')
       : t('privacyExceptions.alwaysHint', 'Этим людям — как при «Все», хотя от остальных скрыто.');
 
-  return (
-    <section aria-label={title} className="mt-6">
-      <h2 className="text-body mb-1 font-semibold text-ink">{title}</h2>
-      <p className="text-caption mb-3 text-ink-2">{description}</p>
+  const avatar = (person: Person) => (
+    <Avatar id={person.id} name={personName(person)} size="md" src={person.avatarUrl || null} />
+  );
 
+  /* Группа «Исключения» по макету (#828): люди из списка, под ними ряд
+     «добавить» — он же раскрывается в поиск. */
+  return (
+    <>
       {exceptions.isError && (
         <Banner tone="danger">
           {t('privacyExceptions.loadError', 'Не удалось загрузить исключения.')}
         </Banner>
       )}
 
-      <div className="divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
-        {exceptions.isPending ? (
-          <div className="text-body p-4 text-center text-ink-2">{t('loading', 'Загрузка...')}</div>
-        ) : listed.length > 0 ? (
-          listed.map((person) => (
-            <div className="flex items-center gap-3 px-4 py-3" key={person.id}>
-              <Avatar
-                id={person.id}
-                name={personName(person)}
-                size="sm"
-                src={person.avatarUrl || null}
-              />
-              <div className="min-w-0">
-                <strong className="text-body block truncate text-ink">{personName(person)}</strong>
-                <span className="text-caption block truncate text-ink-2">@{person.username}</span>
-              </div>
+      <ListGroup
+        note={
+          <>
+            {description}{' '}
+            {t(
+              'privacyExceptions.blockedWins',
+              'Чёрный список сильнее исключений: заблокированный не увидит ничего, даже если он в «Всегда разрешать».'
+            )}
+          </>
+        }
+        title={t('privacyExceptions.title', 'Исключения')}
+      >
+        {exceptions.isPending && <ListStaticItem label={t('loading', 'Загрузка...')} />}
+
+        {listed.map((person) => (
+          <ListStaticItem
+            hint={`@${person.username}`}
+            key={person.id}
+            label={personName(person)}
+            leading={avatar(person)}
+            trailing={
               <button
                 aria-label={t('privacyExceptions.remove', {
                   name: personName(person),
                   defaultValue: 'Убрать {{name}}',
                 })}
-                className="ml-auto rounded-control p-1.5 text-ink-3 transition-colors duration-fast hover:bg-sheet-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
+                className="flex size-9 shrink-0 items-center justify-center rounded-icon text-ink-3 transition-colors duration-fast hover:layer-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
                 disabled={removeException.isPending}
                 onClick={() =>
                   removeException.mutate(
@@ -109,43 +127,50 @@ export function PrivacyExceptionsEditor({ rule, mode }: Props) {
                 }
                 type="button"
               >
-                <Icon name="cross" size="sm" />
+                <Icon className="size-4.5 stroke-2" name="cross" />
               </button>
-            </div>
-          ))
-        ) : (
-          <div className="text-caption p-4 text-center text-ink-2">
-            {t('privacyExceptions.empty', 'Пока никого')}
-          </div>
-        )}
-      </div>
-
-      {adding ? (
-        <div className="mt-3">
-          <Input
-            aria-label={t('privacyExceptions.search', 'Найти человека')}
-            autoFocus
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('privacyExceptions.search', 'Найти человека')}
-            type="search"
-            value={query}
+            }
           />
-          {searching && (
-            <div className="mt-2 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
-              {found.isPending ? (
-                <div className="text-caption p-3 text-center text-ink-2">
-                  {t('loading', 'Загрузка...')}
-                </div>
-              ) : candidates.length > 0 ? (
-                candidates.map((person) => (
-                  <button
-                    aria-label={t('privacyExceptions.add', {
+        ))}
+
+        {adding ? (
+          <div className="px-3 py-2.5">
+            <Input
+              aria-label={t('privacyExceptions.search', 'Найти человека')}
+              autoFocus
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('privacyExceptions.search', 'Найти человека')}
+              type="search"
+              value={query}
+            />
+          </div>
+        ) : (
+          <ListNavItem
+            icon="users"
+            label={title}
+            onClick={() => setAdding(true)}
+            value={t('privacyExceptions.addShort', 'Добавить')}
+          />
+        )}
+
+        {adding &&
+          searching &&
+          (found.isPending ? (
+            <ListStaticItem label={t('loading', 'Загрузка...')} />
+          ) : candidates.length > 0 ? (
+            candidates.map((person) => (
+              <ListStaticItem
+                hint={`@${person.username}`}
+                key={person.id}
+                label={personName(person)}
+                leading={avatar(person)}
+                trailing={
+                  <ListItemButton
+                    ariaLabel={t('privacyExceptions.add', {
                       name: personName(person),
                       defaultValue: 'Добавить {{name}}',
                     })}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast hover:bg-sheet-2 focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand"
                     disabled={setException.isPending}
-                    key={person.id}
                     onClick={() =>
                       setException.mutate(
                         { rule, userId: person.id, mode },
@@ -158,44 +183,16 @@ export function PrivacyExceptionsEditor({ rule, mode }: Props) {
                         }
                       )
                     }
-                    type="button"
                   >
-                    <Avatar
-                      id={person.id}
-                      name={personName(person)}
-                      size="sm"
-                      src={person.avatarUrl || null}
-                    />
-                    <span className="min-w-0">
-                      <span className="text-body block truncate text-ink">
-                        {personName(person)}
-                      </span>
-                      <span className="text-caption block truncate text-ink-2">
-                        @{person.username}
-                      </span>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="text-caption p-3 text-center text-ink-2">
-                  {t('privacyExceptions.notFound', 'Никого не нашлось')}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <Button className="mt-3" onClick={() => setAdding(true)} size="sm" variant="secondary">
-          {t('privacyExceptions.addPeople', 'Добавить людей')}
-        </Button>
-      )}
-
-      <p className="text-caption mt-4 text-ink-3">
-        {t(
-          'privacyExceptions.blockedWins',
-          'Чёрный список сильнее исключений: заблокированный не увидит ничего, даже если он в «Всегда разрешать».'
-        )}
-      </p>
-    </section>
+                    {t('privacyExceptions.addShort', 'Добавить')}
+                  </ListItemButton>
+                }
+              />
+            ))
+          ) : (
+            <ListStaticItem label={t('privacyExceptions.notFound', 'Никого не нашлось')} />
+          ))}
+      </ListGroup>
+    </>
   );
 }

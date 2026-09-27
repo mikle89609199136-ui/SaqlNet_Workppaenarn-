@@ -87,4 +87,9 @@ export type TIconTypes =
   | 'cloud'
   | 'fingerprint'
   | 'qrCode'
-  | 'circleAlert';
+  | 'circleAlert'
+  | 'mail'
+  | 'devices'
+  | 'ban'
+  | 'laptop'
+  | 'smartphone';

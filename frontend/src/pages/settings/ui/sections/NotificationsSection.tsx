@@ -1,41 +1,28 @@
-import { Switch } from '@/shared/ui';
-import { SettingsRow, SettingsSection } from '../SettingsControls';
 import { useTranslation } from 'react-i18next';
+import { ListGroup, ListSwitchItem } from '@/shared/ui';
 import { useSettingsData } from './useSettingsData';
 
+/** «Уведомления и звуки» — два переключателя, как в макете (#828). */
 export function NotificationsSection() {
   const { t } = useTranslation();
   const { settings, saveSettings } = useSettingsData();
 
   return (
-    <SettingsSection
-      description={t(
-        'settings.notifications.description',
-        'Настройте поведение уведомлений на этом устройстве.'
-      )}
-      title={t('settings.notifications.title', 'Уведомления и звуки')}
-    >
-      <SettingsRow
-        controlId="setting-notifications"
+    <ListGroup>
+      <ListSwitchItem
+        checked={settings.notifications}
+        hint={t('settings.notifications.enabledHint', 'Показывать, когда приходят новые сообщения')}
+        icon="bell"
         label={t('settings.notifications.enabled', 'Уведомления')}
-      >
-        <Switch
-          checked={settings.notifications}
-          id="setting-notifications"
-          onChange={(event) => saveSettings({ notifications: event.target.checked })}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        controlId="setting-sounds"
+        onChange={(checked) => saveSettings({ notifications: checked })}
+      />
+      <ListSwitchItem
+        checked={settings.sounds}
+        hint={t('settings.notifications.soundsHint', 'Звук при входящем сообщении')}
+        icon="volume"
         label={t('settings.notifications.sounds', 'Звуки сообщений')}
-      >
-        <Switch
-          checked={settings.sounds}
-          id="setting-sounds"
-          onChange={(event) => saveSettings({ sounds: event.target.checked })}
-        />
-      </SettingsRow>
-    </SettingsSection>
+        onChange={(checked) => saveSettings({ sounds: checked })}
+      />
+    </ListGroup>
   );
 }

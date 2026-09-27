@@ -29,6 +29,12 @@
    перекрыла бы тёмный графит. Поэтому сочетание палитры с тёмной темой
    объявлено отдельным, более тяжёлым селектором.
 
+   Каждый блок срабатывает и на элементе с data-preview="палитра-тема":
+   так «Внешний вид» (#828) показывает образец палитры в любой теме, не
+   переключая весь экран. Внутри образца нейтральные значения читаются
+   напрямую — var(--neutral-panel), — потому что семантические токены
+   вычислены на <html> и образца не видят.
+
    Роли:
      ground     фон окна за панелями
      panel      панели, карточки — основной фон текста
@@ -47,7 +53,8 @@
                 ≥ 4.5:1 на panel, chat, raised, bubble-in, menu */
 
 /* Графит — по умолчанию. */
-:root {
+:root,
+[data-preview='graphite-light'] {
   --neutral-ground: #e4e9f1;
   --neutral-panel: #ffffff;
   --neutral-chat: #f6f8fb;
@@ -62,7 +69,8 @@
   --neutral-ink-3: #5f6b7c;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+[data-preview='graphite-dark'] {
   --neutral-ground: #0f1216;
   --neutral-panel: #1b2128;
   --neutral-chat: #161b21;
@@ -78,7 +86,8 @@
 }
 
 /* Полночь — синий уклон. */
-:root[data-palette='midnight'] {
+:root[data-palette='midnight'],
+[data-preview='midnight-light'] {
   --neutral-ground: #dfe6f3;
   --neutral-panel: #ffffff;
   --neutral-chat: #f2f5fb;
@@ -93,7 +102,8 @@
   --neutral-ink-3: #58657e;
 }
 
-:root[data-palette='midnight'][data-theme='dark'] {
+:root[data-palette='midnight'][data-theme='dark'],
+[data-preview='midnight-dark'] {
   --neutral-ground: #0a0f1c;
   --neutral-panel: #121a2b;
   --neutral-chat: #0f1626;
@@ -109,7 +119,8 @@
 }
 
 /* Тёплая — бумажный уклон. */
-:root[data-palette='warm'] {
+:root[data-palette='warm'],
+[data-preview='warm-light'] {
   --neutral-ground: #ece5dc;
   --neutral-panel: #fffdf9;
   --neutral-chat: #f8f3ed;
@@ -124,7 +135,8 @@
   --neutral-ink-3: #6f6257;
 }
 
-:root[data-palette='warm'][data-theme='dark'] {
+:root[data-palette='warm'][data-theme='dark'],
+[data-preview='warm-dark'] {
   --neutral-ground: #13100e;
   --neutral-panel: #1f1a16;
   --neutral-chat: #191512;
