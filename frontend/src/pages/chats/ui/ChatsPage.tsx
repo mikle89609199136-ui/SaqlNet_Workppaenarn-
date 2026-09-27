@@ -13,7 +13,7 @@ import type { IProfileActionsTarget } from '@/features/user-profile';
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
    стабильная ссылка не перерисовывает мемоизированную панель. */
 const renderProfileActions = ({ id, name }: IProfileActionsTarget) => (
-  <BlockUserButton name={name} userId={id} />
+  <BlockUserButton className="w-full py-3 text-ui font-medium" name={name} userId={id} />
 );
 
 /* Границы ширины списка при перетаскивании. Ниже нижней строка чата

@@ -15,4 +15,4 @@ export * from './model/userStatusQuery';
 export * from './model/validateAvatarFile';
 export * from './api/settingsMutations';
 export { ProfileHeader } from './ui/ProfileHeader';
-export { ProfilePanelFallback } from './ui/ProfilePanelFallback';
+export { ProfilePanelBar, ProfilePanelFallback } from './ui/ProfilePanelFallback';

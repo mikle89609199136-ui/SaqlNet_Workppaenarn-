@@ -9,7 +9,13 @@ import { formatLastSeen, formatLastSeenApprox } from './formatLastSeen';
  * onlineCount — сколько участников группы в сети, если известно: тогда
  * подзаголовок как в макете, «5 участников, 2 в сети» (#822).
  */
-export const getChatSubtitle = (chat, typingUserId, t, now = new Date(), onlineCount) => {
+export const getChatSubtitle = (
+  chat,
+  typingUserId,
+  t,
+  now = new Date(),
+  onlineCount = undefined
+) => {
   if (typingUserId) return t('typing', 'печатает...');
   if (chat?.type === 'group') {
     if (!chat.memberCount) return t('groupChat', 'Группа');
