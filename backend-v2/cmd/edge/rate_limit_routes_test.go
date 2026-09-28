@@ -447,3 +447,53 @@ func TestNewLimiterSetHasBucketForEveryRouteGroup(t *testing.T) {
 		t.Fatalf("expected limiter set to have %d buckets, got %d", len(allRouteGroups), len(limiterSet.groups))
 	}
 }
+
+// GET /api/v2/users/check-username отвечает, существует ли аккаунт, и доступен
+// без авторизации. Быстрые ответы на него позволяют перечислить пользователей,
+// поэтому маршрут обязан попадать в свою строгую группу, а не в other-api.
+func TestClassifyRouteUsernameCheck(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   routeGroup
+	}{
+		{
+			name:   "username availability check",
+			method: http.MethodGet,
+			path:   "/api/v2/users/check-username",
+			want:   routeGroupUsernameCheck,
+		},
+		{
+			// Сервис users отвечает на такой запрос 405, но edge не знает о
+			// методах сервиса, поэтому запрос идёт в общую группу.
+			name:   "the same path with another method",
+			method: http.MethodPost,
+			path:   "/api/v2/users/check-username",
+			want:   routeGroupOtherAPI,
+		},
+		{
+			// Правило должно совпадать по полному пути, а не по префиксу:
+			// иначе соседние маршруты получили бы строгий лимит случайно.
+			name:   "another users route",
+			method: http.MethodGet,
+			path:   "/api/v2/users/search",
+			want:   routeGroupOtherAPI,
+		},
+		{
+			name:   "path that only starts the same",
+			method: http.MethodGet,
+			path:   "/api/v2/users/check-username-history",
+			want:   routeGroupOtherAPI,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyRoute(tt.method, tt.path)
+			if got != tt.want {
+				t.Errorf("classifyRoute(%q, %q) = %v; want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}

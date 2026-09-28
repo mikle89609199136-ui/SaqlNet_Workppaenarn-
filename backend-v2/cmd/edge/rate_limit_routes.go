@@ -7,10 +7,14 @@ import (
 
 type routeGroup string
 
+// allRouteGroups — группы, в которые классификатор может отнести маршрут.
+// routeGroupGlobal сюда не входит: глобальная корзина не привязана к маршруту и
+// проверяется для каждого запроса дополнительно к групповой.
 var allRouteGroups = []routeGroup{
 	routeGroupLoginRegister,
 	routeGroupPassword2FA,
 	routeGroupOtherAuth,
+	routeGroupUsernameCheck,
 	routeGroupMessageWrite,
 	routeGroupMessageRead,
 	routeGroupMediaUpload,
@@ -23,11 +27,15 @@ const (
 	routeGroupLoginRegister routeGroup = "login-register"
 	routeGroupPassword2FA   routeGroup = "password-2fa"
 	routeGroupOtherAuth     routeGroup = "other-auth"
+	routeGroupUsernameCheck routeGroup = "username-check"
 	routeGroupMessageWrite  routeGroup = "message-write"
 	routeGroupMessageRead   routeGroup = "message-read"
 	routeGroupMediaUpload   routeGroup = "media-upload"
 	routeGroupOtherAPI      routeGroup = "other-api"
 	routeGroupWebSocket     routeGroup = "websocket"
+	// routeGroupGlobal не возвращается классификатором: это имя глобальной
+	// корзины, нужное конфигурации и логам.
+	routeGroupGlobal routeGroup = "global"
 )
 
 func classifyRoute(method, path string) routeGroup {
@@ -46,6 +54,11 @@ func classifyRoute(method, path string) routeGroup {
 		return routeGroupOtherAuth
 	case strings.HasPrefix(path, "/api/v2/messages/"):
 		return classifyMessageRoute(method, path)
+	// Публичный эндпоинт, отвечающий, существует ли аккаунт. Быстрые ответы на
+	// него позволяют перечислить пользователей, поэтому лимит свой и строгий,
+	// а не общий для остальных API.
+	case method == http.MethodGet && path == "/api/v2/users/check-username":
+		return routeGroupUsernameCheck
 	case method == http.MethodPost && path == "/api/v2/media":
 		return routeGroupMediaUpload
 	case method == http.MethodPost && strings.HasPrefix(path, "/api/v2/chats/") && strings.HasSuffix(path, "/read"):

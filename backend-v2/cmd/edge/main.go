@@ -23,47 +23,24 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-type rateLimitConfig struct {
-	loginRegister bucketConfig
-	password2FA   bucketConfig
-	otherAuth     bucketConfig
-	messageWrite  bucketConfig
-	messageRead   bucketConfig
-	mediaUpload   bucketConfig
-	otherAPI      bucketConfig
-	websocket     bucketConfig
-	global        bucketConfig
-}
-
-type bucketConfig struct {
-	rate  float64
-	burst int
-}
-
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-func loadRateLimitConfig() rateLimitConfig {
-	return rateLimitConfig{
-		loginRegister: loadBucketConfig("LOGIN_REGISTER", 10.0/60.0, 5),
-		password2FA:   loadBucketConfig("PASSWORD_2FA", 10.0/60.0, 5),
-		otherAuth:     loadBucketConfig("OTHER_AUTH", 30.0/60.0, 10),
-		messageWrite:  loadBucketConfig("MESSAGE_WRITE", 5, 20),
-		messageRead:   loadBucketConfig("MESSAGE_READ", 20, 40),
-		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", 10.0/60.0, 10),
-		otherAPI:      loadBucketConfig("OTHER_API", 20, 40),
-		websocket:     loadBucketConfig("WEBSOCKET", 10.0/60.0, 20),
-		global:        loadBucketConfig("GLOBAL", 50, 100),
-	}
-}
+const (
+	// bucketCleanupInterval — как часто проверять карту корзин на устаревшие записи.
+	bucketCleanupInterval = 5 * time.Minute
+	// bucketIdleTTL — сколько корзина живёт без запросов, прежде чем её удалят.
+	// Выражен через bucketCleanupInterval, а не задан отдельным числом: TTL
+	// обязан быть заметно больше интервала уборки, иначе корзину потеряет
+	// активный клиент и получит полный burst заново. Такая запись не даёт
+	// нарушить это соотношение, поправив одно из двух чисел.
+	bucketIdleTTL = 2 * bucketCleanupInterval
+)
 
-func loadBucketConfig(name string, defaultRate float64, defaultBurst int) bucketConfig {
-	prefix := "EDGE_RATE_LIMIT_" + name
-
-	return bucketConfig{
-		rate:  config.PositiveFloat64(prefix+"_RPS", defaultRate),
-		burst: config.PositiveInt(prefix+"_BURST", defaultBurst),
-	}
-}
+// Проверка соотношения на этапе компиляции. Если bucketIdleTTL когда-нибудь
+// перестанет быть больше bucketCleanupInterval — например, кто-то заменит
+// формулу выше на литерал — разность станет отрицательной, преобразование в
+// uint не скомпилируется, и сборка упадёт с сообщением об этой строке.
+const _ = uint(bucketIdleTTL - bucketCleanupInterval - 1)
 
 // tokenBucket is a simple per-IP rate limiter.
 type tokenBucket struct {
@@ -99,6 +76,7 @@ func newLimiterSet(cfg rateLimitConfig) *limiterSet {
 			routeGroupLoginRegister: newTokenBucket(cfg.loginRegister.rate, float64(cfg.loginRegister.burst)),
 			routeGroupPassword2FA:   newTokenBucket(cfg.password2FA.rate, float64(cfg.password2FA.burst)),
 			routeGroupOtherAuth:     newTokenBucket(cfg.otherAuth.rate, float64(cfg.otherAuth.burst)),
+			routeGroupUsernameCheck: newTokenBucket(cfg.usernameCheck.rate, float64(cfg.usernameCheck.burst)),
 			routeGroupMessageWrite:  newTokenBucket(cfg.messageWrite.rate, float64(cfg.messageWrite.burst)),
 			routeGroupMessageRead:   newTokenBucket(cfg.messageRead.rate, float64(cfg.messageRead.burst)),
 			routeGroupMediaUpload:   newTokenBucket(cfg.mediaUpload.rate, float64(cfg.mediaUpload.burst)),
@@ -196,18 +174,29 @@ func retryAfter(tokens, rate float64) time.Duration {
 	return time.Duration(waitSeconds * float64(time.Second))
 }
 
+// cleanup периодически удаляет корзины IP, которые давно не делали запросов,
+// чтобы карта не росла бесконечно. Сам отбор устаревших корзин вынесен в
+// removeStaleBuckets: расписание здесь, логика там, и логика тестируема.
 func (tb *tokenBucket) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(bucketCleanupInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		tb.mu.Lock()
-		cutoff := time.Now().Add(-10 * time.Minute)
-		for ip, b := range tb.buckets {
-			if b.lastRefil.Before(cutoff) {
-				delete(tb.buckets, ip)
-			}
+		tb.removeStaleBuckets(time.Now(), bucketIdleTTL)
+	}
+}
+
+// removeStaleBuckets удаляет корзины, которые не обновлялись дольше ttl.
+// now передаётся аргументом, а не берётся из time.Now(), чтобы тест мог
+// проверить отбор на фиксированном времени.
+func (tb *tokenBucket) removeStaleBuckets(now time.Time, ttl time.Duration) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	cutoff := now.Add(-ttl)
+	for ip, b := range tb.buckets {
+		if b.lastRefil.Before(cutoff) {
+			delete(tb.buckets, ip)
 		}
-		tb.mu.Unlock()
 	}
 }
 
@@ -383,6 +372,7 @@ func main() {
 	})
 
 	limits := loadRateLimitConfig()
+	logRateLimits(limits)
 	limiters := newLimiterSet(limits)
 
 	limitedMux := rateLimitMiddleware(trustedProxies, limiters, mux)
