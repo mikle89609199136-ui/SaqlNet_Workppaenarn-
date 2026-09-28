@@ -179,11 +179,33 @@ function notificationFor(data) {
     title: group ? data.chatTitle : name,
     options: Object.assign({}, base, {
       body: group ? name + ': ' + text.message : text.message,
-      // Одно уведомление на чат: новое заменяет прежнее и снова звучит.
+      // Одно уведомление на чат, и каждое новое звучит (см. showPush).
       tag: 'chat:' + data.chatId,
       renotify: true,
     }),
+    closePrevious: true,
   };
+}
+
+/**
+ * Показать push. Прежнее уведомление того же чата сначала закрывается, а
+ * не заменяется: замену по тегу Safari (iPhone, Mac) и Firefox делают
+ * молча — renotify они не поддерживают, — и пока первое уведомление
+ * висело в Центре уведомлений, все следующие сообщения чата приходили без
+ * звука и баннера. Закрытое — не замена: новое звучит. Звонок заменяется
+ * как есть: пропущенный и должен тихо сменить входящий.
+ */
+async function showPush(data) {
+  const { title, options, closePrevious } = notificationFor(data);
+  if (closePrevious && self.registration.getNotifications) {
+    try {
+      const previous = await self.registration.getNotifications({ tag: options.tag });
+      previous.forEach((notification) => notification.close());
+    } catch {
+      // Не вышло — покажем заменой, как раньше.
+    }
+  }
+  return self.registration.showNotification(title, options);
 }
 
 self.addEventListener('push', (event) => {
@@ -195,8 +217,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {};
   }
-  const { title, options } = notificationFor(data);
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(showPush(data));
 });
 
 self.addEventListener('notificationclick', (event) => {
