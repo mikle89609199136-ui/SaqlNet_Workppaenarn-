@@ -9,6 +9,8 @@ COPY frontend/vite.config.ts frontend/index.html frontend/mobile.html ./
 RUN echo "css-bust-v8"
 COPY frontend/src ./src
 COPY frontend/public ./public
+# Шаблон service worker: сборка дописывает в него номер сборки и кладёт в dist/sw.js (#880).
+COPY frontend/pwa ./pwa
 RUN npm run build
 
 # Stage 2: Build Go services
