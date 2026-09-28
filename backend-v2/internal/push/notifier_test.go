@@ -2,7 +2,7 @@ package push
 
 import (
 	"context"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -339,14 +339,14 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 // deviceKeys — настоящие ключи устройства: webpush-go шифрует ими push.
 func deviceKeys(t *testing.T) Keys {
 	t.Helper()
-	_, x, y, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	auth := make([]byte, 16)
 	_, _ = rand.Read(auth)
 	return Keys{
-		P256dh: base64.RawURLEncoding.EncodeToString(elliptic.Marshal(elliptic.P256(), x, y)),
+		P256dh: base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()),
 		Auth:   base64.RawURLEncoding.EncodeToString(auth),
 	}
 }
