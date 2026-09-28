@@ -10,11 +10,16 @@
   повторяет его. Приложение показывает версию в «Настройки → О приложении»,
   сервер — в `/health/live`.
 - Нумерация [SemVer](https://semver.org/lang/ru/), пока до 1.0: `0.MINOR.PATCH`.
-  - выпуск `dev` → `master` — MINOR: `npm run release:version -- minor`;
-  - исправление прямо в `master` (хотфикс) — PATCH: `npm run release:version -- patch`.
+- Какую часть поднять — по коммитам выпуска:
+  `node scripts/release-bump.cjs origin/master origin/dev`. Есть `feat` —
+  MINOR; только исправления и прочее — PATCH; ломающее изменение (`feat!:`,
+  «BREAKING CHANGE») — MAJOR, но до 1.0 — MINOR. Номер поднимает
+  `npm run release:version -- minor|patch`; хотфикс в `master` — обычно PATCH.
 - Точка отсчёта — `0.9.0`: до #892 в `master` было девять выпусков из `dev`.
   Первый выпуск по этой схеме — `0.10.0`.
-- CI (`Release version` в `ci.yml`) падает, если номер в `master` не вырос.
+- Номер не поднят или поднят меньше, чем требуют коммиты, — пуш в `master`
+  останавливает хук `pre-push` (lefthook, `scripts/pre-push-release.cjs`), а
+  PR в `master` — CI (`Release version`). Обходить хук (`--no-verify`) нельзя.
 - После пуша в `master` `.github/workflows/release-tag.yml` ставит тег
   `vX.Y.Z` и создаёт GitHub Release со списком вошедших PR. Руками тег не нужен.
 - Открытые у людей приложения узнают о новой версии сами (при возврате в

@@ -1,58 +1,76 @@
 #!/usr/bin/env node
 /*
- * Выпуск повышает номер версии (#892): `node scripts/check-release-version.cjs <base>`,
- * где base — прежний master (ветка или коммит).
+ * Выпуск в master поднимает номер версии — и на столько, сколько нужно (#892).
  *
- * Номер — в frontend/package.json; корневой package.json должен совпадать.
- * Если у прежнего номера нет тега vX.Y.Z — это нумерация до #892 (в master
- * стояло 1.0.0 без смысла), сравнивать не с чем: проверка пропускается.
+ *   node scripts/check-release-version.cjs <base> [head]
+ *
+ * base — прежний master (ветка или коммит), head — то, что уходит в master
+ * (по умолчанию HEAD). Запускают CI (`Release version`) и хук pre-push.
+ *
+ * - Номер — в frontend/package.json; корневой package.json должен совпадать.
+ * - Прежний номер — последний тег выпуска vX.Y.Z, достижимый из base. Тега
+ *   нет — нумерация до #892, сравнивать не с чем: проверка пропускается.
+ * - Сколько поднять — по коммитам base..head (scripts/release-bump.cjs):
+ *   есть `feat` — хотя бы minor, только исправления — хотя бы patch.
  */
 const { execFileSync } = require('node:child_process');
-const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const {
+  LEVELS,
+  bumpLevel,
+  bumpVersion,
+  releaseCommits,
+  releasedVersion,
+  suggestBump,
+} = require('./release-bump.cjs');
 
-const base = process.argv[2];
+const [base, head = 'HEAD'] = process.argv.slice(2);
 if (!base) {
-  console.error('Использование: node scripts/check-release-version.cjs <base>');
+  console.error('Использование: node scripts/check-release-version.cjs <base> [head]');
   process.exit(2);
 }
 
 const root = path.resolve(__dirname, '..');
-const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-const versionOf = (json) => JSON.parse(json).version;
+const versionAt = (file) =>
+  JSON.parse(execFileSync('git', ['show', `${head}:${file}`], { cwd: root, encoding: 'utf8' }))
+    .version;
 
-const head = versionOf(readFileSync(path.join(root, 'frontend/package.json'), 'utf8'));
-const rootVersion = versionOf(readFileSync(path.join(root, 'package.json'), 'utf8'));
-if (rootVersion !== head) {
-  console.error(`package.json (${rootVersion}) и frontend/package.json (${head}) расходятся.`);
+const next = versionAt('frontend/package.json');
+const rootVersion = versionAt('package.json');
+if (rootVersion !== next) {
+  console.error(`package.json (${rootVersion}) и frontend/package.json (${next}) расходятся.`);
   console.error('Номер меняется командой: npm run release:version -- minor|patch');
   process.exit(1);
 }
 
-const previous = versionOf(git('show', `${base}:frontend/package.json`));
-const tagged = (() => {
-  try {
-    git('rev-parse', '-q', '--verify', `refs/tags/v${previous}`);
-    return true;
-  } catch {
-    return false;
-  }
-})();
-if (!tagged) {
-  console.log(`У ${previous} нет тега v${previous} — нумерация до #892, сравнение пропущено.`);
+const previous = releasedVersion(base);
+if (!previous) {
+  console.log(`У ${base} нет тега выпуска vX.Y.Z — нумерация до #892, сравнение пропущено.`);
   process.exit(0);
 }
 
-const parse = (version) => {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!match) throw new Error(`Не номер версии X.Y.Z: ${version}`);
-  return match.slice(1).map(Number);
+const { level: required, reasons } = suggestBump(releaseCommits(base, head), previous);
+const actual = bumpLevel(previous, next);
+
+const explain = () => {
+  if (!required) return;
+  console.error(
+    `Нужно: ${previous} → ${bumpVersion(previous, required)} (${required}), потому что:`
+  );
+  for (const reason of reasons.slice(0, 10)) console.error(`  • ${reason}`);
+  console.error(`Команда: npm run release:version -- ${required}`);
 };
-const [a, b] = [parse(head), parse(previous)];
-const newer = a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
-if (!newer) {
-  console.error(`Версия не повышена: была ${previous}, стала ${head}.`);
-  console.error('Выпуск dev → master: npm run release:version -- minor; хотфикс: -- patch.');
+
+if (!actual) {
+  console.error(`Версия не поднята: выпущена ${previous}, в выпуске ${next}.`);
+  explain();
   process.exit(1);
 }
-console.log(`Версия выпуска: ${previous} → ${head}`);
+if (required && LEVELS.indexOf(actual) < LEVELS.indexOf(required)) {
+  console.error(
+    `Поднят ${actual} (${previous} → ${next}), а в выпуске есть изменения на ${required}.`
+  );
+  explain();
+  process.exit(1);
+}
+console.log(`Версия выпуска: ${previous} → ${next} (${actual})`);

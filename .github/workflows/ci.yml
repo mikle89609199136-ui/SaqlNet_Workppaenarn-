@@ -46,6 +46,7 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              - 'scripts/**'
               - '.github/workflows/ci.yml'
             backend:
               - 'backend-v2/**'
@@ -95,6 +96,11 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      # Правила номера версии выпуска (#892): scripts/release-bump.cjs.
+      - name: Release version rules
+        working-directory: .
+        run: node --test scripts/*.test.cjs
 
   backend:
     name: Backend (Go)
