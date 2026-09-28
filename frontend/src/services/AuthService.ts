@@ -1,4 +1,5 @@
 import { API_ENDPOINTS } from '@/shared/api';
+import { currentPushEndpoint, unsubscribePushOnDevice } from '@/shared/lib';
 
 export class AuthService {
   constructor(apiClient, authStorage) {
@@ -55,11 +56,27 @@ export class AuthService {
   }
 
   async logout() {
+    // Push этому устройству больше не нужен (#882): сервер забывает
+    // подписку, пока токен ещё действует, браузер — отписывается.
+    await this.forgetPushOnDevice(true);
     try {
       await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT);
     } finally {
       this.authStorage.clearProfile();
     }
+  }
+
+  /** При выходе со всех устройств сервер удаляет подписки сам — тогда только браузер. */
+  private async forgetPushOnDevice(tellServer: boolean) {
+    if (tellServer) {
+      const endpoint = await currentPushEndpoint();
+      if (endpoint) {
+        await this.apiClient
+          .delete(API_ENDPOINTS.PUSH_SUBSCRIPTIONS, { endpoint })
+          .catch(() => undefined);
+      }
+    }
+    await unsubscribePushOnDevice();
   }
 
   /**
@@ -71,6 +88,7 @@ export class AuthService {
    */
   async logoutAll() {
     await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT_ALL);
+    await this.forgetPushOnDevice(false);
     this.authStorage.clearProfile();
   }
 
