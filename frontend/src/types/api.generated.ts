@@ -1759,8 +1759,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Mark a chat as read
-         * @description The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+         * Mark messages as read
+         * @description Marks the given messages of the chat as read (#506). The chat keeps one read boundary (unread counts use it): it moves to the newest of the counted messages — incoming and not deleted — and never moves back, so newer messages stay unread. To mark the whole chat, use POST /chats/{chatId}/read.
          */
         post: operations["markMessagesRead"];
         delete?: never;
@@ -2901,12 +2901,14 @@ export interface components {
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Accepted for client compatibility; the current backend marks the whole chat as read. */
-            messageIds?: string[];
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            messageIds: string[];
         };
-        Success: {
-            /** @enum {boolean} */
-            success: true;
+        ReadMark: {
+            /** @description Incoming, not deleted messages that were taken into account. */
+            readIds: string[];
+            /** @description The chat's read boundary after the call: the newest of the counted messages, never moved back. Empty when the chat was never read. */
+            lastReadAt: string;
         };
         MessageListResponse: {
             messages: components["schemas"]["Message"][];
@@ -6072,13 +6074,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Chat marked as read */
+            /** @description Messages marked as read */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Success"];
+                    "application/json": components["schemas"]["ReadMark"];
                 };
             };
             400: components["responses"]["Error"];

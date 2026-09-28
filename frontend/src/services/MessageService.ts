@@ -529,12 +529,14 @@ export class MessageService {
    * при первом открытии чата кеш ещё пуст, и отметка не доходила до интерфейса.
    */
   async markAsRead(chatId: string, messageIds: string[]) {
-    const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_READ, {
-      chatId,
-      messageIds,
-    });
+    const response = await this.apiClient.post<{ readIds?: string[]; lastReadAt?: string }>(
+      API_ENDPOINTS.MESSAGE_READ,
+      { chatId, messageIds }
+    );
 
-    return { ...response.data, readIds: messageIds };
+    /* Прочитанными помечается то, что учёл сервер (#506): свои и удалённые
+       он пропускает. Старый ответ без readIds — отправленные, как раньше. */
+    return { ...response.data, readIds: response.data?.readIds ?? messageIds };
   }
 
   /**
