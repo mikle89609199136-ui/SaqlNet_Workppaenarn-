@@ -1,6 +1,7 @@
 import { registerChatResolver } from '@/entities/chat';
 import { registerAuthInterceptor } from '@/features/auth';
 import { startCryptoAutoInit } from '@/services/serviceContainer';
+import { registerServiceWorker, syncThemeColor } from '@/shared/lib';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
@@ -22,6 +23,10 @@ registerAuthInterceptor();
 // Ключи шифрования готовятся здесь, а не при импорте контейнера сервисов:
 // импорт не должен ничего запускать.
 startCryptoAutoInit();
+
+// PWA (#880): установка на экран «Домой»; строка состояния — цвета темы.
+syncThemeColor();
+void registerServiceWorker();
 
 createRoot(document.getElementById('appRoot')!).render(
   <StrictMode>
