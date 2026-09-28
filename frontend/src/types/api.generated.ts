@@ -300,6 +300,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a bearer token for the session cookie
+         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
+         */
+        post: operations["exchangeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -3101,6 +3121,8 @@ export interface operations {
             /** @description Registered */
             201: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3124,9 +3146,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authenticated or 2FA challenge */
+            /** @description Authenticated (session cookie is set) or 2FA challenge */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3278,9 +3302,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, scanned, confirmed, or expired QR login status */
+            /** @description Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3428,9 +3454,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, confirmed, or expired */
+            /** @description Pending, confirmed, or expired; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3477,7 +3505,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Logged out */
+            /** @description Logged out; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3495,7 +3523,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All sessions revoked */
+            /** @description All sessions revoked; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3504,6 +3532,27 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    exchangeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session cookie set */
+            204: {
+                headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
