@@ -74,6 +74,10 @@ func main() {
 	mux.Handle("/api/v2/users/blocked", authenticated(http.HandlerFunc(handler.Blocked)))
 	mux.Handle("/api/v2/users/blocked/", authenticated(http.HandlerFunc(handler.Unblock)))
 
+	// Web Push (#717): ключ для подписки и подписки устройств.
+	mux.Handle("/api/v2/users/push/vapid-key", authenticated(http.HandlerFunc(handler.PushVAPIDKey)))
+	mux.Handle("/api/v2/users/push/subscriptions", authenticated(http.HandlerFunc(handler.PushSubscriptions)))
+
 	mux.Handle("/api/v2/users/devices", authenticated(http.HandlerFunc(handler.Devices)))
 	mux.Handle("/api/v2/users/devices/register", authenticated(http.HandlerFunc(handler.RegisterDevice)))
 	mux.Handle("/api/v2/users/devices/terminate-all", authenticated(http.HandlerFunc(handler.TerminateAllDevices)))
