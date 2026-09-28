@@ -77,14 +77,20 @@ describe('уведомление', () => {
     expect(onHide).toHaveBeenCalledWith('toast-1');
   });
 
-  it('should freeze the progress bar together with the countdown', () => {
-    const { container } = render(<Toast onHide={vi.fn()} toast={make()} />);
-    const bar = container.querySelector('[aria-hidden="true"].origin-left') as HTMLElement;
+  it('should sit on inverted colors so it stands out on any surface', () => {
+    render(<Toast onHide={vi.fn()} toast={make()} />);
 
-    expect(bar.style.animationPlayState).toBe('running');
+    expect(screen.getByRole('status')).toHaveClass('bg-ink', 'text-sheet');
+  });
 
-    fireEvent.mouseEnter(screen.getByRole('status'));
+  it('should keep the icon for an error but not for a confirmation', () => {
+    /* «Ссылка скопирована» понятна без значка; ошибке он нужен, чтобы
+       её не приняли за подтверждение. */
+    const { container, unmount } = render(<Toast onHide={vi.fn()} toast={make('success')} />);
+    expect(container.querySelector('svg')).not.toBeInTheDocument();
+    unmount();
 
-    expect(bar.style.animationPlayState).toBe('paused');
+    const error = render(<Toast onHide={vi.fn()} toast={make('error')} />);
+    expect(error.container.querySelector('svg')).toBeInTheDocument();
   });
 });

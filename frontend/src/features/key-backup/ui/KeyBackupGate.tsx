@@ -88,7 +88,7 @@ export function KeyBackupGate({ children }: Props) {
 
   if (status === 'error') {
     return (
-      <AuthLayout footer={footer} title={t('keyBackup.error.title', 'Нет связи')}>
+      <AuthLayout footer={footer} icon="wifiOff" title={t('keyBackup.error.title', 'Нет связи')}>
         <div className="grid gap-4">
           <Banner icon="warning" tone="warn">
             {t(

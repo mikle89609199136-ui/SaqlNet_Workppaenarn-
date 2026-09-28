@@ -1,12 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Button, Icon, Input, showToast } from '@/shared/ui';
+import { Button, Input, showToast } from '@/shared/ui';
 import { PasswordRequirements } from '@/features/auth';
 import { services } from '@/services/serviceContainer';
 import { passwordFormSchema, type TPasswordForm } from '../model/passwordSchema';
 
 interface Props {
+  /** Куда вернуться после смены пароля. */
   onBack: () => void;
 }
 
@@ -51,26 +52,10 @@ export function ChangePasswordForm({ onBack }: Props) {
     }
   }
 
+  /* Заголовок и «назад» — в шапке раздела настроек (#828). У каждого
+     поля свой глазок: его даёт Input с type="password". */
   return (
-    <section>
-      <button
-        className="text-caption -ml-2 mb-3 flex items-center gap-1 rounded-control px-2 py-1 text-ink-2 transition-colors duration-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
-        onClick={onBack}
-        type="button"
-      >
-        <Icon className="rotate-180" name="chevronRight" size="sm" />
-        {t('back', 'Назад')}
-      </button>
-
-      <header className="mb-4">
-        <h1 className="mb-1 text-[21px] leading-tight font-semibold text-ink">
-          {t('settings.password.title', 'Изменить пароль')}
-        </h1>
-        <p className="text-caption text-ink-2">
-          {t('settings.password.description', 'Используйте не менее 10 символов.')}
-        </p>
-      </header>
-
+    <section className="rounded-dialog bg-card p-5">
       <form className="grid gap-4" onSubmit={handleSubmit(submit)}>
         <Input
           autoComplete="current-password"
@@ -97,10 +82,7 @@ export function ChangePasswordForm({ onBack }: Props) {
           {...register('confirmation')}
         />
 
-        <div className="mt-2 flex justify-end gap-2">
-          <Button onClick={onBack} type="button" variant="ghost">
-            {t('cancel', 'Отмена')}
-          </Button>
+        <div className="flex justify-end">
           <Button loading={isSubmitting} type="submit">
             {t('settings.password.action', 'Изменить пароль')}
           </Button>

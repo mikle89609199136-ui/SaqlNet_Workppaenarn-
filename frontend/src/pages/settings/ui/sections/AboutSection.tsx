@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, ConfirmDialog, showToast } from '@/shared/ui';
+import {
+  ConfirmDialog,
+  Icon,
+  ListGroup,
+  ListItemButton,
+  ListNavItem,
+  ListStaticItem,
+  showToast,
+} from '@/shared/ui';
 import { APP_VERSION } from '@/shared/config';
 import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
-import { SettingsRow, SettingsSection } from '../SettingsControls';
 
 export function AboutSection() {
   const { t } = useTranslation();
@@ -52,52 +59,58 @@ export function AboutSection() {
   }
 
   return (
-    <SettingsSection
-      description={t('settings.about.description', 'CraneApp Messenger')}
-      title={t('settings.about.title', 'О приложении')}
-    >
-      <SettingsRow label={t('settings.about.version', 'Версия')}>
-        <span className="text-body text-ink-2">{APP_VERSION}</span>
-      </SettingsRow>
+    <>
+      <ListGroup>
+        <ListStaticItem
+          label={t('settings.about.description', 'CraneApp Messenger')}
+          leading={
+            <span
+              aria-hidden="true"
+              className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-brand-fill text-on-brand"
+            >
+              <Icon className="size-4.5 stroke-[1.8px]" name="info" />
+            </span>
+          }
+          trailing={
+            <span className="shrink-0 text-ui text-ink-3">
+              {t('settings.about.versionValue', 'Версия {{version}}', { version: APP_VERSION })}
+            </span>
+          }
+        />
+      </ListGroup>
 
       {/* Названия «экспортировать мои данные» человек читает как «выгрузить
           переписку». Переписки в выгрузке нет — сервер отдаёт профиль,
           настройки и перечень чатов без сообщений. Сказать об этом честно
           дешевле, чем разбирать потом, почему файл «пустой». */}
-      <Banner tone="info">
-        {t(
+      <ListGroup
+        note={t(
           'settings.about.exportBanner',
           'В файл попадут профиль, настройки и список чатов. Сообщений в нём нет: они зашифрованы ключами этого устройства и на сервере не хранятся в читаемом виде.'
         )}
-      </Banner>
-
-      <SettingsRow
-        description={t('settings.about.exportHint', 'Файл JSON со сведениями об учётной записи')}
-        label={t('settings.about.export', 'Выгрузить данные')}
+        title={t('settings.about.yourData', 'Ваши данные')}
       >
-        <Button loading={exporting} onClick={downloadExport} variant="secondary">
-          {t('settings.about.exportAction', 'Выгрузить')}
-        </Button>
-      </SettingsRow>
+        <ListStaticItem
+          hint={t('settings.about.exportHint', 'Файл JSON со сведениями об учётной записи')}
+          icon="download"
+          label={t('settings.about.export', 'Выгрузить данные')}
+          trailing={
+            <ListItemButton disabled={exporting} onClick={downloadExport}>
+              {t('settings.about.exportAction', 'Выгрузить')}
+            </ListItemButton>
+          }
+        />
+      </ListGroup>
 
-      <Banner icon="key" tone="warn">
-        {t(
-          'settings.about.wipeBanner',
-          'Ключи будут удалены только с этого устройства. Переписка сохранена в зашифрованной резервной копии и вернётся, когда вы введёте облачный пароль или подтвердите вход с другого устройства.'
-        )}
-      </Banner>
-
-      <SettingsRow
-        description={t(
-          'settings.about.wipeHint',
-          'Чтобы снова читать переписку здесь, понадобится облачный пароль'
-        )}
-        label={t('settings.about.wipe', 'Удалить ключи с устройства')}
-      >
-        <Button onClick={() => setWipeAsked(true)} variant="danger">
-          {t('settings.about.wipeAction', 'Удалить')}
-        </Button>
-      </SettingsRow>
+      {/* Что будет с перепиской — в окне подтверждения. */}
+      <ListGroup title={t('settings.about.thisDevice', 'Это устройство')}>
+        <ListNavItem
+          icon="trash"
+          label={t('settings.about.wipe', 'Удалить ключи с этого устройства')}
+          onClick={() => setWipeAsked(true)}
+          tone="danger"
+        />
+      </ListGroup>
 
       <ConfirmDialog
         confirmLabel={t('settings.about.wipeConfirm', 'Удалить ключи')}
@@ -113,6 +126,6 @@ export function AboutSection() {
           'Ключи шифрования будут удалены с этого устройства. Переписка останется в резервной копии: чтобы снова читать её здесь, введите облачный пароль или подтвердите вход с другого устройства.'
         )}
       </ConfirmDialog>
-    </SettingsSection>
+    </>
   );
 }

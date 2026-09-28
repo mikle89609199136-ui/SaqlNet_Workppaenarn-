@@ -13,34 +13,34 @@ interface Props {
 
 export function renderMessageSnippet(message: IMessageDto, t: TFunction) {
   if (message.content) {
-    return <p className="pinned-messages__text truncate">{message.content}</p>;
+    return <span>{message.content}</span>;
   }
 
   switch (message.type) {
     case 'video':
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="video" size="sm" className="shrink-0" />
           <span>{t('media.video', 'Видео')}</span>
         </span>
       );
     case 'audio':
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="volume" size="sm" className="shrink-0" />
           <span>{t('media.audio', 'Аудиозапись')}</span>
         </span>
       );
     case 'voice':
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="volume" size="sm" className="shrink-0" />
           <span>{t('media.voice', 'Голосовое сообщение')}</span>
         </span>
       );
     case 'image':
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="camera" size="sm" className="shrink-0" />
           <span>{t('media.photo', 'Фотография')}</span>
         </span>
@@ -53,7 +53,7 @@ export function renderMessageSnippet(message: IMessageDto, t: TFunction) {
           : undefined) ||
         t('media.file', 'Файл');
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="file" size="sm" className="shrink-0" />
           <span>{fileName}</span>
         </span>
@@ -61,16 +61,14 @@ export function renderMessageSnippet(message: IMessageDto, t: TFunction) {
     }
     case 'call':
       return (
-        <span className="flex items-center gap-1 text-ink-2 text-sm truncate">
+        <span className="inline-flex items-center gap-1 align-bottom">
           <Icon name="phone" size="sm" className="shrink-0" />
           <span>{t('call.title', 'Звонок')}</span>
         </span>
       );
     default:
       return (
-        <p className="pinned-messages__text truncate">
-          {message.content || t('pinnedMessages.default', 'Закреплённое сообщение')}
-        </p>
+        <span>{message.content || t('pinnedMessages.default', 'Закреплённое сообщение')}</span>
       );
   }
 }
@@ -94,17 +92,17 @@ export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Pro
   const segmentHeightCalc = `calc((100% - (${visibleSegments} - 1) * 2px) / ${visibleSegments})`;
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-x-2 transition-colors border-b border-line bg-sheet/85 backdrop-blur-md py-1.5 md:py-2.5 px-2 pr-3 shadow-xs">
-      <Button
-        variant="ghost"
-        className="w-full flex !items-stretch gap-2 cursor-pointer outline-0 text-left min-w-0 p-0 border-0 hover:bg-transparent font-normal justify-start"
+    /* Полоска закреплённого под шапкой — по макету (#820): 52px, слева
+       столбик сегментов (текущий — акцентом), подпись с номером и строка
+       текста; клик ведёт к сообщению и листает дальше. */
+    <div className="sticky top-0 z-10 flex h-13 shrink-0 items-center gap-2.5 border-b border-divider bg-chat-bg pr-3 pl-4">
+      <button
+        className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-field text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
         aria-label={t('pinnedMessagesAria', 'Закреплённые сообщения')}
         onClick={handleClick}
+        type="button"
       >
-        <div
-          className="relative w-0.5 shrink-0 overflow-hidden self-stretch my-0.5"
-          aria-hidden="true"
-        >
+        <div className="relative h-8.5 w-[3px] shrink-0 overflow-hidden" aria-hidden="true">
           <div
             ref={trackRef}
             className="absolute inset-0 flex flex-col gap-0.5 transition-transform duration-200 ease-out"
@@ -121,31 +119,38 @@ export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Pro
                   height: segmentHeightCalc,
                 }}
                 className={cn(
-                  'shrink-0 w-full rounded-pill bg-line-soft transition-colors',
-                  index === safeIndex && 'bg-brand-fill'
+                  'w-full shrink-0 rounded-[2px] bg-line-soft transition-colors duration-[160ms]',
+                  index === safeIndex && 'bg-brand'
                 )}
               />
             ))}
           </div>
         </div>
 
-        <div className="flex flex-col border-0 bg-transparent text-left min-w-0 flex-1">
-          <span className="text-caption font-medium text-brand truncate">
-            {t('pinnedMessages', 'Закреплённое сообщение')} #{currentMessageNumber}
-            {senderTitle ? ` • ${senderTitle}` : ''}
+        <div className="flex min-w-0 flex-1 flex-col gap-px text-caption">
+          <span className="truncate font-semibold text-brand">
+            {t('pinnedMessages', 'Закреплённое сообщение')}
+            {messages.length > 1
+              ? ` · ${t('pinnedMessages.position', '{{current}} из {{total}}', {
+                  current: currentMessageNumber,
+                  total: messages.length,
+                })}`
+              : ''}
           </span>
-          <div className="min-w-0 truncate">{renderMessageSnippet(currentMessage, t)}</div>
+          <div className="min-w-0 truncate text-ink-2">
+            {senderTitle ? `${senderTitle}: ` : ''}
+            {renderMessageSnippet(currentMessage, t)}
+          </div>
         </div>
-      </Button>
+      </button>
       <Button
-        size="sm"
         variant="ghost"
         iconOnly
-        className="shrink-0 rotate-45"
+        className="shrink-0 rounded-icon text-ink-3"
         aria-label={t('pinnedMessages.viewAll', 'Показать все закреплённые сообщения')}
         onClick={() => setPinnedMessagesOpen(true)}
       >
-        <Icon name="pin" size="sm" />
+        <Icon className="size-4.5" name="list" />
       </Button>
     </div>
   );

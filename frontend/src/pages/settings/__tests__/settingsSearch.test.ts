@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import {
+  isAccountSubsection,
+  isPrivacySubsection,
+  isSettingsSection,
+} from '@/shared/config/routes';
 import { SETTINGS_INDEX, searchSettings } from '../model/settingsIndex';
 
 /**
@@ -49,7 +54,17 @@ describe('поиск по настройкам', () => {
 
   it('каждый пункт ведёт по настоящему адресу настроек', () => {
     for (const entry of SETTINGS_INDEX) {
-      expect(entry.path).toMatch(/^\/settings\/[a-zA-Z/]+$/);
+      const match = entry.path.match(/^\/settings\/([a-z]+)(?:\/([a-z-]+))?$/);
+      expect(match, entry.path).not.toBeNull();
+      const [, section, subsection] = match!;
+      expect(isSettingsSection(section), entry.path).toBe(true);
+      if (subsection) {
+        // Подстраницы бывают только у аккаунта и конфиденциальности.
+        const known =
+          (section === 'account' && isAccountSubsection(subsection)) ||
+          (section === 'privacy' && isPrivacySubsection(subsection));
+        expect(known, entry.path).toBe(true);
+      }
     }
   });
 });

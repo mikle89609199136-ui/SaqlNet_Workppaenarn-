@@ -42,6 +42,7 @@ export function CloudPasswordSetup({ migrating, onDone, onSaving, footer }: Prop
     return (
       <AuthLayout
         footer={footer}
+        icon="fingerprint"
         subtitle={t('keyBackup.passkey.subtitle', 'Запасной способ открыть историю')}
         title={t('keyBackup.passkey.title', 'Добавить passkey?')}
       >
@@ -53,6 +54,7 @@ export function CloudPasswordSetup({ migrating, onDone, onSaving, footer }: Prop
   return (
     <AuthLayout
       footer={footer}
+      icon="cloud"
       subtitle={t(
         'keyBackup.setup.subtitle',
         'Он откроет вашу переписку на любом устройстве. Мы его не знаем и восстановить не сможем.'

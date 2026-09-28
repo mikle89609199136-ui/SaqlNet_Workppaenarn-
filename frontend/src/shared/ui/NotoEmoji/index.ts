@@ -1,0 +1,1 @@
+export { NotoEmoji } from './NotoEmoji';

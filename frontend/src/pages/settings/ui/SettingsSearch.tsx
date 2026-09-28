@@ -55,18 +55,19 @@ export function SettingsSearch() {
   }
 
   return (
-    <div className="relative px-5 pt-5 pb-6">
-      <label className="flex h-9 items-center gap-2 rounded-field border border-line bg-ground px-3 text-ink-2 focus-within:border-brand">
-        <Icon aria-hidden="true" className="shrink-0" name="search" size="sm" />
+    <div className="relative px-3 pb-2">
+      {/* По макету (#828): поле 42 px на панели меню, рамка — линия. */}
+      <label className="flex h-10.5 items-center gap-2.5 rounded-icon border border-divider px-3.5 text-ink-3 transition-colors duration-fast focus-within:border-brand">
+        <Icon aria-hidden="true" className="size-4.25 shrink-0 stroke-[1.8px]" name="search" />
         <input
           aria-label={t('settings.search.label', 'Поиск по настройкам')}
-          className="text-caption min-w-0 flex-1 border-0 bg-transparent text-ink outline-none placeholder:text-ink-3"
+          className="min-w-0 flex-1 border-0 bg-transparent text-ui text-ink outline-none placeholder:text-ink-3"
           onChange={(event) => {
             setQuery(event.target.value);
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder={t('settings.search.placeholder', 'Поиск по настройкам…')}
+          placeholder={t('settings.search.label', 'Поиск по настройкам')}
           ref={inputRef}
           type="text"
           value={query}
@@ -76,7 +77,7 @@ export function SettingsSearch() {
       {isOpen && (
         /* Список поверх содержимого, а не вместо него: человек ищет, не
            теряя из виду, где находится. */
-        <div className="absolute inset-x-5 top-full z-20 -mt-2 overflow-hidden rounded-bubble border border-line bg-sheet shadow-[var(--elev-3)]">
+        <div className="absolute inset-x-3 top-full z-20 mt-1 overflow-hidden rounded-bubble border border-divider bg-menu shadow-[var(--shadow-menu)]">
           {results.length === 0 ? (
             <p className="text-caption p-4 text-center text-ink-2">
               {t('settings.search.empty', 'Ничего не нашлось')}

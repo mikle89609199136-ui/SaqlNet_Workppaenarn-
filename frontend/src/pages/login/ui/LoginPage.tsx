@@ -23,11 +23,12 @@ export function LoginPage() {
       /* Код с шагами в карточку для формы не помещается: шаги рассыпаются
          в ленту, а код уезжает за край экрана. На широком экране карточка
          раздвигается, и шаги встают слева от кода. */
-      className={method === 'qr' && qrDirection === 'show' ? 'md:w-[min(100%,760px)]' : undefined}
+      animateResize={false}
+      wide={method === 'qr' && qrDirection === 'show'}
       footer={
         <>
           {t('noAccount', 'Нет аккаунта?')}{' '}
-          <Link className="text-brand hover:underline" to={ROUTES.REGISTER}>
+          <Link className="font-semibold text-brand hover:underline" to={ROUTES.REGISTER}>
             {t('registerAction', 'Зарегистрироваться')}
           </Link>
         </>
@@ -37,7 +38,7 @@ export function LoginPage() {
     >
       <SegmentedControl
         aria-label={t('login.method', 'Способ входа')}
-        className="mb-5"
+        className="mb-5 grid w-full"
         onChange={(value) => setMethod(value as 'password' | 'qr')}
         options={[
           { label: t('login.byPassword', 'Пароль'), value: 'password' },
@@ -90,7 +91,7 @@ function QrDirectionSwitch({
 }) {
   return (
     <button
-      className="text-caption mx-auto inline-flex items-center gap-1.5 rounded-control px-2 py-1 text-brand transition-colors duration-fast hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+      className="mx-auto inline-flex cursor-pointer items-center gap-1.5 rounded-field px-2.5 py-1.5 text-caption font-semibold text-brand hover:layer-hover focus-visible:outline-2 focus-visible:outline-brand [&_svg]:size-3.75 [&_svg]:stroke-[1.8px]"
       onClick={onClick}
       type="button"
     >

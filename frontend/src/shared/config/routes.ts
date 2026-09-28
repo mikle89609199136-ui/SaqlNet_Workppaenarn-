@@ -4,9 +4,6 @@ export const REACT_ROUTES = {
   REGISTER: 'register',
   CHATS: '/chats',
   CHAT_BY_ID: '/chats/:chatId',
-  CHANNELS: '/channels',
-  COMMUNITIES: '/communities',
-  MEETINGS: '/meetings',
   SETTINGS: '/settings',
   /* Подтверждение входа нового устройства по QR: сюда ведёт ссылка из кода. */
   LINK: '/link',
@@ -37,6 +34,8 @@ export const DEFAULT_SETTINGS_SECTION: TSettingsSection = 'account';
 
 /* Подстраницы аккаунта — второй уровень: /settings/account/password. */
 export const ACCOUNT_SUBSECTIONS = [
+  /* Свой профиль так, как его видят другие (#828). */
+  'me',
   'profile',
   'email',
   'password',
@@ -45,6 +44,15 @@ export const ACCOUNT_SUBSECTIONS = [
 ] as const;
 
 export type TAccountSubsection = (typeof ACCOUNT_SUBSECTIONS)[number];
+
+/* Подстраницы конфиденциальности: правила (#786) и чёрный список (#727). */
+export const PRIVACY_SUBSECTIONS = ['last-seen', 'photo', 'forwards', 'blocked'] as const;
+
+export type TPrivacySubsection = (typeof PRIVACY_SUBSECTIONS)[number];
+
+export function isPrivacySubsection(value: string | undefined): value is TPrivacySubsection {
+  return PRIVACY_SUBSECTIONS.includes(value as TPrivacySubsection);
+}
 
 export function isSettingsSection(value: string | undefined): value is TSettingsSection {
   return SETTINGS_SECTIONS.includes(value as TSettingsSection);
@@ -68,9 +76,6 @@ class Routes {
   LOGIN = '/login';
   REGISTER = '/register';
   MENU = '/menu';
-  CHANNELS = '/channels';
-  COMMUNITIES = '/communities';
-  MEETINGS = '/meetings';
 }
 
 export const ROUTES = new Routes();

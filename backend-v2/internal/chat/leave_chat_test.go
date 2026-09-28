@@ -39,6 +39,8 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 		WithArgs(userID, chatID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`).
 		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+		WithArgs(chatID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	err = svc.LeaveChat(context.Background(), userID, chatID)

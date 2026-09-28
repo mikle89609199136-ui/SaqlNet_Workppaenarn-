@@ -1,3 +1,5 @@
+import type { IMessageEntity } from '@/shared/lib/richText';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { TMessageDeliveryStatus, TMessageType } from './types';
 import { create } from 'zustand';
 
@@ -5,8 +7,12 @@ export interface IOutboxItem {
   tempId: string;
   chatId: string;
   content: string;
+  /** Форматирование: при повторе после сбоя оно не должно потеряться. */
+  entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
+  /** Длительность и волна голосового (#843): уедут в шифрованном конверте. */
+  voice?: IVoiceMeta;
   replyToId?: string | null;
   status: TMessageDeliveryStatus;
   blobUrl?: string;

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 )
@@ -67,6 +68,46 @@ func TestWSServer_Signaling(t *testing.T) {
 		t.Error("user1 should not receive the message")
 	default:
 		// success
+	}
+}
+
+// TestWSServer_UnregisterStopsHeartbeatWithoutClosingSend фиксирует регрессию
+// #304: heartbeat и другие производители могут ещё завершать работу после
+// отключения клиента, поэтому канал Send нельзя закрывать со стороны цикла
+// регистрации.
+func TestWSServer_UnregisterStopsHeartbeatWithoutClosingSend(t *testing.T) {
+	ws := NewWSServer(nil, nil, nil)
+	t.Cleanup(ws.Close)
+
+	client := &Client{
+		UserID:        "user1",
+		Send:          make(chan []byte, 1),
+		done:          make(chan struct{}),
+		heartbeatDone: make(chan struct{}),
+	}
+
+	ws.register <- client
+	go ws.heartbeat(client)
+	ws.unreg <- client
+
+	// Небуферизованная register служит барьером: к моменту возврата отправки
+	// предыдущая ветка unreg уже полностью выполнена.
+	ws.register <- &Client{UserID: "barrier"}
+
+	<-client.done
+	select {
+	case <-client.heartbeatDone:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat не завершился после unregister")
+	}
+
+	select {
+	case _, ok := <-client.Send:
+		if !ok {
+			t.Fatal("unregister не должен закрывать Send")
+		}
+		t.Fatal("неожиданное сообщение в Send")
+	default:
 	}
 }
 

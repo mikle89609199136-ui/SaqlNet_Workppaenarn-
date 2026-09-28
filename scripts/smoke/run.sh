@@ -40,6 +40,11 @@ check_health
 # 2. Критические сценарии
 run_auth_tests
 run_chat_tests
+if python3 "$SCRIPT_DIR/entities.py" "$BASE_URL" "$TOKEN" "$CHAT_ID"; then
+	PASS=$((PASS + 1))
+else
+	FAIL=$((FAIL + 1))
+fi
 run_media_tests
 run_websocket_tests
 

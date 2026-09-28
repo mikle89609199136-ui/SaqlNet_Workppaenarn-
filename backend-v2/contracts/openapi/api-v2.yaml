@@ -51,6 +51,8 @@ paths:
   /users/all-settings: { $ref: './paths/users.yaml#/~1users~1all-settings' }
   /users/settings: { $ref: './paths/users.yaml#/~1users~1settings' }
   /users/privacy: { $ref: './paths/users.yaml#/~1users~1privacy' }
+  /users/privacy/exceptions: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions' }
+  /users/privacy/exceptions/{rule}/{userId}: { $ref: './paths/users.yaml#/~1users~1privacy~1exceptions~1{rule}~1{userId}' }
   /users/notifications: { $ref: './paths/users.yaml#/~1users~1notifications' }
   /users/sounds: { $ref: './paths/users.yaml#/~1users~1sounds' }
   /users/advanced-settings: { $ref: './paths/users.yaml#/~1users~1advanced-settings' }
@@ -95,6 +97,8 @@ paths:
   /chats/{chatId}/members: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members' }
   /chats/{chatId}/members-online: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members-online' }
   /chats/{chatId}/bans: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1bans' }
+  /chats/{chatId}/leave: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1leave' }
+  /chats/{chatId}/transfer-ownership: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1transfer-ownership' }
   /chats/{chatId}/members/{userId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}' }
   /chats/{chatId}/members/{userId}/role: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1role' }
   /chats/{chatId}/members/{userId}/ban: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1ban' }
@@ -105,6 +109,8 @@ paths:
   /chats/{chatId}/pin: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pin' }
   /chats/{chatId}/archive: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1archive' }
   /chats/{chatId}/read: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1read' }
+  /chats/{chatId}/messages/delete:
+    { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1messages~1delete' }
   /chats/{chatId}/pins: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins' }
   /chats/{chatId}/pins/{messageId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins~1{messageId}' }
 
@@ -112,7 +118,6 @@ paths:
   /messages/search: { $ref: './paths/messages.yaml#/~1messages~1search' }
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
-  /messages/{messageId}/forward: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1forward' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
 
@@ -157,3 +162,6 @@ components:
     Error: { $ref: './components/schemas.yaml#/Error' }
     User: { $ref: './components/schemas.yaml#/User' }
     Message: { $ref: './components/schemas.yaml#/Message' }
+    MessageEntity: { $ref: './components/schemas.yaml#/MessageEntity' }
+    MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
+    LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }

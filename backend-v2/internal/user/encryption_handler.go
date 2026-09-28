@@ -138,7 +138,30 @@ func (h *Handler) getChatKeys(w http.ResponseWriter, r *http.Request, userID, ch
 	if keys == nil {
 		keys = []ChatEncryptedKey{}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"keys": keys})
+	state, err := h.service.GetChatKeyState(r.Context(), userID, chatID)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to read chat key state")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"keys":           keys,
+		"keyEpoch":       state.KeyEpoch,
+		"rotationNeeded": state.RotationNeeded,
+	})
+}
+
+// writeChatKeysError — ответ на неудачную запись ключей чата.
+func writeChatKeysError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, ErrKeyEpochConflict):
+		httpx.ErrorJSON(w, r, http.StatusConflict, "key_epoch_conflict", "chat key was already changed")
+	case errors.Is(err, ErrKeyRotationRequired):
+		httpx.ErrorJSON(w, r, http.StatusConflict, "key_rotation_required", "chat members changed, rotate the key first")
+	case errors.Is(err, ErrKeyRotationRateLimited):
+		httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", err.Error())
+	default:
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+	}
 }
 
 func (h *Handler) saveChatKeys(w http.ResponseWriter, r *http.Request, userID, chatID string) {
@@ -155,7 +178,7 @@ func (h *Handler) saveChatKeys(w http.ResponseWriter, r *http.Request, userID, c
 		return
 	}
 	if err := h.service.SaveChatKeys(r.Context(), userID, chatID, input.EncryptedKeys, input.KeyEpoch); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+		writeChatKeysError(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -170,13 +193,12 @@ func (h *Handler) rotateChatKey(w http.ResponseWriter, r *http.Request, userID, 
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	err := h.service.RotateChatKey(r.Context(), userID, chatID, input.EncryptedKeys, input.KeyEpoch)
-	if err != nil && strings.Contains(err.Error(), "rate limit") {
-		httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", err.Error())
+	if len(input.EncryptedKeys) > 500 {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "too_many_keys", "too many keys")
 		return
 	}
-	if err != nil {
-		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
+	if err := h.service.RotateChatKey(r.Context(), userID, chatID, input.EncryptedKeys, input.KeyEpoch); err != nil {
+		writeChatKeysError(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"ok": true, "keyEpoch": input.KeyEpoch})

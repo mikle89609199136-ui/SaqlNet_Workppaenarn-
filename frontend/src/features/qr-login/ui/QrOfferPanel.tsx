@@ -4,7 +4,7 @@ import { readBackupState, subscribeToBackupState } from '@/shared/crypto';
 import { Banner, Button, Icon, Spinner, showToast } from '@/shared/ui';
 import { useQrOffer } from '../model/useQrOffer';
 import { QrCode, QrFrame } from './QrCode';
-import { QrCodeLayout } from './QrCodeLayout';
+import { QrCodeLayout, QrLinkButton, QrSteps } from './QrCodeLayout';
 import { RotationHint } from './RotationHint';
 
 interface Props {
@@ -113,11 +113,11 @@ function OfferCode({ onDone }: Props) {
       actions={
         link && (
           <>
-            <Button className="w-full" onClick={copyLink} variant="secondary">
-              <Icon name="copy" size="sm" />
-              {t('qrLogin.copyLink', 'Скопировать ссылку')}
-            </Button>
             <RotationHint rotatesAt={rotatesAt} />
+            <QrLinkButton onClick={copyLink}>
+              <Icon name="copy" />
+              {t('qrLogin.copyLink', 'Скопировать ссылку')}
+            </QrLinkButton>
           </>
         )
       }
@@ -139,7 +139,7 @@ function OfferCode({ onDone }: Props) {
       }
       intro={
         <>
-          <ol className="text-body grid list-decimal gap-1 pl-5 text-ink-2">
+          <QrSteps>
             <li>
               {t(
                 'qrOffer.step1',
@@ -149,7 +149,7 @@ function OfferCode({ onDone }: Props) {
             <li>
               {t('qrOffer.step2', 'Сверьте четыре цифры на обоих экранах и подтвердите вход здесь')}
             </li>
-          </ol>
+          </QrSteps>
 
           {problem === 'tampered' && (
             <Banner icon="warning" tone="danger">

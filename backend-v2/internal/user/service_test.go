@@ -375,7 +375,7 @@ func TestProfileByID_ReturnsUsernameAsIs(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
 			AddRow("user-id", "ivan.7", "Ivan", "", "", "", "{}", false))
 
-	profile, err := svc.ProfileByID(context.Background(), "user-id")
+	profile, err := svc.ProfileByID(context.Background(), "user-id", "user-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -435,12 +435,23 @@ const searchSQL = `
 		LIMIT 50
 	`
 
+// expectPhotoCheck — проверка правила «Фото» у найденных с аватарами (#789).
+// Настроек нет — фото по умолчанию открыто.
+func expectPhotoCheck(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`FROM auth\.users u\s+LEFT JOIN users\.settings s`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "privacy_settings", "blocked", "exceptions"}).
+			AddRow("user-1", nil, false, nil).
+			AddRow("user-2", nil, false, nil).
+			AddRow("user-3", nil, false, nil))
+}
+
 // TestSearch covers all branches of Service.Search:
 //   - early returns without a DB call (empty query, whitespace-only query,
 //     bare '@' after stripping, queries that become empty after TrimPrefix);
 //   - successful searches with and without a leading '@';
 //   - SQL LIKE wildcard escaping (%, _, \);
 //   - DB and row-scan errors.
+
 func TestSearch(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -506,6 +517,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -523,6 +535,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-2", Username: "john", FirstName: "John", LastName: "Doe", AvatarURL: "http://avatar.com/john"},
@@ -723,6 +736,7 @@ func TestSearch(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
 					WithArgs("%john%", "viewer-1").
 					WillReturnRows(rows)
+				expectPhotoCheck(mock)
 			},
 			want: []user.SearchResult{
 				{ID: "user-1", Username: "john_doe", FirstName: "John", LastName: "Doe", AvatarURL: "http://a.com/1"},
@@ -924,7 +938,7 @@ func TestEscapeLikeOrder(t *testing.T) {
 	}
 }
 
-const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+const statusSQLPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 	tests := []struct {
@@ -944,10 +958,10 @@ func TestStatusReturnsNotFoundForMissingOrDisabledUser(t *testing.T) {
 			defer db.Close()
 
 			mock.ExpectQuery(statusSQLPattern).
-				WithArgs(tt.userID).
-				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+				WithArgs(tt.userID, "viewer-1").
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "last_active", "is_online"}))
 
-			status, err := user.NewService(db).Status(context.Background(), tt.userID)
+			status, err := user.NewService(db).Status(context.Background(), "viewer-1", tt.userID)
 			if !errors.Is(err, user.ErrNotFound) {
 				t.Fatalf("expected ErrNotFound, got %v", err)
 			}
@@ -972,11 +986,11 @@ func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
 
 	svc := user.NewService(db)
 	mock.ExpectQuery(statusSQLPattern).
-		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}).
-			AddRow([]byte(`{}`), nil, false))
+		WithArgs(userID, "viewer-1").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "last_active", "is_online"}).
+			AddRow([]byte(`{}`), false, nil, nil, false, nil, nil, false))
 
-	status, err := svc.Status(context.Background(), userID)
+	status, err := svc.Status(context.Background(), "viewer-1", userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

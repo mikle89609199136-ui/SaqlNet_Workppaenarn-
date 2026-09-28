@@ -1,15 +1,17 @@
 import { AudioPlayer, Icon, VideoPlayer } from '@/shared/ui';
 import type { IMessageDto } from '../../model/types';
 import { formatFileSize } from '@/shared/lib';
-import { type Dispatch, type SetStateAction } from 'react';
+import { type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   message: IMessageDto;
   onOpenImage: Dispatch<SetStateAction<string | null>>;
+  /** Время и статус: у голосового они стоят под его длительностью. */
+  trailing?: ReactNode;
 }
 
-export const MessageMedia = ({ message, onOpenImage }: Props) => {
+export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
   const { t } = useTranslation();
   const { mediaUnavailable, mediaUnavailableReason, mediaUrl, mediaType, type, mediaEncryption } =
     message;
@@ -50,8 +52,16 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     }
 
     return (
-      <div className="mt-1 mb-2 w-full">
-        <AudioPlayer src={mediaUrl} />
+      <div className={actualType === 'voice' ? undefined : 'mt-1 mb-2 w-full'}>
+        <AudioPlayer
+          durationMs={actualType === 'voice' ? message.voice?.durationMs : undefined}
+          gainDb={actualType === 'voice' ? message.voice?.gainDb : undefined}
+          seed={message.id}
+          src={mediaUrl}
+          waveform={actualType === 'voice' ? message.voice?.waveform : undefined}
+          trailing={actualType === 'voice' ? trailing : undefined}
+          variant={actualType === 'voice' ? 'voice' : 'audio'}
+        />
       </div>
     );
   }
@@ -63,12 +73,21 @@ export const MessageMedia = ({ message, onOpenImage }: Props) => {
     const sizeBytes = mediaEncryption?.sizeBytes ?? meta?.sizeBytes;
 
     return (
-      <a className="message-media-file flex gap-x-1" download={fileName} href={mediaUrl}>
-        <Icon name="file" size="xl" />
-        <div className="flex flex-col">
-          <span className="text-sm">{fileName}</span>
+      <a
+        className="message-media-file mb-1 flex items-center gap-2.5 no-underline"
+        download={fileName}
+        href={mediaUrl}
+      >
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-field bg-brand-soft text-brand group-data-[mine]/bubble:bg-on-brand/16 group-data-[mine]/bubble:text-on-brand"
+        >
+          <Icon className="size-5" name="file" />
+        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-ui font-semibold">{fileName}</span>
           {typeof sizeBytes === 'number' && (
-            <span className="text-xs text-[rgba(255,255,255,0.58)]">
+            <span className="text-meta text-ink-3 group-data-[mine]/bubble:text-out-meta">
               {formatFileSize(sizeBytes)}
             </span>
           )}

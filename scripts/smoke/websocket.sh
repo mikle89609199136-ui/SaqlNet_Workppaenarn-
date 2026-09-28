@@ -31,8 +31,22 @@ run_websocket_tests() {
 
 	ws_pid=$!
 
-	# Даём клиенту время завершить handshake.
-	sleep 1
+	# Wait for the actual handshake, including cold go run compilation time.
+	local ready=false
+	for ((attempt = 0; attempt < 300; attempt++)); do
+		if grep -q '^READY$' "$ws_output_file"; then ready=true; break; fi
+		if ! kill -0 "$ws_pid" 2>/dev/null; then break; fi
+		sleep 0.1
+	done
+	if [[ "$ready" != true ]]; then
+		echo "✗ [WS] handshake did not complete"
+		cat "$ws_output_file"
+		kill "$ws_pid" 2>/dev/null || true
+		wait "$ws_pid" 2>/dev/null || true
+		rm -f "$ws_output_file"
+		FAIL=$((FAIL + 1))
+		return
+	fi
 
 	local smoke_ws_message="smoke-ws-$$"
 
@@ -40,9 +54,9 @@ run_websocket_tests() {
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
 		-H "Authorization: Bearer $TOKEN" \
-		-d "{\"content\":\"$smoke_ws_message\",\"type\":\"text\"}"
+		-d "{\"messages\":[{\"content\":\"$smoke_ws_message\",\"type\":\"text\",\"entities\":[{\"type\":\"bold\",\"offset\":0,\"length\":5},{\"type\":\"link\",\"offset\":6,\"length\":2,\"data\":{\"url\":\"https://example.com/docs\"}}]}]}"
 
-	if [[ "$HTTP_CODE" != "200" ]]; then
+	if [[ "$HTTP_CODE" != "201" ]]; then
 		echo "✗ [$HTTP_CODE] Failed to create message for WebSocket test"
 		kill "$ws_pid" 2>/dev/null || true
 		wait "$ws_pid" 2>/dev/null || true
@@ -51,10 +65,20 @@ run_websocket_tests() {
 		return
 	fi
 
-	if wait "$ws_pid"; then
+	if wait "$ws_pid" && python3 -c '
+import json, sys
+with open(sys.argv[1]) as stream:
+    events = [json.loads(line) for line in stream if line.startswith("{")]
+message = events[-1]["message"]
+assert message["content"] == sys.argv[2]
+assert message["entities"] == [
+    {"type": "bold", "offset": 0, "length": 5},
+    {"type": "link", "offset": 6, "length": 2, "data": {"url": "https://example.com/docs"}},
+]
+' "$ws_output_file" "$smoke_ws_message"; then
 		ws_output=$(cat "$ws_output_file")
 
-		echo "✓ [WS] received new_message for chat $CHAT_ID"
+		echo "✓ [WS] received new_message with entities for chat $CHAT_ID"
 		PASS=$((PASS + 1))
 	else
 		ws_output=$(cat "$ws_output_file")

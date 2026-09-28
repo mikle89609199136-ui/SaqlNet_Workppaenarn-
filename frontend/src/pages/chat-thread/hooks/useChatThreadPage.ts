@@ -1,3 +1,4 @@
+import type { IRichTextInputHandle } from '@/shared/ui';
 import { describeApiError, useRealtimeSocket } from '@/shared/api';
 import { useChatEncryption } from '@/features/chat-encryption';
 import { usePhotoEditor } from '@/entities/media';
@@ -48,7 +49,7 @@ export function useChatThreadPage({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const draftRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
@@ -69,8 +70,9 @@ export function useChatThreadPage({
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
     attachmentInputRef,
+    photoEditorFile: modals.photoEditorFile,
     setPhotoEditorFile: modals.setPhotoEditorFile,
-    setPendingAttachment: modals.setPendingAttachment,
+    setPendingAttachments: modals.setPendingAttachments,
   });
   const { profileModal, setProfileModal } = useProfilePanel({
     chat,
@@ -90,6 +92,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleReact,
@@ -202,6 +205,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,

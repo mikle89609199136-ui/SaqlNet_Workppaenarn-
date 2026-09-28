@@ -79,23 +79,34 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
           application/json:
             schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
       '400': *error
+      '403': *error
+      '404': *error
       '500': *error
   post:
     tags: [Messages]
-    summary: Send a message to a chat
-    operationId: sendMessage
+    summary: Send messages to a chat
+    operationId: sendMessages
     security: *secure
+    description: >-
+      Always a batch, even for one message (#808). Messages are stored in one
+      transaction in the given order: either all of them or none. A forward is
+      an item with forwardedFrom whose content the client has already
+      re-encrypted for this chat. An error about a particular item carries its
+      position in details.index. 403 member_muted when the sender is muted;
+      403 blocked_by_user when the other member of a private chat has blocked
+      the sender — nothing is stored or delivered. One new_message event per
+      message, in order, after the commit.
     requestBody:
       required: true
       content:
         application/json:
-          schema: { $ref: '../components/schemas.yaml#/SendMessageRequest' }
+          schema: { $ref: '../components/schemas.yaml#/SendMessagesRequest' }
     responses:
-      '200':
-        description: Sent message
+      '201':
+        description: Sent messages, in the order of the request
         content:
           application/json:
-            schema: { $ref: '../components/schemas.yaml#/MessageResponse' }
+            schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
       '400': *error
       '403': *error
       '404': *error
@@ -121,7 +132,9 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '500': *error
   delete:
     tags: [Messages]
-    summary: Delete a message
+    summary: Delete a message for everyone
+    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    deprecated: true
     operationId: deleteMessage
     security: *secure
     responses:
@@ -130,34 +143,6 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/DeleteMessageResponse' }
-      '400': *error
-      '403': *error
-      '404': *error
-      '500': *error
-
-/messages/{messageId}/forward:
-  post:
-    tags: [Messages]
-    summary: Forward a message
-    operationId: forwardMessage
-    security: *secure
-    parameters:
-      - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [targetChatId]
-            properties:
-              targetChatId: { type: string, format: uuid }
-    responses:
-      '200':
-        description: Forwarded message
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/MessageResponse' }
       '400': *error
       '403': *error
       '404': *error

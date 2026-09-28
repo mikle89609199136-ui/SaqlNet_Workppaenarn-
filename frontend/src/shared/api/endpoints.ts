@@ -31,14 +31,21 @@ export const API_ENDPOINTS = {
   CHAT_GROUPS: '/chats/groups',
   CHAT_BY_ID: (chatId: string) => `/chats/${chatId}`,
   CHAT_MEMBERS: (chatId: string) => `/chats/${chatId}/members`,
+  CHAT_MEMBERS_ONLINE: (chatId: string) => `/chats/${chatId}/members-online`,
+  CHAT_MEMBER_ADD: (chatId: string) => `/chats/${chatId}/members`,
   CHAT_MEMBER: (chatId: string, userId: string) => `/chats/${chatId}/members/${userId}`,
   CHAT_MEMBER_ROLE: (chatId: string, userId: string) => `/chats/${chatId}/members/${userId}/role`,
-  CHAT_MUTE: (chatId: string) => `/chats/${chatId}/mute`,
+  CHAT_LEAVE: (chatId: string) => `/chats/${chatId}/leave`,
+  CHAT_TRANSFER_OWNERSHIP: (chatId: string) => `/chats/${chatId}/transfer-ownership`,
   CHAT_PIN: (chatId: string) => `/chats/${chatId}/pin`,
   CHAT_ARCHIVE: (chatId: string) => `/chats/${chatId}/archive`,
   CHAT_READ: (chatId: string) => `/chats/${chatId}/read`,
+  /** Удаление выбранных сообщений у всех или у себя (#840). */
+  CHAT_MESSAGES_DELETE: (chatId: string) => `/chats/${chatId}/messages/delete`,
 
   USER_SEARCH: '/users/search',
+  USER_CHECK_USERNAME: '/users/check-username',
+  USER_STATUS: (userId: string) => `/users/${userId}/status`,
   USER_PROFILE: (userId: string) => `/users/${userId}/profile`,
   USER_SETTINGS: '/users/settings',
   USER_PRIVACY: '/users/privacy',
@@ -53,6 +60,9 @@ export const API_ENDPOINTS = {
   USER_EXPORT: '/users/export',
   USER_BLOCKED: '/users/blocked',
   USER_BLOCKED_BY_ID: (userId: string) => `/users/blocked/${userId}`,
+  USER_PRIVACY_EXCEPTIONS: '/users/privacy/exceptions',
+  USER_PRIVACY_EXCEPTION: (rule: string, userId: string) =>
+    `/users/privacy/exceptions/${rule}/${userId}`,
   USER_DEVICES: '/users/devices',
   USER_DEVICE_REGISTER: '/users/devices/register',
   USER_DEVICE_DELETE: (sessionId: string) => `/users/devices/${sessionId}`,
@@ -85,5 +95,7 @@ export const API_ENDPOINTS = {
   ADMIN_REPORT_RESOLVE: (reportId: string) => `/admin/reports/${reportId}/resolve`,
 
   CALL_ROOMS: '/calls/rooms',
+  CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
+  CALL_ICE_SERVERS: '/calls/ice-servers',
   EMOJIS: '/emojis',
 };

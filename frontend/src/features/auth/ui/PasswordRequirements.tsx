@@ -21,17 +21,16 @@ export function PasswordRequirements({ value, className }: Props) {
   const done = checkPassword(value);
 
   return (
-    <ul className={cn('mt-2 grid gap-1', className)}>
+    <ul className={cn('m-0 mt-1.5 grid list-none gap-1 p-0', className)}>
       {PASSWORD_RULES.map((rule) => (
         <li
-          className="flex items-center gap-1.5 text-micro text-ink-3 data-[done=true]:text-ok"
+          className="flex items-center gap-1.5 text-meta text-ink-3 data-[done=true]:text-ok"
           data-done={done[rule.id]}
           key={rule.id}
         >
           <Icon
-            className={done[rule.id] ? undefined : 'opacity-40'}
-            name={done[rule.id] ? 'checkCircle' : 'info'}
-            size="sm"
+            className="size-3.5 shrink-0 stroke-2"
+            name={done[rule.id] ? 'checkCircle' : 'circleAlert'}
           />
           {rule.label}
         </li>

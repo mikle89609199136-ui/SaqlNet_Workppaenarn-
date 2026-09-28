@@ -17,13 +17,17 @@ interface Props {
  */
 export function ChatsSearchField({ value, onChange, onReset }: Props) {
   const { t } = useTranslation();
-  const placeholder = t('search', 'Поиск чатов и людей...');
+  /* В поле — коротко «Поиск», как в макете; диктору — что именно ищем. */
+  const placeholder = t('searchShort', 'Поиск');
 
   return (
     <Input
-      aria-label={placeholder}
+      aria-label={t('searchChatsAndPeople', 'Поиск чатов и людей')}
       className="min-w-0 flex-1"
       icon="search"
+      /* Прозрачное, в тонкой рамке: поиск принадлежит списку, а не форме. */
+      inputClassName="bg-transparent"
+      size="search"
       onChange={(event) => onChange(event.target.value)}
       /* Escape очищает поле, не выпуская из него фокус: продолжить набор
          нового запроса можно сразу, не возвращаясь к полю мышью. */
@@ -40,7 +44,7 @@ export function ChatsSearchField({ value, onChange, onReset }: Props) {
         value ? (
           <button
             aria-label={t('clearSearch', 'Очистить поиск')}
-            className="flex items-center justify-center rounded-pill p-1 text-ink-3 transition-colors hover:text-ink"
+            className="flex size-8 items-center justify-center rounded-field text-ink-3 transition-colors hover:layer-hover hover:text-ink"
             onClick={onReset}
             type="button"
           >

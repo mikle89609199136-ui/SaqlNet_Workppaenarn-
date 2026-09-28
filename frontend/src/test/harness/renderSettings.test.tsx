@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderSettings } from './renderSettings';
 
@@ -13,18 +13,26 @@ describe('оснастка настроек', () => {
   it('открывает раздел, заданный адресом', async () => {
     renderSettings({ section: 'privacy' });
 
-    expect(await screen.findByText('Конфиденциальность')).toBeInTheDocument();
+    // Заголовок раздела — в шапке страницы (#828), которой в оснастке нет.
+    expect(await screen.findByRole('region', { name: 'Кто видит' })).toBeInTheDocument();
   });
 
   it('показывает значение из кеша, не обращаясь к серверу', async () => {
-    renderSettings({ section: 'privacy', privacy: { lastSeen: 'nobody' } });
+    renderSettings({
+      section: 'privacy',
+      subsection: 'last-seen',
+      privacy: { lastSeen: 'nobody' },
+    });
 
-    expect(await screen.findByRole('radio', { name: 'Никто' })).toBeChecked();
+    const lastSeen = await screen.findByRole('radiogroup', {
+      name: 'Кто видит, когда я был(а) в сети',
+    });
+    expect(within(lastSeen).getByRole('radio', { name: 'Никто' })).toBeChecked();
   });
 
   it('открывает подстраницу аккаунта по адресу', async () => {
     renderSettings({ section: 'account', subsection: 'password' });
 
-    expect(await screen.findByRole('heading', { name: 'Изменить пароль' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Текущий пароль')).toBeInTheDocument();
   });
 });

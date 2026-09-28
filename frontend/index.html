@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300..800&family=JetBrains+Mono:wght@400;500&family=Noto+Color+Emoji&display=swap" rel="stylesheet">
     <script>
       /*
         Тема ставится до первой отрисовки, иначе экран мигнёт тёмной темой,
@@ -29,6 +29,22 @@
           }
         } catch (e) {
           /* приватный режим — останется значение по умолчанию */
+        }
+
+        /* Палитра и акцент (#828): пока их хранит только браузер, это не
+           проекция, а сам выбор — см. entities/user/model/appearanceStore.
+           Незнакомое значение пропускается: без атрибута действует
+           палитра и акцент по умолчанию. */
+        try {
+          var look = JSON.parse(localStorage.getItem('craneapp_appearance') || '{}');
+          if (look.palette === 'midnight' || look.palette === 'warm') {
+            document.documentElement.setAttribute('data-palette', look.palette);
+          }
+          if (/^(plum|orchid|indigo|amber|teal)$/.test(look.accent)) {
+            document.documentElement.setAttribute('data-accent', look.accent);
+          }
+        } catch (e) {
+          /* приватный режим — палитра и акцент по умолчанию */
         }
       })();
     </script>

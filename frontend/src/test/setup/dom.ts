@@ -42,6 +42,29 @@ Element.prototype.getBoundingClientRect = function () {
   return original;
 };
 
+/* У Range в jsdom нет размеров, а редактор Lexical прокручивает к выделению
+   после каждой правки и падал бы на этом (#656). */
+if (typeof Range !== 'undefined' && !Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () =>
+    ({
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => '',
+    }) as DOMRect;
+  Range.prototype.getClientRects = () =>
+    ({
+      length: 0,
+      item: () => null,
+      [Symbol.iterator]: [][Symbol.iterator],
+    }) as unknown as DOMRectList;
+}
+
 if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get) {
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     get() {

@@ -62,4 +62,14 @@ describe('аватарка', () => {
       expect(node).toHaveAttribute('aria-hidden', 'true');
     });
   });
+
+  it('точка «в сети» в строке списка — зелёный круг 12 и обводка 2 снаружи, как в макете', () => {
+    /* В макете у точки нет box-sizing: обводка добавляется снаружи, всего
+       16px. С border-box при 12px зелёного оставалось 8 — точка выходила
+       заметно мельче. */
+    const { container } = render(<Avatar id="u-anna" name="Анна" online size="lg" />);
+
+    const dot = container.querySelector('.bg-ok');
+    expect(dot).toHaveClass('size-4', 'border-2', 'border-sheet');
+  });
 });

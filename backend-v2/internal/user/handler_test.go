@@ -212,7 +212,7 @@ func TestCheckUsername_ValidationErrors(t *testing.T) {
 }
 
 func TestPublicStatusReturnsUserNotFound(t *testing.T) {
-	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN LATERAL.*FROM public\.user_sessions.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
+	const statusQueryPattern = `(?s)FROM auth\.users.*LEFT JOIN users\.settings.*LEFT JOIN users\.presence.*WHERE auth\.users\.id = \$1 AND auth\.users\.disabled_at IS NULL`
 
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -221,8 +221,8 @@ func TestPublicStatusReturnsUserNotFound(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery(statusQueryPattern).
-		WithArgs("11111111-1111-4111-8111-111111111111").
-		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "last_active", "is_online"}))
+		WithArgs("11111111-1111-4111-8111-111111111111", "").
+		WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "last_active", "is_online"}))
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/11111111-1111-4111-8111-111111111111/status", nil)

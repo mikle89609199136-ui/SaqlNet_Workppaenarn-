@@ -86,7 +86,10 @@ export class ApiClient {
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
-    const token = this.getToken();
+    const url = this.buildUrl(endpoint, params);
+    // Токен уходит только своему серверу (#871): абсолютный адрес чужого
+    // origin получает запрос без авторизации.
+    const token = this.isOwnOrigin(url) ? this.getToken() : null;
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
@@ -101,13 +104,24 @@ export class ApiClient {
 
     const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
 
-    const response = await fetch(this.buildUrl(endpoint, params), {
+    const response = await fetch(url, {
       ...requestOptions,
       headers: requestHeaders,
       body,
     });
 
     return this.parseResponse<T>(response);
+  }
+
+  /** Тот же origin, что у базы API: относительный адрес — всегда свой. */
+  private isOwnOrigin(url: string): boolean {
+    if (!/^https?:\/\//i.test(url)) return true;
+    const here = globalThis.location?.href ?? 'http://localhost/';
+    try {
+      return new URL(url).origin === new URL(this.baseUrl, here).origin;
+    } catch {
+      return false;
+    }
   }
 
   private buildUrl(endpoint: string, params: TQueryParams = {}): string {

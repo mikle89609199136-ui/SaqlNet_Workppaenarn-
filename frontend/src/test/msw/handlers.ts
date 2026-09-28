@@ -31,6 +31,15 @@ export const defaultHandlers = [
       },
     })
   ),
+  http.get(api('/users/:userId/status'), () =>
+    HttpResponse.json({ isOnline: false, lastSeen: '', lastSeenApprox: 'recently' })
+  ),
+
+  http.get(api('/users/check-username'), ({ request }) => {
+    const url = new URL(request.url);
+    const username = url.searchParams.get('username');
+    return HttpResponse.json({ available: username !== 'taken' });
+  }),
 
   // Настройки и приватность сервер отдаёт одним ответом. Пустые объекты, а
   // не выдуманные значения: раздел обязан работать на том, чего сервер не

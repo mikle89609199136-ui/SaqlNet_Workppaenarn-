@@ -16,7 +16,12 @@ User:
     lastName: { type: string }
     language: { type: string }
     bio: { type: string }
-    avatarUrl: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        Empty when the user's photoVisibility rule (with the block list and
+        exceptions) hides the photo from the caller. The caller always sees
+        their own.
 Password:
   # Требования задаёт internal/auth/password_validator.go и применяет во
   # всех трёх местах, где пароль задаётся: регистрация, смена, включение
@@ -74,6 +79,67 @@ ProfileResponse:
   required: [user]
   properties:
     user: { $ref: '#/User' }
+PrivacyVisibility:
+  type: string
+  enum: [all, nobody]
+  description: >-
+    Who else sees it. There are no contacts yet, so only everyone or nobody.
+    Being blocked by the owner hides it regardless of the rule.
+PrivacySettings:
+  type: object
+  additionalProperties: false
+  description: >-
+    Privacy rules. Absent rules take their defaults (phoneVisibility nobody,
+    the rest all); a corrupted stored value reads as nobody.
+  properties:
+    lastSeen: { $ref: '#/PrivacyVisibility' }
+    photoVisibility: { $ref: '#/PrivacyVisibility' }
+    phoneVisibility: { $ref: '#/PrivacyVisibility' }
+    forwards: { $ref: '#/PrivacyVisibility' }
+    calls: { $ref: '#/PrivacyVisibility' }
+    groupsAdd: { $ref: '#/PrivacyVisibility' }
+    messagesFromStrangers: { type: boolean }
+    twoFactorAuth: { type: boolean }
+    autoDeleteAccount: { type: boolean }
+LastSeenApprox:
+  type: string
+  enum: [recently, within_week, within_month, long_ago]
+  description: >-
+    Approximate last activity, given instead of the exact time when it is
+    hidden. The exact time is shown only if both people share it with each
+    other (lastSeen rule, exceptions and the block list, checked both ways);
+    otherwise recently is up to 3 days, within_week up to 7, within_month up
+    to 30, long_ago beyond that or never. Someone blocked by the owner always
+    gets long_ago.
+UserStatus:
+  type: object
+  required: [isOnline, lastSeen]
+  properties:
+    isOnline: { type: boolean }
+    lastSeen:
+      type: string
+      description: ISO 8601 UTC time of the last activity; empty when unknown or hidden.
+    lastSeenApprox: { $ref: '#/LastSeenApprox' }
+PrivacyExceptionRule:
+  type: string
+  enum: [lastSeen, photoVisibility, phoneVisibility, forwards, calls, groupsAdd]
+  description: Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
+PrivacyExceptionMode:
+  type: string
+  enum: [allow, deny]
+  description: allow — always let this person see it; deny — never.
+PrivacyException:
+  type: object
+  required: [id, username, firstName, lastName, avatarUrl, rule, mode, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    username: { type: string }
+    firstName: { type: string }
+    lastName: { type: string }
+    avatarUrl: { type: string }
+    rule: { $ref: '#/PrivacyExceptionRule' }
+    mode: { $ref: '#/PrivacyExceptionMode' }
+    createdAt: { type: string, format: date-time }
 Chat:
   type: object
   required: [id, type]
@@ -82,7 +148,12 @@ Chat:
     type: { type: string, enum: [private, group, channel] }
     title: { type: string }
     description: { type: string }
-    avatarUrl: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        For a private chat, the peer's avatar. Empty when the peer's
+        photoVisibility hides it (contacts and nobody both hide: there are no
+        contacts).
     ownerId: { type: string, format: uuid }
     role: { type: string }
     isPinned: { type: boolean }
@@ -90,6 +161,34 @@ Chat:
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
+    lastMessage: { $ref: '#/LastMessagePreview' }
+    peerId: { type: string, format: uuid, description: Private chats only. }
+    peerIsOnline:
+      type: boolean
+      description: >-
+        Private chats only. True while the peer has a live WebSocket connection
+        (heartbeat within 75 seconds). Omitted when false or hidden, see
+        peerLastSeenApprox. Changes arrive as the presence_changed WebSocket
+        event.
+    peerLastSeen:
+      type: string
+      description: >-
+        Private chats only. ISO 8601 UTC time of the peer's last activity.
+        Omitted when unknown or hidden, see peerLastSeenApprox.
+    isBlockedByPeer:
+      type: boolean
+      description: >-
+        Private chats only. The peer has blocked the caller: sending (403
+        blocked_by_user) and calling are refused. Changes arrive as the
+        user_blocked / user_unblocked WebSocket events.
+    isPeerBlocked:
+      type: boolean
+      description: Private chats only. The caller has blocked the peer.
+    peerLastSeenApprox:
+      allOf: [{ $ref: '#/LastSeenApprox' }]
+      description: >-
+        Private chats only. Present instead of peerLastSeen and peerIsOnline
+        when the exact time is hidden from the viewer.
 ChatMember:
   allOf:
     - { $ref: '#/User' }
@@ -105,37 +204,133 @@ ChatMember:
             description: 'set when muted; mutedUntil null = permanent mute',
           }
         joinedAt: { type: string }
+MessageEntity:
+  type: object
+  required: [type, offset, length]
+  description: >-
+    A range in UTF-16 code units. Both boundaries must be between Unicode code
+    points (never inside a surrogate pair), and offset + length must not exceed
+    the content length. Inline ranges may overlap, except links cannot overlap
+    other links. Blockquotes cover whole lines (start at 0 or after LF; end at
+    content end or before LF), cannot overlap other blockquotes, and any inline
+    range intersecting a blockquote must be fully contained within it.
+    data is required for link and must be absent for every other type.
+  properties:
+    type:
+      type: string
+      enum: [bold, italic, underline, strikethrough, spoiler, monospace, link, blockquote]
+    offset: { type: integer, minimum: 0, description: Offset in UTF-16 code units. }
+    length: { type: integer, minimum: 1, description: Length in UTF-16 code units. }
+    data:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute http or https URL with a nonempty host; at most 2048 UTF-16 code units.
+  oneOf:
+    - required: [data]
+      properties:
+        type: { enum: [link] }
+    - properties:
+        type: { enum: [bold, italic, underline, strikethrough, spoiler, monospace, blockquote] }
+      not: { required: [data] }
+MessageEntities:
+  type: array
+  maxItems: 100
+  default: []
+  description: >-
+    At most 100 entities. Omitted on send or edit means an empty array; edit
+    always replaces existing entities. Must be empty for E2E envelopes and
+    stickers. Invalid schema, ranges, URLs or limits return 400 validation_failed.
+  items: { $ref: '#/MessageEntity' }
+LastMessagePreview:
+  type: object
+  required: [id, content, entities, type, senderName, reactions]
+  properties:
+    id: { type: string, format: uuid }
+    content: { type: string }
+    entities: { $ref: '#/MessageEntities' }
+    type: { type: string }
+    senderId: { type: string, format: uuid }
+    senderName: { type: string }
+    reactions: { type: array, items: { $ref: '#/Reaction' } }
 Message:
   type: object
-  required: [id, chatId, senderId, senderFirstName, content, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
+  required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
   properties:
     id: { type: string, format: uuid }
     chatId: { type: string, format: uuid }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
     senderFirstName: { type: string }
-    senderAvatar: { type: string }
-    content: { type: string }
+    senderAvatar:
+      type: string
+      description: >-
+        Empty when the sender's photoVisibility rule hides the photo from the
+        caller. Never sent in WebSocket events, which go to every member at
+        once.
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the request body limit.
+    entities: { $ref: '#/MessageEntities' }
     type: { type: string, enum: [text, image, audio, video, voice, sticker, gif, file, call] }
     replyTo: { type: string, format: uuid, nullable: true }
+    replyPreview: { $ref: '#/LastMessagePreview' }
     replyToMessageId: { type: string, format: uuid, nullable: true }
     replySenderName: { type: string }
     replyToSenderName: { type: string }
     reactions:
       type: array
       items: { $ref: '#/Reaction' }
-    metadata: { type: object, additionalProperties: true }
+    metadata:
+      type: object
+      additionalProperties: true
+      description: >-
+        A forward carries forwardedSenderName and either forwardedFrom (the
+        original message) with forwardedSenderId, or forwardedHidden: true when the original author's
+        forwards rule did not allow the forwarder to link to them. Decided once,
+        at forwarding time, for every reader.
     isForwarded: { type: boolean }
-    forwardedSenderName: { type: string }
+    forwardedSenderName:
+      type: string
+      description: Name of the original author, shown as text even when the link is hidden.
+    forwardedSenderId:
+      type: string
+      format: uuid
+      description: >-
+        Original author, to open their profile. Present only when the author's
+        forwards rule allowed the forwarder to link to them; absent together
+        with forwardedFrom when the link is hidden.
     isPinned: { type: boolean }
     isEdited: { type: boolean }
     createdAt: { type: string }
     updatedAt: { type: string }
     deletedAt: { type: string, nullable: true }
+SendMessagesRequest:
+  type: object
+  required: [messages]
+  properties:
+    messages:
+      type: array
+      minItems: 1
+      maxItems: 100
+      description: The whole request body is limited to 2 MiB.
+      items: { $ref: '#/SendMessageRequest' }
 SendMessageRequest:
   type: object
   properties:
-    content: { type: string }
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the 256 KiB request body limit.
+    entities: { $ref: '#/MessageEntities' }
     type:
       type: string
       enum: [text, image, audio, video, voice, sticker, gif, file]
@@ -153,16 +348,25 @@ SendMessageRequest:
       format: uuid
       nullable: true
       description: >-
-        Message being forwarded, for clients that re-encrypt content for the
-        target chat instead of calling /messages/{messageId}/forward. The
+        Message being forwarded: the client re-encrypts its content for the
+        target chat and sends it as a regular item. The
         requester must be a member of that message's chat, otherwise 400. When
         it is itself a forward, the original author is kept. The author name is
-        resolved by the server.
+        resolved by the server. If the original author's forwards rule (with
+        the block list and exceptions) forbids the requester, only the name is
+        kept and metadata gets forwardedHidden instead of forwardedFrom; a
+        hidden forward stays hidden when forwarded again.
 EditMessageRequest:
   type: object
   required: [content]
   properties:
-    content: { type: string }
+    content:
+      type: string
+      description: >-
+        Original text, without HTML escaping; at most 16384 UTF-16 code units,
+        including media captions. Recognized E2E transport envelopes are exempt
+        from this text limit and remain subject to the 256 KiB request body limit.
+    entities: { $ref: '#/MessageEntities' }
 Reaction:
   type: object
   required: [emoji, count, myReaction]
@@ -180,6 +384,9 @@ EncryptedMediaUploadRequest:
     invalid_ciphertext. Other invalid envelope fields return validation_failed.
   properties:
     purpose: { type: string, enum: [message] }
+    type:
+      type: string
+      description: Attachment kind (image, voice, file…). A voice upload over 8 MB of ciphertext returns 413 file_too_large (#843).
     fileName: { type: string, maxLength: 255, description: Fallback filename; at most 255 UTF-8 bytes. }
     file:
       type: object
@@ -223,6 +430,16 @@ MessageListResponse:
     messages:
       type: array
       items: { $ref: '#/Message' }
+DeleteMessagesRequest:
+  type: object
+  required: [messageIds, forEveryone]
+  properties:
+    messageIds:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items: { type: string, format: uuid }
+    forEveryone: { type: boolean }
 DeleteMessageResponse:
   type: object
   required: [success, lastMessage]
@@ -290,11 +507,20 @@ SaveChatKeysRequest:
     keyEpoch: { type: integer, minimum: 0 }
 ChatKeysResponse:
   type: object
-  required: [keys]
+  required: [keys, keyEpoch, rotationNeeded]
   properties:
     keys:
       type: array
       items: { $ref: '#/ChatEncryptedKey' }
+    keyEpoch:
+      type: integer
+      minimum: 0
+      description: Current key epoch of the chat — the highest written; 0 before the first key.
+    rotationNeeded:
+      type: boolean
+      description: >-
+        Membership changed after the current epoch was written. The current key
+        must not be handed out any more: the next writer publishes epoch keyEpoch + 1.
 KeyEpochResponse:
   type: object
   required: [ok, keyEpoch]

@@ -29,6 +29,7 @@ func main() {
 		log.Fatalf("connect: %v", err)
 	}
 	defer conn.Close()
+	fmt.Println("READY")
 
 	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		log.Fatal(err)
