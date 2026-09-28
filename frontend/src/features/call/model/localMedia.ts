@@ -6,12 +6,14 @@ import type {
   TFacingMode,
 } from './types';
 
+export const MEDIA_PERMISSION_TIMEOUT_MS = 20000;
+
 export function parseMediaError(err: unknown): IMediaError {
   if (!err) {
     return {
       type: 'UnknownMediaError',
       name: 'UnknownMediaError',
-      message: 'Неизвестная ошибка медиа-устройств',
+      message: 'Unknown media error',
     };
   }
 
@@ -31,7 +33,7 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'NotAllowedError',
         name,
-        message: 'Доступ к микрофону или камере запрещён пользователем',
+        message: rawMessage || 'Permission denied',
         originalError: err,
       };
 
@@ -40,7 +42,7 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'NotFoundError',
         name,
-        message: 'Микрофон или камера не найдены',
+        message: rawMessage || 'Requested device not found',
         originalError: err,
       };
 
@@ -49,7 +51,7 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'NotReadableError',
         name,
-        message: 'Устройство занято другим приложением или системой',
+        message: rawMessage || 'Device is not readable or already in use',
         originalError: err,
       };
 
@@ -57,7 +59,7 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'OverconstrainedError',
         name,
-        message: 'Устройство не поддерживает запрошенные параметры',
+        message: rawMessage || 'Overconstrained track settings',
         originalError: err,
       };
 
@@ -65,7 +67,15 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'InsecureContextError',
         name,
-        message: 'Медиа-устройства недоступны (небезопасный контекст или браузер не поддерживает)',
+        message: rawMessage || 'Media devices not available in insecure context',
+        originalError: err,
+      };
+
+    case 'TimeoutError':
+      return {
+        type: 'TimeoutError',
+        name,
+        message: rawMessage || 'Media permission request timed out',
         originalError: err,
       };
 
@@ -73,7 +83,7 @@ export function parseMediaError(err: unknown): IMediaError {
       return {
         type: 'UnknownMediaError',
         name,
-        message: rawMessage || 'Ошибка доступа к медиа-устройствам',
+        message: rawMessage || 'Media error occurred',
         originalError: err,
       };
   }
@@ -105,7 +115,9 @@ export class LocalMediaManager {
   private trackReplacedListeners = new Set<TTrackReplacedCallback>();
   private isListeningDeviceChange = false;
 
-  private operationId = 0;
+  private startOperationId = 0;
+  private cameraSwitchOpId = 0;
+  private micSwitchOpId = 0;
   private isStopped = false;
 
   constructor() {
@@ -151,7 +163,7 @@ export class LocalMediaManager {
         this.state.error = {
           type: 'NotFoundError',
           name: 'NotFoundError',
-          message: 'Микрофон был отключён или стал недоступен',
+          message: 'Audio device disconnected',
         };
         this.notify();
       } else if (track.kind === 'video' && this.state.videoTrack === track) {
@@ -160,7 +172,7 @@ export class LocalMediaManager {
         this.state.error = {
           type: 'NotFoundError',
           name: 'NotFoundError',
-          message: 'Камера была отключена или стала недоступна',
+          message: 'Video device disconnected',
         };
         this.notify();
       }
@@ -178,7 +190,7 @@ export class LocalMediaManager {
     }
 
     this.isStopped = false;
-    const currentOpId = ++this.operationId;
+    const currentOpId = ++this.startOperationId;
 
     this.state.isLoading = true;
     this.state.error = null;
@@ -207,14 +219,32 @@ export class LocalMediaManager {
             ...(options.videoDeviceId ? { deviceId: { exact: options.videoDeviceId } } : {}),
           };
 
+    const timeoutMs = options.timeoutMs ?? MEDIA_PERMISSION_TIMEOUT_MS;
+
     try {
-      const stream = await nav.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-        video: videoConstraints,
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          const timeoutErr = new Error('Permission request timed out');
+          timeoutErr.name = 'TimeoutError';
+          reject(timeoutErr);
+        }, timeoutMs);
+      });
+
+      const stream = await Promise.race([
+        nav.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: videoConstraints,
+        }),
+        timeoutPromise,
+      ]).finally(() => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
       });
 
       // Если пока шёл запрос разрешения пользователь отменил звонок — останавливаем треки немедленно
-      if (this.isStopped || this.operationId !== currentOpId) {
+      if (this.isStopped || this.startOperationId !== currentOpId) {
         for (const t of stream.getTracks()) {
           try {
             t.stop();
@@ -269,7 +299,7 @@ export class LocalMediaManager {
       this.notify();
       return stream;
     } catch (rawError) {
-      if (this.isStopped || this.operationId !== currentOpId) {
+      if (this.isStopped || this.startOperationId !== currentOpId) {
         return null;
       }
 
@@ -288,7 +318,7 @@ export class LocalMediaManager {
             video: false,
           });
 
-          if (this.isStopped || this.operationId !== currentOpId) {
+          if (this.isStopped || this.startOperationId !== currentOpId) {
             for (const t of audioOnlyStream.getTracks()) {
               try {
                 t.stop();
@@ -297,6 +327,17 @@ export class LocalMediaManager {
               }
             }
             return null;
+          }
+
+          // Останавливаем прежний стрим при fallback на аудио
+          if (this.state.stream && this.state.stream !== audioOnlyStream) {
+            for (const t of this.state.stream.getTracks()) {
+              try {
+                t.stop();
+              } catch {
+                // Игнорируем
+              }
+            }
           }
 
           const audioTrack = audioOnlyStream.getAudioTracks()[0] ?? null;
@@ -353,24 +394,26 @@ export class LocalMediaManager {
       return null;
     }
 
+    if (this.state.isLoading) {
+      return null;
+    }
+
     // Если звонок строго голосовой и видео не инициализировано, переключение камеры не выполняется
     if (!this.state.videoTrack && !this.state.stream?.getVideoTracks().length) {
       return null;
     }
 
-    const currentOpId = ++this.operationId;
+    const currentOpId = ++this.cameraSwitchOpId;
 
     let targetFacing: TFacingMode = this.state.facingMode;
-    let targetDeviceId: string | null = this.state.selectedVideoDeviceId;
+    let targetDeviceId: string | null = null;
 
     if (deviceIdOrFacing === 'user' || deviceIdOrFacing === 'environment') {
       targetFacing = deviceIdOrFacing;
-      targetDeviceId = null;
     } else if (deviceIdOrFacing) {
       targetDeviceId = deviceIdOrFacing;
     } else {
       targetFacing = this.state.facingMode === 'user' ? 'environment' : 'user';
-      targetDeviceId = null;
     }
 
     const videoConstraint: MediaTrackConstraints = targetDeviceId
@@ -378,6 +421,8 @@ export class LocalMediaManager {
       : { facingMode: targetFacing };
 
     const oldTrack = this.state.videoTrack;
+    const prevFacing = this.state.facingMode;
+    const prevVideoDeviceId = this.state.selectedVideoDeviceId;
 
     // Останавливаем старый трек перед запросом нового (критично для мобильных устройств,
     // где две камеры не могут работать одновременно и вызывают NotReadableError)
@@ -403,7 +448,7 @@ export class LocalMediaManager {
         audio: false,
       });
 
-      if (this.isStopped || this.operationId !== currentOpId) {
+      if (this.isStopped || this.cameraSwitchOpId !== currentOpId) {
         for (const t of tempStream.getTracks()) {
           try {
             t.stop();
@@ -440,6 +485,59 @@ export class LocalMediaManager {
       return newTrack;
     } catch (rawError) {
       this.state.error = parseMediaError(rawError);
+
+      // Восстанавливаем прежнюю камеру при ошибке
+      if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
+        try {
+          const fallbackConstraint: MediaTrackConstraints = prevVideoDeviceId
+            ? { deviceId: { exact: prevVideoDeviceId } }
+            : { facingMode: prevFacing };
+
+          const fallbackStream = await nav.mediaDevices.getUserMedia({
+            video: fallbackConstraint,
+            audio: false,
+          });
+
+          if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
+            const restoredTrack = fallbackStream.getVideoTracks()[0];
+            if (restoredTrack) {
+              restoredTrack.enabled = !this.state.isVideoMuted;
+              this.bindTrackEnded(restoredTrack);
+
+              if (this.state.stream) {
+                this.state.stream.addTrack(restoredTrack);
+              }
+
+              this.state.videoTrack = restoredTrack;
+              this.state.facingMode = prevFacing;
+              this.state.selectedVideoDeviceId = prevVideoDeviceId;
+
+              for (const cb of this.trackReplacedListeners) {
+                try {
+                  cb('video', oldTrack, restoredTrack);
+                } catch {
+                  // Игнорируем
+                }
+              }
+            } else {
+              this.state.videoTrack = null;
+            }
+          } else {
+            for (const t of fallbackStream.getTracks()) {
+              try {
+                t.stop();
+              } catch {
+                // Игнорируем
+              }
+            }
+          }
+        } catch {
+          this.state.videoTrack = null;
+        }
+      } else {
+        this.state.videoTrack = null;
+      }
+
       this.notify();
       return null;
     }
@@ -451,8 +549,13 @@ export class LocalMediaManager {
       return null;
     }
 
-    const currentOpId = ++this.operationId;
+    if (this.state.isLoading) {
+      return null;
+    }
+
+    const currentOpId = ++this.micSwitchOpId;
     const oldTrack = this.state.audioTrack;
+    const prevDeviceId = this.state.selectedAudioDeviceId;
 
     if (oldTrack) {
       try {
@@ -476,7 +579,7 @@ export class LocalMediaManager {
         video: false,
       });
 
-      if (this.isStopped || this.operationId !== currentOpId) {
+      if (this.isStopped || this.micSwitchOpId !== currentOpId) {
         for (const t of tempStream.getTracks()) {
           try {
             t.stop();
@@ -512,6 +615,58 @@ export class LocalMediaManager {
       return newTrack;
     } catch (rawError) {
       this.state.error = parseMediaError(rawError);
+
+      // Восстанавливаем прежний микрофон при ошибке
+      if (!this.isStopped && this.micSwitchOpId === currentOpId) {
+        try {
+          const fallbackConstraint: boolean | MediaTrackConstraints = prevDeviceId
+            ? { deviceId: { exact: prevDeviceId } }
+            : true;
+
+          const fallbackStream = await nav.mediaDevices.getUserMedia({
+            audio: fallbackConstraint,
+            video: false,
+          });
+
+          if (!this.isStopped && this.micSwitchOpId === currentOpId) {
+            const restoredTrack = fallbackStream.getAudioTracks()[0];
+            if (restoredTrack) {
+              restoredTrack.enabled = !this.state.isAudioMuted;
+              this.bindTrackEnded(restoredTrack);
+
+              if (this.state.stream) {
+                this.state.stream.addTrack(restoredTrack);
+              }
+
+              this.state.audioTrack = restoredTrack;
+              this.state.selectedAudioDeviceId = prevDeviceId;
+
+              for (const cb of this.trackReplacedListeners) {
+                try {
+                  cb('audio', oldTrack, restoredTrack);
+                } catch {
+                  // Игнорируем
+                }
+              }
+            } else {
+              this.state.audioTrack = null;
+            }
+          } else {
+            for (const t of fallbackStream.getTracks()) {
+              try {
+                t.stop();
+              } catch {
+                // Игнорируем
+              }
+            }
+          }
+        } catch {
+          this.state.audioTrack = null;
+        }
+      } else {
+        this.state.audioTrack = null;
+      }
+
       this.notify();
       return null;
     }
@@ -569,7 +724,9 @@ export class LocalMediaManager {
 
   stopMedia(): void {
     this.isStopped = true;
-    this.operationId++;
+    this.startOperationId++;
+    this.cameraSwitchOpId++;
+    this.micSwitchOpId++;
 
     if (this.state.stream) {
       for (const track of this.state.stream.getTracks()) {

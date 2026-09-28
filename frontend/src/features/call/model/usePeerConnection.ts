@@ -62,10 +62,16 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     });
   }, [onRemoteStream, onRemoteTrack, onConnectionStateChange, onError]);
 
+  const unsubRef = useRef<(() => void) | null>(null);
+  const localStreamRef = useRef(localStream);
+
   useEffect(() => {
     if (!socket || !roomId || !peerId || !autoConnect) {
-      setManager(null);
-      managerRef.current = null;
+      if (managerRef.current) {
+        managerRef.current.close();
+        managerRef.current = null;
+        setManager(null);
+      }
       return;
     }
 
@@ -75,7 +81,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
       peerId,
       isPolite,
       iceServers,
-      localStream,
+      localStream: localStreamRef.current,
       onRemoteStream: (stream) => {
         setRemoteStream(stream);
         callbacksRef.current.onRemoteStream?.(stream);
@@ -115,18 +121,29 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
       }
     });
 
-    return () => {
+    const unsub = () => {
       unsubOffer();
       unsubAnswer();
       unsubIce();
       nextManager.close();
-      managerRef.current = null;
-      setManager(null);
+      if (managerRef.current === nextManager) {
+        managerRef.current = null;
+        setManager(null);
+      }
     };
-  }, [socket, roomId, peerId, isPolite, autoConnect]);
+    unsubRef.current = unsub;
+
+    return () => {
+      unsub();
+      if (unsubRef.current === unsub) {
+        unsubRef.current = null;
+      }
+    };
+  }, [socket, roomId, peerId, isPolite, autoConnect, iceServers]);
 
   // Синхронизация локального стрима при его изменении (включая сброс в null)
   useEffect(() => {
+    localStreamRef.current = localStream;
     if (managerRef.current) {
       managerRef.current.setLocalStream(localStream ?? null);
     }
@@ -135,9 +152,11 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
   return {
     connectionState,
     remoteStream,
-    manager: manager ?? managerRef.current,
+    manager,
     replaceTrack: (kind: 'audio' | 'video', newTrack: MediaStreamTrack | null) =>
-      (manager ?? managerRef.current)?.replaceTrack(kind, newTrack),
-    close: () => (manager ?? managerRef.current)?.close(),
+      managerRef.current?.replaceTrack(kind, newTrack),
+    close: () => {
+      unsubRef.current?.();
+    },
   };
 }

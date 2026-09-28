@@ -556,5 +556,36 @@ describe('PeerConnectionManager', () => {
 
       expect(sender.replaceTrack).toHaveBeenCalledWith(null);
     });
+
+    it('после close() игнорирует запоздалые offer, answer и ICE, не создавая повторный RTCPeerConnection', async () => {
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: true,
+      });
+
+      await manager.initialize();
+      manager.close();
+
+      sentMessages = [];
+
+      // Запоздалый offer
+      await manager.handleRemoteOffer({ type: 'offer', sdp: 'late-offer' });
+      expect(sentMessages).toHaveLength(0);
+      expect(manager.getPeerConnection()).toBeNull();
+
+      // Запоздалый ice
+      await manager.handleRemoteIce({ candidate: 'late-ice', sdpMid: '0', sdpMLineIndex: 0 });
+      expect(manager.getPeerConnection()).toBeNull();
+
+      // Запоздалый answer
+      await manager.handleRemoteAnswer({ type: 'answer', sdp: 'late-answer' });
+      expect(manager.getPeerConnection()).toBeNull();
+
+      // Повторный initialize после close возвращает null
+      const reinit = await manager.initialize();
+      expect(reinit).toBeNull();
+    });
   });
 });

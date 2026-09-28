@@ -1,15 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { LocalMediaManager } from './localMedia';
 import type { ILocalMediaState, IStartMediaOptions, TFacingMode } from './types';
 
 export function useLocalMedia(managerInstance?: LocalMediaManager) {
   const isOwnedManager = !managerInstance;
-  const managerRef = useRef<LocalMediaManager | null>(null);
-  if (!managerRef.current) {
-    managerRef.current = managerInstance ?? new LocalMediaManager();
-  }
-  const manager = managerRef.current;
-
+  const [manager] = useState<LocalMediaManager>(() => managerInstance ?? new LocalMediaManager());
   const [state, setState] = useState<ILocalMediaState>(() => manager.getState());
 
   useEffect(() => {

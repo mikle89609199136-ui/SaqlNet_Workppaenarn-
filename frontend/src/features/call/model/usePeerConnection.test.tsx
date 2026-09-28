@@ -118,7 +118,7 @@ describe('usePeerConnection', () => {
   });
 
   it('обрабатывает remote offer и отправляет answer через сокет', async () => {
-    const { result } = renderHook(() =>
+    renderHook(() =>
       usePeerConnection({
         socket: mockSocket,
         roomId: 'room-100',
@@ -148,6 +148,41 @@ describe('usePeerConnection', () => {
         roomId: 'room-100',
       })
     );
+  });
+
+  it('при вызове close() отписывается от сигнальных событий и не реагирует на offer', async () => {
+    let hookResult: ReturnType<typeof usePeerConnection> | undefined;
+    renderHook(() => {
+      hookResult = usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      hookResult?.close();
+      await Promise.resolve();
+    });
+
+    mockSocket.send = vi.fn();
+
+    await act(async () => {
+      eventBus.emit(WS_EVENTS.CALL.OFFER, {
+        type: 'call_offer',
+        roomId: 'room-100',
+        from: 'peer-200',
+        payload: { type: 'offer', sdp: 'remote-sdp' },
+      });
+      await Promise.resolve();
+    });
+
+    expect(mockSocket.send).not.toHaveBeenCalled();
   });
 
   it('заменяет трек через replaceTrack', async () => {

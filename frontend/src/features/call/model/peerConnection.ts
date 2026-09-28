@@ -62,15 +62,17 @@ export class PeerConnectionManager {
   }
 
   async initialize(): Promise<RTCPeerConnection | null> {
-    if (this.pc && !this.isClosed) {
+    if (this.isClosed) {
+      return null;
+    }
+
+    if (this.pc) {
       return this.pc;
     }
 
     if (this.initPromise) {
       return this.initPromise;
     }
-
-    this.isClosed = false;
 
     this.initPromise = (async () => {
       try {
@@ -205,7 +207,10 @@ export class PeerConnectionManager {
   }
 
   private async ensureInitialized(): Promise<RTCPeerConnection | null> {
-    if (this.pc && !this.isClosed) {
+    if (this.isClosed) {
+      return null;
+    }
+    if (this.pc) {
       return this.pc;
     }
     if (this.initPromise) {
@@ -236,6 +241,7 @@ export class PeerConnectionManager {
   }
 
   async replaceTrack(kind: 'audio' | 'video', newTrack: MediaStreamTrack | null): Promise<void> {
+    if (this.isClosed) return;
     const pc = await this.ensureInitialized();
     if (!pc || this.isClosed) return;
 
@@ -259,6 +265,7 @@ export class PeerConnectionManager {
   }
 
   async handleRemoteOffer(offer: RTCSessionDescriptionInit): Promise<void> {
+    if (this.isClosed) return;
     const pc = await this.ensureInitialized();
     if (!pc || this.isClosed) return;
 
@@ -313,6 +320,7 @@ export class PeerConnectionManager {
   }
 
   async handleRemoteAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
+    if (this.isClosed) return;
     const pc = await this.ensureInitialized();
     if (!pc || this.isClosed) return;
 
@@ -337,6 +345,7 @@ export class PeerConnectionManager {
   }
 
   async handleRemoteIce(candidate: RTCIceCandidateInit): Promise<void> {
+    if (this.isClosed) return;
     const pc = await this.ensureInitialized();
     if (!pc || this.isClosed) return;
 

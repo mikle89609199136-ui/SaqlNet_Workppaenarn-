@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LocalMediaManager, parseMediaError } from './localMedia';
-import type { IMediaDeviceOption } from './types';
 
 // Mock Web API классов для Node окружения
 class FakeMediaStreamTrack {
@@ -52,7 +51,7 @@ describe('parseMediaError', () => {
   it('классифицирует NotAllowedError / PermissionDeniedError', () => {
     const err = parseMediaError({ name: 'NotAllowedError' });
     expect(err.type).toBe('NotAllowedError');
-    expect(err.message).toContain('запрещён');
+    expect(err.message).toBe('Permission denied');
 
     const err2 = parseMediaError({ name: 'PermissionDeniedError' });
     expect(err2.type).toBe('NotAllowedError');
@@ -61,7 +60,7 @@ describe('parseMediaError', () => {
   it('классифицирует NotFoundError / DevicesNotFoundError', () => {
     const err = parseMediaError({ name: 'NotFoundError' });
     expect(err.type).toBe('NotFoundError');
-    expect(err.message).toContain('не найдены');
+    expect(err.message).toBe('Requested device not found');
 
     const err2 = parseMediaError({ name: 'DevicesNotFoundError' });
     expect(err2.type).toBe('NotFoundError');
@@ -70,7 +69,7 @@ describe('parseMediaError', () => {
   it('классифицирует NotReadableError / TrackStartError (устройство занято)', () => {
     const err = parseMediaError({ name: 'NotReadableError' });
     expect(err.type).toBe('NotReadableError');
-    expect(err.message).toContain('занято другим приложением');
+    expect(err.message).toBe('Device is not readable or already in use');
 
     const err2 = parseMediaError({ name: 'TrackStartError' });
     expect(err2.type).toBe('NotReadableError');
@@ -79,13 +78,19 @@ describe('parseMediaError', () => {
   it('классифицирует OverconstrainedError', () => {
     const err = parseMediaError({ name: 'OverconstrainedError' });
     expect(err.type).toBe('OverconstrainedError');
-    expect(err.message).toContain('не поддерживает запрошенные параметры');
+    expect(err.message).toBe('Overconstrained track settings');
   });
 
   it('классифицирует InsecureContextError', () => {
     const err = parseMediaError({ name: 'InsecureContextError' });
     expect(err.type).toBe('InsecureContextError');
-    expect(err.message).toContain('небезопасный контекст');
+    expect(err.message).toBe('Media devices not available in insecure context');
+  });
+
+  it('классифицирует TimeoutError', () => {
+    const err = parseMediaError({ name: 'TimeoutError' });
+    expect(err.type).toBe('TimeoutError');
+    expect(err.message).toBe('Media permission request timed out');
   });
 
   it('обрабатывает неизвестные ошибки с fallback сообщением', () => {
@@ -95,19 +100,17 @@ describe('parseMediaError', () => {
 
     const errNull = parseMediaError(null);
     expect(errNull.type).toBe('UnknownMediaError');
+    expect(errNull.message).toBe('Unknown media error');
   });
 });
 
 describe('LocalMediaManager', () => {
-  let originalNavigator: typeof globalThis.navigator;
   let mockGetUserMedia: ReturnType<typeof vi.fn>;
   let mockEnumerateDevices: ReturnType<typeof vi.fn>;
   let mockAddEventListener: ReturnType<typeof vi.fn>;
   let mockRemoveEventListener: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    originalNavigator = globalThis.navigator;
-
     mockGetUserMedia = vi.fn();
     mockEnumerateDevices = vi.fn().mockResolvedValue([
       { deviceId: 'mic-1', kind: 'audioinput', label: 'Default Mic', groupId: 'g1' },
@@ -405,6 +408,89 @@ describe('LocalMediaManager', () => {
 
     expect(manager.getState().audioTrack).toBeNull();
     expect(manager.getState().error?.type).toBe('NotFoundError');
-    expect(manager.getState().error?.message).toContain('Микрофон был отключён');
+    expect(manager.getState().error?.message).toBe('Audio device disconnected');
+  });
+
+  it('switchMicrophone при ошибке переключения откатывается на предыдущий микрофон', async () => {
+    const oldATrack = new FakeMediaStreamTrack('audio', 'mic-old');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([oldATrack]));
+
+    const manager = new LocalMediaManager();
+    await manager.startMedia();
+
+    // Первый вызов switchMicrophone падает с NotReadableError
+    mockGetUserMedia.mockRejectedValueOnce({ name: 'NotReadableError', message: 'Device busy' });
+
+    // Повторный вызов отката на старый микрофон успешен
+    const restoredATrack = new FakeMediaStreamTrack('audio', 'mic-restored');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([restoredATrack]));
+
+    const onTrackReplaced = vi.fn();
+    manager.onTrackReplaced(onTrackReplaced);
+
+    const switched = await manager.switchMicrophone('mic-broken');
+
+    expect(switched).toBeNull();
+    expect(manager.getState().audioTrack).toBe(restoredATrack);
+    expect(manager.getState().error?.type).toBe('NotReadableError');
+    expect(onTrackReplaced).toHaveBeenCalledWith('audio', oldATrack, restoredATrack);
+  });
+
+  it('switchCamera при ошибке переключения откатывается на предыдущую камеру', async () => {
+    const oldVTrack = new FakeMediaStreamTrack('video', 'cam-old');
+    const aTrack = new FakeMediaStreamTrack('audio', 'mic-1');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([aTrack, oldVTrack]));
+
+    const manager = new LocalMediaManager();
+    await manager.startMedia();
+
+    // Переключение на сломанную камеру падает
+    mockGetUserMedia.mockRejectedValueOnce({ name: 'NotReadableError', message: 'Camera in use' });
+
+    // Откат успешен
+    const restoredVTrack = new FakeMediaStreamTrack('video', 'cam-restored');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([restoredVTrack]));
+
+    const onTrackReplaced = vi.fn();
+    manager.onTrackReplaced(onTrackReplaced);
+
+    const switched = await manager.switchCamera('cam-broken');
+
+    expect(switched).toBeNull();
+    expect(manager.getState().videoTrack).toBe(restoredVTrack);
+    expect(manager.getState().error?.type).toBe('NotReadableError');
+    expect(onTrackReplaced).toHaveBeenCalledWith('video', oldVTrack, restoredVTrack);
+  });
+
+  it('switchCamera и switchMicrophone возвращают null, если идет isLoading', async () => {
+    mockGetUserMedia.mockImplementation(() => new Promise(() => {}));
+
+    const manager = new LocalMediaManager();
+    void manager.startMedia();
+
+    expect(manager.getState().isLoading).toBe(true);
+
+    const camResult = await manager.switchCamera('cam-2');
+    const micResult = await manager.switchMicrophone('mic-2');
+
+    expect(camResult).toBeNull();
+    expect(micResult).toBeNull();
+  });
+
+  it('startMedia завершается с TimeoutError при истечении timeoutMs', async () => {
+    vi.useFakeTimers();
+    mockGetUserMedia.mockImplementation(() => new Promise(() => {}));
+
+    const manager = new LocalMediaManager();
+    const startPromise = manager.startMedia({ timeoutMs: 1000 });
+
+    await vi.advanceTimersByTimeAsync(1001);
+    const stream = await startPromise;
+
+    expect(stream).toBeNull();
+    expect(manager.getState().isLoading).toBe(false);
+    expect(manager.getState().error?.type).toBe('TimeoutError');
+
+    vi.useRealTimers();
   });
 });

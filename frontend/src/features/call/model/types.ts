@@ -226,6 +226,7 @@ export type TMediaErrorType =
   | 'NotReadableError'
   | 'OverconstrainedError'
   | 'InsecureContextError'
+  | 'TimeoutError'
   | 'UnknownMediaError';
 
 export interface IMediaError {
@@ -266,4 +267,5 @@ export interface IStartMediaOptions {
   audioDeviceId?: string;
   videoDeviceId?: string;
   facingMode?: TFacingMode;
+  timeoutMs?: number;
 }
