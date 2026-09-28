@@ -22,12 +22,13 @@ fi
 # __Host-префикс и Secure.
 export CRANE_ENV="${CRANE_ENV:-production}"
 
-# Откуда можно ходить в API с cookie сессии (#705). "*" — только вне прода:
-# с cookie чужой сайт мог бы действовать от имени человека.
+# Откуда можно ходить в API. Не задано — "*", как раньше: с cookie сессии
+# (#705) это безопасно — запросы с ней принимаются только со своего адреса
+# или точно перечисленного здесь, а "*" credentials не даёт. Точный адрес
+# в проде всё же лучше — предупреждаем.
 if [ -z "$ALLOWED_ORIGINS" ]; then
   if [ "$CRANE_ENV" = "production" ]; then
-    echo "[entrypoint] ALLOWED_ORIGINS is required in production, e.g. https://craneapp-timkhazatsky.amvera.io" >&2
-    exit 1
+    echo "[entrypoint] warning: ALLOWED_ORIGINS is not set, using \"*\"; better set the public address, e.g. https://craneapp-timkhazatsky.amvera.io" >&2
   fi
   export ALLOWED_ORIGINS="*"
 fi
