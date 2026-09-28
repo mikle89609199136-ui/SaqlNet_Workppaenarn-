@@ -123,6 +123,8 @@ type Message struct {
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// push — уведомления на устройства (#717); nil — выключены.
+	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
 }
@@ -2170,6 +2172,9 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 			s.ws.BroadcastToChat(chatID, payload, userID)
 		}
 	}
+	// Push — один на отправку, а не на каждое сообщение пачки: они всё
+	// равно сворачиваются в одно уведомление чата.
+	s.notifyMessage(chatID, userID)
 
 	return msgs, nil
 }

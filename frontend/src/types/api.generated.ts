@@ -1007,6 +1007,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/push/vapid-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Push VAPID public key
+         * @description Public VAPID key for PushManager.subscribe (applicationServerKey). 404 push_not_configured when push notifications are disabled on this server.
+         */
+        get: operations["getPushVapidKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register this device for Web Push
+         * @description Saves the PushSubscription of the current device. Repeating the same endpoint updates the keys; an endpoint registered by another account on the same device moves to the current account. The endpoint must be an https address of a known push service (Google, Mozilla, Apple, Microsoft) — the server sends requests to it. At most 20 subscriptions per user; older ones are evicted. Push payloads never contain message text (end-to-end encryption): only the event kind, chat id, chat type and title, the sender name and the recipient language.
+         */
+        post: operations["savePushSubscription"];
+        /** Remove the Web Push subscription of this device */
+        delete: operations["deletePushSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/encryption/keys": {
         parameters: {
             query?: never;
@@ -4562,6 +4603,110 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+        };
+    };
+    getPushVapidKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Base64url, uncompressed P-256 point */
+                        publicKey: string;
+                    };
+                };
+            };
+            /** @description Push notifications are not configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    savePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uri */
+                    endpoint: string;
+                    keys: {
+                        /** @description Base64url, 65-byte P-256 public key */
+                        p256dh: string;
+                        /** @description Base64url, 16-byte auth secret */
+                        auth: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Saved; the id is sent over the socket in client_state so that a visible device gets no push */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            /** @description invalid_json or invalid_push_subscription */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deletePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    endpoint: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Removed (only the requester's own subscription) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description endpoint is required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     uploadEncryptionKey: {
