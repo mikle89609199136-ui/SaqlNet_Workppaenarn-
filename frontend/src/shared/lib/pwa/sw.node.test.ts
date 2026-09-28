@@ -211,6 +211,18 @@ describe('service worker (#880)', () => {
     expect(worker.fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('страница вместо файла сборки не кешируется под его именем', async () => {
+    // Старый сервер отдавал index.html на любой отсутствующий путь.
+    worker.fetchMock.mockResolvedValue(html('<html>app</html>'));
+    await worker.dispatch('/assets/main-OLD.js');
+    await worker.dispatch('/assets/main-OLD.js');
+
+    expect(worker.fetchMock).toHaveBeenCalledTimes(2);
+    for (const cache of worker.stores.values()) {
+      expect(cache.paths()).not.toContain('/assets/main-OLD.js');
+    }
+  });
+
   it('переводы — сначала сеть (свежие после деплоя), без сети — из кеша', async () => {
     worker.fetchMock.mockResolvedValueOnce(new Response('{"a":"1"}'));
     await worker.dispatch('/locales/ru/translation.json');
