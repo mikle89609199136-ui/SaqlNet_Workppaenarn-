@@ -112,15 +112,32 @@ describe('строка списка чатов', () => {
 
     it('галочки своего последнего в личном чате: отправлено, доставлено, прочитано (#657)', () => {
       const at = '2026-09-29T12:00:00.000Z';
+      // Второй цвет — на открытом чате, где строка залита акцентом: там
+      // «доставлено» и «прочитано» тоже должны различаться.
       const cases = [
-        [last({ senderId: ME }), 'Отправлено', 'text-ink-3'],
-        [last({ senderId: ME, deliveredAt: at }), 'Доставлено', 'text-ink-3'],
-        [last({ senderId: ME, deliveredAt: at, readAt: at }), 'Прочитано', 'text-brand'],
+        [
+          last({ senderId: ME }),
+          'Отправлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at }),
+          'Доставлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at, readAt: at }),
+          'Прочитано',
+          'text-brand',
+          'group-aria-[current=page]:text-out-read',
+        ],
       ] as const;
 
-      for (const [lastMessage, label, color] of cases) {
+      for (const [lastMessage, label, color, currentColor] of cases) {
         const { unmount } = renderRow(makeChat({ id: CHAT_ID, type: 'private', lastMessage }));
-        expect(screen.getByRole('img', { name: label })).toHaveClass(color);
+        expect(screen.getByRole('img', { name: label })).toHaveClass(color, currentColor);
         unmount();
       }
     });
