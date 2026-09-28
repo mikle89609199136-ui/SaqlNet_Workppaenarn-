@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProfileStore } from '@/entities/user';
@@ -6,6 +6,7 @@ import { makeChat, makeMessage } from '@/test/fixtures';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
+import { usePushStore } from '@/features/push-notifications';
 import { NotificationManager } from './NotificationManager';
 
 const chat = makeChat();
@@ -79,5 +80,72 @@ describe('системные уведомления', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(notificationCalls()).toHaveLength(0);
+  });
+
+  // #882: разрешение — только по нажатию (плашка, настройки), не при загрузке.
+  it('не спрашивает разрешение при загрузке', () => {
+    const request = vi.spyOn(Notification, 'requestPermission');
+    render(<NotificationManager />);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // Push включён — уведомление покажет service worker, второе было бы дублем.
+  it('при включённом push не дублирует уведомление из вкладки', async () => {
+    render(<NotificationManager />);
+    // Синхронизация push при входе отработала (в тестах — «не поддерживается»),
+    // дальше — как на устройстве, где push включён.
+    await act(async () => undefined);
+    act(() => usePushStore.setState({ status: 'on', subscriptionId: 'sub-1', busy: false }));
+
+    fakeSocket.emit('new_message', {
+      message: makeMessage({ chatId: chat.id, content: 'привет' }),
+      chatId: chat.id,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(notificationCalls()).toHaveLength(0);
+    usePushStore.setState({ status: 'off', subscriptionId: null });
+  });
+});
+
+describe('переход по нажатию на push', () => {
+  const listeners: ((event: MessageEvent) => void)[] = [];
+
+  beforeEach(() => {
+    listeners.length = 0;
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        addEventListener: (_: string, listener: (event: MessageEvent) => void) =>
+          listeners.push(listener),
+        removeEventListener: vi.fn(),
+      },
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    window.history.pushState(null, '', '/');
+  });
+
+  it('открывает чат внутри приложения; чужие адреса игнорирует', () => {
+    render(<NotificationManager />);
+    const popstate = vi.fn();
+    window.addEventListener('popstate', popstate);
+
+    listeners.forEach((listener) =>
+      listener({ data: { type: 'craneapp:navigate', url: '/chats/c1' } } as MessageEvent)
+    );
+    expect(window.location.pathname).toBe('/chats/c1');
+    expect(popstate).toHaveBeenCalledTimes(1);
+
+    for (const url of ['https://evil.example/x', '//evil.example/x', 'javascript:alert(1)']) {
+      listeners.forEach((listener) =>
+        listener({ data: { type: 'craneapp:navigate', url } } as MessageEvent)
+      );
+    }
+    expect(window.location.pathname).toBe('/chats/c1');
+    expect(popstate).toHaveBeenCalledTimes(1);
+    window.removeEventListener('popstate', popstate);
   });
 });

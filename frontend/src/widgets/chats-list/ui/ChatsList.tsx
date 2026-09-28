@@ -6,6 +6,7 @@ import {
 } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
+import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
 import { Avatar, buttonStyles, Icon, SegmentedControl, Spinner } from '@/shared/ui';
@@ -211,6 +212,9 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       <div className="px-4 pb-2.5">
         <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
       </div>
+
+      {/* «Включить уведомления» — пока не включили и не закрыли (#882). */}
+      <PushPrompt />
 
       <div
         aria-busy={isLoading}

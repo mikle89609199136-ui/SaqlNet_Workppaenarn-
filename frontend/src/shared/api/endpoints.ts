@@ -64,6 +64,9 @@ export const API_ENDPOINTS = {
   USER_PRIVACY_EXCEPTION: (rule: string, userId: string) =>
     `/users/privacy/exceptions/${rule}/${userId}`,
   USER_DEVICES: '/users/devices',
+  // Web Push (#717, #882).
+  PUSH_VAPID_KEY: '/users/push/vapid-key',
+  PUSH_SUBSCRIPTIONS: '/users/push/subscriptions',
   USER_DEVICE_REGISTER: '/users/devices/register',
   USER_DEVICE_DELETE: (sessionId: string) => `/users/devices/${sessionId}`,
   USER_DEVICES_TERMINATE_ALL: '/users/devices/terminate-all',

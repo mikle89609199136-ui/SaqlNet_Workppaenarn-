@@ -17,6 +17,7 @@
  * - Всё остальное (/api, /ws, медиа, чужие адреса) не перехватывается
  *   вовсе: ответы API и медиа не должны оставаться на устройстве после
  *   выхода из аккаунта.
+ * - push и notificationclick — уведомления о сообщениях и звонках (ниже).
  */
 
 const SHELL_CACHE = 'craneapp-shell-' + BUILD_ID;
@@ -122,6 +123,95 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+  );
+});
+
+/*
+ * Push-уведомления (#882, сервер — #717). В push — вид события, чат, имя
+ * отправителя и язык получателя; текста сообщения нет (сквозное
+ * шифрование). Показывать надо каждый push: iOS отбирает разрешение у
+ * сайта, который получил push и промолчал.
+ */
+const PUSH_TEXT = {
+  ru: {
+    message: 'Новое сообщение',
+    call: 'Входящий звонок',
+    videoCall: 'Входящий видеозвонок',
+    missedCall: 'Пропущенный звонок',
+    fallback: 'CraneApp',
+  },
+  en: {
+    message: 'New message',
+    call: 'Incoming call',
+    videoCall: 'Incoming video call',
+    missedCall: 'Missed call',
+    fallback: 'CraneApp',
+  },
+};
+
+/** Заголовок, текст и поведение уведомления по содержимому push. */
+function notificationFor(data) {
+  const text = PUSH_TEXT[data.lang] || PUSH_TEXT.ru;
+  const name = data.actorName || text.fallback;
+  const url = data.chatId ? '/chats/' + encodeURIComponent(data.chatId) : '/';
+  const base = { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url } };
+
+  if (data.kind === 'call' || data.kind === 'missed_call') {
+    const missed = data.kind === 'missed_call';
+    return {
+      title: name,
+      options: Object.assign({}, base, {
+        body: missed ? text.missedCall : data.callKind === 'video' ? text.videoCall : text.call,
+        // Пропущенный заменяет входящий: тот же тег.
+        tag: 'call:' + (data.roomId || data.chatId),
+        renotify: !missed,
+        requireInteraction: !missed,
+      }),
+    };
+  }
+
+  // В группе — название группы и кто написал; в личном — имя.
+  const group = data.chatType !== 'private' && data.chatTitle;
+  return {
+    title: group ? data.chatTitle : name,
+    options: Object.assign({}, base, {
+      body: group ? name + ': ' + text.message : text.message,
+      // Одно уведомление на чат: новое заменяет прежнее и снова звучит.
+      tag: 'chat:' + data.chatId,
+      renotify: true,
+    }),
+  };
+}
+
+self.addEventListener('push', (event) => {
+  // Пустой или битый push — всё равно уведомление: промолчать нельзя.
+  let data = {};
+  try {
+    const parsed = event.data ? event.data.json() : null;
+    if (parsed && typeof parsed === 'object') data = parsed;
+  } catch {
+    data = {};
+  }
+  const { title, options } = notificationFor(data);
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      // Приложение уже открыто — переход внутри него, без перезагрузки;
+      // иначе — новое окно.
+      const existing = windows.find(
+        (client) => new URL(client.url).origin === self.location.origin
+      );
+      if (existing) {
+        existing.postMessage({ type: 'craneapp:navigate', url });
+        return existing.focus();
+      }
+      return self.clients.openWindow(url);
+    })
   );
 });
 

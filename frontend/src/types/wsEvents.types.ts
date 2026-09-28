@@ -222,6 +222,9 @@ export interface ICallIceEvent {
 }
 
 export interface IWsEventMap {
+  // Служебные события самого соединения — без данных.
+  [WS_EVENTS.SOCKET.CONNECTED]: void;
+  [WS_EVENTS.SOCKET.DISCONNECTED]: void;
   [WS_EVENTS.CALL.ANSWER]: ICallAnswerEvent;
   [WS_EVENTS.CALL.CANCELED]: ICallCancelledEvent;
   [WS_EVENTS.CALL.ERROR]: ICallErrorEvent;
