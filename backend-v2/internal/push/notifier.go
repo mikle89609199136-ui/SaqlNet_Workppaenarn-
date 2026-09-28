@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -90,9 +92,10 @@ type Visibility interface {
 	VisiblePushSubscriptions(userID string) map[string]bool
 }
 
-// Transport — отправка одного push.
+// Transport — отправка одного push. reason — почему push-сервис отказал
+// (из тела ответа), для лога; при успехе пусто.
 type Transport interface {
-	Send(ctx context.Context, message []byte, sub Subscription, options SendOptions) (status int, err error)
+	Send(ctx context.Context, message []byte, sub Subscription, options SendOptions) (status int, reason string, err error)
 }
 
 type SendOptions struct {
@@ -243,31 +246,37 @@ func (n *Notifier) deliver(ctx context.Context, event Event) {
 		if err != nil {
 			continue
 		}
-		n.send(ctx, target, message, options)
+		n.send(ctx, event.Kind, target, message, options)
 	}
 }
 
-func (n *Notifier) send(ctx context.Context, target Target, message []byte, options SendOptions) {
+func (n *Notifier) send(ctx context.Context, kind Kind, target Target, message []byte, options SendOptions) {
+	// В лог — только push-сервис, не адрес подписки: в адресе — идентификатор
+	// устройства.
+	service := pushService(target.Subscription.Endpoint)
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
-		status, err := n.transport.Send(sendCtx, message, target.Subscription, options)
+		status, reason, err := n.transport.Send(sendCtx, message, target.Subscription, options)
 		cancel()
 		switch {
 		case err == nil && status >= 200 && status < 300:
 			return
 		case status == http.StatusNotFound || status == http.StatusGone:
 			// Подписки больше нет: удалили в браузере или она истекла.
+			slog.Info("push subscription expired, deleted", "status", status, "service", service)
 			if err := n.directory.DeleteSubscription(ctx, target.SubscriptionID); err != nil {
 				slog.Warn("delete expired push subscription", "err", err)
 			}
 			return
 		case err == nil && status != http.StatusTooManyRequests && status < 500:
-			// Ошибка запроса (400, 403, 413) — повтор не поможет.
-			slog.Warn("push rejected", "status", status)
+			// Ошибка запроса (400, 403, 413) — повтор не поможет. Причина из
+			// ответа — главное для разбора: 403 BadJwtToken у Apple — это
+			// подпись VAPID, а не устройство.
+			slog.Warn("push rejected", "status", status, "reason", reason, "service", service, "kind", kind)
 			return
 		}
 		if attempt == maxAttempts {
-			slog.Warn("push failed", "status", status, "err", err)
+			slog.Warn("push failed", "status", status, "reason", reason, "service", service, "kind", kind, "err", err)
 			return
 		}
 		select {
@@ -304,6 +313,48 @@ func optionsFor(event Event) SendOptions {
 	}
 }
 
+// maxReasonBytes — столько тела ответа push-сервиса читаем ради причины отказа.
+const maxReasonBytes = 512
+
+// vapidSubscriber — контакт для подписи VAPID в том виде, какой ждёт
+// webpush-go: адрес без «mailto:». Библиотека дописывает «mailto:» ко всему,
+// что не начинается с «https:», и «mailto:admin@…» превращался в
+// «mailto:mailto:admin@…» — такую подпись Apple отклоняет (403 BadJwtToken),
+// и push на iPhone не доходили вовсе. Теперь годится любая запись.
+func vapidSubscriber(subject string) string {
+	subject = strings.TrimSpace(subject)
+	if len(subject) >= len("mailto:") && strings.EqualFold(subject[:len("mailto:")], "mailto:") {
+		subject = strings.TrimSpace(subject[len("mailto:"):])
+	}
+	return subject
+}
+
+// pushService — имя push-сервиса по адресу подписки, для лога.
+func pushService(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+// rejectReason — причина отказа из ответа push-сервиса: у Apple это JSON
+// {"reason":"BadJwtToken"}, у Google и Mozilla — текст.
+func rejectReason(body io.Reader) string {
+	raw, _ := io.ReadAll(io.LimitReader(body, maxReasonBytes))
+	var apple struct {
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(raw, &apple) == nil && apple.Reason != "" {
+		return apple.Reason
+	}
+	reason := strings.Join(strings.Fields(string(raw)), " ")
+	if len(reason) > 200 {
+		reason = reason[:200]
+	}
+	return strings.ToValidUTF8(reason, "")
+}
+
 // WebPushTransport — отправка через webpush-go с ключами VAPID.
 type WebPushTransport struct {
 	config Config
@@ -311,6 +362,7 @@ type WebPushTransport struct {
 }
 
 func NewWebPushTransport(config Config) *WebPushTransport {
+	config.Subject = vapidSubscriber(config.Subject)
 	return &WebPushTransport{
 		config: config,
 		client: &http.Client{
@@ -322,10 +374,10 @@ func NewWebPushTransport(config Config) *WebPushTransport {
 	}
 }
 
-func (t *WebPushTransport) Send(ctx context.Context, message []byte, sub Subscription, options SendOptions) (int, error) {
+func (t *WebPushTransport) Send(ctx context.Context, message []byte, sub Subscription, options SendOptions) (int, string, error) {
 	// Адрес проверен при записи; ещё раз — перед сетью.
 	if err := sub.Validate(); err != nil {
-		return http.StatusGone, nil
+		return http.StatusGone, "invalid subscription", nil
 	}
 	response, err := webpush.SendNotificationWithContext(ctx, message, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
@@ -340,8 +392,11 @@ func (t *WebPushTransport) Send(ctx context.Context, message []byte, sub Subscri
 		Topic:           options.Topic,
 	})
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer response.Body.Close()
-	return response.StatusCode, nil
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return response.StatusCode, "", nil
+	}
+	return response.StatusCode, rejectReason(response.Body), nil
 }
