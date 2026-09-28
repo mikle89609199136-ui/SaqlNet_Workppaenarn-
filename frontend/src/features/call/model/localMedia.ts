@@ -507,61 +507,65 @@ export class LocalMediaManager {
       this.notify();
       return newTrack;
     } catch (rawError) {
+      if (this.isStopped || this.cameraSwitchOpId !== currentOpId) {
+        return null;
+      }
+
       this.state.error = parseMediaError(rawError);
 
       // Восстанавливаем прежнюю камеру при ошибке
-      if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
-        try {
-          const fallbackConstraint: MediaTrackConstraints = prevVideoDeviceId
-            ? { deviceId: { exact: prevVideoDeviceId } }
-            : { facingMode: prevFacing };
+      try {
+        const fallbackConstraint: MediaTrackConstraints = prevVideoDeviceId
+          ? { deviceId: { exact: prevVideoDeviceId } }
+          : { facingMode: prevFacing };
 
-          const fallbackStream = await nav.mediaDevices.getUserMedia({
-            video: fallbackConstraint,
-            audio: false,
-          });
+        const fallbackStream = await nav.mediaDevices.getUserMedia({
+          video: fallbackConstraint,
+          audio: false,
+        });
 
-          if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
-            const restoredTrack = fallbackStream.getVideoTracks()[0];
-            if (restoredTrack) {
-              restoredTrack.enabled = !this.state.isVideoMuted;
-              this.bindTrackEnded(restoredTrack);
+        if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
+          const restoredTrack = fallbackStream.getVideoTracks()[0];
+          if (restoredTrack) {
+            restoredTrack.enabled = !this.state.isVideoMuted;
+            this.bindTrackEnded(restoredTrack);
 
-              if (this.state.stream) {
-                this.state.stream.addTrack(restoredTrack);
-              }
-
-              this.state.videoTrack = restoredTrack;
-              this.state.facingMode = prevFacing;
-              this.state.selectedVideoDeviceId = prevVideoDeviceId;
-
-              for (const cb of this.trackReplacedListeners) {
-                try {
-                  cb('video', oldTrack, restoredTrack);
-                } catch {
-                  // Игнорируем
-                }
-              }
-            } else {
-              this.state.videoTrack = null;
+            if (this.state.stream) {
+              this.state.stream.addTrack(restoredTrack);
             }
-          } else {
-            for (const t of fallbackStream.getTracks()) {
+
+            this.state.videoTrack = restoredTrack;
+            this.state.facingMode = prevFacing;
+            this.state.selectedVideoDeviceId = prevVideoDeviceId;
+
+            for (const cb of this.trackReplacedListeners) {
               try {
-                t.stop();
+                cb('video', oldTrack, restoredTrack);
               } catch {
                 // Игнорируем
               }
             }
+          } else {
+            this.state.videoTrack = null;
           }
-        } catch {
+        } else {
+          for (const t of fallbackStream.getTracks()) {
+            try {
+              t.stop();
+            } catch {
+              // Игнорируем
+            }
+          }
+        }
+      } catch {
+        if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
           this.state.videoTrack = null;
         }
-      } else {
-        this.state.videoTrack = null;
       }
 
-      this.notify();
+      if (!this.isStopped && this.cameraSwitchOpId === currentOpId) {
+        this.notify();
+      }
       return null;
     }
   }
@@ -637,60 +641,64 @@ export class LocalMediaManager {
       this.notify();
       return newTrack;
     } catch (rawError) {
+      if (this.isStopped || this.micSwitchOpId !== currentOpId) {
+        return null;
+      }
+
       this.state.error = parseMediaError(rawError);
 
       // Восстанавливаем прежний микрофон при ошибке
-      if (!this.isStopped && this.micSwitchOpId === currentOpId) {
-        try {
-          const fallbackConstraint: boolean | MediaTrackConstraints = prevDeviceId
-            ? { deviceId: { exact: prevDeviceId } }
-            : true;
+      try {
+        const fallbackConstraint: boolean | MediaTrackConstraints = prevDeviceId
+          ? { deviceId: { exact: prevDeviceId } }
+          : true;
 
-          const fallbackStream = await nav.mediaDevices.getUserMedia({
-            audio: fallbackConstraint,
-            video: false,
-          });
+        const fallbackStream = await nav.mediaDevices.getUserMedia({
+          audio: fallbackConstraint,
+          video: false,
+        });
 
-          if (!this.isStopped && this.micSwitchOpId === currentOpId) {
-            const restoredTrack = fallbackStream.getAudioTracks()[0];
-            if (restoredTrack) {
-              restoredTrack.enabled = !this.state.isAudioMuted;
-              this.bindTrackEnded(restoredTrack);
+        if (!this.isStopped && this.micSwitchOpId === currentOpId) {
+          const restoredTrack = fallbackStream.getAudioTracks()[0];
+          if (restoredTrack) {
+            restoredTrack.enabled = !this.state.isAudioMuted;
+            this.bindTrackEnded(restoredTrack);
 
-              if (this.state.stream) {
-                this.state.stream.addTrack(restoredTrack);
-              }
-
-              this.state.audioTrack = restoredTrack;
-              this.state.selectedAudioDeviceId = prevDeviceId;
-
-              for (const cb of this.trackReplacedListeners) {
-                try {
-                  cb('audio', oldTrack, restoredTrack);
-                } catch {
-                  // Игнорируем
-                }
-              }
-            } else {
-              this.state.audioTrack = null;
+            if (this.state.stream) {
+              this.state.stream.addTrack(restoredTrack);
             }
-          } else {
-            for (const t of fallbackStream.getTracks()) {
+
+            this.state.audioTrack = restoredTrack;
+            this.state.selectedAudioDeviceId = prevDeviceId;
+
+            for (const cb of this.trackReplacedListeners) {
               try {
-                t.stop();
+                cb('audio', oldTrack, restoredTrack);
               } catch {
                 // Игнорируем
               }
             }
+          } else {
+            this.state.audioTrack = null;
           }
-        } catch {
+        } else {
+          for (const t of fallbackStream.getTracks()) {
+            try {
+              t.stop();
+            } catch {
+              // Игнорируем
+            }
+          }
+        }
+      } catch {
+        if (!this.isStopped && this.micSwitchOpId === currentOpId) {
           this.state.audioTrack = null;
         }
-      } else {
-        this.state.audioTrack = null;
       }
 
-      this.notify();
+      if (!this.isStopped && this.micSwitchOpId === currentOpId) {
+        this.notify();
+      }
       return null;
     }
   }

@@ -560,4 +560,67 @@ describe('LocalMediaManager', () => {
     expect(lateSwitchTrack.stop).toHaveBeenCalled();
     expect(manager.getState().audioTrack).toBe(newATrack);
   });
+
+  it('сбой отменённой смены микрофона не затирает рабочий трек и ошибку нового startMedia', async () => {
+    const initialATrack = new FakeMediaStreamTrack('audio', 'mic-1');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([initialATrack]));
+
+    const manager = new LocalMediaManager();
+    await manager.startMedia();
+
+    let rejectSwitchMic!: (err: unknown) => void;
+    mockGetUserMedia.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectSwitchMic = reject;
+        })
+    );
+
+    const switchPromise = manager.switchMicrophone('mic-2');
+
+    // Во время смены запускается новый startMedia
+    const newATrack = new FakeMediaStreamTrack('audio', 'mic-new-start');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([newATrack]));
+    await manager.startMedia({ kind: 'audio' });
+
+    // Повиснувшая смена падает с ошибкой
+    rejectSwitchMic({ name: 'NotReadableError', message: 'Device busy' });
+    const switchResult = await switchPromise;
+
+    expect(switchResult).toBeNull();
+    // Трек не занулён веткой else, error не затёрт ложной ошибкой
+    expect(manager.getState().audioTrack).toBe(newATrack);
+    expect(manager.getState().error).toBeNull();
+  });
+
+  it('сбой отменённой смены камеры не затирает рабочий трек и ошибку нового startMedia', async () => {
+    const initialVTrack = new FakeMediaStreamTrack('video', 'cam-1');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([initialVTrack]));
+
+    const manager = new LocalMediaManager();
+    await manager.startMedia({ kind: 'video' });
+
+    let rejectSwitchCam!: (err: unknown) => void;
+    mockGetUserMedia.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectSwitchCam = reject;
+        })
+    );
+
+    const switchPromise = manager.switchCamera('cam-2');
+
+    // Во время смены запускается новый startMedia
+    const newVTrack = new FakeMediaStreamTrack('video', 'cam-new-start');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([newVTrack]));
+    await manager.startMedia({ kind: 'video' });
+
+    // Повиснувшая смена камеры падает с ошибкой
+    rejectSwitchCam({ name: 'NotReadableError', message: 'Camera busy' });
+    const switchResult = await switchPromise;
+
+    expect(switchResult).toBeNull();
+    expect(manager.getState().videoTrack).toBe(newVTrack);
+    expect(manager.getState().error).toBeNull();
+  });
 });
