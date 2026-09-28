@@ -1,5 +1,5 @@
 export { APP_VERSION } from './appVersion';
-export { CHAT_ROLES, CHAT_TYPES } from './chat';
+export { CHAT_ROLES, CHAT_TYPES, MAX_MESSAGES_PER_SEND } from './chat';
 export { REACT_ROUTES, ROUTES } from './routes';
 export { STORAGE_KEYS } from './storageKeys';
 export { WS_EVENTS } from './wsEvents';
@@ -12,3 +12,15 @@ export {
   EDITOR_RATIOS,
 } from './editor';
 export { config } from './app';
+export {
+  DEFAULT_RECENT_EMOJI,
+  EMOJI_CATEGORIES,
+  EMOJI_KEYWORDS,
+  NOTO_ANIMATED,
+  NOTO_STATIC,
+  QUICK_REACTIONS,
+  RECENT_EMOJI_LIMIT,
+  notoCode,
+  type IEmojiCategory,
+  type TEmojiCategoryKey,
+} from './emoji';

@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ChatListItem, chatRowStyles } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 
 interface Props {
   chats: IChatDto[];
@@ -14,7 +15,9 @@ interface Props {
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="px-4 pb-1 pt-3 text-caption font-semibold uppercase tracking-wide text-ink-3">
+    /* Заголовок раздела — стиль label дизайн-системы, как над строками
+       списка (#819). */
+    <h2 className="px-3 pt-3 pb-1.5 text-meta font-semibold tracking-[0.04em] text-ink-3 uppercase">
       {children}
     </h2>
   );
@@ -30,24 +33,25 @@ function SectionTitle({ children }: { children: string }) {
 export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: Props) {
   const { t } = useTranslation();
   const startChat = useStartPrivateChat();
+  const me = useProfileStore((state) => state.user?.id);
 
   return (
     <>
       {chats.length > 0 && (
-        <section>
+        <section className="flex flex-col gap-0.5">
           <SectionTitle>{t('chats', 'Чаты')}</SectionTitle>
           {chats.map((chat) => (
-            <ChatListItem chat={chat} key={chat.id} />
+            <ChatListItem chat={chat} currentUserId={me} key={chat.id} />
           ))}
         </section>
       )}
 
       {(people.length > 0 || isLoadingPeople) && (
-        <section>
+        <section className="flex flex-col gap-0.5">
           <SectionTitle>{t('people', 'Люди')}</SectionTitle>
 
           {isLoadingPeople && people.length === 0 && (
-            <div className="flex items-center gap-2 px-4 py-3 text-caption text-ink-3">
+            <div className="flex items-center gap-2 px-3 py-3 text-ui text-ink-3">
               <Spinner size="sm" />
               <span>{t('searching', 'Ищем...')}</span>
             </div>
@@ -58,20 +62,16 @@ export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: 
 
             return (
               <button
-                className={cn(chatRowStyles, 'w-full text-left disabled:opacity-42')}
+                className={cn(chatRowStyles, 'w-full text-left disabled:opacity-50')}
                 disabled={startChat.isPending}
                 key={user.id}
                 onClick={() => startChat.mutate(user.id)}
                 type="button"
               >
                 <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />
-                <div className="flex min-w-0 flex-col justify-center gap-1.5">
-                  <div className="flex min-w-0 items-center justify-between gap-3">
-                    <span className="truncate text-base font-semibold text-ink">{name}</span>
-                  </div>
-                  <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-ink-2">
-                    <span className="truncate">@{user.username}</span>
-                  </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.75">
+                  <span className="truncate text-body font-semibold text-ink">{name}</span>
+                  <span className="truncate text-ui text-ink-2">@{user.username}</span>
                 </div>
               </button>
             );
@@ -80,7 +80,7 @@ export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: 
       )}
 
       {isEmpty && (
-        <p className="px-4 py-6 text-center text-caption text-ink-3">
+        <p className="px-5 py-8 text-center text-ui text-ink-3">
           {t('nothingFound', 'Ничего не найдено')}
         </p>
       )}

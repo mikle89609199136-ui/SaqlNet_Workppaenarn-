@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { api, API } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { ApiClient } from './ApiClient';
@@ -47,6 +47,45 @@ describe('ApiClient: сборка адреса', () => {
     expect(url.searchParams.has('search')).toBe(false);
   });
 
+  it('does not repeat the base for a path that already starts with it', async () => {
+    let received = '';
+    server.use(
+      http.get(api('/media/file-1'), ({ request }) => {
+        received = request.url;
+        return HttpResponse.json({ ok: true });
+      })
+    );
+
+    // Так приходит mediaUrl вложения: '/api/v2/media/<id>'.
+    await createClient().get(`${new URL(API).pathname}/media/file-1`);
+
+    expect(received).toBe(`${API}/media/file-1`);
+  });
+
+  it('keeps a relative base relative and does not repeat it either', async () => {
+    const requested: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requested.push(String(input));
+      return new Response('{}', { headers: { 'content-type': 'application/json' } });
+    });
+
+    try {
+      const client = new ApiClient('/api/v2');
+      await client.get('/api/v2/media/file-1');
+      await client.get('/chats/abc');
+      // Похожий, но другой путь — не база.
+      await client.get('/api/v2x/thing');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(requested).toEqual([
+      '/api/v2/media/file-1',
+      '/api/v2/chats/abc',
+      '/api/v2/api/v2x/thing',
+    ]);
+  });
+
   it('should use an absolute endpoint as is', async () => {
     let received = '';
     server.use(
@@ -73,6 +112,36 @@ describe('ApiClient: заголовки', () => {
     );
 
     await createClient('session-token-abc').get('/users/me');
+
+    expect(authorization).toBe('Bearer session-token-abc');
+  });
+
+  // Абсолютный адрес чужого origin — без токена (#871): иначе его увёл бы
+  // любой, кто сумел подсунуть клиенту свою ссылку.
+  it('does not send the token to another origin', async () => {
+    let authorization: string | null = 'не тронуто';
+    server.use(
+      http.get('https://attacker.example/steal', ({ request }) => {
+        authorization = request.headers.get('Authorization');
+        return HttpResponse.json({ ok: true });
+      })
+    );
+
+    await createClient('session-token-abc').get('https://attacker.example/steal');
+
+    expect(authorization).toBeNull();
+  });
+
+  it('keeps the token for an absolute address of its own origin', async () => {
+    let authorization: string | null = null;
+    server.use(
+      http.get(api('/users/me'), ({ request }) => {
+        authorization = request.headers.get('Authorization');
+        return HttpResponse.json({ id: 'user-1' });
+      })
+    );
+
+    await createClient('session-token-abc').get(api('/users/me'));
 
     expect(authorization).toBe('Bearer session-token-abc');
   });

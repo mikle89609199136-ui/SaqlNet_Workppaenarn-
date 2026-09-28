@@ -1,9 +1,10 @@
 import type { PropsWithChildren } from 'react';
+import { composerCard, composerFooter } from './composerStyles';
 
 export const ComposerWrapper = ({ children }: PropsWithChildren) => {
   return (
-    <div className="thread-composer">
-      <div className="thread-composer-card">{children}</div>
+    <div className={composerFooter}>
+      <div className={composerCard}>{children}</div>
     </div>
   );
 };

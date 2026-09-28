@@ -146,7 +146,7 @@ export class WebSocketClient {
 
   handleOpen() {
     this.reconnectAttempts = 0;
-    eventBus.emit('socket:connected');
+    eventBus.emit('socket:connected', undefined);
   }
 
   handleMessage(event) {
@@ -161,8 +161,21 @@ export class WebSocketClient {
       // кто читает, но не пишет.
       if (message.type === 'ping') this.sendPong();
 
-      const payload = message.payload ?? message;
-      eventBus.emit(message.type, payload);
+      // Для событий звонков сохраняем контекст отправителя и комнаты
+      let eventData = message.payload ?? message;
+      if (message.type && typeof message.type === 'string' && message.type.startsWith('call_')) {
+        if (message.payload && typeof message.payload === 'object') {
+          eventData = {
+            ...message.payload,
+            from: message.from ?? message.payload.from,
+            roomId: message.roomId ?? message.payload.roomId,
+          };
+        } else {
+          eventData = message;
+        }
+      }
+
+      eventBus.emit(message.type, eventData);
       eventBus.emit('socket:message', message);
     } catch (error) {
       eventBus.emit('socket:message', event.data);
@@ -175,7 +188,7 @@ export class WebSocketClient {
     if (this.socket !== socket) return;
 
     this.socket = null;
-    eventBus.emit('socket:disconnected');
+    eventBus.emit('socket:disconnected', undefined);
 
     this.scheduleReconnect();
   }

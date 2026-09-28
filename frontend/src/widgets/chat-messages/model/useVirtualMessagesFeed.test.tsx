@@ -46,4 +46,80 @@ describe('useVirtualMessagesFeed', () => {
     expect(result.current.messagesById.get('msg-1')?.id).toBe('msg-1');
     expect(result.current.messagesById.get('msg-2')?.id).toBe('msg-2');
   });
+
+  /* «Новые сообщения» (#820). */
+  describe('разделитель новых сообщений', () => {
+    const ME = 'user-me';
+    const incoming = (id: string, isRead: boolean) =>
+      makeMessage({
+        id,
+        chatId: 'chat-1',
+        senderId: 'user-2',
+        isRead,
+        createdAt: '2026-05-10T10:00:00Z',
+      });
+    const own = (id: string) =>
+      makeMessage({
+        id,
+        chatId: 'chat-1',
+        senderId: ME,
+        isRead: false,
+        createdAt: '2026-05-10T10:00:00Z',
+      });
+
+    const types = (items: { type: string; id: string }[]) =>
+      items.map((item) => (item.type === 'message' ? item.id : item.type));
+
+    it('стоит перед первым чужим непрочитанным', () => {
+      const messages = [
+        incoming('m1', true),
+        own('m2'),
+        incoming('m3', false),
+        incoming('m4', false),
+      ];
+
+      const { result } = renderHook(() => useVirtualMessagesFeed({ messages, currentUserId: ME }), {
+        wrapper,
+      });
+
+      expect(types(result.current.feedItems)).toEqual(['date', 'm1', 'm2', 'unread', 'm3', 'm4']);
+    });
+
+    it('остаётся на месте, когда сообщения отметились прочитанными', () => {
+      /* Лента отмечает прочитанным сразу после загрузки — без снимка на
+         момент открытия разделитель пропал бы в ту же секунду. */
+      let messages = [incoming('m1', true), incoming('m2', false)];
+
+      const { result, rerender } = renderHook(
+        () => useVirtualMessagesFeed({ messages, currentUserId: ME }),
+        { wrapper }
+      );
+
+      messages = [incoming('m1', true), incoming('m2', true)];
+      rerender();
+
+      expect(types(result.current.feedItems)).toEqual(['date', 'm1', 'unread', 'm2']);
+    });
+
+    it('своё непрочитанным не считается, и без чужих новых разделителя нет', () => {
+      const messages = [incoming('m1', true), own('m2')];
+
+      const { result } = renderHook(() => useVirtualMessagesFeed({ messages, currentUserId: ME }), {
+        wrapper,
+      });
+
+      expect(types(result.current.feedItems)).not.toContain('unread');
+    });
+
+    it('в подборке закреплённых разделителя нет', () => {
+      const messages = [incoming('m1', false)];
+
+      const { result } = renderHook(
+        () => useVirtualMessagesFeed({ messages, currentUserId: ME, trackUnread: false }),
+        { wrapper }
+      );
+
+      expect(types(result.current.feedItems)).not.toContain('unread');
+    });
+  });
 });

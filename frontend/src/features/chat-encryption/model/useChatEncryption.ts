@@ -19,7 +19,35 @@ import { useEffect, useSyncExternalStore } from 'react';
  * долечить, значит кто-то из собеседников пока не прочтёт написанное, но
  * сама переписка от этого не останавливается.
  */
+/*
+ * Повторная попытка (#826): «Проверить» на плашке «Шифрование недоступно».
+ * Номер попытки — зависимость эффекта ниже: сменился — подготовка идёт
+ * заново. Хранится вне React, как и само состояние шифрования.
+ */
+const attempts = new Map<string, number>();
+const attemptListeners = new Set<() => void>();
+
+function subscribeToAttempts(listener: () => void): () => void {
+  attemptListeners.add(listener);
+  return () => {
+    attemptListeners.delete(listener);
+  };
+}
+
+/** Подготовить шифрование чата заново: ключ мог появиться за это время. */
+export function retryChatEncryption(chatId: string): void {
+  attempts.set(chatId, (attempts.get(chatId) ?? 0) + 1);
+  setEncryptionState(chatId, { status: 'preparing', unreachable: [] });
+  for (const listener of attemptListeners) listener();
+}
+
 export function useChatEncryption(chatId: string): void {
+  const attempt = useSyncExternalStore(
+    subscribeToAttempts,
+    () => attempts.get(chatId) ?? 0,
+    () => 0
+  );
+
   useEffect(() => {
     if (!chatId) return undefined;
 
@@ -59,7 +87,7 @@ export function useChatEncryption(chatId: string): void {
     return () => {
       cancelled = true;
     };
-  }, [chatId]);
+  }, [chatId, attempt]);
 }
 
 /** Состояние шифрования чата. Перерисовывается только тот, кто его читает. */

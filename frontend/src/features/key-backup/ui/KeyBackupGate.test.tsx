@@ -5,7 +5,12 @@ import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { services } from '@/services/serviceContainer';
-import { forgetBackupState, setBackupState, WrongCloudPasswordError } from '@/shared/crypto';
+import {
+  forgetBackupState,
+  PasskeyCancelledError,
+  setBackupState,
+  WrongCloudPasswordError,
+} from '@/shared/crypto';
 import { testI18n } from '@/test/harness/i18n';
 import { KeyBackupGate } from './KeyBackupGate';
 
@@ -90,6 +95,29 @@ describe('заслонка резервной копии (#744)', () => {
     renderGate();
 
     expect(screen.queryByRole('button', { name: 'Открыть с passkey' })).not.toBeInTheDocument();
+  });
+
+  it('при отменённом passkey объясняет по-русски, а не текстом браузера (#746)', async () => {
+    setBackupState({ status: 'locked', hasPasskey: true, migrating: false });
+    vi.stubGlobal('PublicKeyCredential', class {});
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { create: () => Promise.resolve(null), get: () => Promise.resolve(null) },
+    });
+    vi.spyOn(services.cryptoService, 'unlockWithPasskey').mockRejectedValue(
+      new PasskeyCancelledError()
+    );
+
+    try {
+      renderGate();
+      await userEvent.click(screen.getByRole('button', { name: 'Открыть с passkey' }));
+
+      expect(await screen.findByText(/в этом браузере нет passkey/)).toBeInTheDocument();
+      expect(screen.queryByText(/timed out or was not allowed/)).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, 'credentials');
+    }
   });
 
   it('сбрасывает копию только после явного подтверждения', async () => {

@@ -22,11 +22,11 @@ export const CloudPasswordInput = forwardRef<HTMLInputElement, Props>(
             aria-label={
               shown ? t('hidePassword', 'Скрыть пароль') : t('showPassword', 'Показать пароль')
             }
-            className="text-ink-2 transition-colors hover:text-ink"
+            className="flex size-10 cursor-pointer items-center justify-center rounded-field text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
             onClick={() => setShown((value) => !value)}
             type="button"
           >
-            <Icon name={shown ? 'eyeOff' : 'eye'} size="md" />
+            <Icon className="stroke-[1.8px]" name={shown ? 'eyeOff' : 'eye'} size="md" />
           </button>
         }
         autoCapitalize="none"

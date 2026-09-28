@@ -39,17 +39,8 @@ const (
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
 	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`
-	// sendMessageMuteQuery — точная копия SQL проверки mute в Service.SendMessage.
-	sendMessageMuteQuery = `
-	SELECT cm.role,
-	       (
-	         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-	         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
-	       )
-	FROM chats.members cm
-	JOIN auth.users u ON u.id = cm.user_id
-	WHERE cm.chat_id = $1 AND cm.user_id = $2
-	`
+	// sendMessageMuteQuery — проверка права писать в Service.SendMessage.
+	sendMessageMuteQuery = sendPermissionQuery
 	// muteMemberSelectQuery — точная копия SQL чтения состояния цели в Service.MuteMember.
 	muteMemberTargetQuery = `
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
@@ -62,8 +53,14 @@ const (
 	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
 	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
-	onlineMemberIDsQuery = `SELECT user_id::text FROM chats.members WHERE chat_id = $1`
+	onlineMemberIDsQuery = membersWithPrivacyQuery
 )
+
+// onlineMemberColumns — столбцы membersWithPrivacyQuery.
+var onlineMemberColumns = []string{
+	"user_id", "privacy_settings", "blocked", "exceptions",
+	"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+}
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
 func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
@@ -172,6 +169,7 @@ func TestHandler_AddMember(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectExec(`UPDATE chats\.chats SET key_rotation_needed = TRUE`).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery(`SELECT .* FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at"}).AddRow(handlerTargetID, "u", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
 				mock.ExpectCommit()
 			},
@@ -254,6 +252,8 @@ func TestHandler_LeaveChat(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(leaveMembershipDelete).
 					WithArgs(handlerChatID, handlerActorID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
@@ -446,7 +446,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 			"MemberMuted",
 			func() {
 				mock.ExpectQuery(sendMessageMuteQuery).
-					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", true))
+					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", true, false))
 			},
 			http.StatusForbidden, // 403
 			"member_muted",
@@ -465,7 +465,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			body, _ := json.Marshal(map[string]string{"content": "hello"})
+			body := []byte(sendBody(`{"content":"hello"}`))
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
 			req.SetPathValue("chatId", handlerChatID)
 
@@ -485,7 +485,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 // валидация + respondSuccess). Закрывает критерий «некорректные UUID не приводят к 500».
 func TestHandler_MuteMember_InvalidUUID(t *testing.T) {
 	h, mock := newTestHandler(t)
-	req := newAuthedRequest(http.MethodPost, "/api/v2/chats/not-a-uuid/members/"+handlerTargetID+"/mute", nil, handlerActorID)
+	req := newAuthedRequest(http.MethodPost, "/api/v2/chats/not-a-uuid/members/"+handlerTargetID+"/mute", []byte("{}"), handlerActorID)
 	rr := httptest.NewRecorder()
 	h.Chat(rr, req)
 	assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
@@ -582,6 +582,8 @@ func TestHandler_BanMember_Body(t *testing.T) {
 					WillReturnError(sql.ErrNoRows)
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(banUpsertQuery).
 					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
@@ -708,9 +710,10 @@ func TestHandler_GetOnlineMembers(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				m.ExpectQuery(onlineMemberIDsQuery).
-					WithArgs(handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
-						AddRow(handlerActorID).AddRow(handlerTargetID))
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows(onlineMemberColumns).
+						AddRow(handlerActorID, nil, false, nil, nil, false, nil).
+						AddRow(handlerTargetID, nil, false, nil, nil, false, nil))
 			},
 			wantStatus:  http.StatusOK,
 			wantMembers: []string{handlerActorID},
@@ -761,6 +764,261 @@ func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	return NewHandler(NewService(db, nil, nil)), mock
 }
 
+// bodyKind enumerates the ways a well-formed JSON body is corrupted in
+// negative tests.
+type bodyKind int
+
+const (
+	secondJSON      bodyKind = iota + 1 // {"..."} {"second":true}
+	trailingGarbage                     // {"..."} garbage
+	oversized                           // body above the decoder's size limit
+	emptyBody                           // whitespace only
+	invalidSyntax                       // missing closing brace
+)
+
+// kindName returns a human-readable name for k. It is used as a subtest name.
+func kindName(k bodyKind) string {
+	switch k {
+	case secondJSON:
+		return "secondJSON"
+	case trailingGarbage:
+		return "trailingGarbage"
+	case oversized:
+		return "oversized"
+	case emptyBody:
+		return "emptyBody"
+	case invalidSyntax:
+		return "invalidSyntax"
+	default:
+		return "unknown"
+	}
+}
+
+// allKinds is the set of negative scenarios exercised by TestDecodeNegativeScenarios.
+var allKinds = []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax}
+
+// oversizedPadSize must exceed every decode limit used by handlers: 256 KiB
+// for decode and decodeStrict, 2 MiB for SendMessage's decodeLimited.
+const oversizedPadSize = 3 << 20 // 3 MiB
+
+// buildBody returns valid corrupted according to kind.
+//
+// For oversized, the padding is placed in a field named padField when padField
+// is non-empty. This is required for strict decoders (UpdateGroup uses
+// decodeStrict), which reject unknown fields before the size limit can trigger.
+// When padField is empty, an "extra" field is appended instead.
+func buildBody(kind bodyKind, valid, padField string) []byte {
+	switch kind {
+	case secondJSON:
+		return []byte(valid + ` {"second":true}`)
+	case trailingGarbage:
+		return []byte(valid + ` garbage`)
+	case oversized:
+		pad := strings.Repeat("a", oversizedPadSize)
+		if padField != "" {
+			return []byte(`{"` + padField + `":"` + pad + `"}`)
+		}
+		inner := strings.TrimSuffix(valid, "}")
+		if inner == "{" { // empty object "{}"
+			return []byte(`{"extra":"` + pad + `"}`)
+		}
+		return []byte(inner + `,"extra":"` + pad + `"}`)
+	case emptyBody:
+		return []byte("   ")
+	case invalidSyntax:
+		return []byte(strings.TrimSuffix(valid, "}"))
+	default:
+		return nil
+	}
+}
+
+// assertInvalidJSON asserts that rr carries a 400 response with code
+// "invalid_json" and a non-empty message.
+func assertInvalidJSON(t *testing.T, rr *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s",
+			rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+
+	var resp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not JSON: %v, body: %s", err, rr.Body.String())
+	}
+	if resp.Code != "invalid_json" {
+		t.Errorf("code = %q, want %q", resp.Code, "invalid_json")
+	}
+	if resp.Message == "" {
+		t.Errorf("message is empty")
+	}
+}
+
+// TestDecodeNegativeScenarios verifies that every handler (or mini-router
+// branch) that calls decode, decodeLimited, or decodeStrict rejects malformed
+// request bodies with 400 Bad Request and code "invalid_json".
+//
+// The handler is built with a nil-backed service on purpose: decode runs before
+// any service call, so a correct short-circuit avoids the nil pointer
+// dereference. If validation were skipped, the handler would panic and the test
+// would fail loudly.
+func TestDecodeNegativeScenarios(t *testing.T) {
+	const (
+		userID    = "550e8400-e29b-41d4-a716-446655440000"
+		chatID    = "550e8400-e29b-41d4-a716-446655440001"
+		memberID  = "550e8400-e29b-41d4-a716-446655440002"
+		messageID = "550e8400-e29b-41d4-a716-446655440003"
+	)
+
+	h := NewHandler(NewService(nil, nil, nil))
+
+	type testCase struct {
+		name     string
+		handler  func(*Handler, http.ResponseWriter, *http.Request)
+		method   string
+		path     string
+		valid    string // well-formed body, corrupted per scenario by buildBody
+		padField string // non-empty only for strict decoders
+	}
+
+	cases := []testCase{
+		// Direct leaf handlers.
+
+		{
+			name:    "CreatePrivate",
+			handler: (*Handler).CreatePrivate,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/private",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "CreateGroup",
+			handler: (*Handler).CreateGroup,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/groups",
+			valid:   `{"title":"G","members":["` + memberID + `"]}`,
+		},
+		{
+			name:     "UpdateGroup",
+			handler:  (*Handler).UpdateGroup,
+			method:   http.MethodPatch,
+			path:     "/api/v2/chats/" + chatID,
+			valid:    `{"title":"New"}`,
+			padField: "title",
+		},
+		{
+			name:    "SendMessage",
+			handler: (*Handler).SendMessage,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/messages",
+			valid:   `{"messages":[{"content":"hi","type":"text"}]}`,
+		},
+		{
+			name:    "EditMessage",
+			handler: (*Handler).EditMessage,
+			method:  http.MethodPut,
+			path:    "/api/v2/messages/" + messageID,
+			valid:   `{"content":"edited"}`,
+		},
+		{
+			name:    "MarkMessagesRead",
+			handler: (*Handler).MarkMessagesRead,
+			method:  http.MethodPost,
+			path:    "/api/v2/messages/read",
+			valid:   `{"chatId":"` + chatID + `"}`,
+		},
+		{
+			name:    "CallRoom",
+			handler: (*Handler).CallRoom,
+			method:  http.MethodPost,
+			path:    "/api/v2/calls/rooms",
+			valid:   `{"type":"private","chatId":"` + chatID + `"}`,
+		},
+
+		// Chat mini-router branches.
+
+		{
+			name:    "Chat_AddMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "Chat_TransferOwnership",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/transfer-ownership",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "Chat_SetMemberRole",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/role",
+			valid:   `{"role":"admin"}`,
+		},
+		{
+			name:    "Chat_BanMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/ban",
+			valid:   `{"reason":"spam"}`,
+		},
+		{
+			name:    "Chat_MuteMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/mute",
+			valid:   `{}`,
+		},
+
+		// Messages mini-router branch.
+
+		{
+			name:    "Messages_ToggleReaction",
+			handler: (*Handler).Messages,
+			method:  http.MethodPost,
+			path:    "/api/v2/messages/" + messageID + "/reactions",
+			valid:   `{"emoji":"👍"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, kind := range allKinds {
+				t.Run(kindName(kind), func(t *testing.T) {
+					body := buildBody(kind, tc.valid, tc.padField)
+
+					req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+
+					// Handlers read path parameters via r.PathValue. Set every
+					// known name; unused ones are ignored.
+					req.SetPathValue("chatID", chatID)
+					req.SetPathValue("chatId", chatID)
+					req.SetPathValue("messageId", messageID)
+
+					// authctx.MustUser runs before decode in every handler,
+					// so the user must be present in the context.
+					req = req.WithContext(authctx.WithUser(
+						req.Context(),
+						authctx.User{ID: userID, Username: "testuser"},
+					))
+
+					rr := httptest.NewRecorder()
+					tc.handler(h, rr, req)
+
+					assertInvalidJSON(t, rr)
+				})
+			}
+		})
+	}
+}
+
 func TestHandler_List(t *testing.T) {
 	const userID = "550e8400-e29b-41d4-a716-446655440000"
 
@@ -770,7 +1028,8 @@ func TestHandler_List(t *testing.T) {
 		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
-		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	tests := []struct {
@@ -1247,14 +1506,15 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
-		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", "", "",
+			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil,
 		)
 	}
 
@@ -1374,7 +1634,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantErrorCode: "invalid_json",
 		},
 		{
 			// Handler rejects an empty body before calling the service.
@@ -1384,7 +1644,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			requestBody:   map[string]any{},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantErrorCode: "invalid_json",
 		},
 		{
 			// Guards decodeStrict's DisallowUnknownFields in the PATCH path.
@@ -1400,7 +1660,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantErrorCode: "invalid_json",
 		},
 		{
 			// Guards decodeStrict's trailing-data check in the PATCH path.
@@ -1412,7 +1672,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			rawBody:       []byte(`{"title":"New Title"}{"title":"Second"}`),
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
+			wantErrorCode: "invalid_json",
 		},
 		{
 			name:   "chat_not_found_404",

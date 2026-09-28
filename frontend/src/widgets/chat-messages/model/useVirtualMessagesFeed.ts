@@ -7,11 +7,40 @@ import { useTranslation } from 'react-i18next';
 
 export type TFeedItem =
   | { id: string; type: 'date'; label: string }
-  | { id: string; type: 'message'; message: IMessageDto };
+  /** «Новые сообщения» — перед первым непрочитанным на момент открытия (#820). */
+  | { id: string; type: 'unread' }
+  | {
+      id: string;
+      type: 'message';
+      message: IMessageDto;
+      /** Первое сообщение в непрерывной цепочке одного автора. */
+      isFirstInGroup: boolean;
+      /** Последнее сообщение в группе — рисуется с «хвостиком» (срезанный угол). */
+      isLastInGroup: boolean;
+      /** Идёт сразу после сообщения другого автора (нужен увеличенный gap). */
+      isDifferentAuthor: boolean;
+    };
 
 interface IUseVirtualMessagesFeedOptions {
   messages: TMessagesList;
   messagesRef?: RefObject<HTMLElement | null>;
+  /** Кто читает: свои сообщения непрочитанными не бывают. */
+  currentUserId?: string;
+  /**
+   * Отмечать ли новые: разделитель «Новые сообщения» и их число на кнопке
+   * «вниз». В подборке закреплённых это не нужно.
+   */
+  trackUnread?: boolean;
+}
+
+/* Что было непрочитанным, когда чат открыли. Запоминается один раз на
+   чат: сами сообщения отмечаются прочитанными сразу после загрузки, и
+   без снимка разделитель исчез бы в первую же секунду. */
+interface IUnreadSnapshot {
+  chatId: string;
+  firstUnreadId: string | null;
+  /** Что уже было в ленте при открытии: пришедшее позже — тоже новое. */
+  knownIds: Set<string>;
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -19,8 +48,28 @@ const NEAR_BOTTOM_THRESHOLD_PX = 150;
 const DATE_HIDE_DELAY_MS = 1500;
 const STICKY_COLLISION_HEIGHT_PX = 44;
 
-export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMessagesFeedOptions) {
+export function useVirtualMessagesFeed({
+  messages,
+  messagesRef,
+  currentUserId,
+  trackUnread = true,
+}: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
+
+  const chatId = messages[0]?.chatId;
+  const [unread, setUnread] = useState<IUnreadSnapshot | null>(null);
+  // Снимок делается при отрисовке, а не эффектом: иначе первый кадр
+  // ленты вышел бы без разделителя и дёрнулся бы следующим.
+  if (trackUnread && chatId && unread?.chatId !== chatId) {
+    const first = messages.find(
+      (message) => message.senderId !== currentUserId && message.isRead === false
+    );
+    setUnread({
+      chatId,
+      firstUnreadId: first?.id ?? null,
+      knownIds: new Set(messages.map((message) => message.id)),
+    });
+  }
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [isScrollingState, setIsScrollingState] = useState(false);
@@ -70,9 +119,16 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     return index;
   }, [messages]);
 
-  /* Формирование элементов ленты с инлайн-разделителями между днями */
+  /* Формирование элементов ленты с инлайн-разделителями между днями
+     и расчётом непрерывных групп одного автора (Telegram-стиль). */
   const feedItems = useMemo<TFeedItem[]>(() => {
-    const items: TFeedItem[] = [];
+    /* 1. Сообщения + разделители дат */
+    const raw: Array<
+      | { type: 'date'; id: string; label: string }
+      | { type: 'unread'; id: string }
+      | { type: 'message'; id: string; message: IMessageDto }
+    > = [];
+
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
       const prevMessage = i > 0 ? messages[i - 1] : undefined;
@@ -80,7 +136,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       if (!prevMessage || isDifferentDay(prevMessage.createdAt, message.createdAt)) {
         const dateLabel = formatDateDivider(message.createdAt, t);
         if (dateLabel) {
-          items.push({
+          raw.push({
             id: `date-${String(message.createdAt).slice(0, 10)}-${i}`,
             type: 'date',
             label: dateLabel,
@@ -88,14 +144,38 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
         }
       }
 
-      items.push({
-        id: message.id,
-        type: 'message',
-        message,
-      });
+      if (message.id === unread?.firstUnreadId) raw.push({ id: 'unread-divider', type: 'unread' });
+
+      raw.push({ id: message.id, type: 'message', message });
     }
+
+    /* 2. Группировка: вычисление флагов первого/последнего в группе одного автора */
+    const items: TFeedItem[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const entry = raw[i];
+      if (entry.type !== 'message') {
+        items.push(entry);
+      } else {
+        const prev = i > 0 ? raw[i - 1] : null;
+        const next = i < raw.length - 1 ? raw[i + 1] : null;
+        const sameAsPrev =
+          prev?.type === 'message' && prev.message.senderId === entry.message.senderId;
+        const sameAsNext =
+          next?.type === 'message' && next.message.senderId === entry.message.senderId;
+        const isDifferentAuthor =
+          prev?.type === 'message' && prev.message.senderId !== entry.message.senderId;
+
+        items.push({
+          ...entry,
+          isFirstInGroup: !sameAsPrev,
+          isLastInGroup: !sameAsNext,
+          isDifferentAuthor,
+        });
+      }
+    }
+
     return items;
-  }, [messages, t]);
+  }, [messages, t, unread?.firstUnreadId]);
 
   const virtualizer = useVirtualizer({
     count: feedItems.length,
@@ -108,7 +188,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
       (index: number) => feedItems[index]?.id ?? `item-${index}`,
       [feedItems]
     ),
-    gap: 10,
+    gap: 4,
     overscan: 8,
     useFlushSync: false,
   });
@@ -201,6 +281,22 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  /* Сколько новых ниже экрана — число на кнопке «вниз». Новые — чужие,
+     что были непрочитанными при открытии, и пришедшие после. */
+  const lastVisibleIndex = virtualizer.range?.endIndex ?? feedItems.length - 1;
+  const unreadBelow = useMemo(() => {
+    if (!unread) return 0;
+    const anchor = feedItems.findIndex((item) => item.type === 'unread');
+    let count = 0;
+    for (let index = lastVisibleIndex + 1; index < feedItems.length; index++) {
+      const item = feedItems[index];
+      if (item.type !== 'message' || item.message.senderId === currentUserId) continue;
+      const isFresh = (anchor !== -1 && index > anchor) || !unread.knownIds.has(item.id);
+      if (isFresh) count++;
+    }
+    return count;
+  }, [feedItems, lastVisibleIndex, unread, currentUserId]);
+
   // Расчёт стики-поведения в стиле Telegram: выталкивание следующим дивайдером и активная дата
   const { activeDate, stickyPushOffset, isInlineAtTop } = useMemo(() => {
     if (virtualItems.length === 0) {
@@ -209,14 +305,18 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
     const scrollOffset = virtualizer.scrollOffset ?? 0;
     const firstRow = virtualItems[0];
-    const firstItem = feedItems[firstRow.index];
+    /* Разделитель «Новые сообщения» даты не несёт — берётся следующий
+       за ним элемент. */
+    const firstItem =
+      feedItems[firstRow.index]?.type === 'unread'
+        ? feedItems[firstRow.index + 1]
+        : feedItems[firstRow.index];
 
     let dateText = '';
-    if (firstItem) {
-      dateText =
-        firstItem.type === 'date'
-          ? firstItem.label
-          : formatDateDivider(firstItem.message.createdAt, t);
+    if (firstItem?.type === 'date') {
+      dateText = firstItem.label;
+    } else if (firstItem?.type === 'message') {
+      dateText = formatDateDivider(firstItem.message.createdAt, t);
     }
 
     let pushOffset = 0;
@@ -275,6 +375,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     virtualItems,
     setContainerRef,
     showScrollBottom,
+    unreadBelow,
     scrollToBottom,
     jumpToMessage,
   };

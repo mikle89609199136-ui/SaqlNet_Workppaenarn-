@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { createPasskeySlot, PasskeyPrfUnsupportedError, registerPasskey } from '@/shared/crypto';
+import {
+  createPasskeySlot,
+  PasskeyCancelledError,
+  PasskeyNotAllowedHereError,
+  PasskeyPrfUnsupportedError,
+  registerPasskey,
+} from '@/shared/crypto';
 import { Banner, Button } from '@/shared/ui';
 
 interface Props {
@@ -49,13 +55,20 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
       await services.cryptoService.addPasskeySlot(slot);
       onDone();
     } catch (caught) {
+      // Окно закрыли сами — ошибкой это не считаем.
+      if (caught instanceof PasskeyCancelledError) return;
       setError(
-        caught instanceof PasskeyPrfUnsupportedError
+        caught instanceof PasskeyNotAllowedHereError
           ? t(
-              'keyBackup.passkey.unsupported',
-              'Этот passkey не подходит для восстановления копии. Попробуйте другой способ хранения ключей — например, менеджер паролей Google или iCloud.'
+              'keyBackup.passkey.notAllowedHere',
+              'На этом адресе passkey не работает. Откройте CraneApp по обычному адресу или введите облачный пароль.'
             )
-          : t('keyBackup.passkey.failed', 'Не удалось добавить passkey')
+          : caught instanceof PasskeyPrfUnsupportedError
+            ? t(
+                'keyBackup.passkey.unsupported',
+                'Этот passkey не подходит для восстановления копии. Попробуйте другой способ хранения ключей — например, менеджер паролей Google или iCloud.'
+              )
+            : t('keyBackup.passkey.failed', 'Не удалось добавить passkey')
       );
     } finally {
       setBusy(false);
@@ -64,7 +77,7 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
 
   return (
     <div className="grid gap-4 text-left">
-      <p className="text-body text-ink-2">
+      <p className="text-center text-ui leading-[1.55] text-ink-2">
         {t(
           'keyBackup.passkey.offer',
           'Если забудете облачный пароль, историю можно будет открыть отпечатком пальца или лицом. Passkey хранится в вашем менеджере паролей и переходит на новые устройства сам.'
@@ -80,7 +93,7 @@ export function PasskeyOffer({ onDone, skipLabel }: Props) {
       <Button className="w-full" loading={busy} onClick={addPasskey}>
         {t('keyBackup.passkey.add', 'Добавить passkey')}
       </Button>
-      <Button className="w-full" disabled={busy} onClick={onDone} variant="ghost">
+      <Button className="w-full text-brand" disabled={busy} onClick={onDone} variant="ghost">
         {skipLabel ?? t('keyBackup.passkey.later', 'Позже')}
       </Button>
     </div>

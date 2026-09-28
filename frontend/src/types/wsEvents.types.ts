@@ -26,6 +26,12 @@ export interface IMessageDeletedEvent {
   previousMessage: IMessageDto | null;
   chatId: string;
 }
+/** Удалены у всех или скрыты у себя — пачкой (#840). */
+export interface IMessagesRemovedEvent {
+  type: string;
+  chatId: string;
+  messageIds: string[];
+}
 export interface IMessagePinEvent {
   type: string;
   chatId: string;
@@ -75,78 +81,34 @@ export interface IChatMemberRoleUpdatedEvent {
   role: string;
 }
 
+/**
+ * Статус собеседника по личному чату (#780). Приходит, когда закрыто
+ * последнее соединение или открыто первое; скрытый приватностью статус
+ * не присылается вовсе.
+ */
+export interface IPresenceChangedEvent {
+  type: string;
+  userId: string;
+  isOnline: boolean;
+  /** ISO 8601, UTC. */
+  lastSeen: string;
+}
+
+/** Блокировка или её снятие (#760): кто, кого и их личный чат, если он есть. */
+export interface IUserBlockEvent {
+  type: string;
+  userId: string;
+  blockedUserId: string;
+  chatId: string;
+}
+
 export interface ITypingEvent {
   type: string;
   chatId: string;
   userId: string;
   senderId: string;
-}
-
-export interface ICallErrorEvent {
-  type: string;
-  reason: string;
-}
-
-interface IPeer {
-  userId: string;
-  displayName: string;
-  avatarUrl: string;
-}
-
-export interface ICallJoinedEvent {
-  type: string;
-  roomId: string;
-  peers: IPeer[];
-  self: { userId: string };
-}
-export interface ICallPeerJoinedEvent {
-  type: string;
-  roomId: string;
-  peer: IPeer;
-}
-export interface ICallPeerLeftEvent {
-  type: string;
-  roomId: string;
-  peer: { userId: string };
-}
-export interface ICallIncomingEvent {
-  type: string;
-  roomId: string;
-  kind: string;
-  callType: string;
-  from: string;
-  fromName: string;
-  fromAvatar: string;
-  title: string;
-}
-export interface ICallCenceledEvent {
-  type: string;
-  roomId: string;
-}
-export interface ICallInviteResponseEvent {
-  type: string;
-  roomId: string;
-  from: string;
-  accepted: string;
-  reason: string;
-}
-export interface ICallOfferEvent {
-  type: string;
-  roomId: string;
-  from: string;
-  payload: any;
-}
-export interface ICallAnswerEvent {
-  type: string;
-  roomId: string;
-  from: string;
-  payload: any;
-}
-export interface ICallIceEvent {
-  type: string;
-  roomId: string;
-  from: string;
-  payload: any;
+  /** Имя печатающего — сервер добавляет его в #866; до того поля нет. */
+  firstName?: string;
 }
 
 export interface ILastMessagePayloadDto {
@@ -183,9 +145,88 @@ export type TWsEventType = ValueOf<{
   [K in keyof typeof WS_EVENTS]: ValueOf<(typeof WS_EVENTS)[K]>;
 }>;
 
+export interface ICallPeerDto {
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+}
+
+export interface ICallErrorEvent {
+  type: string;
+  reason: string;
+  roomId?: string;
+}
+
+export interface ICallJoinedEvent {
+  type: string;
+  roomId: string;
+  peers: ICallPeerDto[];
+  self: { userId: string };
+}
+
+export interface ICallPeerJoinedEvent {
+  type: string;
+  roomId: string;
+  peer: ICallPeerDto;
+}
+
+export interface ICallPeerLeftEvent {
+  type: string;
+  roomId: string;
+  peer: { userId: string };
+}
+
+export interface ICallIncomingEvent {
+  type: string;
+  roomId: string;
+  kind: 'audio' | 'video';
+  callType?: string;
+  from: string;
+  fromName?: string;
+  fromAvatar?: string | null;
+  title?: string;
+}
+
+export interface ICallCancelledEvent {
+  type: string;
+  roomId: string;
+}
+
+export interface ICallInviteResponseEvent {
+  type: string;
+  roomId: string;
+  from?: string;
+  accepted: boolean;
+  reason?: string;
+}
+
+export interface ICallOfferEvent {
+  type: string;
+  roomId: string;
+  from: string;
+  payload: RTCSessionDescriptionInit;
+}
+
+export interface ICallAnswerEvent {
+  type: string;
+  roomId: string;
+  from: string;
+  payload: RTCSessionDescriptionInit;
+}
+
+export interface ICallIceEvent {
+  type: string;
+  roomId: string;
+  from: string;
+  payload: RTCIceCandidateInit;
+}
+
 export interface IWsEventMap {
+  // Служебные события самого соединения — без данных.
+  [WS_EVENTS.SOCKET.CONNECTED]: void;
+  [WS_EVENTS.SOCKET.DISCONNECTED]: void;
   [WS_EVENTS.CALL.ANSWER]: ICallAnswerEvent;
-  [WS_EVENTS.CALL.CANCELED]: ICallCenceledEvent;
+  [WS_EVENTS.CALL.CANCELED]: ICallCancelledEvent;
   [WS_EVENTS.CALL.ERROR]: ICallErrorEvent;
   [WS_EVENTS.CALL.ICE]: ICallIceEvent;
   [WS_EVENTS.CALL.INCOMING]: ICallIncomingEvent;
@@ -201,6 +242,8 @@ export interface IWsEventMap {
   [WS_EVENTS.CHAT.UPDATED]: IChatUpdatedEvent;
 
   [WS_EVENTS.MESSAGE.DELETED]: IMessageDeletedEvent;
+  [WS_EVENTS.MESSAGE.BATCH_DELETED]: IMessagesRemovedEvent;
+  [WS_EVENTS.MESSAGE.HIDDEN]: IMessagesRemovedEvent;
   [WS_EVENTS.MESSAGE.EDITED]: IMessageEditedEvent;
   [WS_EVENTS.MESSAGE.NEW]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
@@ -212,4 +255,7 @@ export interface IWsEventMap {
   [WS_EVENTS.REACTIONS.REACTION_UPDATED]: IReactionUpdatedEvent;
 
   [WS_EVENTS.USER.TYPING]: ITypingEvent;
+  [WS_EVENTS.USER.PRESENCE]: IPresenceChangedEvent;
+  [WS_EVENTS.USER.BLOCKED]: IUserBlockEvent;
+  [WS_EVENTS.USER.UNBLOCKED]: IUserBlockEvent;
 }

@@ -12,23 +12,38 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"craneapp/backend-v2/internal/platform/blockevent"
+	"craneapp/backend-v2/internal/platform/privacy"
+	"craneapp/backend-v2/internal/platform/profileevent"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
+	"github.com/lib/pq"
 )
 
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
+const UsernameChangeCooldown = 24 * time.Hour
 
 var (
 	ErrNotFound              = errors.New("user not found")
 	ErrSelfBlock             = errors.New("cannot block yourself")
 	ErrAlreadyBlocked        = errors.New("user already blocked")
 	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidPrivacy        = errors.New("invalid privacy settings")
 	ErrInvalidUsernameFormat = errors.New("wrong username format")
+	ErrUsernameTaken         = errors.New("username already exists")
+	ErrUsernameCooldown      = errors.New("username change cooldown is active")
 	ErrWrongPasscode         = errors.New("wrong passcode")
 	ErrNoPasscodeSet         = errors.New("no passcode set")
 )
+
+type UsernameCooldownError struct {
+	AvailableAt time.Time
+}
+
+func (e *UsernameCooldownError) Error() string { return ErrUsernameCooldown.Error() }
+func (e *UsernameCooldownError) Unwrap() error { return ErrUsernameCooldown }
 
 type Profile struct {
 	ID        string   `json:"id"`
@@ -127,6 +142,112 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 		WHERE user_id = $1
 	`, userID, stringOrNil(firstName), stringOrNil(lastName), stringOrNil(bio), stringOrNil(avatarURL))
 	if err != nil {
+		return Profile{}, err
+	}
+	return s.profileByID(ctx, userID)
+}
+
+// RenameUsername atomically updates the canonical username and appends its old value
+// to the audit trail. Locking the user row serializes concurrent rename attempts for
+// one account; the username registry arbitrates competing accounts and reserves old names.
+func (s *Service) RenameUsername(ctx context.Context, userID, requestedUsername string) (Profile, error) {
+	newUsername := usernamepolicy.Normalize(requestedUsername)
+	if newUsername == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if !usernamepolicy.Valid(newUsername) {
+		return Profile{}, ErrInvalidUsernameFormat
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentUsername string
+	err = tx.QueryRowContext(ctx, `
+		SELECT username
+		FROM auth.users
+		WHERE id = $1 AND disabled_at IS NULL
+		FOR UPDATE
+	`, userID).Scan(&currentUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	if currentUsername == newUsername {
+		if err := tx.Commit(); err != nil {
+			return Profile{}, err
+		}
+		return s.profileByID(ctx, userID)
+	}
+
+	var lastChanged time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT changed_at
+		FROM users.username_changes
+		WHERE user_id = $1
+		  AND changed_at > NOW() - INTERVAL '24 hours'
+		ORDER BY changed_at DESC
+		LIMIT 1
+	`, userID).Scan(&lastChanged)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, err
+	}
+	if err == nil {
+		availableAt := lastChanged.Add(UsernameChangeCooldown)
+		return Profile{}, &UsernameCooldownError{AvailableAt: availableAt}
+	}
+
+	var claimedUsername string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO auth.username_registry (username, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (username) DO UPDATE
+		SET user_id = auth.username_registry.user_id
+		WHERE auth.username_registry.user_id = EXCLUDED.user_id
+		RETURNING username
+	`, newUsername, userID).Scan(&claimedUsername)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrUsernameTaken
+	}
+	if err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE auth.users
+		SET username = $2, updated_at = NOW()
+		WHERE id = $1
+	`, userID, newUsername); err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Profile{}, ErrUsernameTaken
+		}
+		return Profile{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		INSERT INTO users.username_changes (user_id, previous_username, new_username)
+		VALUES ($1, $2, $3)
+	`, userID, currentUsername, newUsername); err != nil {
+		return Profile{}, err
+	}
+	eventPayload, err := json.Marshal(profileevent.UsernameChanged{UserID: userID, Username: newUsername})
+	if err != nil {
+		return Profile{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `SELECT pg_notify($1, $2)`, profileevent.Channel, string(eventPayload)); err != nil {
+		return Profile{}, err
+	}
+	if err = tx.Commit(); err != nil {
 		return Profile{}, err
 	}
 	return s.profileByID(ctx, userID)
@@ -256,6 +377,10 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 		)
 		return nil, err
 	}
+	// Фото тех, кто закрыл его от ищущего, в выдаче нет (#789).
+	if err := privacy.HidePhotos(ctx, s.db, viewerID, photoSlots(users)); err != nil {
+		return nil, err
+	}
 
 	slog.InfoContext(ctx, "search completed successfully",
 		"layer", "service",
@@ -278,9 +403,10 @@ func EscapeLike(s string) string {
 
 // IsUsernameAvailable checks whether the given username is available for registration.
 // It performs the following validations:
+//   - Normalizes surrounding whitespace and letter case.
 //   - Ensures the username is not empty.
-//   - Validates the username against the allowed pattern (^[a-zA-Z0-9_]{3,32}$).
-//   - Queries the database case‑insensitively to check for existing users.
+//   - Validates the canonical username against the allowed pattern.
+//   - Queries the canonical registry, which includes current and historical claims.
 //
 // Returns:
 //   - (true, nil)  if the username is syntactically valid and does not exist in DB.
@@ -289,6 +415,7 @@ func EscapeLike(s string) string {
 //   - (false, ErrInvalidUsernameFormat) if the username does not match the pattern.
 //   - (false, error) for any database or context error.
 func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
+	username = usernamepolicy.Normalize(username)
 	// Log incoming request (debug level)
 	slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:checking username availability",
 		"username", username,
@@ -301,18 +428,18 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 	}
 
 	// Validate username against the allowed pattern
-	if !usernamePattern.MatchString(username) {
+	if !usernamepolicy.Valid(username) {
 		slog.DebugContext(ctx, "[Service-IsUsernameAvailable]:username does not match pattern",
 			"username", username,
-			"pattern", usernamePattern.String(),
 		)
 		return false, ErrInvalidUsernameFormat
 	}
 
-	// Case‑insensitive existence check in the database
+	// The registry includes both current and historical claims, preventing an
+	// old QR/deep link from being reassigned to a different account.
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM auth.users WHERE lower(username) = lower($1))`,
+		`SELECT EXISTS(SELECT 1 FROM auth.username_registry WHERE username = $1)`,
 		username).Scan(&exists)
 
 	if err != nil {
@@ -332,29 +459,78 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 	return available, nil
 }
 
-func (s *Service) ProfileByID(ctx context.Context, userID string) (Profile, error) {
+// ProfileByID — профиль userID глазами viewerID: фото — по правилу «Фото»
+// с блокировкой и исключениями (#440).
+func (s *Service) ProfileByID(ctx context.Context, viewerID, userID string) (Profile, error) {
+	profile, err := s.profileByID(ctx, userID)
+	if err != nil {
+		return profile, err
+	}
+	err = privacy.HidePhotos(ctx, s.db, viewerID, []privacy.PhotoSlot{{OwnerID: profile.ID, URL: &profile.AvatarURL}})
+	return profile, err
+}
+
+// photoSlots — аватары из списка людей для privacy.HidePhotos.
+func photoSlots(people []SearchResult) []privacy.PhotoSlot {
+	slots := make([]privacy.PhotoSlot, len(people))
+	for i := range people {
+		slots[i] = privacy.PhotoSlot{OwnerID: people[i].ID, URL: &people[i].AvatarURL}
+	}
+	return slots
+}
+
+func (s *Service) ProfileByUsername(ctx context.Context, requestedUsername string) (Profile, error) {
+	canonical := strings.ToLower(strings.TrimSpace(requestedUsername))
+	if canonical == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if len(canonical) > 64 {
+		return Profile{}, ErrNotFound
+	}
+
+	var userID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id::text
+		FROM auth.users
+		WHERE lower(username) = $1 AND disabled_at IS NULL
+	`, canonical).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return Profile{}, err
+	}
 	return s.profileByID(ctx, userID)
 }
 
-func (s *Service) Status(ctx context.Context, userID string) (map[string]any, error) {
-	var privacyJSON []byte
+// Status — «в сети» и «был(а)» пользователя userID глазами viewerID. Что
+// из этого можно показать, решает общая проверка приватности (#783):
+// правило «Последняя активность», блокировка и исключения (#784) — в обе
+// стороны, как в Telegram (#791). Вместо скрытого точного времени —
+// приблизительное: lastSeenApprox.
+func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[string]any, error) {
+	var ownerPrivacy, ownerExceptions, viewerPrivacy, viewerExceptions []byte
+	var ownerBlocks, viewerBlocks bool
 	var lastActive sql.NullString
 	var online bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(settings.privacy_settings, '{}'::jsonb),
-		       latest_session.last_active::text,
-		       COALESCE(latest_session.last_active > NOW() - INTERVAL '5 minutes', FALSE)
+		SELECT settings.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = auth.users.id AND b.blocked_user_id = $2),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = auth.users.id AND e.user_id = $2),
+		       -- Взаимность (#791): то же о зрителе по отношению к владельцу.
+		       (SELECT vs.privacy_settings FROM users.settings vs WHERE vs.user_id = $2),
+		       EXISTS(SELECT 1 FROM users.blocked_users b WHERE b.user_id = $2 AND b.blocked_user_id = auth.users.id),
+		       (SELECT jsonb_object_agg(e.rule, e.allow) FROM users.privacy_exceptions e WHERE e.owner_id = $2 AND e.user_id = auth.users.id),
+		       to_char(presence.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		       -- «В сети» — живое WebSocket-подключение (#780): отметку ведёт
+		       -- чат-сервис, свежей она считается 75 секунд.
+		       COALESCE(presence.online AND presence.last_seen_at > NOW() - INTERVAL '75 seconds', FALSE)
 		FROM auth.users
 		LEFT JOIN users.settings AS settings ON settings.user_id = auth.users.id
-		LEFT JOIN LATERAL (
-			SELECT last_active
-			FROM public.user_sessions
-			WHERE user_id = auth.users.id
-			ORDER BY last_active DESC
-			LIMIT 1
-		) AS latest_session ON TRUE
+		LEFT JOIN users.presence AS presence ON presence.user_id = auth.users.id
 		WHERE auth.users.id = $1 AND auth.users.disabled_at IS NULL
-	`, userID).Scan(&privacyJSON, &lastActive, &online)
+	`, userID, viewerID).Scan(&ownerPrivacy, &ownerBlocks, &ownerExceptions,
+		&viewerPrivacy, &viewerBlocks, &viewerExceptions, &lastActive, &online)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -362,24 +538,18 @@ func (s *Service) Status(ctx context.Context, userID string) (map[string]any, er
 		return nil, err
 	}
 
-	lastSeenPrivacy := "everyone"
-	if len(privacyJSON) > 0 {
-		var privacy struct {
-			LastSeen string `json:"lastSeen"`
-		}
-		if err := json.Unmarshal(privacyJSON, &privacy); err == nil && privacy.LastSeen != "" {
-			lastSeenPrivacy = privacy.LastSeen
-		}
+	pair := privacy.Pair{
+		Owner:         privacy.Parse(ownerPrivacy),
+		Viewer:        privacy.Parse(viewerPrivacy),
+		OwnerToViewer: privacy.Relation{Self: viewerID == userID, Blocked: ownerBlocks, Exceptions: privacy.ParseExceptions(ownerExceptions)},
+		ViewerToOwner: privacy.Relation{Blocked: viewerBlocks, Exceptions: privacy.ParseExceptions(viewerExceptions)},
 	}
-
+	if view := pair.LastSeen(privacy.ParseLastSeen(lastActive.String), time.Now()); !view.Exact {
+		return map[string]any{"isOnline": false, "lastSeen": "", "lastSeenApprox": view.Approx}, nil
+	}
 	if !lastActive.Valid {
 		return map[string]any{"isOnline": false, "lastSeen": ""}, nil
 	}
-
-	if lastSeenPrivacy == "nobody" || lastSeenPrivacy == "contacts" || lastSeenPrivacy == "none" {
-		return map[string]any{"isOnline": false, "lastSeen": "recently"}, nil
-	}
-
 	return map[string]any{"isOnline": online, "lastSeen": lastActive.String}, nil
 }
 
@@ -387,11 +557,16 @@ func (s *Service) Settings(ctx context.Context, userID string) (map[string]any, 
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, nil, err
 	}
-	var settings, privacy map[string]any
+	var settings map[string]any
+	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings FROM users.settings WHERE user_id = $1
-	`, userID).Scan((*jsonMap)(&settings), (*jsonMap)(&privacy))
-	return settings, privacy, err
+	`, userID).Scan((*jsonMap)(&settings), &rawPrivacy)
+	if err != nil {
+		return settings, nil, err
+	}
+	// Отдаём канонический вид: старые «contacts» и «none» — уже «nobody».
+	return settings, privacy.Parse(rawPrivacy).Map(), nil
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
@@ -400,13 +575,14 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 	}
 	var out AllSettings
 	var folders jsonArray
+	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings, notification_settings, sound_settings,
 		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
 		FROM users.settings WHERE user_id = $1
 	`, userID).Scan(
 		(*jsonMap)(&out.Settings),
-		(*jsonMap)(&out.PrivacySettings),
+		&rawPrivacy,
 		(*jsonMap)(&out.NotificationSettings),
 		(*jsonMap)(&out.SoundSettings),
 		(*jsonMap)(&out.StorageSettings),
@@ -416,10 +592,22 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 		&out.PasscodeTimeout,
 	)
 	out.Folders = []any(folders)
+	if err == nil {
+		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
+	}
 	return out, err
 }
 
 func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input AllSettings) error {
+	// Тот же вход в настройки приватности, что и PUT /users/privacy: без
+	// проверки здесь её можно было бы обойти.
+	if input.PrivacySettings != nil {
+		normalized, err := privacy.Normalize(input.PrivacySettings)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidPrivacy, err)
+		}
+		input.PrivacySettings = normalized
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
@@ -474,13 +662,17 @@ func (s *Service) UpdateSettings(ctx context.Context, userID string, settings ma
 	return next, err
 }
 
-func (s *Service) UpdatePrivacy(ctx context.Context, userID string, privacy map[string]any) (map[string]any, error) {
+func (s *Service) UpdatePrivacy(ctx context.Context, userID string, patch map[string]any) (map[string]any, error) {
+	normalized, err := privacy.Normalize(patch)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidPrivacy, err)
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE users.settings SET privacy_settings = privacy_settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
-	`, userID, jsonMap(privacy))
+	`, userID, jsonMap(normalized))
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +848,14 @@ func (s *Service) Blocked(ctx context.Context, userID string) ([]BlockedUser, er
 		}
 		blocked = append(blocked, item)
 	}
-	return blocked, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slots := make([]privacy.PhotoSlot, len(blocked))
+	for i := range blocked {
+		slots[i] = privacy.PhotoSlot{OwnerID: blocked[i].ID, URL: &blocked[i].AvatarURL}
+	}
+	return blocked, privacy.HidePhotos(ctx, s.db, userID, slots)
 }
 
 func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error {
@@ -670,11 +869,17 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 	if !exists {
 		return ErrNotFound
 	}
+	// Уведомление — тем же запросом (#760): уходит, только если строка
+	// вставлена, и доставляется после коммита.
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO users.blocked_users (user_id, blocked_user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (user_id, blocked_user_id) DO NOTHING
-	`, userID, blockedUserID)
+		WITH inserted AS (
+			INSERT INTO users.blocked_users (user_id, blocked_user_id)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, blocked_user_id) DO NOTHING
+			RETURNING 1
+		)
+		SELECT pg_notify($3, $4) FROM inserted
+	`, userID, blockedUserID, blockevent.Channel, blockEventPayload(userID, blockedUserID, true))
 	if err != nil {
 		return err
 	}
@@ -685,8 +890,19 @@ func (s *Service) Block(ctx context.Context, userID, blockedUserID string) error
 	return nil
 }
 
+func blockEventPayload(userID, blockedUserID string, blocked bool) string {
+	payload, _ := json.Marshal(blockevent.Changed{UserID: userID, BlockedUserID: blockedUserID, Blocked: blocked})
+	return string(payload)
+}
+
 func (s *Service) Unblock(ctx context.Context, userID, blockedUserID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2`, userID, blockedUserID)
+	_, err := s.db.ExecContext(ctx, `
+		WITH deleted AS (
+			DELETE FROM users.blocked_users WHERE user_id = $1 AND blocked_user_id = $2
+			RETURNING 1
+		)
+		SELECT pg_notify($3, $4) FROM deleted
+	`, userID, blockedUserID, blockevent.Channel, blockEventPayload(userID, blockedUserID, false))
 	return err
 }
 

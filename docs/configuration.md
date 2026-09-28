@@ -18,3 +18,14 @@ Key variables:
   MinIO (S3-compatible media storage).
 - `RUN_LEGACY_MIGRATION=false` — disables the automatic legacy→v2 data
   migration on container first start (see `docs/deployment.md`).
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — Web Push (#717),
+  services `chat` (all three) and `user` (public key only). Unset — push
+  notifications are disabled, everything else works. Generate a pair with
+  `go run ./cmd/vapidkeys` (in `backend-v2`); the private key is a secret —
+  platform secret storage only. `VAPID_SUBJECT` is a contact, e.g.
+  `mailto:admin@example.com`. Changing the pair invalidates every existing
+  subscription: devices must subscribe again.
+- `AUTH_LOGOUT_ALL_GENERATION_ENABLED=false` — safety gate for generation-based
+  logout-all. Keep it disabled through the compatibility rollout and enable it
+  only after every crypto, issuer, and validator replica has been updated; see
+  `docs/deployment.md`.

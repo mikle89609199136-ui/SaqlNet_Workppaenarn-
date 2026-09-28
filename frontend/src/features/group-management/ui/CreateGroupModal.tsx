@@ -213,6 +213,14 @@ export function CreateGroupModal({ onClose }: Props) {
             {selected.map((member) => (
               <li key={member.id}>
                 <Chip
+                  leading={
+                    <Avatar
+                      id={member.id}
+                      name={member.firstName || member.username}
+                      size="xs"
+                      src={member.avatarUrl}
+                    />
+                  }
                   onRemove={() => toggle(member)}
                   removeLabel={t('removeMember', 'Убрать участника')}
                 >

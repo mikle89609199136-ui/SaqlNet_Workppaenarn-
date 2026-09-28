@@ -57,7 +57,7 @@ describe('выход из аккаунта', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
 
-    const dialog = await screen.findByRole('dialog', { name: 'Завершить все сеансы?' });
+    const dialog = await screen.findByRole('alertdialog', { name: 'Завершить все сеансы?' });
     expect(dialog).toHaveTextContent('ключи шифрования');
     // Пока не подтвердили — ключи на месте.
     expect(wipeDevice).not.toHaveBeenCalled();
@@ -74,9 +74,36 @@ describe('выход из аккаунта', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Отмена' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(logoutAll).not.toHaveBeenCalled();
     expect(wipeDevice).not.toHaveBeenCalled();
+
+    logoutAll.mockRestore();
+    wipeDevice.mockRestore();
+  });
+
+  it('не стирает ключи и показывает ошибку, если сервер не отозвал сеансы', async () => {
+    const logoutAll = vi
+      .spyOn(services.authService, 'logoutAll')
+      .mockRejectedValue(new Error('logout-all unavailable'));
+    const wipeDevice = vi.spyOn(services.cryptoService, 'wipeDevice');
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(chatKeys.messages('chat-1'), {
+      pages: [[{ id: 'm1' }]],
+      pageParams: [0],
+    });
+
+    renderSettings({ queryClient, section: 'account', subsection: 'sessions' });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить сеансы' }));
+
+    expect(
+      await screen.findByText(/Другие устройства всё ещё могут иметь доступ/)
+    ).toBeInTheDocument();
+    expect(wipeDevice).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(chatKeys.messages('chat-1'))).toBeDefined();
+    expect(screen.queryByText('Вход')).not.toBeInTheDocument();
 
     logoutAll.mockRestore();
     wipeDevice.mockRestore();

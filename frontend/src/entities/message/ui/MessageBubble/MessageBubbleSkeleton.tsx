@@ -1,33 +1,32 @@
 import { Skeleton } from '@/shared/ui/Skeleton';
 import { cn } from '@/shared/lib';
 
-/* Форма повторяет настоящий пузырь, включая срезанный угол с той стороны,
-   откуда пришло сообщение: у своих он снизу справа, у чужих снизу слева.
-   Прямоугольник вместо этого читался бы как «что-то грузится», а не как
-   «сейчас здесь будет переписка».
+/* Скелетон ленты — по макету (#820): пузыри со скруглением 16 по обе
+   стороны, разной длины и высоты — в одну и в две строки.
 
-   Скруглением занимаемся сами, а не заимствуем .message-bubble: тот класс
-   уезжает в разметку по #360, и скелетон уехал бы вместе с ним. Радиус
-   при этом берётся из того же токена, так что форма не разойдётся. */
-const shapes = {
-  in: 'rounded-[var(--radius-bubble)_var(--radius-bubble)_var(--radius-bubble)_5px]',
-  out: 'self-end mr-2.5 rounded-[var(--radius-bubble)_var(--radius-bubble)_5px_var(--radius-bubble)]',
-} as const;
-
-/* Чередование сторон и длин задано, а не случайно: со случайным список
+   Чередование сторон и длин задано, а не случайно: со случайным список
    перерисовывается по-разному на каждый кадр загрузки и мельтешит. */
 const rows = [
-  { side: 'in', width: 'w-[62%]' },
-  { side: 'out', width: 'w-[44%]' },
-  { side: 'in', width: 'w-[54%]' },
-  { side: 'out', width: 'w-[38%]' },
+  { side: 'in', size: 'w-55 h-10' },
+  { side: 'in', size: 'w-75 h-15.5' },
+  { side: 'out', size: 'w-65 h-10' },
+  { side: 'in', size: 'w-45 h-10' },
+  { side: 'out', size: 'w-80 h-15.5' },
+  { side: 'out', size: 'w-35 h-10' },
 ] as const;
 
-export function MessageBubbleSkeleton({ count = 4 }: { count?: number }) {
+export function MessageBubbleSkeleton({ count = rows.length }: { count?: number }) {
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col">
       {rows.slice(0, count).map((row, index) => (
-        <Skeleton className={cn('h-8', row.width, shapes[row.side])} key={index} />
+        <Skeleton
+          className={cn(
+            'mt-2 max-w-[80%] rounded-bubble',
+            row.size,
+            row.side === 'out' ? 'self-end' : 'self-start'
+          )}
+          key={index}
+        />
       ))}
     </div>
   );

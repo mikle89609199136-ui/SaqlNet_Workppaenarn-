@@ -9,6 +9,8 @@ export { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } fr
 export { Icon } from './Icon';
 export { Input } from './Input';
 export { ConfirmDialog, Modal } from './Modal';
+export { NotoEmoji } from './NotoEmoji';
+export { EmojiPicker } from './EmojiPicker';
 export { Progress } from './Progress';
 export { Radio, RadioGroup } from './Radio';
 export { SegmentedControl } from './SegmentedControl';
@@ -23,6 +25,16 @@ export { Toast, ToastStack, showToast, hideToast, clearToasts, getToasts } from 
 export type { IToast, TToastType } from './Toast';
 export { Tooltip } from './Tooltip';
 export { VideoPlayer } from './VideoPlayer';
+export { AnimatedHeight } from './AnimatedHeight';
 export { AuthLayout } from './AuthLayout';
 export { PaneResizer } from './PaneResizer';
-export { SectionStub } from './SectionStub';
+export { RichTextInput, type IRichTextInputHandle } from './RichTextInput';
+export {
+  ListGroup,
+  ListIntro,
+  ListNavItem,
+  ListRadioItem,
+  ListItemButton,
+  ListStaticItem,
+  ListSwitchItem,
+} from './List';

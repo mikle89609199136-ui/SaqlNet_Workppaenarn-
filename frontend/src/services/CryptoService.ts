@@ -1,4 +1,6 @@
 import type { ApiClient } from '@/shared/api';
+import type { IVoiceMeta } from '@/shared/lib/voice';
+import type { IMessageEntity } from '@/shared/lib/richText';
 import { STORAGE_KEYS } from '@/shared/config';
 import { resolveMembers } from '@/entities/chat/model/chatResolver';
 import {
@@ -24,6 +26,7 @@ import {
   sealForQrReceiver,
   setBackupState,
   type IQrLink,
+  type IQrOffer,
   type IQrPayload,
   type IArgon2Params,
   type ILocalIdentity,
@@ -95,6 +98,10 @@ export type TUndecryptableReason = 'keyUnavailable' | 'beforeJoin' | 'legacy';
 
 export interface IDecryptedMessage {
   text: string;
+  /** Форматирование из конверта v3 (#656). У прочих сообщений его нет. */
+  entities?: IMessageEntity[];
+  /** Длительность и волна голосового (#843) — только из конверта. */
+  voice?: IVoiceMeta;
   /**
    * Почему сообщение не прочиталось. `undefined` — прочиталось.
    *
@@ -319,6 +326,21 @@ export class CryptoService {
     return sealForQrReceiver(link, master);
   }
 
+  /**
+   * Мастер-ключ копии для нового устройства, отсканировавшего код с этого
+   * (#754). Ключ устройства к этому моменту проверен подписью из кода.
+   */
+  async sealMasterKeyForOffer(
+    offer: IQrOffer,
+    token: string,
+    claimPublicKey: string
+  ): Promise<IQrPayload> {
+    const master = this.backup.currentMasterKey();
+    if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
+
+    return offer.seal(token, claimPublicKey, master);
+  }
+
   /** Совпадает ли облачный пароль с паролем входа — его знает сервер. */
   isLoginPassword(password: string): Promise<boolean> {
     return matchesLoginPassword(password);
@@ -360,13 +382,25 @@ export class CryptoService {
     return this.chatKeys.rotate(chatId);
   }
 
+  /** Смена ключа после изменения состава, если её ещё никто не сделал (#806). */
+  async rotateChatKeyIfNeeded(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.rotateIfNeeded(chatId);
+  }
+
   async healChatKeys(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
     return this.chatKeys.heal(chatId);
   }
 
-  async encryptMessage(chatId: string, text: string): Promise<string> {
-    if (!text) return text;
+  async encryptMessage(
+    chatId: string,
+    text: string,
+    entities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
+  ): Promise<string> {
+    // Голосовое без подписи — всё равно конверт: в нём длительность и волна.
+    if (!text && !voice) return text;
 
     if (!this.hasWebCrypto()) {
       throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
@@ -379,10 +413,19 @@ export class CryptoService {
       throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
     }
 
-    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text, {
-      fingerprint: identity.fingerprint,
-      sign: (parts) => signParts(identity.ecdsaPrivate, parts),
-    });
+    return encryptMessage(
+      chatKey.key,
+      chatId,
+      chatKey.epoch,
+      identity.accountId,
+      text,
+      {
+        fingerprint: identity.fingerprint,
+        sign: (parts) => signParts(identity.ecdsaPrivate, parts),
+      },
+      entities,
+      voice
+    );
   }
 
   /**
@@ -435,10 +478,16 @@ export class CryptoService {
           : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
       }
 
-      const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+      const { text, entities, voice } = await decryptMessage(
+        chatKey.key,
+        chatId,
+        senderId,
+        envelope
+      );
+      const extra = voice ? { voice } : {};
 
       // Своё сообщение проверять не у кого и незачем.
-      if (senderId === identity.accountId) return { text };
+      if (senderId === identity.accountId) return { text, entities, ...extra };
 
       const senderVerified = envelope.sig
         ? await this.isSenderConfirmed(
@@ -447,7 +496,7 @@ export class CryptoService {
           )
         : false;
 
-      return { text, senderVerified };
+      return { text, entities, senderVerified, ...extra };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
       return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };

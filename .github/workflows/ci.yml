@@ -139,6 +139,33 @@ jobs:
       - name: Run Go tests
         run: go test -v ./...
 
+      - name: Run auth revocation integration tests
+        run: go test -count=1 -tags=integration -v ./internal/platform/authctx
+
+      # Все миграции на настоящем Postgres: по одному разу на чистой базе и
+      # повторный прогон с данными — так приходят базы, созданные до
+      # schema_migrations. Неповторяемая миграция упадёт здесь, а не у
+      # разработчиков на стенде.
+      - name: Run migration integration tests
+        run: go test -count=1 -tags=integration -v ./cmd/migrate
+
+      # Единая проверка приватности, исключения по людям и настоящий SQL
+      # статуса, данных чата, рассылки присутствия и списка «в сети» в группе
+      # (#783, #784).
+      - name: Run privacy integration tests
+        run: |
+          go test -count=1 -tags=integration -v ./internal/platform/privacy
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema' ./internal/chat
+
+      # Web Push: подписки устройств и получатели уведомлений (#717).
+      - name: Run push integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestPushOnRealSchema' ./internal/push
+
+      # Смена ключа группы: пометка при изменении состава, атомарная запись
+      # новой эпохи и одновременные смены (#806).
+      - name: Run chat key rotation integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestKeyRotationOnRealSchema' ./internal/chat
+
       - name: Build services
         run: go build ./...
 

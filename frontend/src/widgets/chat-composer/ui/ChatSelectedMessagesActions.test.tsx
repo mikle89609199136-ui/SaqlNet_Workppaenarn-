@@ -1,4 +1,3 @@
-import { clearToasts, getToasts } from '@/shared/ui';
 import { useChatUiStore } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
@@ -28,8 +27,8 @@ describe('ChatSelectedMessagesActions', () => {
     vi.clearAllMocks();
     useChatUiStore.setState({
       selectedMessages: [makeMessage({ id: 'msg-1' }), makeMessage({ id: 'msg-2' })],
+      deleteTargets: null,
     });
-    clearToasts();
   });
 
   it('отображает количество выбранных сообщений и кнопки действий', () => {
@@ -65,39 +64,22 @@ describe('ChatSelectedMessagesActions', () => {
     expect(defaultProps.onCopyMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('открывает диалог подтверждения при нажатии Удалить и не удаляет при отмене', async () => {
-    const user = userEvent.setup();
-    const { container } = renderActions(defaultProps);
-
-    await user.click(screen.getByRole('button', { name: 'Удалить' }));
-
-    // Появился модальный диалог подтверждения
-    const dialog = container.querySelector('dialog');
-    expect(dialog).toHaveAttribute('open');
-    expect(screen.getByText('Удалить выбранные сообщения?')).toBeInTheDocument();
-    expect(screen.getByText(/2 шт\./i)).toBeInTheDocument();
-
-    // Нажатие «Отмена» внутри модалки
-    const cancelButtons = screen.getAllByRole('button', { name: 'Отмена' });
-    // Кнопка отмены внутри модалки
-    await user.click(cancelButtons[cancelButtons.length - 1]);
-
-    expect(defaultProps.onDeleteMessage).not.toHaveBeenCalled();
-    expect(dialog).not.toHaveAttribute('open');
-  });
-
-  it('удаляет сообщения при подтверждении в диалоге', async () => {
+  // Подтверждение — общий диалог чата (#840): панель только открывает его.
+  it('«Удалить» открывает подтверждение, а не удаляет сразу', async () => {
     const user = userEvent.setup();
     renderActions(defaultProps);
 
     await user.click(screen.getByRole('button', { name: 'Удалить' }));
 
-    // Нажатие «Удалить» внутри модалки подтверждения
-    const deleteButtons = screen.getAllByRole('button', { name: 'Удалить' });
-    const modalConfirmBtn = deleteButtons[deleteButtons.length - 1];
-
-    await user.click(modalConfirmBtn);
     expect(defaultProps.onDeleteMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape не сбрасывает выбор, пока открыто подтверждение', () => {
+    useChatUiStore.setState({ deleteTargets: [makeMessage({ id: 'msg-1' })] });
+    renderActions(defaultProps);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(defaultProps.handleCancelSelection).not.toHaveBeenCalled();
   });
 
   it('сбрасывает выбор при нажатии Escape на клавиатуре', () => {
@@ -113,25 +95,5 @@ describe('ChatSelectedMessagesActions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(defaultProps.handleCancelSelection).toHaveBeenCalledTimes(1);
-  });
-
-  it('показывает ошибку в тосте, если удаление сообщений завершилось сбоем', async () => {
-    const user = userEvent.setup();
-    const onDeleteMessage = vi.fn().mockRejectedValue(new Error('Network error'));
-    renderActions({ ...defaultProps, onDeleteMessage });
-
-    await user.click(screen.getByRole('button', { name: 'Удалить' }));
-
-    const deleteButtons = screen.getAllByRole('button', { name: 'Удалить' });
-    const modalConfirmBtn = deleteButtons[deleteButtons.length - 1];
-
-    await user.click(modalConfirmBtn);
-
-    expect(getToasts()).toContainEqual(
-      expect.objectContaining({
-        type: 'error',
-        message: 'Не удалось удалить сообщение(я)',
-      })
-    );
   });
 });

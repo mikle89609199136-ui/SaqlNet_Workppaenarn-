@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -43,7 +45,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"method", method,
 			"path", r.URL.Path,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "chat ID is required")
 		return
 	}
 
@@ -55,7 +57,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		AvatarURL   *string `json:"avatarUrl"`
 	}
 
-	if !decode(w, r, &input) {
+	if !decodeStrict(w, r, &input) {
 		return // decode logs internally
 	}
 
@@ -66,7 +68,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"user_id", current.ID,
 			"chat_id", chatID,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "at least one field is required")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "at least one field is required")
 		return
 	}
 
@@ -86,7 +88,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"user_id", current.ID,
 			"chat_id", chatID,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title must not be empty")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "title must not be empty")
 		return
 	}
 
@@ -99,7 +101,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"length", utf8.RuneCountInString(*input.Title),
 			"max", maxTitleLen,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json",
 			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
 		return
 	}
@@ -122,7 +124,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	// Map domain errors to appropriate HTTP status codes.
 	switch {
 	case errors.Is(err, ErrInvalidInput):
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid input")
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat not found")
 	case errors.Is(err, ErrForbidden):
@@ -148,6 +150,44 @@ func trimString(s *string) *string {
 	}
 	v := strings.TrimSpace(*s)
 	return &v
+}
+
+// decode reads and validates a JSON request body into value.
+// It returns true if the body is valid, correctly formed, contains no
+// extra data, and contains no unknown fields (strict mode).
+// If an error occurs, decode writes an error response and returns false.
+func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
+	const helper = "decodeStrict"
+	// Limit the request body to 256 KiB to prevent memory exhaustion.
+	const maxBodySize = 256 << 10 // 256 KiB
+	body := http.MaxBytesReader(w, r.Body, maxBodySize)
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "invalid request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+		return false
+	}
+
+	// Ensure there is no trailing data after the first JSON value.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		slog.WarnContext(r.Context(), "trailing data in request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+		return false
+	}
+
+	return true
 }
 
 // GetOnlineMembers возвращает UUID online-участников группового чата.

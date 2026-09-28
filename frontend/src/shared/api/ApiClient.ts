@@ -49,8 +49,12 @@ export class ApiClient {
     this.onUnauthorized = handler;
   }
 
-  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  get<T = unknown>(
+    endpoint: string,
+    params: TQueryParams = {},
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
   post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
@@ -65,8 +69,16 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
-  delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  /**
+   * `keepalive` — для запроса, который уходит при закрытии вкладки:
+   * без него браузер обрывает его вместе со страницей.
+   */
+  delete<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    options: Pick<IRequestOptions, 'keepalive'> = {}
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE', data });
   }
 
   private async request<T = unknown>(
@@ -74,7 +86,10 @@ export class ApiClient {
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
-    const token = this.getToken();
+    const url = this.buildUrl(endpoint, params);
+    // Токен уходит только своему серверу (#871): абсолютный адрес чужого
+    // origin получает запрос без авторизации.
+    const token = this.isOwnOrigin(url) ? this.getToken() : null;
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
@@ -89,13 +104,24 @@ export class ApiClient {
 
     const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
 
-    const response = await fetch(this.buildUrl(endpoint, params), {
+    const response = await fetch(url, {
       ...requestOptions,
       headers: requestHeaders,
       body,
     });
 
     return this.parseResponse<T>(response);
+  }
+
+  /** Тот же origin, что у базы API: относительный адрес — всегда свой. */
+  private isOwnOrigin(url: string): boolean {
+    if (!/^https?:\/\//i.test(url)) return true;
+    const here = globalThis.location?.href ?? 'http://localhost/';
+    try {
+      return new URL(url).origin === new URL(this.baseUrl, here).origin;
+    } catch {
+      return false;
+    }
   }
 
   private buildUrl(endpoint: string, params: TQueryParams = {}): string {
@@ -106,9 +132,20 @@ export class ApiClient {
       }
     });
 
+    const base = this.baseUrl.replace(/\/+$/, '');
+    // Путь базы — '/api/v2' и у относительной базы, и у абсолютной.
+    const basePath = base.replace(/^https?:\/\/[^/]+/, '');
+    const relative = endpoint.replace(/^\/+/, '');
+
+    // Сервер отдаёт часть адресов уже с базой: mediaUrl вложений —
+    // '/api/v2/media/<id>'. Приклеенная второй раз база давала
+    // '/api/v2/api/v2/media/…' и 404: вложения не открывались ни у
+    // получателя, ни у отправителя после перезагрузки.
     const path = /^https?:\/\//.test(endpoint)
       ? endpoint
-      : `${this.baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+      : basePath && `/${relative}`.startsWith(`${basePath}/`)
+        ? `${base.slice(0, base.length - basePath.length)}/${relative}`
+        : `${base}/${relative}`;
 
     const qs = query.toString();
     return qs ? `${path}?${qs}` : path;

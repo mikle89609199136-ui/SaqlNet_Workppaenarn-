@@ -6,9 +6,11 @@ import type { IMessageDto, TMessagesList } from '@/types';
 import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
+import { cn } from '@/shared/lib';
 import { DateDivider } from './DateDivider';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThreadState } from './ThreadState';
+import { UnreadDivider } from './UnreadDivider';
 
 interface Props {
   messages: TMessagesList;
@@ -26,12 +28,18 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Профиль автора пересланного сообщения (#785). */
+  onOpenProfile?: (userId: string) => void;
   /**
    * Показывать ли статус доставки у своих сообщений. Только личные чаты:
    * в группе у «прочитано» нет одного значения — непонятно, прочитал один
    * участник или все.
    */
   showDeliveryStatus?: boolean;
+  /** Группа: у чужих сообщений имя и аватарка автора (#820). */
+  isGroupChat?: boolean;
+  /** «Новые сообщения» и счётчик на кнопке «вниз» — только в самом чате. */
+  trackUnread?: boolean;
 }
 
 export const MessagesList = memo(
@@ -47,8 +55,11 @@ export const MessagesList = memo(
     bottomRef,
     messagesRef,
     onRetryMessage,
+    onOpenProfile,
     onCancelMessage,
     showDeliveryStatus = false,
+    isGroupChat = false,
+    trackUnread = true,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -65,9 +76,15 @@ export const MessagesList = memo(
       virtualItems,
       setContainerRef,
       showScrollBottom,
+      unreadBelow,
       scrollToBottom,
       jumpToMessage,
-    } = useVirtualMessagesFeed({ messages, messagesRef });
+    } = useVirtualMessagesFeed({
+      messages,
+      messagesRef,
+      currentUserId: user?.id,
+      trackUnread,
+    });
 
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
@@ -89,7 +106,9 @@ export const MessagesList = memo(
         )}
         <section
           aria-busy={isLoading}
-          className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto"
+          /* Поля ленты — по макету: 12 / 18 / 22 / 28 по бокам, 8 сверху
+             и 12 снизу. */
+          className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto px-3 pt-2 pb-3 md:px-4.5 lg:px-5.5 xl:px-7"
           ref={setContainerRef}
         >
           {isLoading && <MessageBubbleSkeleton />}
@@ -121,7 +140,10 @@ export const MessagesList = memo(
 
                 return (
                   <div
-                    className="w-full absolute top-0 left-0"
+                    className={cn(
+                      'w-full absolute top-0 left-0',
+                      item.type === 'message' && item.isDifferentAuthor && 'pt-2'
+                    )}
                     data-index={virtualRow.index}
                     key={item.id}
                     ref={virtualizer.measureElement}
@@ -131,11 +153,17 @@ export const MessagesList = memo(
                   >
                     {item.type === 'date' ? (
                       <DateDivider label={item.label} variant="inline" />
+                    ) : item.type === 'unread' ? (
+                      <UnreadDivider />
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
+                        isFirstInGroup={item.isFirstInGroup}
+                        isGroupChat={isGroupChat}
+                        isLastInGroup={item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
+                        onOpenProfile={onOpenProfile}
                         onOpenImage={setOpenedImage}
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}
@@ -155,7 +183,11 @@ export const MessagesList = memo(
           <div ref={bottomRef} />
         </section>
 
-        <ScrollToBottomButton onClick={scrollToBottom} visible={showScrollBottom} />
+        <ScrollToBottomButton
+          onClick={scrollToBottom}
+          unread={unreadBelow}
+          visible={showScrollBottom}
+        />
       </div>
     );
   }

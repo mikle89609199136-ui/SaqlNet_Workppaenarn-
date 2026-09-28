@@ -4,6 +4,8 @@ import { Banner } from '@/shared/ui';
 
 interface Props {
   onResult: (text: string) => void;
+  /** Что делать без камеры. По умолчанию — для вошедшего устройства. */
+  unavailableHint?: string;
 }
 
 interface IBarcodeDetector {
@@ -20,7 +22,7 @@ const SCAN_INTERVAL_MS = 250;
  * `BarcodeDetector` есть не везде — например, его нет в Chrome на Windows.
  * Там кадр разбирает jsQR: он грузится лениво, только когда сканер открыт.
  */
-export function QrScanner({ onResult }: Props) {
+export function QrScanner({ onResult, unavailableHint }: Props) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
@@ -95,21 +97,50 @@ export function QrScanner({ onResult }: Props) {
   if (failed) {
     return (
       <Banner icon="warning" tone="warn">
-        {t(
-          'qrLogin.cameraUnavailable',
-          'Камера недоступна. Скопируйте ссылку под кодом на новом устройстве и вставьте её сюда.'
-        )}
+        {unavailableHint ??
+          t(
+            'qrLogin.cameraUnavailable',
+            'Камера недоступна. Скопируйте ссылку под кодом на новом устройстве и вставьте её сюда.'
+          )}
       </Banner>
     );
   }
 
+  /* Видоискатель — по макету (#827): тёмное поле 230 px, белые уголки
+     рамки и бегущая линия акцента. Поле тёмное в любой теме: это окно
+     камеры, а не часть интерфейса. */
+  const corner = 'pointer-events-none absolute size-7 border-white';
+
   return (
-    <video
-      aria-label={t('qrLogin.camera', 'Камера для сканирования кода')}
-      className="aspect-square w-full rounded-field bg-sheet-2 object-cover"
-      muted
-      playsInline
-      ref={videoRef}
-    />
+    <div className="relative flex h-57.5 items-center justify-center overflow-hidden rounded-window bg-[#0f1216] text-ui text-white/70">
+      {t('qrLogin.pointCamera', 'Наведите камеру на QR-код')}
+      <video
+        aria-label={t('qrLogin.camera', 'Камера для сканирования кода')}
+        className="absolute inset-0 size-full object-cover"
+        muted
+        playsInline
+        ref={videoRef}
+      />
+      <span
+        aria-hidden="true"
+        className={`${corner} top-[12%] left-[22%] rounded-tl-field border-t-3 border-l-3`}
+      />
+      <span
+        aria-hidden="true"
+        className={`${corner} top-[12%] right-[22%] rounded-tr-field border-t-3 border-r-3`}
+      />
+      <span
+        aria-hidden="true"
+        className={`${corner} bottom-[12%] left-[22%] rounded-bl-field border-b-3 border-l-3`}
+      />
+      <span
+        aria-hidden="true"
+        className={`${corner} right-[22%] bottom-[12%] rounded-br-field border-r-3 border-b-3`}
+      />
+      <span
+        aria-hidden="true"
+        className="qr-scanline pointer-events-none absolute top-[14%] right-[24%] left-[24%] h-0.5 rounded-control bg-brand shadow-[0_0_12px_var(--color-brand)]"
+      />
+    </div>
   );
 }

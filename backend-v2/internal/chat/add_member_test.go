@@ -55,6 +55,9 @@ func TestAddMember_Success(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`UPDATE chats\.chats SET key_rotation_needed = TRUE`).
+		WithArgs(chatID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// 7. Получение данных добавленного участника для возврата
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
@@ -343,6 +346,9 @@ func TestAddMember_Broadcast(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO chats\.members`).
 		WithArgs(chatID, userID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`UPDATE chats\.chats SET key_rotation_needed = TRUE`).
+		WithArgs(chatID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	mock.ExpectQuery(`SELECT .* FROM auth\.users .* JOIN chats\.members`).
 		WithArgs(chatID, userID).

@@ -27,9 +27,9 @@ var deleteMessageCreatedAt = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 
 func deleteMessageRows(id, content, createdAt string) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type",
+		"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type",
 		"reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at", "reactions",
-	}).AddRow(id, deleteMessageChatID, deleteMessageUserID, "Alice", "", content, "text", nil,
+	}).AddRow(id, deleteMessageChatID, deleteMessageUserID, "Alice", "", content, []byte("[]"), "text", nil,
 		[]byte(`{}`), false, false, createdAt, createdAt, nil, []byte(`[]`))
 }
 
@@ -42,9 +42,15 @@ func expectDeleteUpdate(mock sqlmock.Sqlmock) {
 		WillReturnRows(sqlmock.NewRows([]string{"chat_id", "created_at"}).AddRow(deleteMessageChatID, deleteMessageCreatedAt))
 }
 
+// Соседнее сообщение (before задан) считается для рассылки — без учёта
+// скрытых; последнее — для удалившего, без скрытых им (#840).
 func expectMessageAfterDelete(mock sqlmock.Sqlmock, before any, rows *sqlmock.Rows) {
+	var hiddenFor any = deleteMessageUserID
+	if before != nil {
+		hiddenFor = nil
+	}
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR[\s\S]*ORDER BY m\.created_at DESC, m\.id DESC`).
-		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID).WillReturnRows(rows)
+		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID, hiddenFor).WillReturnRows(rows)
 }
 
 func TestDeleteMessage_ReturnsChatLastMessageAndBroadcastsPreviousMessage(t *testing.T) {
@@ -187,7 +193,7 @@ func TestDeleteMessage_LastMessageLookupErrorRollsBackWithoutBroadcast(t *testin
 	expectDeleteUpdate(mock)
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR`).
-		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID).
+		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID, deleteMessageUserID).
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
 	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)

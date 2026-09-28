@@ -7,7 +7,6 @@ export * from './editorCanvas';
 export * from './formatFileSize';
 export * from './formatLastSeen';
 export * from './getAttachmentIcon';
-export * from './getChatSubtitle';
 export * from './passwordRules';
-export * from './setComposerText';
 export * from './sortMessagesChronologically';
+export * from './singlePlayback';

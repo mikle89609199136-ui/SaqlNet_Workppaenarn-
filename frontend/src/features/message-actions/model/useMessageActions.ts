@@ -6,6 +6,7 @@ import {
   applyReaction,
   beginReactionChange,
   dropThreadMessage,
+  dropThreadMessages,
   endReactionChange,
   patchThreadMessage,
   removeOutboxItem,
@@ -15,7 +16,8 @@ import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore } from '@/entities/chat';
-import { setComposerText, sortMessagesChronologically } from '@/shared/lib';
+import { sortMessagesChronologically } from '@/shared/lib';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
@@ -24,7 +26,7 @@ import { useParams } from 'react-router-dom';
 
 interface Props {
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
-  draftRef?: RefObject<HTMLInputElement | null>;
+  draftRef?: RefObject<IRichTextInputHandle | null>;
 }
 
 /**
@@ -57,6 +59,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
+  const setDeleteTargets = useChatUiStore((state) => state.setDeleteTargets);
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const setSelectedMessages = useChatUiStore((state) => state.setSelectedMessages);
   const selectionMode = useChatUiStore((state) => state.selectionMode);
@@ -111,64 +114,54 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
-  const handleDelete = async (message: IMessageDto) => {
+  /**
+   * «Удалить» в меню сообщения или в панели выбора — открывает подтверждение
+   * (#840). Удаляет confirmDelete, когда человек выбрал, у кого.
+   */
+  const handleDelete = (message?: IMessageDto) => {
+    const targets = selectionMode ? selectedMessages : message ? [message] : [];
+    if (targets.length > 0) setDeleteTargets(targets);
+  };
+
+  /**
+   * Удаление выбранного: у всех — только когда все свои, иначе у себя.
+   * Неотправленные просто убираются из очереди. `false` — не вышло,
+   * диалог остаётся открытым.
+   */
+  const confirmDelete = async (targets: IMessageDto[], forEveryone: boolean) => {
+    const isOutbox = (item: IMessageDto) => Boolean(item.tempId) || item.id.startsWith('temp-');
+    const sent = targets.filter((item) => !isOutbox(item));
+
     try {
-      if (selectionMode) {
-        // Удалять можно только свои сообщения — чужие отсеиваются заранее,
-        // иначе в набор попадали undefined вместо идентификаторов.
-        const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
-
-        const serverMessages = own.filter((item) => !item.tempId && !item.id.startsWith('temp-'));
-        const outboxMessages = own.filter(
-          (item) => Boolean(item.tempId) || item.id.startsWith('temp-')
-        );
-
-        outboxMessages.forEach((item) => {
-          const id = item.tempId || item.id;
-          removeOutboxItem(id);
-          dropThreadMessage(queryClient, chatId, id);
-        });
-
-        if (serverMessages.length > 0) {
-          // Именно возврат промиса делает ожидание настоящим: без него
-          // Promise.all завершался мгновенно, а отказы становились
-          // необработанными и не доходили до catch.
-          await Promise.all(
-            serverMessages.map((item) => services.messageService.deleteMessage(item.id))
-          );
-          serverMessages.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
-        }
-
-        handleCancelSelection();
+      if (sent.length > 0) {
+        const allOwn = sent.every((item) => item.senderId === currentUser?.id);
+        const ids = sent.map((item) => item.id);
+        await services.messageService.deleteMessages(chatId, ids, forEveryone && allOwn);
+        dropThreadMessages(queryClient, chatId, ids);
       }
-
-      if (!selectionMode) {
-        if (message.senderId !== currentUser?.id) return;
-        const id = message.tempId || message.id;
-        const isOutbox = Boolean(message.tempId) || message.id.startsWith('temp-');
-
-        if (isOutbox) {
-          removeOutboxItem(id);
-          dropThreadMessage(queryClient, chatId, id);
-        } else {
-          await services.messageService.deleteMessage(message.id);
-          dropThreadMessage(queryClient, chatId, message.id);
-        }
-
-        if (editingMessage?.id === message.id) {
-          setEditingMessage(null);
-          setComposerText(draftRef?.current ?? null, '');
-        }
-        if (replyToMessage?.id === message.id) {
-          setReplyToMessage(null);
-        }
-      }
-      setError('');
     } catch (err: unknown) {
-      setError(
+      showToast(
+        'error',
         describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
       );
+      return false;
     }
+
+    targets.filter(isOutbox).forEach((item) => {
+      const id = item.tempId || item.id;
+      removeOutboxItem(id);
+      dropThreadMessage(queryClient, chatId, id);
+    });
+
+    const removed = new Set(targets.map((item) => item.id));
+    if (editingMessage && removed.has(editingMessage.id)) {
+      setEditingMessage(null);
+      draftRef?.current?.clear();
+    }
+    if (replyToMessage && removed.has(replyToMessage.id)) setReplyToMessage(null);
+    if (selectionMode) handleCancelSelection();
+    setError('');
+    return true;
   };
 
   /**
@@ -329,7 +322,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const startEdit = (message: IMessageDto) => {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setComposerText(draftRef?.current ?? null, message.content || '');
+    // С форматированием: правка заменяет его целиком (#656).
+    draftRef?.current?.setValue({
+      text: message.content || '',
+      entities: message.entities ?? [],
+    });
     draftRef?.current?.focus();
   };
 
@@ -364,6 +361,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     translatingIds,
     handleTranslateMessage,
     handleDelete,
+    confirmDelete,
     handleReact,
     handleUnpinMessage,
     handlePinMessage,

@@ -22,20 +22,24 @@ import (
 )
 
 type rateLimitConfig struct {
-	authRate    float64
-	authBurst   int
-	globalRate  float64
-	globalBurst int
+	authRate           float64
+	authBurst          int
+	usernameCheckRate  float64
+	usernameCheckBurst int
+	globalRate         float64
+	globalBurst        int
 }
 
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func loadRateLimitConfig() rateLimitConfig {
 	return rateLimitConfig{
-		authRate:    config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
-		authBurst:   config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
-		globalRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
-		globalBurst: config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
+		authRate:           config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
+		authBurst:          config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
+		usernameCheckRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_USERNAME_CHECK_RPS", 2),
+		usernameCheckBurst: config.PositiveInt("EDGE_RATE_LIMIT_USERNAME_CHECK_BURST", 5),
+		globalRate:         config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
+		globalBurst:        config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
 	}
 }
 
@@ -103,7 +107,7 @@ func min(a, b float64) float64 {
 	return b
 }
 
-func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
+func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, usernameCheckLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := trustedProxies.clientIP(r)
 		// Stricter limit for auth endpoints (login/register brute-force).
@@ -112,6 +116,10 @@ func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, globalLimi
 				httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests — slow down")
 				return
 			}
+		}
+		if r.URL.Path == "/api/v2/users/check-username" && !usernameCheckLimiter.Allow(ip) {
+			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many username checks — slow down")
+			return
 		}
 		if !globalLimiter.Allow(ip) {
 			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests")
@@ -199,7 +207,6 @@ func main() {
 	}
 
 	frontendDir := config.Value("FRONTEND_DIR", "../dist")
-	fs := http.FileServer(http.Dir(frontendDir))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -246,33 +253,14 @@ func main() {
 	mux.Handle("/api/v2/stickers/", mediaProxy)
 
 	// Serve static files for frontend, fallback to index.html for React Router
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// If requesting API or WS but not matched above, return 404
-		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws") {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "route not found")
-			return
-		}
-
-		// Content-hashed assets can be cached forever; HTML must never be cached
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		}
-
-		// Attempt to serve file
-		if _, err := http.Dir(frontendDir).Open(r.URL.Path); err != nil {
-			http.ServeFile(w, r, frontendFallback(frontendDir, r.URL.Path))
-			return
-		}
-		fs.ServeHTTP(w, r)
-	})
+	mux.Handle("/", frontendHandler(frontendDir))
 
 	// Rate limits use safe defaults and can be overridden through environment variables.
 	limits := loadRateLimitConfig()
 	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
+	usernameCheckLimiter := newTokenBucket(limits.usernameCheckRate, float64(limits.usernameCheckBurst))
 	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
-	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, globalLimiter, mux)
+	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, usernameCheckLimiter, globalLimiter, mux)
 
 	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
@@ -313,6 +301,50 @@ func edgeAddress() string {
 		return ":" + strings.TrimPrefix(port, ":")
 	}
 	return ":8080"
+}
+
+// isBuildAsset — путь к файлу сборки (/assets/…): у него нет запасной
+// страницы, отсутствующий — 404.
+func isBuildAsset(requestPath string) bool {
+	return strings.HasPrefix(requestPath, "/assets/")
+}
+
+// frontendHandler отдаёт собранный фронтенд: файлы как есть, маршруты
+// приложения — index.html (React Router), неизвестные /api и /ws — 404.
+func frontendHandler(frontendDir string) http.Handler {
+	dir := http.Dir(frontendDir)
+	files := http.FileServer(dir)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If requesting API or WS but not matched above, return 404
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws") {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "route not found")
+			return
+		}
+
+		// Content-hashed assets can be cached forever; HTML must never be cached
+		if isBuildAsset(r.URL.Path) {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+
+		file, err := dir.Open(r.URL.Path)
+		if err != nil {
+			// Файл сборки, которого нет (открытая вкладка просит кусок
+			// прошлой версии после деплоя), — честный 404, а не страница
+			// приложения с кодом 200: иначе браузер получит HTML вместо
+			// скрипта, а service worker сохранит его под именем скрипта.
+			if isBuildAsset(r.URL.Path) {
+				w.Header().Set("Cache-Control", "no-store")
+				http.NotFound(w, r)
+				return
+			}
+			http.ServeFile(w, r, frontendFallback(frontendDir, r.URL.Path))
+			return
+		}
+		_ = file.Close()
+		files.ServeHTTP(w, r)
+	})
 }
 
 func frontendFallback(frontendDir, requestPath string) string {

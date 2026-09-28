@@ -73,16 +73,15 @@ export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
     <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
       <div>
         <CloudPasswordInput
+          aria-describedby={errors.password ? undefined : 'cloud-password-hint'}
           autoComplete="new-password"
           error={errors.password?.message}
-          hint={t(
-            'keyBackup.password.hint',
-            'Не короче 12 символов. Фраза из нескольких слов — отличный вариант.'
-          )}
           label={t('keyBackup.password.label', 'Облачный пароль')}
           {...register('password')}
         />
-        <div aria-hidden className="mt-1.5 h-1 overflow-hidden rounded-pill bg-line-soft">
+        {/* По макету (#827): полоска стойкости сразу под полем, подсказка —
+            под полоской. Ошибка поля её заменяет. */}
+        <div aria-hidden className="mt-2 h-1 overflow-hidden rounded-pill bg-divider">
           <div
             className="h-full transition-all duration-[var(--transition-duration-panel)]"
             style={{
@@ -91,6 +90,14 @@ export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
             }}
           />
         </div>
+        {!errors.password && (
+          <p className="m-0 mt-1.5 text-meta leading-[1.4] text-ink-3" id="cloud-password-hint">
+            {t(
+              'keyBackup.password.hint',
+              'Не короче 12 символов. Фраза из нескольких слов — отличный вариант.'
+            )}
+          </p>
+        )}
       </div>
 
       <CloudPasswordInput

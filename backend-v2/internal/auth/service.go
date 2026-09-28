@@ -10,18 +10,25 @@ import (
 	"strings"
 	"time"
 
+	"craneapp/backend-v2/internal/platform/authctx"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 	"github.com/lib/pq"
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUsernameTaken      = errors.New("username already exists")
-	ErrWrongPassword      = errors.New("wrong password")
-	ErrTwoFANotEnabled    = errors.New("2fa not enabled")
-	ErrTwoFARequired      = errors.New("2fa required")
-	ErrInvalidTwoFA       = errors.New("invalid 2fa")
-	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrUsernameTaken          = errors.New("username already exists")
+	ErrWrongPassword          = errors.New("wrong password")
+	ErrTwoFANotEnabled        = errors.New("2fa not enabled")
+	ErrTwoFARequired          = errors.New("2fa required")
+	ErrInvalidTwoFA           = errors.New("invalid 2fa")
+	ErrUserNotFound           = errors.New("user not found")
+	ErrTokenGenerationChanged = errors.New("token generation kept changing during issuance")
+	ErrAuthorizationRevoked   = errors.New("authorization token was revoked during issuance")
 )
+
+const tokenIssueMaxAttempts = 3
 
 type Session struct {
 	ID         string    `json:"id"`
@@ -45,7 +52,7 @@ type User struct {
 type CryptoClient interface {
 	HashPassword(ctx context.Context, password string) (string, error)
 	VerifyPassword(ctx context.Context, password, hash string) (bool, error)
-	IssueToken(ctx context.Context, userID, username string) (string, error)
+	IssueToken(ctx context.Context, userID, username string, tokenGeneration int64) (string, error)
 }
 
 type Service struct {
@@ -58,7 +65,7 @@ func NewService(db *sql.DB, crypto CryptoClient) *Service {
 }
 
 func (s *Service) Register(ctx context.Context, username, password, firstName, lastName, language string) (User, string, error) {
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = usernamepolicy.Normalize(username)
 	if err := ValidatePassword(password); err != nil {
 		return User{}, "", err
 	}
@@ -76,14 +83,26 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	}()
 
 	var user User
+	var tokenGeneration int64
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO auth.users (username, password_hash, first_name, last_name)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id::text, username, first_name, last_name
-	`, username, hash, strings.TrimSpace(firstName), strings.TrimSpace(lastName)).Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName)
+		WITH claimed AS (
+			INSERT INTO auth.username_registry (username, user_id)
+			VALUES ($1, gen_random_uuid())
+			RETURNING user_id
+		)
+		INSERT INTO auth.users (id, username, password_hash, first_name, last_name)
+		SELECT user_id, $1, $2, $3, $4 FROM claimed
+		RETURNING id::text, username, first_name, last_name, token_generation
+	`, username, hash, strings.TrimSpace(firstName), strings.TrimSpace(lastName)).Scan(
+		&user.ID,
+		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&tokenGeneration,
+	)
 	if err != nil {
 		var pgErr *pq.Error
-		if errors.As(err, &pgErr) && pgErr.Constraint == "auth_users_username_lower_key" {
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return User{}, "", ErrUsernameTaken
 		}
 		return User{}, "", err
@@ -120,16 +139,23 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 		return User{}, "", err
 	}
 
+	// Issue before commit so a protocol/crypto failure rolls the registration
+	// back instead of leaving an account that received no usable first token.
+	// The uncommitted user row cannot be logged out concurrently, so the
+	// generation returned by INSERT remains current through this issuance.
+	token, err := s.crypto.IssueToken(ctx, user.ID, user.Username, tokenGeneration)
+	if err != nil {
+		return User{}, "", err
+	}
 	if err := tx.Commit(); err != nil {
 		return User{}, "", err
 	}
 
-	token, err := s.crypto.IssueToken(ctx, user.ID, user.Username)
-	return user, token, err
+	return user, token, nil
 }
 
 func (s *Service) Login(ctx context.Context, username, password, twoFAPassword string) (User, string, error) {
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = usernamepolicy.Normalize(username)
 
 	var user User
 	err := s.db.QueryRowContext(ctx, `
@@ -158,7 +184,14 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 
 	var twoFAEnabled bool
 	var twoFAHash sql.NullString
-	_ = s.db.QueryRowContext(ctx, `SELECT two_fa_enabled, two_fa_hash FROM auth.users WHERE id = $1`, user.ID).Scan(&twoFAEnabled, &twoFAHash)
+	var tokenGeneration int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT two_fa_enabled, two_fa_hash, token_generation
+		FROM auth.users
+		WHERE id = $1
+	`, user.ID).Scan(&twoFAEnabled, &twoFAHash, &tokenGeneration); err != nil {
+		return User{}, "", err
+	}
 
 	if twoFAEnabled {
 		if twoFAPassword == "" {
@@ -175,7 +208,7 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 		}
 	}
 
-	token, err := s.crypto.IssueToken(ctx, user.ID, user.Username)
+	token, err := s.issueTokenWithStableGeneration(ctx, user.ID, user.Username, tokenGeneration)
 	return user, token, err
 }
 
@@ -202,14 +235,68 @@ func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) e
 	return err
 }
 
-// IssueQRToken issues a new token for the given user ID, used for QR login confirmation.
-func (s *Service) IssueQRToken(ctx context.Context, userID string) (string, error) {
+// IssueQRToken issues a token for QR login only while the token authorizing
+// this confirmation still belongs to the user's current generation. Unlike a
+// password login, an in-flight QR confirmation must not cross logout-all and
+// regain access with the newly incremented generation.
+func (s *Service) IssueQRToken(ctx context.Context, userID string, authorizedGeneration int64) (string, error) {
 	var username string
-	err := s.db.QueryRowContext(ctx, `SELECT username FROM auth.users WHERE id = $1`, userID).Scan(&username)
+	var currentGeneration int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT username, token_generation
+		FROM auth.users
+		WHERE id = $1
+	`, userID).Scan(&username, &currentGeneration)
 	if err != nil {
 		return "", err
 	}
-	return s.crypto.IssueToken(ctx, userID, username)
+	if currentGeneration != authorizedGeneration {
+		return "", ErrAuthorizationRevoked
+	}
+
+	token, err := s.crypto.IssueToken(ctx, userID, username, authorizedGeneration)
+	if err != nil {
+		return "", err
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT token_generation
+		FROM auth.users
+		WHERE id = $1
+	`, userID).Scan(&currentGeneration); err != nil {
+		return "", err
+	}
+	if currentGeneration != authorizedGeneration {
+		return "", ErrAuthorizationRevoked
+	}
+	return token, nil
+}
+
+// issueTokenWithStableGeneration prevents a concurrent logout-all from making
+// a newly returned token stale. The successful generation re-read is the
+// issuance linearization point: a logout-all committed before it forces a
+// retry, while one committed afterwards logically revokes this issuance.
+func (s *Service) issueTokenWithStableGeneration(ctx context.Context, userID, username string, tokenGeneration int64) (string, error) {
+	for attempt := 0; attempt < tokenIssueMaxAttempts; attempt++ {
+		token, err := s.crypto.IssueToken(ctx, userID, username, tokenGeneration)
+		if err != nil {
+			return "", err
+		}
+
+		var currentGeneration int64
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT token_generation
+			FROM auth.users
+			WHERE id = $1
+		`, userID).Scan(&currentGeneration); err != nil {
+			return "", err
+		}
+		if currentGeneration == tokenGeneration {
+			return token, nil
+		}
+		tokenGeneration = currentGeneration
+	}
+
+	return "", ErrTokenGenerationChanged
 }
 
 func tokenHash(token string) string {
@@ -217,14 +304,10 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// IsTokenRevoked returns true if the token has been revoked.
-func (s *Service) IsTokenRevoked(ctx context.Context, token string) bool {
-	var dummy int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM auth.revoked_tokens WHERE token_hash = $1 AND expires_at > NOW()`,
-		tokenHash(token),
-	).Scan(&dummy)
-	return err == nil
+// IsTokenRevoked returns true if this token was revoked explicitly or was
+// issued before the user's most recent logout-all operation.
+func (s *Service) IsTokenRevoked(ctx context.Context, token string, claims cryptoclient.TokenClaims) (bool, error) {
+	return authctx.NewDBTokenChecker(s.db).IsTokenRevoked(ctx, token, claims)
 }
 
 // Logout revokes the given token.
@@ -244,31 +327,43 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 	return err
 }
 
-// LogoutAll revokes all tokens for a user by inserting a sentinel with far future expiry.
-// Tokens issued before revoked_all_at are considered invalid.
+// LogoutAll revokes all tokens issued for a user up to the current moment.
 func (s *Service) LogoutAll(ctx context.Context, userID string) error {
-	// Mark all existing sessions as revoked.
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var tokenGeneration int64
+	if err := tx.QueryRowContext(ctx, `
+		UPDATE auth.users
+		SET token_generation = token_generation + 1
+		WHERE id = $1
+		RETURNING token_generation
+	`, userID).Scan(&tokenGeneration); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE auth.sessions SET revoked_at = NOW()
 		WHERE user_id = $1 AND revoked_at IS NULL
 	`, userID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE public.user_sessions
 		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
 		WHERE user_id = $1
-	`, userID)
-	return err
-}
-
-// RevokedAllBefore returns the timestamp of the last logout-all for a user (or zero).
-func (s *Service) RevokedAllBefore(ctx context.Context, userID string) (time.Time, error) {
-	var t time.Time
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(revoked_at), '1970-01-01') FROM auth.sessions WHERE user_id = $1
-	`, userID).Scan(&t)
-	return t, err
+	`, userID); err != nil {
+		return err
+	}
+	// Вышли со всех устройств — push на них больше не идёт (#717).
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users.push_subscriptions WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ChangePassword verifies the current password and replaces the hash.

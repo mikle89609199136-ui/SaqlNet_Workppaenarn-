@@ -427,4 +427,31 @@ describe('переподключение', () => {
 
     expect(FakeSocket.instances.length).toBe(socketsBefore);
   });
+
+  it('сохраняет контекст from и roomId для событий звонков call_*', () => {
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    const received: unknown[] = [];
+    const unsub = eventBus.on('call_offer', (data) => received.push(data));
+
+    socket.deliver({
+      type: 'call_offer',
+      from: 'user-alice',
+      roomId: 'room-123',
+      payload: { sdp: 'test-sdp', type: 'offer' },
+    });
+
+    unsub();
+
+    expect(received).toEqual([
+      {
+        sdp: 'test-sdp',
+        type: 'offer',
+        from: 'user-alice',
+        roomId: 'room-123',
+      },
+    ]);
+  });
 });

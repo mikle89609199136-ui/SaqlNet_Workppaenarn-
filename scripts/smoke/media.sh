@@ -1,17 +1,124 @@
 #!/usr/bin/env bash
 # upload/download или upload/metadata.
 
-#!/usr/bin/env bash
+assert_media_unsupported_type() {
+	local label="$1"
+	if [[ "$HTTP_CODE" == "415" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+error = json.load(sys.stdin)
+sys.exit(0 if error.get("code") == "unsupported_type" and error.get("message") == "file type not allowed" else 1)
+'; then
+		echo "✓ [$HTTP_CODE] $label"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] $label — expected 415 unsupported_type / file type not allowed"
+		echo "  ${HTTP_BODY:0:160}"
+		FAIL=$((FAIL + 1))
+	fi
+}
+
+run_encrypted_media_tests() {
+	local payload media_url
+	payload='{"purpose":"message","file":{"encrypted":true,"version":2,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":5,"sizeBytes":999,"ciphertext":"Y2lwaGVy","mimeType":"text/html"}}'
+	http_request -X POST "$BASE_URL/api/v2/media" \
+		-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+	if [[ "$HTTP_CODE" == "201" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+body = json.load(sys.stdin)
+envelope = json.loads(body["encryption"])
+assert body["success"] and body["encrypted"] and body["url"]
+assert body["sizeBytes"] == envelope["sizeBytes"] == 999
+assert envelope["keyEpoch"] == 5 and envelope["version"] == 2
+assert body["contentType"] == "text/html"
+'; then
+		echo "✓ [$HTTP_CODE] encrypted v2 upload preserves keyEpoch and plaintext size"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] encrypted v2 upload — invalid response"
+		FAIL=$((FAIL + 1))
+		return
+	fi
+	media_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')
+	http_request "$BASE_URL$media_url"
+	if [[ "$HTTP_CODE" == "200" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+body = json.load(sys.stdin)
+assert body["encrypted"] and body["version"] == 2 and body["algorithm"] == "AES-GCM"
+assert body["keyEpoch"] == 5 and body["sizeBytes"] == 999
+assert body["iv"] == "AAECAwQFBgcICQoL" and body["ciphertext"] == "Y2lwaGVy"
+'; then
+		echo "✓ [$HTTP_CODE] encrypted v2 download preserves envelope"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] encrypted v2 download — invalid envelope"
+		FAIL=$((FAIL + 1))
+	fi
+
+	local version ciphertext expected_code
+	for expected_code in invalid_ciphertext validation_failed; do
+		version=2
+		ciphertext='!!!'
+		if [[ "$expected_code" == "validation_failed" ]]; then
+			version=1
+			ciphertext='Y2lwaGVy'
+		fi
+		printf -v payload '{"purpose":"message","file":{"encrypted":true,"version":%s,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":5,"sizeBytes":999,"ciphertext":"%s"}}' "$version" "$ciphertext"
+		http_request -X POST "$BASE_URL/api/v2/media" \
+			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+		if [[ "$HTTP_CODE" == "400" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+assert json.load(sys.stdin)["code"] == sys.argv[1]
+' "$expected_code"; then
+			echo "✓ [$HTTP_CODE] encrypted upload rejects $expected_code"
+			PASS=$((PASS + 1))
+		else
+			echo "✗ [$HTTP_CODE] encrypted upload — expected 400 $expected_code"
+			FAIL=$((FAIL + 1))
+		fi
+	done
+}
 
 run_media_tests() {
 	echo ""
 	echo "→ Media"
+	run_encrypted_media_tests
 
 	local file_name="smoke-$$.txt"
 	local file_content="hello-smoke-media-$$"
 	local file_base64
 
 	file_base64=$(printf '%s' "$file_content" | base64 | tr -d '\n')
+
+	local mime_type
+	for mime_type in text/html image/svg+xml; do
+		http_request \
+			-X POST "$BASE_URL/api/v2/media" \
+			-H "Content-Type: application/json" \
+			-H "Authorization: Bearer $TOKEN" \
+			-d "{\"file\":\"data:$mime_type;base64,$file_base64\",\"fileName\":\"$file_name\"}"
+		assert_media_unsupported_type "POST /api/v2/media JSON $mime_type"
+
+		http_request \
+			-X POST "$BASE_URL/api/v2/media" \
+			-H "Authorization: Bearer $TOKEN" \
+			-F "file=@-;filename=$file_name;type=$mime_type" <<< "$file_content"
+		assert_media_unsupported_type "POST /api/v2/media multipart $mime_type"
+	done
+
+	# Optional existing unsafe fixture: no DB changes are needed to check its download.
+	if [[ -n "${MEDIA_LEGACY_UNSAFE_URL:-}" && "${MEDIA_LEGACY_UNSAFE_BODY+x}" == "x" ]]; then
+		http_request_with_headers "$BASE_URL$MEDIA_LEGACY_UNSAFE_URL"
+		local legacy_type legacy_disposition
+		legacy_type=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//p' | tr -d '\r')
+		legacy_disposition=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Dd]isposition:[[:space:]]*//p' | tr -d '\r')
+		if [[ "$HTTP_CODE" == "200" && "$legacy_type" == "application/octet-stream" && "$legacy_disposition" == "attachment" && "$HTTP_BODY" == "$MEDIA_LEGACY_UNSAFE_BODY" ]]; then
+			echo "✓ [$HTTP_CODE] GET legacy unsafe media returns attachment with unchanged content"
+			PASS=$((PASS + 1))
+		else
+			echo "✗ [$HTTP_CODE] GET legacy unsafe media — expected octet-stream attachment with unchanged content"
+			FAIL=$((FAIL + 1))
+		fi
+	fi
 
 	# Загружаем файл
 	http_request \
@@ -48,11 +155,14 @@ run_media_tests() {
 		tr -d '\r' |
 		head -n 1)
 
-	if [[ "$HTTP_CODE" == "200" && "$HTTP_BODY" == "$file_content" ]]; then
+	local returned_type disposition
+	returned_type=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//p' | tr -d '\r')
+	disposition=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Dd]isposition:[[:space:]]*//p' | tr -d '\r')
+	if [[ "$HTTP_CODE" == "200" && "$HTTP_BODY" == "$file_content" && "$returned_type" == "text/plain" && -z "$disposition" ]]; then
 		echo "✓ [$HTTP_CODE] GET $MEDIA_URL returns media content"
 		PASS=$((PASS + 1))
 	else
-		echo "✗ [$HTTP_CODE] GET $MEDIA_URL — expected 200 with uploaded content"
+		echo "✗ [$HTTP_CODE] GET $MEDIA_URL — expected 200 with uploaded text/plain content and no attachment"
 		echo "  ${HTTP_HEADERS:0:300}"
 		echo "  body: ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
