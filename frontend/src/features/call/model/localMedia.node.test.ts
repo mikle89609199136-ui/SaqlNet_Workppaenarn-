@@ -493,4 +493,71 @@ describe('LocalMediaManager', () => {
 
     vi.useRealTimers();
   });
+
+  it('глушит треки стрима, если getUserMedia разрешился после наступления тайм-аута', async () => {
+    vi.useFakeTimers();
+    let resolveLateGUM!: (stream: FakeMediaStream) => void;
+    mockGetUserMedia.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLateGUM = resolve;
+        })
+    );
+
+    const aTrack = new FakeMediaStreamTrack('audio');
+    const vTrack = new FakeMediaStreamTrack('video');
+    const fakeStream = new FakeMediaStream([aTrack, vTrack]);
+
+    const manager = new LocalMediaManager();
+    const startPromise = manager.startMedia({ timeoutMs: 1000 });
+
+    await vi.advanceTimersByTimeAsync(1001);
+    const result = await startPromise;
+
+    expect(result).toBeNull();
+    expect(manager.getState().error?.type).toBe('TimeoutError');
+
+    // Пользователь нажал «Разрешить» позже тайм-аута
+    resolveLateGUM(fakeStream);
+    await Promise.resolve();
+
+    expect(aTrack.stop).toHaveBeenCalled();
+    expect(vTrack.stop).toHaveBeenCalled();
+    expect(manager.getState().stream).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it('startMedia отменяет и останавливает идущую параллельно смену устройства', async () => {
+    const initialATrack = new FakeMediaStreamTrack('audio', 'mic-1');
+    const initialStream = new FakeMediaStream([initialATrack]);
+    mockGetUserMedia.mockResolvedValueOnce(initialStream);
+
+    const manager = new LocalMediaManager();
+    await manager.startMedia();
+
+    let resolveSwitchMic!: (stream: FakeMediaStream) => void;
+    mockGetUserMedia.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSwitchMic = resolve;
+        })
+    );
+
+    const switchPromise = manager.switchMicrophone('mic-2');
+
+    // Во время смены запускается новый startMedia
+    const newATrack = new FakeMediaStreamTrack('audio', 'mic-new-start');
+    mockGetUserMedia.mockResolvedValueOnce(new FakeMediaStream([newATrack]));
+    await manager.startMedia({ kind: 'audio' });
+
+    // Повиснувшая смена микрофона наконец завершается
+    const lateSwitchTrack = new FakeMediaStreamTrack('audio', 'mic-switch-late');
+    resolveSwitchMic(new FakeMediaStream([lateSwitchTrack]));
+    const switchResult = await switchPromise;
+
+    expect(switchResult).toBeNull();
+    expect(lateSwitchTrack.stop).toHaveBeenCalled();
+    expect(manager.getState().audioTrack).toBe(newATrack);
+  });
 });

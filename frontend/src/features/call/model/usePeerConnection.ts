@@ -64,6 +64,11 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
 
   const unsubRef = useRef<(() => void) | null>(null);
   const localStreamRef = useRef(localStream);
+  const iceServersRef = useRef(iceServers);
+
+  useEffect(() => {
+    iceServersRef.current = iceServers;
+  }, [iceServers]);
 
   useEffect(() => {
     if (!socket || !roomId || !peerId || !autoConnect) {
@@ -80,7 +85,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
       roomId,
       peerId,
       isPolite,
-      iceServers,
+      iceServers: iceServersRef.current,
       localStream: localStreamRef.current,
       onRemoteStream: (stream) => {
         setRemoteStream(stream);
@@ -139,7 +144,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
         unsubRef.current = null;
       }
     };
-  }, [socket, roomId, peerId, isPolite, autoConnect, iceServers]);
+  }, [socket, roomId, peerId, isPolite, autoConnect]);
 
   // Синхронизация локального стрима при его изменении (включая сброс в null)
   useEffect(() => {

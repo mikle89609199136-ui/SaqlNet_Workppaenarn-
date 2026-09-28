@@ -206,4 +206,37 @@ describe('usePeerConnection', () => {
 
     expect(result.current.manager?.getPeerConnection()).not.toBeNull();
   });
+
+  it('передача нового массива iceServers с тем же содержимым не пересоздаёт соединение', async () => {
+    const servers1 = [{ urls: 'stun:stun1.example.com' }];
+    const servers2 = [{ urls: 'stun:stun1.example.com' }];
+
+    const { result, rerender } = renderHook(
+      ({ iceServers }: { iceServers?: RTCIceServer[] }) =>
+        usePeerConnection({
+          socket: mockSocket,
+          roomId: 'room-100',
+          peerId: 'peer-200',
+          iceServers,
+        }),
+      { initialProps: { iceServers: servers1 } }
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const initialManager = result.current.manager;
+    expect(initialManager).not.toBeNull();
+
+    // Ререндерим хук с новым массивом, содержащим те же серверы
+    rerender({ iceServers: servers2 });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Менеджер не был пересоздан (ссылка сохранена)
+    expect(result.current.manager).toBe(initialManager);
+  });
 });

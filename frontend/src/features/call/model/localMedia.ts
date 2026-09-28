@@ -191,6 +191,8 @@ export class LocalMediaManager {
 
     this.isStopped = false;
     const currentOpId = ++this.startOperationId;
+    this.cameraSwitchOpId++;
+    this.micSwitchOpId++;
 
     this.state.isLoading = true;
     this.state.error = null;
@@ -223,21 +225,38 @@ export class LocalMediaManager {
 
     try {
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      let hasTimedOut = false;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
+          hasTimedOut = true;
           const timeoutErr = new Error('Permission request timed out');
           timeoutErr.name = 'TimeoutError';
           reject(timeoutErr);
         }, timeoutMs);
       });
 
-      const stream = await Promise.race([
-        nav.mediaDevices.getUserMedia({
-          audio: audioConstraints,
-          video: videoConstraints,
-        }),
-        timeoutPromise,
-      ]).finally(() => {
+      const gumPromise = nav.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: videoConstraints,
+      });
+
+      gumPromise
+        .then((lateStream) => {
+          if (hasTimedOut || this.isStopped || this.startOperationId !== currentOpId) {
+            for (const t of lateStream.getTracks()) {
+              try {
+                t.stop();
+              } catch {
+                // Игнорируем
+              }
+            }
+          }
+        })
+        .catch(() => {
+          // Игнорируем поздние ошибки
+        });
+
+      const stream = await Promise.race([gumPromise, timeoutPromise]).finally(() => {
         if (timeoutHandle) {
           clearTimeout(timeoutHandle);
         }
@@ -359,6 +378,10 @@ export class LocalMediaManager {
         } catch {
           // Если и аудио не удалось, падаем в общую ошибку
         }
+      }
+
+      if (mediaError.type === 'TimeoutError') {
+        this.startOperationId++;
       }
 
       this.state.error = mediaError;
