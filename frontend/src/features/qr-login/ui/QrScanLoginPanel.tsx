@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { parseQrLink, parseQrOfferLink, type IQrOfferLink } from '@/shared/crypto';
-import { Banner, Button, Input } from '@/shared/ui';
+import { Banner, Button, Input, Icon } from '@/shared/ui';
 import type { IQrLoginResult } from '../model/useQrLogin';
 import { QrClaimPanel } from './QrClaimPanel';
 import { QrScanner } from './QrScanner';
@@ -80,9 +80,15 @@ export function QrScanLoginPanel({ onConfirmed }: Props) {
         />
       ) : (
         <Button className="w-full" onClick={() => setScanning(true)}>
+          <Icon className="stroke-[1.8px]" name="camera" size="md" />
           {t('qrLogin.scan', 'Сканировать код')}
         </Button>
       )}
+      <div aria-hidden="true" className="flex items-center gap-3 text-meta text-ink-3">
+        <span className="h-px grow bg-divider" />
+        {t('qrLogin.or', 'или')}
+        <span className="h-px grow bg-divider" />
+      </div>
 
       <form
         className="grid gap-2"
@@ -94,7 +100,7 @@ export function QrScanLoginPanel({ onConfirmed }: Props) {
         <Input
           autoCapitalize="none"
           autoCorrect="off"
-          label={t('qrLogin.pasteLabel', 'Или вставьте ссылку из-под кода')}
+          label={t('qrLogin.pasteLink', 'Вставьте ссылку из-под кода')}
           onChange={(event) => setText(event.target.value)}
           placeholder="https://…/qr-login#…"
           value={text}

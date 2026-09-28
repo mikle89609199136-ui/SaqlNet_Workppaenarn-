@@ -2,7 +2,7 @@ import { FieldCaption, FieldLabel, useField } from '@/shared/ui/Field';
 import { cn } from '@/shared/lib';
 import { forwardRef, type InputHTMLAttributes } from 'react';
 
-/* Дорожка и бегунок из кита: 44x26 и 20 у обычного размера. */
+/* Дорожка 44×26 и бегунок 20 (дизайн-система, #817). */
 const sizes = {
   sm: { track: 'w-8 h-5', thumb: 'size-3.5 peer-checked:translate-x-3' },
   md: { track: 'w-11 h-6.5', thumb: 'size-5 peer-checked:translate-x-4.5' },
@@ -50,17 +50,20 @@ export const Switch = forwardRef<HTMLInputElement, Props>(function Switch(
           />
           <span
             className={cn(
-              'rounded-pill border border-line bg-sheet-2 transition-colors duration-fast',
-              'peer-checked:border-brand-fill peer-checked:bg-brand-fill',
+              /* Выключен — дорожка цвета линии, включён — заливка акцента.
+                 Состояние читается по положению белого бегунка, а не
+                 только по цвету. */
+              'rounded-pill bg-line-soft transition-colors duration-panel',
+              'peer-checked:bg-brand-fill',
               'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-brand peer-focus-visible:outline-offset-2',
-              isError && 'border-danger',
+              isError && 'ring-1 ring-danger',
               s.track
             )}
           />
           <span
             className={cn(
-              'absolute top-[3px] left-[3px] rounded-pill bg-ink-3 transition-all duration-fast',
-              'peer-checked:bg-on-brand',
+              'absolute top-[3px] left-[3px] rounded-pill bg-on-brand shadow-[0_1px_3px_rgb(0_0_0/0.3)]',
+              'transition-transform duration-[220ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
               s.thumb
             )}
           />

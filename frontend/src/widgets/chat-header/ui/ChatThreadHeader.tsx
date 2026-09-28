@@ -1,30 +1,14 @@
 import { useCall } from '@/features/call';
-import type { TConnectionStatus } from '@/realtime/connectionStatus';
 import type { IProfileModal } from '@/entities/user';
-import { chatQuery, useTypingStore } from '@/entities/chat';
-import { cn, getChatSubtitle, useConnectionStatus } from '@/shared/lib';
+import { chatQuery, onlineMembersQuery, useTypingStore } from '@/entities/chat';
+import { cn, getChatSubtitle, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { TFunction } from 'i18next';
+import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router-dom';
-import { Avatar, Icon } from '@/shared/ui';
-
-/**
- * Что сказать вместо «был(а) недавно», пока связи нет.
- *
- * Состояние связи важнее всего остального: если сообщения не ходят, знать
- * о собеседнике, что он «онлайн», человеку незачем — эти сведения тех же
- * секунд, что и молчащий чат.
- */
-function connectionSubtitle(status: TConnectionStatus, t: TFunction): string | null {
-  if (status === 'connected') return null;
-
-  return status === 'offline' ? t('noNetwork', 'Нет сети') : t('connecting', 'Соединяемся…');
-}
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Avatar, Button, buttonStyles, Icon } from '@/shared/ui';
 
 interface Props {
-  setIsGroupInfoOpen?: Dispatch<SetStateAction<boolean>>;
   profileModal?: IProfileModal;
   setProfileModal?: Dispatch<SetStateAction<IProfileModal>>;
   locationPage?: 'pinned-messages' | 'chat-thread';
@@ -32,49 +16,35 @@ interface Props {
 }
 
 export const ChatThreadHeader = ({
-  setIsGroupInfoOpen,
   profileModal,
   setProfileModal,
   locationPage = 'chat-thread',
   onClosePinnedMessagePage,
 }: Props) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { chatId = '' } = useParams<{ chatId: string }>();
-  const connection = useConnectionStatus();
   // Заголовок читает чат из кеша запросов — того же, что наполняет страница.
   const { data: chat } = useQuery(chatQuery(chatId));
+  const { data: onlineMembers } = useQuery({
+    ...onlineMembersQuery(chatId),
+    enabled: chat?.type === 'group' && locationPage === 'chat-thread',
+  });
   const { initiateCall } = useCall();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPress = useRef(false);
-  const [showCallMenu, setShowCallMenu] = useState(false);
   const typingUserId = useTypingStore((state) => state.typingByChat[chatId] ?? null);
+  // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
+  const now = useNow();
 
   if (!chat) return;
 
-  const noticeSubtitle = connectionSubtitle(connection, t);
-  const subtitle = noticeSubtitle ?? getChatSubtitle(chat, typingUserId, t);
+  // О связи говорит плашка под шапкой (ConnectionBanner, #826); подзаголовок
+  // — всегда о собеседнике.
+  const subtitle = getChatSubtitle(chat, typingUserId, t, now, onlineMembers?.length);
   const isPeerOnline = Boolean(chat.type === 'private' && chat?.peerIsOnline);
-
-  const handleCallClick = () => {
-    if (isLongPress.current) return;
-    if (showCallMenu) {
-      setShowCallMenu(false);
-      return;
-    }
-    initiateCall(chatId, chat.type, chat.title, 'audio');
-  };
-
-  const handleTouchStart = () => {
-    isLongPress.current = false;
-    timerRef.current = setTimeout(() => {
-      isLongPress.current = true;
-      setShowCallMenu((prev) => !prev);
-    }, 500);
-  };
-
-  const handleTouchEnd = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
+  // Блокировка в любую сторону — звонков нет (#760).
+  const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
+  const isGroup = chat.type === 'group';
+  const profileOpen = Boolean(profileModal?.isOpen);
 
   // Клик по шапке только называет, чей профиль показать: запрос делает
   // панель, и повторное открытие обходится кешем (#232).
@@ -86,8 +56,8 @@ export const ChatThreadHeader = ({
       return;
     }
 
-    if (chat?.type === 'group' && setIsGroupInfoOpen) {
-      setIsGroupInfoOpen(true);
+    if (chat?.type === 'group') {
+      setProfileModal({ isOpen: true, userId: null, kind: 'group' });
       return;
     }
     if (chat?.type !== 'private' || !chat.peerId) return;
@@ -95,151 +65,118 @@ export const ChatThreadHeader = ({
     setProfileModal({ isOpen: true, userId: chat.peerId });
   }
 
-  return (
-    <header className="thread-header">
-      {locationPage === 'chat-thread' && (
-        <Link aria-label={t('back', 'Назад')} className="thread-back" to="/chats">
-          <svg
-            fill="none"
-            height="27"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            viewBox="3 0 20 22"
-            width="27"
-          >
-            <line x1="19" x2="5" y1="12" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
-        </Link>
-      )}
+  /* Шапка — по макету (#822): 64px, снизу линия. На телефоне слева
+     «Назад к чатам», дальше одна кнопка «аватар и имя», открывающая
+     панель, справа кнопки 40×40 цвета ink-2. */
+  const headerClass =
+    'z-5 flex h-16 shrink-0 items-center gap-1.5 border-b border-divider bg-chat-bg px-1.5 md:px-3 ' +
+    'max-md:sticky max-md:top-0 max-md:h-[calc(64px+env(safe-area-inset-top,0px))] max-md:pt-[env(safe-area-inset-top,0px)]';
 
-      {locationPage === 'pinned-messages' && (
-        <button
+  const backToChats = (
+    <Link
+      aria-label={t('backToChats', 'Назад к чатам')}
+      className={buttonStyles({ variant: 'accent', iconOnly: true, className: 'md:hidden' })}
+      to="/chats"
+    >
+      <Icon className="size-5.5 rotate-180 stroke-2" name="chevronRight" />
+    </Link>
+  );
+
+  if (locationPage === 'pinned-messages') {
+    return (
+      <header className={headerClass}>
+        <Button
           aria-label={t('back', 'Назад')}
-          className="pinned-thread-back p-2 cursor-pointer"
+          className="text-brand"
+          iconOnly
           onClick={onClosePinnedMessagePage}
+          variant="ghost"
         >
-          <svg
-            fill="none"
-            className="size-6"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            viewBox="3 0 20 22"
+          <Icon className="size-5.5 rotate-180 stroke-2" name="chevronRight" />
+        </Button>
+        <h1 className="min-w-0 flex-1 truncate text-subtitle font-semibold">
+          {t('pinnedMessagesTitle', 'Закреплённые сообщения')}
+        </h1>
+      </header>
+    );
+  }
+
+  return (
+    <header className={headerClass}>
+      {backToChats}
+
+      <button
+        aria-controls="profile-slot"
+        aria-expanded={profileOpen}
+        aria-label={`${chat.title} — ${
+          profileOpen
+            ? t('hideProfile', 'скрыть')
+            : isGroup
+              ? t('openGroupInfo', 'открыть сведения')
+              : t('openProfile', 'открыть профиль')
+        }`}
+        className={cn(
+          'flex h-13 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-button pr-3 pl-1.5 text-left',
+          'transition-colors duration-fast hover:layer-hover aria-expanded:bg-sheet-2',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2'
+        )}
+        onClick={openChatProfile}
+        type="button"
+      >
+        <Avatar
+          id={chat.type === 'private' ? chat.peerId : null}
+          name={chat.title}
+          online={isPeerOnline}
+          size="md"
+          src={chat.avatarUrl}
+          surface="chat"
+        />
+        <span className="flex min-w-0 flex-1 flex-col gap-px">
+          <span className="truncate text-subtitle leading-[1.25] font-semibold">{chat.title}</span>
+          <span
+            className={cn(
+              'truncate text-caption leading-[1.3] text-ink-2',
+              (isPeerOnline || typingUserId) && 'text-brand'
+            )}
           >
-            <line x1="19" x2="5" y1="12" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
-        </button>
-      )}
-
-      {locationPage === 'chat-thread' && (
-        <>
-          <div
-            className="thread-header-card thread-header-info"
-            onClick={openChatProfile}
-            style={{
-              cursor: chat?.type === 'group' || chat?.type === 'private' ? 'pointer' : 'default',
-            }}
-          >
-            <button
-              aria-label={chat.title}
-              className={'cursor-pointer'}
-              tabIndex={-1}
-              type="button"
-            >
-              <Avatar
-                id={chat.type === 'private' ? chat.peerId : null}
-                name={chat.title}
-                online={isPeerOnline}
-                size="lg"
-                src={chat.avatarUrl}
-              />
-            </button>
-
-            <div className="thread-title-wrap">
-              <h1>{chat.title}</h1>
-              <p className={cn(noticeSubtitle && 'thread-subtitle-notice')}>{subtitle}</p>
-            </div>
-          </div>
-
-          <div className="thread-call-actions-wrap">
-            <div className="thread-header-card thread-call-actions thread-call-desktop">
-              <button
-                className="thread-call-button"
-                onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
-                title={t('audioCall', 'Аудиозвонок')}
-                type="button"
-              >
-                <Icon name="phone" />
-              </button>
-
-              <button
-                className="thread-call-button"
-                onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
-                title={t('videoCall', 'Видео')}
-                type="button"
-              >
-                <Icon name="video" />
-              </button>
-            </div>
-
-            <div className="thread-header-card thread-call-mobile">
-              <button
-                className="thread-call-button"
-                onClick={handleCallClick}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onTouchEnd={handleTouchEnd}
-                onTouchStart={handleTouchStart}
-                type="button"
-              >
-                <Icon name="phone" className="thread-call-icon" />
-              </button>
-
-              {showCallMenu && (
-                <div className="thread-call-menu">
-                  <button
-                    onClick={() => {
-                      setShowCallMenu(false);
-                      initiateCall(chatId, chat?.type, chat.title, 'audio', chat?.peerId);
-                    }}
-                    type="button"
-                  >
-                    <svg fill="currentColor" height="18" viewBox="0 0 24 24" width="18">
-                      <path d="M6.62 10.79a15.053 15.053 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
-                    </svg>{' '}
-                    {/* microphone icon */}
-                    {t('audioCall', 'Аудио')}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowCallMenu(false);
-                      initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId);
-                    }}
-                    type="button"
-                  >
-                    <Icon name="video" />
-                    {t('videoCall', 'Видео')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {locationPage === 'pinned-messages' && (
-        <div className="thread-header-card thread-header-info flex items-center gap-2 w-full">
-          <span className="font-semibold text-body">
-            {t('pinnedMessagesTitle', 'Закрепленные сообщения')}
+            {subtitle}
           </span>
-        </div>
-      )}
+        </span>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-0.5">
+        {/* Поиск по переписке появится с #841. */}
+        <Button
+          aria-label={t('audioCall', 'Позвонить')}
+          disabled={callsBlocked}
+          iconOnly
+          onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
+          title={t('audioCall', 'Позвонить')}
+          variant="ghost"
+        >
+          <Icon className="size-5" name="phone" />
+        </Button>
+        <Button
+          aria-label={t('videoCall', 'Видеозвонок')}
+          disabled={callsBlocked}
+          iconOnly
+          onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
+          title={t('videoCall', 'Видеозвонок')}
+          variant="ghost"
+        >
+          <Icon className="size-5" name="video" />
+        </Button>
+        <Button
+          aria-label={t('closeChat', 'Закрыть чат')}
+          className="max-md:hidden"
+          iconOnly
+          onClick={() => navigate('/chats')}
+          title={t('closeChat', 'Закрыть чат')}
+          variant="ghost"
+        >
+          <Icon className="size-5" name="cross" />
+        </Button>
+      </div>
     </header>
   );
 };

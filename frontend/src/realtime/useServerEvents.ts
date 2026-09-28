@@ -10,7 +10,7 @@ import {
   putPinnedMessage,
   putThreadMessage,
 } from '@/entities/message';
-import { useTypingStore, resolveChat } from '@/entities/chat';
+import { useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -140,31 +140,30 @@ export function useServerEvents(enabled: boolean): void {
     // Состав чата изменился — ключ чата пора менять: вошедший не должен
     // читать написанное до него, вышедший — написанное после.
     //
-    // Ротацию делает только владелец чата. Если бы её начинал каждый, кто
-    // услышал событие, несколько участников одновременно записали бы разные
-    // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
-    // сервере идёт построчно, без транзакции.
-    const rotateIfOwner = async (chatId?: string) => {
+    // Менять может любой участник, кто в сети (#806). Сервер при изменении
+    // состава поднимает пометку «нужна смена ключа» и принимает смену
+    // атомарно: из одновременных проходит одна, остальные принимают её ключ.
+    // Кто услышал событие позже, видит снятую пометку и ничего не делает.
+    // Если в сети никого не было, ключ сменит первый, кто откроет чат.
+    const rotateAfterMembershipChange = async (chatId?: string, removedUserId?: string) => {
       if (!chatId) return;
 
-      try {
-        const chat = await resolveChat(chatId);
-        const me = services.cryptoService.getAccountId();
+      // Ушли мы сами: в этом чате нас больше нет, и ключ менять не нам.
+      if (removedUserId && removedUserId === services.cryptoService.getAccountId()) return;
 
-        if (chat?.ownerId && me && chat.ownerId === me) {
-          await services.cryptoService.rotateChatKey(chatId);
-        }
+      try {
+        await services.cryptoService.rotateChatKeyIfNeeded(chatId);
       } catch (error) {
         console.warn('Не удалось обновить ключ чата после смены состава', error);
       }
     };
 
     const unsubscribeMemberAdded = eventBus.on(WS_EVENTS.CHAT.MEMBER_ADDED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateAfterMembershipChange(event?.chatId);
     });
 
     const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateAfterMembershipChange(event?.chatId, event?.userId);
     });
 
     // «Печатает» живёт три секунды и не кешируется — это не данные,

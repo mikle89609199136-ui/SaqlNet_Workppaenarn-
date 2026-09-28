@@ -25,6 +25,14 @@ import (
 // и возвращает соединение. Контейнер удаляется по завершении теста.
 func Postgres(t *testing.T) *sql.DB {
 	t.Helper()
+	db, _ := PostgresURL(t)
+	return db
+}
+
+// PostgresURL — то же, плюс адрес базы: для LISTEN и других отдельных
+// соединений.
+func PostgresURL(t *testing.T) (*sql.DB, string) {
+	t.Helper()
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -45,7 +53,8 @@ func Postgres(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, "5432")
 	require.NoError(t, err)
-	db, err := sql.Open("postgres", fmt.Sprintf("postgres://postgres:test@%s:%s/test?sslmode=disable", host, port.Port()))
+	url := fmt.Sprintf("postgres://postgres:test@%s:%s/test?sslmode=disable", host, port.Port())
+	db, err := sql.Open("postgres", url)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -60,7 +69,7 @@ func Postgres(t *testing.T) *sql.DB {
 		_, err = db.Exec(string(content))
 		require.NoError(t, err, file)
 	}
-	return db
+	return db, url
 }
 
 // User заводит пользователя с таким id и именем.

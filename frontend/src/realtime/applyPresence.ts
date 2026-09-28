@@ -25,7 +25,13 @@ export function applyPresence(queryClient: QueryClient, event: IPresenceChangedE
 
   const patch = (chat: IChatDto | undefined): IChatDto | undefined =>
     chat && chat.type === 'private' && chat.peerId === event.userId
-      ? { ...chat, peerIsOnline: event.isOnline, peerLastSeen: event.lastSeen || chat.peerLastSeen }
+      ? {
+          ...chat,
+          peerIsOnline: event.isOnline,
+          peerLastSeen: event.lastSeen || chat.peerLastSeen,
+          // Событие приходит, только если точное время видно (#791).
+          peerLastSeenApprox: undefined,
+        }
       : chat;
 
   for (const key of [chatKeys.list(), chatKeys.archived()]) {

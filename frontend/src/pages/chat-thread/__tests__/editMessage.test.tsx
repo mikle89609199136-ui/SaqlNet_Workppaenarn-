@@ -9,6 +9,7 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import { stubCrypto } from '@/test/harness/stubCrypto';
+import { typeIntoComposer } from '@/test/harness/composer';
 
 const PEER_PUBLIC_KEY = 'ключ-собеседника';
 
@@ -57,8 +58,7 @@ async function chooseEditAction(user: ReturnType<typeof userEvent.setup>) {
 async function replaceDraftAndSubmit(user: ReturnType<typeof userEvent.setup>, text: string) {
   const draft = await chooseEditAction(user);
 
-  await user.clear(draft);
-  await user.type(draft, text);
+  await typeIntoComposer(draft, text);
   await user.keyboard('{Enter}');
 
   return draft;
@@ -70,6 +70,29 @@ describe('редактирование своего сообщения', () => {
     stubCrypto();
   });
 
+  it('меню своего сообщения — по макету, «Удалить» последним (#825)', async () => {
+    const user = userEvent.setup();
+    setupChat();
+
+    await user.pointer({ keys: '[MouseRight]', target: await screen.findByText(ORIGINAL_TEXT) });
+    await screen.findByRole('menu', { name: 'Действия с сообщением' });
+
+    const items = screen
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+      // Реакции — отдельный ряд над пунктами.
+      .filter(Boolean);
+    expect(items).toEqual([
+      'Ответить',
+      'Копировать',
+      'Изменить',
+      'Закрепить',
+      'Переслать',
+      'Выбрать',
+      'Удалить',
+    ]);
+  });
+
   it('should open the composer with the original text after choosing edit', async () => {
     const user = userEvent.setup();
     setupChat();
@@ -77,7 +100,7 @@ describe('редактирование своего сообщения', () => {
     const draft = await chooseEditAction(user);
 
     expect(screen.getByText('Редактирование')).toBeInTheDocument();
-    expect(draft).toHaveValue(ORIGINAL_TEXT);
+    expect(draft.textContent).toBe(ORIGINAL_TEXT);
   });
 
   it('should put the new text to the message endpoint', async () => {
@@ -111,6 +134,6 @@ describe('редактирование своего сообщения', () => {
     // Композер выходит из режима правки — иначе следующий Enter снова
     // отредактировал бы то же сообщение.
     expect(screen.queryByText('Редактирование')).not.toBeInTheDocument();
-    expect(draft).toHaveValue('');
+    expect(draft.textContent).toBe('');
   });
 });

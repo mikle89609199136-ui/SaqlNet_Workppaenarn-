@@ -1,3 +1,4 @@
+import type { IRichText } from '@/shared/lib/richText';
 /**
  * Недописанные сообщения.
  *
@@ -14,7 +15,9 @@
 /** Через сколько после остановки набора сообщать списку чатов. */
 const SETTLE_DELAY_MS = 500;
 
-const drafts = new Map<string, string>();
+/* Черновик хранится с форматированием (#656): вернулся в чат — и жирный на
+   месте. Списку чатов нужен только текст. */
+const drafts = new Map<string, IRichText>();
 const listeners = new Map<string, Set<() => void>>();
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -31,7 +34,12 @@ function cancelPending(chatId: string): void {
 }
 
 export function readDraft(chatId: string): string {
-  return drafts.get(chatId) ?? '';
+  return drafts.get(chatId)?.text ?? '';
+}
+
+/** Черновик с форматированием — для поля ввода. */
+export function readRichDraft(chatId: string): IRichText {
+  return drafts.get(chatId) ?? { text: '', entities: [] };
 }
 
 /**
@@ -40,8 +48,8 @@ export function readDraft(chatId: string): string {
  * Список чатов узнает об этом, когда человек перестанет печатать: обновлять
  * строку на каждый символ значит заставлять её мигать всё время набора.
  */
-export function writeDraft(chatId: string, text: string): void {
-  drafts.set(chatId, text);
+export function writeDraft(chatId: string, value: IRichText | string): void {
+  drafts.set(chatId, typeof value === 'string' ? { text: value, entities: [] } : value);
 
   cancelPending(chatId);
   pending.set(

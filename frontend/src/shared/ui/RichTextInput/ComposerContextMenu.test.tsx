@@ -1,0 +1,197 @@
+import { act, createRef } from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { I18nextProvider } from 'react-i18next';
+import { $getRoot, $isElementNode, $isTextNode, FORMAT_TEXT_COMMAND } from 'lexical';
+import { describe, expect, it, vi } from 'vitest';
+import type { IRichText } from '@/shared/lib/richText';
+import { composerEditor, typeIntoComposer } from '@/test/harness/composer';
+import { testI18n } from '@/test/harness/i18n';
+import { RichTextInput, type IRichTextInputHandle } from './RichTextInput';
+
+function renderInput() {
+  const handle = createRef<IRichTextInputHandle>();
+  render(
+    <I18nextProvider i18n={testI18n}>
+      <RichTextInput ariaLabel="Сообщение" ref={handle} />
+    </I18nextProvider>
+  );
+  return { handle, field: screen.getByRole('textbox', { name: 'Сообщение' }) };
+}
+
+/** Выделить [start, end) в первой строке. */
+async function select(field: HTMLElement, start: number, end: number) {
+  const editor = composerEditor(field);
+  await act(async () => {
+    editor.update(
+      () => {
+        const paragraph = $getRoot().getFirstChild();
+        const text = $isElementNode(paragraph) ? paragraph.getFirstChild() : null;
+        if ($isTextNode(text)) text.select(start, end);
+      },
+      { discrete: true }
+    );
+  });
+}
+
+async function setup(value: string | IRichText, start: number, end: number) {
+  const view = renderInput();
+  await typeIntoComposer(view.field, value);
+  await select(view.field, start, end);
+  fireEvent.contextMenu(view.field, { clientX: 20, clientY: 20 });
+  return view;
+}
+
+describe('контекстное меню поля ввода (#656)', () => {
+  it('правый клик открывает своё меню вместо системного', async () => {
+    const { field } = await setup('привет', 0, 6);
+
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    field.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByRole('menu', { name: 'Правка' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Отменить/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Выделить всё/ })).toBeInTheDocument();
+  });
+
+  it('жирный из «Форматирования» ложится на выделенное', async () => {
+    const { handle } = await setup('привет мир', 0, 6);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    expect(screen.getByRole('menu', { name: 'Форматирование' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Жирный/ }));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(handle.current?.getValue()).toEqual({
+      text: 'привет мир',
+      entities: [{ type: 'bold', offset: 0, length: 6 }],
+    });
+  });
+
+  it('без выделения форматировать нечего', async () => {
+    await setup('привет', 3, 3);
+
+    expect(screen.getByRole('menuitem', { name: /Форматирование/ })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: /Вырезать/ })).toBeDisabled();
+  });
+
+  it('«Назад» возвращает к правке', async () => {
+    await setup('привет', 0, 6);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Назад/ }));
+
+    expect(screen.getByRole('menu', { name: 'Правка' })).toBeInTheDocument();
+  });
+
+  it('ссылка спрашивается в окне и ставится на выделенное', async () => {
+    const { handle } = await setup('см. доки', 4, 8);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Ссылка/ }));
+    await userEvent.type(screen.getByLabelText('Адрес ссылки'), 'example.com/docs');
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(handle.current?.getValue()).toEqual({
+      text: 'см. доки',
+      entities: [{ type: 'link', offset: 4, length: 4, data: { url: 'https://example.com/docs' } }],
+    });
+  });
+
+  it('Ctrl+K открывает окно ссылки без меню', async () => {
+    const view = renderInput();
+    await typeIntoComposer(view.field, 'см. доки');
+    await select(view.field, 4, 8);
+
+    fireEvent.keyDown(view.field, { key: 'k', ctrlKey: true });
+
+    expect(await screen.findByLabelText('Адрес ссылки')).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('javascript: ссылкой не станет', async () => {
+    const { handle } = await setup('нажми', 0, 5);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Ссылка/ }));
+    await userEvent.type(screen.getByLabelText('Адрес ссылки'), 'javascript:alert(1)');
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(screen.getByText('Нужен адрес вида https://example.com')).toBeInTheDocument();
+    expect(handle.current?.getValue().entities).toEqual([]);
+  });
+
+  it('«Обычный текст» снимает всё форматирование', async () => {
+    const { handle } = await setup(
+      {
+        text: 'привет',
+        entities: [
+          { type: 'bold', offset: 0, length: 6 },
+          { type: 'spoiler', offset: 0, length: 6 },
+          { type: 'blockquote', offset: 0, length: 6 },
+        ],
+      },
+      0,
+      6
+    );
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Обычный текст/ }));
+
+    expect(handle.current?.getValue()).toEqual({ text: 'привет', entities: [] });
+  });
+
+  it('цитата делает строку цитатой', async () => {
+    const { handle } = await setup('кто-то сказал', 0, 6);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /Цитата/ }));
+
+    expect(handle.current?.getValue().entities).toEqual([
+      { type: 'blockquote', offset: 0, length: 13 },
+    ]);
+  });
+
+  /* Выделение при нажатии Lexical берёт из DOM, а в jsdom его нет — поэтому
+     проверяется, какое форматирование сочетание заказало. */
+  it.each([
+    ['зачёркнутый', { key: 'X', code: 'KeyX' }, 'strikethrough'],
+    ['моноширинный', { key: 'M', code: 'KeyM' }, 'code'],
+    ['скрытый', { key: 'H', code: 'KeyH' }, 'highlight'],
+    ['зачёркнутый в русской раскладке', { key: 'Ч', code: 'KeyX' }, 'strikethrough'],
+    ['скрытый в русской раскладке', { key: 'Р', code: 'KeyH' }, 'highlight'],
+  ])('Ctrl+Shift — %s', (_name, keys, format) => {
+    const { field } = renderInput();
+    const dispatch = vi.spyOn(composerEditor(field), 'dispatchCommand');
+
+    fireEvent.keyDown(field, { ...keys, ctrlKey: true, shiftKey: true });
+
+    expect(dispatch).toHaveBeenCalledWith(FORMAT_TEXT_COMMAND, format);
+  });
+
+  it('Ctrl+Shift+P браузерное — поле его не перехватывает', () => {
+    const { field } = renderInput();
+    const dispatch = vi.spyOn(composerEditor(field), 'dispatchCommand');
+
+    const notBlocked = fireEvent.keyDown(field, {
+      key: 'P',
+      code: 'KeyP',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(notBlocked).toBe(true);
+    expect(dispatch).not.toHaveBeenCalledWith(FORMAT_TEXT_COMMAND, expect.anything());
+  });
+
+  it('Ctrl+K срабатывает и в русской раскладке', async () => {
+    const view = renderInput();
+    await typeIntoComposer(view.field, 'доки');
+    await select(view.field, 0, 4);
+
+    fireEvent.keyDown(view.field, { key: 'л', code: 'KeyK', ctrlKey: true });
+
+    expect(await screen.findByLabelText('Адрес ссылки')).toBeInTheDocument();
+  });
+});

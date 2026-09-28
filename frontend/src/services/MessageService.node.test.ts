@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
 import { createApiClient } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
@@ -7,6 +8,8 @@ import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
 import { MessageService } from './MessageService';
+import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import type { IMessageEntity } from '@/shared/lib/richText';
 
 const TARGET_CHAT = 'chat-target';
 
@@ -74,59 +77,96 @@ describe('MessageService: загрузка истории', () => {
   });
 });
 
+/**
+ * Сервер отправки (#808): принимает пачку и отвечает сообщениями в том же
+ * порядке. Запоминает, что и сколькими запросами у него просили.
+ */
+function serveSend() {
+  const requests: Array<{ messages: Array<Record<string, unknown>> }> = [];
+  server.use(
+    http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+      const body = (await request.json()) as { messages: Array<Record<string, unknown>> };
+      requests.push(body);
+      return HttpResponse.json({
+        messages: body.messages.map((item, index) =>
+          message(`sent-${index}`, TARGET_CHAT, String(item.content ?? ''))
+        ),
+      });
+    })
+  );
+  return requests;
+}
+
+describe('MessageService: отправка пачкой (#808)', () => {
+  it('одно сообщение уходит пачкой из одного и возвращается расшифрованным', async () => {
+    const requests = serveSend();
+
+    const sent = await createService().sendMessage(TARGET_CHAT, '  обычное  ');
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({ content: 'обычное', type: 'text' });
+    expect(requests[0].messages[0]).not.toHaveProperty('forwardedFrom');
+    expect(sent).toMatchObject({ id: 'sent-0', content: 'обычное' });
+  });
+});
+
 describe('MessageService: пересылка', () => {
   it('should send the message into the target chat as a new one', async () => {
     // Серверная пересылка копировала шифртекст исходного чата, а ключи у
     // чатов разные — в целевом такое сообщение не расшифровалось бы
     // никогда. Поэтому текст шифруется заново, ключом целевого чата.
-    let body: Record<string, unknown> | null = null;
-    server.use(
-      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
-      })
-    );
+    const requests = serveSend();
 
-    await createService().forwardMessage(
+    await createService().forwardMessages(TARGET_CHAT, [
       message('source', 'chat-source', 'переслано'),
-      TARGET_CHAT
-    );
+    ]);
 
-    expect(body).toMatchObject({ content: 'переслано', type: 'text' });
+    expect(requests[0].messages[0]).toMatchObject({ content: 'переслано', type: 'text' });
   });
 
   it('should tell the server which message is forwarded', async () => {
     // Имя автора сервер подставит сам, проверив доступ: от клиента имя не
     // принимается, передаётся только идентификатор (#358).
-    let body: Record<string, unknown> | null = null;
-    server.use(
-      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
-      })
-    );
+    const requests = serveSend();
 
-    await createService().forwardMessage(
+    await createService().forwardMessages(TARGET_CHAT, [
       message('source', 'chat-source', 'переслано'),
-      TARGET_CHAT
-    );
+    ]);
 
-    expect(body).toMatchObject({ forwardedFrom: 'source' });
-    expect(body).not.toHaveProperty('forwardedSenderName');
+    expect(requests[0].messages[0]).toMatchObject({ forwardedFrom: 'source' });
+    expect(requests[0].messages[0]).not.toHaveProperty('forwardedSenderName');
   });
 
-  it('should not mark a regular message as forwarded', async () => {
-    let body: Record<string, unknown> | null = null;
-    server.use(
-      http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ message: message('regular-1', TARGET_CHAT, 'обычное') });
-      })
+  it('комментарий и пересланные уходят одним запросом, комментарий первым', async () => {
+    const requests = serveSend();
+
+    const delivered = await createService().forwardMessages(
+      TARGET_CHAT,
+      [message('first', 'chat-source', 'первое'), message('second', 'chat-source', 'второе')],
+      'смотри'
     );
 
-    await createService().sendMessage(TARGET_CHAT, 'обычное');
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages.map((item) => [item.content, item.forwardedFrom])).toEqual([
+      ['смотри', undefined],
+      ['первое', 'first'],
+      ['второе', 'second'],
+    ]);
+    expect(delivered.map((item) => item.content)).toEqual(['смотри', 'первое', 'второе']);
+  });
 
-    expect(body).not.toHaveProperty('forwardedFrom');
+  it('больше предела за раз не отправляет', async () => {
+    const requests = serveSend();
+    const tooMany = Array.from({ length: MAX_MESSAGES_PER_SEND }, (_, index) =>
+      message(`m-${index}`, 'chat-source', `сообщение ${index}`)
+    );
+
+    // С комментарием выходит на одно больше предела.
+    await expect(
+      createService().forwardMessages(TARGET_CHAT, tooMany, 'комментарий')
+    ).rejects.toThrow(/Не больше/);
+    expect(requests).toHaveLength(0);
   });
 
   it('отказывается пересылать то, что не смог прочитать', async () => {
@@ -135,14 +175,20 @@ describe('MessageService: пересылка', () => {
 
        Признак, а не текст: подпись заглушки переводится, и проверка по
        ведущему замку сломалась бы вместе с переводом. */
+    const requests = serveSend();
     const unreadable = {
       ...message('source', 'chat-source', '🔒 Ключ шифрования недоступен'),
       undecryptable: 'keyUnavailable' as const,
     };
 
-    await expect(createService().forwardMessage(unreadable, TARGET_CHAT)).rejects.toThrow(
-      /не удалось расшифровать/
-    );
+    await expect(
+      createService().forwardMessages(TARGET_CHAT, [
+        message('readable', 'chat-source', 'читается'),
+        unreadable,
+      ])
+    ).rejects.toThrow(/не удалось расшифровать/);
+    // Пачка — всё или ничего: не уходит и читаемое.
+    expect(requests).toHaveLength(0);
   });
 });
 
@@ -181,5 +227,66 @@ describe('сторож открытого текста', () => {
 
     const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
     expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+  });
+});
+
+describe('MessageService: форматирование (#656)', () => {
+  const bold: IMessageEntity[] = [{ type: 'bold', offset: 0, length: 6 }];
+
+  afterEach(() => setChatResolver(null));
+
+  function sealingCrypto() {
+    const encryptMessage = vi.fn(
+      async (_chatId: string, content: string, entities: IMessageEntity[] = []) =>
+        `sealed(${content}|${JSON.stringify(entities)})`
+    );
+    const crypto = { ...passthroughCrypto, encryptMessage } as unknown as CryptoService;
+    return { service: new MessageService(createApiClient(), crypto), encryptMessage };
+  }
+
+  it('в шифрованном чате форматирование уходит внутри конверта, открытого поля нет', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    const sent = await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
+    expect(requests[0].messages[0]).not.toHaveProperty('entities');
+    expect(sent).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('в канале текст открытый — и форматирование тоже', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).not.toHaveBeenCalled();
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пробелы по краям срезаются вместе со сдвигом форматирования', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+
+    await createService().sendMessage(TARGET_CHAT, '  привет  ', 'text', null, [
+      { type: 'bold', offset: 2, length: 6 },
+    ]);
+
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пересылка сохраняет форматирование исходного сообщения', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.forwardMessages(TARGET_CHAT, [
+      { ...message('source', 'chat-source', 'привет'), entities: bold },
+    ]);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold);
   });
 });

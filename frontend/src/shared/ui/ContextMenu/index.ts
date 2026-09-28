@@ -1,5 +1,6 @@
 export {
   ContextMenu,
+  ContextMenuBack,
   ContextMenuItem,
   ContextMenuSeparator,
   useContextMenu,

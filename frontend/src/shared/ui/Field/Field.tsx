@@ -1,5 +1,6 @@
 import { cn } from '@/shared/lib';
 import { useId, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /* Общая часть полей ввода: подпись сверху, подпись снизу и связка их с
    самим элементом управления. Вынесено потому, что это ровно тот
@@ -53,6 +54,7 @@ export function FieldLabel({
   children,
   htmlFor,
   id,
+  optional,
   required,
 }: {
   children: ReactNode;
@@ -61,12 +63,26 @@ export function FieldLabel({
      содержимого, поэтому подпись приходится привязывать через
      aria-labelledby, а не полагаться на htmlFor. */
   id?: string;
+  /* «Необязательно» справа в подписи (дизайн-система, #817). В форме,
+     где почти всё обязательно, отмечать проще исключения, чем правило. */
+  optional?: boolean;
   required?: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
-    <label className="text-caption font-medium text-ink-2" htmlFor={htmlFor} id={id}>
-      {children}
-      {required && <RequiredMark />}
+    <label
+      className="flex items-baseline justify-between gap-3 text-caption font-medium text-ink-2"
+      htmlFor={htmlFor}
+      id={id}
+    >
+      <span>
+        {children}
+        {required && <RequiredMark />}
+      </span>
+      {optional && !required && (
+        <span className="font-normal text-ink-3">{t('optional', 'Необязательно')}</span>
+      )}
     </label>
   );
 }
@@ -134,7 +150,9 @@ export function FieldCaption({
 }) {
   return (
     <p
-      className={cn('text-caption', isError ? 'text-danger' : 'text-ink-3')}
+      /* Подсказка мельче ошибки: её читают один раз, а ошибку надо
+         заметить. */
+      className={cn(isError ? 'text-caption text-danger' : 'text-meta text-ink-3')}
       id={id}
       /* Ошибка объявляется, когда появляется. Без этого диктор прочитает
          её, только если фокус вернётся на поле, — а при проверке по

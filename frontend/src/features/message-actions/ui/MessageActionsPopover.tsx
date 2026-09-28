@@ -1,4 +1,6 @@
-import { ContextMenu, Icon } from '@/shared/ui';
+import type { IRichTextInputHandle } from '@/shared/ui';
+import { ContextMenu, Icon, NotoEmoji } from '@/shared/ui';
+import { QUICK_REACTIONS } from '@/shared/config';
 import { cn } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
 import { pinsQuery } from '@/entities/message';
@@ -7,15 +9,68 @@ import { useChatUiStore } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
-import { useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+function focusVisible(element: Element): boolean {
+  try {
+    return element.matches(':focus-visible');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Быстрая реакция в меню — по макету (#824): картинка Noto 28px в круглой
+ * кнопке 34px. При наведении и фокусе увеличивается и проигрывает
+ * анимацию; анимация грузится только тогда. Поставленная — на подложке
+ * акцента.
+ */
+function ReactionPick({
+  emoji,
+  label,
+  chosen,
+  onPick,
+}: {
+  emoji: string;
+  label: string;
+  chosen: boolean;
+  onPick: () => void;
+}) {
+  const [active, setActive] = useState(false);
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={chosen}
+      className={cn(
+        'flex size-8.5 shrink-0 cursor-pointer items-center justify-center rounded-pill transition-transform duration-[120ms] hover:scale-118 focus-visible:scale-118 motion-reduce:transition-none motion-reduce:hover:scale-100',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        chosen && 'bg-brand-soft'
+      )}
+      onBlur={() => setActive(false)}
+      onClick={onPick}
+      // Меню ставит фокус на первую реакцию само — играть она должна только
+      // при обходе с клавиатуры, как `:focus-visible` в макете. Выключать
+      // по фокусу нельзя: мышь фокусирует кнопку при нажатии, и анимация,
+      // пропав между нажатием и отпусканием, съедала бы сам клик.
+      onFocus={(event) => {
+        if (focusVisible(event.currentTarget)) setActive(true);
+      }}
+      onPointerEnter={() => setActive(true)}
+      onPointerLeave={() => setActive(false)}
+      role="menuitem"
+      type="button"
+    >
+      <NotoEmoji animated={active} emoji={emoji} size={28} />
+    </button>
+  );
+}
 
 interface Props {
   message: IMessageDto;
   onSelection: (message: IMessageDto) => void;
-  draftRef?: RefObject<HTMLInputElement | null>;
+  draftRef?: RefObject<IRichTextInputHandle | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -73,7 +128,7 @@ export const MessageActionsPopover = ({
         show: true,
         icon: 'copy',
         key: 'copy',
-        def: t('messageActions.copy', 'Скопировать'),
+        def: t('messageActions.copy', 'Копировать'),
         action: () => actions.handleCopyMessage(message),
       },
       {
@@ -118,6 +173,14 @@ export const MessageActionsPopover = ({
         def: t('messageActions.forward', 'Переслать'),
         action: () => actions.handleForward(message),
       },
+      // «Выбрать» — перед удалением: опасное действие по макету последнее.
+      {
+        show: true,
+        icon: 'checkCircle',
+        key: 'select',
+        def: isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать'),
+        action: () => (selectionMode ? onSelection(message) : actions.startSelection(message)),
+      },
       {
         show: mine,
         icon: 'trash',
@@ -127,12 +190,13 @@ export const MessageActionsPopover = ({
         className: 'is-danger',
       },
     ],
-    [actions, isPinned, message, mine, selectionMode, t]
+    [actions, isPinned, isSelected, message, mine, onSelection, selectionMode, t]
   );
 
   return (
     <ContextMenu
       aria-label={t('messageActions.title', 'Действия с сообщением')}
+      className="w-61 min-w-0"
       onClose={() => setActionMenu(null)}
       open
       x={actionMenu?.x}
@@ -144,35 +208,27 @@ export const MessageActionsPopover = ({
           весь ряд. */}
       <div
         aria-label={t('messageActions.reactions', 'Реакции')}
-        className="flex gap-1 px-1 pb-1"
+        className="mb-1 flex justify-between border-b border-divider px-0.5 pt-0.5 pb-1.75"
         role="group"
       >
-        {REACTIONS.map((emoji) => {
+        {QUICK_REACTIONS.map(({ emoji, label }) => {
+          /* Поставленная реакция видна и в меню, не только на самом
+             сообщении: иначе, открыв меню второй раз, не понять, что уже
+             отмечено, — а нажатие на неё снимает. */
           const chosen = myReaction === emoji;
+          const name = t(label[0], label[1]);
 
           return (
-            <button
-              aria-label={chosen ? `${emoji} ${t('reactionChosen', '— ваша реакция')}` : emoji}
-              aria-pressed={chosen}
-              className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-control text-[18px] transition-colors hover:bg-sheet-2',
-                /* Поставленная реакция видна и в меню, не только на самом
-                   сообщении: иначе, открыв меню второй раз, не понять, что
-                   уже отмечено, — а нажатие на неё теперь снимает. */
-                chosen && 'bg-brand-soft'
-              )}
+            <ReactionPick
+              chosen={chosen}
+              emoji={emoji}
               key={emoji}
-              onClick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
-              role="menuitem"
-              type="button"
-            >
-              {emoji}
-            </button>
+              label={chosen ? `${name} ${t('reactionChosen', '— ваша реакция')}` : name}
+              onPick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
+            />
           );
         })}
       </div>
-
-      <ContextMenu.Separator />
 
       {buttons
         .filter((b) => b.show)
@@ -183,20 +239,11 @@ export const MessageActionsPopover = ({
             onClick={() => actions.runMessageAction(b.action)}
             variant={b.className?.includes('danger') ? 'danger' : 'default'}
           >
-            {t(b.key, b.def)}
+            {/* Подпись уже переведена: по короткому ключу (`edit`, `copy`)
+                подставлялись чужие строки — «Редактировать» вместо «Изменить». */}
+            {b.def}
           </ContextMenu.Item>
         ))}
-
-      <ContextMenu.Item
-        icon={<Icon className="fill-transparent" name="checkCircle" />}
-        onClick={() =>
-          actions.runMessageAction(() =>
-            selectionMode ? onSelection(message) : actions.startSelection(message)
-          )
-        }
-      >
-        {isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать')}
-      </ContextMenu.Item>
     </ContextMenu>
   );
 };

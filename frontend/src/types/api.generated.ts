@@ -1053,7 +1053,10 @@ export interface paths {
         /** Get encrypted chat keys */
         get: operations["getChatKeys"];
         put?: never;
-        /** Save encrypted chat keys */
+        /**
+         * Save encrypted chat keys
+         * @description Accepts the current epoch (keys for members who lack a row) or the next one (a new key for everyone, clears rotationNeeded). Written in one transaction under a lock on the chat.
+         */
         post: operations["saveChatKeys"];
         delete?: never;
         options?: never;
@@ -1070,7 +1073,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotate a chat key */
+        /**
+         * Rotate a chat key
+         * @description Any member may rotate. Only the next epoch (current + 1) is accepted, in one transaction under a lock on the chat; of two concurrent rotations the second gets 409 and adopts the key of the first. Clears rotationNeeded.
+         */
         post: operations["rotateChatKey"];
         delete?: never;
         options?: never;
@@ -1412,6 +1418,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave a group chat
+         * @description Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".
+         */
+        post: operations["leaveChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/transfer-ownership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transfer group ownership
+         * @description Makes another member the owner; the previous owner becomes a regular member. Owner only, group chats only.
+         */
+        post: operations["transferChatOwnership"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/members/{userId}": {
         parameters: {
             query?: never;
@@ -1690,27 +1736,13 @@ export interface paths {
         get: operations["listMessages"];
         /** Edit a message */
         put: operations["editMessage"];
-        /** Send a message to a chat */
-        post: operations["sendMessage"];
+        /**
+         * Send messages to a chat
+         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
+         */
+        post: operations["sendMessages"];
         /** Delete a message */
         delete: operations["deleteMessage"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/messages/{messageId}/forward": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Forward a message */
-        post: operations["forwardMessage"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2300,6 +2332,7 @@ export interface components {
             lastName?: string;
             language?: string;
             bio?: string;
+            /** @description Empty when the user's photoVisibility rule (with the block list and exceptions) hides the photo from the caller. The caller always sees their own. */
             avatarUrl?: string;
         };
         Message: {
@@ -2311,27 +2344,76 @@ export interface components {
             senderId: string;
             senderName?: string;
             senderFirstName: string;
+            /** @description Empty when the sender's photoVisibility rule hides the photo from the caller. Never sent in WebSocket events, which go to every member at once. */
             senderAvatar?: string;
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the request body limit. */
             content: string;
+            entities: components["schemas"]["MessageEntities"];
             /** @enum {string} */
             type: "text" | "image" | "audio" | "video" | "voice" | "sticker" | "gif" | "file" | "call";
             /** Format: uuid */
             replyTo?: string | null;
+            replyPreview?: components["schemas"]["LastMessagePreview"];
             /** Format: uuid */
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
             reactions: components["schemas"]["Reaction"][];
+            /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
                 [key: string]: unknown;
             };
             isForwarded: boolean;
+            /** @description Name of the original author, shown as text even when the link is hidden. */
             forwardedSenderName?: string;
+            /**
+             * Format: uuid
+             * @description Original author, to open their profile. Present only when the author's forwards rule allowed the forwarder to link to them; absent together with forwardedFrom when the link is hidden.
+             */
+            forwardedSenderId?: string;
             isPinned: boolean;
             isEdited: boolean;
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+        };
+        /** @description A range in UTF-16 code units. Both boundaries must be between Unicode code points (never inside a surrogate pair), and offset + length must not exceed the content length. Inline ranges may overlap, except links cannot overlap other links. Blockquotes cover whole lines (start at 0 or after LF; end at content end or before LF), cannot overlap other blockquotes, and any inline range intersecting a blockquote must be fully contained within it. data is required for link and must be absent for every other type. */
+        MessageEntity: {
+            /** @enum {string} */
+            type: "bold" | "italic" | "underline" | "strikethrough" | "spoiler" | "monospace" | "link" | "blockquote";
+            /** @description Offset in UTF-16 code units. */
+            offset: number;
+            /** @description Length in UTF-16 code units. */
+            length: number;
+            data?: {
+                /**
+                 * Format: uri
+                 * @description Absolute http or https URL with a nonempty host; at most 2048 UTF-16 code units.
+                 */
+                url: string;
+            };
+        } & ({
+            /** @enum {unknown} */
+            type?: "link";
+        } | {
+            /** @enum {unknown} */
+            type?: "bold" | "italic" | "underline" | "strikethrough" | "spoiler" | "monospace" | "blockquote";
+        });
+        /**
+         * @description At most 100 entities. Omitted on send or edit means an empty array; edit always replaces existing entities. Must be empty for E2E envelopes and stickers. Invalid schema, ranges, URLs or limits return 400 validation_failed.
+         * @default []
+         */
+        MessageEntities: components["schemas"]["MessageEntity"][];
+        LastMessagePreview: {
+            /** Format: uuid */
+            id: string;
+            content: string;
+            entities: components["schemas"]["MessageEntities"];
+            type: string;
+            /** Format: uuid */
+            senderId?: string;
+            senderName: string;
+            reactions: components["schemas"]["Reaction"][];
         };
         /** @example john_doe */
         Username: string;
@@ -2543,6 +2625,10 @@ export interface components {
         };
         ChatKeysResponse: {
             keys: components["schemas"]["ChatEncryptedKey"][];
+            /** @description Current key epoch of the chat — the highest written; 0 before the first key. */
+            keyEpoch: number;
+            /** @description Membership changed after the current epoch was written. The current key must not be handed out any more: the next writer publishes epoch keyEpoch + 1. */
+            rotationNeeded: boolean;
         };
         SaveChatKeysRequest: {
             encryptedKeys: components["schemas"]["ChatEncryptedKey"][];
@@ -2679,6 +2765,11 @@ export interface components {
              */
             avatarUrl?: string;
         };
+        Reaction: {
+            emoji: string;
+            count: number;
+            myReaction: boolean;
+        };
         Chat: {
             /** Format: uuid */
             id: string;
@@ -2696,6 +2787,7 @@ export interface components {
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
+            lastMessage?: components["schemas"]["LastMessagePreview"];
             /**
              * Format: uuid
              * @description Private chats only.
@@ -2705,6 +2797,10 @@ export interface components {
             peerIsOnline?: boolean;
             /** @description Private chats only. ISO 8601 UTC time of the peer's last activity. Omitted when unknown or hidden, see peerLastSeenApprox. */
             peerLastSeen?: string;
+            /** @description Private chats only. The peer has blocked the caller: sending (403 blocked_by_user) and calling are refused. Changes arrive as the user_blocked / user_unblocked WebSocket events. */
+            isBlockedByPeer?: boolean;
+            /** @description Private chats only. The caller has blocked the peer. */
+            isPeerBlocked?: boolean;
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
@@ -2718,19 +2814,18 @@ export interface components {
             /** @enum {boolean} */
             success: true;
         };
-        Reaction: {
-            emoji: string;
-            count: number;
-            myReaction: boolean;
-        };
         MessageListResponse: {
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the 256 KiB request body limit. */
             content: string;
+            entities?: components["schemas"]["MessageEntities"];
         };
         SendMessageRequest: {
+            /** @description Original text, without HTML escaping; at most 16384 UTF-16 code units, including media captions. Recognized E2E transport envelopes are exempt from this text limit and remain subject to the 256 KiB request body limit. */
             content?: string;
+            entities?: components["schemas"]["MessageEntities"];
             /**
              * @description Defaults to text when omitted.
              * @enum {string}
@@ -2750,12 +2845,13 @@ export interface components {
             isEncrypted?: boolean;
             /**
              * Format: uuid
-             * @description Message being forwarded, for clients that re-encrypt content for the target chat instead of calling /messages/{messageId}/forward. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server.
+             * @description Message being forwarded: the client re-encrypts its content for the target chat and sends it as a regular item. The requester must be a member of that message's chat, otherwise 400. When it is itself a forward, the original author is kept. The author name is resolved by the server. If the original author's forwards rule (with the block list and exceptions) forbids the requester, only the name is kept and metadata gets forwardedHidden instead of forwardedFrom; a hidden forward stays hidden when forwarded again.
              */
             forwardedFrom?: string | null;
         };
-        MessageResponse: {
-            message: components["schemas"]["Message"];
+        SendMessagesRequest: {
+            /** @description The whole request body is limited to 2 MiB. */
+            messages: components["schemas"]["SendMessageRequest"][];
         };
         DeleteMessageResponse: {
             /** @enum {boolean} */
@@ -4536,6 +4632,15 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            /** @description key_epoch_conflict — the epoch is neither current nor next, someone already changed the key; key_rotation_required — membership changed, the current key must not be handed out, publish the next epoch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rotateChatKey: {
@@ -4564,6 +4669,15 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            /** @description key_epoch_conflict — the epoch is not current + 1, someone already rotated. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["Error"];
         };
     };
@@ -5225,6 +5339,100 @@ export interface operations {
             403: components["responses"]["Error"];
         };
     };
+    leaveChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            /** @description access_denied: the caller is not a member (including a repeated leave) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description ownership_transfer_required: the caller owns the chat */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
+    transferChatOwnership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    userId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Ownership transferred */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description validation_failed (including transfer to self), not_member, invalid_chat_type */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description access_denied: the caller is not the owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            404: components["responses"]["Error"];
+            /** @description ownership_conflict: the owner changed concurrently */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
     removeChatMember: {
         parameters: {
             query?: never;
@@ -5715,7 +5923,7 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
-    sendMessage: {
+    sendMessages: {
         parameters: {
             query?: never;
             header?: never;
@@ -5727,17 +5935,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SendMessageRequest"];
+                "application/json": components["schemas"]["SendMessagesRequest"];
             };
         };
         responses: {
-            /** @description Sent message */
-            200: {
+            /** @description Sent messages, in the order of the request */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageResponse"];
+                    "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
             400: components["responses"]["Error"];
@@ -5765,39 +5973,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteMessageResponse"];
-                };
-            };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-        };
-    };
-    forwardMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                messageId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: uuid */
-                    targetChatId: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Forwarded message */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             400: components["responses"]["Error"];

@@ -450,6 +450,18 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 	if to == "" || roomID == "" {
 		return
 	}
+	// Заблокировавший не получает звонков от заблокированного (#760).
+	if ws.isBlockedBy(to, client.UserID) {
+		refused, _ := json.Marshal(map[string]interface{}{
+			"type":     "call_invite_response",
+			"roomId":   roomID,
+			"from":     to,
+			"accepted": false,
+			"reason":   "blocked_by_user",
+		})
+		ws.sendToUser(client.UserID, refused)
+		return
+	}
 	if ws.callRooms.GetUserRoom(to) != nil {
 		busy, _ := json.Marshal(map[string]interface{}{
 			"type":     "call_invite_response",
@@ -701,4 +713,19 @@ func strOrDefault(v interface{}, def string) string {
 		return s
 	}
 	return def
+}
+
+// isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —
+// считаем, что нет: звонок от этого не ломается, а запись о сбое остаётся.
+func (ws *WSServer) isBlockedBy(owner, userID string) bool {
+	if ws.db == nil {
+		return false
+	}
+	var blocked bool
+	err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM users.blocked_users WHERE user_id = $1::uuid AND blocked_user_id = $2::uuid)`, owner, userID).Scan(&blocked)
+	if err != nil {
+		slog.Error("block check for call invite", "err", err)
+		return false
+	}
+	return blocked
 }

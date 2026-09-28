@@ -1,3 +1,4 @@
+import type { IMessageEntity } from '@/shared/lib/richText';
 import type { TMessageDeliveryStatus, TMessageType } from './types';
 import { create } from 'zustand';
 
@@ -5,6 +6,8 @@ export interface IOutboxItem {
   tempId: string;
   chatId: string;
   content: string;
+  /** Форматирование: при повторе после сбоя оно не должно потеряться. */
+  entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
   replyToId?: string | null;

@@ -58,12 +58,15 @@ export type {
   IUploadResponse,
 } from './response.types';
 export type {
+  ICheckUsernameResponse,
   IPrivacyDto,
   ISearchUserDto,
   ISettingsDto,
   ISettingsPayloadDto,
   IUserDto,
+  IUserStatusDto,
   TLastSeenVisibility,
+  TPrivacyVisibility,
   TSearchUsersList,
   IProfileModal,
   IProfileState,
@@ -92,6 +95,7 @@ export type {
   IPongEvent,
   IReactionUpdatedEvent,
   IPresenceChangedEvent,
+  IUserBlockEvent,
   ITypingEvent,
   IWsEventMap,
   TWsEventType,

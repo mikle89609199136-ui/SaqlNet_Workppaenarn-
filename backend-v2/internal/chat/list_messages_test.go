@@ -24,7 +24,7 @@ const (
 FROM (
 SELECT m.id::text, m.chat_id::text, m.sender_id::text,
       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-      m.content, m.type, m.reply_to::text, m.metadata,
+      m.content, m.entities, m.type, m.reply_to::text, m.metadata,
       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
       m.created_at::text, m.updated_at::text, m.deleted_at::text
 FROM messages.messages m
@@ -80,7 +80,7 @@ func TestListMessages_Success(t *testing.T) {
 
 	mock.ExpectQuery(selectListMessagesSQL).
 		WithArgs(listMessagesChatID, 50, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
 	svc := NewService(db, nil, nil)
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)
 	require.NoError(t, err)

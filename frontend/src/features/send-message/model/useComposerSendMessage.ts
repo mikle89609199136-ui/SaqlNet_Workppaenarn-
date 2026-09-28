@@ -11,7 +11,8 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { clearDraft, useChatUiStore } from '@/entities/chat';
-import { setComposerText } from '@/shared/lib';
+import { trimRichText } from '@/shared/lib/richText';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,7 +28,7 @@ import { useParams } from 'react-router-dom';
 
 interface Params {
   selectionMode: boolean;
-  draftRef: RefObject<HTMLInputElement | null>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
   pendingAttachment: IPendingAttachment | null;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   bottomRef: RefObject<HTMLDivElement | null>;
@@ -55,6 +56,20 @@ export function useComposerSendMessage({
 
   const [isSending, setIsSending] = useState(false);
 
+  /* Ошибка отправки — человеку словами. blocked_by_user значит, что
+     собеседник заблокировал, а событие об этом могло не дойти: чат
+     перечитывается, и вместо поля ввода встаёт плашка (#760). */
+  const showSendError = useCallback(
+    (err: unknown) => {
+      const error = err as { code?: string; message?: string };
+      if (error?.code === 'blocked_by_user') {
+        void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId), exact: true });
+      }
+      setError(describeApiError(error, t, t('messageSendError', 'Не удалось отправить сообщение')));
+    },
+    [chatId, queryClient, setError, t]
+  );
+
   function scrollToBottom() {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }
@@ -64,26 +79,24 @@ export function useComposerSendMessage({
       setError('');
       void retryOutboxMessage(queryClient, message.tempId || message.id, {
         onError: (err) => {
-          setError(
-            describeApiError(
-              err as { code?: string; message?: string },
-              t,
-              t('messageSendError', 'Не удалось отправить сообщение')
-            )
-          );
+          showSendError(err);
         },
         onSuccess: () => {
           setError('');
         },
       });
     },
-    [queryClient, setError, t]
+    [queryClient, setError, showSendError]
   );
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (selectionMode) return;
-    const content = (draftRef.current?.value ?? '').trim();
+    // Текст с форматированием; пробелы по краям срезаются вместе с
+    // диапазонами (#656).
+    const { text: content, entities } = trimRichText(
+      draftRef.current?.getValue() ?? { text: '', entities: [] }
+    );
     if (!content && !pendingAttachment) return;
 
     if (editingMessage) {
@@ -93,26 +106,22 @@ export function useComposerSendMessage({
         const result = await services.messageService.editMessage(
           editingMessage.id,
           chatId,
-          content
+          content,
+          entities
         );
 
         patchThreadMessage(queryClient, chatId, editingMessage.id, {
           content: result.content,
+          entities: result.entities,
           updatedAt: result.updatedAt,
           isEdited: true,
         });
         void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
         setEditingMessage(null);
-        setComposerText(draftRef.current, '');
+        draftRef.current?.clear();
         setError('');
       } catch (err: unknown) {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
+        showSendError(err);
       } finally {
         setIsSending(false);
       }
@@ -139,6 +148,7 @@ export function useComposerSendMessage({
       chatId,
       senderId: currentUser?.id ?? '',
       content,
+      entities,
       type: pendingAttachment ? pendingAttachment.type : 'text',
       mediaType: pendingAttachment ? pendingAttachment.type : undefined,
       mediaUrl: blobUrl,
@@ -153,6 +163,7 @@ export function useComposerSendMessage({
       tempId,
       chatId,
       content,
+      entities,
       type: pendingAttachment ? pendingAttachment.type : 'text',
       file: pendingAttachment?.file,
       replyToId: replyToMessage?.id ?? null,
@@ -167,7 +178,7 @@ export function useComposerSendMessage({
     scrollToBottom();
 
     // 2. Мгновенно очищаем композер, не блокируя набор следующих сообщений
-    setComposerText(draftRef.current, '');
+    draftRef.current?.clear();
     clearDraft(chatId);
     setPendingAttachment(null);
     setReplyToMessage(null);
@@ -177,13 +188,7 @@ export function useComposerSendMessage({
     // 3. Отправляем в фоне через outboxSender
     void sendOutboxItem(queryClient, outboxItem, {
       onError: (err) => {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
+        showSendError(err);
       },
       onSuccess: () => {
         setError('');

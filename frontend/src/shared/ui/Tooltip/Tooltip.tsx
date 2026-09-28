@@ -28,7 +28,9 @@ export function Tooltip({ content, children, className, position = 'top' }: Tool
         id={id}
         role="tooltip"
         className={cn(
-          'absolute z-50 pointer-events-none px-3 py-1.5 bg-ink text-ground text-caption rounded-control whitespace-nowrap',
+          /* Перевёрнутые цвета, как у уведомления (#817): подсказка
+             лежит поверх любой поверхности и не должна с ней сливаться. */
+          'absolute z-50 pointer-events-none px-2.5 py-1.5 bg-ink text-sheet text-meta rounded-field whitespace-nowrap shadow-[var(--shadow-menu)]',
           'opacity-0 invisible scale-95 transition-all duration-fast',
           'group-hover:opacity-100 group-hover:visible group-hover:scale-100',
           'group-focus-within:opacity-100 group-focus-within:visible group-focus-within:scale-100',

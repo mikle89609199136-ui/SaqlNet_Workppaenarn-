@@ -1,90 +1,184 @@
 {
   "core": {
-    "gray": {
-      "50": {
-        "value": "#FFFFFF",
-        "type": "color"
-      },
-      "100": {
-        "value": "#F4F6F9",
-        "type": "color"
-      },
-      "200": {
-        "value": "#EDF0F5",
-        "type": "color"
-      },
-      "250": {
-        "value": "#EAEEF3",
-        "type": "color"
-      },
-      "300": {
-        "value": "#DFE4EC",
-        "type": "color"
-      },
-      "400": {
-        "value": "#8B96A5",
-        "type": "color"
-      },
-      "500": {
-        "value": "#6C7889",
-        "type": "color"
-      },
-      "600": {
-        "value": "#5A6675",
-        "type": "color"
-      },
-      "700": {
-        "value": "#98A3B4",
-        "type": "color"
-      },
-      "800": {
-        "value": "#DDE3EC",
-        "type": "color"
-      },
-      "850": {
-        "value": "#2C3543",
-        "type": "color"
-      },
-      "900": {
-        "value": "#232A35",
-        "type": "color"
-      },
-      "950": {
-        "value": "#1B212A",
-        "type": "color"
-      },
-      "1000": {
-        "value": "#14181F",
-        "type": "color"
-      },
-      "ink": {
-        "value": "#1B2029",
-        "type": "color"
-      }
+    "white": {
+      "value": "#FFFFFF",
+      "type": "color"
     },
     "status": {
-      "okLight": {
-        "value": "#2E8B57",
+      "ok": {
+        "light": {
+          "value": "#2E8B57",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#4FBF6B",
+          "type": "color"
+        }
+      },
+      "okSoft": {
+        "light": {
+          "value": "rgba(46, 139, 87, 0.12)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(79, 191, 107, 0.16)",
+          "type": "color"
+        }
+      },
+      "warn": {
+        "light": {
+          "value": "#8C570A",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#F2B454",
+          "type": "color"
+        }
+      },
+      "warnSoft": {
+        "light": {
+          "value": "rgba(242, 169, 59, 0.16)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(242, 180, 84, 0.14)",
+          "type": "color"
+        }
+      },
+      "danger": {
+        "light": {
+          "value": "#B43737",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#F07D7D",
+          "type": "color"
+        }
+      },
+      "dangerSoft": {
+        "light": {
+          "value": "rgba(194, 59, 59, 0.08)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(240, 122, 122, 0.12)",
+          "type": "color"
+        }
+      },
+      "info": {
+        "light": {
+          "value": "#3F6FB5",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#7FA8E8",
+          "type": "color"
+        }
+      },
+      "infoSoft": {
+        "light": {
+          "value": "rgba(63, 111, 181, 0.12)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(127, 168, 232, 0.16)",
+          "type": "color"
+        }
+      },
+      "rec": {
+        "light": {
+          "value": "#D64545",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#F06A6A",
+          "type": "color"
+        }
+      }
+    },
+    "overlay": {
+      "hover": {
+        "light": {
+          "value": "rgba(20, 24, 29, 0.06)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(255, 255, 255, 0.07)",
+          "type": "color"
+        }
+      },
+      "press": {
+        "light": {
+          "value": "rgba(20, 24, 29, 0.1)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(255, 255, 255, 0.12)",
+          "type": "color"
+        }
+      },
+      "hl": {
+        "light": {
+          "value": "rgba(242, 201, 76, 0.5)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(242, 201, 76, 0.38)",
+          "type": "color"
+        }
+      },
+      "hlCurrent": {
+        "light": {
+          "value": "#F2B93B",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#F2C94C",
+          "type": "color"
+        }
+      },
+      "mutedBadge": {
+        "light": {
+          "value": "#6B7686",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#4A5463",
+          "type": "color"
+        }
+      },
+      "spoiler": {
+        "light": {
+          "value": "#B3BCCB",
+          "type": "color"
+        },
+        "dark": {
+          "value": "#4A5463",
+          "type": "color"
+        }
+      },
+      "backdrop": {
+        "light": {
+          "value": "rgba(20, 24, 29, 0.28)",
+          "type": "color"
+        },
+        "dark": {
+          "value": "rgba(8, 10, 13, 0.55)",
+          "type": "color"
+        }
+      }
+    },
+    "call": {
+      "ground": {
+        "value": "#10141A",
         "type": "color"
       },
-      "okDark": {
-        "value": "#4FBF6B",
+      "accept": {
+        "value": "#2FB35A",
         "type": "color"
       },
-      "dangerLight": {
-        "value": "#C0392B",
-        "type": "color"
-      },
-      "dangerDark": {
-        "value": "#FF6B6B",
-        "type": "color"
-      },
-      "callAccept": {
-        "value": "#2E9E5B",
-        "type": "color"
-      },
-      "callReject": {
-        "value": "#D4453C",
+      "reject": {
+        "value": "#E5484D",
         "type": "color"
       }
     },
@@ -172,11 +266,11 @@
     },
     "font": {
       "sans": {
-        "value": "Geologica",
+        "value": "Geologica, Noto Color Emoji",
         "type": "fontFamilies"
       },
       "display": {
-        "value": "Geologica",
+        "value": "Geologica, Noto Color Emoji",
         "type": "fontFamilies"
       },
       "mono": {
@@ -249,325 +343,896 @@
       }
     }
   },
+  "palette/graphite-light": {
+    "neutral": {
+      "ground": {
+        "value": "#E4E9F1",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#F6F8FB",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#EEF2F7",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "line": {
+        "value": "#DFE4ED",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#7A8494",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#1F252E",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#566172",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#5F6B7C",
+        "type": "color"
+      }
+    }
+  },
+  "palette/graphite-dark": {
+    "neutral": {
+      "ground": {
+        "value": "#0F1216",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#1B2128",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#161B21",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#242A34",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#242B35",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#1F262F",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#222A33",
+        "type": "color"
+      },
+      "line": {
+        "value": "#2A323C",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#6D7785",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#E6EAF1",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#A3ADBC",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#8C97A8",
+        "type": "color"
+      }
+    }
+  },
+  "palette/midnight-light": {
+    "neutral": {
+      "ground": {
+        "value": "#DFE6F3",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#F2F5FB",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#E9EEF8",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#FFFFFF",
+        "type": "color"
+      },
+      "line": {
+        "value": "#D5DEEE",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#758198",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#1A2233",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#4F5C75",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#58657E",
+        "type": "color"
+      }
+    }
+  },
+  "palette/midnight-dark": {
+    "neutral": {
+      "ground": {
+        "value": "#0A0F1C",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#121A2B",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#0F1626",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#1C2740",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#1C2740",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#172136",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#172136",
+        "type": "color"
+      },
+      "line": {
+        "value": "#243150",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#66738F",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#E6EBF5",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#A6B2C9",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#8D9AB4",
+        "type": "color"
+      }
+    }
+  },
+  "palette/warm-light": {
+    "neutral": {
+      "ground": {
+        "value": "#ECE5DC",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#FFFDF9",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#F8F3ED",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#F2EBE3",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#FFFDF9",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#FFFDF9",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#FFFDF9",
+        "type": "color"
+      },
+      "line": {
+        "value": "#E3D9CD",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#8B7F73",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#2A221C",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#65584D",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#6F6257",
+        "type": "color"
+      }
+    }
+  },
+  "palette/warm-dark": {
+    "neutral": {
+      "ground": {
+        "value": "#13100E",
+        "type": "color"
+      },
+      "panel": {
+        "value": "#1F1A16",
+        "type": "color"
+      },
+      "chat": {
+        "value": "#191512",
+        "type": "color"
+      },
+      "raised": {
+        "value": "#2B251F",
+        "type": "color"
+      },
+      "bubbleIn": {
+        "value": "#2B251F",
+        "type": "color"
+      },
+      "composer": {
+        "value": "#25201B",
+        "type": "color"
+      },
+      "menu": {
+        "value": "#25201B",
+        "type": "color"
+      },
+      "line": {
+        "value": "#352D26",
+        "type": "color"
+      },
+      "outline": {
+        "value": "#7B7066",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#EFE8E1",
+        "type": "color"
+      },
+      "ink2": {
+        "value": "#B9ADA2",
+        "type": "color"
+      },
+      "ink3": {
+        "value": "#9D9186",
+        "type": "color"
+      }
+    }
+  },
   "theme/light": {
-    "bg": {
-      "value": "{core.gray.100}",
-      "type": "color",
-      "description": "Фон приложения"
+    "ground": {
+      "value": "{neutral.ground}",
+      "type": "color"
     },
-    "surface": {
-      "value": "{core.gray.50}",
-      "type": "color",
-      "description": "Панель, карточка, меню"
+    "sheet": {
+      "value": "{neutral.panel}",
+      "type": "color"
     },
-    "surface2": {
-      "value": "{core.gray.200}",
-      "type": "color",
-      "description": "Приподнятая поверхность, hover"
+    "sheet2": {
+      "value": "{neutral.raised}",
+      "type": "color"
+    },
+    "chatBg": {
+      "value": "{neutral.chat}",
+      "type": "color"
+    },
+    "composer": {
+      "value": "{neutral.composer}",
+      "type": "color"
+    },
+    "menu": {
+      "value": "{neutral.menu}",
+      "type": "color"
     },
     "line": {
-      "value": "{core.gray.300}",
-      "type": "color",
-      "description": "Граница"
+      "value": "{neutral.outline}",
+      "type": "color"
     },
     "lineSoft": {
-      "value": "{core.gray.250}",
-      "type": "color",
-      "description": "Разделитель внутри блока"
+      "value": "{neutral.line}",
+      "type": "color"
     },
-    "text": {
-      "value": "{core.gray.ink}",
-      "type": "color",
-      "description": "Основной текст, контраст 14,9:1"
+    "divider": {
+      "value": "{neutral.line}",
+      "type": "color"
     },
-    "textMuted": {
-      "value": "{core.gray.600}",
-      "type": "color",
-      "description": "Второстепенный, 6,1:1"
+    "ink": {
+      "value": "{neutral.ink}",
+      "type": "color"
     },
-    "textFaint": {
-      "value": "{core.gray.400}",
-      "type": "color",
-      "description": "Время, подписи"
+    "ink2": {
+      "value": "{neutral.ink2}",
+      "type": "color"
+    },
+    "ink3": {
+      "value": "{neutral.ink3}",
+      "type": "color"
+    },
+    "brand": {
+      "value": "{accent.ink}",
+      "type": "color"
+    },
+    "brandFill": {
+      "value": "{accent.fill}",
+      "type": "color"
+    },
+    "onBrand": {
+      "value": "{accent.onFill}",
+      "type": "color"
+    },
+    "brandSoft": {
+      "value": "{accent.softLight}",
+      "type": "color"
     },
     "bubbleIn": {
-      "value": "{core.gray.50}",
-      "type": "color",
-      "description": "Пузырь собеседника"
+      "value": "{neutral.bubbleIn}",
+      "type": "color"
+    },
+    "bubbleOut": {
+      "value": "{accent.bubbleLight}",
+      "type": "color"
+    },
+    "bubbleOutInk": {
+      "value": "{accent.bubbleInkLight}",
+      "type": "color"
+    },
+    "outMeta": {
+      "value": "{white}",
+      "type": "color"
     },
     "ok": {
-      "value": "{core.status.okLight}",
+      "value": "{status.ok.light}",
+      "type": "color"
+    },
+    "okSoft": {
+      "value": "{status.okSoft.light}",
+      "type": "color"
+    },
+    "warn": {
+      "value": "{status.warn.light}",
+      "type": "color"
+    },
+    "warnSoft": {
+      "value": "{status.warnSoft.light}",
       "type": "color"
     },
     "danger": {
-      "value": "{core.status.dangerLight}",
+      "value": "{status.danger.light}",
+      "type": "color"
+    },
+    "dangerSoft": {
+      "value": "{status.dangerSoft.light}",
+      "type": "color"
+    },
+    "info": {
+      "value": "{status.info.light}",
+      "type": "color"
+    },
+    "infoSoft": {
+      "value": "{status.infoSoft.light}",
+      "type": "color"
+    },
+    "rec": {
+      "value": "{status.rec.light}",
+      "type": "color"
+    },
+    "hover": {
+      "value": "{overlay.hover.light}",
+      "type": "color"
+    },
+    "press": {
+      "value": "{overlay.press.light}",
+      "type": "color"
+    },
+    "hl": {
+      "value": "{overlay.hl.light}",
+      "type": "color"
+    },
+    "hlCurrent": {
+      "value": "{overlay.hlCurrent.light}",
+      "type": "color"
+    },
+    "mutedBadge": {
+      "value": "{overlay.mutedBadge.light}",
+      "type": "color"
+    },
+    "spoiler": {
+      "value": "{overlay.spoiler.light}",
+      "type": "color"
+    },
+    "backdrop": {
+      "value": "{overlay.backdrop.light}",
+      "type": "color"
+    },
+    "callGround": {
+      "value": "{call.ground}",
+      "type": "color"
+    },
+    "callAccept": {
+      "value": "{call.accept}",
+      "type": "color"
+    },
+    "callReject": {
+      "value": "{call.reject}",
       "type": "color"
     }
   },
   "theme/dark": {
-    "bg": {
-      "value": "{core.gray.1000}",
-      "type": "color",
-      "description": "Фон приложения"
+    "ground": {
+      "value": "{neutral.ground}",
+      "type": "color"
     },
-    "surface": {
-      "value": "{core.gray.950}",
-      "type": "color",
-      "description": "Панель, карточка, меню"
+    "sheet": {
+      "value": "{neutral.panel}",
+      "type": "color"
     },
-    "surface2": {
-      "value": "{core.gray.900}",
-      "type": "color",
-      "description": "Приподнятая поверхность, hover"
+    "sheet2": {
+      "value": "{neutral.raised}",
+      "type": "color"
+    },
+    "chatBg": {
+      "value": "{neutral.chat}",
+      "type": "color"
+    },
+    "composer": {
+      "value": "{neutral.composer}",
+      "type": "color"
+    },
+    "menu": {
+      "value": "{neutral.menu}",
+      "type": "color"
     },
     "line": {
-      "value": "{core.gray.850}",
-      "type": "color",
-      "description": "Граница"
+      "value": "{neutral.outline}",
+      "type": "color"
     },
     "lineSoft": {
-      "value": "{core.gray.900}",
-      "type": "color",
-      "description": "Разделитель внутри блока"
+      "value": "{neutral.line}",
+      "type": "color"
     },
-    "text": {
-      "value": "{core.gray.800}",
-      "type": "color",
-      "description": "Основной текст, контраст 13,7:1"
+    "divider": {
+      "value": "{neutral.line}",
+      "type": "color"
     },
-    "textMuted": {
-      "value": "{core.gray.700}",
-      "type": "color",
-      "description": "Второстепенный, 7,0:1"
+    "ink": {
+      "value": "{neutral.ink}",
+      "type": "color"
     },
-    "textFaint": {
-      "value": "{core.gray.500}",
-      "type": "color",
-      "description": "Время, подписи"
+    "ink2": {
+      "value": "{neutral.ink2}",
+      "type": "color"
+    },
+    "ink3": {
+      "value": "{neutral.ink3}",
+      "type": "color"
+    },
+    "brand": {
+      "value": "{accent.hi}",
+      "type": "color"
+    },
+    "brandFill": {
+      "value": "{accent.fill}",
+      "type": "color"
+    },
+    "onBrand": {
+      "value": "{accent.onFill}",
+      "type": "color"
+    },
+    "brandSoft": {
+      "value": "{accent.softDark}",
+      "type": "color"
     },
     "bubbleIn": {
-      "value": "#1F2731",
-      "type": "color",
-      "description": "Пузырь собеседника"
+      "value": "{neutral.bubbleIn}",
+      "type": "color"
+    },
+    "bubbleOut": {
+      "value": "{accent.bubbleDark}",
+      "type": "color"
+    },
+    "bubbleOutInk": {
+      "value": "{accent.bubbleInkDark}",
+      "type": "color"
+    },
+    "outMeta": {
+      "value": "{white}",
+      "type": "color"
     },
     "ok": {
-      "value": "{core.status.okDark}",
+      "value": "{status.ok.dark}",
+      "type": "color"
+    },
+    "okSoft": {
+      "value": "{status.okSoft.dark}",
+      "type": "color"
+    },
+    "warn": {
+      "value": "{status.warn.dark}",
+      "type": "color"
+    },
+    "warnSoft": {
+      "value": "{status.warnSoft.dark}",
       "type": "color"
     },
     "danger": {
-      "value": "{core.status.dangerDark}",
+      "value": "{status.danger.dark}",
+      "type": "color"
+    },
+    "dangerSoft": {
+      "value": "{status.dangerSoft.dark}",
+      "type": "color"
+    },
+    "info": {
+      "value": "{status.info.dark}",
+      "type": "color"
+    },
+    "infoSoft": {
+      "value": "{status.infoSoft.dark}",
+      "type": "color"
+    },
+    "rec": {
+      "value": "{status.rec.dark}",
+      "type": "color"
+    },
+    "hover": {
+      "value": "{overlay.hover.dark}",
+      "type": "color"
+    },
+    "press": {
+      "value": "{overlay.press.dark}",
+      "type": "color"
+    },
+    "hl": {
+      "value": "{overlay.hl.dark}",
+      "type": "color"
+    },
+    "hlCurrent": {
+      "value": "{overlay.hlCurrent.dark}",
+      "type": "color"
+    },
+    "mutedBadge": {
+      "value": "{overlay.mutedBadge.dark}",
+      "type": "color"
+    },
+    "spoiler": {
+      "value": "{overlay.spoiler.dark}",
+      "type": "color"
+    },
+    "backdrop": {
+      "value": "{overlay.backdrop.dark}",
+      "type": "color"
+    },
+    "callGround": {
+      "value": "{call.ground}",
+      "type": "color"
+    },
+    "callAccept": {
+      "value": "{call.accept}",
+      "type": "color"
+    },
+    "callReject": {
+      "value": "{call.reject}",
       "type": "color"
     }
   },
   "accent/violet": {
-    "lo": {
-      "value": "#7C4DD8",
-      "type": "color",
-      "description": "Текст и линии на светлом фоне"
-    },
-    "hi": {
-      "value": "#B48CEC",
-      "type": "color",
-      "description": "Текст и линии на тёмном фоне"
-    },
-    "fill": {
-      "value": "#7C4DD8",
-      "type": "color",
-      "description": "Заливка кнопок и меток"
-    },
-    "onFill": {
-      "value": "#FFFFFF",
-      "type": "color",
-      "description": "Текст поверх заливки"
-    },
-    "bubbleLight": {
-      "value": "#F0EAFB",
-      "type": "color",
-      "description": "Свой пузырь, светлая тема"
-    },
-    "bubbleDark": {
-      "value": "#292234",
-      "type": "color",
-      "description": "Свой пузырь, тёмная тема"
-    },
-    "bubbleInkLight": {
-      "value": "#3D2A63",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#E9E2F5",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#7C4DD8",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#7247C7",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#B48CEC",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(124, 77, 216, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(124, 77, 216, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#F0EAFB",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#292234",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#3D2A63",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#E9E2F5",
+        "type": "color"
+      }
     }
   },
   "accent/plum": {
-    "lo": {
-      "value": "#8E3E86",
-      "type": "color"
-    },
-    "hi": {
-      "value": "#D392CB",
-      "type": "color"
-    },
-    "fill": {
-      "value": "#8E3E86",
-      "type": "color"
-    },
-    "onFill": {
-      "value": "#FFFFFF",
-      "type": "color"
-    },
-    "bubbleLight": {
-      "value": "#F8EAF6",
-      "type": "color"
-    },
-    "bubbleDark": {
-      "value": "#2F2433",
-      "type": "color"
-    },
-    "bubbleInkLight": {
-      "value": "#4E1B49",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#F0DEEE",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#8E3E86",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#8E3E86",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#D392CB",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(142, 62, 134, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(142, 62, 134, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#F8EAF6",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#2F2433",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#4E1B49",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#F0DEEE",
+        "type": "color"
+      }
     }
   },
   "accent/orchid": {
-    "lo": {
-      "value": "#C2459B",
-      "type": "color"
-    },
-    "hi": {
-      "value": "#EC8CC8",
-      "type": "color"
-    },
-    "fill": {
-      "value": "#C2459B",
-      "type": "color"
-    },
-    "onFill": {
-      "value": "#FFFFFF",
-      "type": "color"
-    },
-    "bubbleLight": {
-      "value": "#FCE9F5",
-      "type": "color"
-    },
-    "bubbleDark": {
-      "value": "#322431",
-      "type": "color"
-    },
-    "bubbleInkLight": {
-      "value": "#66194A",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#F5DFEE",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#C2459B",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#A13981",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#EC8CC8",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(194, 69, 155, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(194, 69, 155, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#FCE9F5",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#322431",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#66194A",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#F5DFEE",
+        "type": "color"
+      }
     }
   },
   "accent/indigo": {
-    "lo": {
-      "value": "#4C5FD0",
-      "type": "color"
-    },
-    "hi": {
-      "value": "#9BAAF2",
-      "type": "color"
-    },
-    "fill": {
-      "value": "#4C5FD0",
-      "type": "color"
-    },
-    "onFill": {
-      "value": "#FFFFFF",
-      "type": "color"
-    },
-    "bubbleLight": {
-      "value": "#E9ECFC",
-      "type": "color"
-    },
-    "bubbleDark": {
-      "value": "#232839",
-      "type": "color"
-    },
-    "bubbleInkLight": {
-      "value": "#23306E",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#DFE4F7",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#4C5FD0",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#4758C1",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#9BAAF2",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(76, 95, 208, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(76, 95, 208, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#E9ECFC",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#232839",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#23306E",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#DFE4F7",
+        "type": "color"
+      }
     }
   },
   "accent/amber": {
-    "lo": {
-      "value": "#A9690C",
-      "type": "color"
-    },
-    "hi": {
-      "value": "#F2A93B",
-      "type": "color"
-    },
-    "fill": {
-      "value": "#F2A93B",
-      "type": "color"
-    },
-    "onFill": {
-      "value": "#1A1203",
-      "type": "color",
-      "description": "Единственный набор с тёмным текстом на заливке"
-    },
-    "bubbleLight": {
-      "value": "#FBF0DC",
-      "type": "color"
-    },
-    "bubbleDark": {
-      "value": "#33291A",
-      "type": "color"
-    },
-    "bubbleInkLight": {
-      "value": "#5A4318",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#F0E6D6",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#A4660C",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#8C570A",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#F2A93B",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(164, 102, 12, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(164, 102, 12, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#FBF0DC",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#33291A",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#5A4318",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#F0E6D6",
+        "type": "color"
+      }
     }
   },
   "accent/teal": {
-    "lo": {
-      "value": "#17806E",
-      "type": "color"
-    },
-    "hi": {
-      "value": "#5FD3BE",
-      "type": "color"
-    },
-    "fill": {
-      "value": "#17806E",
-      "type": "color"
-    },
-    "onFill": {
-      "value": "#FFFFFF",
-      "type": "color"
-    },
-    "bubbleLight": {
-      "value": "#E3F5F1",
-      "type": "color"
-    },
-    "bubbleDark": {
-      "value": "#1E2E2C",
-      "type": "color"
-    },
-    "bubbleInkLight": {
-      "value": "#0D4A3F",
-      "type": "color"
-    },
-    "bubbleInkDark": {
-      "value": "#D6EFE9",
-      "type": "color"
+    "accent": {
+      "fill": {
+        "value": "#17806E",
+        "type": "color"
+      },
+      "ink": {
+        "value": "#146F60",
+        "type": "color"
+      },
+      "hi": {
+        "value": "#5FD3BE",
+        "type": "color"
+      },
+      "onFill": {
+        "value": "{white}",
+        "type": "color"
+      },
+      "softLight": {
+        "value": "rgba(23, 128, 110, 0.1)",
+        "type": "color"
+      },
+      "softDark": {
+        "value": "rgba(23, 128, 110, 0.18)",
+        "type": "color"
+      },
+      "bubbleLight": {
+        "value": "#E3F5F1",
+        "type": "color"
+      },
+      "bubbleDark": {
+        "value": "#1E2E2C",
+        "type": "color"
+      },
+      "bubbleInkLight": {
+        "value": "#0D4A3F",
+        "type": "color"
+      },
+      "bubbleInkDark": {
+        "value": "#D6EFE9",
+        "type": "color"
+      }
     }
   },
   "type": {
@@ -635,121 +1300,397 @@
   },
   "$themes": [
     {
-      "id": "light-violet",
-      "name": "Светлая · Фиолетовый",
+      "id": "graphite-light-violet",
+      "name": "Графит · светлая · Фиолетовый",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/violet": "enabled"
       }
     },
     {
-      "id": "dark-violet",
-      "name": "Тёмная · Фиолетовый",
+      "id": "graphite-light-plum",
+      "name": "Графит · светлая · Сливовый",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
-        "theme/dark": "enabled",
-        "accent/violet": "enabled"
-      }
-    },
-    {
-      "id": "light-plum",
-      "name": "Светлая · Сливовый",
-      "selectedTokenSets": {
-        "core": "source",
-        "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/plum": "enabled"
       }
     },
     {
-      "id": "dark-plum",
-      "name": "Тёмная · Сливовый",
+      "id": "graphite-light-orchid",
+      "name": "Графит · светлая · Орхидея",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
-        "theme/dark": "enabled",
-        "accent/plum": "enabled"
-      }
-    },
-    {
-      "id": "light-orchid",
-      "name": "Светлая · Орхидея",
-      "selectedTokenSets": {
-        "core": "source",
-        "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/orchid": "enabled"
       }
     },
     {
-      "id": "dark-orchid",
-      "name": "Тёмная · Орхидея",
+      "id": "graphite-light-indigo",
+      "name": "Графит · светлая · Индиго",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
-        "theme/dark": "enabled",
-        "accent/orchid": "enabled"
-      }
-    },
-    {
-      "id": "light-indigo",
-      "name": "Светлая · Индиго",
-      "selectedTokenSets": {
-        "core": "source",
-        "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/indigo": "enabled"
       }
     },
     {
-      "id": "dark-indigo",
-      "name": "Тёмная · Индиго",
+      "id": "graphite-light-amber",
+      "name": "Графит · светлая · Янтарь",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
-        "theme/dark": "enabled",
-        "accent/indigo": "enabled"
-      }
-    },
-    {
-      "id": "light-amber",
-      "name": "Светлая · Янтарь",
-      "selectedTokenSets": {
-        "core": "source",
-        "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/amber": "enabled"
       }
     },
     {
-      "id": "dark-amber",
-      "name": "Тёмная · Янтарь",
+      "id": "graphite-light-teal",
+      "name": "Графит · светлая · Бирюза",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
-        "theme/dark": "enabled",
-        "accent/amber": "enabled"
-      }
-    },
-    {
-      "id": "light-teal",
-      "name": "Светлая · Бирюза",
-      "selectedTokenSets": {
-        "core": "source",
-        "type": "enabled",
+        "palette/graphite-light": "enabled",
         "theme/light": "enabled",
         "accent/teal": "enabled"
       }
     },
     {
-      "id": "dark-teal",
-      "name": "Тёмная · Бирюза",
+      "id": "graphite-dark-violet",
+      "name": "Графит · тёмная · Фиолетовый",
       "selectedTokenSets": {
         "core": "source",
         "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/violet": "enabled"
+      }
+    },
+    {
+      "id": "graphite-dark-plum",
+      "name": "Графит · тёмная · Сливовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/plum": "enabled"
+      }
+    },
+    {
+      "id": "graphite-dark-orchid",
+      "name": "Графит · тёмная · Орхидея",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/orchid": "enabled"
+      }
+    },
+    {
+      "id": "graphite-dark-indigo",
+      "name": "Графит · тёмная · Индиго",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/indigo": "enabled"
+      }
+    },
+    {
+      "id": "graphite-dark-amber",
+      "name": "Графит · тёмная · Янтарь",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/amber": "enabled"
+      }
+    },
+    {
+      "id": "graphite-dark-teal",
+      "name": "Графит · тёмная · Бирюза",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/graphite-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/teal": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-violet",
+      "name": "Полночь · светлая · Фиолетовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/violet": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-plum",
+      "name": "Полночь · светлая · Сливовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/plum": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-orchid",
+      "name": "Полночь · светлая · Орхидея",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/orchid": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-indigo",
+      "name": "Полночь · светлая · Индиго",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/indigo": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-amber",
+      "name": "Полночь · светлая · Янтарь",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/amber": "enabled"
+      }
+    },
+    {
+      "id": "midnight-light-teal",
+      "name": "Полночь · светлая · Бирюза",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-light": "enabled",
+        "theme/light": "enabled",
+        "accent/teal": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-violet",
+      "name": "Полночь · тёмная · Фиолетовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/violet": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-plum",
+      "name": "Полночь · тёмная · Сливовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/plum": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-orchid",
+      "name": "Полночь · тёмная · Орхидея",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/orchid": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-indigo",
+      "name": "Полночь · тёмная · Индиго",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/indigo": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-amber",
+      "name": "Полночь · тёмная · Янтарь",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/amber": "enabled"
+      }
+    },
+    {
+      "id": "midnight-dark-teal",
+      "name": "Полночь · тёмная · Бирюза",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/midnight-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/teal": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-violet",
+      "name": "Тёплая · светлая · Фиолетовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/violet": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-plum",
+      "name": "Тёплая · светлая · Сливовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/plum": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-orchid",
+      "name": "Тёплая · светлая · Орхидея",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/orchid": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-indigo",
+      "name": "Тёплая · светлая · Индиго",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/indigo": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-amber",
+      "name": "Тёплая · светлая · Янтарь",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/amber": "enabled"
+      }
+    },
+    {
+      "id": "warm-light-teal",
+      "name": "Тёплая · светлая · Бирюза",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-light": "enabled",
+        "theme/light": "enabled",
+        "accent/teal": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-violet",
+      "name": "Тёплая · тёмная · Фиолетовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/violet": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-plum",
+      "name": "Тёплая · тёмная · Сливовый",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/plum": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-orchid",
+      "name": "Тёплая · тёмная · Орхидея",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/orchid": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-indigo",
+      "name": "Тёплая · тёмная · Индиго",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/indigo": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-amber",
+      "name": "Тёплая · тёмная · Янтарь",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
+        "theme/dark": "enabled",
+        "accent/amber": "enabled"
+      }
+    },
+    {
+      "id": "warm-dark-teal",
+      "name": "Тёплая · тёмная · Бирюза",
+      "selectedTokenSets": {
+        "core": "source",
+        "type": "enabled",
+        "palette/warm-dark": "enabled",
         "theme/dark": "enabled",
         "accent/teal": "enabled"
       }
@@ -758,7 +1699,12 @@
   "$metadata": {
     "tokenSetOrder": [
       "core",
-      "type",
+      "palette/graphite-light",
+      "palette/graphite-dark",
+      "palette/midnight-light",
+      "palette/midnight-dark",
+      "palette/warm-light",
+      "palette/warm-dark",
       "theme/light",
       "theme/dark",
       "accent/violet",
@@ -766,7 +1712,8 @@
       "accent/orchid",
       "accent/indigo",
       "accent/amber",
-      "accent/teal"
+      "accent/teal",
+      "type"
     ]
   }
 }

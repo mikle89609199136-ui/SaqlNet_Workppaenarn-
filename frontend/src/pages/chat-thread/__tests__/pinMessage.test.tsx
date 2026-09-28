@@ -56,7 +56,7 @@ function messageBubble(content: string): HTMLElement {
 /** Меню действий открывается правой кнопкой по сообщению. */
 async function openMessageActions(content: string) {
   fireEvent.contextMenu(messageBubble(content));
-  await screen.findByRole('menuitem', { name: 'Скопировать' });
+  await screen.findByRole('menuitem', { name: 'Копировать' });
 }
 
 describe('закрепление сообщения', () => {
@@ -93,7 +93,7 @@ describe('закрепление сообщения', () => {
     });
 
     const navigator = await screen.findByRole('button', { name: 'Закреплённые сообщения' });
-    expect(within(navigator).getByText(/Закреплённое сообщение\s*#1/)).toBeInTheDocument();
+    expect(within(navigator).getByText('Закреплённое сообщение')).toBeInTheDocument();
     expect(within(navigator).getByText('сообщение 1')).toBeInTheDocument();
   });
 

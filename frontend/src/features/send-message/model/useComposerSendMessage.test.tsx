@@ -6,6 +6,8 @@ import { services } from '@/services';
 import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox, getChatOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
+import type { IRichText } from '@/shared/lib/richText';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import { makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -41,10 +43,26 @@ describe('useComposerSendMessage', () => {
     );
   }
 
+  /** Поле ввода — редактор с «ручкой» вместо DOM-элемента (#656). */
+  function fakeComposer(initial: string): IRichTextInputHandle {
+    let value: IRichText = { text: initial, entities: [] };
+    return {
+      getValue: () => value,
+      setValue: (next) => {
+        value = typeof next === 'string' ? { text: next, entities: [] } : next;
+      },
+      focus: () => {},
+      clear: () => {
+        value = { text: '', entities: [] };
+      },
+      insertText: (text) => {
+        value = { ...value, text: value.text + text };
+      },
+    };
+  }
+
   function setupRefs(initialDraft = '') {
-    const input = document.createElement('input');
-    input.value = initialDraft;
-    const draftRef = { current: input };
+    const draftRef = { current: fakeComposer(initialDraft) };
     const attachmentInput = document.createElement('input');
     const attachmentInputRef = { current: attachmentInput };
     const bottomDiv = document.createElement('div');
@@ -97,7 +115,7 @@ describe('useComposerSendMessage', () => {
     });
 
     // 1. Поле ввода очищено мгновенно
-    expect(draftRef.current.value).toBe('');
+    expect(draftRef.current.getValue().text).toBe('');
 
     // 2. Композер не заблокирован
     expect(result.current.isSending).toBe(false);
@@ -107,7 +125,8 @@ describe('useComposerSendMessage', () => {
       'chat-test-1',
       'Привет, мир!',
       'text',
-      null
+      null,
+      []
     );
 
     // 4. В кеше треда сообщение заменено на серверное
@@ -186,7 +205,7 @@ describe('useComposerSendMessage', () => {
       { wrapper: createWrapper() }
     );
 
-    draftRef.current.value = 'Повтори меня';
+    draftRef.current.setValue('Повтори меня');
     await act(async () => {
       await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
     });

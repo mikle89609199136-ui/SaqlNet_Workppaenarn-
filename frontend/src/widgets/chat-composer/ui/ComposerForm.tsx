@@ -1,5 +1,6 @@
 import { cn } from '@/shared/lib';
 import { forwardRef, type HTMLAttributes, type PropsWithChildren } from 'react';
+import { composerCard, composerFooter } from './composerStyles';
 
 interface Props extends HTMLAttributes<HTMLFormElement> {
   className?: string;
@@ -8,8 +9,8 @@ interface Props extends HTMLAttributes<HTMLFormElement> {
 export const ComposerForm = forwardRef<HTMLFormElement, PropsWithChildren<Props>>(
   ({ className, children, ...props }, formRef) => {
     return (
-      <form className={cn('thread-composer', className)} {...props} ref={formRef}>
-        <div className="thread-composer-card">{children}</div>
+      <form className={cn(composerFooter, className)} {...props} ref={formRef}>
+        <div className={composerCard}>{children}</div>
       </form>
     );
   }

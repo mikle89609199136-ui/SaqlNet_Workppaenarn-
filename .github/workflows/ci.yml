@@ -155,7 +155,12 @@ jobs:
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema' ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema' ./internal/chat
+
+      # Смена ключа группы: пометка при изменении состава, атомарная запись
+      # новой эпохи и одновременные смены (#806).
+      - name: Run chat key rotation integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestKeyRotationOnRealSchema' ./internal/chat
 
       - name: Build services
         run: go build ./...

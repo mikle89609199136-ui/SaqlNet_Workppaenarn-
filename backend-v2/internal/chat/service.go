@@ -50,27 +50,32 @@ type Chat struct {
 	PeerLastSeen  string `json:"peerLastSeen,omitempty"`
 	// PeerLastSeenApprox — приблизительное время вместо скрытого (#791):
 	// recently, within_week, within_month, long_ago.
-	PeerLastSeenApprox string              `json:"peerLastSeenApprox,omitempty"`
-	OwnerID            string              `json:"ownerId"`
-	Role               string              `json:"role"`
-	IsPinned           bool                `json:"isPinned"`
-	IsArchived         bool                `json:"isArchived"`
-	LastReadAt         string              `json:"lastReadAt,omitempty"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
-	MemberCount        int                 `json:"memberCount"`
-	LastMessageAt      string              `json:"lastMessageAt,omitempty"`
-	UnreadCount        int                 `json:"unreadCount"`
-	LastMessage        *LastMessagePreview `json:"lastMessage,omitempty"`
+	PeerLastSeenApprox string `json:"peerLastSeenApprox,omitempty"`
+	// IsBlockedByPeer — собеседник заблокировал вас: писать и звонить нельзя (#760).
+	IsBlockedByPeer bool `json:"isBlockedByPeer,omitempty"`
+	// IsPeerBlocked — вы заблокировали собеседника.
+	IsPeerBlocked bool                `json:"isPeerBlocked,omitempty"`
+	OwnerID       string              `json:"ownerId"`
+	Role          string              `json:"role"`
+	IsPinned      bool                `json:"isPinned"`
+	IsArchived    bool                `json:"isArchived"`
+	LastReadAt    string              `json:"lastReadAt,omitempty"`
+	CreatedAt     string              `json:"createdAt"`
+	UpdatedAt     string              `json:"updatedAt"`
+	MemberCount   int                 `json:"memberCount"`
+	LastMessageAt string              `json:"lastMessageAt,omitempty"`
+	UnreadCount   int                 `json:"unreadCount"`
+	LastMessage   *LastMessagePreview `json:"lastMessage,omitempty"`
 }
 
 type LastMessagePreview struct {
-	ID         string     `json:"id"`
-	Content    string     `json:"content"`
-	Type       string     `json:"type"`
-	SenderID   string     `json:"senderId,omitempty"`
-	SenderName string     `json:"senderName"`
-	Reactions  []Reaction `json:"reactions"`
+	ID         string          `json:"id"`
+	Content    string          `json:"content"`
+	Entities   MessageEntities `json:"entities"`
+	Type       string          `json:"type"`
+	SenderID   string          `json:"senderId,omitempty"`
+	SenderName string          `json:"senderName"`
+	Reactions  []Reaction      `json:"reactions"`
 }
 
 type Member struct {
@@ -87,27 +92,32 @@ type Member struct {
 }
 
 type Message struct {
-	ID                  string         `json:"id"`
-	ChatID              string         `json:"chatId"`
-	SenderID            string         `json:"senderId"`
-	SenderName          string         `json:"senderName,omitempty"`
-	SenderFirstName     string         `json:"senderFirstName"`
-	SenderAvatar        string         `json:"senderAvatar,omitempty"`
-	Content             string         `json:"content"`
-	Type                string         `json:"type"`
-	ReplyTo             *string        `json:"replyTo,omitempty"`
-	ReplyToMessageID    *string        `json:"replyToMessageId,omitempty"`
-	ReplySenderName     string         `json:"replySenderName,omitempty"`
-	ReplyToSenderName   string         `json:"replyToSenderName,omitempty"`
-	Reactions           []Reaction     `json:"reactions"`
-	Metadata            map[string]any `json:"metadata,omitempty"`
-	IsForwarded         bool           `json:"isForwarded"`
-	ForwardedSenderName string         `json:"forwardedSenderName,omitempty"`
-	IsPinned            bool           `json:"isPinned"`
-	IsEdited            bool           `json:"isEdited"`
-	CreatedAt           string         `json:"createdAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	DeletedAt           *string        `json:"deletedAt,omitempty"`
+	ID                  string              `json:"id"`
+	ChatID              string              `json:"chatId"`
+	SenderID            string              `json:"senderId"`
+	SenderName          string              `json:"senderName,omitempty"`
+	SenderFirstName     string              `json:"senderFirstName"`
+	SenderAvatar        string              `json:"senderAvatar,omitempty"`
+	Content             string              `json:"content"`
+	Entities            MessageEntities     `json:"entities"`
+	ReplyPreview        *LastMessagePreview `json:"replyPreview,omitempty"`
+	Type                string              `json:"type"`
+	ReplyTo             *string             `json:"replyTo,omitempty"`
+	ReplyToMessageID    *string             `json:"replyToMessageId,omitempty"`
+	ReplySenderName     string              `json:"replySenderName,omitempty"`
+	ReplyToSenderName   string              `json:"replyToSenderName,omitempty"`
+	Reactions           []Reaction          `json:"reactions"`
+	Metadata            map[string]any      `json:"metadata,omitempty"`
+	IsForwarded         bool                `json:"isForwarded"`
+	ForwardedSenderName string              `json:"forwardedSenderName,omitempty"`
+	// ForwardedSenderID — автор оригинала, чтобы открыть его профиль. Только
+	// когда его правило «Пересылка» разрешило ссылку (#785).
+	ForwardedSenderID string  `json:"forwardedSenderId,omitempty"`
+	IsPinned          bool    `json:"isPinned"`
+	IsEdited          bool    `json:"isEdited"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+	DeletedAt         *string `json:"deletedAt,omitempty"`
 }
 
 type Service struct {
@@ -192,34 +202,52 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 	msg.SenderFirstName = msg.SenderName
 	if msg.ReplyTo != nil {
 		msg.ReplyToMessageID = msg.ReplyTo
-		var name string
+		var preview LastMessagePreview
 		err := s.db.QueryRowContext(ctx, `
-				SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+				SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
 				FROM messages.messages m
 				LEFT JOIN auth.users au ON au.id = m.sender_id
 				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
-			`, *msg.ReplyTo, msg.ChatID).Scan(&name)
+			`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		msg.ReplySenderName = name
-		msg.ReplyToSenderName = name
+		msg.ReplySenderName = preview.SenderName
+		msg.ReplyToSenderName = preview.SenderName
+		if err == nil {
+			preview.Reactions = []Reaction{}
+			msg.ReplyPreview = &preview
+		}
 	}
 	if msg.Metadata != nil {
-		if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
+		forwardedFrom, _ := msg.Metadata["forwardedFrom"].(string)
+		hidden, _ := msg.Metadata["forwardedHidden"].(bool)
+		if forwardedFrom != "" || hidden {
 			msg.IsForwarded = true
 			if name, ok := msg.Metadata["forwardedSenderName"].(string); ok {
 				msg.ForwardedSenderName = name
 			}
-			if msg.ForwardedSenderName == "" {
+			if forwardedFrom != "" {
+				msg.ForwardedSenderID, _ = msg.Metadata["forwardedSenderId"].(string)
+			}
+			// Пересылки до #785 не хранят автора: он находится по исходному
+			// сообщению. Правила тогда не было — ссылка была у всех.
+			if forwardedFrom != "" && (msg.ForwardedSenderName == "" || msg.ForwardedSenderID == "") {
+				var name, senderID string
 				_ = s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+					SELECT COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(m.sender_id::text, '')
 					FROM messages.messages m
 					LEFT JOIN auth.users au ON au.id = m.sender_id
 					LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 					WHERE m.id::text = $1
-				`, forwardedFrom).Scan(&msg.ForwardedSenderName)
+				`, forwardedFrom).Scan(&name, &senderID)
+				if msg.ForwardedSenderName == "" {
+					msg.ForwardedSenderName = name
+				}
+				if msg.ForwardedSenderID == "" {
+					msg.ForwardedSenderID = senderID
+				}
 			}
 		}
 	}
@@ -357,7 +385,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
 		FROM chats.chats c
@@ -394,7 +422,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, type
+		  SELECT id, sender_id, content, entities, type
 		  FROM messages.messages
 		  WHERE chat_id = c.id AND deleted_at IS NULL
 		  ORDER BY created_at DESC
@@ -407,7 +435,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
-			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			         lm.id, lm.sender_id, lm.content, lm.entities, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 		ORDER BY COALESCE(cs.is_pinned, FALSE) DESC, MAX(m.created_at) DESC NULLS LAST, c.updated_at DESC
 	`, userID, archived)
 	if err != nil {
@@ -446,7 +474,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         WHERE (cs.last_read_at IS NULL OR m.created_at > cs.last_read_at)
 			           AND (m.sender_id IS NULL OR m.sender_id <> $1)
 		       )::int,
-		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
+		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
 		FROM chats.chats c
@@ -483,7 +511,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, type
+		  SELECT id, sender_id, content, entities, type
 		  FROM messages.messages
 		  WHERE chat_id = c.id AND deleted_at IS NULL
 		  ORDER BY created_at DESC
@@ -496,7 +524,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
-			         lm.id, lm.sender_id, lm.content, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
+			         lm.id, lm.sender_id, lm.content, lm.entities, lm.type, lm_up.first_name, lm_au.first_name, lm_au.username
 	`, userID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -528,6 +556,16 @@ func (s *Service) getChatInfo(ctx context.Context, userID, chatID string) (strin
 	FROM chats.chats c JOIN chats.members cm ON cm.chat_id = c.id WHERE c.id = $2 AND cm.user_id = $1`, userID, chatID).Scan(&chatType, &role)
 
 	return chatType, role, err
+}
+
+// markKeyRotationNeeded поднимает пометку «нужна смена ключа» (#806).
+//
+// Вызывается в той же транзакции, что и изменение состава: иначе между
+// ними ключ мог бы успеть раздаться новичку или остаться у ушедшего.
+// Снимает пометку первая успешная запись новой эпохи — любым участником.
+func markKeyRotationNeeded(ctx context.Context, tx *sql.Tx, chatID string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`, chatID)
+	return err
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
@@ -874,7 +912,10 @@ func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member,
 		member.Permissions = map[string]any(permissions)
 		members = append(members, member)
 	}
-	return members, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return members, s.hideMemberPhotos(ctx, userID, members)
 }
 
 func (s *Service) SetMemberRole(ctx context.Context, actorID, chatID, memberID, role string) error {
@@ -983,9 +1024,16 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 		return ErrForbidden
 	}
 
+	// Удаление и пометка «нужна смена ключа» — одним запросом: исключённый
+	// не должен читать то, что напишут после него (#806).
 	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM chats.members
-		WHERE chat_id = $1 AND user_id = $2 AND role = $3
+		WITH removed AS (
+			DELETE FROM chats.members
+			WHERE chat_id = $1 AND user_id = $2 AND role = $3
+			RETURNING chat_id
+		)
+		UPDATE chats.chats SET key_rotation_needed = TRUE
+		WHERE id IN (SELECT chat_id FROM removed)
 	`, chatID, memberID, memberRole)
 	if err != nil {
 		return err
@@ -1197,6 +1245,12 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		return nil, errors.New("member insert conflict without known reason")
 	}
 
+	// Новичок не должен читать написанное до него: текущий ключ ему не
+	// раздаётся, сначала — новая эпоха (#806).
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		return nil, err
+	}
+
 	// 8. Получение и возврат объекта Member
 	var permissions jsonMap
 	var m Member
@@ -1235,7 +1289,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		event := MemberAddedEvent{
 			Type:   "chat_member_added",
 			ChatID: chatID,
-			Member: &m,
+			Member: memberForBroadcast(m),
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
@@ -1245,7 +1299,12 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 		}
 	}
 
-	return &m, nil
+	// Ответ — глазами добавившего.
+	members := []Member{m}
+	if err := s.hideMemberPhotos(ctx, actorID, members); err != nil {
+		return nil, err
+	}
+	return &members[0], nil
 }
 
 // BanMember банит пользователя в групповом чате. Если цель — текущий
@@ -1361,6 +1420,11 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 			return err
 		}
 		memberRemoved = affected == 1
+	}
+	if memberRemoved {
+		if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+			return err
+		}
 	}
 
 	// Единый upsert: атомарен при гонке ban/unban, всегда затрагивает строку.
@@ -1725,6 +1789,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 		var chat Chat
 		var unreadCount int
 		var lmID, lmSenderID, lmContent, lmType, lmSender sql.NullString
+		var lmEntities MessageEntities
 		var peerPrivacy, peerExceptions, viewerPrivacy, viewerExceptions []byte
 		var peerBlocksViewer, viewerBlocksPeer bool
 		if err := rows.Scan(
@@ -1732,13 +1797,15 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.OwnerID, &chat.Role, &chat.IsPinned, &chat.IsArchived, &chat.LastReadAt,
 			&chat.CreatedAt, &chat.UpdatedAt, &chat.MemberCount, &chat.LastMessageAt,
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
-			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmType, &lmSender,
+			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmEntities, &lmType, &lmSender,
 			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
 			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions,
 		); err != nil {
 			return nil, err
 		}
 		if chat.Type == "private" {
+			chat.IsBlockedByPeer = peerBlocksViewer
+			chat.IsPeerBlocked = viewerBlocksPeer
 			applyPeerPrivacy(&chat, privacy.Pair{
 				Owner:         privacy.Parse(peerPrivacy),
 				Viewer:        privacy.Parse(viewerPrivacy),
@@ -1751,6 +1818,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			chat.LastMessage = &LastMessagePreview{
 				ID:         lmID.String,
 				Content:    lmContent.String,
+				Entities:   lmEntities,
 				Type:       lmType.String,
 				SenderID:   lmSenderID.String,
 				SenderName: lmSender.String,
@@ -1783,7 +1851,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		FROM (
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata,
+		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM messages.messages m
@@ -1810,7 +1878,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
-	return messages, nil
+	return messages, s.hideMessageListPhotos(ctx, userID, messages)
 }
 
 func scanMessages(rows *sql.Rows) ([]Message, error) {
@@ -1823,7 +1891,7 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 		if err := rows.Scan(
 			&msg.ID, &msg.ChatID, &msg.SenderID,
 			&msg.SenderName, &msg.SenderAvatar,
-			&msg.Content, &msg.Type, &replyTo, &metadataBytes,
+			&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 			&msg.IsPinned, &msg.IsEdited,
 			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt,
 		); err != nil {
@@ -1845,142 +1913,226 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 	return messages, rows.Err()
 }
 
-func (s *Service) SendMessage(ctx context.Context, userID, chatID, content, msgType string, replyTo *string, metadata map[string]any) (Message, error) {
-	content = sanitizeMessageContent(content)
-
-	var role string
-	var isMuted sql.NullBool
-	err := s.db.QueryRowContext(ctx, `
+// sendPermissionQuery — может ли участник писать в чат: роль, заглушение и
+// блокировка собеседником по личному чату (#760).
+const sendPermissionQuery = `
 		SELECT cm.role,
 		       (
 		         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
 		         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
+		       ),
+		       -- Собеседник по личному чату заблокировал отправителя (#760).
+		       EXISTS(
+		         SELECT 1
+		         FROM chats.chats c
+		         JOIN chats.members peer ON peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
+		         WHERE c.id = cm.chat_id AND c.type = 'private'
 		       )
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
 		WHERE cm.chat_id = $1 AND cm.user_id = $2
-	`, chatID, userID).Scan(&role, &isMuted)
+	`
+
+// OutgoingMessage — одно сообщение из отправки: уже проверенное
+// обработчиком, с готовыми metadata (файл, пересылка).
+type OutgoingMessage struct {
+	Content  string
+	Entities MessageEntities
+	Type     string
+	ReplyTo  *string
+	Metadata map[string]any
+}
+
+// MessageItemError — ошибка конкретного сообщения из пачки: клиенту
+// отвечают его номером, чтобы было видно, что именно не так (#808).
+type MessageItemError struct {
+	Index int
+	Err   error
+}
+
+func (e *MessageItemError) Error() string {
+	return fmt.Sprintf("message %d: %v", e.Index, e.Err)
+}
+
+func (e *MessageItemError) Unwrap() error { return e.Err }
+
+// SendMessages записывает пачку сообщений в чат (#808). Одно сообщение —
+// та же пачка из одного: путь записи один.
+//
+// Всё или ничего: сообщения пишутся одной транзакцией, и если хоть одно
+// не прошло (ответ на чужое или удалённое сообщение), не записывается ни
+// одно. Порядок — как в пачке: время создания внутри транзакции у всех
+// строк одно и то же, поэтому к нему добавляется номер сообщения в
+// микросекундах, иначе лента перемешала бы пачку. События уходят после
+// коммита, по одному на сообщение, в том же порядке.
+func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgoing []OutgoingMessage) ([]Message, error) {
+	if len(outgoing) == 0 {
+		return nil, ErrInvalidInput
+	}
+
+	// Сначала вход, потом база: отклонённая пачка не делает ни одного запроса.
+	contents := make([]string, len(outgoing))
+	entitiesJSON := make([][]byte, len(outgoing))
+	metadataJSON := make([][]byte, len(outgoing))
+	replies := make([]sql.NullString, len(outgoing))
+
+	for i, out := range outgoing {
+		// Содержимое хранится как прислано: показывать его безопасно —
+		// забота клиента, а экранирование при записи портило текст и
+		// сдвигало диапазоны форматирования (#326, #656).
+		if err := validateMessageEntities(out.Content, out.Entities); err != nil {
+			return nil, &MessageItemError{Index: i, Err: err}
+		}
+		if out.Type == "sticker" && (out.Content != "" || len(out.Entities) != 0) {
+			return nil, &MessageItemError{Index: i, Err: fmt.Errorf("%w: sticker content and entities must be empty", ErrInvalidInput)}
+		}
+		contents[i] = out.Content
+
+		var err error
+		entitiesJSON[i], err = json.Marshal(out.Entities)
+		if err != nil {
+			return nil, err
+		}
+
+		metadataJSON[i], err = json.Marshal(out.Metadata)
+		if err != nil {
+			return nil, err
+		}
+
+		if out.ReplyTo != nil && *out.ReplyTo != "" {
+			if err := validate.Var(*out.ReplyTo, "uuid"); err != nil {
+				return nil, &MessageItemError{Index: i, Err: fmt.Errorf("%w: replyTo must be a UUID", ErrInvalidInput)}
+			}
+			replies[i] = sql.NullString{String: *out.ReplyTo, Valid: true}
+		}
+	}
+
+	var role string
+	var isMuted sql.NullBool
+	var blockedByPeer bool
+	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Message{}, ErrForbidden
+			return nil, ErrForbidden
 		}
-		return Message{}, err
+		return nil, err
 	}
 
 	if isMuted.Valid && isMuted.Bool {
-		return Message{}, ErrMemberMuted
+		return nil, ErrMemberMuted
 	}
-
-	var msg Message
-	var replyToStr sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
-
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return Message{}, err
-	}
-
-	var replyToSQL sql.NullString
-
-	if replyTo != nil && *replyTo != "" {
-		if err := validate.Var(*replyTo, "uuid"); err != nil {
-			return Message{}, ErrInvalidInput
-		}
-
-		replyToSQL = sql.NullString{
-			String: *replyTo,
-			Valid:  true,
-		}
+	// Ни в базу, ни в рассылку: заблокировавший его не получит.
+	if blockedByPeer {
+		return nil, ErrBlockedByUser
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Message{}, err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if replyToSQL.Valid {
-		var replyID string
-		err = tx.QueryRowContext(ctx, `
+	msgs := make([]Message, len(outgoing))
+
+	for i, out := range outgoing {
+		if replies[i].Valid {
+			var replyID string
+			err = tx.QueryRowContext(ctx, `
         SELECT id::text
         FROM messages.messages
         WHERE id = $1
           AND chat_id = $2
           AND deleted_at IS NULL
         FOR SHARE
-    `, replyToSQL.String, chatID).Scan(&replyID)
+    `, replies[i].String, chatID).Scan(&replyID)
 
-		if errors.Is(err, sql.ErrNoRows) {
-			return Message{}, ErrNotFound
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, &MessageItemError{Index: i, Err: ErrNotFound}
+			}
+			if err != nil {
+				return nil, err
+			}
 		}
-		if err != nil {
-			return Message{}, err
-		}
-	}
 
-	err = tx.QueryRowContext(ctx, `
+		msg := &msgs[i]
+		var replyToStr sql.NullString
+		var deletedAt sql.NullString
+		var metadataBytes []byte
+
+		err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
-			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at, entities)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond', $8)
 			RETURNING *
 		)
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata,
+		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       FALSE, FALSE,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
 		FROM inserted m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-	`, chatID, userID, content, msgType, replyToSQL, metadataJSON).Scan(
-		&msg.ID, &msg.ChatID, &msg.SenderID,
-		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
-		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+	`, chatID, userID, contents[i], out.Type, replies[i], metadataJSON[i], i, entitiesJSON[i]).Scan(
+			&msg.ID, &msg.ChatID, &msg.SenderID,
+			&msg.SenderName, &msg.SenderAvatar,
+			&msg.Content, &msg.Entities, &msg.Type, &replyToStr, &metadataBytes,
+			&msg.IsPinned, &msg.IsEdited,
+			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
 
-	if err != nil {
-		return Message{}, err
+		if err != nil {
+			return nil, err
+		}
+
+		if replyToStr.Valid {
+			msg.ReplyTo = &replyToStr.String
+		}
+
+		if deletedAt.Valid {
+			msg.DeletedAt = &deletedAt.String
+		}
+
+		if metadataBytes != nil {
+			if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return Message{}, err
+		return nil, err
 	}
 
-	if replyToStr.Valid {
-		msg.ReplyTo = &replyToStr.String
-	}
-
-	if deletedAt.Valid {
-		msg.DeletedAt = &deletedAt.String
-	}
-
-	if metadataBytes != nil {
-		if err := json.Unmarshal(metadataBytes, &msg.Metadata); err != nil {
-			return Message{}, err
+	for i := range msgs {
+		if err := s.hydrateMessageFields(ctx, &msgs[i]); err != nil {
+			return nil, err
 		}
 	}
-	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
-		return Message{}, err
-	}
 
-	// Broadcast
 	if s.ws != nil {
-		payload, _ := json.Marshal(map[string]any{
-			"type":    "new_message",
-			"chatId":  chatID,
-			"message": msg,
-		})
-		s.ws.BroadcastToChat(chatID, payload, userID)
+		for i := range msgs {
+			payload, _ := json.Marshal(map[string]any{
+				"type":    "new_message",
+				"chatId":  chatID,
+				"message": forBroadcast(&msgs[i]),
+			})
+			s.ws.BroadcastToChat(chatID, payload, userID)
+		}
 	}
 
-	return msg, nil
+	return msgs, nil
 }
 
-func (s *Service) EditMessage(ctx context.Context, userID, messageID, content string) (Message, error) {
-	content = sanitizeMessageContent(content)
+func (s *Service) EditMessage(ctx context.Context, userID, messageID, content string, entities MessageEntities) (Message, error) {
+	if err := validateMessageEntities(content, entities); err != nil {
+		return Message{}, err
+	}
+	entitiesJSON, err := json.Marshal(entities)
+	if err != nil {
+		return Message{}, err
+	}
 
 	var msg Message
 	var replyToStr sql.NullString
@@ -1990,7 +2142,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 
 	// Require the sender to still be a chat member both when validating
 	// the message type and when applying the update.
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT m.type
 		FROM messages.messages m
 		JOIN chats.members cm
@@ -2021,7 +2173,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
-			SET content = $1, updated_at = NOW()
+			SET content = $1, entities = $4, updated_at = NOW()
 			FROM chats.members AS cm
 			WHERE m.id = $2 AND m.sender_id = $3 AND m.deleted_at IS NULL
 			  AND cm.chat_id = m.chat_id AND cm.user_id = $3
@@ -2029,17 +2181,17 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		)
 		SELECT u.id::text, u.chat_id::text, u.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       u.content, u.type, u.reply_to::text, u.metadata,
+		       u.content, u.entities, u.type, u.reply_to::text, u.metadata,
 		       (p.message_id IS NOT NULL), u.updated_at > u.created_at,
 		       u.created_at::text, u.updated_at::text, u.deleted_at::text
 		FROM updated u
 		LEFT JOIN auth.users au ON au.id = u.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = u.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = u.id
-	`, content, messageID, userID).Scan(
+	`, content, messageID, userID, entitiesJSON).Scan(
 		&msg.ID, &msg.ChatID, &msg.SenderID,
 		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyToStr, &metadataBytes,
+		&msg.Content, &msg.Entities, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
 		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
 
@@ -2075,12 +2227,13 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 			"chatId":    msg.ChatID,
 			"messageId": msg.ID,
 			"content":   msg.Content,
+			"entities":  msg.Entities,
 			"updatedAt": msg.UpdatedAt,
 		})
 		s.ws.BroadcastToChat(msg.ChatID, payload, userID)
 	}
 
-	return msg, nil
+	return msg, s.hideSenderPhotos(ctx, userID, &msg)
 }
 
 func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (*Message, error) {
@@ -2139,12 +2292,12 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 			"type":            "message_deleted",
 			"chatId":          chatID,
 			"messageId":       messageID,
-			"previousMessage": previousMessage,
+			"previousMessage": forBroadcast(previousMessage),
 		})
 		s.ws.BroadcastToChat(chatID, payload, userID)
 	}
 
-	return lastMessage, nil
+	return lastMessage, s.hideSenderPhotos(ctx, userID, lastMessage)
 }
 
 // loadMessageAfterDelete returns either the newest message before the deleted
@@ -2157,7 +2310,7 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 	err := tx.QueryRowContext(ctx, `
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata,
+		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text,
 		       COALESCE((
@@ -2186,7 +2339,7 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 	`, chatID, before, messageID, userID).Scan(
 		&msg.ID, &msg.ChatID, &msg.SenderID,
 		&msg.SenderName, &msg.SenderAvatar,
-		&msg.Content, &msg.Type, &replyTo, &metadataBytes,
+		&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
 		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &reactionsBytes,
 	)
@@ -2215,19 +2368,23 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 
 func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message) error {
 	if msg.ReplyTo != nil {
-		var name string
+		var preview LastMessagePreview
 		err := tx.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, '')
+			SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
 			FROM messages.messages m
 			LEFT JOIN auth.users au ON au.id = m.sender_id
 			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-			WHERE m.id = $1
-		`, *msg.ReplyTo).Scan(&name)
+			WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+		`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		msg.ReplySenderName = name
-		msg.ReplyToSenderName = name
+		msg.ReplySenderName = preview.SenderName
+		msg.ReplyToSenderName = preview.SenderName
+		if err == nil {
+			preview.Reactions = []Reaction{}
+			msg.ReplyPreview = &preview
+		}
 	}
 	if forwardedFrom, ok := msg.Metadata["forwardedFrom"].(string); ok && forwardedFrom != "" {
 		msg.IsForwarded = true
@@ -2273,113 +2430,117 @@ func (s *Service) getMessage(ctx context.Context, chat_id, messageID string) (bo
 	return exists, nil
 }
 
-// ForwardMessage copies a message into a target chat.
-func (s *Service) ForwardMessage(ctx context.Context, userID, messageID, targetChatID string) (Message, error) {
-	if ok, err := s.isMember(ctx, userID, targetChatID); err != nil || !ok {
-		if err != nil {
-			return Message{}, err
-		}
-		return Message{}, ErrForbidden
-	}
-
-	var src Message
-	var replyTo sql.NullString
-	var deletedAt sql.NullString
-	var metadataBytes []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
-		       COALESCE(up.first_name, au.first_name, au.username, ''),
-		       m.content, m.type, m.reply_to::text, m.metadata, m.created_at::text, m.updated_at::text, m.deleted_at::text
-		FROM messages.messages m
-		LEFT JOIN auth.users au ON au.id = m.sender_id
-		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
-		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&src.ID, &src.ChatID, &src.SenderID, &src.SenderName, &src.Content, &src.Type, &replyTo, &metadataBytes, &src.CreatedAt, &src.UpdatedAt, &deletedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Message{}, ErrNotFound
-	}
-	if err != nil {
-		return Message{}, err
-	}
-	if len(metadataBytes) > 0 {
-		if err := json.Unmarshal(metadataBytes, &src.Metadata); err != nil {
-			return Message{}, err
-		}
-	}
-
-	if ok, err := s.isMember(ctx, userID, src.ChatID); err != nil || !ok {
-		if err != nil {
-			return Message{}, err
-		}
-		return Message{}, ErrForbidden
-	}
-
-	if src.Metadata == nil {
-		src.Metadata = make(map[string]any)
-	}
-	// Forwarding a forwarded message keeps pointing at the original author;
-	// the copied metadata already carries it.
-	if origin, _ := src.Metadata["forwardedFrom"].(string); origin == "" {
-		src.Metadata["forwardedFrom"] = src.ID
-		src.Metadata["forwardedSenderName"] = src.SenderName
-	}
-	return s.SendMessage(ctx, userID, targetChatID, src.Content, src.Type, nil, src.Metadata)
+// ForwardSource — чем пересланное сообщение ссылается на оригинал (#169, #785).
+type ForwardSource struct {
+	// MessageID — исходное сообщение. Пусто, если автор оригинала запретил
+	// пересылающему ссылку на себя (правило «Пересылка»): тогда остаётся
+	// только имя.
+	MessageID  string
+	SenderName string
+	// SenderID — автор оригинала; пусто вместе с MessageID.
+	SenderID string
 }
 
-// ForwardOrigin resolves the forwardedFrom metadata for a message the client
-// forwards itself: end-to-end encrypted content has to be re-encrypted for the
-// target chat, so it arrives through the regular send route instead of
-// ForwardMessage.
+// Apply записывает источник в метаданные нового сообщения. Прежние ключи
+// пересылки стираются: копия пересланного не должна их унаследовать.
+func (f ForwardSource) Apply(metadata map[string]any) {
+	delete(metadata, "forwardedFrom")
+	delete(metadata, "forwardedHidden")
+	delete(metadata, "forwardedSenderId")
+	metadata["forwardedSenderName"] = f.SenderName
+	if f.MessageID != "" {
+		metadata["forwardedFrom"] = f.MessageID
+		if f.SenderID != "" {
+			metadata["forwardedSenderId"] = f.SenderID
+		}
+	} else {
+		metadata["forwardedHidden"] = true
+	}
+}
+
+// ForwardOrigin решает, как пересылаемое userID сообщение сошлётся на
+// оригинал. Клиент присылает forwardedFrom в зашифрованной пересылке, и
+// сервер проверяет, что отправитель видит это сообщение; имя и автора
+// берёт сам, не из запроса.
 //
-// The requester must be able to read the message being forwarded. Without
-// this check a client could pass any message ID and learn who wrote a message
-// in a chat it does not belong to. A missing, deleted and inaccessible message
-// all yield ErrNotFound, so the response does not reveal which one it was.
-//
-// If the message is itself a forward, the original is returned instead. The
-// requester may have no access to the original's chat, so its ID and author
-// name come from the forwarded copy's metadata rather than from a lookup.
-func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (originID, senderName string, err error) {
+// Пересылка пересланного ссылается на первоисточник. Ссылку разрешает
+// правило «Пересылка» автора первоисточника — с блокировкой и исключениями;
+// при запрете остаётся только имя. Решение принимается один раз, при
+// пересылке, и дальше не зависит от того, кто читает: скрытый источник
+// остаётся скрытым и при следующих пересылках.
+func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (ForwardSource, error) {
 	if err := validate.Var(messageID, "required,uuid"); err != nil {
-		return "", "", ErrInvalidInput
+		return ForwardSource{}, ErrInvalidInput
 	}
 
-	var chatID string
+	var chatID, senderID, senderName string
 	var metadataBytes []byte
-	err = s.db.QueryRowContext(ctx, `
-		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.metadata
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text, COALESCE(up.first_name, au.first_name, au.username, ''), m.sender_id::text, m.metadata
 		FROM messages.messages m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&chatID, &senderName, &metadataBytes)
+	`, messageID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", ErrNotFound
+		return ForwardSource{}, ErrNotFound
 	}
 	if err != nil {
-		return "", "", err
+		return ForwardSource{}, err
 	}
 
 	ok, err := s.isMember(ctx, userID, chatID)
 	if err != nil {
-		return "", "", err
+		return ForwardSource{}, err
 	}
 	if !ok {
-		return "", "", ErrNotFound
+		return ForwardSource{}, ErrNotFound
 	}
 
 	var metadata map[string]any
 	if len(metadataBytes) > 0 {
 		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return "", "", err
+			return ForwardSource{}, err
 		}
 	}
+	return s.forwardSource(ctx, userID, messageID, senderID, senderName, metadata)
+}
+
+// forwardSource — решение для уже загруженного сообщения, которое userID
+// вправе видеть.
+func (s *Service) forwardSource(ctx context.Context, userID, messageID, senderID, senderName string, metadata map[string]any) (ForwardSource, error) {
+	source := ForwardSource{MessageID: messageID, SenderName: senderName}
+	authorID := senderID
+	if hidden, _ := metadata["forwardedHidden"].(bool); hidden {
+		name, _ := metadata["forwardedSenderName"].(string)
+		return ForwardSource{SenderName: name}, nil
+	}
 	if origin, _ := metadata["forwardedFrom"].(string); origin != "" {
-		originName, _ := metadata["forwardedSenderName"].(string)
-		return origin, originName, nil
+		source.MessageID = origin
+		source.SenderName, _ = metadata["forwardedSenderName"].(string)
+		// Автор первоисточника; удалённое сообщение тоже помнит автора.
+		if validate.Var(origin, "uuid") != nil {
+			return ForwardSource{SenderName: source.SenderName}, nil
+		}
+		err := s.db.QueryRowContext(ctx, `SELECT sender_id::text FROM messages.messages WHERE id = $1`, origin).Scan(&authorID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Автора не узнать — ссылку не даём.
+			return ForwardSource{SenderName: source.SenderName}, nil
+		}
+		if err != nil {
+			return ForwardSource{}, err
+		}
 	}
 
-	return messageID, senderName, nil
+	allowed, err := privacy.Allowed(ctx, s.db, authorID, userID, privacy.Forwards)
+	if err != nil {
+		return ForwardSource{}, err
+	}
+	if !allowed {
+		return ForwardSource{SenderName: source.SenderName}, nil
+	}
+	source.SenderID = authorID
+	return source, nil
 }
 
 // Reaction types.
@@ -2770,6 +2931,7 @@ func (s *Service) ListPins(
 			COALESCE(up.first_name, au.first_name, au.username, ''),
 			COALESCE(up.avatar_url, ''),
 			m.content,
+			m.entities,
 			m.type,
 			m.reply_to::text,
 			m.metadata,
@@ -2813,6 +2975,7 @@ func (s *Service) ListPins(
 			&pin.Message.SenderName,
 			&pin.Message.SenderAvatar,
 			&pin.Message.Content,
+			&pin.Message.Entities,
 			&pin.Message.Type,
 			&replyTo,
 			&metadataBytes,
@@ -2850,7 +3013,11 @@ func (s *Service) ListPins(
 		}
 	}
 
-	return pins, nil
+	pinned := make([]*Message, len(pins))
+	for i := range pins {
+		pinned[i] = &pins[i].Message
+	}
+	return pins, s.hideSenderPhotos(ctx, userID, pinned...)
 }
 
 func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID string) error {
@@ -2916,6 +3083,8 @@ func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID stri
 }
 
 func messagePinnedPayload(pin Pin) ([]byte, error) {
+	// Событие уходит всем участникам — без аватара отправителя (#789).
+	pin.Message.SenderAvatar = ""
 	return json.Marshal(map[string]any{
 		"type":      "message_pinned",
 		"chatId":    pin.ChatID,
@@ -2980,7 +3149,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type,
+		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
@@ -3005,7 +3174,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
 		return nil, err
 	}
-	return messages, nil
+	return messages, s.hideMessageListPhotos(ctx, userID, messages)
 }
 
 func (s *Service) ToggleFavorite(ctx context.Context, userID, messageID string) (bool, error) {
@@ -3027,7 +3196,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
-		       m.content, m.type,
+		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
 		       m.created_at::text, m.updated_at::text, m.deleted_at::text
@@ -3241,18 +3410,28 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	}
 	_ = rows.Close()
 
-	// Remove per-user chat data and membership atomically.
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
-		chatID, userID,
-	); err != nil {
-		slog.ErrorContext(ctx, "failed to delete encryption keys",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"chat_id", chatID,
-			"error", err,
-		)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		_ = tx.Rollback()
+		return ErrForbidden
+	}
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -3270,7 +3449,7 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		return err
 	}
 
-	res, err := tx.ExecContext(ctx,
+	res, err = tx.ExecContext(ctx,
 		`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`,
 		chatID, userID,
 	)

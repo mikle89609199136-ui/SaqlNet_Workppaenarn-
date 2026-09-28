@@ -21,7 +21,7 @@ describe('выбор чата для пересылки (#93)', () => {
   });
 
   it('ничего не отправляет, а готовит пересылку и открывает целевой чат', async () => {
-    const forward = vi.spyOn(services.messageService, 'forwardMessage');
+    const forward = vi.spyOn(services.messageService, 'forwardMessages');
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(chatKeys.list(), [
       { id: 'chat-target', type: 'private', title: 'Борис', peerId: 'user-b' },

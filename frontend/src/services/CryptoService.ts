@@ -1,4 +1,5 @@
 import type { ApiClient } from '@/shared/api';
+import type { IMessageEntity } from '@/shared/lib/richText';
 import { STORAGE_KEYS } from '@/shared/config';
 import { resolveMembers } from '@/entities/chat/model/chatResolver';
 import {
@@ -96,6 +97,8 @@ export type TUndecryptableReason = 'keyUnavailable' | 'beforeJoin' | 'legacy';
 
 export interface IDecryptedMessage {
   text: string;
+  /** Форматирование из конверта v3 (#656). У прочих сообщений его нет. */
+  entities?: IMessageEntity[];
   /**
    * Почему сообщение не прочиталось. `undefined` — прочиталось.
    *
@@ -376,12 +379,22 @@ export class CryptoService {
     return this.chatKeys.rotate(chatId);
   }
 
+  /** Смена ключа после изменения состава, если её ещё никто не сделал (#806). */
+  async rotateChatKeyIfNeeded(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.rotateIfNeeded(chatId);
+  }
+
   async healChatKeys(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
     return this.chatKeys.heal(chatId);
   }
 
-  async encryptMessage(chatId: string, text: string): Promise<string> {
+  async encryptMessage(
+    chatId: string,
+    text: string,
+    entities: IMessageEntity[] = []
+  ): Promise<string> {
     if (!text) return text;
 
     if (!this.hasWebCrypto()) {
@@ -395,10 +408,18 @@ export class CryptoService {
       throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
     }
 
-    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text, {
-      fingerprint: identity.fingerprint,
-      sign: (parts) => signParts(identity.ecdsaPrivate, parts),
-    });
+    return encryptMessage(
+      chatKey.key,
+      chatId,
+      chatKey.epoch,
+      identity.accountId,
+      text,
+      {
+        fingerprint: identity.fingerprint,
+        sign: (parts) => signParts(identity.ecdsaPrivate, parts),
+      },
+      entities
+    );
   }
 
   /**
@@ -451,10 +472,10 @@ export class CryptoService {
           : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
       }
 
-      const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+      const { text, entities } = await decryptMessage(chatKey.key, chatId, senderId, envelope);
 
       // Своё сообщение проверять не у кого и незачем.
-      if (senderId === identity.accountId) return { text };
+      if (senderId === identity.accountId) return { text, entities };
 
       const senderVerified = envelope.sig
         ? await this.isSenderConfirmed(
@@ -463,7 +484,7 @@ export class CryptoService {
           )
         : false;
 
-      return { text, senderVerified };
+      return { text, entities, senderVerified };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
       return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };

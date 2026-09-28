@@ -1,14 +1,35 @@
 import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 import { Icon } from '@/shared/ui/Icon';
-import { useAudio, useIsMobile } from '@/shared/lib';
+import { cn, useAudio, useIsMobile } from '@/shared/lib';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {
   src: string;
+  /**
+   * voice — голосовое в пузыре, как в макете (#820): круглая кнопка,
+   * волна и длительность. audio — плеер аудиофайла с громкостью.
+   */
+  variant?: 'audio' | 'voice';
+  /** От чего строится рисунок волны: одно голосовое — всегда одна волна. */
+  seed?: string;
+  /** Время и статус сообщения — под длительностью голосового. */
+  trailing?: ReactNode;
 }
 
-export const AudioPlayer = ({ src }: AudioPlayerProps) => {
+const VOICE_BARS = 28;
+
+/* Рисунок волны. Настоящей огибающей сервер не хранит, поэтому высоты
+   выводятся из идентификатора — детерминированно, без мелькания при
+   перерисовке. Диапазон 6–25px, как в макете. */
+function voiceBars(seed: string): number[] {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 9973;
+  return Array.from({ length: VOICE_BARS }, (_, i) => 6 + ((i * 29 + hash * 7) % 20));
+}
+
+export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: AudioPlayerProps) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const {
@@ -28,6 +49,85 @@ export const AudioPlayer = ({ src }: AudioPlayerProps) => {
     handleVolumeChange,
     formatTime,
   } = useAudio();
+
+  if (variant === 'voice') {
+    const progress = duration > 0 ? currentTime / duration : 0;
+
+    return (
+      <div className="flex items-center gap-2.5">
+        <audio
+          onEnded={handleEnded}
+          onLoadedMetadata={handleLoadedMetadata}
+          ref={mediaRef}
+          src={src}
+        />
+        {/* Кнопка: на чужом пузыре — заливка акцента, на своём — белая с
+            иконкой цвета заливки. */}
+        <button
+          aria-label={
+            isPlaying
+              ? t('media.pause', 'Приостановить')
+              : t('media.playVoice', 'Прослушать голосовое')
+          }
+          className={cn(
+            'flex size-9.5 shrink-0 cursor-pointer items-center justify-center rounded-pill',
+            'bg-brand-fill text-on-brand group-data-[mine]/bubble:bg-on-brand group-data-[mine]/bubble:text-brand-fill',
+            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2'
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            togglePlay();
+          }}
+          type="button"
+        >
+          <Icon
+            className={cn('size-4 fill-current stroke-0', !isPlaying && 'ml-0.5')}
+            name={isPlaying ? 'pause' : 'play'}
+          />
+        </button>
+
+        {/* Волна — она же дорожка перемотки: невидимый ползунок поверх
+            даёт и мышь, и стрелки с клавиатуры. */}
+        <div className="relative flex h-7 items-center gap-0.5">
+          {voiceBars(seed).map((height, index) => (
+            <span
+              aria-hidden="true"
+              className={cn(
+                'w-[3px] shrink-0 origin-center rounded-[2px] bg-brand group-data-[mine]/bubble:bg-on-brand',
+                'transition-opacity duration-fast',
+                (index + 0.5) / VOICE_BARS > progress && 'opacity-40',
+                isPlaying &&
+                  'animate-[voice-bar_520ms_ease-in-out_infinite_alternate] motion-reduce:animate-none'
+              )}
+              key={index}
+              style={{ height, animationDelay: `${(index * 43) % 500}ms` }}
+            />
+          ))}
+          <input
+            aria-label={t('media.seek', 'Перемотка')}
+            aria-valuetext={`${formatTime(currentTime)} / ${formatTime(duration)}`}
+            className="absolute inset-0 size-full cursor-pointer opacity-0"
+            max={duration || 0}
+            min={0}
+            onChange={handleSliderChange}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={handleSliderPointerDown}
+            onPointerUp={handleSliderPointerUp}
+            step={0.01}
+            type="range"
+            value={currentTime}
+          />
+        </div>
+
+        <span className="flex shrink-0 flex-col items-end gap-0.5">
+          <span className="text-meta text-ink tabular-nums group-data-[mine]/bubble:text-on-brand">
+            {formatTime(isPlaying || currentTime > 0 ? currentTime : duration)}
+          </span>
+          {trailing}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

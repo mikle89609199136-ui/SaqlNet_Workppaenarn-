@@ -42,6 +42,25 @@ describe('статус собеседника из события (#780)', () =>
     expect(client.getQueryData(userKeys.profile('anna'))).toMatchObject({ isOnline: true });
   });
 
+  it('событие о входе убирает приблизительное время: раз оно пришло, точное видно (#791)', () => {
+    const client = seededClient();
+    client.setQueryData(
+      chatKeys.detail('c1'),
+      chat('c1', 'anna', { peerLastSeenApprox: 'recently' })
+    );
+
+    applyPresence(client, {
+      type: 'presence_changed',
+      userId: 'anna',
+      isOnline: true,
+      lastSeen: '2026-09-26T12:30:00Z',
+    });
+
+    const detail = client.getQueryData<IChatDto>(chatKeys.detail('c1'))!;
+    expect(detail.peerLastSeenApprox).toBeUndefined();
+    expect(detail.peerIsOnline).toBe(true);
+  });
+
   it('не трогает историю чата и не создаёт кеш, которого не было', () => {
     const client = seededClient();
     const messages = client.getQueryData(chatKeys.messages('c1'));

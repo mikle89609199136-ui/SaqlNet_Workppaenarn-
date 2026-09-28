@@ -6,16 +6,19 @@ import {
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import { chatQuery, clearDraft, readDraft, readRichDraft, writeDraft } from '@/entities/chat';
+import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn, setComposerText } from '@/shared/lib';
+import { cn } from '@/shared/lib';
+import type { IRichText } from '@/shared/lib/richText';
+import { Button, Icon, RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
-  type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -24,13 +27,20 @@ import {
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
+import { EmojiControl } from './EmojiControl';
+import { EncryptionUnavailableComposer } from './EncryptionUnavailableComposer';
 import { AttachmentPreview } from './AttachmentPreview';
+import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
-function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
+function composerPlaceholder(
+  encryption: IEncryptionState,
+  t: TFunction,
+  hasAttachment: boolean
+): string {
   if (encryption.status === 'preparing') {
     return t('encryptionPreparing', 'Готовим шифрование...');
   }
@@ -43,7 +53,10 @@ function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string
     return t('peerNeedsUpdate', 'Собеседник прочтёт после обновления приложения');
   }
 
-  return t('messagePlaceholder', 'Сообщение...');
+  // С вложением текст — подпись к нему, как в макете.
+  if (hasAttachment) return t('captionPlaceholder', 'Добавьте подпись');
+
+  return t('messagePlaceholder', 'Сообщение');
 }
 
 interface Props {
@@ -51,7 +64,7 @@ interface Props {
   pendingAttachment: IPendingAttachment | null;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
-  draftRef: RefObject<HTMLInputElement | null>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
   setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   setOpenedImage?: Dispatch<SetStateAction<string | null>>;
@@ -97,11 +110,11 @@ export const ChatThreadComposer = ({
   }
 
   useEffect(() => {
-    if (draftRef.current) draftRef.current.value = readDraft(chatId);
+    draftRef.current?.setValue(readRichDraft(chatId));
   }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();
-  const { cancelComposerMode } = useComposerShortcuts(draftRef, formRef);
+  const { cancelComposerMode } = useComposerShortcuts(draftRef);
   const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
     setPendingAttachment,
@@ -116,6 +129,9 @@ export const ChatThreadComposer = ({
     setPendingAttachment,
   });
   const forward = useForwardSend(chatId);
+  // Блокировка в личном чате (#760) — вместо поля ввода. Проверка после
+  // всех хуков: их порядок не должен зависеть от данных.
+  const { data: chat } = useQuery(chatQuery(chatId));
 
   /* Пересылка ждёт в этом чате: «Отправить» уносит комментарий из поля
      (если он есть) и пересланные сообщения, а не обычное сообщение. */
@@ -126,31 +142,43 @@ export const ChatThreadComposer = ({
     }
 
     event.preventDefault();
-    const comment = (draftRef.current?.value ?? '').trim();
-    setComposerText(draftRef.current, '');
+    const comment = draftRef.current?.getValue() ?? { text: '', entities: [] };
+    draftRef.current?.clear();
     clearDraft(chatId);
     setHasText(false);
 
     const { commentSent } = await forward.send(comment);
-    if (comment && !commentSent) {
-      setComposerText(draftRef.current, comment);
+    if (comment.text.trim() && !commentSent) {
+      draftRef.current?.setValue(comment);
       writeDraft(chatId, comment);
       setHasText(true);
     }
   }
 
-  function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    const text = event.target.value;
-
+  function handleDraftChange(value: IRichText, { external }: { external: boolean }) {
     // Пустое поле — не черновик: пометка в списке чатов должна пропасть
     // сразу, а не через полсекунды после стирания последнего символа.
-    if (text) writeDraft(chatId, text);
+    if (value.text.trim()) writeDraft(chatId, value);
     else clearDraft(chatId);
 
     // Перерисовка только на переходе «пусто ↔ есть текст»: остальные
     // символы состояние не трогают.
-    setHasText(text.trim().length > 0);
-    sendTyping();
+    setHasText(value.text.trim().length > 0);
+    // «Печатает» — только когда печатает человек, а не когда поле
+    // заполнила программа (черновик, правка).
+    if (!external) sendTyping();
+  }
+
+  const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
+  const canSend = hasText || Boolean(forward.pending) || Boolean(pendingAttachment);
+
+  if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
+    return <BlockedComposer chat={chat} />;
+  }
+
+  // Без ключа писать некуда — плашка с «Проверить» вместо поля (#826).
+  if (encryption.status === 'unavailable') {
+    return <EncryptionUnavailableComposer chatId={chatId} />;
   }
 
   return (
@@ -175,35 +203,32 @@ export const ChatThreadComposer = ({
           onChange={handleAttachmentChange}
         />
 
-        <input
-          ref={draftRef}
-          aria-label={t('message', 'Сообщение')}
-          className="thread-composer-input min-h-11"
+        {/* Поле: 40px в одну строку, растёт до ~7 строк (164px), текст
+            15/22 — как в макете. */}
+        <RichTextInput
+          ariaLabel={t('message', 'Сообщение')}
+          className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
           disabled={encryption.status !== 'ready'}
           onChange={handleDraftChange}
-          placeholder={composerPlaceholder(encryption, t)}
+          onSubmit={submitForm}
+          placeholder={composerPlaceholder(encryption, t, Boolean(pendingAttachment))}
+          ref={draftRef}
         />
 
-        <button
+        <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+
+        {/* Запись голосового (#843) появится здесь, когда будет сама
+            функция. Отправка залита акцентом, когда есть что отправить. */}
+        <Button
           aria-label={t('sendMessage', 'Отправить сообщение')}
-          className={cn('thread-composer-action-btn', (hasText || forward.pending) && 'is-active')}
+          className={cn(!canSend && 'text-ink-3')}
           disabled={encryption.status !== 'ready' || forward.isForwarding}
+          iconOnly
           type="submit"
+          variant={canSend ? 'primary' : 'ghost'}
         >
-          <svg
-            fill="none"
-            height="18"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-            width="18"
-          >
-            <line x1="22" x2="11" y1="2" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+          <Icon className="size-4.75 stroke-2" name="send" />
+        </Button>
       </ComposerRow>
     </ComposerForm>
   );

@@ -15,7 +15,8 @@ import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore } from '@/entities/chat';
-import { setComposerText, sortMessagesChronologically } from '@/shared/lib';
+import { sortMessagesChronologically } from '@/shared/lib';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
@@ -24,7 +25,7 @@ import { useParams } from 'react-router-dom';
 
 interface Props {
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
-  draftRef?: RefObject<HTMLInputElement | null>;
+  draftRef?: RefObject<IRichTextInputHandle | null>;
 }
 
 /**
@@ -157,7 +158,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
 
         if (editingMessage?.id === message.id) {
           setEditingMessage(null);
-          setComposerText(draftRef?.current ?? null, '');
+          draftRef?.current?.clear();
         }
         if (replyToMessage?.id === message.id) {
           setReplyToMessage(null);
@@ -329,7 +330,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const startEdit = (message: IMessageDto) => {
     setEditingMessage(message);
     setReplyToMessage(null);
-    setComposerText(draftRef?.current ?? null, message.content || '');
+    // С форматированием: правка заменяет его целиком (#656).
+    draftRef?.current?.setValue({
+      text: message.content || '',
+      entities: message.entities ?? [],
+    });
     draftRef?.current?.focus();
   };
 
