@@ -121,6 +121,83 @@ assert json.load(sys.stdin)["code"] == sys.argv[1]
 	done
 }
 
+run_sticker_tests() {
+	local body_file body_cleanup
+	local -a scenarios=(valid trailing)
+	if [[ -n "${MAX_FILE_SIZE:-}" ]]; then
+		scenarios+=(oversized)
+		body_file=$(mktemp)
+		trap 'rm -f "$body_file"; trap - RETURN EXIT' RETURN
+		printf -v body_cleanup 'rm -f -- %q' "$body_file"
+		trap "$body_cleanup" EXIT
+		# Match the media service's explicitly supplied MAX_FILE_SIZE.
+		if ! python3 - "$body_file" "$MAX_FILE_SIZE" <<'PY'
+import sys
+limit = int(sys.argv[2])
+body_limit = ((limit + 2) // 3) * 4 + (64 << 10)
+with open(sys.argv[1], "w") as body:
+    body.write('{"name":"smoke sticker pack","description":"')
+    remaining = body_limit + 1
+    while remaining:
+        size = min(remaining, 65536)
+        body.write("a" * size)
+        remaining -= size
+    body.write('"}')
+PY
+		then
+			echo "✗ generate oversized sticker request"
+			FAIL=$((FAIL + 1))
+			return
+		fi
+	else
+		echo "⊘ POST /api/v2/stickers/packs oversized — пропущено: MAX_FILE_SIZE не задан"
+	fi
+
+	local scenario payload expected_status expected_code pack_id
+	local -a pack_ids=()
+	for scenario in "${scenarios[@]}"; do
+		payload='{"name":"smoke sticker pack"}'
+		expected_status=201
+		expected_code=''
+		case "$scenario" in
+			trailing)
+				payload+='{"name":"second"}'
+				expected_status=400
+				expected_code=invalid_json
+				;;
+			oversized)
+				payload="@$body_file"
+				expected_status=413
+				expected_code=request_too_large
+				;;
+		esac
+		http_request -X POST "$BASE_URL/api/v2/stickers/packs" \
+			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+			--data-binary "$payload"
+		pack_id=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("pack", {}).get("id", ""))' 2>/dev/null || true)
+		if [[ -n "$pack_id" ]]; then
+			pack_ids+=("$pack_id")
+		fi
+		if [[ "$HTTP_CODE" == "$expected_status" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+body = json.load(sys.stdin)
+assert body.get("code") == sys.argv[1] if sys.argv[1] else body.get("success") and body.get("pack", {}).get("id")
+' "$expected_code"; then
+			echo "✓ [$HTTP_CODE] POST /api/v2/stickers/packs $scenario"
+			PASS=$((PASS + 1))
+		else
+			echo "✗ [$HTTP_CODE] POST /api/v2/stickers/packs $scenario — expected $expected_status $expected_code"
+			echo "  ${HTTP_BODY:0:160}"
+			FAIL=$((FAIL + 1))
+		fi
+	done
+	# Also remove packs accidentally accepted by a regressed handler.
+	for pack_id in "${pack_ids[@]}"; do
+		auth_check "DELETE smoke sticker pack $pack_id" 200 \
+			-X DELETE "$BASE_URL/api/v2/stickers/packs/$pack_id"
+	done
+}
+
 run_media_tests() {
 	echo ""
 	echo "→ Media"
@@ -212,4 +289,5 @@ run_media_tests() {
 	fi
 
 	run_gif_tests "$MEDIA_URL"
+	run_sticker_tests
 }

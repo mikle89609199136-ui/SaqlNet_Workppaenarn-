@@ -106,6 +106,10 @@ func uploadLimitMessage(maxBytes int64) string {
 	return fmt.Sprintf("file exceeds %d byte limit", maxBytes)
 }
 
+func requestLimitMessage(maxBytes int64) string {
+	return fmt.Sprintf("request body exceeds %d byte limit", maxBytes)
+}
+
 func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusRequestEntityTooLarge, map[string]any{
 		"error": httpx.Error{
