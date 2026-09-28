@@ -166,6 +166,25 @@
 
   body::before { display: none; }
 
+  /* Сенсорные экраны: долгое нажатие открывает наше меню (сообщение,
+     строка списка), а браузер на тех же ~0,5 с начинал выделять текст и
+     показывать своё меню «Скопировать / Поделиться». Как в мессенджерах —
+     без системного выделения: текст сообщения копируется из его меню.
+     Поля ввода — как были: там выделение нужно. */
+  @media (hover: none) and (pointer: coarse) {
+    body {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    input, textarea, [contenteditable]:not([contenteditable="false"]),
+    [contenteditable]:not([contenteditable="false"]) * {
+      -webkit-user-select: text;
+      user-select: text;
+      -webkit-touch-callout: default;
+    }
+  }
+
 }
 
 .styled-scrollbar {
