@@ -9,6 +9,15 @@ const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf-8')
 ) as { version: string };
 
+/**
+ * Номер сборки (#892): время сборки в base36 — короткий, растущий, одинаковый
+ * в коде страницы (`__APP_BUILD__`) и в dist/version.json. По нему открытое
+ * приложение понимает, что на сервере уже другая сборка. Человеку он ничего
+ * не говорит — в настройках показывается время сборки (`__APP_BUILT_AT__`).
+ */
+const APP_BUILD = Date.now().toString(36);
+const BUILT_AT = new Date().toISOString();
+
 /* Тяжёлые библиотеки голосовых (кодировщик, декодер для старого Safari —
    вместе больше 4 МБ) заранее не качаются: грузятся, когда нужны. */
 const NOT_PRECACHED = /(opus-ml|encoderWorker|ogg-opus-decoder)/;
@@ -43,6 +52,18 @@ function serviceWorker(): Plugin {
           `const PRECACHE_URLS = ${JSON.stringify(precache)};\n` +
           template,
       });
+      // Какая версия на сервере (#892): открытое приложение сверяет с ней
+      // свою, edge отдаёт её в /health/live. Отдаётся без кеша и мимо
+      // service worker.
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({
+          version: packageJson.version,
+          build: APP_BUILD,
+          builtAt: BUILT_AT,
+        }),
+      });
     },
   };
 }
@@ -68,6 +89,8 @@ export default defineConfig(({ mode }) => {
        в package.json. */
     define: {
       __APP_VERSION__: JSON.stringify(packageJson.version),
+      __APP_BUILD__: JSON.stringify(APP_BUILD),
+      __APP_BUILT_AT__: JSON.stringify(BUILT_AT),
     },
     server: {
       proxy: {

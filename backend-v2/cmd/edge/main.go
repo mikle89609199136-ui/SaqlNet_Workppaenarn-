@@ -207,10 +207,12 @@ func main() {
 	}
 
 	frontendDir := config.Value("FRONTEND_DIR", "../dist")
+	// Версия выпуска (#892) — из той же сборки, что отдаётся клиентам.
+	build := readBuildInfo(frontendDir)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
-		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok", "v": "csp-v3"})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok", "version": build.Version, "build": build.Build})
 	})
 
 	// API documentation. The OpenAPI contract is embedded in the edge binary.
@@ -281,7 +283,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Printf("CRANE_BUILD_VERSION=csp-v3")
+		log.Printf("CRANE_VERSION=%s build=%s", build.Version, build.Build)
 		log.Printf("edge gateway listening on %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

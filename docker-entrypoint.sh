@@ -22,7 +22,8 @@ if [ -z "$ALLOWED_ORIGINS" ]; then
   export ALLOWED_ORIGINS="*"
 fi
 
-echo "[entrypoint] CRANE_BUILD=csp-v3"
+# Версия выпуска (#892) — из сборки фронтенда, той же, что отдаёт edge.
+echo "[entrypoint] version: $(cat /dist/version.json 2>/dev/null || echo unknown)"
 echo "[entrypoint] running migrations..."
 cd /app && /usr/local/bin/migrate
 

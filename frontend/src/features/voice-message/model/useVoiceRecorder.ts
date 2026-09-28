@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { holdAppUpdate } from '@/shared/lib';
 import { browserVoiceEnvironment } from './voiceEnvironment';
 import { VoiceRecorder, type IVoiceEnvironment } from './voiceRecorder';
 
@@ -15,6 +16,10 @@ export function useVoiceRecorder(chatId: string, env: IVoiceEnvironment = browse
     (onChange) => recorder.subscribe(onChange),
     () => recorder.getState()
   );
+
+  // Пока записываем — приложение не перезагружается ради обновления (#892).
+  const recording = state.status !== 'idle';
+  useEffect(() => (recording ? holdAppUpdate('recording') : undefined), [recording]);
 
   // Смена чата — запись, начатая в прежнем, не уходит в новый.
   useEffect(() => () => recorder.cancel(), [recorder, chatId]);
