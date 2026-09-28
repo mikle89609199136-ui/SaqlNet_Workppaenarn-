@@ -1683,7 +1683,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a chat read */
+        /**
+         * Mark a chat read
+         * @description The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).
+         */
         post: operations["markChatRead"];
         delete?: never;
         options?: never;
@@ -1760,7 +1763,7 @@ export interface paths {
         put?: never;
         /**
          * Mark messages as read
-         * @description Marks the given messages of the chat as read (#506). The chat keeps one read boundary (unread counts use it): it moves to the newest of the counted messages — incoming and not deleted — and never moves back, so newer messages stay unread. To mark the whole chat, use POST /chats/{chatId}/read.
+         * @description Marks the given messages of the chat as read (#506). The chat keeps one read boundary (unread counts use it): it moves to the newest of the counted messages — incoming and not deleted — and never moves back, so newer messages stay unread. To mark the whole chat, use POST /chats/{chatId}/read. A moved boundary is journaled: the authors see readAt on their messages and get the receipts event (ReceiptEvent, #657).
          */
         post: operations["markMessagesRead"];
         delete?: never;
@@ -2461,6 +2464,10 @@ export interface components {
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
         };
         /** @description A range in UTF-16 code units. Both boundaries must be between Unicode code points (never inside a surrogate pair), and offset + length must not exceed the content length. Inline ranges may overlap, except links cannot overlap other links. Blockquotes cover whole lines (start at 0 or after LF; end at content end or before LF), cannot overlap other blockquotes, and any inline range intersecting a blockquote must be fully contained within it. data is required for link and must be absent for every other type. */
         MessageEntity: {
@@ -2499,6 +2506,28 @@ export interface components {
             senderId?: string;
             senderName: string;
             reactions: components["schemas"]["Reaction"][];
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
+        };
+        /** @description WebSocket event {"type":"receipts"} (#657), sent to the other members of a private chat when a member's boundary moves: the member's messages up to upTo inclusive are delivered or read, first at "at". Boundaries only move forward; delivered — the message went to the member's open socket or the member loaded the chat list or the thread; read implies delivered. After a reconnect the same state comes from Message.deliveredAt and readAt. */
+        ReceiptEvent: {
+            /** @enum {string} */
+            type: "receipts";
+            /** Format: uuid */
+            chatId: string;
+            /**
+             * Format: uuid
+             * @description The member whose boundary moved.
+             */
+            userId: string;
+            /** @enum {string} */
+            kind: "delivered" | "read";
+            /** @description The boundary, UTC ISO 8601 with milliseconds, rounded down. */
+            upTo: string;
+            /** @description When the boundary moved, UTC ISO 8601 with milliseconds. */
+            at: string;
         };
         /** @example john_doe */
         Username: string;

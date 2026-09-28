@@ -256,6 +256,18 @@ LastMessagePreview:
     senderId: { type: string, format: uuid }
     senderName: { type: string }
     reactions: { type: array, items: { $ref: '#/Reaction' } }
+    deliveredAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's
+        delivered boundary first passed the message (UTC, ISO 8601 with
+        milliseconds). Absent — not delivered yet.
+    readAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's read
+        boundary first passed the message. Absent — not read yet. In group chats
+        — the first member.
 Message:
   type: object
   required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
@@ -311,6 +323,35 @@ Message:
     createdAt: { type: string }
     updatedAt: { type: string }
     deletedAt: { type: string, nullable: true }
+    deliveredAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's
+        delivered boundary first passed the message (UTC, ISO 8601 with
+        milliseconds). Absent — not delivered yet.
+    readAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's read
+        boundary first passed the message. Absent — not read yet. In group chats
+        — the first member.
+ReceiptEvent:
+  type: object
+  description: >-
+    WebSocket event {"type":"receipts"} (#657), sent to the other members of a
+    private chat when a member's boundary moves: the member's messages up to
+    upTo inclusive are delivered or read, first at "at". Boundaries only move
+    forward; delivered — the message went to the member's open socket or the
+    member loaded the chat list or the thread; read implies delivered. After
+    a reconnect the same state comes from Message.deliveredAt and readAt.
+  required: [type, chatId, userId, kind, upTo, at]
+  properties:
+    type: { type: string, enum: [receipts] }
+    chatId: { type: string, format: uuid }
+    userId: { type: string, format: uuid, description: The member whose boundary moved. }
+    kind: { type: string, enum: [delivered, read] }
+    upTo: { type: string, description: 'The boundary, UTC ISO 8601 with milliseconds, rounded down.' }
+    at: { type: string, description: 'When the boundary moved, UTC ISO 8601 with milliseconds.' }
 SendMessagesRequest:
   type: object
   required: [messages]

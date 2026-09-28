@@ -616,6 +616,7 @@ x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
     {
       tags: [Chats],
       summary: Mark a chat read,
+      description: "The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).",
       operationId: markChatRead,
       security: *secure,
       parameters: [*chatId],

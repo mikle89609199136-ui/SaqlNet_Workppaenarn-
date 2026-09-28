@@ -10,7 +10,8 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       read boundary (unread counts use it): it moves to the newest of the
       counted messages — incoming and not deleted — and never moves back, so
       newer messages stay unread. To mark the whole chat, use
-      POST /chats/{chatId}/read.
+      POST /chats/{chatId}/read. A moved boundary is journaled: the authors see
+      readAt on their messages and get the receipts event (ReceiptEvent, #657).
     operationId: markMessagesRead
     security: *secure
     requestBody:
