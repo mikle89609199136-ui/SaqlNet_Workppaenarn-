@@ -1,0 +1,109 @@
+name: E2E
+
+# Прогон намеренно вынесен из CI и не входит в обязательные проверки.
+#
+# Один сценарий «отправил — получил у второго пользователя» занимает
+# десятки секунд: он идёт через настоящий стенд, настоящее шифрование и
+# настоящий сокет. Два десятка таких сценариев в конвейере PR сделали бы
+# ожидание нестерпимым, а красный результат — привычным.
+#
+# Поэтому запуск только по требованию: меткой `e2e` на pull request или
+# вручную.
+#
+# Ночное расписание убрано. За восемнадцать ночей с 3 сентября прогон не
+# прошёл ни разу, и причины были не в сценариях: секрет E2E_BASE_URL не
+# заведён, а пустое его значение не ловилось запасным в playwright.config.ts
+# (`??` пропускает пустую строку). Красный, который ничего не значит, хуже
+# отсутствия проверки — к этому же выводу приходила и #277. Вернуть
+# расписание стоит тогда, когда появится хотя бы один сценарий.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Адрес, против которого гонять (по умолчанию поднимается локальный dev-сервер)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Прогон пишет в общий стенд: две параллельные ночи увидели бы сообщения
+  # друг друга в списке чатов.
+  group: e2e
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Smoke
+    # Скрипты написаны давно и в конвейере не запускались ни разу.
+    # Они дешёвые: несколько curl-запросов к живому стенду.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'e2e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run smoke tests
+        env:
+          BASE_URL: ${{ secrets.E2E_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "Секрет E2E_BASE_URL не задан — прогон невозможен."
+            exit 1
+          fi
+          bash scripts/smoke/run.sh "$BASE_URL"
+
+  playwright:
+    name: Playwright
+    if: github.event_name != 'pull_request' || github.event.label.name == 'e2e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Ставится только Chromium: три движка утроили бы время ради проверки
+      # того, что и так покрыто юнит-тестами.
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        env:
+          # Dev-сервер проксирует запросы на стенд: прямые обращения с
+          # localhost стенд отклоняет по CORS.
+          DEV_API_PROXY_TARGET: ${{ secrets.E2E_BASE_URL }}
+          E2E_BASE_URL: ${{ inputs.base_url }}
+          E2E_USER_A: ${{ secrets.E2E_USER_A }}
+          E2E_USER_B: ${{ secrets.E2E_USER_B }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npm run e2e
+
+      # Разобрать упавший сценарий по одному лишь сообщению об ошибке
+      # невозможно: он длинный и воспроизводится только против стенда.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14

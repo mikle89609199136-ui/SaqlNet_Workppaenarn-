@@ -1,0 +1,119 @@
+/* =============================================================
+   Слой 2. Акцент.
+
+   Собран отдельным набором, потому что цвет оформления будет
+   меняться. Размазать его по системе — значит потом переписывать
+   каждый компонент; здесь смена схемы это один атрибут на <html>.
+
+   В наборе четыре роли, и вот почему не одна:
+
+     brand-fill заливка: основная кнопка, счётчик, исходящий пузырь
+     brand-ink  акцент как ТЕКСТ на светлой теме
+     brand-hi   акцент как ТЕКСТ на тёмной теме
+     on-brand   чем писать поверх заливки
+
+   Один цвет не годится: заливка под белыми буквами обязана быть
+   тёмной, а текст тем же цветом на светлой панели или на мягкой
+   подложке уже не держит 4.5:1. Поэтому у светлой темы свой оттенок
+   для текста — на ступень темнее заливки (у сливового их хватило
+   одного). На тёмной теме текст — светлый вариант акцента.
+   Тема сама берёт нужный — см. semantic.css и themes.css.
+
+   Мягкая подложка (brand-soft) — та же заливка с прозрачностью, своя
+   доля для каждой темы. Хранится готовым rgba, а не примесью
+   color-mix: для браузеров без color-mix сборка подставляет вместо
+   примеси сплошной цвет, и акцентный текст на такой «подложке»
+   пропал бы.
+
+   Белый поверх заливки — у всех шести, янтарь тоже: его заливка
+   затемнена до #a4660c, и белый на ней проходит 4.5:1.
+
+   Схема по умолчанию задана на :root, чтобы всё работало и без
+   атрибута. [data-accent] только переопределяет.
+
+   bubble-out — оттенок акцента под свой пузырь. По дизайн-системе
+   свой пузырь — это заливка, но пузырь переходит на неё вместе с
+   содержимым (#820); до тех пор остаются тонированные пузыри.
+   ============================================================= */
+
+:root,
+[data-accent='violet'] {
+  --brand-fill: #7c4dd8;
+  --brand-ink: #7247c7;
+  --brand-hi: #b48cec;
+  --brand-soft-light: rgba(124, 77, 216, 0.1);
+  --brand-soft-dark: rgba(124, 77, 216, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #f0eafb;
+  --bubble-out-dark: #292234;
+  --bubble-out-ink-light: #3d2a63;
+  --bubble-out-ink-dark: #e9e2f5;
+}
+
+[data-accent='plum'] {
+  --brand-fill: #8e3e86;
+  --brand-ink: #8e3e86;
+  --brand-hi: #d392cb;
+  --brand-soft-light: rgba(142, 62, 134, 0.1);
+  --brand-soft-dark: rgba(142, 62, 134, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #f8eaf6;
+  --bubble-out-dark: #2f2433;
+  --bubble-out-ink-light: #4e1b49;
+  --bubble-out-ink-dark: #f0deee;
+}
+
+[data-accent='orchid'] {
+  --brand-fill: #c2459b;
+  --brand-ink: #a13981;
+  --brand-hi: #ec8cc8;
+  --brand-soft-light: rgba(194, 69, 155, 0.1);
+  --brand-soft-dark: rgba(194, 69, 155, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #fce9f5;
+  --bubble-out-dark: #322431;
+  --bubble-out-ink-light: #66194a;
+  --bubble-out-ink-dark: #f5dfee;
+}
+
+[data-accent='indigo'] {
+  --brand-fill: #4c5fd0;
+  --brand-ink: #4758c1;
+  --brand-hi: #9baaf2;
+  --brand-soft-light: rgba(76, 95, 208, 0.1);
+  --brand-soft-dark: rgba(76, 95, 208, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #e9ecfc;
+  --bubble-out-dark: #232839;
+  --bubble-out-ink-light: #23306e;
+  --bubble-out-ink-dark: #dfe4f7;
+}
+
+/* Прежде единственная схема с тёмным текстом поверх заливки: светлый
+   янтарь под белыми буквами давал 3,2:1. Теперь заливка темнее, и
+   правило «поверх заливки — белый» общее для всех. */
+[data-accent='amber'] {
+  --brand-fill: #a4660c;
+  --brand-ink: #8c570a;
+  --brand-hi: #f2a93b;
+  --brand-soft-light: rgba(164, 102, 12, 0.1);
+  --brand-soft-dark: rgba(164, 102, 12, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #fbf0dc;
+  --bubble-out-dark: #33291a;
+  --bubble-out-ink-light: #5a4318;
+  --bubble-out-ink-dark: #f0e6d6;
+}
+
+[data-accent='teal'] {
+  --brand-fill: #17806e;
+  --brand-ink: #146f60;
+  --brand-hi: #5fd3be;
+  --brand-soft-light: rgba(23, 128, 110, 0.1);
+  --brand-soft-dark: rgba(23, 128, 110, 0.18);
+  --on-brand: var(--white);
+  --bubble-out-light: #e3f5f1;
+  --bubble-out-dark: #1e2e2c;
+  --bubble-out-ink-light: #0d4a3f;
+  --bubble-out-ink-dark: #d6efe9;
+}

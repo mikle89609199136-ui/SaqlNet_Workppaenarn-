@@ -1,14 +1,4 @@
 export type {
-  IActiveCall,
-  ICall,
-  ICallCancelledPayload,
-  ICallInviteResponsePayload,
-  IIncomingCall,
-  IRingtone,
-  TCallKind,
-  TCallRoomType,
-} from './call.types';
-export type {
   IChatContext,
   IChatDto,
   ILastMessageDto,
@@ -18,7 +8,7 @@ export type {
   TChatsList,
   TChatType,
   TMembersList,
-} from './chat.types';
+} from '@/entities/chat';
 export type { IEncryptedMedia } from './encryption.types';
 export type { TIconTypes } from './icons';
 export type {
@@ -33,12 +23,14 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
   TPinnedList,
   TReactionsList,
-} from './message.types';
+} from '@/entities/message';
 export type {
+  IAuthResponse,
   IChatResponse,
   IChatsResponse,
   ICreateGroupChatResponse,
@@ -55,10 +47,23 @@ export type {
   ISuccessResponse,
   IUploadResponse,
 } from './response.types';
-export type { ISearchUserDto, ISettingsDto, IUserDto, TSearchUsersList } from './user.types';
+export type {
+  ICheckUsernameResponse,
+  IPrivacyDto,
+  ISearchUserDto,
+  ISettingsDto,
+  ISettingsPayloadDto,
+  IUserDto,
+  IUserStatusDto,
+  TLastSeenVisibility,
+  TPrivacyVisibility,
+  TSearchUsersList,
+  IProfileModal,
+  IProfileState,
+} from '@/entities/user';
 export type {
   ICallAnswerEvent,
-  ICallCenceledEvent,
+  ICallCancelledEvent,
   ICallErrorEvent,
   ICallIceEvent,
   ICallIncomingEvent,
@@ -79,7 +84,26 @@ export type {
   IPingEvent,
   IPongEvent,
   IReactionUpdatedEvent,
+  IPresenceChangedEvent,
+  IUserBlockEvent,
   ITypingEvent,
   IWsEventMap,
   TWsEventType,
 } from './wsEvents.types';
+export type {
+  IBrushOption,
+  IEditorCrop,
+  IEditorFilter,
+  IEditorPathObject,
+  IEditorPoint,
+  IEditorState,
+  IEditorTextObject,
+  IFontOption,
+  IPhotoEditorModalProps,
+  IRatioOption,
+  TBrushType,
+  TCropRatioValue,
+  TEditorObject,
+  TEditorTool,
+  TTextFontId,
+} from '@/entities/media';

@@ -1,5 +1,4 @@
-import { API_ENDPOINTS, ApiClient } from '@/api';
-import { getRawChat, invalidateChat } from '@/core';
+import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import type {
   IChatDto,
   IChatResponse,
@@ -14,52 +13,30 @@ import type {
 
 export class ChatService {
   private apiClient: ApiClient;
-  private membersRequests = new Map<string, Promise<TMembersList>>();
-  private chatsRequest: Promise<IChatDto[]> | null = null;
-
   constructor(apiClient: ApiClient) {
     this.apiClient = apiClient;
   }
 
-  async getChats() {
-    if (this.chatsRequest) {
-      return this.chatsRequest;
-    }
-
-    const request = this.apiClient
-      .get<IChatsResponse>(API_ENDPOINTS.CHATS)
-      .then((response) => response.data.chats)
-      .catch((err) => {
-        this.chatsRequest = null;
-        throw err;
-      });
-
-    this.chatsRequest = request;
-    return request;
-  }
-
-  private patchChatsCache(updater: (chats: IChatDto[]) => IChatDto[]) {
-    if (!this.chatsRequest) return; // кэша ещё нет — следующий getChats() сходит за свежими данными сам
-    this.chatsRequest = this.chatsRequest.then(updater);
-  }
-
-  patchChat(chatId: string, patch: Partial<IChatDto>) {
-    this.patchChatsCache((chats) =>
-      chats.map((chat) => (chat.id === chatId ? { ...chat, ...patch } : chat))
+  // Свежестью списка распоряжается слой запросов: собственный кеш здесь
+  // сбрасывался только при ошибке, и успешный ответ жил до перезагрузки
+  // вкладки — созданный чат в списке не появлялся.
+  /**
+   * Список чатов. Архивные лежат отдельно и приходят только по просьбе:
+   * сервер фильтрует по `archived`, а не отдаёт всё вперемешку.
+   */
+  async getChats(archived = false) {
+    const response = await this.apiClient.get<IChatsResponse>(
+      API_ENDPOINTS.CHATS,
+      archived ? { archived: 'true' } : {}
     );
+    return response.data.chats;
   }
 
-  addChatToCache(chat: IChatDto) {
-    this.patchChatsCache((chats) => [chat, ...chats]);
-  }
-
-  removeChatFromCache(chatId: string) {
-    this.patchChatsCache((chats) => chats.filter((chat) => chat.id !== chatId));
-  }
-
-  async getChat(chatId: string) {
-    const raw = await getRawChat(this.apiClient, chatId);
-    return raw;
+  // Запрос без собственного кеша: это функция загрузки для chat-запроса,
+  // и кеширование — его забота.
+  async getChat(chatId: string): Promise<IChatDto> {
+    const response = await this.apiClient.get<IChatResponse>(API_ENDPOINTS.CHAT_BY_ID(chatId));
+    return response.data.chat;
   }
 
   async createChat(type: TChatType, participants: string[], title = '') {
@@ -78,40 +55,55 @@ export class ChatService {
     title,
     description = '',
     members = [],
+    avatarUrl = '',
   }: {
     title: string;
     description: string;
     members: string[];
+    avatarUrl?: string;
   }): Promise<ICreateGroupChatResponse> {
     const chat = await this.apiClient
-      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, { title, description, members })
+      .post<ICreateGroupChatResponse>(API_ENDPOINTS.CHAT_GROUPS, {
+        title,
+        description,
+        members,
+        // Аватарка хранится строкой, поэтому уходит уменьшенной картинкой
+        // прямо в теле запроса: отдельная загрузка файла тут не нужна.
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
       .then((response) => response.data);
 
     return chat;
   }
 
   async searchUsers(query: string) {
-    return this.apiClient
-      .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
-      .then((response) => response.data.users);
+    return (
+      this.apiClient
+        .get<ISearchUsersResponse>(API_ENDPOINTS.USER_SEARCH, { q: query })
+        // Когда никто не нашёлся, сервер присылает null вместо пустого списка,
+        // а вызывающий код рисует результат перебором.
+        .then((response) => response.data.users ?? [])
+    );
   }
 
+  // Свежесть списка — забота слоя запросов: раньше промис оставался в
+  // сервисе навсегда, и смена роли не была видна даже после переоткрытия.
   async getMembers(chatId: string): Promise<TMembersList> {
-    const cached = this.membersRequests.get(chatId);
-    if (cached) {
-      return cached;
-    }
-
-    const request = this.apiClient
+    return this.apiClient
       .get<IMembersListResponse>(API_ENDPOINTS.CHAT_MEMBERS(chatId))
-      .then((response) => response.data.members)
-      .catch((err) => {
-        this.membersRequests.delete(chatId); // не кэшируем ошибку — следующий вызов попробует заново
-        throw err;
-      });
+      .then((response) => response.data.members ?? []);
+  }
 
-    this.membersRequests.set(chatId, request);
-    return request;
+  /** Кто из участников группы сейчас в сети — идентификаторы (#822). */
+  async getOnlineMembers(chatId: string): Promise<string[]> {
+    return this.apiClient
+      .get<{ members?: string[] }>(API_ENDPOINTS.CHAT_MEMBERS_ONLINE(chatId))
+      .then((response) => response.data.members ?? []);
+  }
+
+  /** Добавить участника в группу: владелец или админ, по одному (#822). */
+  async addMember(chatId: string, userId: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MEMBER_ADD(chatId), { userId });
   }
 
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
@@ -132,35 +124,72 @@ export class ChatService {
       Omit<IChatDto, 'id' | 'peerId' | 'peerPublicKey' | 'ownerId' | 'createdAt' | 'type'>
     >
   ): Promise<IChatDto> {
-    const response = await this.apiClient.put<IChatResponse>(
+    // Сервер принимает частичное изменение чата методом PATCH: с PUT
+    // переименование группы отвечало 405.
+    const response = await this.apiClient.patch<IChatResponse>(
       API_ENDPOINTS.CHAT_BY_ID(chatId),
       data
     );
-    invalidateChat(chatId);
     return response.data.chat;
   }
 
   async deleteChat<T>(chatId: string): Promise<T> {
     const response = await this.apiClient.delete<T>(API_ENDPOINTS.CHAT_BY_ID(chatId));
-    invalidateChat(chatId);
     return response.data;
   }
 
-  async muteChat(chatId: string, duration: number) {
-    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
-    invalidateChat(chatId);
+  /**
+   * Выйти из группы самому (#90). Удалить себя через `removeMember` нельзя:
+   * это действие модератора над другим участником, и сервер его отклоняет.
+   * Владельцу выйти нельзя (409 `ownership_transfer_required`), пока он не
+   * передал права.
+   */
+  async leaveChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_LEAVE(chatId));
+    return response.data;
+  }
+
+  /** Сделать участника владельцем; прежний владелец становится участником. */
+  async transferOwnership(chatId: string, userId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_TRANSFER_OWNERSHIP(chatId), {
+      userId,
+    });
     return response.data;
   }
 
   async pinChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
-    invalidateChat(chatId);
+    return response.data;
+  }
+
+  async unpinChat(chatId: string) {
+    const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN(chatId));
     return response.data;
   }
 
   async archiveChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
-    invalidateChat(chatId);
+    return response.data;
+  }
+
+  async unarchiveChat(chatId: string) {
+    const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_ARCHIVE(chatId));
+    return response.data;
+  }
+
+  /**
+   * Отметить чат прочитанным целиком.
+   *
+   * Не то же самое, что отметки по отдельным сообщениям
+   * (`POST /messages/read`): там список идентификаторов того, что попало в
+   * поле зрения, и чат с сотней непрочитанных пришлось бы пролистать
+   * целиком. Здесь чат закрывается разом.
+   *
+   * События о прочтении сервер не рассылает никому — ни нам, ни
+   * собеседнику, — поэтому счётчик в списке обновляет вызывающая сторона.
+   */
+  async markChatRead(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_READ(chatId));
     return response.data;
   }
 }

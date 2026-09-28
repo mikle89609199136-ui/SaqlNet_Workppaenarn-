@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from '@/api';
+import { API_ENDPOINTS } from '@/shared/api';
 
 export class UserService {
   constructor(apiClient) {
@@ -27,6 +27,16 @@ export class UserService {
     return this.apiClient
       .get(API_ENDPOINTS.USER_PROFILE(userId))
       .then((response) => response.data?.user ?? response.data);
+  }
+
+  checkUsername(username) {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_CHECK_USERNAME, { username })
+      .then((response) => response.data);
+  }
+
+  getStatus(userId) {
+    return this.apiClient.get(API_ENDPOINTS.USER_STATUS(userId)).then((response) => response.data);
   }
 
   getSettings() {
@@ -120,6 +130,26 @@ export class UserService {
   unblockUser(userId) {
     return this.apiClient
       .delete(API_ENDPOINTS.USER_BLOCKED_BY_ID(userId))
+      .then((response) => response.data);
+  }
+
+  /** Исключения из правил приватности по людям (#784, #786): все правила сразу. */
+  listPrivacyExceptions() {
+    return this.apiClient
+      .get(API_ENDPOINTS.USER_PRIVACY_EXCEPTIONS)
+      .then((response) => response.data?.exceptions ?? []);
+  }
+
+  /** Добавить в исключения или перевести в другой список: mode — allow | deny. */
+  setPrivacyException(rule, userId, mode) {
+    return this.apiClient
+      .put(API_ENDPOINTS.USER_PRIVACY_EXCEPTION(rule, userId), { mode })
+      .then((response) => response.data?.exception);
+  }
+
+  removePrivacyException(rule, userId) {
+    return this.apiClient
+      .delete(API_ENDPOINTS.USER_PRIVACY_EXCEPTION(rule, userId))
       .then((response) => response.data);
   }
 

@@ -1,0 +1,25 @@
+{
+  "issue_request": {
+    "subject": "contract-user-id",
+    "username": "contract-user",
+    "token_generation": 7
+  },
+  "issue_response": {
+    "token": "contract-issued-token",
+    "expires_at": 1700003600,
+    "token_generation": 7
+  },
+  "verify_response": {
+    "subject": "contract-user-id",
+    "username": "contract-user",
+    "issued_at": 1700000000,
+    "expires_at": 1700003600,
+    "token_generation": 7
+  },
+  "health_response": {
+    "status": "ok",
+    "capabilities": {
+      "token_generation": true
+    }
+  }
+}

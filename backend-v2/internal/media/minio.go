@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,23 +16,27 @@ import (
 	"time"
 )
 
-// MinioStore is a minimal S3-compatible store that uses presigned URLs (AWS Signature V4).
+// MinioStore is a minimal S3-compatible store that uses AWS Signature V4.
 // No external SDK dependency — keeps the Go module lean.
 type MinioStore struct {
-	endpoint  string // e.g. "http://minio:9000"
-	accessKey string
-	secretKey string
-	region    string
-	client    *http.Client
+	endpoint       string // e.g. "http://minio:9000"
+	accessKey      string
+	secretKey      string
+	region         string
+	client         *http.Client
+	downloadClient *http.Client
 }
 
 func NewMinioStore(endpoint, accessKey, secretKey, region string) *MinioStore {
+	downloadTransport := http.DefaultTransport.(*http.Transport).Clone()
+	downloadTransport.ResponseHeaderTimeout = 30 * time.Second
 	return &MinioStore{
-		endpoint:  strings.TrimRight(endpoint, "/"),
-		accessKey: accessKey,
-		secretKey: secretKey,
-		region:    region,
-		client:    &http.Client{Timeout: 30 * time.Second},
+		endpoint:       strings.TrimRight(endpoint, "/"),
+		accessKey:      accessKey,
+		secretKey:      secretKey,
+		region:         region,
+		client:         &http.Client{Timeout: 30 * time.Second},
+		downloadClient: &http.Client{Transport: downloadTransport},
 	}
 }
 
@@ -94,6 +99,33 @@ func (m *MinioStore) Put(ctx context.Context, bucket, key string, r io.Reader, s
 	return nil
 }
 
+func (m *MinioStore) Get(ctx context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error) {
+	method := http.MethodGet
+	if options.Head {
+		method = http.MethodHead
+	}
+	reqURL := fmt.Sprintf("%s/%s/%s", m.endpoint, bucket, key)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	if options.Range != "" {
+		req.Header.Set("Range", options.Range)
+	}
+	m.signRequest(req, nil)
+	resp, err := m.downloadClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return &ObjectResponse{
+		Body:          resp.Body,
+		StatusCode:    resp.StatusCode,
+		ContentLength: resp.ContentLength,
+		ContentRange:  resp.Header.Get("Content-Range"),
+		AcceptRanges:  resp.Header.Get("Accept-Ranges"),
+	}, nil
+}
+
 func (m *MinioStore) PresignGet(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
 	dateStamp := now.Format("20060102")
@@ -146,10 +178,19 @@ func (m *MinioStore) Delete(ctx context.Context, bucket, key string) error {
 	m.signRequest(req, nil)
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("object storage delete request failed")
 	}
 	defer resp.Body.Close()
-	return nil
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return fmt.Errorf("object storage delete failed with status %d", resp.StatusCode)
 }
 
 func (m *MinioStore) signRequest(req *http.Request, body []byte) {

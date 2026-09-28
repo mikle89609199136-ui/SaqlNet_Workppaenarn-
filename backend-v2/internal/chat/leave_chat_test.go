@@ -20,7 +20,7 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	// Запросить роль текущего пользователя
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
@@ -39,6 +39,8 @@ func TestLeaveChat_Success_memberLeaves(t *testing.T) {
 		WithArgs(userID, chatID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`).
 		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+		WithArgs(chatID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	err = svc.LeaveChat(context.Background(), userID, chatID)
@@ -57,7 +59,7 @@ func TestLeaveChat_OwnerCannotLeave(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
@@ -79,7 +81,7 @@ func TestLeaveChat_NotMember(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
 
@@ -101,7 +103,7 @@ func TestLeaveChat_InvalidUUID(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 	userID := "not-a-uuid"
 
 	err = svc.LeaveChat(context.Background(), userID, "not-a-uuid")
@@ -118,7 +120,7 @@ func TestLeaveChat_RollbackOnSettingsDeleteError(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"
@@ -155,7 +157,7 @@ func TestLeaveChat_RaceMemberDeleted(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Инициализируем сервис. WSServer пока nil.
-	svc := chat.NewService(db, nil)
+	svc := chat.NewService(db, nil, nil)
 
 	chatID := "550e8400-e29b-41d4-a716-446655440002"
 	userID := "550e8400-e29b-41d4-a716-446655440003"

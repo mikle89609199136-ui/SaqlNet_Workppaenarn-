@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Аудит сообщений CraneApp — актуализация 18.09.2026</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #eef1f5;
+      --card: #fff;
+      --ink: #151b24;
+      --muted: #5d6878;
+      --line: #d7dde5;
+      --good: #176b4d;
+      --warn: #8a5a05;
+      --bad: #a82540;
+      --soft: #f5f7fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #11161d;
+        --card: #1a212b;
+        --ink: #edf1f6;
+        --muted: #a3adbc;
+        --line: #313b48;
+        --good: #67c9a0;
+        --warn: #e2b25e;
+        --bad: #ef8299;
+        --soft: #202935;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, sans-serif; }
+    main { max-width: 1080px; margin: auto; padding: clamp(20px, 5vw, 56px); }
+    header { border-bottom: 2px solid var(--ink); padding-bottom: 24px; margin-bottom: 38px; }
+    h1 { margin: 6px 0 12px; font-size: clamp(30px, 6vw, 52px); line-height: 1.05; }
+    h2 { margin: 42px 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    h3 { margin: 0 0 8px; font-size: 16px; }
+    p { max-width: 76ch; }
+    code { background: var(--soft); padding: 2px 5px; border-radius: 4px; }
+    .eyebrow, .meta { color: var(--muted); font: 12px/1.5 ui-monospace, monospace; }
+    .summary { font-size: 18px; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); padding: 18px; }
+    .card p { margin: 0; color: var(--muted); }
+    .done h3 { color: var(--good); }
+    .partial h3 { color: var(--warn); }
+    .missing h3 { color: var(--bad); }
+    .table { overflow-x: auto; border: 1px solid var(--line); }
+    table { width: 100%; min-width: 720px; border-collapse: collapse; background: var(--card); }
+    th, td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--soft); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: 0; }
+    .yes { color: var(--good); font-weight: 700; }
+    .part { color: var(--warn); font-weight: 700; }
+    .no { color: var(--bad); font-weight: 700; }
+    ol li { margin: 10px 0; }
+    footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Frontend + backend · статический аудит</div>
+    <h1>Сообщения CraneApp</h1>
+    <p class="summary">Актуальное состояние отправки, истории, realtime, действий над сообщениями и API-контрактов.</p>
+    <div class="meta">Первичный срез: 25.08.2026 / be44a9e · Актуализировано: 18.09.2026 / d93a9ab</div>
+  </header>
+
+  <section>
+    <h2>Краткий итог</h2>
+    <div class="grid">
+      <article class="card done">
+        <h3>Исправлено</h3>
+        <p>TanStack Query заменил вечный Map-кеш. Исправлены реакции realtime, pin/unpin cache, pagination, optimistic outbox, retry/cancel и смешивание чатов.</p>
+      </article>
+      <article class="card partial">
+        <h3>Работает частично</h3>
+        <p>Read receipts, edit timestamps, delete modes, forwarded attribution и media actions не закрывают весь MVP-контракт.</p>
+      </article>
+      <article class="card missing">
+        <h3>Не подключено</h3>
+        <p>Избранное и message search готовы на backend, но отсутствуют в frontend. Rich-text formatting отсутствует с обеих сторон как законченный контракт.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Статус возможностей</h2>
+    <div class="table">
+      <table>
+        <thead><tr><th>Возможность</th><th>Статус</th><th>Текущее состояние</th><th>Что осталось</th></tr></thead>
+        <tbody>
+          <tr><td>История и pagination</td><td class="yes">готово</td><td><code>useInfiniteQuery</code>, страницы по 50, отдельный query key на чат, сохранение scroll position.</td><td>E2E на очень длинной истории и плохой сети.</td></tr>
+          <tr><td>Отправка текста/медиа</td><td class="yes">готово</td><td>Optimistic outbox, uploading/pending/failed, ручный retry/cancel, auto retry с backoff.</td><td>Upload progress по байтам и offline persistence очереди.</td></tr>
+          <tr><td>Получение realtime</td><td class="yes">готово</td><td><code>new_message</code> расшифровывается и кладётся в query cache; reconnect догружает пропущенное.</td><td>Нагрузочные тесты нескольких вкладок/реплик backend.</td></tr>
+          <tr><td>Порядок и дубликаты</td><td class="yes">готово</td><td>Chronological sorting, cache helpers и тест входящего сообщения дважды.</td><td>Server/client idempotency key для повторной отправки после неизвестного результата.</td></tr>
+          <tr><td>Ответы</td><td class="yes">готово</td><td>Composer reply, preview и переход к исходному сообщению.</td><td>Проверка старых страниц/удалённого оригинала в E2E.</td></tr>
+          <tr><td>Редактирование</td><td class="part">частично</td><td>Свои сообщения, realtime invalidation, признак «изменено».</td><td>Показывать точное время изменения.</td></tr>
+          <tr><td>Удаление</td><td class="part">частично</td><td>Удаление своих, group selection, confirm dialog, realtime/cache update.</td><td>Нет «только у себя»; API делает удаление для всех. Нет batch transaction.</td></tr>
+          <tr><td>Реакции</td><td class="yes">готово с оговоркой</td><td>Add/remove/replace, optimistic update, защита от reordered responses, realtime чужих реакций.</td><td>Backend/UI не показывают список авторов реакции, только count + myReaction.</td></tr>
+          <tr><td>Закрепление</td><td class="part">частично</td><td>List/pin/unpin, query cache update, navigator к сообщению.</td><td>Нет режима «у себя»; реализован chat-wide pin.</td></tr>
+          <tr><td>Пересылка</td><td class="part">частично</td><td>Одно/несколько сообщений, текст/медиа; клиент расшифровывает и заново шифрует для target chat.</td><td>Текущий frontend обходит backend <code>/forward</code>, поэтому нет надёжной server attribution исходного автора; нет атомарной пачки.</td></tr>
+          <tr><td>Multi-select</td><td class="yes">готово с оговоркой</td><td>Select/toggle/cancel, copy/forward/delete, Escape и mobile actions.</td><td>Delete-for-self/all и batch endpoints.</td></tr>
+          <tr><td>Read receipts</td><td class="no">дефект контракта</td><td>Frontend отправляет IDs и локально ставит <code>isRead/status=read</code>.</td><td>Backend игнорирует <code>messageIds</code>, хранит только chat <code>last_read_at</code>; нет per-message readAt/delivery и законченных markers в bubble. Нет dedupe/batching подтверждённых IDs.</td></tr>
+          <tr><td>Избранное</td><td class="no">нет frontend</td><td>Backend list/add/remove и migration готовы.</td><td>Endpoints/service/actions/page/jump-to-original на frontend.</td></tr>
+          <tr><td>Поиск сообщений</td><td class="no">нет frontend</td><td><code>GET /messages/search</code> готов на backend/OpenAPI.</td><td>Endpoint constant, query, экран результатов и переход к сообщению.</td></tr>
+          <tr><td>Форматирование</td><td class="no">нет</td><td>Content renderer распознаёт только hashtag.</td><td>Versioned safe rich-text contract; нельзя принимать произвольный HTML.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Что изменилось с прошлого аудита</h2>
+    <div class="table">
+      <table>
+        <thead><tr><th>Старая находка</th><th>Статус сейчас</th></tr></thead>
+        <tbody>
+          <tr><td>Unpin передавал chatId вместо messageId в cache helper</td><td class="yes">Исправлено: единый query-cache helper <code>dropPinnedMessage</code>.</td></tr>
+          <tr><td>Первое сообщение не помечалось прочитанным из-за проверки index 0</td><td class="yes">Исправлено: старый Zustand flow удалён.</td></tr>
+          <tr><td>Свои реакции терялись, чужие не приходили realtime</td><td class="yes">Исправлено: optimistic patch + <code>reaction_updated</code> handler.</td></tr>
+          <tr><td>Pagination зависала после ошибки/смены чата</td><td class="yes">Исправлено: infinite query и <code>finally</code> для in-flight promise.</td></tr>
+          <tr><td>Нельзя снять/заменить реакцию</td><td class="yes">Исправлено.</td></tr>
+          <tr><td>Отправка без optimistic UI/retry</td><td class="yes">Исправлено: outbox statuses, retry и cancel.</td></tr>
+          <tr><td>Вечный Map-кеш MessageService</td><td class="yes">Исправлено: cache принадлежит TanStack Query.</td></tr>
+          <tr><td>Расхождение полей старого E2E payload</td><td class="yes">Неактуально: envelope v2.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Фактические endpoints</h2>
+    <div class="table">
+      <table>
+        <thead><tr><th>Метод и путь</th><th>Backend</th><th>Frontend</th><th>Комментарий</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /api/v2/messages/{chatId}</code></td><td class="yes">да</td><td class="yes">да</td><td>offset/limit history.</td></tr>
+          <tr><td><code>POST /api/v2/messages/{chatId}</code></td><td class="yes">да</td><td class="yes">да</td><td>Text/media/reply encrypted payload.</td></tr>
+          <tr><td><code>PUT /api/v2/messages/{messageId}</code></td><td class="yes">да</td><td class="yes">да</td><td>Edit own.</td></tr>
+          <tr><td><code>DELETE /api/v2/messages/{messageId}</code></td><td class="yes">да</td><td class="yes">да</td><td>Delete for all only.</td></tr>
+          <tr><td><code>POST /api/v2/messages/read</code></td><td class="part">частично</td><td class="part">частично</td><td>Request IDs не учитываются backend.</td></tr>
+          <tr><td><code>GET/POST /api/v2/messages/{id}/reactions</code></td><td class="yes">да</td><td class="yes">да</td><td>List/toggle.</td></tr>
+          <tr><td><code>GET/POST/DELETE /api/v2/chats/{chatId}/pins...</code></td><td class="yes">да</td><td class="yes">да</td><td>Chat-wide.</td></tr>
+          <tr><td><code>POST /api/v2/messages/{id}/forward</code></td><td class="yes">да</td><td class="no">нет</td><td>Frontend re-sends plaintext через обычный send для корректного E2E target key.</td></tr>
+          <tr><td><code>GET /api/v2/messages/search</code></td><td class="yes">да</td><td class="no">нет</td><td>Не подключён.</td></tr>
+          <tr><td><code>GET /api/v2/messages/favorites</code></td><td class="yes">да</td><td class="no">нет</td><td>Не подключён.</td></tr>
+          <tr><td><code>POST/DELETE /api/v2/messages/{id}/favorite</code></td><td class="yes">да</td><td class="no">нет</td><td>Не подключён.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Приоритет до MVP</h2>
+    <ol>
+      <li>Переделать read receipts: idempotent batch по message IDs, per-user/per-message <code>readAt</code>, realtime delivery/read и markers в UI.</li>
+      <li>Согласовать E2E forwarding contract: server endpoint не может копировать ciphertext между чатами; нужен client re-encryption с подписанной attribution metadata.</li>
+      <li>Добавить delete-for-self storage/API и выбор режима удаления.</li>
+      <li>Подключить готовые backend favorites и message search endpoints.</li>
+      <li>Зафиксировать rich-text data model до реализации toolbar/renderer.</li>
+      <li>Добавить idempotency key для send и batch contracts для multi-forward/delete.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Проверено по коду на commit <code>d93a9ab</code>. Frontend: 125 test files / 759 tests passed. Backend: <code>go test ./...</code> passed. Полный ручной E2E на развёрнутом окружении не выполнялся.</p>
+  </footer>
+</main>
+</body>
+</html>

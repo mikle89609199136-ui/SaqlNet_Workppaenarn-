@@ -16,14 +16,38 @@ x-secure: &secure [{ bearerAuth: [] }]
               - type: object
                 required: [file]
                 properties: { file: { type: string, description: Data URL }, fileName: { type: string } }
-              - type: object
-                required: [purpose, file]
-                properties:
-                  purpose: { type: string, enum: [message] }
-                  file: { type: object, required: [ciphertext], additionalProperties: true }
-    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '413': { $ref: '../components/responses.yaml#/Error' }, '415': { $ref: '../components/responses.yaml#/Error' } }
+              - $ref: '../components/schemas.yaml#/EncryptedMediaUploadRequest'
+    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '400': { $ref: '../components/responses.yaml#/Error' }, '413': { $ref: '../components/responses.yaml#/FileTooLarge' }, '415': { $ref: '../components/responses.yaml#/Error' } }
 /media/{uploadId}:
-  get: { tags: [Media], summary: Get media, operationId: getMedia, parameters: [{ name: uploadId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Encrypted media metadata and ciphertext, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, '307': { description: Redirect to object storage }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  parameters: [{ name: uploadId, in: path, required: true, schema: { type: string, format: uuid } }]
+  get:
+    tags: [Media]
+    summary: Download media
+    operationId: getMedia
+    parameters: [{ name: Range, in: header, required: false, schema: { type: string } }]
+    responses:
+      '200':
+        description: Media stream, or encrypted media metadata and ciphertext
+        headers:
+          Accept-Ranges: { schema: { type: string } }
+          Content-Length: { schema: { type: integer, format: int64 } }
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+          application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } }
+      '206': { description: Partial media stream }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '416': { description: Requested range is not satisfiable }
+      '502': { $ref: '../components/responses.yaml#/Error' }
+  head:
+    tags: [Media]
+    summary: Get media headers
+    operationId: headMedia
+    responses:
+      '200': { description: Media headers }
+      '206': { description: Partial media headers }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '416': { description: Requested range is not satisfiable }
+      '502': { $ref: '../components/responses.yaml#/Error' }
 /emojis:
   get: { tags: [Media], summary: List emoji, operationId: listEmojis, responses: { '200': { description: Emoji assets } } }
 /gifs:

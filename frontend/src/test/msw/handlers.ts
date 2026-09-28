@@ -18,6 +18,42 @@ export const defaultHandlers = [
     HttpResponse.json({ id: 'user-1', username: 'tester', firstName: 'Тестовый' })
   ),
 
+  http.get(api('/users/:userId/profile'), ({ params }) =>
+    HttpResponse.json({
+      user: {
+        id: params.userId,
+        username: 'tester',
+        firstName: 'Тестовый',
+        lastName: '',
+        avatarUrl: '',
+        bio: '',
+        isOnline: false,
+      },
+    })
+  ),
+  http.get(api('/users/:userId/status'), () =>
+    HttpResponse.json({ isOnline: false, lastSeen: '', lastSeenApprox: 'recently' })
+  ),
+
+  http.get(api('/users/check-username'), ({ request }) => {
+    const url = new URL(request.url);
+    const username = url.searchParams.get('username');
+    return HttpResponse.json({ available: username !== 'taken' });
+  }),
+
+  // Настройки и приватность сервер отдаёт одним ответом. Пустые объекты, а
+  // не выдуманные значения: раздел обязан работать на том, чего сервер не
+  // прислал, и тест, которому нужны конкретные настройки, задаёт их сам.
+  http.get(api('/users/settings'), () => HttpResponse.json({ settings: {}, privacy: {} })),
+
+  http.put(api('/users/settings'), async ({ request }) =>
+    HttpResponse.json({ settings: await request.json() })
+  ),
+
+  http.put(api('/users/privacy'), async ({ request }) =>
+    HttpResponse.json({ privacy: await request.json() })
+  ),
+
   http.get(api('/chats'), () => HttpResponse.json({ chats: [] })),
 
   http.get(api('/chats/:chatId'), ({ params }) =>
@@ -38,4 +74,23 @@ export const defaultHandlers = [
   http.post(api('/messages/read'), () => HttpResponse.json({ success: true })),
 
   http.post(api('/auth/public-key'), () => HttpResponse.json({ success: true })),
+
+  // Ключи шифрования: по умолчанию сервер пуст, как у нового аккаунта.
+  http.post(api('/encryption/keys'), () => HttpResponse.json({ ok: true })),
+
+  http.get(api('/encryption/keys/:userId'), () =>
+    HttpResponse.json({ code: 'key_not_found' }, { status: 404 })
+  ),
+
+  http.get(api('/encryption/chat-keys/:chatId'), () => HttpResponse.json({ keys: [] })),
+
+  http.post(api('/encryption/chat-keys/:chatId'), () => HttpResponse.json({ ok: true })),
+
+  http.post(api('/encryption/rotate-key/:chatId'), () => HttpResponse.json({ ok: true })),
+
+  http.get(api('/encryption/my-key/:chatId'), () =>
+    HttpResponse.json({ code: 'key_not_found' }, { status: 404 })
+  ),
+
+  http.get(api('/chats/:chatId/members'), () => HttpResponse.json({ members: [] })),
 ];

@@ -1,12 +1,15 @@
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { createApiClient } from '@/api/apiFactory';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
+import { createApiClient } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
 import { MessageService } from './MessageService';
+import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import type { IMessageEntity } from '@/shared/lib/richText';
 
 const TARGET_CHAT = 'chat-target';
 
@@ -21,41 +24,20 @@ function message(id: string, chatId: string, content: string): IMessageDto {
   } as IMessageDto;
 }
 
-// Заглушка шифрования: контент проходит насквозь. Настоящая криптография
-// проверяется в CryptoService.node.test.ts — здесь важна работа с историей.
+// Заглушка шифрования: содержимое проходит насквозь. Настоящая
+// криптография проверяется в src/crypto/*.node.test.ts.
 const passthroughCrypto = {
-  decryptDM: async (content: string) => content,
-  decryptGroup: async (_chatId: string, content: string) => content,
-  encryptDM: async (content: string) => content,
-  encryptGroup: async (_chatId: string, content: string) => content,
+  decryptMessage: async (_chatId: string, content: string) => ({ text: content }),
+  encryptMessage: async (_chatId: string, content: string) => content,
+  ensureChatKey: async () => ({ chatKey: null, membersWithoutIdentity: [] }),
 } as unknown as CryptoService;
 
 function createService() {
   return new MessageService(createApiClient(), passthroughCrypto);
 }
 
-/** Сервер отдаёт заданную историю и подтверждает пересылку. */
-function serveHistory(history: IMessageDto[]) {
-  server.use(
-    http.get(api(`/messages/${TARGET_CHAT}`), () => HttpResponse.json({ messages: history })),
-    http.post(api('/messages/:messageId/forward'), () =>
-      HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') })
-    )
-  );
-}
-
-describe('MessageService: история чата', () => {
-  let service: MessageService;
-
-  beforeEach(() => {
-    serveHistory([
-      message('old-1', TARGET_CHAT, 'первое'),
-      message('old-2', TARGET_CHAT, 'второе'),
-    ]);
-    service = createService();
-  });
-
-  it('should request history from the server on first open', async () => {
+describe('MessageService: загрузка истории', () => {
+  it('should ask the server for the requested page', async () => {
     let requestedUrl = '';
     server.use(
       http.get(api(`/messages/${TARGET_CHAT}`), ({ request }) => {
@@ -64,68 +46,154 @@ describe('MessageService: история чата', () => {
       })
     );
 
-    await service.getMessages(TARGET_CHAT);
+    await createService().fetchMessagesPage(TARGET_CHAT, 50, 50);
 
-    expect(new URL(requestedUrl).searchParams.get('offset')).toBe('0');
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get('offset')).toBe('50');
+    expect(params.get('limit')).toBe('50');
   });
 
-  it('should keep the target chat history after forwarding into it', async () => {
-    // Регрессия #174: пересылка в чат, который в этой сессии не открывали,
-    // подменяла всю его историю одним пересланным сообщением.
-    await service.forwardMessage('source-message', TARGET_CHAT);
+  it('should return messages in chronological order', async () => {
+    server.use(
+      http.get(api(`/messages/${TARGET_CHAT}`), () =>
+        HttpResponse.json({
+          messages: [
+            { ...message('newer', TARGET_CHAT, 'позже'), createdAt: '2026-08-24T12:00:00Z' },
+            { ...message('older', TARGET_CHAT, 'раньше'), createdAt: '2026-08-24T10:00:00Z' },
+          ],
+        })
+      )
+    );
 
-    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
+    const messages = await createService().fetchMessagesPage(TARGET_CHAT);
 
-    expect(ids).toContain('old-1');
-    expect(ids).toContain('old-2');
+    expect(messages.map((item) => item.id)).toEqual(['older', 'newer']);
   });
 
-  it('should keep both history and the forwarded message when the chat was open', async () => {
-    await service.getMessages(TARGET_CHAT);
-    await service.forwardMessage('source-message', TARGET_CHAT);
+  it('should return an empty list when the server has nothing', async () => {
+    server.use(http.get(api(`/messages/${TARGET_CHAT}`), () => HttpResponse.json({})));
 
-    const ids = (await service.getMessages(TARGET_CHAT)).map((item) => item.id);
+    expect(await createService().fetchMessagesPage(TARGET_CHAT)).toEqual([]);
+  });
+});
 
-    expect(ids).toContain('old-1');
-    expect(ids).toContain('old-2');
-    expect(ids).toContain('forwarded-1');
+/**
+ * Сервер отправки (#808): принимает пачку и отвечает сообщениями в том же
+ * порядке. Запоминает, что и сколькими запросами у него просили.
+ */
+function serveSend() {
+  const requests: Array<{ messages: Array<Record<string, unknown>> }> = [];
+  server.use(
+    http.post(api(`/messages/${TARGET_CHAT}`), async ({ request }) => {
+      const body = (await request.json()) as { messages: Array<Record<string, unknown>> };
+      requests.push(body);
+      return HttpResponse.json({
+        messages: body.messages.map((item, index) =>
+          message(`sent-${index}`, TARGET_CHAT, String(item.content ?? ''))
+        ),
+      });
+    })
+  );
+  return requests;
+}
+
+describe('MessageService: отправка пачкой (#808)', () => {
+  it('одно сообщение уходит пачкой из одного и возвращается расшифрованным', async () => {
+    const requests = serveSend();
+
+    const sent = await createService().sendMessage(TARGET_CHAT, '  обычное  ');
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({ content: 'обычное', type: 'text' });
+    expect(requests[0].messages[0]).not.toHaveProperty('forwardedFrom');
+    expect(sent).toMatchObject({ id: 'sent-0', content: 'обычное' });
   });
 });
 
 describe('MessageService: пересылка', () => {
-  it('should send the target chat in the request body', async () => {
-    let body: unknown = null;
-    server.use(
-      http.post(api('/messages/source-message/forward'), async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json({ message: message('forwarded-1', TARGET_CHAT, 'переслано') });
-      })
+  it('should send the message into the target chat as a new one', async () => {
+    // Серверная пересылка копировала шифртекст исходного чата, а ключи у
+    // чатов разные — в целевом такое сообщение не расшифровалось бы
+    // никогда. Поэтому текст шифруется заново, ключом целевого чата.
+    const requests = serveSend();
+
+    await createService().forwardMessages(TARGET_CHAT, [
+      message('source', 'chat-source', 'переслано'),
+    ]);
+
+    expect(requests[0].messages[0]).toMatchObject({ content: 'переслано', type: 'text' });
+  });
+
+  it('should tell the server which message is forwarded', async () => {
+    // Имя автора сервер подставит сам, проверив доступ: от клиента имя не
+    // принимается, передаётся только идентификатор (#358).
+    const requests = serveSend();
+
+    await createService().forwardMessages(TARGET_CHAT, [
+      message('source', 'chat-source', 'переслано'),
+    ]);
+
+    expect(requests[0].messages[0]).toMatchObject({ forwardedFrom: 'source' });
+    expect(requests[0].messages[0]).not.toHaveProperty('forwardedSenderName');
+  });
+
+  it('комментарий и пересланные уходят одним запросом, комментарий первым', async () => {
+    const requests = serveSend();
+
+    const delivered = await createService().forwardMessages(
+      TARGET_CHAT,
+      [message('first', 'chat-source', 'первое'), message('second', 'chat-source', 'второе')],
+      'смотри'
     );
 
-    await createService().forwardMessage('source-message', TARGET_CHAT);
-
-    expect(body).toEqual({ targetChatId: TARGET_CHAT });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages.map((item) => [item.content, item.forwardedFrom])).toEqual([
+      ['смотри', undefined],
+      ['первое', 'first'],
+      ['второе', 'second'],
+    ]);
+    expect(delivered.map((item) => item.content)).toEqual(['смотри', 'первое', 'второе']);
   });
-});
 
-describe('сторож открытого текста', () => {
-  it('should catch a plaintext body reaching the network', async () => {
-    // Проверка самого сторожа: он обязан замечать секрет в теле запроса.
-    // Если этот тест начнёт проходить молча, защита перестала работать.
-    const secret = secretText('пароль');
+  it('больше предела за раз не отправляет', async () => {
+    const requests = serveSend();
+    const tooMany = Array.from({ length: MAX_MESSAGES_PER_SEND }, (_, index) =>
+      message(`m-${index}`, 'chat-source', `сообщение ${index}`)
+    );
 
-    server.use(http.post(api('/probe'), () => HttpResponse.json({ ok: true })));
-    await createApiClient().post('/probe', { note: secret });
+    // С комментарием выходит на одно больше предела.
+    await expect(
+      createService().forwardMessages(TARGET_CHAT, tooMany, 'комментарий')
+    ).rejects.toThrow(/Не больше/);
+    expect(requests).toHaveLength(0);
+  });
 
-    const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
-    expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+  it('отказывается пересылать то, что не смог прочитать', async () => {
+    /* Пересылка идёт из ленты: если сообщение не расшифровалось, пересылать
+       нечего — уйдёт сама заглушка, и получатель увидит замок как текст.
+
+       Признак, а не текст: подпись заглушки переводится, и проверка по
+       ведущему замку сломалась бы вместе с переводом. */
+    const requests = serveSend();
+    const unreadable = {
+      ...message('source', 'chat-source', '🔒 Ключ шифрования недоступен'),
+      undecryptable: 'keyUnavailable' as const,
+    };
+
+    await expect(
+      createService().forwardMessages(TARGET_CHAT, [
+        message('readable', 'chat-source', 'читается'),
+        unreadable,
+      ])
+    ).rejects.toThrow(/не удалось расшифровать/);
+    // Пачка — всё или ничего: не уходит и читаемое.
+    expect(requests).toHaveLength(0);
   });
 });
 
 describe('MessageService: отметка о прочтении', () => {
   it('should confirm ids even when the chat was never loaded', async () => {
-    // При первом открытии чата внутренний кеш пуст. Раньше список
-    // подтверждённых строился из него — и отметка не доходила до интерфейса.
     server.use(http.post(api('/messages/read'), () => HttpResponse.json({ success: true })));
 
     const result = await createService().markAsRead(TARGET_CHAT, ['m-1', 'm-2']);
@@ -145,5 +213,235 @@ describe('MessageService: отметка о прочтении', () => {
     await createService().markAsRead(TARGET_CHAT, ['m-1']);
 
     expect(body).toEqual({ chatId: TARGET_CHAT, messageIds: ['m-1'] });
+  });
+});
+
+describe('сторож открытого текста', () => {
+  it('should catch a plaintext body reaching the network', async () => {
+    // Проверка самого сторожа: если он перестанет ловить утечку, это будет
+    // видно здесь, а не в тот день, когда утечка случится по-настоящему.
+    const secret = secretText('пароль');
+
+    server.use(http.post(api('/probe'), () => HttpResponse.json({ ok: true })));
+    await createApiClient().post('/probe', { note: secret });
+
+    const { assertNoPlaintextLeaked } = await import('@/test/msw/plaintextGuard');
+    expect(() => assertNoPlaintextLeaked()).toThrow(/Открытый текст ушёл на сервер/);
+  });
+});
+
+describe('MessageService: форматирование (#656)', () => {
+  const bold: IMessageEntity[] = [{ type: 'bold', offset: 0, length: 6 }];
+
+  afterEach(() => setChatResolver(null));
+
+  function sealingCrypto() {
+    const encryptMessage = vi.fn(
+      async (_chatId: string, content: string, entities: IMessageEntity[] = []) =>
+        `sealed(${content}|${JSON.stringify(entities)})`
+    );
+    const crypto = { ...passthroughCrypto, encryptMessage } as unknown as CryptoService;
+    return { service: new MessageService(createApiClient(), crypto), encryptMessage };
+  }
+
+  it('в шифрованном чате форматирование уходит внутри конверта, открытого поля нет', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    const sent = await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold, undefined);
+    expect(requests[0].messages[0]).not.toHaveProperty('entities');
+    expect(sent).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('в канале текст открытый — и форматирование тоже', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.sendMessage(TARGET_CHAT, 'привет', 'text', null, bold);
+
+    expect(encryptMessage).not.toHaveBeenCalled();
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пробелы по краям срезаются вместе со сдвигом форматирования', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'channel' }) as never);
+    const requests = serveSend();
+
+    await createService().sendMessage(TARGET_CHAT, '  привет  ', 'text', null, [
+      { type: 'bold', offset: 2, length: 6 },
+    ]);
+
+    expect(requests[0].messages[0]).toMatchObject({ content: 'привет', entities: bold });
+  });
+
+  it('пересылка сохраняет форматирование исходного сообщения', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    serveSend();
+    const { service, encryptMessage } = sealingCrypto();
+
+    await service.forwardMessages(TARGET_CHAT, [
+      { ...message('source', 'chat-source', 'привет'), entities: bold },
+    ]);
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, 'привет', bold, undefined);
+  });
+});
+
+/* Вложения — только из сервиса медиа (#871): любой другой адрес не
+   скачивается, даже если сообщение помечено зашифрованным. */
+describe('MessageService: адрес вложения', () => {
+  const media = (mediaUrl: string) =>
+    ({
+      ...message('m-media', TARGET_CHAT, ''),
+      type: 'voice',
+      metadata: { mediaUrl, mediaEncrypted: true },
+    }) as IMessageDto;
+
+  it.each([
+    'https://attacker.example/api/v2/media/00000000-0000-4000-8000-000000000000',
+    '/api/v2/users/me',
+    '/api/v2/media/not-a-uuid',
+    '//attacker.example/x',
+  ])('не скачивает %s', async (mediaUrl) => {
+    const requested = vi.fn();
+    server.events.on('request:start', requested);
+    try {
+      const patch = await createService().resolveMediaForDisplay(TARGET_CHAT, media(mediaUrl));
+
+      expect(patch).toMatchObject({ mediaUrl: null, mediaUnavailable: true });
+      expect(requested).not.toHaveBeenCalled();
+    } finally {
+      server.events.removeListener('request:start', requested);
+    }
+  });
+
+  it('скачивает загрузку сервиса медиа', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    const requested = vi.fn();
+    server.use(
+      http.get(api(`/media/${id}`), () => {
+        requested();
+        return HttpResponse.json({});
+      })
+    );
+
+    await createService().resolveMediaForDisplay(TARGET_CHAT, media(`/api/v2/media/${id}`));
+
+    expect(requested).toHaveBeenCalled();
+  });
+});
+
+/* Голосовое (#843): длительность и волна — только внутри шифровки. */
+describe('MessageService: голосовое', () => {
+  const voice = { durationMs: 7300, waveform: [1, 20, 31] };
+
+  afterEach(() => setChatResolver(null));
+
+  function voiceCrypto() {
+    const encryptMessage = vi.fn(async () => 'sealed-envelope');
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMessage,
+      encryptMedia: vi.fn(async () => ({
+        version: 2,
+        encrypted: true,
+        algorithm: 'AES-GCM',
+        iv: 'AAAAAAAAAAAAAAAA',
+        ciphertext: 'AAAA',
+        mimeType: 'audio/ogg; codecs=opus',
+        sizeBytes: 3,
+        keyEpoch: 1,
+      })),
+      decryptMedia: vi.fn(async () => new Blob(['ogg'])),
+    } as unknown as CryptoService;
+    return { service: new MessageService(createApiClient(), crypto), encryptMessage };
+  }
+
+  it('без подписи всё равно конверт, метаданных открытым полем нет', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    server.use(
+      http.post(api('/media'), () =>
+        HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-000000000009' })
+      )
+    );
+    const requests = serveSend();
+    const { service, encryptMessage } = voiceCrypto();
+
+    const sent = await service.sendMediaMessage(
+      TARGET_CHAT,
+      new Blob(['ogg'], { type: 'audio/ogg; codecs=opus' }),
+      'voice',
+      '',
+      null,
+      [],
+      voice
+    );
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+    const item = requests[0].messages[0];
+    expect(item).toMatchObject({ type: 'voice', content: 'sealed-envelope', isEncrypted: true });
+    expect(JSON.stringify(item)).not.toMatch(/7300|durationMs|waveform/);
+    expect(item).not.toHaveProperty('fileName');
+    // У себя пузырь сразу с метаданными.
+    expect(sent).toMatchObject({ voice });
+  });
+});
+
+describe('MessageService: пересылка голосового (#843)', () => {
+  afterEach(() => setChatResolver(null));
+
+  it('длительность и волна уезжают в конверт целевого чата', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    server.use(
+      http.post(api('/media'), () =>
+        HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-00000000000a' })
+      )
+    );
+    serveSend();
+    const encryptMessage = vi.fn(async () => 'sealed');
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMessage,
+      encryptMedia: vi.fn(async () => ({
+        version: 2,
+        encrypted: true,
+        algorithm: 'AES-GCM',
+        iv: 'AAAAAAAAAAAAAAAA',
+        ciphertext: 'AAAA',
+        mimeType: 'audio/ogg; codecs=opus',
+        sizeBytes: 3,
+        keyEpoch: 1,
+      })),
+      decryptMedia: vi.fn(async () => new Blob(['ogg'])),
+    } as unknown as CryptoService;
+    // Файл пересылаемого уже расшифрован и лежит по адресу blob: — отдаём его.
+    // Остальное — в тот fetch, что сейчас действует (его подменяет msw).
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) =>
+        String(input).startsWith('blob:')
+          ? Promise.resolve(new Response(new Blob(['ogg'])))
+          : originalFetch(input, init)
+      );
+    const voice = { durationMs: 9100, waveform: [4, 31] };
+    const original = {
+      ...message('m-voice', 'chat-source', ''),
+      type: 'voice',
+      mediaUrl: 'blob:local-voice',
+      voice,
+    } as IMessageDto;
+
+    try {
+      await new MessageService(createApiClient(), crypto).forwardMessages(TARGET_CHAT, [original]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
   });
 });

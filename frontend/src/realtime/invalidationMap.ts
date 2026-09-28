@@ -1,6 +1,6 @@
 import type { QueryKey } from '@tanstack/react-query';
-import { WS_EVENTS } from '@/consts';
-import { chatKeys } from '@/queries/keys';
+import { WS_EVENTS } from '@/shared/config';
+import { chatKeys } from '@/entities/chat';
 
 /**
  * Что устаревает при каждом событии сервера.
@@ -32,6 +32,14 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.MESSAGE.DELETED]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
 
+  // Пачка удалена у всех или скрыта у себя (#840). Обычно сообщения
+  // убираются из ленты на месте (useServerEvents); это — запасной путь.
+  [WS_EVENTS.MESSAGE.BATCH_DELETED]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
+
+  [WS_EVENTS.MESSAGE.HIDDEN]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
+
   [WS_EVENTS.REACTIONS.REACTION_UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId)] : [],
 
@@ -42,8 +50,21 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.CHAT.UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 
-  [WS_EVENTS.CHAT.ADD_MEMBER]: ({ chatId }) =>
+  [WS_EVENTS.CHAT.MEMBER_ADDED]: ({ chatId }) =>
     chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_REMOVED]: ({ chatId }) =>
+    chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
+
+  [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: ({ chatId }) => (chatId ? [chatKeys.members(chatId)] : []),
+
+  // Блокировка (#760): флаги чата и статус собеседника считает сервер —
+  // перечитываем личный чат и список.
+  [WS_EVENTS.USER.BLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
+
+  [WS_EVENTS.USER.UNBLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 };
 
 /**
@@ -55,7 +76,12 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
 export const IGNORED_EVENTS: string[] = [
   // Эфемерное состояние: живёт три секунды и не кешируется.
   WS_EVENTS.USER.TYPING,
-  // Служебные события транспорта.
+  // Статус кладётся в кеш прямо из события, без перезапроса —
+  // см. applyPresence.
+  WS_EVENTS.USER.PRESENCE,
+  // Служебные события транспорта. Восстановление связи таблице не
+  // подчиняется: там не инвалидация, а догрузка пропущенного —
+  // см. resyncAfterReconnect.
   WS_EVENTS.SOCKET.CONNECTED,
   WS_EVENTS.SOCKET.DISCONNECTED,
   WS_EVENTS.SOCKET.ERROR,
@@ -74,14 +100,6 @@ export const IGNORED_EVENTS: string[] = [
   WS_EVENTS.CALL.OFFER,
   WS_EVENTS.CALL.ANSWER,
   WS_EVENTS.CALL.ICE,
-  // Локальные события: их слушает только список чатов и они уйдут
-  // вместе с его переездом на запросы.
-  WS_EVENTS.MESSAGE.LOCAL.SENT,
-  WS_EVENTS.MESSAGE.LOCAL.EDITED,
-  WS_EVENTS.MESSAGE.LOCAL.DELETED,
-  WS_EVENTS.MESSAGE.LOCAL.READ,
-  WS_EVENTS.MESSAGE.LOCAL.PIN,
-  WS_EVENTS.MESSAGE.LOCAL.UNPIN,
 ];
 
 export function resolveInvalidations(eventType: string, payload: IEventPayload): QueryKey[] {

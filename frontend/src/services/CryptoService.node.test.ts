@@ -1,93 +1,103 @@
-import { STORAGE_KEYS } from '@/consts';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { ApiClient } from '@/api/ApiClient';
-import { CryptoService } from './CryptoService';
+import type { ApiClient } from '@/shared/api';
+import { useMemoryKeyStore } from '@/shared/crypto';
+import type { IEncryptedMedia } from '@/types';
+import {
+  CryptoService,
+  KEY_UNAVAILABLE_PLACEHOLDER,
+  LEGACY_MESSAGE_PLACEHOLDER,
+} from './CryptoService';
 
-// Суффикс .node.test.ts отправляет файл в окружение node: под jsdom
-// crypto.subtle.importKey падает с TypeError, потому что jsdom не признаёт
-// ArrayBuffer, созданный вне своего realm. localStorage приходит из
-// src/test/setup/node.ts, IndexedDB подменяется в createService.
-// Сама криптография настоящая — WebCrypto доступен нативно.
-function createService(accountId: string) {
+/**
+ * Разбор того, что пришло с сервера.
+ *
+ * Здесь проверяется не криптография, а поведение на негодных данных: они
+ * приходят снаружи, и приведение типа не спасает. Ошибиться нужно понятно
+ * и до начала криптографической операции, иначе «данные не те» выглядит
+ * как «файл не открылся».
+ */
+
+function createService(): CryptoService {
   const apiClient = {
-    post: async () => ({ data: {} }),
     get: async () => ({ data: {} }),
+    post: async () => ({ data: {} }),
   } as unknown as ApiClient;
 
-  const service = new CryptoService(apiClient);
-  const storage = new Map<string, unknown>();
-
-  service.initDB = async () => ({}) as IDBDatabase;
-  service.dbGet = async <T>(key: string) => storage.get(key) as T | undefined;
-  service.dbSet = async (key: string, value: unknown) => {
-    storage.set(key, value);
-  };
-
-  localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ id: accountId }));
-  return service;
+  return new CryptoService(apiClient);
 }
 
-async function readyService(accountId: string) {
-  const service = createService(accountId);
-  await service.init();
-  const publicKey = await service.exportPublicKey();
-  return { service, publicKey: publicKey! };
-}
+beforeEach(() => {
+  useMemoryKeyStore();
+  localStorage.clear();
+});
 
-describe('CryptoService', () => {
-  beforeEach(() => {
-    localStorage.clear();
+describe('разбор входящего сообщения', () => {
+  it('should leave plain text as it is', async () => {
+    // Каналы не шифруются, и их сообщения проходят насквозь.
+    const { text, senderVerified } = await createService().decryptMessage(
+      'chat-1',
+      'обычный текст',
+      'user-2'
+    );
+
+    expect(text).toBe('обычный текст');
+    expect(senderVerified).toBeUndefined();
   });
 
-  it('should decrypt own message after the peer replaced their key', async () => {
-    const alice = await readyService('alice');
-    const bobOld = await readyService('bob-old');
+  it('should refuse to read a message of the previous scheme', async () => {
+    // В прежнем формате ключ отправителя брался из самого сообщения: за
+    // подлинность такого текста никто не отвечает, поэтому он не читается.
+    const legacy = JSON.stringify({ e2e: true, iv: 'x', data: 'y' });
 
-    const payload = await alice.service.encryptDM('привет', bobOld.publicKey);
+    expect((await createService().decryptMessage('chat-1', legacy, 'user-2')).text).toBe(
+      LEGACY_MESSAGE_PLACEHOLDER
+    );
+  });
 
-    // Собеседник перевыпустил ключевую пару: сервер отдаёт уже новый ключ.
-    const bobNew = await readyService('bob-new');
+  it('should refuse to read the base64 that pretended to be group encryption', async () => {
+    expect(
+      (await createService().decryptMessage('chat-1', '[MLS]0YLQtdC60YHRgg==', 'u')).text
+    ).toBe(LEGACY_MESSAGE_PLACEHOLDER);
+  });
 
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ id: 'alice' }));
-    const decrypted = await alice.service.decryptDM(payload, bobNew.publicKey, {
-      preferEmbeddedSenderKey: false,
+  it('should say the key is missing instead of failing', async () => {
+    // Конверт нынешнего формата, но ключа этой эпохи на устройстве нет и
+    // взять его неоткуда: сообщение показывается заглушкой, а не роняет ленту.
+    localStorage.setItem('craneapp_user_data', JSON.stringify({ id: 'user-1' }));
+    const envelope = JSON.stringify({
+      v: 2,
+      e2e: true,
+      epoch: 7,
+      iv: 'AAECAwQFBgcICQoL',
+      data: 'c2hpZnJ0ZWtzdA==',
     });
 
-    expect(decrypted).toBe('привет');
+    expect((await createService().decryptMessage('chat-1', envelope, 'user-2')).text).toBe(
+      KEY_UNAVAILABLE_PLACEHOLDER
+    );
+  });
+});
+
+describe('разбор зашифрованного файла', () => {
+  it('should name the previous format by name', async () => {
+    const legacy = { encrypted: true, version: 1, algorithm: 'AES-GCM', iv: 'x', ciphertext: 'y' };
+
+    await expect(
+      createService().decryptMedia('chat-1', legacy as unknown as IEncryptedMedia)
+    ).rejects.toThrow(/устаревшем формате/);
   });
 
-  it('should decrypt an incoming message with the sender key from the payload', async () => {
-    const alice = await readyService('alice');
-    const bob = await readyService('bob');
+  it('should refuse a payload with fields missing', async () => {
+    const broken = { encrypted: true, version: 2, algorithm: 'AES-GCM' };
 
-    const payload = await alice.service.encryptDM('входящее', bob.publicKey);
-    const decrypted = await bob.service.decryptDM(payload, alice.publicKey);
-
-    expect(decrypted).toBe('входящее');
+    await expect(
+      createService().decryptMedia('chat-1', broken as unknown as IEncryptedMedia)
+    ).rejects.toThrow(/Ожидался зашифрованный файл/);
   });
 
-  it('should refuse to send plaintext when the peer has no key', async () => {
-    const alice = await readyService('alice');
-
-    await expect(alice.service.encryptDM('секрет', '')).rejects.toThrow(/нет ключа шифрования/);
-  });
-
-  it('should keep the public key unsent when the upload request fails', async () => {
-    const service = createService('alice');
-    let attempts = 0;
-
-    service['apiClient'] = {
-      post: async () => {
-        attempts += 1;
-        throw new Error('network down');
-      },
-    } as unknown as ApiClient;
-
-    await service.init();
-    await service.uploadPublicKey();
-
-    // Неудачная отправка не должна считаться выполненной: иначе собеседники
-    // останутся без ключа до перезагрузки вкладки.
-    expect(attempts).toBeGreaterThan(1);
+  it('should refuse something that is not a payload at all', async () => {
+    await expect(
+      createService().decryptMedia('chat-1', 'строка' as unknown as IEncryptedMedia)
+    ).rejects.toThrow(/Ожидался зашифрованный файл/);
   });
 });

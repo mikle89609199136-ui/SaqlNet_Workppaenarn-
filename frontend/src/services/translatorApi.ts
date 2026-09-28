@@ -1,5 +1,3 @@
-const translationCache = new Map();
-
 export function getPreferredLanguage(fallback = 'ru') {
   try {
     const raw = localStorage.getItem('craneapp_settings');
@@ -33,11 +31,6 @@ function rawGet(url: string) {
 
 export async function translateText(text: string) {
   const preferredLanguage = getPreferredLanguage();
-  const cacheKey = `${text}|${preferredLanguage}`;
-  if (translationCache.has(cacheKey)) {
-    return translationCache.get(cacheKey);
-  }
-
   const url = new URL('https://translate.googleapis.com/translate_a/single');
   url.searchParams.set('client', 'gtx');
   url.searchParams.set('sl', 'auto');
@@ -54,8 +47,5 @@ export async function translateText(text: string) {
     throw new Error('Translation provider returned no result');
   }
 
-  const result = { translatedText, targetLanguage: preferredLanguage, detectedSourceLang };
-  translationCache.set(cacheKey, result);
-
-  return result;
+  return { translatedText, targetLanguage: preferredLanguage, detectedSourceLang };
 }

@@ -1,29 +1,222 @@
 x-secure: &secure [{ bearerAuth: [] }]
+x-error: &error { $ref: '../components/responses.yaml#/Error' }
+
 /messages/read:
   post:
     tags: [Messages]
-    summary: Mark messages read
+    summary: Mark a chat as read
+    description: The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
     operationId: markMessagesRead
     security: *secure
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [chatId], properties: { chatId: { type: string, format: uuid }, messageIds: { type: array, items: { type: string, format: uuid } } } } } } }
-    responses: { '200': { description: Marked read } }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/MarkMessagesReadRequest' }
+    responses:
+      '200':
+        description: Chat marked as read
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Success' }
+      '400': *error
+      '403': *error
+
 /messages/search:
-  get: { tags: [Messages], summary: Search messages, operationId: searchMessages, security: *secure, parameters: [{ name: q, in: query, required: true, schema: { type: string } }, { name: limit, in: query, schema: { type: integer, default: 50 } }], responses: { '200': { description: Messages } } }
+  get:
+    tags: [Messages]
+    summary: Search messages
+    operationId: searchMessages
+    security: *secure
+    parameters:
+      - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+      - { name: limit, in: query, schema: { type: integer, default: 50 } }
+    responses:
+      '200':
+        description: Matching messages
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '400': *error
+      '500': *error
+
 /messages/favorites:
-  get: { tags: [Messages], summary: List favorite messages, operationId: listFavoriteMessages, security: *secure, parameters: [{ name: limit, in: query, schema: { type: integer, default: 50 } }, { name: offset, in: query, schema: { type: integer, default: 0 } }], responses: { '200': { description: Messages } } }
+  get:
+    tags: [Messages]
+    summary: List favorite messages
+    operationId: listFavoriteMessages
+    security: *secure
+    parameters:
+      - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+    responses:
+      '200':
+        description: Favorite messages
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '500': *error
+
 /messages/{id}:
-  parameters: [{ name: id, in: path, required: true, description: Chat ID for GET/POST; message ID for PUT/DELETE, schema: { type: string, format: uuid } }]
-  get: { tags: [Messages], summary: List messages in a chat, operationId: listMessages, security: *secure, parameters: [{ name: limit, in: query, schema: { type: integer, default: 50 } }, { name: offset, in: query, schema: { type: integer, default: 0 } }], responses: { '200': { description: Messages } } }
-  post: { tags: [Messages], summary: Send a message to a chat, operationId: sendMessage, security: *secure, requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/SendMessageRequest' } } } }, responses: { '200': { description: Sent message } } }
-  put: { tags: [Messages], summary: Edit a message, operationId: editMessage, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [content], properties: { content: { type: string } } } } } }, responses: { '200': { description: Edited message } } }
-  delete: { tags: [Messages], summary: Delete a message, operationId: deleteMessage, security: *secure, responses: { '200': { description: Deleted, content: { application/json: { schema: { type: object, required: [success, lastMessage], properties: { success: { type: boolean }, lastMessage: { nullable: true, allOf: [{ $ref: '../components/schemas.yaml#/Message' }] } } } } } } } }
-/messages/{messageId}/forward:
-  post: { tags: [Messages], summary: Forward a message, operationId: forwardMessage, security: *secure, parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [targetChatId], properties: { targetChatId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Forwarded message } } }
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Chat ID for GET/POST; message ID for PUT/DELETE.
+      schema: { type: string, format: uuid }
+  get:
+    tags: [Messages]
+    summary: List messages in a chat
+    operationId: listMessages
+    security: *secure
+    parameters:
+      - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+    responses:
+      '200':
+        description: Chat messages
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+  post:
+    tags: [Messages]
+    summary: Send messages to a chat
+    operationId: sendMessages
+    security: *secure
+    description: >-
+      Always a batch, even for one message (#808). Messages are stored in one
+      transaction in the given order: either all of them or none. A forward is
+      an item with forwardedFrom whose content the client has already
+      re-encrypted for this chat. An error about a particular item carries its
+      position in details.index. 403 member_muted when the sender is muted;
+      403 blocked_by_user when the other member of a private chat has blocked
+      the sender — nothing is stored or delivered. One new_message event per
+      message, in order, after the commit.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SendMessagesRequest' }
+    responses:
+      '201':
+        description: Sent messages, in the order of the request
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+  put:
+    tags: [Messages]
+    summary: Edit a message
+    operationId: editMessage
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/EditMessageRequest' }
+    responses:
+      '200':
+        description: Edited message
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Message' }
+      '400': *error
+      '404': *error
+      '500': *error
+  delete:
+    tags: [Messages]
+    summary: Delete a message for everyone
+    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    deprecated: true
+    operationId: deleteMessage
+    security: *secure
+    responses:
+      '200':
+        description: Message deleted
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/DeleteMessageResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+
 /messages/{messageId}/reactions:
-  parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
-  get: { tags: [Messages], summary: List reactions, operationId: listMessageReactions, security: *secure, responses: { '200': { description: Reactions } } }
-  post: { tags: [Messages], summary: Toggle a reaction, operationId: toggleMessageReaction, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [emoji], properties: { emoji: { type: string } } } } } }, responses: { '200': { description: Reaction state } } }
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  get:
+    tags: [Messages]
+    summary: List reactions
+    operationId: listMessageReactions
+    security: *secure
+    responses:
+      '200':
+        description: Aggregated reactions
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ReactionListResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+  post:
+    tags: [Messages]
+    summary: Toggle a reaction
+    operationId: toggleMessageReaction
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [emoji]
+            properties:
+              emoji: { type: string, minLength: 1 }
+    responses:
+      '200':
+        description: Updated reaction state
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ReactionToggleResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+
 /messages/{messageId}/favorite:
-  parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
-  post: { tags: [Messages], summary: Add message to favorites, operationId: favoriteMessage, security: *secure, responses: { '200': { description: Favorite state } } }
-  delete: { tags: [Messages], summary: Remove message from favorites, operationId: unfavoriteMessage, security: *secure, responses: { '200': { description: Favorite state } } }
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  post:
+    tags: [Messages]
+    summary: Toggle favorite state
+    description: The current backend toggles the state for both POST and DELETE and returns the resulting state.
+    operationId: favoriteMessage
+    security: *secure
+    responses:
+      '200':
+        description: Resulting favorite state
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/FavoriteStateResponse' }
+      '500': *error
+  delete:
+    tags: [Messages]
+    summary: Toggle favorite state
+    description: The current backend toggles the state for both POST and DELETE and returns the resulting state.
+    operationId: unfavoriteMessage
+    security: *secure
+    responses:
+      '200':
+        description: Resulting favorite state
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/FavoriteStateResponse' }
+      '500': *error

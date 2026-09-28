@@ -1,24 +1,276 @@
+x-secure: &secure [{ bearerAuth: [] }]
+x-error: &error { $ref: '../components/responses.yaml#/Error' }
+
 /encryption/keys:
   post:
     tags: [Encryption]
     summary: Upload a public encryption key
     operationId: uploadEncryptionKey
-    security: [{ bearerAuth: [] }]
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [publicKey, keyId], properties: { publicKey: { type: string }, keyId: { type: string }, pqPublicKey: { type: string } } } } } }
-    responses: { '200': { description: Key saved }, '400': { $ref: '../components/responses.yaml#/Error' } }
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/PublicEncryptionKey' }
+    responses:
+      '200':
+        description: Key saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+
 /encryption/keys/{userId}:
   get:
     tags: [Encryption]
     summary: Get a user's public encryption key
     operationId: getEncryptionKey
-    security: [{ bearerAuth: [] }]
-    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-    responses: { '200': { description: Public key }, '403': { $ref: '../components/responses.yaml#/Error' }, '404': { $ref: '../components/responses.yaml#/Error' } }
+    security: *secure
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Public key
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/PublicEncryptionKey' }
+      '403': *error
+      '404': *error
+
 /encryption/chat-keys/{chatId}:
-  parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }]
-  get: { tags: [Encryption], summary: Get encrypted chat keys, operationId: getChatKeys, security: [{ bearerAuth: [] }], responses: { '200': { description: Chat keys } } }
-  post: { tags: [Encryption], summary: Save encrypted chat keys, operationId: saveChatKeys, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Keys saved } } }
+  parameters:
+    - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+  get:
+    tags: [Encryption]
+    summary: Get encrypted chat keys
+    operationId: getChatKeys
+    security: *secure
+    responses:
+      '200':
+        description: Encrypted keys for chat members
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ChatKeysResponse' }
+      '403': *error
+  post:
+    tags: [Encryption]
+    summary: Save encrypted chat keys
+    description: >-
+      Accepts the current epoch (keys for members who lack a row) or the next
+      one (a new key for everyone, clears rotationNeeded). Written in one
+      transaction under a lock on the chat.
+    operationId: saveChatKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveChatKeysRequest' }
+    responses:
+      '200':
+        description: Keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '403': *error
+      '409':
+        description: >-
+          key_epoch_conflict — the epoch is neither current nor next, someone
+          already changed the key; key_rotation_required — membership changed,
+          the current key must not be handed out, publish the next epoch.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+
 /encryption/rotate-key/{chatId}:
-  post: { tags: [Encryption], summary: Rotate a chat key, operationId: rotateChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } } }, responses: { '200': { description: Key rotated } } }
+  post:
+    tags: [Encryption]
+    summary: Rotate a chat key
+    description: >-
+      Any member may rotate. Only the next epoch (current + 1) is accepted, in
+      one transaction under a lock on the chat; of two concurrent rotations the
+      second gets 409 and adopts the key of the first. Clears rotationNeeded.
+    operationId: rotateChatKey
+    security: *secure
+    parameters:
+      - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveChatKeysRequest' }
+    responses:
+      '200':
+        description: Key rotated
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyEpochResponse' }
+      '400': *error
+      '403': *error
+      '409':
+        description: key_epoch_conflict — the epoch is not current + 1, someone already rotated.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+      '429': *error
+
 /encryption/my-key/{chatId}:
-  get: { tags: [Encryption], summary: Get the current user's chat key, operationId: getMyChatKey, security: [{ bearerAuth: [] }], parameters: [{ name: chatId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: User chat key }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  get:
+    tags: [Encryption]
+    summary: Get the current user's chat key
+    operationId: getMyChatKey
+    security: *secure
+    parameters:
+      - { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Current user's encrypted chat key
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ChatEncryptedKey' }
+      '404': *error
+      '500': *error
+
+/encryption/signal/keys:
+  post:
+    tags: [Encryption]
+    summary: Register Signal identity, signed pre-key and one-time pre-keys
+    operationId: uploadSignalKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SignalKeysRequest' }
+    responses:
+      '200':
+        description: Signal keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '500': *error
+      '503': *error
+
+/encryption/signal/bundle/{userId}:
+  get:
+    tags: [Encryption]
+    summary: Get and consume a Signal pre-key bundle
+    description: When available, one one-time pre-key is atomically consumed by this request.
+    operationId: getSignalBundle
+    security: *secure
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Signal pre-key bundle
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/SignalPreKeyBundle' }
+      '404': *error
+      '500': *error
+
+/encryption/signal/prekeys:
+  post:
+    tags: [Encryption]
+    summary: Replenish Signal one-time pre-keys
+    operationId: replenishSignalPreKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SignalPreKeysRequest' }
+    responses:
+      '200':
+        description: One-time pre-keys saved
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/OkResponse' }
+      '400': *error
+      '500': *error
+
+/encryption/backup:
+  get:
+    tags: [Encryption]
+    summary: Get the key backup
+    description: >-
+      Opaque end-to-end key backup of the requester. The server never sees the
+      master key, the cloud password or any key inside. Not cacheable.
+    operationId: getKeyBackup
+    security: *secure
+    responses:
+      '200':
+        description: Key backup
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyBackup' }
+      '404': *error
+  put:
+    tags: [Encryption]
+    summary: Create or replace the key backup
+    description: >-
+      expectedVersion 0 creates the backup; any other value replaces it only if
+      it still has that version, otherwise 409 version_conflict.
+    operationId: putKeyBackup
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/PutKeyBackupRequest' }
+    responses:
+      '200':
+        description: Saved; the new version
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/KeyBackupVersionResponse' }
+      '400': *error
+      '409': *error
+  delete:
+    tags: [Encryption]
+    summary: Delete the key backup and every chat key in it
+    operationId: deleteKeyBackup
+    security: *secure
+    responses:
+      '204': { description: Deleted }
+
+/encryption/backup/chat-keys:
+  get:
+    tags: [Encryption]
+    summary: List backed-up chat keys
+    description: Pages through the requester's chat keys in (chatId, epoch) order. An empty next means the list is complete.
+    operationId: listBackupChatKeys
+    security: *secure
+    parameters:
+      - { name: chatId, in: query, schema: { type: string, format: uuid } }
+      - { name: after, in: query, description: 'Cursor from the previous page: chatId:epoch', schema: { type: string } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+    responses:
+      '200':
+        description: A page of chat keys
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/BackupChatKeysPage' }
+      '400': *error
+  post:
+    tags: [Encryption]
+    summary: Add chat keys to the backup
+    description: >-
+      An epoch already in the backup is left unchanged; keys of chats that no
+      longer exist are skipped.
+    operationId: saveBackupChatKeys
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/SaveBackupChatKeysRequest' }
+    responses:
+      '200':
+        description: How many keys were new
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/SaveBackupChatKeysResponse' }
+      '400': *error

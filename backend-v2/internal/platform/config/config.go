@@ -22,6 +22,19 @@ func Value(name, fallback string) string {
 	return fallback
 }
 
+func Bool(name string, fallback bool) bool {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		panic(fmt.Sprintf("environment variable %s must be a boolean, got %q", name, value))
+	}
+	return parsed
+}
+
 func PositiveFloat64(name string, fallback float64) float64 {
 	value := os.Getenv(name)
 
@@ -48,5 +61,14 @@ func PositiveInt(name string, fallback int) int {
 		panic(fmt.Sprintf("environment variable %s must be a positive integer, got %q", name, value))
 	}
 
+	return parsed
+}
+
+func RequiredPositiveInt64(name string) int64 {
+	value := Required(name)
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 {
+		panic(fmt.Sprintf("environment variable %s must be a positive integer, got %q", name, value))
+	}
 	return parsed
 }

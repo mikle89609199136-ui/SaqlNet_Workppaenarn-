@@ -1,6 +1,8 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func clearRateLimitEnvironment(t *testing.T) {
 	t.Helper()

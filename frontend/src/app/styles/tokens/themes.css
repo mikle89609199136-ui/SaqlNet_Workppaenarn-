@@ -1,0 +1,61 @@
+/* =============================================================
+   Слой 4. Темы.
+
+   Переопределяют ТОЛЬКО значения семантических имён. Ни одного
+   нового токена здесь заводиться не должно: если цвет объявлен
+   только внутри темы, в другой теме он просто не существует —
+   это классический способ получить чёрный текст на чёрном фоне.
+
+   Состояния два, и оба задаются атрибутом data-theme на <html>:
+
+     :root                  светлая (semantic.css)
+     [data-theme='dark']    тёмная
+
+   Нейтральные цвета здесь не упоминаются: их по теме и палитре
+   выбирает palette.css, и семантика ссылается на уже выбранное.
+   Здесь остаётся то, что от палитры не зависит, — акцент как текст,
+   состояния, подсветки.
+
+   Режима «как в системе» нет. Он был описан здесь раньше — через
+   prefers-color-scheme и :not([data-theme='light']), — но выбора
+   «системная» в интерфейсе не появилось, а атрибут проставлен всегда,
+   так что те правила не срабатывали ни разу. Мёртвый код, который
+   выглядит работающим, хуже отсутствующего.
+
+   Объявления идут обычными правилами, а не внутри @theme. Так и
+   надо: утилиты Tailwind ссылаются на var(), поэтому подмена
+   переменной в рантайме меняет весь интерфейс разом.
+   ============================================================= */
+
+:root[data-theme='dark'] {
+  --color-brand: var(--brand-hi);
+  /* На тёмном фоне десятой доли акцента не видно. */
+  --color-brand-soft: var(--brand-soft-dark);
+
+  --color-bubble-out: var(--bubble-out-dark);
+  --color-bubble-out-ink: var(--bubble-out-ink-dark);
+
+  --color-ok: var(--ok-dark);
+  --color-ok-soft: var(--ok-soft-dark);
+  --color-warn: var(--warn-dark);
+  --color-warn-soft: var(--warn-soft-dark);
+  --color-danger: var(--danger-dark);
+  --color-danger-soft: var(--danger-soft-dark);
+  --color-info: var(--info-dark);
+  --color-info-soft: var(--info-soft-dark);
+  --color-rec: var(--rec-dark);
+
+  --color-hover: var(--hover-dark);
+  --color-press: var(--press-dark);
+  --color-hl: var(--hl-dark);
+  --color-hl-current: var(--hl-current-dark);
+  --color-muted-badge: var(--muted-badge-dark);
+  --color-spoiler: var(--spoiler-dark);
+
+  --color-backdrop: var(--backdrop-dark);
+
+  --color-author-1: var(--author-1-dark);
+  --color-author-2: var(--author-2-dark);
+  --color-author-3: var(--author-3-dark);
+  --color-author-4: var(--author-4-dark);
+}
