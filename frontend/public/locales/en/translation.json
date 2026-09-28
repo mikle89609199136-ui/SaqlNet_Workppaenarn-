@@ -16,6 +16,7 @@
   "attachFile": "Attach a file",
   "attachmentTooLarge": "The file is too large. Maximum size is 100 MB.",
   "attachments": "Attachments",
+  "attachmentsLimit": "You can attach up to {{max}} files",
   "audioCall": "Voice call",
   "avatarReadError": "Could not read the image",
   "back": "Back",

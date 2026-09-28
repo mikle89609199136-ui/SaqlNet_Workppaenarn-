@@ -189,8 +189,8 @@ export function ChatThreadPage() {
 
           {!selectionMode && (
             <ChatThreadComposer
-              pendingAttachment={modals.pendingAttachment}
-              setPendingAttachment={modals.setPendingAttachment}
+              pendingAttachments={modals.pendingAttachments}
+              setPendingAttachments={modals.setPendingAttachments}
               selectionMode={selectionMode}
               bottomRef={bottomRef}
               attachmentInputRef={attachmentInputRef}
