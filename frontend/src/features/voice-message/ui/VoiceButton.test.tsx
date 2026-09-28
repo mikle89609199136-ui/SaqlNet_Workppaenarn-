@@ -147,6 +147,109 @@ describe('кнопка голосового', () => {
     expect(recorder.preload).toHaveBeenCalledTimes(2);
   });
 
+  describe('замок и круг (касание — как в Telegram)', () => {
+    const lock = () => document.querySelector<HTMLElement>('[data-lock]');
+    const circle = () => document.querySelector<HTMLElement>('[data-voice-circle]');
+    const shackle = () => document.querySelector<SVGElement>('[data-shackle]');
+    const pressWith = (pointerType: string) =>
+      fireEvent.pointerDown(mic(), {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+        pointerType,
+      });
+
+    function renderLive() {
+      const { recorder, state } = makeRecorder();
+      const onRecorded = vi.fn();
+      const ui = (status: IVoiceRecorderState['status'], levels: number[] = []) => (
+        <I18nextProvider i18n={testI18n}>
+          <VoiceButton
+            onRecorded={onRecorded}
+            recorder={recorder}
+            state={{ ...state, status, levels }}
+          />
+        </I18nextProvider>
+      );
+      const view = render(ui('idle'));
+      return {
+        recorder,
+        onRecorded,
+        show: (status: IVoiceRecorderState['status'], levels?: number[]) =>
+          view.rerender(ui(status, levels)),
+      };
+    }
+
+    it('мышь: ни круга, ни замка — ни при записи, ни после закрепления', () => {
+      const { show } = renderLive();
+      pressWith('mouse');
+      show('recording');
+      expect(lock()).toBeNull();
+      expect(circle()).toBeNull();
+
+      show('locked');
+      expect(lock()).toBeNull();
+      expect(circle()).toBeNull();
+    });
+
+    it('палец: большой круг и приоткрытый замок; дужка опускается за пальцем', () => {
+      const { show } = renderLive();
+      pressWith('touch');
+      show('recording');
+      expect(circle()?.dataset.voiceCircle).toBe('recording');
+      expect(lock()?.dataset.lock).toBe('open');
+      expect(shackle()?.style.transform).toBe('translateY(-3px)');
+
+      fireEvent.pointerMove(mic(), { pointerId: 1, clientX: 100, clientY: 68 });
+      expect(shackle()?.style.transform).toBe('translateY(-1.5px)');
+    });
+
+    it('палец: кольцо вокруг круга дышит громкостью, круг едет влево за пальцем', () => {
+      const { show } = renderLive();
+      pressWith('touch');
+      show('recording', [0, 1]);
+      const ring = document.querySelector<HTMLElement>('[data-voice-ring]');
+      expect(ring?.style.transform).toBe('scale(1.45)');
+
+      fireEvent.pointerMove(mic(), { pointerId: 1, clientX: 60, clientY: 100 });
+      expect(circle()?.style.transform).toBe('translateX(-40px)');
+    });
+
+    it('палец: закрепили — круг становится «Отправить», замок закрыт', async () => {
+      const { recorder, show, onRecorded } = renderLive();
+      pressWith('touch');
+      show('recording');
+      fireEvent.pointerMove(mic(), { pointerId: 1, clientX: 100, clientY: 20 });
+      expect(recorder.lock).toHaveBeenCalled();
+
+      show('locked');
+      expect(circle()?.dataset.voiceCircle).toBe('send');
+      expect(lock()?.dataset.lock).toBe('locked');
+      expect(shackle()?.style.transform).toBe('translateY(0px)');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Отправить голосовое' }));
+      await vi.waitFor(() => expect(onRecorded).toHaveBeenCalledWith(recording));
+    });
+
+    it('палец: пока голосовое отправляется, круг не нажимается повторно', () => {
+      const { show } = renderLive();
+      pressWith('touch');
+      show('stopping');
+      expect(screen.getByRole('button', { name: 'Отправить голосовое' })).toBeDisabled();
+    });
+
+    it('клавиатура после касания — ни круга, ни замка', () => {
+      const { show } = renderLive();
+      pressWith('touch');
+      show('idle');
+      fireEvent.click(mic(), { detail: 0 });
+      show('locked');
+      expect(lock()).toBeNull();
+      expect(circle()).toBeNull();
+    });
+  });
+
   it('правая кнопка и повторное нажатие во время записи ничего не начинают', () => {
     const { recorder } = renderButton();
     fireEvent.pointerDown(mic(), { button: 2, pointerId: 1, clientX: 1, clientY: 1 });

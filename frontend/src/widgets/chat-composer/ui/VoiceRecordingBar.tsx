@@ -103,27 +103,3 @@ export function VoiceRecordingBar({
     </div>
   );
 }
-
-/**
- * Замок над кнопкой записи — «смахните вверх, чтобы не держать» (#821).
- * Поднимается вслед за пальцем; дошёл до верха — запись закреплена.
- */
-export function VoiceLockHint({ progress = 0 }: { progress?: number }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="absolute bottom-14.5 left-0 flex h-23 w-10 flex-col items-center justify-between rounded-window border border-divider bg-menu pt-2.75 pb-2.25 shadow-[var(--shadow-menu)]"
-      style={{ transform: `translateY(${-Math.min(1, Math.max(0, progress)) * 36}px)` }}
-    >
-      <Icon
-        className={cn('size-4.5 stroke-2', progress >= 1 ? 'text-brand' : 'text-ink-2')}
-        name="lock"
-      />
-      {/* Подпрыгивает обёртка, а не сама стрелка: анимация меняет transform
-          и перетёрла бы её поворот. */}
-      <span className="flex animate-[lock-bounce_1s_ease-in-out_infinite] motion-reduce:animate-none">
-        <Icon className="size-4 rotate-180 stroke-[2.2px] text-ink-3" name="chevronDown" />
-      </span>
-    </div>
-  );
-}
