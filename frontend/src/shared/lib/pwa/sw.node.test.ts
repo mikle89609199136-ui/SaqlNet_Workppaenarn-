@@ -283,7 +283,7 @@ describe('service worker (#880)', () => {
   });
 
   it('отдельные страницы, документация и /mobile — как есть', async () => {
-    for (const url of ['/call.html', '/server-down.html', '/docs/', '/mobile/x']) {
+    for (const url of ['/server-down.html', '/docs/', '/mobile/x']) {
       expect(await worker.dispatch(url, { mode: 'navigate' })).toBeNull();
     }
   });

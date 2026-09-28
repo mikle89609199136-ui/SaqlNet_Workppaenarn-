@@ -24,3 +24,4 @@ export {
   type IEmojiCategory,
   type TEmojiCategoryKey,
 } from './emoji';
+export { CALLS_ENABLED } from './calls';

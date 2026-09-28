@@ -1,4 +1,5 @@
 import { Spinner } from '@/shared/ui';
+import { CALLS_ENABLED } from '@/shared/config';
 import { useCall } from '@/features/call';
 import { useProfileEdit } from '../model/useProfileEdit';
 import {
@@ -26,6 +27,8 @@ export interface IProfileActionsTarget {
 
 interface Props {
   profileState: IProfileState;
+  /** Показывать ли звонок: пока звонки выключены (#776 → #774) — нет. */
+  callsEnabled?: boolean;
   onClose: () => void;
   /**
    * Действия с чужим профилем — сейчас блокировка (#727). Приходят от
@@ -45,7 +48,16 @@ interface Props {
 }
 
 export const UserProfilePanel = memo(
-  ({ profileState, onClose, renderActions, onBack, backLabel, onEdit, bar = true }: Props) => {
+  ({
+    profileState,
+    callsEnabled = CALLS_ENABLED,
+    onClose,
+    renderActions,
+    onBack,
+    backLabel,
+    onEdit,
+    bar = true,
+  }: Props) => {
     const { t } = useTranslation();
     const now = useNow();
     const { initiateCall } = useCall();
@@ -142,8 +154,12 @@ export const UserProfilePanel = memo(
           hasChat={Boolean(chat) && !chat?.isBlockedByPeer && !chat?.isPeerBlocked}
           isMyProfile={isMyProfile}
           isPeerOnline={isPeerOnline}
-          onCall={(kind) =>
-            chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
+          onCall={
+            callsEnabled
+              ? (kind) =>
+                  chat &&
+                  initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
+              : undefined
           }
           onStartEdit={onEdit ?? startEdit}
           profileSubtitle={profileSubtitle}
