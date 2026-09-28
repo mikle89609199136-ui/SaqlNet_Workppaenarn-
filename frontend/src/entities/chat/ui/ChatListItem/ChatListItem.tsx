@@ -147,8 +147,11 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
                   aria-label={statusLabel[status]}
                   className={cn(
                     'flex',
-                    status === 'read' ? 'text-brand' : 'text-ink-3',
-                    onCurrentRow
+                    /* На открытом чате строка залита акцентом — там цвета
+                       те же, что у галочек своего пузыря (#657). */
+                    status === 'read'
+                      ? 'text-brand group-aria-[current=page]:text-out-read'
+                      : 'text-ink-3 group-aria-[current=page]:text-out-tick'
                   )}
                   data-receipt={status}
                   role="img"

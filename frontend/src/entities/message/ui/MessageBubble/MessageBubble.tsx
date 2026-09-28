@@ -203,7 +203,7 @@ export const MessageBubble = memo(
     const failed = mine && message.status === 'failed';
 
     /* Статус своего сообщения (#657): часы — пока уходит, одна галочка —
-       отправлено, две приглушённые — доставлено, две яркие — прочитано.
+       отправлено, две приглушённые — доставлено, две цветные — прочитано.
        Доставку и прочтение сообщает сервер; показываются они только в
        личном чате — в группе у них нет одного значения. */
     const sending = message.status === 'pending' || message.status === 'uploading';
@@ -244,7 +244,7 @@ export const MessageBubble = memo(
         {delivery && (
           <span
             aria-label={deliveryLabel[delivery]}
-            className="flex data-[delivery=delivered]:opacity-60"
+            className="flex data-[delivery=delivered]:text-out-tick data-[delivery=read]:text-out-read data-[delivery=sent]:text-out-tick"
             data-delivery={delivery}
             role="img"
           >
