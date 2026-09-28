@@ -75,7 +75,10 @@ async function handleAsset(request) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetch(request);
-  if (response.ok) {
+  // Страница приложения вместо файла (старый сервер отдавал её на любой
+  // отсутствующий путь) — не файл сборки: в кеш под его именем — нельзя.
+  const isPage = (response.headers.get('content-type') || '').includes('text/html');
+  if (response.ok && !isPage) {
     await cache.put(request, response.clone());
     await trimAssets();
   }
