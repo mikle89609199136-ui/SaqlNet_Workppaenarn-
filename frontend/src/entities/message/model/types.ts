@@ -77,6 +77,12 @@ export interface IMessageDto {
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
   /** Длительность и волна голосового (#843): из шифрованного конверта. */
   voice?: IVoiceMeta;
+  /**
+   * Своё сообщение (#657): когда собеседник его получил и прочитал — время
+   * сервера. Нет поля — ещё нет.
+   */
+  deliveredAt?: string;
+  readAt?: string;
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   /** Статус доставки/отправки сообщения (#552 Outbox) */

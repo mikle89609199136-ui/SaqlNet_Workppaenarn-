@@ -1,7 +1,7 @@
 import type { IRichTextInputHandle } from '@/shared/ui';
 import { ContextMenu, Icon, NotoEmoji } from '@/shared/ui';
 import { QUICK_REACTIONS } from '@/shared/config';
-import { cn } from '@/shared/lib';
+import { cn, formatReceipt } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
 import { pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
@@ -72,6 +72,11 @@ interface Props {
   onSelection: (message: IMessageDto) => void;
   draftRef?: RefObject<IRichTextInputHandle | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
+  /**
+   * Первой строкой — когда своё сообщение доставлено или прочитано (#657).
+   * Только в личном чате: в группе у этого нет одного значения.
+   */
+  showReceipt?: boolean;
 }
 
 interface IActionButton {
@@ -88,6 +93,7 @@ export const MessageActionsPopover = ({
   onSelection,
   draftRef,
   setIsForwardModalOpen,
+  showReceipt = false,
 }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
@@ -111,6 +117,7 @@ export const MessageActionsPopover = ({
   const myReaction = message.reactions?.find((reaction) => reaction.myReaction)?.emoji;
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
+  const receipt = mine && showReceipt ? formatReceipt(message, t) : null;
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -203,6 +210,17 @@ export const MessageActionsPopover = ({
       x={actionMenu?.x}
       y={actionMenu?.y}
     >
+      {receipt && (
+        <div
+          aria-label={receipt}
+          className="mb-1 flex items-center gap-1.5 border-b border-divider px-2 pt-1 pb-1.75 text-meta text-ink-3"
+          role="group"
+        >
+          <Icon aria-hidden="true" className="size-4 shrink-0 stroke-2" name="checkCheck" />
+          <span aria-hidden="true">{receipt}</span>
+        </div>
+      )}
+
       {/* Реакции идут рядом, а не столбиком: их шесть, они короткие, и
           выбирают из них глазами, а не по названию. Роль у каждой та же,
           что у обычного пункта, — иначе стрелки перескакивали бы через

@@ -150,6 +150,7 @@ export function ChatThreadPage() {
                 onSelection={toggleMessageSelection}
                 draftRef={draftRef}
                 setIsForwardModalOpen={modals.setIsForwardModalOpen}
+                showReceipt={chat?.type === 'private'}
               />
             </>
           )}

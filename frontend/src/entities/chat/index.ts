@@ -13,3 +13,4 @@ export * from './model/chatResolver';
 export * from './model/chatResolverBridge';
 export * from './model/chatKeys';
 export * from './ui/ChatListItem';
+export * from './model/chatListReceipts';
