@@ -12,6 +12,12 @@ const BUILD_ID = 'test';
 const PRECACHE_URLS = ['/assets/main-a.js', '/assets/main-a.css', '/locales/ru/translation.json'];
 
 type Listener = (event: any) => void;
+
+interface FakeWindow {
+  url: string;
+  focus: ReturnType<typeof vi.fn>;
+  postMessage: ReturnType<typeof vi.fn>;
+}
 type FetchMock = ReturnType<typeof vi.fn<(request: Request) => Promise<Response>>>;
 
 const keyOf = (request: Request | string) =>
@@ -64,7 +70,12 @@ function loadWorker() {
     location: new URL(ORIGIN),
     addEventListener: (type: string, listener: Listener) => (listeners[type] = listener),
     skipWaiting: vi.fn(async () => undefined),
-    clients: { claim: vi.fn(async () => undefined) },
+    clients: {
+      claim: vi.fn(async () => undefined),
+      matchAll: vi.fn(async (): Promise<FakeWindow[]> => []),
+      openWindow: vi.fn(async () => null),
+    },
+    registration: { showNotification: vi.fn(async () => undefined) },
   };
   // Файл worker выполняется как есть; глобальные — поддельные.
   new Function('self', 'caches', 'fetch', 'BUILD_ID', 'PRECACHE_URLS', source)(
@@ -88,7 +99,24 @@ function loadWorker() {
     listeners[type]({ waitUntil: (p: Promise<unknown>) => (waited = p) });
     await waited;
   }
-  return { dispatch, lifecycle, stores, fetchMock, self };
+  /** Прислать push с таким содержимым. */
+  async function push(data: unknown) {
+    let waited: Promise<unknown> = Promise.resolve();
+    listeners.push({
+      data: { json: () => data },
+      waitUntil: (p: Promise<unknown>) => (waited = p),
+    });
+    await waited;
+  }
+  /** Нажать на уведомление, открывающее url. */
+  async function click(url: string) {
+    let waited: Promise<unknown> = Promise.resolve();
+    const notification = { data: { url }, close: vi.fn() };
+    listeners.notificationclick({ notification, waitUntil: (p: Promise<unknown>) => (waited = p) });
+    await waited;
+    return notification;
+  }
+  return { dispatch, lifecycle, stores, fetchMock, self, push, click };
 }
 
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html' } });
@@ -209,5 +237,103 @@ describe('service worker (#880)', () => {
 
     expect([...worker.stores.keys()].sort()).toEqual(['craneapp-assets-test', 'other-app']);
     expect(worker.self.clients.claim).toHaveBeenCalled();
+  });
+
+  describe('push-уведомления (#882)', () => {
+    const shown = () =>
+      worker.self.registration.showNotification.mock.calls as unknown as [string, any][];
+
+    it('личное сообщение: имя и «Новое сообщение», одно уведомление на чат', async () => {
+      await worker.push({
+        v: 1,
+        kind: 'message',
+        chatId: 'c1',
+        chatType: 'private',
+        actorName: 'Игорь',
+        lang: 'ru',
+      });
+
+      const [title, options] = shown()[0];
+      expect(title).toBe('Игорь');
+      expect(options.body).toBe('Новое сообщение');
+      expect(options.tag).toBe('chat:c1');
+      expect(options.renotify).toBe(true);
+      expect(options.data.url).toBe('/chats/c1');
+    });
+
+    it('группа: название группы, кто написал; язык получателя', async () => {
+      await worker.push({
+        v: 1,
+        kind: 'message',
+        chatId: 'g1',
+        chatType: 'group',
+        chatTitle: 'Команда',
+        actorName: 'Oleg',
+        lang: 'en',
+      });
+      const [title, options] = shown()[0];
+      expect(title).toBe('Команда');
+      expect(options.body).toBe('Oleg: New message');
+    });
+
+    it('входящий звонок держится на экране; пропущенный заменяет его тем же тегом', async () => {
+      await worker.push({
+        v: 1,
+        kind: 'call',
+        chatId: 'c1',
+        chatType: 'private',
+        actorName: 'Игорь',
+        roomId: 'r1',
+        callKind: 'video',
+        lang: 'ru',
+      });
+      await worker.push({
+        v: 1,
+        kind: 'missed_call',
+        chatId: 'c1',
+        chatType: 'private',
+        actorName: 'Игорь',
+        roomId: 'r1',
+        lang: 'ru',
+      });
+
+      const [[callTitle, call], [, missed]] = shown();
+      expect(callTitle).toBe('Игорь');
+      expect(call.body).toBe('Входящий видеозвонок');
+      expect(call.requireInteraction).toBe(true);
+      expect(missed.body).toBe('Пропущенный звонок');
+      expect(missed.tag).toBe(call.tag);
+      expect(missed.requireInteraction).toBe(false);
+    });
+
+    it('пустой или битый push — всё равно уведомление: iOS иначе отберёт разрешение', async () => {
+      await worker.push(undefined);
+      expect(shown()).toHaveLength(1);
+      expect(shown()[0][0]).toBe('CraneApp');
+    });
+
+    it('нажатие: открытое приложение — переход внутри него, без перезагрузки', async () => {
+      const open: FakeWindow = {
+        url: ORIGIN + '/chats',
+        focus: vi.fn(async () => open),
+        postMessage: vi.fn(),
+      };
+      worker.self.clients.matchAll.mockResolvedValueOnce([open]);
+
+      const notification = await worker.click('/chats/c1');
+
+      expect(notification.close).toHaveBeenCalled();
+      expect(open.postMessage).toHaveBeenCalledWith({
+        type: 'craneapp:navigate',
+        url: '/chats/c1',
+      });
+      expect(open.focus).toHaveBeenCalled();
+      expect(worker.self.clients.openWindow).not.toHaveBeenCalled();
+    });
+
+    it('нажатие: приложение закрыто — новое окно на нужном чате', async () => {
+      await worker.click('/chats/c1');
+      expect(worker.self.clients.openWindow).toHaveBeenCalledWith('/chats/c1');
+    });
   });
 });

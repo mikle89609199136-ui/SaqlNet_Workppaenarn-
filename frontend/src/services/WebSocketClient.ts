@@ -146,7 +146,7 @@ export class WebSocketClient {
 
   handleOpen() {
     this.reconnectAttempts = 0;
-    eventBus.emit('socket:connected');
+    eventBus.emit('socket:connected', undefined);
   }
 
   handleMessage(event) {
@@ -188,7 +188,7 @@ export class WebSocketClient {
     if (this.socket !== socket) return;
 
     this.socket = null;
-    eventBus.emit('socket:disconnected');
+    eventBus.emit('socket:disconnected', undefined);
 
     this.scheduleReconnect();
   }
