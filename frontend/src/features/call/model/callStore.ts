@@ -59,7 +59,9 @@ interface CallStoreState {
 function postHangup(frame: HTMLIFrameElement | null): void {
   try {
     frame?.contentWindow?.postMessage({ type: 'crane_hangup' }, '*');
-  } catch {}
+  } catch {
+    // Ignore cross-origin frame postMessage errors
+  }
 }
 
 function formatCallerName(
