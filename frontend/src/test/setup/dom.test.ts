@@ -35,7 +35,7 @@ describe('окружение jsdom', () => {
 describe('сброс глобального состояния', () => {
   it('should accept state written by a test', () => {
     useChatUiStore.getState().setError('ошибка из первого теста');
-    useProfileStore.getState().setToken('токен из первого теста');
+    useProfileStore.getState().setUser({ id: 'user-from-first-test' } as never);
     eventBus.on('new_message', () => {});
     localStorage.setItem('craneapp_probe', 'значение');
 
@@ -44,7 +44,7 @@ describe('сброс глобального состояния', () => {
 
   it('should not leak that state into the next test', () => {
     expect(useChatUiStore.getState().error).toBe('');
-    expect(useProfileStore.getState().token).toBe('');
+    expect(useProfileStore.getState().user).toBeNull();
     expect(localStorage.getItem('craneapp_probe')).toBeNull();
 
     // Подписка предыдущего теста снята: обработчик не вызывается.

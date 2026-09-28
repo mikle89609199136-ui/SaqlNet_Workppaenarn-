@@ -11,9 +11,9 @@ import { clearAuthSession } from '@/features/auth';
 import { settingsSectionRoutes } from '@/pages/settings/settingsSectionRoutes';
 
 async function requireSession({ request }: { request: Request }) {
-  const token = useProfileStore.getState().token;
+  const signedIn = useProfileStore.getState().isAuth;
   const from = new URL(request.url).pathname;
-  if (!token) {
+  if (!signedIn) {
     throw redirect(`${REACT_ROUTES.LOGIN}?from=${encodeURIComponent(from)}`);
   }
 
@@ -50,14 +50,12 @@ async function requireSession({ request }: { request: Request }) {
 }
 
 function redirectIfAuthed() {
-  const token = useProfileStore.getState().token;
-  if (token) throw redirect(REACT_ROUTES.CHATS);
+  if (useProfileStore.getState().isAuth) throw redirect(REACT_ROUTES.CHATS);
   return null;
 }
 
 function redirectHome() {
-  const token = useProfileStore.getState().token;
-  return redirect(token ? REACT_ROUTES.CHATS : REACT_ROUTES.LOGIN);
+  return redirect(useProfileStore.getState().isAuth ? REACT_ROUTES.CHATS : REACT_ROUTES.LOGIN);
 }
 
 /**

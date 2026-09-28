@@ -186,7 +186,7 @@ func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 	dial := func() *websocket.Conn {
-		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?token=tok", nil)
+		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", http.Header{"Authorization": {"Bearer tok"}})
 		require.NoError(t, err)
 		return conn
 	}

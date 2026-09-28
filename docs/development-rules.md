@@ -35,8 +35,11 @@ npm run e2e              # playwright, тестов пока нет (#277)
 Стенд целиком:
 
 ```bash
-# ALLOWED_ORIGINS обязателен, иначе compose падает на интерполяции
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
+# ALLOWED_ORIGINS обязателен, иначе compose падает на интерполяции.
+# Адреса, с которых открывается клиент (dev-сервер, `vite preview` на :4173),
+# должны быть в списке: сессия — в cookie (#705), и меняющие данные запросы
+# и сокет с ней принимаются только с перечисленных адресов, иначе 403.
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://localhost:4173 \
   docker compose -f infrastructure/docker/docker-compose.v2.yml up -d
 ```
 

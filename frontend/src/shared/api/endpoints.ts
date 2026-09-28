@@ -11,7 +11,8 @@ export const API_ENDPOINTS = {
   AUTH_2FA_ENABLE: '/auth/2fa/enable',
   AUTH_2FA_DISABLE: '/auth/2fa/disable',
   AUTH_RESEND_CODE: '/auth/resend-code',
-  AUTH_VALIDATE: '/auth/validate',
+  /** Обмен токена прежней версии на cookie сессии (#705), до уборки. */
+  AUTH_SESSION: '/auth/session',
   AUTH_PUBLIC_KEY: '/auth/public-key',
   AUTH_QR_TOKEN: '/auth/qr-token',
   AUTH_QR_TOKEN_BY_ID: (token: string) => `/auth/qr-token/${token}`,

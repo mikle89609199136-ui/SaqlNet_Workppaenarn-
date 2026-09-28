@@ -39,7 +39,7 @@ function renderModal(onClose = () => {}) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  useProfileStore.setState({ user: ME, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: ME, isAuth: true });
 
   return render(
     <QueryClientProvider client={queryClient}>
