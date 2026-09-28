@@ -95,7 +95,10 @@ export interface IMemberDto {
 
 export type TMembersList = IMemberDto[];
 
+/** Вложение, ждущее отправки в композере. Их может быть несколько. */
 export interface IPendingAttachment {
+  /** Ключ в списке: один и тот же файл можно приложить дважды. */
+  id: string;
   file: File;
   type: TMediaMessageType;
 }

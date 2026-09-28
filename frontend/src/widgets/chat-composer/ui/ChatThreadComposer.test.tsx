@@ -60,8 +60,8 @@ describe('ChatThreadComposer', () => {
 
     return {
       selectionMode: false,
-      pendingAttachment: null,
-      setPendingAttachment: vi.fn(),
+      pendingAttachments: [],
+      setPendingAttachments: vi.fn(),
       bottomRef: { current: bottomDiv },
       attachmentInputRef: { current: attachmentInput },
       draftRef: createRef<IRichTextInputHandle>(),
@@ -106,20 +106,36 @@ describe('ChatThreadComposer', () => {
     expect(input.textContent).toBe('');
   });
 
-  it('отображает блок превью вложения, если pendingAttachment передан', () => {
-    const file = new File(['dummy'], 'photo.png', { type: 'image/png' });
+  it('показывает все приложенные файлы, у каждого свой крестик (#171)', () => {
+    const photo = new File(['dummy'], 'photo.png', { type: 'image/png' });
+    const doc = new File(['dummy'], 'report.pdf', { type: 'application/pdf' });
     const props = setupProps({
-      pendingAttachment: {
-        file,
-        type: 'image',
-      },
+      pendingAttachments: [
+        { id: 'a1', file: photo, type: 'image' },
+        { id: 'a2', file: doc, type: 'file' },
+      ],
     });
 
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     // Фото — плиткой с превью, имя файла — в подписи для диктора.
-    expect(screen.getByRole('button', { name: /photo.png/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Открыть изображение: photo.png/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Удалить вложение: photo.png' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Удалить вложение: report.pdf' })
+    ).toBeInTheDocument();
+    // Карандаш — только у фото.
+    expect(
+      screen.getByRole('button', { name: 'Редактировать фото: photo.png' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Редактировать фото: report.pdf/ })).toBeNull();
+    // Поле выбора — на несколько файлов сразу.
+    expect(screen.getByLabelText('Прикрепить файл', { selector: 'input' })).toHaveAttribute(
+      'multiple'
+    );
   });
 
   describe('пересылка ждёт над полем ввода (#93)', () => {

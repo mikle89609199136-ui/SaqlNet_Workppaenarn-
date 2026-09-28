@@ -75,19 +75,19 @@ function composerPlaceholder(
 
 interface Props {
   selectionMode: boolean;
-  pendingAttachment: IPendingAttachment | null;
+  pendingAttachments: IPendingAttachment[];
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   draftRef: RefObject<IRichTextInputHandle | null>;
-  setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
+  setPendingAttachments: Dispatch<SetStateAction<IPendingAttachment[]>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   setOpenedImage?: Dispatch<SetStateAction<string | null>>;
 }
 
 export const ChatThreadComposer = ({
   selectionMode,
-  pendingAttachment,
-  setPendingAttachment,
+  pendingAttachments,
+  setPendingAttachments,
   bottomRef,
   attachmentInputRef,
   draftRef,
@@ -131,17 +131,18 @@ export const ChatThreadComposer = ({
   const { cancelComposerMode } = useComposerShortcuts(draftRef);
   const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
-    setPendingAttachment,
-    setPhotoEditorFile,
+    pendingAttachments,
+    setPendingAttachments,
   });
   const { handleSubmit, isSending } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
     draftRef,
-    pendingAttachment,
+    pendingAttachments,
     selectionMode,
-    setPendingAttachment,
+    setPendingAttachments,
   });
+  const hasAttachments = pendingAttachments.length > 0;
   const forward = useForwardSend(chatId);
   // Голосовые (#843): запись живёт, пока открыт этот чат.
   const voice = useVoiceRecorder(chatId);
@@ -190,7 +191,7 @@ export const ChatThreadComposer = ({
   }
 
   const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
-  const canSend = hasText || Boolean(forward.pending) || Boolean(pendingAttachment);
+  const canSend = hasText || Boolean(forward.pending) || hasAttachments;
   const recordingVoice = voice.state.status !== 'idle';
   // Микрофон — когда отправлять нечего: пустое поле, без вложения, не
   // правка и не пересылка. Пока шифрование не готово, он виден, но
@@ -214,7 +215,7 @@ export const ChatThreadComposer = ({
         <ComposerContextBanner onCancel={cancelComposerMode} />
       )}
       <AttachmentPreview
-        attachment={pendingAttachment}
+        attachments={pendingAttachments}
         onEdit={setPhotoEditorFile}
         onOpenImage={setOpenedImage ? (url) => setOpenedImage(url) : undefined}
         onRemove={removePendingAttachment}
@@ -248,7 +249,7 @@ export const ChatThreadComposer = ({
             disabled={encryption.status !== 'ready'}
             onChange={handleDraftChange}
             onSubmit={submitForm}
-            placeholder={composerPlaceholder(encryption, t, Boolean(pendingAttachment))}
+            placeholder={composerPlaceholder(encryption, t, hasAttachments)}
             ref={draftRef}
           />
 

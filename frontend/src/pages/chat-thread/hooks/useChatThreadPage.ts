@@ -70,8 +70,9 @@ export function useChatThreadPage({
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
     attachmentInputRef,
+    photoEditorFile: modals.photoEditorFile,
     setPhotoEditorFile: modals.setPhotoEditorFile,
-    setPendingAttachment: modals.setPendingAttachment,
+    setPendingAttachments: modals.setPendingAttachments,
   });
   const { profileModal, setProfileModal } = useProfilePanel({
     chat,
