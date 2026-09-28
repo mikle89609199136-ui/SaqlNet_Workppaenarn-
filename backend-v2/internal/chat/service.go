@@ -915,7 +915,18 @@ func (s *Service) DeleteChat(ctx context.Context, actorID, chatID string) error 
 	}
 
 	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.chats WHERE id = $1`, chatID)
+	if err == nil {
+		s.invalidateMembers(chatID)
+	}
 	return err
+}
+
+// invalidateMembers — состав участников изменился: «печатает» (#866)
+// опирается на кеш участников и не должен видеть старый список.
+func (s *Service) invalidateMembers(chatID string) {
+	if cache, ok := s.ws.(interface{ InvalidateChatMembers(string) }); ok {
+		cache.InvalidateChatMembers(chatID)
+	}
 }
 
 func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member, error) {
@@ -1081,6 +1092,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 	if affected != 1 {
 		return ErrStateUnchanged
 	}
+	s.invalidateMembers(chatID)
 
 	if s.ws != nil {
 		payload, err := json.Marshal(MemberRemovedEvent{
@@ -1319,6 +1331,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.invalidateMembers(chatID)
 
 	// 9. Рассылка WebSocket-события
 	if s.ws != nil {
@@ -1473,6 +1486,9 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if memberRemoved {
+		s.invalidateMembers(chatID)
 	}
 
 	if s.ws != nil {
@@ -3371,6 +3387,7 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.invalidateMembers(chatID)
 
 	if s.ws != nil {
 		event := MemberRemovedEvent{
