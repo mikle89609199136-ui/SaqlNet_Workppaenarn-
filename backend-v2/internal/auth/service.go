@@ -359,6 +359,10 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 	`, userID); err != nil {
 		return err
 	}
+	// Вышли со всех устройств — push на них больше не идёт (#717).
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users.push_subscriptions WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

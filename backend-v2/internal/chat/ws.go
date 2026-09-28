@@ -50,6 +50,12 @@ type Client struct {
 	closeOnce     sync.Once
 	CallRoomID    string // non-empty while in a call room
 	ConnectionID  string // уникальный ID WS-соединения для presence
+
+	// Push (#717): подписка этого устройства и видно ли приложение. На
+	// устройство, где приложение на экране, push не отправляется. Пишет
+	// readPump, читают рассылки — под ws.mu.
+	pushSubscriptionID string
+	visible            bool
 }
 
 // close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
@@ -83,6 +89,8 @@ type WSServer struct {
 	typingState         *typingState
 	typingMembersLoader chatMembersLoader // подмена загрузки в тестах; nil — из базы
 	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
+
+	push pushNotifier // push о звонках (#717); nil — выключен
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -314,6 +322,9 @@ func (ws *WSServer) readPump(client *Client) {
 			chatID, _ := msg["chatId"].(string)
 			ws.handleTyping(client.UserID, chatID)
 
+		case "client_state":
+			ws.handleClientState(client, msg)
+
 		case "call_join":
 			ws.handleCallJoin(client, msg)
 
@@ -423,6 +434,7 @@ func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
 		go ws.saveCallMessage(lr.Snapshot)
+		ws.notifyMissedCall(roomID, lr.Snapshot)
 		ws.inviteMu.Lock()
 		for uid, inv := range ws.pendingInvites {
 			var tmp map[string]interface{}
@@ -479,6 +491,8 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 		"title":      msg["title"],
 	})
 	ws.sendToUser(to, invite)
+	// Push — на устройства, где приложение не на экране (#717).
+	ws.notifyCallInvite(roomID, client.UserID, to, strOrDefault(msg["kind"], "video"))
 	// Store for offline delivery
 	ws.inviteMu.Lock()
 	ws.pendingInvites[to] = invite

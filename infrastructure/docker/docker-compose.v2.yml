@@ -83,6 +83,8 @@ services:
     environment:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
+      # Web Push (#717): пусто — push выключен. Ключи: go run ./cmd/vapidkeys.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -100,6 +102,9 @@ services:
       NATS_URL: nats://nats:4222
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
       REDIS_URL: redis://redis:6379
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@craneapp.local}
     depends_on:
       migrate:
         condition: service_completed_successfully

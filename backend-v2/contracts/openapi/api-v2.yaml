@@ -73,6 +73,8 @@ paths:
   /users/devices/register: { $ref: './paths/users.yaml#/~1users~1devices~1register' }
   /users/devices/terminate-all: { $ref: './paths/users.yaml#/~1users~1devices~1terminate-all' }
   /users/devices/{sessionId}: { $ref: './paths/users.yaml#/~1users~1devices~1{sessionId}' }
+  /users/push/vapid-key: { $ref: './paths/users.yaml#/~1users~1push~1vapid-key' }
+  /users/push/subscriptions: { $ref: './paths/users.yaml#/~1users~1push~1subscriptions' }
 
   /encryption/keys: { $ref: './paths/encryption.yaml#/~1encryption~1keys' }
   /encryption/keys/{userId}: { $ref: './paths/encryption.yaml#/~1encryption~1keys~1{userId}' }
