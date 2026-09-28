@@ -285,6 +285,14 @@ func topic(key string) string {
 	return strings.TrimRight(base64.RawURLEncoding.EncodeToString(sum[:]), "=")[:32]
 }
 
+// optionsFor — срок жизни, приоритет и сворачивание push.
+//
+// Сообщения и входящий звонок — высокий приоритет. Apple переводит
+// Urgency в приоритет APNs: normal — это «доставить с учётом батареи»,
+// и заблокированный iPhone такие уведомления копит и придерживает — со
+// стороны они «перестают приходить», как только телефон ушёл в сон.
+// Видимое уведомление о сообщении — ровно тот случай, для которого
+// высокий приоритет и предназначен. Пропущенный звонок подождёт.
 func optionsFor(event Event) SendOptions {
 	switch event.Kind {
 	case KindCall:
@@ -292,7 +300,7 @@ func optionsFor(event Event) SendOptions {
 	case KindMissedCall:
 		return SendOptions{TTL: missedCallTTL, Urgency: webpush.UrgencyNormal, Topic: topic("call:" + event.RoomID)}
 	default:
-		return SendOptions{TTL: messageTTL, Urgency: webpush.UrgencyNormal, Topic: topic("chat:" + event.ChatID)}
+		return SendOptions{TTL: messageTTL, Urgency: webpush.UrgencyHigh, Topic: topic("chat:" + event.ChatID)}
 	}
 }
 

@@ -47,6 +47,22 @@ describe('состояние устройства для push', () => {
     expect(lastState()).toMatchObject({ type: 'client_state', visible: false });
   });
 
+  it('приложение выгружают или замораживают — сразу «не на экране»', () => {
+    renderHook(() => usePushNotifications(true, noSync));
+
+    send.mockClear();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(lastState()).toEqual({
+      type: 'client_state',
+      visible: false,
+      pushSubscriptionId: 'sub-1',
+    });
+
+    send.mockClear();
+    document.dispatchEvent(new Event('freeze'));
+    expect(lastState()).toMatchObject({ type: 'client_state', visible: false });
+  });
+
   it('при входе подписка подтверждается серверу', () => {
     const sync = vi.fn(async () => undefined);
     renderHook(() => usePushNotifications(true, sync));

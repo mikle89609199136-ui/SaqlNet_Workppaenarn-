@@ -153,6 +153,11 @@ func TestMessagePushGoesToOtherMembersWithoutText(t *testing.T) {
 		if item.options.TTL != messageTTL || item.options.Topic == "" || len(item.options.Topic) > 32 {
 			t.Fatalf("options = %+v", item.options)
 		}
+		// Высокий приоритет: с normal заблокированный iPhone придерживает
+		// уведомления о сообщениях.
+		if item.options.Urgency != webpush.UrgencyHigh {
+			t.Fatalf("message urgency = %q, want high", item.options.Urgency)
+		}
 	}
 	// Язык — получателя.
 	for _, item := range transport.sent {
