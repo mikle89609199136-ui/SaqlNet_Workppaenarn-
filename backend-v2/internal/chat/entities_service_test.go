@@ -145,8 +145,11 @@ func TestLegacyMessageDefaultEntitiesInListResponse(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Загрузка ленты отмечает доставку (#657) — границы не сдвинулись.
+	mock.ExpectQuery("WITH source").WillReturnRows(sqlmock.NewRows([]string{"chat_id", "user_id", "up_to", "at", "type"}))
 	mock.ExpectQuery("SELECT ").WillReturnRows(entityMessageRows("legacy &amp; text", "[]"))
 	mock.ExpectQuery("SELECT message_id::text").WillReturnRows(sqlmock.NewRows([]string{"message_id", "emoji", "count", "my_reaction"}))
+	mock.ExpectQuery("chats.receipt_marks").WillReturnRows(sqlmock.NewRows([]string{"id", "delivered_at", "read_at"}))
 	h := NewHandler(NewService(db, nil, nil))
 	rr := httptest.NewRecorder()
 	h.ListMessages(rr, messageValidationRequest(http.MethodGet, "/", "", "chatId", messageValidationChatID))
