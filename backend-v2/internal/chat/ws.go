@@ -181,15 +181,20 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		header := r.Header.Get("Authorization")
-		if strings.HasPrefix(header, "Bearer ") {
-			token = strings.TrimPrefix(header, "Bearer ")
-		}
+	// Токен: заголовок Bearer, cookie сессии браузера (#705) или — пока
+	// клиент не перешёл на cookie — параметр ?token= в адресе.
+	token, source := authctx.TokenFromRequest(r)
+	if source == authctx.TokenNone {
+		token = r.URL.Query().Get("token")
 	}
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
+		return
+	}
+	// Cookie браузер подставляет сам, и в сокет с ней мог бы подключиться
+	// чужой сайт — только свой или точно разрешённый адрес, без "*".
+	if source == authctx.TokenCookie && !authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin")) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
 	}
 

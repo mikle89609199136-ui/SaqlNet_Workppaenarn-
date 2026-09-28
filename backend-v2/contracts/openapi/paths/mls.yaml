@@ -1,4 +1,4 @@
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
 x-chat: &chat { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
 /mls/keypackages:
   post: { tags: [MLS], summary: Upload MLS key packages, operationId: uploadMlsKeyPackages, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [keypackages], properties: { keypackages: { type: array, items: { type: string } } } } } } }, responses: { '200': { description: Uploaded }, '400': { $ref: '../components/responses.yaml#/Error' } } }

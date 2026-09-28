@@ -17,8 +17,18 @@ if [ -z "$CRYPTO_ENCRYPTION_SECRET" ]; then
   export CRYPTO_ENCRYPTION_SECRET=$(cat /proc/sys/kernel/random/uuid | tr -d '-')
 fi
 
-# Allow all origins if ALLOWED_ORIGINS is not set (WebSocket is token-protected)
+# Образ Dockerfile.prod — только для прода: всем сервисам (не одному chat)
+# нужен CRANE_ENV=production — от него зависит cookie сессии (#705):
+# __Host-префикс и Secure.
+export CRANE_ENV="${CRANE_ENV:-production}"
+
+# Откуда можно ходить в API с cookie сессии (#705). "*" — только вне прода:
+# с cookie чужой сайт мог бы действовать от имени человека.
 if [ -z "$ALLOWED_ORIGINS" ]; then
+  if [ "$CRANE_ENV" = "production" ]; then
+    echo "[entrypoint] ALLOWED_ORIGINS is required in production, e.g. https://craneapp-timkhazatsky.amvera.io" >&2
+    exit 1
+  fi
   export ALLOWED_ORIGINS="*"
 fi
 

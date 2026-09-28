@@ -15,6 +15,7 @@ import (
 	"time"
 
 	openapi "craneapp/backend-v2/contracts/openapi"
+	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
 
@@ -264,20 +265,7 @@ func main() {
 	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
 	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, usernameCheckLimiter, globalLimiter, mux)
 
-	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-		}
-		limitedMux.ServeHTTP(w, r)
-	}))
+	handler := httpx.Middleware(originGuard(limitedMux))
 
 	server := &http.Server{Addr: edgeAddress(), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 120 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -354,6 +342,46 @@ func frontendFallback(frontendDir, requestPath string) string {
 		return frontendDir + "/mobile.html"
 	}
 	return frontendDir + "/index.html"
+}
+
+// originGuard — CORS и защита от подделки запросов (#705) перед всеми
+// маршрутами edge.
+func originGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
+			// С credentials (cookie сессии, #705) — только точно
+			// перечисленным адресам: "*" разрешает чужой Origin без них,
+			// иначе любой сайт читал бы ответы от имени человека.
+			if explicitlyAllowedOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		// Подделка запроса (#705): cookie сессии браузер подставляет сам,
+		// поэтому меняющий данные запрос с ней — только со своего сайта.
+		if authctx.CrossSiteCookieRequest(r) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "cross_site_request", "request from another site is not allowed")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// explicitlyAllowedOrigin — адрес перечислен в ALLOWED_ORIGINS точно, не "*".
+func explicitlyAllowedOrigin(origin string) bool {
+	for _, allowed := range strings.Split(config.Required("ALLOWED_ORIGINS"), ",") {
+		if allowed = strings.TrimSpace(allowed); allowed != "*" && allowed == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func allowedOrigin(origin string) bool {

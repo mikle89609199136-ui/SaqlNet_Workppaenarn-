@@ -32,6 +32,7 @@ paths:
   /auth/qr-offer/{token}/confirm: { $ref: './paths/auth.yaml#/~1auth~1qr-offer~1{token}~1confirm' }
   /auth/logout: { $ref: './paths/auth.yaml#/~1auth~1logout' }
   /auth/logout-all: { $ref: './paths/auth.yaml#/~1auth~1logout-all' }
+  /auth/session: { $ref: './paths/auth.yaml#/~1auth~1session' }
   /auth/sessions: { $ref: './paths/auth.yaml#/~1auth~1sessions' }
   /auth/change-password: { $ref: './paths/auth.yaml#/~1auth~1change-password' }
   /auth/2fa/status: { $ref: './paths/auth.yaml#/~1auth~12fa~1status' }
@@ -158,6 +159,7 @@ paths:
 components:
   securitySchemes:
     bearerAuth: { $ref: './components/security.yaml#/bearerAuth' }
+    sessionCookie: { $ref: './components/security.yaml#/sessionCookie' }
   responses:
     Error: { $ref: './components/responses.yaml#/Error' }
   schemas:
