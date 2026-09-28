@@ -77,6 +77,12 @@ type WSServer struct {
 	stop           chan struct{}
 	stopped        chan struct{}
 	stopOnce       sync.Once
+
+	// «Печатает» (#866): кеш участников и ограничение частоты, см. typing.go.
+	typingOnce          sync.Once
+	typingState         *typingState
+	typingMembersLoader chatMembersLoader // подмена загрузки в тестах; nil — из базы
+	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -306,18 +312,7 @@ func (ws *WSServer) readPump(client *Client) {
 
 		case "typing":
 			chatID, _ := msg["chatId"].(string)
-			if chatID != "" {
-				var isMember bool
-				if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember); err != nil {
-					break
-				}
-				if isMember {
-					msg["userId"] = client.UserID
-					msg["senderId"] = client.UserID
-					typingMessage, _ := json.Marshal(msg)
-					ws.BroadcastToChat(chatID, typingMessage, client.UserID)
-				}
-			}
+			ws.handleTyping(client.UserID, chatID)
 
 		case "call_join":
 			ws.handleCallJoin(client, msg)
@@ -632,33 +627,35 @@ func (ws *WSServer) writePump(client *Client) {
 	}
 }
 
+// BroadcastToChat рассылает сообщение участникам чата, кроме excludeUserID.
+// Если excludeUserID задан, он сам должен быть участником — иначе рассылки
+// нет. Участники читаются одним запросом до блокировки: ws.mu не держится
+// на базе, и подключения с отключениями не ждут чужих запросов (#866).
 func (ws *WSServer) BroadcastToChat(chatID string, message []byte, excludeUserID string) {
-	if excludeUserID != "" {
-		var isMember bool
-		if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, excludeUserID).Scan(&isMember); err != nil || !isMember {
-			return
-		}
-	}
-
 	rows, err := ws.db.Query(`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-
+	var recipients []string
+	senderIsMember := excludeUserID == ""
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
 			continue
 		}
 		if memberID == excludeUserID {
+			senderIsMember = true
 			continue
 		}
-		ws.sendToUserLocked(memberID, message)
+		recipients = append(recipients, memberID)
 	}
+	failed := rows.Err() != nil
+	_ = rows.Close()
+	if failed || !senderIsMember {
+		return
+	}
+
+	ws.BroadcastToUsers(recipients, message)
 }
 
 func (ws *WSServer) BroadcastToUsers(userIDs []string, message []byte) {

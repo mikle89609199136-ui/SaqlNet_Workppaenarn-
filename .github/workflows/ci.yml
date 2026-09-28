@@ -155,7 +155,7 @@ jobs:
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema' ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema' ./internal/chat
 
       # Смена ключа группы: пометка при изменении состава, атомарная запись
       # новой эпохи и одновременные смены (#806).
