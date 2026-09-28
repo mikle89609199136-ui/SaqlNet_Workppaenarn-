@@ -375,7 +375,10 @@ func TestBroadcastToChatDoesNotHoldLockWhileReadingMembers(t *testing.T) {
 
 	locked := make(chan struct{})
 	go func() {
+		// Писатель, как при подключении клиента.
 		ws.mu.Lock()
+		ws.clients["probe"] = map[*Client]bool{}
+		delete(ws.clients, "probe")
 		ws.mu.Unlock()
 		close(locked)
 	}()
