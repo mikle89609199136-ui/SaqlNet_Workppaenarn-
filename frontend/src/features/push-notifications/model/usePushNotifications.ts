@@ -21,23 +21,28 @@ export function usePushNotifications(signedIn: boolean, sync: () => Promise<void
 
   useEffect(() => {
     if (!signedIn) return undefined;
-    const report = () => {
+    const send = (visible: boolean) => {
       try {
-        socket.send({
-          type: 'client_state',
-          visible: document.visibilityState === 'visible',
-          pushSubscriptionId: subscriptionId ?? '',
-        });
+        socket.send({ type: 'client_state', visible, pushSubscriptionId: subscriptionId ?? '' });
       } catch {
         // Сокет ещё не подключён — отчитаемся на socket:connected.
       }
     };
+    const report = () => send(document.visibilityState === 'visible');
+    // Страницу выгружают или замораживают (iPhone усыпляет приложение):
+    // «не на экране» — сразу. Иначе сервер считает устройство видимым,
+    // пока сам не оборвёт сокет по тайм-ауту, и push всё это время ждёт.
+    const leave = () => send(false);
     report();
     const unsubscribe = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, report);
     document.addEventListener('visibilitychange', report);
+    document.addEventListener('freeze', leave);
+    window.addEventListener('pagehide', leave);
     return () => {
       unsubscribe();
       document.removeEventListener('visibilitychange', report);
+      document.removeEventListener('freeze', leave);
+      window.removeEventListener('pagehide', leave);
     };
   }, [signedIn, socket, eventBus, subscriptionId]);
 }
