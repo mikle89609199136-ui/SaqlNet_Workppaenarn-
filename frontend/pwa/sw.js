@@ -14,6 +14,8 @@
  *   кеша, а нет в кеше — из сети с сохранением. Файлы оболочки кладутся в
  *   кеш заранее, при установке worker, — без сети открывается любой экран.
  * - /locales/* — переводы: сначала сеть, без сети — из кеша.
+ * - /version.json (#892) — какая сборка на сервере: не перехватывается,
+ *   иначе приложение сверяло бы версию с самим собой.
  * - Всё остальное (/api, /ws, медиа, чужие адреса) не перехватывается
  *   вовсе: ответы API и медиа не должны оставаться на устройстве после
  *   выхода из аккаунта.
@@ -70,9 +72,18 @@ async function handleNavigate(request) {
   }
 }
 
+/*
+ * Искать в кеше без учёта Vary. Файл, положенный заранее (при установке,
+ * запрос без Origin), иначе не находится по запросу import() — если сервер
+ * помечает ответы `Vary: Origin` (так делает vite preview). Тогда кусок
+ * уже удалённой с сервера сборки шёл в сеть и получал страницу вместо файла
+ * (#892). Файлы сборки с хешем в имени не меняются — Vary им не нужен.
+ */
+const MATCH_OPTIONS = { ignoreVary: true };
+
 async function handleAsset(request) {
   const cache = await caches.open(ASSETS_CACHE);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request, MATCH_OPTIONS);
   if (cached) return cached;
   const response = await fetch(request);
   // Страница приложения вместо файла (старый сервер отдавал её на любой
@@ -92,7 +103,7 @@ async function handleLocale(request) {
     if (response.ok) await cache.put(request, response.clone());
     return response;
   } catch (error) {
-    const cached = await cache.match(request);
+    const cached = await cache.match(request, MATCH_OPTIONS);
     if (cached) return cached;
     throw error;
   }
@@ -106,8 +117,20 @@ async function precache() {
   await Promise.all(PRECACHE_URLS.map((url) => assets.add(url).catch(() => undefined)));
 }
 
+/*
+ * Обновление (#892). Первая установка включается сразу: страницы, которую
+ * она сменила бы, ещё нет. Новая сборка поверх работающей — ждёт, пока
+ * человек нажмёт «Обновить» (сообщение craneapp:update): иначе новый
+ * worker раздавал бы файлы новой сборки странице старой, а страница о
+ * новой версии и не знала бы.
+ */
 self.addEventListener('install', (event) => {
-  event.waitUntil(precache().then(() => self.skipWaiting()));
+  const firstInstall = !self.registration.active;
+  event.waitUntil(precache().then(() => (firstInstall ? self.skipWaiting() : undefined)));
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'craneapp:update') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
