@@ -142,12 +142,6 @@ func TestClassifyRouteOperationSpecificMessage(t *testing.T) {
 		want   routeGroup
 	}{
 		{
-			name:   "forward message",
-			method: http.MethodPost,
-			path:   "/api/v2/messages/message-id/forward",
-			want:   routeGroupMessageWrite,
-		},
-		{
 			name:   "reaction to message",
 			method: http.MethodPost,
 			path:   "/api/v2/messages/message-id/reactions",
@@ -339,8 +333,11 @@ func TestClassifyRouteUnsupportedMessageOperations(t *testing.T) {
 		want   routeGroup
 	}{
 		{
-			name:   "forward does not support GET",
-			method: http.MethodGet,
+			// Эндпоинт forward убран в dev (#808): пересылка стала обычным
+			// сообщением с forwardedFrom. Отдельного правила у него больше нет,
+			// поэтому путь попадает в общую группу любым методом.
+			name:   "forward no longer exists",
+			method: http.MethodPost,
 			path:   "/api/v2/messages/message-id/forward",
 			want:   routeGroupOtherAPI,
 		},
@@ -484,6 +481,100 @@ func TestClassifyRouteUsernameCheck(t *testing.T) {
 			name:   "path that only starts the same",
 			method: http.MethodGet,
 			path:   "/api/v2/users/check-username-history",
+			want:   routeGroupOtherAPI,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyRoute(tt.method, tt.path)
+			if got != tt.want {
+				t.Errorf("classifyRoute(%q, %q) = %v; want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// Создание комнаты звонка пишет строку в calls.rooms и запись в памяти процесса
+// на каждый вызов, поэтому группа своя, а не общая с остальными API.
+func TestClassifyRouteCalls(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   routeGroup
+	}{
+		{
+			name:   "create a call room",
+			method: http.MethodPost,
+			path:   "/api/v2/calls/rooms",
+			want:   routeGroupCalls,
+		},
+		{
+			name:   "list call rooms",
+			method: http.MethodGet,
+			path:   "/api/v2/calls/rooms",
+			want:   routeGroupCalls,
+		},
+		{
+			name:   "one call room",
+			method: http.MethodGet,
+			path:   "/api/v2/calls/rooms/room-id",
+			want:   routeGroupCalls,
+		},
+		{
+			name:   "ICE servers",
+			method: http.MethodGet,
+			path:   "/api/v2/calls/ice-servers",
+			want:   routeGroupCalls,
+		},
+		{
+			// Правило совпадает по префиксу с завершающей косой чертой, поэтому
+			// маршрут, который лишь начинается так же, в группу не попадает.
+			name:   "path that only starts the same",
+			method: http.MethodGet,
+			path:   "/api/v2/calls-history",
+			want:   routeGroupOtherAPI,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyRoute(tt.method, tt.path)
+			if got != tt.want {
+				t.Errorf("classifyRoute(%q, %q) = %v; want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// Пакетное удаление сообщений — операция записи, поэтому группа та же, что у
+// остальной записи, а не общая для прочих API.
+func TestClassifyRouteBatchMessageDelete(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   routeGroup
+	}{
+		{
+			name:   "batch delete",
+			method: http.MethodPost,
+			path:   "/api/v2/chats/chat-id/messages/delete",
+			want:   routeGroupMessageWrite,
+		},
+		{
+			name:   "batch delete does not support GET",
+			method: http.MethodGet,
+			path:   "/api/v2/chats/chat-id/messages/delete",
+			want:   routeGroupOtherAPI,
+		},
+		{
+			// Соседние операции над чатом остаются в общей группе: своей
+			// причины быть ограниченными строже у них нет.
+			name:   "pin chat stays in the general group",
+			method: http.MethodPost,
+			path:   "/api/v2/chats/chat-id/pin",
 			want:   routeGroupOtherAPI,
 		},
 	}

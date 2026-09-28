@@ -18,6 +18,7 @@ var allRouteGroups = []routeGroup{
 	routeGroupMessageWrite,
 	routeGroupMessageRead,
 	routeGroupMediaUpload,
+	routeGroupCalls,
 	routeGroupOtherAPI,
 	routeGroupWebSocket,
 }
@@ -31,6 +32,7 @@ const (
 	routeGroupMessageWrite  routeGroup = "message-write"
 	routeGroupMessageRead   routeGroup = "message-read"
 	routeGroupMediaUpload   routeGroup = "media-upload"
+	routeGroupCalls         routeGroup = "calls"
 	routeGroupOtherAPI      routeGroup = "other-api"
 	routeGroupWebSocket     routeGroup = "websocket"
 	// routeGroupGlobal не возвращается классификатором: это имя глобальной
@@ -61,7 +63,16 @@ func classifyRoute(method, path string) routeGroup {
 		return routeGroupUsernameCheck
 	case method == http.MethodPost && path == "/api/v2/media":
 		return routeGroupMediaUpload
+	// Создание комнаты звонка пишет строку в calls.rooms и заводит запись в
+	// памяти процесса, а остальные маршруты группы обслуживают установку
+	// соединения. Отдельная корзина ограничивает и то и другое.
+	case strings.HasPrefix(path, "/api/v2/calls/"):
+		return routeGroupCalls
 	case method == http.MethodPost && strings.HasPrefix(path, "/api/v2/chats/") && strings.HasSuffix(path, "/read"):
+		return routeGroupMessageWrite
+	// Пакетное удаление сообщений: запись в БД и рассылка по WebSocket, поэтому
+	// группа та же, что у остальных операций записи.
+	case method == http.MethodPost && strings.HasPrefix(path, "/api/v2/chats/") && strings.HasSuffix(path, "/messages/delete"):
 		return routeGroupMessageWrite
 	case method == http.MethodGet && strings.HasPrefix(path, "/api/v2/chats/") && strings.HasSuffix(path, "/pins"):
 		return routeGroupMessageRead
@@ -107,10 +118,6 @@ func classifyMessageRoute(method, path string) routeGroup {
 
 	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
 		switch parts[1] {
-		case "forward":
-			if method == http.MethodPost {
-				return routeGroupMessageWrite
-			}
 		case "reactions":
 			switch method {
 			case http.MethodGet:

@@ -19,6 +19,7 @@ type rateLimitConfig struct {
 	messageWrite  bucketConfig
 	messageRead   bucketConfig
 	mediaUpload   bucketConfig
+	calls         bucketConfig
 	otherAPI      bucketConfig
 	websocket     bucketConfig
 	global        bucketConfig
@@ -51,7 +52,8 @@ func loadRateLimitConfig() rateLimitConfig {
 		usernameCheck: loadBucketConfig("USERNAME_CHECK", perSecond(2), 5),
 		messageWrite:  loadBucketConfig("MESSAGE_WRITE", perSecond(5), 20),
 		messageRead:   loadBucketConfig("MESSAGE_READ", perSecond(20), 40),
-		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", perMinute(10), 10),
+		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", perMinute(60), 30),
+		calls:         loadBucketConfig("CALLS", perMinute(30), 15),
 		otherAPI:      loadBucketConfig("OTHER_API", perSecond(20), 40),
 		websocket:     loadBucketConfig("WEBSOCKET", perMinute(10), 20),
 		global:        loadBucketConfig("GLOBAL", perSecond(50), 100),
@@ -101,13 +103,13 @@ var rateUnits = map[string]float64{
 // догадываться, что имел в виду человек. Именно из-за таких догадок значение
 // можно было перепутать в 60 раз, ничего при этом не заметив.
 func parseRate(value string) (float64, error) {
-	slash := strings.IndexByte(value, '/')
-	if slash < 0 {
+	numberPart, unitPart, hasUnit := strings.Cut(value, "/")
+	if !hasUnit {
 		return 0, fmt.Errorf("rate %q has no unit, expected a value like \"10/min\" or \"5/s\"", value)
 	}
 
-	number := strings.TrimSpace(value[:slash])
-	unit := strings.ToLower(strings.TrimSpace(value[slash+1:]))
+	number := strings.TrimSpace(numberPart)
+	unit := strings.ToLower(strings.TrimSpace(unitPart))
 
 	unitSeconds, known := rateUnits[unit]
 	if !known {
@@ -177,6 +179,8 @@ func (cfg rateLimitConfig) bucketFor(group routeGroup) bucketConfig {
 		return cfg.messageRead
 	case routeGroupMediaUpload:
 		return cfg.mediaUpload
+	case routeGroupCalls:
+		return cfg.calls
 	case routeGroupOtherAPI:
 		return cfg.otherAPI
 	case routeGroupWebSocket:
