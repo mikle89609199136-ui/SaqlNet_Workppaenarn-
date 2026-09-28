@@ -450,13 +450,31 @@ DeleteMessageResponse:
       allOf: [{ $ref: '#/Message' }]
 MarkMessagesReadRequest:
   type: object
-  required: [chatId]
+  required: [chatId, messageIds]
   properties:
     chatId: { type: string, format: uuid }
     messageIds:
       type: array
-      description: Accepted for client compatibility; the current backend marks the whole chat as read.
+      description: >-
+        Messages of this chat seen by the reader (duplicates are ignored). All
+        must belong to the chat, otherwise 400 invalid_message_ids. Own and
+        deleted messages are skipped.
+      minItems: 1
+      maxItems: 500
       items: { type: string, format: uuid }
+ReadMark:
+  type: object
+  required: [readIds, lastReadAt]
+  properties:
+    readIds:
+      type: array
+      description: Incoming, not deleted messages that were taken into account.
+      items: { type: string, format: uuid }
+    lastReadAt:
+      type: string
+      description: >-
+        The chat's read boundary after the call: the newest of the counted
+        messages, never moved back. Empty when the chat was never read.
 ReactionListResponse:
   type: object
   required: [reactions]

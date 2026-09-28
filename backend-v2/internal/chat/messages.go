@@ -458,8 +458,29 @@ func (h *Handler) MarkMessagesRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
-	respondSuccess(w, r, err)
+	// Отмечаются переданные сообщения, а не весь чат (#506): весь чат —
+	// POST /chats/{id}/read.
+	if len(input.MessageIDs) == 0 || len(input.MessageIDs) > MaxMarkReadIDs {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "messageIds must contain 1 to 500 ids")
+		return
+	}
+	for _, id := range input.MessageIDs {
+		if err := validate.Var(id, "uuid"); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid messageIds")
+			return
+		}
+	}
+
+	mark, err := h.service.MarkMessagesRead(r.Context(), current.ID, input.ChatID, input.MessageIDs)
+	if errors.Is(err, ErrInvalidMessageIDs) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_message_ids", "messageIds must be messages of this chat")
+		return
+	}
+	if err != nil {
+		respondSuccess(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mark)
 }
 
 // parsePagination извлекает limit и offset из query-параметров запроса

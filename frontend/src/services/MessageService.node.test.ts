@@ -194,11 +194,35 @@ describe('MessageService: пересылка', () => {
 
 describe('MessageService: отметка о прочтении', () => {
   it('should confirm ids even when the chat was never loaded', async () => {
-    server.use(http.post(api('/messages/read'), () => HttpResponse.json({ success: true })));
+    server.use(
+      http.post(api('/messages/read'), () =>
+        HttpResponse.json({ readIds: ['m-1', 'm-2'], lastReadAt: '2026-09-29 12:00:00+00' })
+      )
+    );
 
     const result = await createService().markAsRead(TARGET_CHAT, ['m-1', 'm-2']);
 
     expect(result.readIds).toEqual(['m-1', 'm-2']);
+  });
+
+  it('прочитанными — только учтённые сервером ID, а не все отправленные (#506)', async () => {
+    server.use(
+      http.post(api('/messages/read'), () =>
+        HttpResponse.json({ readIds: ['m-2'], lastReadAt: '2026-09-29 12:00:00+00' })
+      )
+    );
+
+    const result = await createService().markAsRead(TARGET_CHAT, ['m-1', 'm-2']);
+
+    expect(result.readIds).toEqual(['m-2']);
+  });
+
+  it('старый ответ без readIds — прочитанными отправленные', async () => {
+    server.use(http.post(api('/messages/read'), () => HttpResponse.json({ success: true })));
+
+    const result = await createService().markAsRead(TARGET_CHAT, ['m-1']);
+
+    expect(result.readIds).toEqual(['m-1']);
   });
 
   it('should send the chat and the messages to the server', async () => {

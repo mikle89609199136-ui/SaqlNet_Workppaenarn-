@@ -1149,6 +1149,114 @@ func (s *Service) MarkRead(ctx context.Context, userID, chatID string) error {
 	return err
 }
 
+// ErrInvalidMessageIDs — среди отмечаемых прочитанными есть ID, которые не
+// сообщения этого чата (#506).
+var ErrInvalidMessageIDs = errors.New("message ids do not belong to the chat")
+
+// MaxMarkReadIDs — столько сообщений отмечается прочитанными за раз.
+const MaxMarkReadIDs = 500
+
+// ReadMark — итог отметки прочтения: какие сообщения учтены и где теперь
+// граница прочитанного чата.
+type ReadMark struct {
+	ReadIDs    []string `json:"readIds"`
+	LastReadAt string   `json:"lastReadAt"`
+}
+
+// MarkMessagesRead отмечает прочитанными переданные сообщения (#506). Модель —
+// отметка чата last_read_at, по ней считаются непрочитанные; граница —
+// самое новое из учтённых сообщений, а не «сейчас»: иначе одно увиденное
+// сообщение закрывало весь чат вместе с пришедшими позже. Граница не
+// сдвигается назад — запоздалая отметка старого сообщения ничего не меняет.
+//
+// Все ID обязаны быть сообщениями этого чата — иначе ErrInvalidMessageIDs,
+// и отметка не трогается. Свои и удалённые пропускаются: не ошибка, но и
+// не граница. Точное время прочтения каждого сообщения — #657.
+func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, messageIDs []string) (ReadMark, error) {
+	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			return ReadMark{}, err
+		}
+		return ReadMark{}, ErrForbidden
+	}
+	ids := uniqueStrings(messageIDs)
+	if len(ids) == 0 || len(ids) > MaxMarkReadIDs {
+		return ReadMark{}, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
+		FROM messages.messages
+		WHERE chat_id = $1 AND id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids))
+	if err != nil {
+		return ReadMark{}, err
+	}
+	defer rows.Close()
+	found := 0
+	readIDs := []string{}
+	var newest time.Time
+	for rows.Next() {
+		var id, senderID string
+		var deleted bool
+		var createdAt time.Time
+		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+			return ReadMark{}, err
+		}
+		found++
+		if deleted || senderID == userID {
+			continue
+		}
+		readIDs = append(readIDs, id)
+		if createdAt.After(newest) {
+			newest = createdAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ReadMark{}, err
+	}
+	if found != len(ids) {
+		return ReadMark{}, ErrInvalidMessageIDs
+	}
+
+	var lastReadAt sql.NullString
+	if len(readIDs) == 0 {
+		// Учесть нечего — граница прежняя.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT last_read_at::text FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2
+		`, userID, chatID).Scan(&lastReadAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		}
+	} else {
+		err = s.db.QueryRowContext(ctx, `
+			INSERT INTO chats.user_chat_settings (user_id, chat_id, last_read_at)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, chat_id) DO UPDATE SET last_read_at = GREATEST(
+				COALESCE(chats.user_chat_settings.last_read_at, EXCLUDED.last_read_at),
+				EXCLUDED.last_read_at
+			)
+			RETURNING last_read_at::text
+		`, userID, chatID, newest).Scan(&lastReadAt)
+	}
+	if err != nil {
+		return ReadMark{}, err
+	}
+	return ReadMark{ReadIDs: readIDs, LastReadAt: lastReadAt.String}, nil
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 type Ban struct {
 	UserID      string  `json:"userId"`
 	Username    string  `json:"username"`

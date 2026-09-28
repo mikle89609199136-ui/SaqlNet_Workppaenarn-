@@ -71,7 +71,10 @@ export const defaultHandlers = [
 
   http.get(api('/messages/:chatId'), () => HttpResponse.json({ messages: [] })),
 
-  http.post(api('/messages/read'), () => HttpResponse.json({ success: true })),
+  http.post(api('/messages/read'), async ({ request }) => {
+    const body = (await request.json()) as { messageIds?: string[] };
+    return HttpResponse.json({ readIds: body.messageIds ?? [], lastReadAt: '' });
+  }),
 
   http.post(api('/auth/public-key'), () => HttpResponse.json({ success: true })),
 
