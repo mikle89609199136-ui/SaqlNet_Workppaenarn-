@@ -5,7 +5,7 @@ import { createServices, services, startCryptoAutoInit } from './serviceContaine
 
 describe('контейнер сервисов', () => {
   beforeEach(() => {
-    useProfileStore.setState({ token: '', user: null });
+    useProfileStore.setState({ user: null, isAuth: false });
   });
 
   it('should not start crypto initialisation on import', () => {
@@ -33,21 +33,19 @@ describe('контейнер сервисов', () => {
 
 describe('доступ к профилю из AuthService', () => {
   beforeEach(() => {
-    useProfileStore.setState({ token: '', user: null });
+    useProfileStore.setState({ user: null, isAuth: false });
   });
 
-  it('should read the token written after the container was built', () => {
-    // Регрессия: раньше в AuthService передавался снимок getState(),
-    // поэтому токен, полученный при входе, туда не попадал никогда.
-    useProfileStore.getState().setToken('токен-после-входа');
+  it('пишет профиль в хранилище — сам вход держится на cookie (#705)', () => {
+    services.authService.authStorage.setUser({ id: 'user-1', username: 'anna' } as never);
 
-    expect(services.authService.authStorage.token).toBe('токен-после-входа');
+    expect(useProfileStore.getState().user?.id).toBe('user-1');
+    expect(useProfileStore.getState().isAuth).toBe(true);
   });
 
-  it('should write through to the store', () => {
-    services.authService.authStorage.setToken('токен-из-сервиса');
-
-    expect(useProfileStore.getState().token).toBe('токен-из-сервиса');
+  it('токена в хранилище нет и из AuthService его не записать', () => {
+    expect('token' in useProfileStore.getState()).toBe(false);
+    expect('setToken' in services.authService.authStorage).toBe(false);
   });
 });
 
@@ -65,7 +63,7 @@ describe('автоинициализация криптографии', () => {
     const target = createServices();
     const init = vi.spyOn(target.cryptoService, 'init');
 
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USER);
     startCryptoAutoInit(target)();
 
     expect(init).not.toHaveBeenCalled();

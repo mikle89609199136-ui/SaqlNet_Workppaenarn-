@@ -87,15 +87,40 @@ async function currentRegistration(): Promise<ServiceWorkerRegistration | null> 
   return (await navigator.serviceWorker.getRegistration('/')) ?? null;
 }
 
+/**
+ * Столько ждём браузер при выходе из аккаунта. Выход не должен зависеть от
+ * push: браузер без push-сервиса может не ответить на getSubscription()
+ * вовсе, и человек не смог бы выйти.
+ */
+export const PUSH_LOGOUT_TIMEOUT_MS = 3000;
+
+/** Результат или `fallback`, если браузер не ответил за `ms`. */
+function withTimeout<T>(promise: Promise<T>, fallback: T, ms: number): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      }
+    );
+  });
+}
+
 /** Адрес push-подписки этого устройства, если она есть. */
-export async function currentPushEndpoint(): Promise<string | null> {
-  try {
+export async function currentPushEndpoint(
+  timeoutMs = PUSH_LOGOUT_TIMEOUT_MS
+): Promise<string | null> {
+  const lookup = (async () => {
     const registration = await currentRegistration();
     const subscription = await registration?.pushManager.getSubscription();
     return subscription?.endpoint ?? null;
-  } catch {
-    return null;
-  }
+  })();
+  return withTimeout(lookup, null, timeoutMs);
 }
 
 /**
@@ -103,14 +128,14 @@ export async function currentPushEndpoint(): Promise<string | null> {
  * подписку отдельно (AuthService — пока токен действует); не успел —
  * узнает при следующей отправке: push-сервис ответит 410.
  */
-export async function unsubscribePushOnDevice(): Promise<void> {
+export async function unsubscribePushOnDevice(timeoutMs = PUSH_LOGOUT_TIMEOUT_MS): Promise<void> {
   writePushSubscriptionId(null);
-  try {
+  // Не вышло или браузер молчит — подписка осталась у браузера, но сервер
+  // её уже не свяжет с этим аккаунтом после следующего входа: перепишется.
+  const unsubscribe = (async () => {
     const registration = await currentRegistration();
     const subscription = await registration?.pushManager.getSubscription();
     await subscription?.unsubscribe();
-  } catch {
-    // Не вышло — подписка осталась у браузера, но сервер её уже не
-    // свяжет с этим аккаунтом после следующего входа: она перепишется.
-  }
+  })();
+  await withTimeout(unsubscribe, undefined, timeoutMs);
 }

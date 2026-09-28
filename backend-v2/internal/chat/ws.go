@@ -181,12 +181,9 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Токен: заголовок Bearer, cookie сессии браузера (#705) или — пока
-	// клиент не перешёл на cookie — параметр ?token= в адресе.
+	// Токен: cookie сессии браузера (#705) или заголовок Bearer. В адресе
+	// (?token=) — больше нет: адреса попадают в журналы.
 	token, source := authctx.TokenFromRequest(r)
-	if source == authctx.TokenNone {
-		token = r.URL.Query().Get("token")
-	}
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
 		return

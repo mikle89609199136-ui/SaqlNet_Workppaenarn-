@@ -10,7 +10,7 @@ export function AuthGuard() {
 
   useEffect(() => {
     function handleUnauthorized() {
-      if (!useProfileStore.getState().token) return;
+      if (!useProfileStore.getState().isAuth) return;
 
       clearAuthSession();
       const from = window.location.pathname + window.location.search;
