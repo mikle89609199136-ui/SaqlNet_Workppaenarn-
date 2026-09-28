@@ -35,7 +35,7 @@ function strategyFor(request) {
   if (url.origin !== self.location.origin) return null;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) return null;
   if (request.mode === 'navigate') {
-    // Отдельные страницы (звонок, «сервер недоступен»), документация API и
+    // Отдельные страницы («сервер недоступен»), документация API и
     // старая мобильная версия — не оболочка приложения: как есть.
     if (url.pathname.endsWith('.html') && url.pathname !== SHELL_URL) return null;
     if (/^\/(docs|mobile)(\/|$)/.test(url.pathname)) return null;

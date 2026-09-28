@@ -48,7 +48,6 @@ describe('CallProvider', () => {
       socket: mockSocket,
       incomingCall: null,
       activeCall: null,
-      callFrameRef: null,
       isMinimized: false,
     });
   });
@@ -177,7 +176,7 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
   });
 
-  it('обрабатывает завершение звонка из iframe (crane_call_ended)', () => {
+  it('сообщения окон (старый call.html) звонок не завершают и не сворачивают (#776)', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -192,31 +191,11 @@ describe('CallProvider', () => {
       },
     });
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'crane_call_ended' },
-      })
-    );
+    for (const type of ['crane_call_ended', 'crane_call_minimize']) {
+      window.dispatchEvent(new MessageEvent('message', { data: { type } }));
+    }
 
-    expect(useCallStore.getState().fsm.state).toBe('ended');
-    expect(useCallStore.getState().fsm.endReason).toBe('completed');
-  });
-
-  it('обрабатывает сворачивание звонка из iframe (crane_call_minimize)', () => {
-    render(
-      <CallProvider>
-        <div>child</div>
-      </CallProvider>
-    );
-
+    expect(useCallStore.getState().fsm.state).toBe('active');
     expect(useCallStore.getState().isMinimized).toBe(false);
-
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'crane_call_minimize' },
-      })
-    );
-
-    expect(useCallStore.getState().isMinimized).toBe(true);
   });
 });

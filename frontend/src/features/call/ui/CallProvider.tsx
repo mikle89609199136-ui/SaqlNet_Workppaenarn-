@@ -73,20 +73,5 @@ export function CallProvider({ children }: PropsWithChildren) {
     };
   }, [eventBus]);
 
-  useEffect(() => {
-    function handleIframeMessage(e: MessageEvent): void {
-      if (!e.data || typeof e.data !== 'object') return;
-      if (e.data.type === 'crane_call_ended') {
-        useCallStore.getState().endCall('completed');
-      }
-      if (e.data.type === 'crane_call_minimize') {
-        useCallStore.getState().minimizeCall();
-      }
-    }
-
-    window.addEventListener('message', handleIframeMessage);
-    return () => window.removeEventListener('message', handleIframeMessage);
-  }, []);
-
   return <>{children}</>;
 }

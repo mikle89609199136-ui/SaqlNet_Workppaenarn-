@@ -174,7 +174,7 @@ describe('сведения о группе', () => {
     expect(screen.getByRole('button', { name: /Заблокировать/ })).toBeInTheDocument();
   });
 
-  it('профиль участника — тот же, что из личного чата: звонок и общее из личной переписки', async () => {
+  it('профиль участника — тот же, что из личного чата: общее из личной переписки', async () => {
     serveGroup('owner');
     server.use(
       http.get(api('/chats'), () =>
@@ -189,8 +189,9 @@ describe('сведения о группе', () => {
     await userEvent.click(await screen.findByRole('button', { name: /^anna/ }));
     await screen.findByRole('complementary', { name: /Профиль/ });
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Аудиозвонок' })).toBeEnabled());
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tablist')).toBeInTheDocument());
+    // Звонки выключены до нового экрана (#776 → #774).
+    expect(screen.queryByRole('button', { name: 'Аудиозвонок' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Удалить из группы' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Заблокировать/ })).toBeInTheDocument();
   });

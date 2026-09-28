@@ -302,6 +302,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -325,6 +326,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -338,6 +340,26 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
       expect(screen.getAllByText(/alex/).length).toBeGreaterThan(0);
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
+    });
+
+    it('звонки выключены (#776) — кнопок звонка в профиле нет', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: null }))
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+      const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+        />
+      );
+      await screen.findByText('Алексей');
+      expect(screen.queryByRole('button', { name: /аудиозвонок/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /видеозвонок/i })).not.toBeInTheDocument();
     });
 
     it('при блокировке звонок из профиля неактивен (#760)', async () => {
@@ -356,6 +378,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
         />
@@ -378,6 +401,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       const { unmount } = renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-2', chat: null, messages: [] }}
           renderActions={renderActions}
@@ -390,6 +414,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-1', chat: null, messages: [] }}
           renderActions={renderActions}
@@ -416,6 +441,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -446,6 +472,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -472,6 +499,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -498,6 +526,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -532,6 +561,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
+          callsEnabled
           onClose={vi.fn()}
           profileState={{
             isOpen: true,

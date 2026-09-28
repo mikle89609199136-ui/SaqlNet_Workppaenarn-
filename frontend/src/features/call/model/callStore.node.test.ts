@@ -37,7 +37,6 @@ describe('useCallStore', () => {
       activeCall: null,
       isMinimized: false,
       socket: mockSocket,
-      callFrameRef: null,
       callTimeoutTimer: null,
     });
 
