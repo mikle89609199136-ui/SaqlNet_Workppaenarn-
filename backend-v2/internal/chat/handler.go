@@ -693,12 +693,10 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/v2/messages/favorites" && r.Method == http.MethodGet {
-		limit, offset := 50, 0
-		if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-			limit = l
-		}
-		if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
-			offset = o
+		limit, offset, err := parsePagination(r)
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
 		}
 		msgs, err := h.service.ListFavorites(r.Context(), current.ID, limit, offset)
 		if err != nil {
