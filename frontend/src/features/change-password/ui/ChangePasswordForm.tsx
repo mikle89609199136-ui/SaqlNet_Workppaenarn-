@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Button, Input, showToast } from '@/shared/ui';
-import { PasswordRequirements } from '@/features/auth';
+import { PasswordRequirements } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { passwordFormSchema, type TPasswordForm } from '../model/passwordSchema';
 

@@ -2,7 +2,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { clearAuthSession } from '@/features/auth';
 import { services } from '@/services/serviceContainer';
 import { disconnectRealtimeSocket } from '@/shared/api';
 import { REACT_ROUTES } from '@/shared/config';
@@ -13,6 +12,17 @@ import { CloudPasswordUnlock } from './CloudPasswordUnlock';
 
 interface Props {
   children: ReactNode;
+  /**
+   * Очистить сессию на устройстве при выходе с заслонки. Это сценарий
+   * входа и выхода, а не резервной копии, — его передаёт приложение (#863).
+   */
+  onSignOut: () => void;
+  /**
+   * Вход по коду с уже вошедшего устройства. Панель QR — чужая фича, её
+   * подставляет тот, кто собирает экран (#863); принятый ключ она отдаёт
+   * в onKey.
+   */
+  renderQrLogin: (onKey: (masterKey: Uint8Array<ArrayBuffer> | null) => Promise<void>) => ReactNode;
 }
 
 /**
@@ -23,7 +33,7 @@ interface Props {
  * Когда шифрование в окружении невозможно вовсе (нет WebCrypto), заслонки
  * нет: об этом говорит сам чат, как и раньше.
  */
-export function KeyBackupGate({ children }: Props) {
+export function KeyBackupGate({ children, onSignOut, renderQrLogin }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -49,7 +59,7 @@ export function KeyBackupGate({ children }: Props) {
     await services.authService.logout().catch(() => {});
     disconnectRealtimeSocket();
     queryClient.clear();
-    clearAuthSession();
+    onSignOut();
     navigate(REACT_ROUTES.LOGIN, { replace: true });
   }
 
@@ -75,7 +85,14 @@ export function KeyBackupGate({ children }: Props) {
   }
 
   if (status === 'locked') {
-    return <CloudPasswordUnlock footer={footer} hasPasskey={hasPasskey} onDone={finish} />;
+    return (
+      <CloudPasswordUnlock
+        footer={footer}
+        hasPasskey={hasPasskey}
+        onDone={finish}
+        renderQrLogin={renderQrLogin}
+      />
+    );
   }
 
   if (status === 'checking') {

@@ -1714,6 +1714,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared media, files or text messages of a chat
+         * @description Messages of one kind for the profile panel's tabs (#842), newest first, with a cursor. media — photos and videos, files — files and audio, text — text messages (links are inside the encrypted text, the client collects them). Same visibility as the thread: members only, without deleted messages and messages hidden for the caller.
+         */
+        get: operations["listSharedMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/messages/{messageId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Position of a message in the thread
+         * @description How many messages visible to the caller are newer than this one (#842): the client loads the thread pages up to it to jump there. Deleted and hidden-for-me messages are not counted; such a target is 404.
+         */
+        get: operations["getMessagePosition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/pins": {
         parameters: {
             query?: never;
@@ -2926,6 +2966,15 @@ export interface components {
             /** @enum {boolean} */
             success: true;
             lastMessage: components["schemas"]["Message"] | null;
+        };
+        SharedPage: {
+            /** @description Newest first. */
+            messages: components["schemas"]["Message"][];
+            /**
+             * Format: uuid
+             * @description Pass as before for the next page; absent — nothing older.
+             */
+            nextCursor?: string;
         };
         MarkMessagesReadRequest: {
             /** Format: uuid */
@@ -6025,6 +6074,112 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listSharedMessages: {
+        parameters: {
+            query: {
+                kind: "media" | "files" | "text";
+                /** @description nextCursor of the previous page (a message id of this chat); omit for the newest. */
+                before?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedPage"];
+                };
+            };
+            /** @description validation_failed or invalid_cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
+    getMessagePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        position: number;
+                    };
+                };
+            };
+            /** @description validation_failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description chat_not_found or message_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
             };
         };
     };

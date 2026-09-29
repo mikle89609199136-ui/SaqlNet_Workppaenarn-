@@ -80,6 +80,10 @@ export const API_ENDPOINTS = {
   MESSAGE_REACTIONS: (messageId: string) => `/messages/${messageId}/reactions`,
 
   CHAT_PINS: (chatId: string) => `/chats/${chatId}/pins`,
+  // Общее в переписке по виду и позиция сообщения в ленте (#842).
+  CHAT_SHARED: (chatId: string) => `/chats/${chatId}/shared`,
+  MESSAGE_POSITION: (chatId: string, messageId: string) =>
+    `/chats/${chatId}/messages/${messageId}/position`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
   ENCRYPTION_KEYS: '/encryption/keys',
