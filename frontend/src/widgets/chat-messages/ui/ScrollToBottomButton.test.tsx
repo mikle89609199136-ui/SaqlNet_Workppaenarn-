@@ -28,4 +28,15 @@ describe('ScrollToBottomButton', () => {
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it('показывает число новых ниже экрана и называет его диктору', () => {
+    render(
+      <I18nextProvider i18n={testI18n}>
+        <ScrollToBottomButton onClick={vi.fn()} unread={3} visible />
+      </I18nextProvider>
+    );
+
+    const button = screen.getByRole('button', { name: /непрочитанных: 3/ });
+    expect(button).toHaveTextContent('3');
+  });
 });

@@ -1,9 +1,9 @@
 import { router } from './router';
-import { queryClient } from '@/queries/queryClient';
+import { queryClient } from '@/shared/api';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 
-import { NotificationManager, RealtimeEvents } from './providers';
+import { AppUpdateManager, NotificationManager, RealtimeEvents } from './providers';
 import { CallOverlay, CallProvider } from '@/features/call';
 
 export function App() {
@@ -16,6 +16,7 @@ export function App() {
         <RouterProvider router={router} />
         <RealtimeEvents />
         <NotificationManager />
+        <AppUpdateManager />
       </CallProvider>
     </QueryClientProvider>
   );

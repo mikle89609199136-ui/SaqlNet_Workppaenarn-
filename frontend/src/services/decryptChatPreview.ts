@@ -1,6 +1,6 @@
 import { services } from '@/services/serviceContainer';
 import type { ILastMessageDto } from '@/types';
-import { formatCallPreview } from '@/shared/lib/call';
+import { formatCallPreview } from '@/shared/lib';
 
 export async function decryptChatLastMessagePreview(
   chatId: string,

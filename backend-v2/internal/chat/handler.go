@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
@@ -142,31 +143,98 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CreateGroup handles POST /api/v2/chats/groups. It creates a new group
+// chat owned by the authenticated user.
+//
+// The title is trimmed of leading and trailing whitespace before
+// validation and storage; an all-whitespace title is rejected. The
+// maxTitleLen limit applies to the trimmed value, and the members list
+// must not be empty.
+//
+// On success it returns 201 with the new chat ID and the stored title.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
+	const method = "CreateGroup"
+
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r)
 		return
 	}
+
 	current := authctx.MustUser(r)
+
 	var input struct {
 		Title       string   `json:"title"`
 		Description string   `json:"description"`
 		AvatarURL   string   `json:"avatarUrl"`
 		Members     []string `json:"members"`
 	}
+
 	if !decode(w, r, &input) {
+		return // decode logs internally
+	}
+
+	// Trim before validating: a value that is only too long because of
+	// surrounding whitespace must be accepted, and the service must
+	// receive the same value that was validated.
+	title := strings.TrimSpace(input.Title)
+	description := strings.TrimSpace(input.Description)
+	avatarUrl := strings.TrimSpace(input.AvatarURL)
+
+	if title == "" {
+		slog.WarnContext(r.Context(), "group title is empty after trimming",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title is required")
 		return
 	}
-	chatID, err := h.service.CreateGroup(r.Context(), current.ID, input.Title, input.Description, input.AvatarURL, input.Members)
-	if errors.Is(err, ErrInvalidInput) {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title and members are required")
+
+	if utf8.RuneCountInString(title) > maxTitleLen {
+		slog.WarnContext(r.Context(), "group title exceeds maximum length",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"length", utf8.RuneCountInString(title),
+			"max", maxTitleLen,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
+			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
 		return
 	}
-	if err != nil {
+
+	if len(input.Members) == 0 {
+		slog.WarnContext(r.Context(), "group members list is empty",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "members must not be empty")
+		return
+	}
+
+	chatID, err := h.service.CreateGroup(
+		r.Context(),
+		current.ID,
+		title,
+		description,
+		avatarUrl,
+		input.Members,
+	)
+
+	switch {
+	case errors.Is(err, ErrInvalidInput):
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+	case err != nil:
+		// The service logs the underlying error with full context;
+		// logging here would duplicate the entry.
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "group creation failed")
-		return
+	default:
+		httpx.JSON(w, http.StatusCreated, map[string]any{
+			"chatId": chatID,
+			"title":  title,
+		})
 	}
-	httpx.JSON(w, http.StatusCreated, map[string]any{"chatId": chatID, "title": strings.TrimSpace(input.Title)})
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
@@ -395,6 +463,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "archive", r.Method == http.MethodPost))
 	case suffix == "/read" && r.Method == http.MethodPost:
 		respondSuccess(w, r, h.service.MarkRead(r.Context(), current.ID, chatID))
+	case suffix == "/messages/delete" && r.Method == http.MethodPost:
+		h.deleteMessages(w, r, current.ID, chatID)
 	default:
 		methodNotAllowed(w, r)
 	}
@@ -597,29 +667,6 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func (h *Handler) MessagesRead(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r)
-		return
-	}
-	current := authctx.MustUser(r)
-	var input struct {
-		ChatID     string   `json:"chatId"`
-		MessageIDs []string `json:"messageIds"`
-	}
-	if !decode(w, r, &input) {
-		return
-	}
-	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
-	respondSuccess(w, r, err)
-}
-
-// Messages is a single routing entry point for message-related requests:
-// search, favorites, forwarding, reactions, and the favorite toggle.
-//
-// Special routes without an ID (search, favorites) are handled before
-// parseMessagePath is called; otherwise they would be mistaken for a
-// message ID.
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	const method = "Messages"
 
@@ -702,53 +749,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case targetID == "":
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
-
-	case suffix == "/forward" && r.Method == http.MethodPost:
-		var input struct {
-			TargetChatID string `json:"targetChatId"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if err != nil {
-			slog.ErrorContext(r.Context(), "forward message failed",
-				"layer", "handler",
-				"method", method,
-				"user_id", current.ID,
-				"message_id", targetID,
-				"error", err,
-			)
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "forward failed")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
-
-	case suffix == "/reactions" && r.Method == http.MethodGet:
-		reactions, err := h.service.ListReactions(r.Context(), current.ID, targetID)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "list reactions failed",
-				"layer", "handler",
-				"method", method,
-				"user_id", current.ID,
-				"message_id", targetID,
-				"error", err,
-			)
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list reactions")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"reactions": reactions})
-
 	case suffix == "/reactions" && r.Method == http.MethodPost:
 		var input struct {
 			Emoji string `json:"emoji"`
@@ -790,7 +790,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			"currentEmoji": currentEmoji, // the user's emoji after the toggle, "" if removed
 			"reactions":    reactions,    // aggregated list with the myReaction flag
 		})
-
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
@@ -898,7 +897,12 @@ func parseMemberAction(suffix string) (string, string) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(value); err != nil {
+	return decodeLimited(w, r, value, 256<<10)
+}
+
+// decodeLimited — decode со своим пределом тела: отправке пачкой общего не хватает.
+func decodeLimited(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(value); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}

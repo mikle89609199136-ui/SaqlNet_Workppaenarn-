@@ -75,7 +75,7 @@ func TestToggleReactionConcurrent(t *testing.T) {
 	`, messageID, chatID, userID)
 	require.NoError(t, err)
 
-	service := chat.NewService(db, nil)
+	service := chat.NewService(db, nil, nil)
 	emojis := []string{"👍", "❤️"}
 	statuses := make([]chat.ReactionStatus, len(emojis))
 	errs := make([]error, len(emojis))

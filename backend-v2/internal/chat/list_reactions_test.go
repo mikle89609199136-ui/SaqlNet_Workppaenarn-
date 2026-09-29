@@ -45,7 +45,7 @@ func TestListReactions_InvalidUUIDReturns400WithoutSQL(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	recorder := listReactionsRequest(NewService(db, nil), "not-a-uuid")
+	recorder := listReactionsRequest(NewService(db, nil, nil), "not-a-uuid")
 
 	assertErrorResponse(t, recorder, http.StatusBadRequest, "validation_failed")
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -62,7 +62,7 @@ func TestListReactions_MissingOrDeletedMessageReturns404(t *testing.T) {
 				WithArgs(listReactionsMessageID).
 				WillReturnError(sql.ErrNoRows)
 
-			recorder := listReactionsRequest(NewService(db, nil), listReactionsMessageID)
+			recorder := listReactionsRequest(NewService(db, nil, nil), listReactionsMessageID)
 
 			assertErrorResponse(t, recorder, http.StatusNotFound, "not_found")
 			require.NoError(t, mock.ExpectationsWereMet())
@@ -82,7 +82,7 @@ func TestListReactions_OutsiderReturns403WithoutReadingAggregates(t *testing.T) 
 		WithArgs(listReactionsUserID, listReactionsChatID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
-	recorder := listReactionsRequest(NewService(db, nil), listReactionsMessageID)
+	recorder := listReactionsRequest(NewService(db, nil, nil), listReactionsMessageID)
 
 	assertErrorResponse(t, recorder, http.StatusForbidden, "access_denied")
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -103,7 +103,7 @@ func TestListReactions_MemberWithNoReactionsReturnsEmptyArray(t *testing.T) {
 		WithArgs(listReactionsMessageID, listReactionsUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"emoji", "cnt", "my_reaction"}))
 
-	recorder := listReactionsRequest(NewService(db, nil), listReactionsMessageID)
+	recorder := listReactionsRequest(NewService(db, nil, nil), listReactionsMessageID)
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	var response struct {

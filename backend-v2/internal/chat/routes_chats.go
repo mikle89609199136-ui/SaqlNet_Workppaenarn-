@@ -33,6 +33,11 @@ func registerChatRoutes(
 	)
 
 	mux.Handle(
+		"GET /api/v2/chats/{chatID}/members-online",
+		authenticated(http.HandlerFunc(handler.GetOnlineMembers)),
+	)
+
+	mux.Handle(
 		"POST /api/v2/chats/{chatID}/pins/{messageID}",
 		authenticated(http.HandlerFunc(handler.Pins)),
 	)
@@ -40,6 +45,17 @@ func registerChatRoutes(
 	mux.Handle(
 		"DELETE /api/v2/chats/{chatID}/pins/{messageID}",
 		authenticated(http.HandlerFunc(handler.Pins)),
+	)
+
+	// Общее в переписке для панели профиля и позиция сообщения в ленте (#842).
+	mux.Handle(
+		"GET /api/v2/chats/{chatID}/shared",
+		authenticated(http.HandlerFunc(handler.ListShared)),
+	)
+
+	mux.Handle(
+		"GET /api/v2/chats/{chatID}/messages/{messageID}/position",
+		authenticated(http.HandlerFunc(handler.MessagePosition)),
 	)
 
 	// Старые операции пока в общем обработчике.

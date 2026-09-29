@@ -1,4 +1,5 @@
 x-secure: &secure
+  - sessionCookie: []
   - bearerAuth: []
 x-error: &error
   $ref: '../components/responses.yaml#/Error'
@@ -24,6 +25,37 @@ x-error: &error
           },
       }
     responses: { '200': { description: Updated profile }, '400': *error }
+/users/me/username:
+  put:
+    tags: [Users]
+    summary: Change the current user's username
+    description: >-
+      Normalizes the username to lowercase and changes it atomically. A successful
+      change invalidates old username deep links; user IDs and existing chats remain
+      unchanged. The operation is limited to once every 24 hours.
+    operationId: renameCurrentUser
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/RenameUsernameRequest' }
+    responses:
+      '200':
+        description: Updated canonical profile
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ProfileResponse' }
+      '400': *error
+      '401': *error
+      '409': *error
+      '429':
+        description: Rename cooldown is active; Retry-After contains seconds remaining
+        headers:
+          Retry-After: { schema: { type: integer, minimum: 1 } }
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
 /users/avatar:
   put:
     tags: [Users]
@@ -51,7 +83,6 @@ x-error: &error
     tags: [Users]
     summary: Check username availability
     operationId: checkUsername
-    security: *secure
     parameters:
       [
         {
@@ -61,7 +92,17 @@ x-error: &error
           schema: { $ref: '../components/schemas.yaml#/Username' },
         },
       ]
-    responses: { '200': { description: Availability }, '400': *error }
+    responses:
+      '200':
+        description: Availability
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [available]
+              properties: { available: { type: boolean } }
+      '400': *error
+      '429': *error
 /users/search:
   get:
     tags: [Users]
@@ -93,7 +134,16 @@ x-error: &error
     operationId: getUserStatus
     security: *secure
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-    responses: { '200': { description: User status } }
+    responses:
+      '200':
+        description: User status as the caller may see it
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UserStatus' } } }
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            example: { code: user_not_found, message: user not found }
 /premium/subscribe:
   post:
     tags: [Users]
@@ -143,18 +193,103 @@ x-error: &error
     }
 /users/privacy:
   put:
-    {
-      tags: [Users],
-      summary: Update privacy,
-      operationId: updatePrivacy,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated privacy } },
-    }
+    tags: [Users]
+    summary: Update privacy
+    operationId: updatePrivacy
+    security: *secure
+    description: >-
+      Partial update. Unknown keys or values are rejected with 400
+      validation_failed. Visibility rules take all or nobody; the legacy
+      contacts and none are accepted and stored as nobody, everyone as all.
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/PrivacySettings' } } }
+    responses:
+      '200':
+        description: Updated privacy
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privacy]
+              properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+/users/privacy/exceptions:
+  get:
+    tags: [Users]
+    summary: List privacy exceptions
+    operationId: listPrivacyExceptions
+    security: *secure
+    description: >-
+      People the owner let see a closed rule (allow) or hid an open one from
+      (deny), newest first. Without rule, exceptions of every rule.
+    parameters:
+      - name: rule
+        in: query
+        required: false
+        schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+    responses:
+      '200':
+        description: Privacy exceptions
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exceptions]
+              properties:
+                exceptions:
+                  type: array
+                  items: { $ref: '../components/schemas.yaml#/PrivacyException' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+/users/privacy/exceptions/{rule}/{userId}:
+  parameters:
+    - name: rule
+      in: path
+      required: true
+      schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+    - name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  put:
+    tags: [Users]
+    summary: Add or switch a privacy exception
+    operationId: setPrivacyException
+    security: *secure
+    description: >-
+      One exception per person and rule: putting someone on the allow list
+      moves them off the deny list. Order of the check: the owner themself,
+      the block list, the exception, the rule. Yourself is 400
+      self_exception; an unknown or disabled user is 404 user_not_found.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [mode]
+            additionalProperties: false
+            properties: { mode: { $ref: '../components/schemas.yaml#/PrivacyExceptionMode' } }
+    responses:
+      '200':
+        description: Saved exception
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exception]
+              properties: { exception: { $ref: '../components/schemas.yaml#/PrivacyException' } }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+  delete:
+    tags: [Users]
+    summary: Remove a privacy exception
+    operationId: removePrivacyException
+    security: *secure
+    description: Removing an exception that is not there is not an error.
+    responses:
+      '200': { description: Removed }
+      '400': { $ref: '../components/responses.yaml#/Error' }
 /users/notifications:
   get:
     {
@@ -504,6 +639,85 @@ x-error: &error
             },
         }
     responses: { '200': { description: Registered } }
+/users/push/vapid-key:
+  get:
+    tags: [Users]
+    summary: Web Push VAPID public key
+    description: >-
+      Public VAPID key for PushManager.subscribe (applicationServerKey).
+      404 push_not_configured when push notifications are disabled on this
+      server.
+    operationId: getPushVapidKey
+    security: *secure
+    responses:
+      '200':
+        description: Public key
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: 'Base64url, uncompressed P-256 point' }
+      '404': { description: Push notifications are not configured }
+/users/push/subscriptions:
+  post:
+    tags: [Users]
+    summary: Register this device for Web Push
+    description: >-
+      Saves the PushSubscription of the current device. Repeating the same
+      endpoint updates the keys; an endpoint registered by another account on
+      the same device moves to the current account. The endpoint must be an
+      https address of a known push service (Google, Mozilla, Apple,
+      Microsoft) — the server sends requests to it. At most 20 subscriptions
+      per user; older ones are evicted. Push payloads never contain message
+      text (end-to-end encryption): only the event kind, chat id, chat type
+      and title, the sender name and the recipient language.
+    operationId: savePushSubscription
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [endpoint, keys]
+            properties:
+              endpoint: { type: string, format: uri, maxLength: 2048 }
+              keys:
+                type: object
+                required: [p256dh, auth]
+                properties:
+                  p256dh: { type: string, description: 'Base64url, 65-byte P-256 public key' }
+                  auth: { type: string, description: 'Base64url, 16-byte auth secret' }
+    responses:
+      '200':
+        description: Saved; the id is sent over the socket in client_state so that a visible device gets no push
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+      '400': { description: invalid_json or invalid_push_subscription }
+  delete:
+    tags: [Users]
+    summary: Remove the Web Push subscription of this device
+    operationId: deletePushSubscription
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [endpoint]
+            properties:
+              endpoint: { type: string }
+    responses:
+      '204': { description: Removed (only the requester's own subscription) }
+      '400': { description: endpoint is required }
 /users/devices/terminate-all:
   post:
     {

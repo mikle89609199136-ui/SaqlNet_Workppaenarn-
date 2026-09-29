@@ -1,6 +1,8 @@
 import { REACT_ROUTES } from '@/shared/config';
 import { useProfileStore } from '@/entities/user';
 import { clearAuthSession } from '@/features/auth';
+import { KeyBackupGate } from '@/features/key-backup';
+import { QrLoginPanel } from '@/features/qr-login';
 import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
@@ -9,7 +11,7 @@ export function AuthGuard() {
 
   useEffect(() => {
     function handleUnauthorized() {
-      if (!useProfileStore.getState().token) return;
+      if (!useProfileStore.getState().isAuth) return;
 
       clearAuthSession();
       const from = window.location.pathname + window.location.search;
@@ -21,5 +23,12 @@ export function AuthGuard() {
     return () => window.removeEventListener('craneapp:unauthorized', handleUnauthorized);
   }, [navigate]);
 
-  return <Outlet />;
+  return (
+    <KeyBackupGate
+      onSignOut={clearAuthSession}
+      renderQrLogin={(onKey) => <QrLoginPanel onConfirmed={({ masterKey }) => onKey(masterKey)} />}
+    >
+      <Outlet />
+    </KeyBackupGate>
+  );
 }

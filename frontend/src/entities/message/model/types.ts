@@ -1,3 +1,5 @@
+import type { IMessageEntity } from '@/shared/lib/richText';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IEncryptedMedia } from '@/types/encryption.types';
 
 export type TMessageType =
@@ -5,7 +7,11 @@ export type TMessageType =
 export type TMediaMessageType = 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file';
 
 interface IForwardedMetadata {
-  forwardedFrom: string;
+  /** Исходное сообщение. Нет, если автор запретил ссылку на себя (#785). */
+  forwardedFrom?: string;
+  /** Автор запретил пересылающему ссылку на себя: осталось только имя. */
+  forwardedHidden?: boolean;
+  forwardedSenderId?: string;
   forwardedSenderName: string;
 }
 
@@ -27,20 +33,22 @@ export interface IReaction {
 
 export type TReactionsList = IReaction[];
 
-export type TMessageDeliveryStatus =
-  | 'pending'
-  | 'uploading'
-  | 'failed'
-  | 'sent'
-  | 'read';
+export type TMessageDeliveryStatus = 'pending' | 'uploading' | 'failed' | 'sent' | 'read';
 
 export interface IMessageDto {
   id: string;
   chatId: string;
   senderId: string;
   senderFirstName: string;
+  /** Фото автора — сервер присылает, аватарка в группе берёт его (#820). */
+  senderAvatar?: string;
   senderName: string;
   content: string;
+  /**
+   * Форматирование текста (#656). В зашифрованных чатах приходит из самого
+   * конверта после расшифровки; в каналах — открытым полем с сервера.
+   */
+  entities?: IMessageEntity[];
   type: TMessageType;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +61,8 @@ export interface IMessageDto {
   replyToSenderName: string | null;
   metadata?: IForwardedMetadata | IMediaMetadata;
   forwardedSenderName: string;
+  /** Автор оригинала — чтобы открыть его профиль. Нет, если он запретил ссылку (#785). */
+  forwardedSenderId?: string;
   reactions: TReactionsList;
   /**
    * Удалось ли подтвердить автора подписью. `false` — не удалось: текст
@@ -65,6 +75,14 @@ export interface IMessageDto {
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
+  /** Длительность и волна голосового (#843): из шифрованного конверта. */
+  voice?: IVoiceMeta;
+  /**
+   * Своё сообщение (#657): когда собеседник его получил и прочитал — время
+   * сервера. Нет поля — ещё нет.
+   */
+  deliveredAt?: string;
+  readAt?: string;
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   /** Статус доставки/отправки сообщения (#552 Outbox) */
@@ -74,6 +92,9 @@ export interface IMessageDto {
 }
 
 export type TMessagesList = IMessageDto[];
+
+/** Вид общего в переписке (#842): фото и видео, файлы и аудио, текст (для ссылок). */
+export type TSharedKind = 'media' | 'files' | 'text';
 
 export interface IPinnedMessageDto {
   id: string;

@@ -1,7 +1,6 @@
-import { Button, ConfirmDialog, Icon, showToast } from '@/shared/ui';
+import { Button, Icon } from '@/shared/ui';
 import { useEscapeKey, useIsMobile } from '@/shared/lib';
-import { useChatUiStore } from '@/store';
-import { useState } from 'react';
+import { useChatUiStore } from '@/entities/chat';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow } from './ComposerRow';
 import { ComposerWrapper } from './ComposerWrapper';
@@ -10,14 +9,15 @@ interface Props {
   handleCancelSelection: () => void;
   onForwardMessage: () => void;
   onCopyMessage: () => void;
-  onDeleteMessage: () => Promise<void> | void;
+  /** Открывает подтверждение удаления — общее для чата (#840). */
+  onDeleteMessage: () => void;
 }
 
 /**
  * Панель действий над выбранными сообщениями (мультивыбор).
- * Реализована на дизайн-системе (компонент Button), поддерживает
- * подтверждение удаления через ConfirmDialog, сброс по Escape и
- * адаптивную верстку для мобильных устройств.
+ * Реализована на дизайн-системе (компонент Button), поддерживает сброс по
+ * Escape и адаптивную верстку для мобильных устройств. Подтверждение
+ * удаления — общий диалог чата (DeleteMessagesDialog, #840).
  */
 export const ChatSelectedMessagesActions = ({
   handleCancelSelection,
@@ -30,23 +30,10 @@ export const ChatSelectedMessagesActions = ({
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const selectedCount = selectedMessages.length;
 
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const isConfirmOpen = useChatUiStore((state) => Boolean(state.deleteTargets));
 
   // Клавиша Escape сбрасывает выбор, когда диалог подтверждения закрыт
   useEscapeKey({ active: !isConfirmOpen, onClose: handleCancelSelection });
-
-  const handleConfirmDelete = async () => {
-    setIsDeleting(true);
-    try {
-      await onDeleteMessage();
-      setIsConfirmOpen(false);
-    } catch {
-      showToast('error', t('messageDeleteError', 'Не удалось удалить сообщение(я)'));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   return (
     <>
@@ -91,7 +78,7 @@ export const ChatSelectedMessagesActions = ({
               aria-label={t('delete', 'Удалить')}
               className="shrink-0"
               disabled={selectedCount === 0}
-              onClick={() => setIsConfirmOpen(true)}
+              onClick={onDeleteMessage}
               size="sm"
               title={t('delete', 'Удалить')}
               type="button"
@@ -115,24 +102,6 @@ export const ChatSelectedMessagesActions = ({
           </Button>
         </ComposerRow>
       </ComposerWrapper>
-
-      {/* Диалог подтверждения удаления выбранных сообщений */}
-      <ConfirmDialog
-        cancelLabel={t('cancel', 'Отмена')}
-        confirmLabel={t('delete', 'Удалить')}
-        confirming={isDeleting}
-        danger
-        onCancel={() => setIsConfirmOpen(false)}
-        onConfirm={handleConfirmDelete}
-        open={isConfirmOpen}
-        title={t('deleteSelectedTitle', 'Удалить выбранные сообщения?')}
-      >
-        <p className="text-sm text-ink-2">
-          {t('deleteSelectedConfirm', 'Сообщения удалятся у всех участников. {{count}} шт.', {
-            count: selectedCount,
-          })}
-        </p>
-      </ConfirmDialog>
     </>
   );
 };

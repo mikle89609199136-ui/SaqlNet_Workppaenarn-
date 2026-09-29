@@ -29,7 +29,7 @@ export function ProfileDetails({
   if (isEditing) {
     return (
       <form
-        className="flex flex-col gap-3 p-3 bg-sheet-2 border border-line rounded-field"
+        className="mx-4 mb-4 flex flex-col gap-3 rounded-bubble bg-sheet-2 px-3.5 py-3"
         onSubmit={onSave}
       >
         <Input
@@ -53,16 +53,16 @@ export function ProfileDetails({
 
         {editError && <p className="text-caption text-danger">{editError}</p>}
 
-        <div className="flex items-center gap-2 mt-2">
-          <Button disabled={isSaving} size="md" type="submit" variant="primary">
+        <div className="mt-1 flex items-center justify-end gap-2">
+          <Button disabled={isSaving} size="sm" type="submit" variant="primary">
             {isSaving ? t('saving', 'Сохранение...') : t('save', 'Сохранить')}
           </Button>
           <Button
             disabled={isSaving}
             onClick={onCancelEdit}
-            size="md"
+            size="sm"
             type="button"
-            variant="secondary"
+            variant="ghost"
           >
             {t('cancel', 'Отмена')}
           </Button>
@@ -71,26 +71,14 @@ export function ProfileDetails({
     );
   }
 
+  /* «О себе» — карточка на приподнятой поверхности, как в макете (#822).
+     Пустое не показывается: «Не указано» ничего о человеке не говорит. */
+  if (!profileUser.bio) return null;
+
   return (
-    <div className="flex flex-col divide-y divide-divider bg-sheet-2 border border-line rounded-field overflow-hidden">
-      <div className="p-3 flex flex-col gap-0.5">
-        <span className="text-caption text-ink-3">{t('name', 'Имя')}</span>
-        <span className="text-body text-ink font-medium">
-          {profileUser.firstName || t('notSpecified', 'Не указано')}
-        </span>
-      </div>
-
-      <div className="p-3 flex flex-col gap-0.5">
-        <span className="text-caption text-ink-3">{t('bio', 'О себе')}</span>
-        <span className="text-body text-ink font-medium whitespace-pre-wrap">
-          {profileUser.bio || t('notSpecified', 'Не указано')}
-        </span>
-      </div>
-
-      <div className="p-3 flex flex-col gap-0.5">
-        <span className="text-caption text-ink-3">{t('username', 'Имя пользователя')}</span>
-        <span className="text-body text-ink font-medium">@{profileUser.username}</span>
-      </div>
+    <div className="mx-4 mb-4 flex flex-col gap-0.5 rounded-bubble bg-sheet-2 px-3.5 py-3">
+      <span className="text-meta text-ink-3">{t('bio', 'О себе')}</span>
+      <span className="text-ui leading-[1.4] whitespace-pre-wrap text-ink">{profileUser.bio}</span>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
@@ -26,9 +27,9 @@ var deleteMessageCreatedAt = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 
 func deleteMessageRows(id, content, createdAt string) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "type",
+		"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type",
 		"reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at", "reactions",
-	}).AddRow(id, deleteMessageChatID, deleteMessageUserID, "Alice", "", content, "text", nil,
+	}).AddRow(id, deleteMessageChatID, deleteMessageUserID, "Alice", "", content, []byte("[]"), "text", nil,
 		[]byte(`{}`), false, false, createdAt, createdAt, nil, []byte(`[]`))
 }
 
@@ -41,9 +42,15 @@ func expectDeleteUpdate(mock sqlmock.Sqlmock) {
 		WillReturnRows(sqlmock.NewRows([]string{"chat_id", "created_at"}).AddRow(deleteMessageChatID, deleteMessageCreatedAt))
 }
 
+// Соседнее сообщение (before задан) считается для рассылки — без учёта
+// скрытых; последнее — для удалившего, без скрытых им (#840).
 func expectMessageAfterDelete(mock sqlmock.Sqlmock, before any, rows *sqlmock.Rows) {
+	var hiddenFor any = deleteMessageUserID
+	if before != nil {
+		hiddenFor = nil
+	}
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR[\s\S]*ORDER BY m\.created_at DESC, m\.id DESC`).
-		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID).WillReturnRows(rows)
+		WithArgs(deleteMessageChatID, before, deletedMessageID, deleteMessageUserID, hiddenFor).WillReturnRows(rows)
 }
 
 func TestDeleteMessage_ReturnsChatLastMessageAndBroadcastsPreviousMessage(t *testing.T) {
@@ -57,7 +64,7 @@ func TestDeleteMessage_ReturnsChatLastMessageAndBroadcastsPreviousMessage(t *tes
 	expectMessageAfterDelete(mock, nil, deleteMessageRows(lastMessageID, "Latest", "2026-08-20T13:00:00Z"))
 	mock.ExpectCommit()
 
-	lastMessage, err := NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	lastMessage, err := NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.NoError(t, err)
 	require.NotNil(t, lastMessage)
 	require.Equal(t, lastMessageID, lastMessage.ID)
@@ -86,7 +93,7 @@ func TestDeleteMessage_ReturnsNullWhenChatHasNoMessages(t *testing.T) {
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	expectMessageAfterDelete(mock, nil, emptyDeleteMessageRows())
 	mock.ExpectCommit()
-	lastMessage, err := NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	lastMessage, err := NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.NoError(t, err)
 	require.Nil(t, lastMessage)
 	var event map[string]json.RawMessage
@@ -104,7 +111,7 @@ func TestDeleteMessage_HTTPResponseContainsLastMessage(t *testing.T) {
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, deleteMessageRows(previousMessageID, "Previous", "2026-08-20T11:00:00Z"))
 	expectMessageAfterDelete(mock, nil, deleteMessageRows(lastMessageID, "Latest", "2026-08-20T13:00:00Z"))
 	mock.ExpectCommit()
-	recorder := deleteMessageRequest(NewService(db, nil), deletedMessageID)
+	recorder := deleteMessageRequest(NewService(db, nil, nil), deletedMessageID)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response struct {
 		Success     bool     `json:"success"`
@@ -125,7 +132,7 @@ func TestDeleteMessage_HTTPResponseContainsNullLastMessage(t *testing.T) {
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	expectMessageAfterDelete(mock, nil, emptyDeleteMessageRows())
 	mock.ExpectCommit()
-	recorder := deleteMessageRequest(NewService(db, nil), deletedMessageID)
+	recorder := deleteMessageRequest(NewService(db, nil, nil), deletedMessageID)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
@@ -137,10 +144,10 @@ func TestDeleteMessage_InvalidUUIDReturns400WithoutSQL(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	_, err = NewService(db, nil).DeleteMessage(context.Background(), deleteMessageUserID, "not-a-uuid")
+	_, err = NewService(db, nil, nil).DeleteMessage(context.Background(), deleteMessageUserID, "not-a-uuid")
 	require.ErrorIs(t, err, ErrInvalidInput)
 	require.NoError(t, mock.ExpectationsWereMet())
-	require.Equal(t, http.StatusBadRequest, deleteMessageRequest(NewService(db, nil), "not-a-uuid").Code)
+	require.Equal(t, http.StatusBadRequest, deleteMessageRequest(NewService(db, nil, nil), "not-a-uuid").Code)
 }
 
 func TestDeleteMessage_NotFoundRollsBackWithoutBroadcast(t *testing.T) {
@@ -154,7 +161,7 @@ func TestDeleteMessage_NotFoundRollsBackWithoutBroadcast(t *testing.T) {
 		WithArgs(deletedMessageID, deleteMessageUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectRollback()
-	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, ErrNotFound)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -171,7 +178,7 @@ func TestDeleteMessage_ForbiddenRollsBackWithoutBroadcast(t *testing.T) {
 		WithArgs(deletedMessageID, deleteMessageUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectRollback()
-	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, ErrForbidden)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -186,10 +193,10 @@ func TestDeleteMessage_LastMessageLookupErrorRollsBackWithoutBroadcast(t *testin
 	expectDeleteUpdate(mock)
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	mock.ExpectQuery(`AND \(\$2::timestamptz IS NULL OR`).
-		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID).
+		WithArgs(deleteMessageChatID, nil, deletedMessageID, deleteMessageUserID, deleteMessageUserID).
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
-	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, sql.ErrConnDone)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -205,7 +212,7 @@ func TestDeleteMessage_CommitErrorDoesNotBroadcast(t *testing.T) {
 	expectMessageAfterDelete(mock, deleteMessageCreatedAt, emptyDeleteMessageRows())
 	expectMessageAfterDelete(mock, nil, emptyDeleteMessageRows())
 	mock.ExpectCommit().WillReturnError(sql.ErrTxDone)
-	_, err = NewService(db, ws).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
+	_, err = NewService(db, ws, nil).DeleteMessage(context.Background(), deleteMessageUserID, deletedMessageID)
 	require.ErrorIs(t, err, sql.ErrTxDone)
 	require.Empty(t, ws.broadcasts)
 	require.NoError(t, mock.ExpectationsWereMet())

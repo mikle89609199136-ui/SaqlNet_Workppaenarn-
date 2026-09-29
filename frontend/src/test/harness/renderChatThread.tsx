@@ -3,8 +3,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ChatThreadPage } from '@/pages/chat-thread';
-import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
-import { chatKeys } from '@/queries/keys';
+import { registerChatResolver, chatKeys } from '@/entities/chat';
 import { RealtimeEvents } from '@/app/providers';
 import { useProfileStore } from '@/entities/user';
 import type { IChatDto, IMessageDto, IPinnedDto, IUserDto } from '@/types';
@@ -72,7 +71,7 @@ export function renderChatThread({
   queryClient = createTestQueryClient(),
   onProfileStateChange = () => {},
 }: IRenderChatThreadOptions): RenderResult {
-  useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: currentUser, isAuth: true });
 
   // Настоящий WebCrypto под jsdom работает не везде, а страница готовит
   // ключ чата при открытии. Криптография проверяется в node-тестах; здесь

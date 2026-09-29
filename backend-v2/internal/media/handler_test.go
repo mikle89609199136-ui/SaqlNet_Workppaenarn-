@@ -26,22 +26,23 @@ type testStore struct {
 	putCalls    int
 	deleteCalls int
 	lastPutSize int64
+	lastPutType string
+	lastPutData []byte
 }
 
-func (testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
-	return &ObjectResponse{
-		Body:       io.NopCloser(bytes.NewReader(nil)),
-		StatusCode: http.StatusOK,
-	}, nil
+func (s *testStore) Get(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+	return objectResponse(http.StatusOK, string(s.lastPutData)), nil
 }
 
-func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, _ string) error {
+func (s *testStore) Put(_ context.Context, _, _ string, reader io.Reader, _ int64, contentType string) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 	s.putCalls++
 	s.lastPutSize = int64(len(data))
+	s.lastPutType = contentType
+	s.lastPutData = data
 	return nil
 }
 
@@ -131,7 +132,7 @@ func TestJSONUploadReturnsFileMetadata(t *testing.T) {
 
 func TestEncryptedUploadReturnsOriginalMetadata(t *testing.T) {
 	handler, mock := newUploadHandler(t, "secret.pdf", "application/pdf", 6)
-	req := httptest.NewRequest(http.MethodPost, "/api/v2/media", bytes.NewBufferString(`{"purpose":"message","file":{"ciphertext":"Y2lwaGVy","mimeType":"application/pdf","fileName":"/tmp/secret.pdf","sizeBytes":245760}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/media", bytes.NewBufferString(`{"purpose":"message","file":{"version":2,"encrypted":true,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":1,"ciphertext":"Y2lwaGVy","mimeType":"application/pdf","fileName":"/tmp/secret.pdf","sizeBytes":245760}}`))
 	req.Header.Set("Content-Type", "application/json")
 	got := performUpload(t, handler, req)
 	if got["fileName"] != "secret.pdf" || got["sizeBytes"] != float64(245760) || got["encrypted"] != true {
@@ -193,9 +194,11 @@ func encryptedUploadRequest(t *testing.T, filename, contentType string, data []b
 	payload, err := json.Marshal(map[string]any{
 		"purpose": "message",
 		"file": map[string]any{
-			"version":    1,
+			"version":    2,
+			"encrypted":  true,
 			"algorithm":  "AES-GCM",
-			"iv":         "aXY=",
+			"iv":         "AAECAwQFBgcICQoL",
+			"keyEpoch":   1,
 			"ciphertext": base64.StdEncoding.EncodeToString(data),
 			"mimeType":   contentType,
 			"fileName":   filename,
@@ -295,6 +298,11 @@ func TestEncryptedUploadUsesDecodedCiphertextSizeInsteadOfClientSize(t *testing.
 	payload, err := json.Marshal(map[string]any{
 		"purpose": "message",
 		"file": map[string]any{
+			"version":    2,
+			"encrypted":  true,
+			"algorithm":  "AES-GCM",
+			"iv":         "AAECAwQFBgcICQoL",
+			"keyEpoch":   1,
 			"ciphertext": "YQ==",
 			"fileName":   "secret.bin",
 			"sizeBytes":  999,
@@ -474,5 +482,33 @@ func TestUploadLimitMessageForConfigured100MiB(t *testing.T) {
 	const maxFileSize int64 = 104857600
 	if got := uploadLimitMessage(maxFileSize); got != "file exceeds 100 MB limit" {
 		t.Fatalf("uploadLimitMessage()=%q", got)
+	}
+}
+
+// Голосовое больше 8 МБ отклоняется до записи в хранилище (#843); тот же
+// размер обычным файлом проходит.
+func TestVoiceUploadHasItsOwnSizeLimit(t *testing.T) {
+	body := func(kind string, bytes int) string {
+		ciphertext := base64.StdEncoding.EncodeToString(make([]byte, bytes))
+		return `{"purpose":"message","type":"` + kind + `","file":{"version":2,"encrypted":true,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":1,"ciphertext":"` + ciphertext + `","mimeType":"audio/ogg","sizeBytes":1}}`
+	}
+
+	handler, mock, _ := newMediaTestHandler(t, 64<<20)
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes+1)))
+	request.Header.Set("Content-Type", "application/json")
+	response := executeUpload(handler, request)
+	if response.Code != http.StatusRequestEntityTooLarge || !strings.Contains(response.Body.String(), "file_too_large") {
+		t.Fatalf("voice over limit: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err) // в хранилище ничего не ушло
+	}
+
+	within, withinMock, _ := newMediaTestHandler(t, 64<<20)
+	expectUploadInsert(withinMock, "upload", "application/octet-stream", maxVoiceBytes)
+	request = httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes)))
+	request.Header.Set("Content-Type", "application/json")
+	if response := executeUpload(within, request); response.Code != http.StatusCreated {
+		t.Fatalf("voice at limit: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

@@ -1,9 +1,12 @@
 import type { ApiClient } from '@/shared/api';
+import type { IVoiceMeta } from '@/shared/lib/voice';
+import type { IMessageEntity } from '@/shared/lib/richText';
 import { STORAGE_KEYS } from '@/shared/config';
-import { resolveMembers } from '@/core/chatResolver';
-import { ChatKeyManager, type IKeyDistribution } from '@/crypto/chatKeys';
-import { base64ToBytes } from '@/crypto/encoding';
+import { resolveMembers } from '@/entities/chat/model/chatResolver';
 import {
+  ChatKeyManager,
+  type IKeyDistribution,
+  base64ToBytes,
   decryptMediaBytes,
   decryptMessage,
   encryptMediaBytes,
@@ -11,18 +14,30 @@ import {
   forgetDerivedKeys,
   isLegacyContent,
   parseEnvelope,
-} from '@/crypto/envelope';
-import {
   fetchPeerIdentity,
+  forgetBackupState,
   forgetPeerIdentities,
+  KeyBackupManager,
   knownPeerIdentities,
-  loadOrCreateIdentity,
   PEER_BUNDLES_PREFIX,
   publishIdentity,
+  matchesLoginPassword,
+  readBackupState,
+  sealForQrReceiver,
+  setBackupState,
+  type IQrLink,
+  type IQrOffer,
+  type IQrPayload,
+  type IArgon2Params,
   type ILocalIdentity,
-} from '@/crypto/identity';
-import { removeKey, removeKeysWithPrefix } from '@/crypto/keyStore';
-import { signParts, verifyParts, type ISignedParts } from '@/crypto/signing';
+  type IPasskeySlot,
+  type TBackupSlot,
+  removeKey,
+  removeKeysWithPrefix,
+  signParts,
+  verifyParts,
+  type ISignedParts,
+} from '@/shared/crypto';
 import type { IEncryptedMedia } from '@/types';
 
 /**
@@ -83,6 +98,10 @@ export type TUndecryptableReason = 'keyUnavailable' | 'beforeJoin' | 'legacy';
 
 export interface IDecryptedMessage {
   text: string;
+  /** Форматирование из конверта v3 (#656). У прочих сообщений его нет. */
+  entities?: IMessageEntity[];
+  /** Длительность и волна голосового (#843) — только из конверта. */
+  voice?: IVoiceMeta;
   /**
    * Почему сообщение не прочиталось. `undefined` — прочиталось.
    *
@@ -111,12 +130,29 @@ export class CryptoService {
 
   private initPromise: Promise<ILocalIdentity | null> | null = null;
 
-  constructor(apiClient: ApiClient) {
+  private backup: KeyBackupManager;
+
+  /** Мастер-ключ, пришедший по QR до того, как сессия подготовлена. */
+  private pendingMasterKey: Uint8Array<ArrayBuffer> | null = null;
+
+  constructor(apiClient: ApiClient, options: { argon2?: IArgon2Params } = {}) {
     this.apiClient = apiClient;
+    this.backup = new KeyBackupManager({
+      apiClient,
+      chatKeys: () => this.chatKeys,
+      onIdentity: (identity) => {
+        this.identity = identity;
+      },
+      argon2: options.argon2,
+    });
     this.chatKeys = new ChatKeyManager({
       apiClient,
       identity: () => this.requireIdentity(),
       members: async (chatId) => (await resolveMembers(chatId)).map((member) => member.id),
+      backup: {
+        save: (chatId, chatKey) => this.backup.saveChatKey(chatId, chatKey),
+        load: (chatId) => this.backup.loadChatKeys(chatId),
+      },
     });
   }
 
@@ -136,9 +172,10 @@ export class CryptoService {
   /**
    * Подготовка личности.
    *
-   * Ключи создаются один раз на аккаунт и публикуются связкой. Повторный
-   * вызов ничего не пересоздаёт: пересозданная пара означала бы, что вся
-   * прежняя переписка стала нечитаемой.
+   * Личность одна на все устройства и приходит из резервной копии (#739).
+   * Молча она больше не создаётся: на новом устройстве это отрезало бы его
+   * от истории. `null` — нужно действие человека: задать облачный пароль
+   * или открыть копию (`readBackupState` скажет, что именно).
    */
   async init(): Promise<ILocalIdentity | null> {
     if (this.initPromise) return this.initPromise;
@@ -154,17 +191,52 @@ export class CryptoService {
 
   private async doInit(): Promise<ILocalIdentity | null> {
     const accountId = this.getAccountId();
-    if (!accountId || !this.hasWebCrypto()) return null;
+    if (!accountId) return null;
 
-    if (this.identity?.accountId === accountId) return this.identity;
+    if (!this.hasWebCrypto()) {
+      setBackupState({ status: 'unavailable', hasPasskey: false, migrating: false });
+      return null;
+    }
 
-    const identity = await loadOrCreateIdentity(accountId);
-    this.identity = identity;
+    try {
+      return await this.prepareIdentity(accountId);
+    } catch (error) {
+      setBackupState({ status: 'error', hasPasskey: false, migrating: false });
+      throw error;
+    }
+  }
+
+  private async prepareIdentity(accountId: string): Promise<ILocalIdentity | null> {
+    if (this.identity?.accountId === accountId && readBackupState().status === 'ready') {
+      return this.identity;
+    }
 
     // Наследие прежней схемы: одиночная пара и заглушка группового
     // состояния. Ни то ни другое больше не читается.
     await removeKey(`signal_keypair:${accountId}`);
     await removeKeysWithPrefix(`mls_state:${accountId}`);
+
+    let identity = await this.backup.resolve(accountId);
+
+    const pending = this.pendingMasterKey;
+    this.pendingMasterKey = null;
+    if (!identity && pending && readBackupState().status === 'locked') {
+      identity = await this.backup.unlockWithMasterKey(accountId, pending);
+    }
+
+    if (!identity) return null;
+
+    return this.activate(identity);
+  }
+
+  /**
+   * Личность готова к работе: публикуем связку.
+   *
+   * На всех устройствах связка одна и та же, поэтому публикация больше не
+   * вытесняет соседнее устройство — сервер получает то, что у него уже есть.
+   */
+  private async activate(identity: ILocalIdentity): Promise<ILocalIdentity> {
+    this.identity = identity;
 
     try {
       await publishIdentity(this.apiClient, identity);
@@ -180,9 +252,124 @@ export class CryptoService {
   private async requireIdentity(): Promise<ILocalIdentity> {
     const identity = this.identity ?? (await this.init());
 
-    if (!identity) throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
+    if (!identity) {
+      throw new Error(
+        this.hasWebCrypto()
+          ? 'Шифрование не готово: откройте резервную копию облачным паролем'
+          : 'Шифрование недоступно: откройте приложение по HTTPS'
+      );
+    }
 
     return identity;
+  }
+
+  private requireAccountId(): string {
+    const accountId = this.getAccountId();
+    if (!accountId) throw new Error('Нет активной сессии');
+
+    return accountId;
+  }
+
+  /** Первая настройка резервной копии облачным паролем. */
+  async setupBackup(password: string): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.setup(this.requireAccountId(), password));
+  }
+
+  /** Открыть копию облачным паролем. Неверный пароль — `WrongCloudPasswordError`. */
+  async unlockWithPassword(password: string): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithPassword(this.requireAccountId(), password));
+  }
+
+  async unlockWithPasskey(
+    evaluate: (
+      slots: IPasskeySlot[]
+    ) => Promise<{ credentialId: string; prfOutput: Uint8Array<ArrayBuffer> }>
+  ): Promise<void> {
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithPasskey(this.requireAccountId(), evaluate));
+  }
+
+  /**
+   * Мастер-ключ, пришедший с другого устройства по QR.
+   *
+   * Сессия к этому моменту может быть ещё не сохранена — тогда ключ ждёт
+   * ближайшей подготовки личности.
+   */
+  async acceptMasterKey(master: Uint8Array<ArrayBuffer>): Promise<void> {
+    const accountId = this.getAccountId();
+
+    if (!accountId || readBackupState().status !== 'locked') {
+      this.pendingMasterKey = master;
+      return;
+    }
+
+    this.chatKeys.forget();
+    await this.activate(await this.backup.unlockWithMasterKey(accountId, master));
+  }
+
+  /** Мастер-ключ для передачи на новое устройство; `null` — копия здесь не открыта. */
+  currentMasterKey(): Uint8Array<ArrayBuffer> | null {
+    return this.backup.currentMasterKey();
+  }
+
+  /**
+   * Мастер-ключ копии, зашифрованный для нового устройства из QR (#745).
+   *
+   * Интерфейсу сам ключ не нужен: он получает только шифровку.
+   */
+  async sealMasterKeyForLink(link: IQrLink): Promise<IQrPayload> {
+    const master = this.backup.currentMasterKey();
+    if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
+
+    return sealForQrReceiver(link, master);
+  }
+
+  /**
+   * Мастер-ключ копии для нового устройства, отсканировавшего код с этого
+   * (#754). Ключ устройства к этому моменту проверен подписью из кода.
+   */
+  async sealMasterKeyForOffer(
+    offer: IQrOffer,
+    token: string,
+    claimPublicKey: string
+  ): Promise<IQrPayload> {
+    const master = this.backup.currentMasterKey();
+    if (!master) throw new Error('Резервная копия на этом устройстве не открыта');
+
+    return offer.seal(token, claimPublicKey, master);
+  }
+
+  /** Совпадает ли облачный пароль с паролем входа — его знает сервер. */
+  isLoginPassword(password: string): Promise<boolean> {
+    return matchesLoginPassword(password);
+  }
+
+  async changeCloudPassword(password: string): Promise<void> {
+    await this.backup.changePassword(password);
+  }
+
+  async addPasskeySlot(slot: IPasskeySlot): Promise<void> {
+    await this.backup.addPasskeySlot(slot);
+  }
+
+  async removePasskeySlots(): Promise<void> {
+    await this.backup.removePasskeySlots();
+  }
+
+  async backupSlots(): Promise<TBackupSlot[]> {
+    return this.backup.slots();
+  }
+
+  /**
+   * Сброс копии, когда открыть её нечем. Переписка, которую держит только
+   * копия, пропадает для всех устройств — спрашивать об этом должен экран.
+   */
+  async resetBackup(): Promise<void> {
+    await this.backup.reset(this.requireAccountId());
+    this.identity = null;
+    this.chatKeys.forget();
   }
 
   async ensureChatKey(chatId: string): Promise<IKeyDistribution> {
@@ -195,13 +382,25 @@ export class CryptoService {
     return this.chatKeys.rotate(chatId);
   }
 
+  /** Смена ключа после изменения состава, если её ещё никто не сделал (#806). */
+  async rotateChatKeyIfNeeded(chatId: string): Promise<IKeyDistribution> {
+    await this.requireIdentity();
+    return this.chatKeys.rotateIfNeeded(chatId);
+  }
+
   async healChatKeys(chatId: string): Promise<IKeyDistribution> {
     await this.requireIdentity();
     return this.chatKeys.heal(chatId);
   }
 
-  async encryptMessage(chatId: string, text: string): Promise<string> {
-    if (!text) return text;
+  async encryptMessage(
+    chatId: string,
+    text: string,
+    entities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
+  ): Promise<string> {
+    // Голосовое без подписи — всё равно конверт: в нём длительность и волна.
+    if (!text && !voice) return text;
 
     if (!this.hasWebCrypto()) {
       throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
@@ -214,10 +413,19 @@ export class CryptoService {
       throw new Error('Ключ шифрования чата недоступен — сообщение не отправлено');
     }
 
-    return encryptMessage(chatKey.key, chatId, chatKey.epoch, identity.accountId, text, {
-      fingerprint: identity.fingerprint,
-      sign: (parts) => signParts(identity.ecdsaPrivate, parts),
-    });
+    return encryptMessage(
+      chatKey.key,
+      chatId,
+      chatKey.epoch,
+      identity.accountId,
+      text,
+      {
+        fingerprint: identity.fingerprint,
+        sign: (parts) => signParts(identity.ecdsaPrivate, parts),
+      },
+      entities,
+      voice
+    );
   }
 
   /**
@@ -270,10 +478,16 @@ export class CryptoService {
           : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
       }
 
-      const text = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+      const { text, entities, voice } = await decryptMessage(
+        chatKey.key,
+        chatId,
+        senderId,
+        envelope
+      );
+      const extra = voice ? { voice } : {};
 
       // Своё сообщение проверять не у кого и незачем.
-      if (senderId === identity.accountId) return { text };
+      if (senderId === identity.accountId) return { text, entities, ...extra };
 
       const senderVerified = envelope.sig
         ? await this.isSenderConfirmed(
@@ -282,7 +496,7 @@ export class CryptoService {
           )
         : false;
 
-      return { text, senderVerified };
+      return { text, entities, senderVerified, ...extra };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
       return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
@@ -354,18 +568,26 @@ export class CryptoService {
   /** Выход из аккаунта: память чистится, ключи на устройстве остаются. */
   forgetSession(): void {
     this.identity = null;
+    this.pendingMasterKey = null;
     this.chatKeys.forget();
+    this.backup.forget();
     forgetDerivedKeys();
     forgetPeerIdentities();
+    forgetBackupState();
   }
 
-  /** Завершение всех сеансов: ключи стираются с устройства. */
+  /**
+   * Завершение всех сеансов: ключи стираются с устройства.
+   *
+   * История при этом не теряется: она в резервной копии и вернётся после
+   * входа облачным паролем, passkey или по QR.
+   */
   async wipeDevice(): Promise<void> {
     const accountId = this.identity?.accountId ?? this.getAccountId();
 
     if (accountId) {
       await this.chatKeys.wipe(accountId);
-      await removeKey(`identity:${accountId}`);
+      await this.backup.forgetDevice(accountId);
       await removeKeysWithPrefix(PEER_BUNDLES_PREFIX);
     }
 

@@ -4,18 +4,21 @@ import { cn } from '@/shared/lib';
 import { useEffect, useRef, useState } from 'react';
 import type { IToast } from './toastQueue';
 
-/* Значок и цвет выводятся из вида, а не передаются вызывающим: иначе
-   одна и та же ошибка в разных местах приходит то с крестиком, то с
-   восклицательным знаком. */
+/* Значок выводится из вида, а не передаётся вызывающим: иначе одна и та
+   же ошибка в разных местах приходит то с крестиком, то с
+   восклицательным знаком.
+
+   Уведомление дизайн-системы (#817) — тёмная таблетка на светлой теме и
+   светлая на тёмной, цвет текста на ней один. Подтверждению значок не
+   нужен: «Ссылка скопирована» и так понятна. У ошибки и предупреждения
+   он остаётся — того же цвета, что текст: статусные цвета на
+   перевёрнутом фоне не держат контраст. */
 const kinds = {
-  success: { icon: 'checkCircle', color: 'text-ok', bar: 'bg-ok', role: 'status' },
-  error: { icon: 'cross', color: 'text-danger', bar: 'bg-danger', role: 'alert' },
-  warning: { icon: 'warning', color: 'text-warn', bar: 'bg-warn', role: 'alert' },
-  info: { icon: 'info', color: 'text-brand', bar: 'bg-brand', role: 'status' },
-} as const satisfies Record<
-  IToast['type'],
-  { icon: TIconTypes; color: string; bar: string; role: 'status' | 'alert' }
->;
+  success: { icon: null, role: 'status' },
+  error: { icon: 'cross', role: 'alert' },
+  warning: { icon: 'warning', role: 'alert' },
+  info: { icon: null, role: 'status' },
+} as const satisfies Record<IToast['type'], { icon: TIconTypes | null; role: 'status' | 'alert' }>;
 
 const LIFETIME = 3000;
 /* Столько уведомление живёт после решения закрыться — ровно чтобы
@@ -58,14 +61,14 @@ export const Toast = ({ toast, onHide }: Props) => {
   return (
     <div
       className={cn(
-        'pointer-events-auto relative flex items-center gap-3 overflow-hidden',
-        'rounded-field border border-line bg-sheet-2 px-4 py-3 text-body text-ink',
-        'shadow-[var(--elev-2)]',
+        /* Скругление окна, а не таблетка: в одну строку оно и выглядит
+           таблеткой, а длинная ошибка в две строки не становится овалом. */
+        'pointer-events-auto flex max-w-full items-center gap-2 rounded-window',
+        'bg-ink px-3.5 py-2 text-caption text-sheet',
         leaving
           ? 'animate-[toast-out_160ms_ease-in_forwards]'
           : 'animate-[toast-in_200ms_var(--ease-out)_both]',
-        'motion-reduce:animate-none',
-        toast.type === 'error' && 'border-danger/45'
+        'motion-reduce:animate-none'
       )}
       onBlur={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -73,23 +76,8 @@ export const Toast = ({ toast, onHide }: Props) => {
       onMouseLeave={() => setPaused(false)}
       role={kind.role}
     >
-      <Icon aria-hidden="true" className={cn('shrink-0', kind.color)} name={kind.icon} size="md" />
+      {kind.icon && <Icon aria-hidden="true" className="shrink-0" name={kind.icon} size="sm" />}
       <span>{toast.message}</span>
-
-      {/* Полоса времени. Считает таймер выше, полоса лишь показывает —
-          но встают они вместе: пауза останавливает и то и другое. */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-x-0 bottom-0 h-0.5 origin-left',
-          'animate-[toast-bar_linear_forwards] motion-reduce:animate-none',
-          kind.bar
-        )}
-        style={{
-          animationDuration: `${LIFETIME}ms`,
-          animationPlayState: paused ? 'paused' : 'running',
-        }}
-      />
     </div>
   );
 };

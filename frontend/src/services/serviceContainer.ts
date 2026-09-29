@@ -1,5 +1,4 @@
-import { apiClient as defaultApiClient } from '@/shared/api/apiFactory';
-import type { ApiClient } from '@/shared/api/ApiClient';
+import { apiClient as defaultApiClient, type ApiClient } from '@/shared/api';
 import { STORAGE_KEYS } from '@/shared/config/storageKeys';
 import { useProfileStore } from '@/entities/user/model/profileStore';
 
@@ -20,10 +19,6 @@ import { UserService } from './UserService';
  */
 function createAuthStorage() {
   return {
-    get token() {
-      return useProfileStore.getState().token;
-    },
-    setToken: (token: string) => useProfileStore.getState().setToken(token),
     setUser: (user: Parameters<ReturnType<typeof useProfileStore.getState>['setUser']>[0]) =>
       useProfileStore.getState().setUser(user),
     clearProfile: () => useProfileStore.getState().clearProfile(),
@@ -61,7 +56,7 @@ export function startCryptoAutoInit(target: TServices = services): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const initCryptoForCurrentSession = () => {
-    if (!window.localStorage.getItem(STORAGE_KEYS.TOKEN)) return;
+    // Сессия — в cookie (#705); вошёл — есть сохранённый профиль.
     if (!window.localStorage.getItem(STORAGE_KEYS.USER)) return;
     target.cryptoService.init().catch((e) => {
       console.error('CryptoService init failed', e);

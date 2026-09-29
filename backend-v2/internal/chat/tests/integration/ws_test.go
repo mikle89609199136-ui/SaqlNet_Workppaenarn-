@@ -51,7 +51,8 @@ func TestWSChatMessage_Unsupported(t *testing.T) {
 	memberID := seedUser(t, db, "member")
 	chatID := seedGroupChat(t, db, ownerID, memberID)
 
-	ws := chat.NewWSServer(db, stubTokenVerifier{})
+	ws := chat.NewWSServer(db, stubTokenVerifier{}, nil)
+	t.Cleanup(ws.Close)
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 
@@ -184,8 +185,8 @@ func countMessages(t *testing.T, db *sql.DB, chatID string) int {
 // dialWS открывает WS-соединение: токен = userID (см. stubTokenVerifier).
 func dialWS(t *testing.T, srv *httptest.Server, userID string) *websocket.Conn {
 	t.Helper()
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "?token=" + userID
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{"Authorization": {"Bearer " + userID}})
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)
 	}

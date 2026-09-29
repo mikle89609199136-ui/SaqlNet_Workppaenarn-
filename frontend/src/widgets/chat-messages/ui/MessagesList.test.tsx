@@ -10,7 +10,7 @@ describe('MessagesList', () => {
   const currentUser = makeUser({ id: 'u-1', username: 'tester' });
 
   beforeEach(() => {
-    useProfileStore.setState({ user: currentUser, isAuth: true, token: 'token' });
+    useProfileStore.setState({ user: currentUser, isAuth: true });
   });
 
   const renderComponent = (props: Partial<Parameters<typeof MessagesList>[0]> = {}) => {

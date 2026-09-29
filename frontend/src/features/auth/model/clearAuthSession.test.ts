@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { chatKeys } from '@/queries/keys';
-import { queryClient } from '@/queries/queryClient';
-import { useChatUiStore } from '@/store/chatUi';
+import { queryClient } from '@/shared/api';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearAuthSession } from './clearAuthSession';
 
 describe('выход из сессии', () => {
   beforeEach(() => {
     queryClient.clear();
-    useProfileStore.setState({ token: 'токен-сессии', isAuth: true });
+    useProfileStore.setState({ isAuth: true });
   });
 
   it('should wipe decrypted messages from the query cache', () => {
@@ -36,7 +35,7 @@ describe('выход из сессии', () => {
   });
 
   it('should do nothing without an active session', () => {
-    useProfileStore.setState({ token: '', isAuth: false });
+    useProfileStore.setState({ isAuth: false });
     queryClient.setQueryData(chatKeys.detail('chat-1'), { id: 'chat-1' });
 
     clearAuthSession();

@@ -3,7 +3,7 @@ import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeMessage, makePin } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
-import { useChatUiStore } from '@/store';
+import { useChatUiStore } from '@/entities/chat';
 import { PinnedMessagesNavigator } from './PinnedMessagesNavigator';
 
 function renderNavigator(props: React.ComponentProps<typeof PinnedMessagesNavigator>) {
@@ -35,7 +35,8 @@ describe('PinnedMessagesNavigator', () => {
       setPinnedMessagesOpen: vi.fn(),
     });
     expect(screen.getByText('Важное объявление')).toBeInTheDocument();
-    expect(screen.getByText(/#1/)).toBeInTheDocument();
+    // Одно закреплённое — без «1 из 1»: номер нужен, только когда есть что листать.
+    expect(screen.getByText('Закреплённое сообщение')).toBeInTheDocument();
   });
 
   it('should display author name when available', () => {
@@ -160,19 +161,19 @@ describe('PinnedMessagesNavigator', () => {
       setPinnedMessagesOpen: vi.fn(),
     });
 
-    // Initial item is the last one (#2)
+    // Сначала последнее: «2 из 2»
     expect(screen.getByText('Второе')).toBeInTheDocument();
-    expect(screen.getByText(/#2/)).toBeInTheDocument();
+    expect(screen.getByText(/2 из 2/)).toBeInTheDocument();
 
-    // Click cycles to #1
+    // Нажатие листает к первому
     const navButton = screen.getByRole('button', { name: 'Закреплённые сообщения' });
     fireEvent.click(navButton);
     expect(screen.getByText('Первое')).toBeInTheDocument();
-    expect(screen.getByText(/#1/)).toBeInTheDocument();
+    expect(screen.getByText(/1 из 2/)).toBeInTheDocument();
 
-    // Click cycles back to #2
+    // И обратно ко второму
     fireEvent.click(navButton);
     expect(screen.getByText('Второе')).toBeInTheDocument();
-    expect(screen.getByText(/#2/)).toBeInTheDocument();
+    expect(screen.getByText(/2 из 2/)).toBeInTheDocument();
   });
 });

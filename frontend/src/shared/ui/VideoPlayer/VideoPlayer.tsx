@@ -2,11 +2,9 @@ import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 import { Spinner } from '@/shared/ui/Spinner';
 import { Icon } from '@/shared/ui/Icon';
-import { useIsMobile } from '@/shared/lib/useIsMobile';
-import { useVideo, type VideoSource } from '@/shared/lib/useVideo';
 import { type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/shared/lib';
+import { cn, useIsMobile, useVideo, type VideoSource } from '@/shared/lib';
 
 export type { VideoSource };
 

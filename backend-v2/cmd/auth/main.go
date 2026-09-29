@@ -28,7 +28,9 @@ func main() {
 
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	svc := auth.NewService(db, crypto)
-	handler := auth.NewHandler(svc)
+	handler := auth.NewHandler(svc, auth.WithLogoutAllGenerationEnabled(
+		config.Bool("AUTH_LOGOUT_ALL_GENERATION_ENABLED", false),
+	))
 	authenticated := authctx.Middleware(crypto, svc)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -41,16 +43,33 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "database_unavailable", "database unavailable")
 			return
 		}
+		if err := authctx.CheckTokenGenerationSchema(ctx, db); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
+		if err := crypto.CheckTokenGenerationSupport(ctx); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
+			return
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("/api/v2/auth/register", handler.Register)
 	mux.HandleFunc("/api/v2/auth/login", handler.Login)
 	mux.HandleFunc("/api/v2/auth/qr-token", handler.QRToken)
+	mux.HandleFunc("/api/v2/auth/qr-token/{token}", handler.QRCancel)
 	mux.HandleFunc("/api/v2/auth/qr-status/{token}", handler.QRStatus)
+	mux.Handle("/api/v2/auth/qr-request/{token}", authenticated(http.HandlerFunc(handler.QRRequest)))
 	mux.Handle("/api/v2/auth/qr-confirm", authenticated(http.HandlerFunc(handler.QRConfirm)))
+	mux.Handle("/api/v2/auth/qr-offer", authenticated(http.HandlerFunc(handler.QROfferCreate)))
+	mux.Handle("/api/v2/auth/qr-offer/{token}", authenticated(http.HandlerFunc(handler.QROffer)))
+	mux.Handle("/api/v2/auth/qr-offer/{token}/confirm", authenticated(http.HandlerFunc(handler.QROfferConfirm)))
+	mux.HandleFunc("/api/v2/auth/qr-offer/{token}/claim", handler.QROfferClaim)
+	mux.HandleFunc("/api/v2/auth/qr-offer/{token}/status", handler.QROfferStatus)
 	mux.Handle("/api/v2/auth/public-key", authenticated(http.HandlerFunc(handler.PublicKey)))
 	mux.Handle("/api/v2/auth/logout", authenticated(http.HandlerFunc(handler.Logout)))
 	mux.Handle("/api/v2/auth/logout-all", authenticated(http.HandlerFunc(handler.LogoutAll)))
+	// Обмен старого токена на cookie сессии (#705), до уборки.
+	mux.Handle("/api/v2/auth/session", authenticated(http.HandlerFunc(handler.Session)))
 	mux.Handle("/api/v2/auth/sessions", authenticated(http.HandlerFunc(handler.Sessions)))
 	mux.Handle("/api/v2/auth/change-password", authenticated(http.HandlerFunc(handler.ChangePassword)))
 	mux.Handle("/api/v2/auth/2fa/status", authenticated(http.HandlerFunc(handler.TwoFAStatus)))

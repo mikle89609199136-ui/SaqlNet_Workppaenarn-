@@ -4,23 +4,56 @@ import {
   chatsQuery,
   isConversationStarted,
 } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
-import { ChatRowMenu } from '@/features/chat-actions';
-import { Icon } from '@/shared/ui';
+import { AppUpdateBanner } from '@/features/app-update';
+import { useStartPrivateChat } from '@/features/chat-actions';
+import { PushPrompt } from '@/features/push-notifications';
+import { ROUTES } from '@/shared/config/routes';
+import { useConnectionStatus } from '@/shared/lib';
+import { Avatar, buttonStyles, Icon, SegmentedControl, Spinner } from '@/shared/ui';
+import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArchiveEntry } from './ArchiveEntry';
+import { Link } from 'react-router-dom';
+import { ChatRowMenuWithActions } from './ChatRowMenuWithActions';
 import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
+
+/* Разделы списка — вкладками, как в макете (#818). Каналы и встречи
+   спрятаны, пока нет самих функций (#815): вкладка без содержимого — та
+   же неработающая кнопка. Порядок — как в макете, чтобы открытая вкладка
+   встала на своё место без перестановки соседей. */
+type TListTab = 'chats' | 'channels' | 'groups' | 'meetings' | 'archive';
+
+const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
+  { key: 'chats', fallback: 'Чаты' },
+  { key: 'channels', fallback: 'Каналы', hidden: true },
+  { key: 'groups', fallback: 'Группы' },
+  { key: 'meetings', fallback: 'Встречи', hidden: true },
+  { key: 'archive', fallback: 'Архив' },
+];
+
+const VISIBLE_TABS = LIST_TABS.filter((tab) => !tab.hidden);
 
 interface Props {
   onOpenCreateGroup: () => void;
 }
 
+/**
+ * Список чатов — колонка на ПК и планшете, главный экран на телефоне.
+ *
+ * Сверху вниз, как в макете: шапка со своей аватаркой, заголовком и
+ * входом в настройки, вкладки разделов, поиск и сам список. Прокручивается
+ * только список: шапка, вкладки и поиск остаются на виду.
+ */
 export function ChatsList({ onOpenCreateGroup }: Props) {
   const { t } = useTranslation();
-  const [isArchiveOpen, setArchiveOpen] = useState(false);
+  const tabsId = useId();
+  const me = useProfileStore((state) => state.user);
+  const [tab, setTab] = useState<TListTab>('chats');
+  const connection = useConnectionStatus();
 
   const {
     data: chats = [],
@@ -39,105 +72,168 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
     () => visibleChats.filter((chat) => chat.isPinned).length,
     [visibleChats]
   );
+  const groups = useMemo(
+    () => visibleChats.filter((chat) => chat.type === 'group'),
+    [visibleChats]
+  );
   const search = useChatsSearch(visibleChats);
+  // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
+  const startChat = useStartPrivateChat();
 
-  /* Архив грузится всегда, даже когда закрыт: по нему решается, показывать
-     ли строку входа и сколько там непрочитанных. Запрос лёгкий и живёт в
-     том же кеше, что и основной список. */
+  /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
 
-  /* Опустевший архив закрывается сам: человек вернул оттуда последний чат
-     и остался бы смотреть в пустой экран, из которого надо выбираться
-     кнопкой. Состояние при этом не сбрасывается — архив снова наполнится,
-     и он откроется там же. */
-  const showArchive = isArchiveOpen && archivedChats.length > 0;
+  const renderRows = (list: IChatDto[]) =>
+    list.map((chat) => (
+      <ChatListItem
+        chat={chat}
+        key={chat.id}
+        currentUserId={me?.id}
+        pinnedCount={pinnedCount}
+        renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
+      />
+    ));
 
-  const archiveHeader = (
-    <section className="chats-toolbar">
-      <button
-        aria-label={t('back', 'Назад')}
-        className="chats-new-group"
-        onClick={() => setArchiveOpen(false)}
-        type="button"
-      >
-        <Icon name="chevronRight" className="rotate-180" />
-      </button>
-      <h1 className="text-section font-semibold text-ink">{t('archive', 'Архив')}</h1>
-    </section>
-  );
-
-  const archiveContent = (
-    <>
-      {archiveHeader}
-      <section className="chats-list styled-scrollbar">
-        {archivedChats.map((chat) => (
-          <ChatListItem
-            chat={chat}
-            key={chat.id}
-            pinnedCount={pinnedCount}
-            renderMenu={(props) => <ChatRowMenu {...props} />}
-          />
-        ))}
-      </section>
-    </>
-  );
-
-  const listContent = (
-    <>
-      <section className="chats-toolbar">
-        <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
-
+  let content: ReactNode;
+  if (isLoading) {
+    content = <ChatListItemSkeleton />;
+  } else if (error) {
+    content = <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />;
+  } else if (search.isSearching) {
+    /* Пока идёт поиск, список подменяется найденным — в любой вкладке:
+       ищут человека или чат, а не раздел. Открытая переписка справа при
+       этом остаётся на месте. */
+    content = (
+      <ChatsSearchResults
+        chats={search.chats}
+        isEmpty={search.isEmpty}
+        isLoadingPeople={search.isLoadingPeople}
+        isStartingChat={startChat.isPending}
+        onStartChat={(userId) => startChat.mutate(userId)}
+        people={search.people}
+      />
+    );
+  } else if (tab === 'groups') {
+    content = (
+      <>
+        {/* Новая группа — первой строкой своей вкладки: там её и ищут.
+            Строка по размерам как строка чата, чтобы список не прыгал;
+            цвет акцента говорит, что это действие, а не переписка. */}
         <button
-          aria-label={t('newGroup', 'Новая группа')}
-          className="chats-new-group"
+          className="flex w-full shrink-0 items-center gap-3 rounded-bubble px-3 py-2.25 text-left text-brand transition-colors duration-fast hover:layer-hover active:layer-press focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2"
           onClick={onOpenCreateGroup}
-          title={t('newGroup', 'Новая группа')}
           type="button"
         >
-          <Icon name="groupAdd" />
+          <span
+            aria-hidden="true"
+            className="flex size-11.5 shrink-0 items-center justify-center rounded-pill bg-brand-soft"
+          >
+            <Icon name="groupAdd" size="md" />
+          </span>
+          <span className="text-body font-semibold">{t('newGroup', 'Новая группа')}</span>
         </button>
-      </section>
 
-      <section className="chats-list styled-scrollbar" aria-busy={isLoading}>
-        {isLoading ? <ChatListItemSkeleton /> : null}
-        {!isLoading && error && (
-          <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />
+        {groups.length > 0 ? (
+          renderRows(groups)
+        ) : (
+          <p className="px-5 py-8 text-center text-ui text-ink-3">
+            {t('chatList.groupsEmpty', 'Групп пока нет')}
+          </p>
         )}
+      </>
+    );
+  } else if (tab === 'archive') {
+    content = (
+      <>
+        <p className="mx-2 mb-2 rounded-button bg-sheet-2 px-3 py-2.5 text-meta leading-[1.45] text-ink-2">
+          {t('chatList.archiveNote', 'Здесь чаты, которые вы убрали из основного списка.')}
+        </p>
+        {archivedChats.length > 0 ? (
+          renderRows(archivedChats)
+        ) : (
+          <p className="px-5 py-8 text-center text-ui text-ink-3">
+            {t('chatList.archiveEmpty', 'В архиве пусто')}
+          </p>
+        )}
+      </>
+    );
+  } else {
+    /* Закреплённые — просто первыми, без отдельного раздела: порядок
+       держат сервер и chatsQuery, строку отмечает булавка. */
+    content = visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />;
+  }
 
-        {/* Пока идёт поиск, список подменяется найденным — как в
-            привычных мессенджерах. Открытая переписка справа при этом
-            остаётся на месте: раньше поиск уводил на отдельную страницу
-            и закрывал её. */}
-        {!isLoading && !error && search.isSearching && (
-          <ChatsSearchResults
-            chats={search.chats}
-            isEmpty={search.isEmpty}
-            isLoadingPeople={search.isLoadingPeople}
-            people={search.people}
-          />
-        )}
+  /* Заголовок говорит и о связи (#819): пока её нет, «Сообщения» меняются
+     на то, чего ждём, со спиннером. Объявляется вежливо — не перебивая. */
+  const title =
+    connection === 'offline'
+      ? t('chatList.waitingForNetwork', 'Ожидание сети…')
+      : connection === 'connecting'
+        ? t('chatList.connecting', 'Соединение…')
+        : t('chatList.title', 'Сообщения');
 
-        {!isLoading && !error && !search.isSearching && (
-          <ArchiveEntry chats={archivedChats} onOpen={() => setArchiveOpen(true)} />
-        )}
+  return (
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-sheet">
+      <header className="flex items-center gap-3 pt-[calc(18px+env(safe-area-inset-top,0px))] pr-4 pb-3.5 pl-5 md:pt-4.5">
+        <Avatar
+          id={me?.id}
+          name={me?.firstName || me?.username}
+          size="header"
+          src={me?.avatarUrl}
+        />
+        <h1
+          aria-live="polite"
+          className="flex min-w-0 flex-1 items-center gap-2 text-section font-semibold tracking-[-0.01em]"
+        >
+          {connection !== 'connected' && <Spinner className="size-3.5 border-2" tone="current" />}
+          <span className="truncate">{title}</span>
+        </h1>
+        <Link
+          aria-label={t('settings.menu.title', 'Настройки')}
+          className={buttonStyles({
+            variant: 'secondary',
+            iconOnly: true,
+            className: 'text-ink-2',
+          })}
+          title={t('settings.menu.title', 'Настройки')}
+          to={ROUTES.SETTINGS}
+        >
+          <Icon name="settings" size="md" />
+        </Link>
+      </header>
 
-        {!isLoading && !error && !search.isSearching && visibleChats.length === 0 && (
-          <EmptyChatListPlaceholder />
-        )}
-        {!isLoading &&
-          !error &&
-          !search.isSearching &&
-          visibleChats.map((chat) => (
-            <ChatListItem
-              chat={chat}
-              key={chat.id}
-              pinnedCount={pinnedCount}
-              renderMenu={(props) => <ChatRowMenu {...props} />}
-            />
-          ))}
-      </section>
-    </>
+      <nav aria-label={t('chatList.sections', 'Разделы')} className="mx-4 mb-3">
+        <SegmentedControl
+          className="w-full"
+          onChange={(value) => setTab(value as TListTab)}
+          options={VISIBLE_TABS.map(({ key, fallback }) => ({
+            value: key,
+            label: t(`chatList.tab.${key}`, fallback),
+          }))}
+          tabs={tabsId}
+          value={tab}
+        />
+      </nav>
+
+      <div className="px-4 pb-2.5">
+        <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
+      </div>
+
+      {/* Новая версия приложения (#892) — важнее просьбы включить уведомления. */}
+      <AppUpdateBanner />
+
+      {/* «Включить уведомления» — пока не включили и не закрыли (#882). */}
+      <PushPrompt />
+
+      <div
+        aria-busy={isLoading}
+        aria-labelledby={`${tabsId}-${tab}`}
+        className="styled-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+      >
+        {content}
+      </div>
+    </div>
   );
-
-  return <main className="chats-page">{showArchive ? archiveContent : listContent}</main>;
 }

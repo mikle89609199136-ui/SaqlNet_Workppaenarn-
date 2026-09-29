@@ -1,13 +1,62 @@
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-error: &error { $ref: '../components/responses.yaml#/Error' }
+
 /calls/ice-servers:
-  get: { tags: [Calls], summary: Get ICE servers, operationId: getIceServers, security: [{ bearerAuth: [] }], responses: { '200': { description: ICE configuration } } }
+  get:
+    tags: [Calls]
+    summary: Get ICE servers
+    operationId: getIceServers
+    security: *secure
+    responses:
+      '200':
+        description: ICE configuration
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/IceConfiguration' }
+
 /calls/rooms:
-  get: { tags: [Calls], summary: List call rooms, operationId: listCallRooms, security: [{ bearerAuth: [] }], responses: { '200': { description: Call rooms } } }
+  get:
+    tags: [Calls]
+    summary: List active in-memory call rooms
+    operationId: listCallRooms
+    security: *secure
+    responses:
+      '200':
+        description: Active call rooms
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/CallRoomListResponse' }
   post:
     tags: [Calls]
     summary: Create a call room
     operationId: createCallRoom
-    security: [{ bearerAuth: [] }]
-    requestBody: { required: true, content: { application/json: { schema: { type: object, required: [chatId], properties: { type: { type: string }, chatId: { type: string, format: uuid }, title: { type: string }, callKind: { type: string, enum: [audio, video], default: video } } } } } }
-    responses: { '201': { description: Created call room }, '403': { $ref: '../components/responses.yaml#/Error' } }
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/CallRoomCreateRequest' }
+    responses:
+      '201':
+        description: Created call room
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/CallRoomResponse' }
+      '403': *error
+      '500': *error
+
 /calls/rooms/{id}:
-  get: { tags: [Calls], summary: Get a call room, operationId: getCallRoom, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Call room }, '404': { $ref: '../components/responses.yaml#/Error' } } }
+  get:
+    tags: [Calls]
+    summary: Get an active call room
+    operationId: getCallRoom
+    security: *secure
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    responses:
+      '200':
+        description: Call room and ICE configuration
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/CallRoomResponse' }
+      '404': *error

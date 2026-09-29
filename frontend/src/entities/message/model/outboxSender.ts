@@ -1,11 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { services } from '@/services';
 import type { TMediaMessageType } from '@/types';
-import {
-  dropThreadMessage,
-  patchThreadMessage,
-  replaceThreadMessage,
-} from './threadCacheActions';
+import { dropThreadMessage, patchThreadMessage, replaceThreadMessage } from './threadCacheActions';
 import {
   type IOutboxItem,
   removeOutboxItem,
@@ -66,10 +62,15 @@ export async function sendOutboxItem(
         item.file,
         item.type as TMediaMessageType,
         item.content,
-        item.replyToId ?? null
+        item.replyToId ?? null,
+        item.entities ?? [],
+        item.voice
       );
 
-      replaceThreadMessage(queryClient, item.chatId, item.tempId, message);
+      /* `sent` — это «сервер принял», и ничего больше: ответ на отправку и
+         есть подтверждение. Прочтения тут быть не может — сервер не
+         отдаёт, до какого сообщения прочитал собеседник. */
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
       removeOutboxItem(item.tempId);
     } else {
       patchThreadMessage(queryClient, item.chatId, item.tempId, {
@@ -80,10 +81,11 @@ export async function sendOutboxItem(
         item.chatId,
         item.content,
         'text',
-        item.replyToId ?? null
+        item.replyToId ?? null,
+        item.entities ?? []
       );
 
-      replaceThreadMessage(queryClient, item.chatId, item.tempId, message);
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
       removeOutboxItem(item.tempId);
     }
     callbacks?.onSuccess?.();
@@ -146,10 +148,7 @@ export async function retryAllOutboxMessages(
     }
 
     if (item.lastAttemptAt && item.retryCount) {
-      const backoffMs = Math.min(
-        BASE_RETRY_DELAY_MS * (2 ** (item.retryCount - 1)),
-        30_000
-      );
+      const backoffMs = Math.min(BASE_RETRY_DELAY_MS * 2 ** (item.retryCount - 1), 30_000);
       if (Date.now() - item.lastAttemptAt < backoffMs) {
         continue;
       }

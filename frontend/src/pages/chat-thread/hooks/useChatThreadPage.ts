@@ -1,18 +1,14 @@
-import { describeApiError } from '@/shared/api';
-import {
-  useAutoScrollToBottom,
-  useChatEncryption,
-  usePhotoEditor,
-  useRealtimeSocket,
-} from '@/hooks';
+import type { IRichTextInputHandle } from '@/shared/ui';
+import { describeApiError, useRealtimeSocket } from '@/shared/api';
+import { useChatEncryption } from '@/features/chat-encryption';
+import { usePhotoEditor } from '@/entities/media';
 import { useChatModals } from '@/features/chat-actions';
 import { useMessageActions, useMessageSelection } from '@/features/message-actions';
 import { useProfilePanel } from '@/features/user-profile';
-import { useEscapeKey } from '@/shared/lib/useEscapeKey';
-import { chatQuery } from '@/entities/chat';
+import { useAutoScrollToBottom, useEscapeKey } from '@/shared/lib';
+import { chatQuery, useChatUiStore } from '@/entities/chat';
 import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
-import { useChatUiStore } from '@/store';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
@@ -53,7 +49,7 @@ export function useChatThreadPage({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const draftRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
@@ -74,12 +70,12 @@ export function useChatThreadPage({
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
     attachmentInputRef,
+    photoEditorFile: modals.photoEditorFile,
     setPhotoEditorFile: modals.setPhotoEditorFile,
-    setPendingAttachment: modals.setPendingAttachment,
+    setPendingAttachments: modals.setPendingAttachments,
   });
   const { profileModal, setProfileModal } = useProfilePanel({
     chat,
-    messages,
     chatId,
     profileMode,
     profileCloseToken,
@@ -95,6 +91,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleReact,
@@ -207,6 +204,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,

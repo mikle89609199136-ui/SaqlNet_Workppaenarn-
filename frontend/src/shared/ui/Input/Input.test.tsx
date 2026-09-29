@@ -143,4 +143,46 @@ describe('поле', () => {
     expect(screen.getByRole('textbox', { name: 'Название' })).toBeRequired();
     expect(container.querySelector('label [aria-hidden="true"]')).toHaveTextContent('*');
   });
+
+  it('should mark an optional field in its label', () => {
+    render(<Input label="О себе" optional />);
+
+    expect(screen.getByText('Необязательно')).toBeInTheDocument();
+    // Пометка — часть подписи, поле называется вместе с ней.
+    expect(screen.getByRole('textbox', { name: /О себе/ })).toBeInTheDocument();
+  });
+
+  it('should not call a required field optional', () => {
+    render(<Input label="Имя" optional required />);
+
+    expect(screen.queryByText('Необязательно')).not.toBeInTheDocument();
+  });
+
+  it('should let the person see the password they type', async () => {
+    const user = userEvent.setup();
+
+    render(<Input label="Пароль" type="password" />);
+
+    const field = screen.getByLabelText('Пароль');
+    expect(field).toHaveAttribute('type', 'password');
+
+    await user.click(screen.getByRole('button', { name: 'Показать пароль' }));
+    expect(field).toHaveAttribute('type', 'text');
+
+    await user.click(screen.getByRole('button', { name: 'Скрыть пароль' }));
+    expect(field).toHaveAttribute('type', 'password');
+  });
+
+  it('should give the password eye up to an own addon', () => {
+    render(<Input addon={<span>свой</span>} label="Пароль" type="password" />);
+
+    expect(screen.queryByRole('button', { name: 'Показать пароль' })).not.toBeInTheDocument();
+    expect(screen.getByText('свой')).toBeInTheDocument();
+  });
+
+  it('should keep the password hidden when revealing is turned off', () => {
+    render(<Input label="Код" revealable={false} type="password" />);
+
+    expect(screen.queryByRole('button', { name: 'Показать пароль' })).not.toBeInTheDocument();
+  });
 });

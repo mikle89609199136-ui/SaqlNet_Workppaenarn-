@@ -8,6 +8,8 @@ import { type TLanguage } from '@/shared/i18n/languages';
 import { ROUTES } from '@/shared/config/routes';
 import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
+import { rememberLoginPassword } from '@/shared/crypto';
+import { validateAvatarFile } from '@/entities/user';
 import type { IAuthResponse } from '@/types';
 import {
   registerFormSchema,
@@ -19,7 +21,7 @@ import {
 import { StepHeader } from './StepHeader';
 import { WelcomeStep } from './WelcomeStep';
 import { AboutStep } from './AboutStep';
-import { CredentialsStep } from './CredentialsStep';
+import { CredentialsStep, type IUsernameValidationStatus } from './CredentialsStep';
 
 export function RegisterWizard() {
   const navigate = useNavigate();
@@ -35,6 +37,10 @@ export function RegisterWizard() {
      ошибкой: человек до них просто не дошёл. */
   const [attempted, setAttempted] = useState(false);
   const [avatar, setAvatar] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [usernameStatus, setUsernameStatus] = useState<IUsernameValidationStatus>({
+    isTaken: false,
+  });
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -108,19 +114,45 @@ export function RegisterWizard() {
   function goToStep(next: TRegisterStep) {
     reset(getValues());
     setAttempted(false);
+    setUsernameStatus({ isChecking: false, isTaken: false });
     setStep(next);
   }
 
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
 
+    const validation = validateAvatarFile(file);
+    if (!validation.valid) {
+      const errorMessage =
+        validation.errorCode === 'tooLarge'
+          ? t('settings.profile.avatarTooLarge', 'Файл слишком большой. Максимальный размер 5 МБ')
+          : t(
+              'settings.profile.avatarInvalidType',
+              'Поддерживаются только изображения (JPEG, PNG, WebP, GIF)'
+            );
+      showToast('error', errorMessage);
+      return;
+    }
+
+    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = (readerEvent) => setAvatar(String(readerEvent.target?.result || ''));
     reader.readAsDataURL(file);
   }
 
   async function submit(values: TRegisterForm) {
+    if (usernameStatus.isTaken) {
+      setStep('credentials');
+      setError(
+        'username',
+        { message: t('register.usernameTaken', 'Это имя пользователя занято') },
+        { shouldFocus: true }
+      );
+      return;
+    }
+
     try {
       const data: IAuthResponse = await services.authService.register({
         firstName: values.firstName.trim(),
@@ -130,15 +162,18 @@ export function RegisterWizard() {
         username: values.username.trim(),
       });
 
-      if (!data.token) {
+      if (!data.user) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
-      saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
+      // Следующий шаг — облачный пароль, и он не должен совпасть с этим.
+      await rememberLoginPassword(values.password);
+      saveAuthSession({ settings: undefined, user: data.user });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
-         неудачная загрузка значит лишь аватарку по умолчанию. Полноценная
-         загрузка через медиа-сервис делается в #485. */
-      await uploadAvatar(avatar).catch(() => {});
+         неудачная загрузка значит лишь аватарку по умолчанию. */
+      if (avatarFile) {
+        await uploadAvatar(avatarFile).catch(() => {});
+      }
 
       showToast('success', t('welcomeDone', 'Добро пожаловать!'));
       navigate(ROUTES.CHATS, { replace: true });
@@ -179,7 +214,7 @@ export function RegisterWizard() {
   const loginLink = (
     <>
       {t('alreadyHaveAccount', 'Уже есть аккаунт?')}{' '}
-      <Link className="text-brand hover:underline" to={ROUTES.LOGIN}>
+      <Link className="font-semibold text-brand hover:underline" to={ROUTES.LOGIN}>
         {t('login', 'Войти')}
       </Link>
     </>
@@ -187,7 +222,14 @@ export function RegisterWizard() {
 
   if (step === 'welcome') {
     return (
-      <AuthLayout footer={loginLink} title={t('welcomeRegisterTitle', 'Добро пожаловать')}>
+      <AuthLayout
+        footer={loginLink}
+        subtitle={t(
+          'welcomeRegisterSubtitle',
+          'Мессенджер, где переписку читаете только вы и собеседник'
+        )}
+        title={t('welcomeRegisterTitle', 'Добро пожаловать')}
+      >
         <WelcomeStep
           language={language}
           onLanguageChange={(value) => void i18n.changeLanguage(value)}
@@ -199,8 +241,23 @@ export function RegisterWizard() {
 
   return (
     <AuthLayout
-      footer={step === 'credentials' ? loginLink : undefined}
-      header={<StepHeader activeIndex={step === 'about' ? 0 : 1} onBack={goBack} />}
+      header={
+        step === 'about' ? (
+          <StepHeader
+            activeIndex={0}
+            onBack={goBack}
+            subtitle={t('addPhotoName', 'Добавьте фото и введите своё имя')}
+            title={t('whatIsYourName', 'Как вас зовут?')}
+          />
+        ) : (
+          <StepHeader
+            activeIndex={1}
+            onBack={goBack}
+            subtitle={t('chooseLoginSub', 'Имя пользователя и пароль для входа')}
+            title={t('chooseLoginTitle', 'Придумайте логин')}
+          />
+        )
+      }
       title=""
     >
       <form className="grid gap-4 text-left" noValidate onSubmit={handleStepSubmit}>
@@ -213,10 +270,20 @@ export function RegisterWizard() {
             register={register}
           />
         ) : (
-          <CredentialsStep errorOf={errorOf} password={watch('password')} register={register} />
+          <CredentialsStep
+            errorOf={errorOf}
+            onValidationChange={setUsernameStatus}
+            password={watch('password')}
+            register={register}
+            username={watch('username')}
+          />
         )}
 
-        <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+        <Button
+          className="mt-2 w-full"
+          disabled={isSubmitting || (step === 'credentials' && usernameStatus.isTaken)}
+          type="submit"
+        >
           {step === 'about'
             ? t('continueAction', 'Продолжить')
             : isSubmitting

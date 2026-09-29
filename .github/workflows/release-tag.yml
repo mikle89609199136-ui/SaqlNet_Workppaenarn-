@@ -1,0 +1,45 @@
+# .github/workflows/release-tag.yml
+#
+# Тег и GitHub Release на каждый выпуск (#892): версия из
+# frontend/package.json → тег vX.Y.Z на коммите master и Release со списком
+# вошедших PR. Тег уже есть (пуш без нового номера) — ничего не делает.
+
+name: Release tag
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./frontend/package.json').version")
+          TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG уже есть — номер в этом пуше не менялся."
+            exit 0
+          fi
+          PREVIOUS=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          if [ -n "$PREVIOUS" ]; then
+            gh release create "$TAG" --title "$TAG" --verify-tag --generate-notes --notes-start-tag "$PREVIOUS"
+          else
+            gh release create "$TAG" --title "$TAG" --verify-tag --generate-notes
+          fi

@@ -1,14 +1,11 @@
 import { useThreadMessagesData } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
-import { useChatUiStore } from '@/store';
-import { setComposerText } from '@/shared/lib/setComposerText';
+import { useChatUiStore } from '@/entities/chat';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, type RefObject } from 'react';
 
-export function useComposerShortcuts(
-  draftRef: RefObject<HTMLInputElement | null>,
-  formRef: RefObject<HTMLFormElement | null>
-) {
+export function useComposerShortcuts(draftRef: RefObject<IRichTextInputHandle | null>) {
   const editingMessage = useChatUiStore((state) => state.editingMessage);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
@@ -24,7 +21,11 @@ export function useComposerShortcuts(
     (message: IMessageDto) => {
       setEditingMessage(message);
       setReplyToMessage(null);
-      setComposerText(draftRef.current, message.content || '');
+      // С форматированием: правка заменяет его целиком (#656).
+      draftRef.current?.setValue({
+        text: message.content || '',
+        entities: message.entities ?? [],
+      });
       draftRef.current?.focus();
     },
     [draftRef, setEditingMessage, setReplyToMessage]
@@ -33,7 +34,7 @@ export function useComposerShortcuts(
   const cancelComposerMode = useCallback(() => {
     setEditingMessage(null);
     setReplyToMessage(null);
-    setComposerText(draftRef.current, '');
+    draftRef.current?.clear();
   }, [draftRef, setEditingMessage, setReplyToMessage]);
 
   useEffect(() => {
@@ -44,22 +45,13 @@ export function useComposerShortcuts(
         return;
       }
 
-      if (
-        event.key === 'Enter' &&
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey
-      ) {
-        event.preventDefault();
-        formRef.current?.requestSubmit();
-        return;
-      }
+      // Enter отправляет из самого поля ввода: редактор ловит его раньше
+      // окна и иначе вставил бы новую строку (#656).
 
       // Пустое поле читается из самого элемента: текста в состоянии React
       // больше нет, и это к лучшему — раньше слушатель клавиш
       // переустанавливался на каждый набранный символ.
-      const isEmpty = !draftRef.current?.value.trim();
+      const isEmpty = !draftRef.current?.getValue().text.trim();
       if (event.key !== 'ArrowUp' || !isEmpty || editingMessage || replyToMessage) return;
       const lastOwnMessage = [...messages].reverse().find((m) => m.senderId === user?.id);
       if (!lastOwnMessage) return;
@@ -70,16 +62,7 @@ export function useComposerShortcuts(
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    cancelComposerMode,
-    draftRef,
-    editingMessage,
-    formRef,
-    messages,
-    replyToMessage,
-    startEdit,
-    user?.id,
-  ]);
+  }, [cancelComposerMode, draftRef, editingMessage, messages, replyToMessage, startEdit, user?.id]);
 
   return { cancelComposerMode };
 }

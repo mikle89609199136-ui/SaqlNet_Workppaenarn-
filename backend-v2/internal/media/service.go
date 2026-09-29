@@ -24,13 +24,14 @@ import (
 )
 
 var (
-	ErrTooBig          = errors.New("file too large")
-	ErrBadType         = errors.New("unsupported content type")
-	ErrNotFound        = errors.New("upload not found")
-	ErrForbidden       = errors.New("access denied")
-	ErrObjectNotFound  = errors.New("media object not found")
-	ErrStorage         = errors.New("media storage failure")
-	ErrResponseStarted = errors.New("media response stream failed")
+	ErrTooBig            = errors.New("file too large")
+	ErrInvalidCiphertext = errors.New("invalid ciphertext base64")
+	ErrBadType           = errors.New("unsupported content type")
+	ErrNotFound          = errors.New("upload not found")
+	ErrForbidden         = errors.New("access denied")
+	ErrObjectNotFound    = errors.New("media object not found")
+	ErrStorage           = errors.New("media storage failure")
+	ErrResponseStarted   = errors.New("media response stream failed")
 )
 
 const maxFilenameBytes = 255
@@ -47,6 +48,20 @@ var allowedTypes = map[string]bool{
 	"audio/webm":      true,
 	"application/pdf": true,
 	"text/plain":      true,
+}
+
+func normalizeMediaType(raw string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(raw))
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return "", false
+	}
+	return strings.ToLower(mediaType), true
+}
+
+// allowedMediaType applies the declared MIME policy for plain uploads and downloads.
+func allowedMediaType(raw string) (string, bool) {
+	mediaType, ok := normalizeMediaType(raw)
+	return mediaType, ok && allowedTypes[mediaType]
 }
 
 // Store abstracts object storage (MinIO / S3-compatible).
@@ -152,18 +167,14 @@ func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64C
 		if errors.Is(err, ErrTooBig) {
 			return Upload{}, err
 		}
-		return Upload{}, fmt.Errorf("invalid ciphertext base64: %w", err)
+		return Upload{}, fmt.Errorf("%w: %w", ErrInvalidCiphertext, err)
 	}
 	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
-	ct := fh.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "application/octet-stream"
-	}
-	base := strings.SplitN(ct, ";", 2)[0]
-	if !allowedTypes[base] {
+	base, ok := allowedMediaType(fh.Header.Get("Content-Type"))
+	if !ok {
 		return Upload{}, ErrBadType
 	}
 
@@ -321,7 +332,12 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return ErrStorage
 	}
 
-	w.Header().Set("Content-Type", safeContentType(contentType))
+	mediaType, allowed := allowedMediaType(contentType)
+	if !allowed {
+		mediaType = "application/octet-stream"
+		w.Header().Set("Content-Disposition", "attachment")
+	}
+	w.Header().Set("Content-Type", mediaType)
 	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
 	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
 	if w.Header().Get("Accept-Ranges") == "" {
@@ -369,14 +385,6 @@ func copyObjectHeader(header http.Header, name, value string) {
 	}
 }
 
-func safeContentType(contentType string) string {
-	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
-	if err != nil || mediaType == "" {
-		return "application/octet-stream"
-	}
-	return mediaType
-}
-
 func encryptedJSONEnvelope(
 	encryptionJSON sql.NullString,
 	contentType string,
@@ -397,6 +405,8 @@ func encryptedJSONEnvelope(
 		meta["mimeType"] = contentType
 	}
 	if meta["sizeBytes"] == nil {
+		// Legacy fallback: media.uploads.size_bytes is ciphertext size, not plaintext.
+		// Valid v2 uploads always carry the client's required sizeBytes.
 		meta["sizeBytes"] = sizeBytes
 	}
 

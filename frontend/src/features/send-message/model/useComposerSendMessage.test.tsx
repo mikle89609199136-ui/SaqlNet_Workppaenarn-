@@ -3,10 +3,11 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useComposerSendMessage } from './useComposerSendMessage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { services } from '@/services';
-import { useChatUiStore } from '@/store';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
-import { clearOutbox, getChatOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
-import { chatKeys } from '@/queries/keys';
+import { clearOutbox, useOutboxStore, type IThreadPages } from '@/entities/message';
+import type { IRichText } from '@/shared/lib/richText';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import { makeMessage } from '@/test/fixtures';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -42,26 +43,42 @@ describe('useComposerSendMessage', () => {
     );
   }
 
+  /** Поле ввода — редактор с «ручкой» вместо DOM-элемента (#656). */
+  function fakeComposer(initial: string): IRichTextInputHandle {
+    let value: IRichText = { text: initial, entities: [] };
+    return {
+      getValue: () => value,
+      setValue: (next) => {
+        value = typeof next === 'string' ? { text: next, entities: [] } : next;
+      },
+      focus: () => {},
+      clear: () => {
+        value = { text: '', entities: [] };
+      },
+      insertText: (text) => {
+        value = { ...value, text: value.text + text };
+      },
+    };
+  }
+
   function setupRefs(initialDraft = '') {
-    const input = document.createElement('input');
-    input.value = initialDraft;
-    const draftRef = { current: input };
+    const draftRef = { current: fakeComposer(initialDraft) };
     const attachmentInput = document.createElement('input');
     const attachmentInputRef = { current: attachmentInput };
     const bottomDiv = document.createElement('div');
     const bottomRef = { current: bottomDiv };
-    const setPendingAttachment = vi.fn();
+    const setPendingAttachments = vi.fn();
 
     return {
       draftRef,
       attachmentInputRef,
       bottomRef,
-      setPendingAttachment,
+      setPendingAttachments,
     };
   }
 
   it('мгновенно добавляет оптимистичное сообщение в ленту и очищает поле ввода', async () => {
-    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } =
+    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachments } =
       setupRefs('Привет, мир!');
 
     // Предзаполняем кеш треда
@@ -84,9 +101,9 @@ describe('useComposerSendMessage', () => {
           attachmentInputRef,
           bottomRef,
           draftRef,
-          pendingAttachment: null,
+          pendingAttachments: [],
           selectionMode: false,
-          setPendingAttachment,
+          setPendingAttachments,
         }),
       { wrapper: createWrapper() }
     );
@@ -98,7 +115,7 @@ describe('useComposerSendMessage', () => {
     });
 
     // 1. Поле ввода очищено мгновенно
-    expect(draftRef.current.value).toBe('');
+    expect(draftRef.current.getValue().text).toBe('');
 
     // 2. Композер не заблокирован
     expect(result.current.isSending).toBe(false);
@@ -108,7 +125,8 @@ describe('useComposerSendMessage', () => {
       'chat-test-1',
       'Привет, мир!',
       'text',
-      null
+      null,
+      []
     );
 
     // 4. В кеше треда сообщение заменено на серверное
@@ -117,7 +135,7 @@ describe('useComposerSendMessage', () => {
   });
 
   it('при сбое сети переводит оптимистичное сообщение в failed и сохраняет в Outbox', async () => {
-    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } =
+    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachments } =
       setupRefs('Текст с ошибкой');
 
     const initialPages: IThreadPages = {
@@ -126,7 +144,9 @@ describe('useComposerSendMessage', () => {
     };
     queryClient.setQueryData(chatKeys.messages('chat-test-1'), initialPages);
 
-    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(new Error('Network offline'));
+    vi.spyOn(services.messageService, 'sendMessage').mockRejectedValue(
+      new Error('Network offline')
+    );
 
     const { result } = renderHook(
       () =>
@@ -134,9 +154,9 @@ describe('useComposerSendMessage', () => {
           attachmentInputRef,
           bottomRef,
           draftRef,
-          pendingAttachment: null,
+          pendingAttachments: [],
           selectionMode: false,
-          setPendingAttachment,
+          setPendingAttachments,
         }),
       { wrapper: createWrapper() }
     );
@@ -161,8 +181,7 @@ describe('useComposerSendMessage', () => {
   });
 
   it('позволяет повторить отправку failed сообщения через handleRetryMessage', async () => {
-    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachment } =
-      setupRefs('');
+    const { draftRef, attachmentInputRef, bottomRef, setPendingAttachments } = setupRefs('');
 
     const initialPages: IThreadPages = {
       pages: [[]],
@@ -179,14 +198,14 @@ describe('useComposerSendMessage', () => {
           attachmentInputRef,
           bottomRef,
           draftRef,
-          pendingAttachment: null,
+          pendingAttachments: [],
           selectionMode: false,
-          setPendingAttachment,
+          setPendingAttachments,
         }),
       { wrapper: createWrapper() }
     );
 
-    draftRef.current.value = 'Повтори меня';
+    draftRef.current.setValue('Повтори меня');
     await act(async () => {
       await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
     });
@@ -222,5 +241,95 @@ describe('useComposerSendMessage', () => {
     // В кеше серверное сообщение
     const cached = queryClient.getQueryData<IThreadPages>(chatKeys.messages('chat-test-1'));
     expect(cached?.pages[0]?.some((m) => m.id === 'server-ok')).toBe(true);
+  });
+
+  describe('несколько вложений (#171)', () => {
+    const photo = new File(['p'], 'photo.png', { type: 'image/png' });
+    const doc = new File(['d'], 'report.pdf', { type: 'application/pdf' });
+    const attachments = [
+      { id: 'a1', file: photo, type: 'image' as const },
+      { id: 'a2', file: doc, type: 'file' as const },
+    ];
+
+    function renderSend(draft: string) {
+      const refs = setupRefs(draft);
+      queryClient.setQueryData(chatKeys.messages('chat-test-1'), { pages: [[]], pageParams: [0] });
+      const { result } = renderHook(
+        () =>
+          useComposerSendMessage({
+            attachmentInputRef: refs.attachmentInputRef,
+            bottomRef: refs.bottomRef,
+            draftRef: refs.draftRef,
+            pendingAttachments: attachments,
+            selectionMode: false,
+            setPendingAttachments: refs.setPendingAttachments,
+          }),
+        { wrapper: createWrapper() }
+      );
+      return { ...refs, result };
+    }
+
+    it('по сообщению на файл, по порядку; подпись и ответ — у первого', async () => {
+      const reply = makeMessage({ id: 'reply-1', chatId: 'chat-test-1' });
+      useChatUiStore.setState({ replyToMessage: reply });
+      // Второй файл уходит только после первого: порядок у собеседника тот же.
+      let releaseFirst: () => void = () => {};
+      const send = vi
+        .spyOn(services.messageService, 'sendMediaMessage')
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releaseFirst = () => resolve(makeMessage({ id: 'srv-1', chatId: 'chat-test-1' }));
+            })
+        )
+        .mockResolvedValueOnce(makeMessage({ id: 'srv-2', chatId: 'chat-test-1' }));
+
+      const { result, setPendingAttachments, draftRef } = renderSend('Смотри');
+      await act(async () => {
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+
+      // Композер очищен сразу, в ленте — два сообщения по порядку.
+      expect(setPendingAttachments).toHaveBeenCalledWith([]);
+      expect(draftRef.current.getValue().text).toBe('');
+      const optimistic = queryClient.getQueryData<IThreadPages>(chatKeys.messages('chat-test-1'));
+      expect(optimistic?.pages[0]?.map((m) => m.type)).toEqual(['image', 'file']);
+
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenNthCalledWith(
+        1,
+        'chat-test-1',
+        photo,
+        'image',
+        'Смотри',
+        'reply-1',
+        [],
+        undefined
+      );
+
+      await act(async () => releaseFirst());
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+      expect(send).toHaveBeenNthCalledWith(2, 'chat-test-1', doc, 'file', '', null, [], undefined);
+      await waitFor(() => expect(useOutboxStore.getState().items).toHaveLength(0));
+    });
+
+    it('сбой одного не останавливает остальные: он ждёт повтора в очереди', async () => {
+      vi.spyOn(services.messageService, 'sendMediaMessage')
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce(makeMessage({ id: 'srv-2', chatId: 'chat-test-1' }));
+
+      const { result } = renderSend('');
+      await act(async () => {
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as any);
+      });
+
+      await waitFor(() => {
+        const items = useOutboxStore.getState().items;
+        expect(items).toHaveLength(1);
+        expect(items[0]?.file).toBe(photo);
+        expect(items[0]?.status).toBe('failed');
+      });
+      expect(services.messageService.sendMediaMessage).toHaveBeenCalledTimes(2);
+    });
   });
 });

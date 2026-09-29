@@ -3,14 +3,17 @@ import type { ReactNode } from 'react';
 
 /* Приглушённый — для чатов с выключенным звуком. Оттенок живёт здесь, а
    не на экранах: иначе в одном месте такой чат станет серым, в другом
-   получит иконку, в третьем не изменится вовсе. */
+   получит иконку, в третьем не изменится вовсе. Число на обоих белое:
+   на приглушённой заливке оно держит 4.5:1 (дизайн-система, #817). */
 const tones = {
   brand: 'bg-brand-fill text-on-brand',
-  quiet: 'bg-sheet-2 text-ink-2',
+  quiet: 'bg-muted-badge text-on-brand',
 } as const;
 
 interface Props {
-  children: ReactNode;
+  /* Без содержимого — пустой кружок: чат, помеченный непрочитанным
+     вручную. Что он значит, скажет label. */
+  children?: ReactNode;
   tone?: keyof typeof tones;
   /* Больше этого числа показывается как «99+». */
   max?: number;
@@ -37,13 +40,15 @@ export const Badge = ({ children, tone = 'brand', max = 99, label, className }: 
            запрета на сжатие флекс отдаёт место тексту, и «99+» показывается
            обрубком — замерено 22 пикселя вместо нужных 29. Сжиматься должен
            текст, у него для этого есть многоточие. */
-        'inline-flex min-w-5 shrink-0 items-center justify-center rounded-pill px-2 py-0.5',
-        'font-mono text-micro font-medium tabular-nums',
+        'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-pill px-1.5',
+        'text-meta font-semibold tabular-nums',
         tones[tone],
         className
       )}
     >
-      <span aria-hidden={label ? 'true' : undefined}>{shown}</span>
+      {shown !== undefined && shown !== null && shown !== '' && (
+        <span aria-hidden={label ? 'true' : undefined}>{shown}</span>
+      )}
       {label && <span className="sr-only">{label}</span>}
     </span>
   );

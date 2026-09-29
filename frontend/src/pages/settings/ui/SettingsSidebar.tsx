@@ -1,51 +1,80 @@
-import type { TFunction } from 'i18next';
-import { SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
+import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { meQuery } from '@/entities/user';
+import { ROUTES, SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
+import { Avatar, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
+import { SECTION_TITLES } from './settingsHeader';
 import { SettingsMenuItem } from './SettingsMenuItem';
+import { SettingsSearch } from './SettingsSearch';
 
-/* Порядок пунктов задаётся списком разделов, значок и подпись — здесь.
-   Ключи меню отдельные от заголовков разделов: в меню «Уведомления», а
-   заголовком — «Уведомления и звуки», и подписи должны быть короче.
-   Список один на меню и на проверку адреса: раздела, которого в нём нет,
-   не существует и для маршрута. */
-const SECTION_VIEW: Record<TSettingsSection, { icon: TIconTypes; fallback: string; key: string }> =
-  {
-    account: { icon: 'user', fallback: 'Аккаунт', key: 'settings.menu.account' },
-    notifications: { icon: 'bell', fallback: 'Уведомления', key: 'settings.menu.notifications' },
-    appearance: { icon: 'palette', fallback: 'Внешний вид', key: 'settings.menu.appearance' },
-    privacy: { icon: 'lock', fallback: 'Конфиденциальность', key: 'settings.menu.privacy' },
-    language: { icon: 'language', fallback: 'Язык', key: 'settings.menu.language' },
-    about: { icon: 'info', fallback: 'О приложении', key: 'settings.menu.about' },
-  };
+/* Порядок пунктов задаётся списком разделов, значок — здесь, подпись —
+   та же, что в шапке раздела, как в макете. */
+const SECTION_ICONS: Record<TSettingsSection, TIconTypes> = {
+  account: 'user',
+  notifications: 'bell',
+  appearance: 'palette',
+  privacy: 'lock',
+  language: 'language',
+  about: 'info',
+};
 
-interface Props {
-  t?: TFunction;
-}
+/**
+ * Меню настроек — по макету (#828): «назад» к чатам и заголовок, карточка
+ * своего профиля, поиск и разделы. На телефоне — отдельный экран.
+ */
+export function SettingsSidebar() {
+  const { t } = useTranslation();
+  const { data: me } = useQuery(meQuery());
+  const name = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.username || '';
 
-export function SettingsSidebar({ t }: Props) {
   return (
-    <aside className="flex min-h-0 flex-1 flex-col pb-4">
-      <div className="flex items-center gap-2.5 px-8 pt-2 pb-5">
-        <h2 className="text-body font-bold text-ink">
-          {t ? t('settings.menu.title', 'Настройки') : 'Настройки'}
-        </h2>
+    <>
+      <div className="flex items-center gap-1.5 pt-3.5 pr-4 pb-2.5 pl-2.5">
+        {/* Назад к чатам: прежде туда вела боковая панель, которой больше
+            нет (#818). Как в макете — стрелка цветом акцента. */}
+        <Link
+          aria-label={t('backToChats', 'Назад к чатам')}
+          className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand hover:layer-hover focus-visible:outline-2 focus-visible:outline-brand"
+          to={ROUTES.CHATS}
+        >
+          <Icon className="size-5.5 stroke-2" name="chevronLeft" />
+        </Link>
+        <h1 className="m-0 text-section font-semibold tracking-[-0.01em]">
+          {t('settings.menu.title', 'Настройки')}
+        </h1>
       </div>
 
-      {/* На узком экране меню ложится в строку и прокручивается вбок:
-          вертикальный список занял бы весь экран до содержимого. */}
-      <nav className="flex flex-row overflow-x-auto md:flex-col md:overflow-x-visible md:overflow-y-auto">
-        {SETTINGS_SECTIONS.map((section) => {
-          const view = SECTION_VIEW[section];
-          return (
-            <SettingsMenuItem
-              icon={view.icon}
-              key={section}
-              label={t ? t(view.key, view.fallback) : view.fallback}
-              section={section}
-            />
-          );
-        })}
-      </nav>
-    </aside>
+      {/* Свой профиль — так, как его видят другие (#828). */}
+      <Link
+        className="mx-3 mb-3 flex items-center gap-3.5 rounded-bubble bg-sheet-2 p-3 text-left hover:layer-hover focus-visible:outline-2 focus-visible:outline-brand"
+        to={ROUTES.SETTINGS_SUBSECTION('account', 'me')}
+      >
+        <Avatar id={me?.id} name={me?.firstName || me?.username} size="menu" src={me?.avatarUrl} />
+        <span className="flex min-w-0 grow flex-col gap-0.5">
+          <span className="truncate text-subtitle font-semibold text-ink">{name}</span>
+          {me?.username && <span className="text-caption text-ink-3">@{me.username}</span>}
+        </span>
+        <Icon
+          aria-hidden="true"
+          className="size-4.5 shrink-0 stroke-2 text-ink-3"
+          name="chevronRight"
+        />
+      </Link>
+
+      <SettingsSearch />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-3 [scrollbar-width:thin]">
+        {SETTINGS_SECTIONS.map((section) => (
+          <SettingsMenuItem
+            icon={SECTION_ICONS[section]}
+            key={section}
+            label={t(...SECTION_TITLES[section])}
+            section={section}
+          />
+        ))}
+      </div>
+    </>
   );
 }

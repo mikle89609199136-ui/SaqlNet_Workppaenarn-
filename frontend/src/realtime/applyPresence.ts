@@ -1,0 +1,113 @@
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import { chatKeys, type IChatDto } from '@/entities/chat';
+import { userKeys } from '@/entities/user';
+import type { IPresenceChangedEvent } from '@/types';
+
+/**
+ * Статус собеседника «в сети» / «был(а)» (#780).
+ *
+ * Статус живёт в трёх местах кеша: в списке чатов, в карточке личного чата
+ * (шапка) и в профиле. Событие кладёт его во все три сразу, без похода на
+ * сервер, — раньше он менялся только после перезагрузки страницы.
+ */
+
+/** Карточки чатов: ключи вида ['chat', chatId], без истории и закреплённых. */
+function chatDetailKeys(queryClient: QueryClient): QueryKey[] {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: chatKeys.all })
+    .map((query) => query.queryKey)
+    .filter((key) => key.length === 2 && key[1] !== 'list' && key[1] !== 'archived');
+}
+
+export function applyPresence(queryClient: QueryClient, event: IPresenceChangedEvent): void {
+  if (!event?.userId) return;
+
+  const patch = (chat: IChatDto | undefined): IChatDto | undefined =>
+    chat && chat.type === 'private' && chat.peerId === event.userId
+      ? {
+          ...chat,
+          peerIsOnline: event.isOnline,
+          peerLastSeen: event.lastSeen || chat.peerLastSeen,
+          // Событие приходит, только если точное время видно (#791).
+          peerLastSeenApprox: undefined,
+        }
+      : chat;
+
+  for (const key of [chatKeys.list(), chatKeys.archived()]) {
+    queryClient.setQueryData<IChatDto[]>(key, (chats) => chats?.map((chat) => patch(chat)!));
+  }
+  for (const key of chatDetailKeys(queryClient)) {
+    queryClient.setQueryData<IChatDto>(key, (chat) => patch(chat));
+  }
+  queryClient.setQueryData<{ isOnline?: boolean }>(userKeys.profile(event.userId), (profile) =>
+    profile ? { ...profile, isOnline: event.isOnline } : profile
+  );
+}
+
+/**
+ * Перечитать статусы, когда события могли пройти мимо: связь моргала или
+ * вкладка спала. Только список и карточки — история чатов не трогается.
+ */
+export function refreshPresence(queryClient: QueryClient): void {
+  for (const key of [chatKeys.list(), chatKeys.archived(), ...chatDetailKeys(queryClient)]) {
+    void queryClient.invalidateQueries({ queryKey: key, exact: true });
+  }
+}
+
+/**
+ * Сколько ждать, прежде чем показать «был(а)» вместо «в сети».
+ *
+ * Сервер сообщает о выходе, как только закрылось последнее соединение, а
+ * при плохой связи оно рвётся и восстанавливается за секунды: у собеседника
+ * статус мигал бы «в сети» → «был(а)» → «в сети». Вход показывается сразу,
+ * выход — если человек не вернулся за это время.
+ */
+export const PRESENCE_OFFLINE_DELAY_MS = 30_000;
+
+export interface IPresenceBuffer {
+  push(event: IPresenceChangedEvent): void;
+  dispose(): void;
+}
+
+/** Применяет события присутствия с задержкой выхода (см. PRESENCE_OFFLINE_DELAY_MS). */
+export function createPresenceBuffer(
+  queryClient: QueryClient,
+  offlineDelayMs = PRESENCE_OFFLINE_DELAY_MS
+): IPresenceBuffer {
+  const pendingOffline = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const cancel = (userId: string) => {
+    const timer = pendingOffline.get(userId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    pendingOffline.delete(userId);
+  };
+
+  return {
+    push(event) {
+      if (!event?.userId) return;
+      const { userId } = event;
+
+      if (event.isOnline) {
+        // Вернулся, пока ждали, — для собеседника он и не уходил.
+        cancel(userId);
+        applyPresence(queryClient, event);
+        return;
+      }
+
+      cancel(userId);
+      pendingOffline.set(
+        userId,
+        setTimeout(() => {
+          pendingOffline.delete(userId);
+          applyPresence(queryClient, event);
+        }, offlineDelayMs)
+      );
+    },
+    dispose() {
+      for (const timer of pendingOffline.values()) clearTimeout(timer);
+      pendingOffline.clear();
+    },
+  };
+}

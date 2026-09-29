@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { passwordSchema } from '@/shared/lib/passwordRules';
+import { passwordSchema } from '@/shared/lib';
+import { USERNAME_PATTERN } from '@/entities/user';
 
 /**
  * Правила регистрации.
@@ -9,8 +10,6 @@ import { passwordSchema } from '@/shared/lib/passwordRules';
  * `trigger`. Список полей каждого шага лежит здесь же — рядом с
  * правилами, а не в разметке, где его пришлось бы искать.
  */
-
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 export const registerFormSchema = z
   .object({

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ContextMenu, ContextMenuItem, useContextMenu } from './ContextMenu';
+import { ContextMenu, ContextMenuBack, ContextMenuItem, useContextMenu } from './ContextMenu';
 
 describe('контекстное меню', () => {
   it('не рисуется, пока закрыто', () => {
@@ -239,5 +239,65 @@ describe('контекстное меню', () => {
     const menu = screen.getByRole('menu');
     expect(menu.className).toContain('max-h-');
     expect(menu.className).toContain('overflow-y-auto');
+  });
+
+  it('отмеченный пункт объявляет своё состояние и остаётся в обходе стрелками', () => {
+    render(
+      <ContextMenu open={true} onClose={vi.fn()}>
+        <ContextMenuItem checked={true}>Жирный</ContextMenuItem>
+        <ContextMenuItem checked={false}>Курсив</ContextMenuItem>
+        <ContextMenuItem>Обычный текст</ContextMenuItem>
+      </ContextMenu>
+    );
+
+    const bold = screen.getByRole('menuitemcheckbox', { name: 'Жирный' });
+    expect(bold).toHaveAttribute('aria-checked', 'true');
+    expect(bold).toHaveClass('bg-brand-soft', 'text-brand');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Курсив' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
+
+    const menu = screen.getByRole('menu');
+    bold.focus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitemcheckbox', { name: 'Курсив' }));
+  });
+
+  it('наведение ложится слоем и не стирает отметку', () => {
+    render(
+      <ContextMenu open={true} onClose={vi.fn()}>
+        <ContextMenuItem checked={true}>Жирный</ContextMenuItem>
+      </ContextMenu>
+    );
+
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Жирный' });
+    expect(item).toHaveClass('enabled:hover:layer-hover', 'bg-brand-soft');
+  });
+
+  it('пункт с подменю говорит, что откроет меню', () => {
+    render(
+      <ContextMenu open={true} onClose={vi.fn()}>
+        <ContextMenuItem submenu>Форматирование</ContextMenuItem>
+      </ContextMenu>
+    );
+
+    expect(screen.getByRole('menuitem', { name: 'Форматирование' })).toHaveAttribute(
+      'aria-haspopup',
+      'menu'
+    );
+  });
+
+  it('строка «Назад» возвращает из подменю', async () => {
+    const onBack = vi.fn();
+
+    render(
+      <ContextMenu open={true} onClose={vi.fn()}>
+        <ContextMenuBack onClick={onBack} />
+      </ContextMenu>
+    );
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Назад' }));
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

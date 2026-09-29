@@ -10,12 +10,10 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
-import { registerChatResolver } from '@/queries/chat/chatResolverBridge';
-import { queryClient } from '@/queries/queryClient';
-import { eventBus } from '@/core/EventBus';
-import { resetRealtimeSocketForTests } from '@/hooks/useRealtimeSocket';
+import { eventBus } from '@/shared/lib/event-bus';
+import { queryClient, resetRealtimeSocketForTests } from '@/shared/api';
 import { useCallStore } from '@/features/call';
-import { useChatUiStore } from '@/store/chatUi';
+import { registerChatResolver, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
 
@@ -43,6 +41,29 @@ Element.prototype.getBoundingClientRect = function () {
   }
   return original;
 };
+
+/* У Range в jsdom нет размеров, а редактор Lexical прокручивает к выделению
+   после каждой правки и падал бы на этом (#656). */
+if (typeof Range !== 'undefined' && !Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () =>
+    ({
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => '',
+    }) as DOMRect;
+  Range.prototype.getClientRects = () =>
+    ({
+      length: 0,
+      item: () => null,
+      [Symbol.iterator]: [][Symbol.iterator],
+    }) as unknown as DOMRectList;
+}
 
 if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get) {
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {

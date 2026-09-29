@@ -1,33 +1,45 @@
-import { WS_EVENTS } from '@/shared/config';
+import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { WebSocketClient } from '@/services/WebSocketClient';
+import { useProfileStore } from '@/entities/user';
+import {
+  callStateReducer,
+  initialCallContext,
+  type ICallFsmContext,
+  type TCallFsmAction,
+} from './callStateMachine';
+import { sendCallInvite, sendCallInviteResponse, sendCallLeave } from './callSignaling';
 import type {
   IActiveCall,
+  ICallCancelledPayload,
   ICallInviteResponsePayload,
   IIncomingCall,
-  IMemberDto,
+  TCallEndReason,
   TCallKind,
   TCallRoomType,
-} from '@/types';
-import { create } from 'zustand';
+} from './types';
 
-interface CallStore {
-  incomingCall: IIncomingCall | null;
-  activeCall: IActiveCall | null;
+const CALL_TIMEOUT_MS = 60_000;
+
+interface CallStoreState {
+  fsm: ICallFsmContext;
   isMinimized: boolean;
   socket: WebSocketClient | null;
-  callFrameRef: HTMLIFrameElement | null;
+  callTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
+  // Селекторы совместимости с UI
+  incomingCall: IIncomingCall | null;
+  activeCall: IActiveCall | null;
+
+  // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
-  attachCallFrame: (callFrameRef: HTMLIFrameElement | null) => void;
+  dispatch: (action: TCallFsmAction) => void;
 
   handleIncoming: (payload: IIncomingCall) => void;
-  handleCancelled: (roomId: string) => void;
+  handleCancelled: (payload: ICallCancelledPayload | string) => void;
   handleInviteResponse: (payload: ICallInviteResponsePayload) => void;
 
-  acceptCall: () => void;
-  rejectCall: () => void;
   initiateCall: (
     chatId: string,
     type: TCallRoomType,
@@ -35,176 +47,242 @@ interface CallStore {
     kind: TCallKind,
     peerId?: string | null
   ) => Promise<void>;
-  endCall: () => void;
+  acceptCall: () => void;
+  rejectCall: () => void;
+  endCall: (reason?: TCallEndReason) => void;
   minimizeCall: () => void;
   maximizeCall: () => void;
 }
 
-function postHangup(frame: HTMLIFrameElement | null): void {
-  try {
-    frame?.contentWindow?.postMessage({ type: 'crane_hangup' }, '*');
-  } catch {}
+function formatCallerName(
+  user?: { firstName?: string; lastName?: string; username?: string } | null
+): string | undefined {
+  if (!user) return undefined;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+  return fullName || user.username || undefined;
 }
 
-function readLocalUser(): {
-  id?: string;
-  firstName?: string;
-  username?: string;
-  avatarUrl?: string;
-} {
-  try {
-    return JSON.parse(localStorage.getItem('craneapp_user_data') || '{}');
-  } catch {
-    return {};
-  }
-}
+export const useCallStore = create<CallStoreState>((set, get) => {
+  const syncDerivedState = (fsm: ICallFsmContext) => {
+    const incomingCall: IIncomingCall | null =
+      fsm.state === 'incoming' && fsm.roomId && fsm.peerId
+        ? {
+            roomId: fsm.roomId,
+            from: fsm.peerId,
+            fromName: fsm.peerName ?? undefined,
+            fromAvatar: fsm.peerAvatar,
+            kind: fsm.callKind,
+            title: fsm.title ?? undefined,
+            callType: fsm.roomType,
+          }
+        : null;
 
-export const useCallStore = create<CallStore>((set, get) => ({
-  incomingCall: null,
-  activeCall: null,
-  isMinimized: false,
-  socket: null,
-  callFrameRef: null,
+    const activeCall: IActiveCall | null =
+      (fsm.state === 'connecting' || fsm.state === 'active' || fsm.state === 'outgoing') &&
+      fsm.roomId
+        ? {
+            roomId: fsm.roomId,
+            type: fsm.roomType,
+            kind: fsm.callKind,
+            title: fsm.title ?? undefined,
+            chatId: fsm.chatId ?? undefined,
+          }
+        : null;
 
-  attachSocket: (socket) => set({ socket }),
-  attachCallFrame: (callFrameRef) => set({ callFrameRef }),
+    return { fsm, incomingCall, activeCall };
+  };
 
-  handleIncoming: (payload) => {
-    const { activeCall, incomingCall, socket } = get();
-    if (activeCall || incomingCall) {
-      if (socket?.isConnected) {
-        socket.send({
-          type: WS_EVENTS.CALL.INVITE_RESPONSE,
-          to: payload.from,
-          roomId: payload.roomId,
-          accepted: false,
-          reason: 'busy',
-        });
+  const clearTimer = () => {
+    const timer = get().callTimeoutTimer;
+    if (timer) clearTimeout(timer);
+    set({ callTimeoutTimer: null });
+  };
+
+  return {
+    fsm: initialCallContext,
+    isMinimized: false,
+    socket: null,
+    callTimeoutTimer: null,
+    incomingCall: null,
+    activeCall: null,
+
+    attachSocket: (socket) => set({ socket }),
+
+    dispatch: (action) => {
+      const currentFsm = get().fsm;
+      const nextFsm = callStateReducer(currentFsm, action);
+      if (nextFsm === currentFsm) return;
+      set(syncDerivedState(nextFsm));
+    },
+
+    handleIncoming: (payload) => {
+      const { fsm, socket } = get();
+
+      // Повторный incoming для той же комнаты игнорируем (уже звенит)
+      if (fsm.state === 'incoming' && fsm.roomId === payload.roomId) {
+        return;
       }
-      return;
-    }
-    set({ incomingCall: payload });
-    startRingtone();
-  },
 
-  handleCancelled: (roomId) => {
-    const { incomingCall } = get();
-    if (incomingCall && incomingCall.roomId === roomId) {
-      set({ incomingCall: null });
-      stopRingtone();
-    }
-  },
-
-  handleInviteResponse: (payload) => {
-    const { activeCall, callFrameRef } = get();
-    if (!activeCall || payload.roomId !== activeCall.roomId || payload.accepted) {
-      return;
-    }
-    postHangup(callFrameRef);
-    set({ activeCall: null, isMinimized: false });
-  },
-
-  acceptCall: () => {
-    const { incomingCall, socket } = get();
-    if (!incomingCall) return;
-    stopRingtone();
-
-    if (socket?.isConnected) {
-      socket.send({
-        type: WS_EVENTS.CALL.INVITE_RESPONSE,
-        to: incomingCall.from,
-        roomId: incomingCall.roomId,
-        accepted: true,
-      });
-    }
-
-    set({
-      activeCall: {
-        roomId: incomingCall.roomId,
-        type: incomingCall.callType || 'private',
-        kind: incomingCall.kind,
-        title: incomingCall.title || incomingCall.fromName || '',
-      },
-      incomingCall: null,
-    });
-  },
-
-  rejectCall: () => {
-    const { incomingCall, socket } = get();
-    if (!incomingCall) return;
-    stopRingtone();
-
-    if (socket?.isConnected) {
-      socket.send({
-        type: WS_EVENTS.CALL.INVITE_RESPONSE,
-        to: incomingCall.from,
-        roomId: incomingCall.roomId,
-        accepted: false,
-        reason: 'rejected',
-      });
-    }
-
-    set({ incomingCall: null });
-  },
-
-  initiateCall: async (chatId, type, title, kind, peerId = null) => {
-    const { activeCall, incomingCall, socket } = get();
-    if (activeCall || incomingCall) return;
-
-    try {
-      const callType: TCallRoomType = type === 'group' ? 'group' : 'private';
-      const room = await services.callService.createRoom({
-        type: callType,
-        chatId,
-        title,
-        callKind: kind,
-      });
-      const roomId: string | undefined = room?.id;
-      if (!roomId) throw new Error('Room creation failed');
-
-      if (socket?.isConnected) {
-        let targets: string[] = [];
-        const user = readLocalUser();
-
-        if (callType !== 'group') {
-          if (peerId) targets = [peerId];
-        } else {
-          const members = await services.chatService.getMembers(chatId);
-          targets = members
-            .map((m: IMemberDto) => m.id)
-            .filter((id: string) => id && id !== user.id);
+      // Если уже в другом звонке — автоответ busy
+      if (fsm.state !== 'idle' && fsm.state !== 'ended') {
+        if (socket?.isConnected && payload.from) {
+          sendCallInviteResponse(socket, {
+            to: payload.from,
+            roomId: payload.roomId,
+            accepted: false,
+            reason: 'busy',
+          });
         }
+        return;
+      }
 
-        targets.forEach((to) =>
-          socket.send({
-            type: 'call_invite',
-            to,
+      get().dispatch({
+        type: 'RECEIVE_INCOMING',
+        payload: {
+          roomId: payload.roomId,
+          from: payload.from,
+          fromName: payload.fromName,
+          fromAvatar: payload.fromAvatar,
+          kind: payload.kind,
+          title: payload.title,
+        },
+      });
+
+      startRingtone();
+    },
+
+    handleCancelled: (payload) => {
+      const roomId = typeof payload === 'string' ? payload : payload.roomId;
+      const { fsm } = get();
+      if (fsm.roomId === roomId) {
+        stopRingtone();
+        clearTimer();
+        const finishedRoomId = fsm.roomId;
+        get().dispatch({ type: 'END_CALL', reason: 'peer_ended' });
+        setTimeout(() => {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }, 1500);
+      }
+    },
+
+    handleInviteResponse: (payload) => {
+      const { fsm } = get();
+      if (fsm.roomId !== payload.roomId) return;
+
+      clearTimer();
+
+      if (payload.accepted) {
+        get().dispatch({ type: 'PEER_ACCEPTED' });
+      } else {
+        const reason: TCallEndReason = payload.reason === 'busy' ? 'busy' : 'declined';
+        get().endCall(reason);
+      }
+    },
+
+    initiateCall: async (chatId, type, title, kind, peerId) => {
+      const { socket, fsm } = get();
+      if (fsm.state !== 'idle' && fsm.state !== 'ended') return;
+
+      try {
+        const response = await services.callService.createRoom({
+          chatId,
+          type: type === 'group' ? 'group' : 'p2p',
+          title,
+          callKind: kind,
+        });
+
+        const roomId = response.room?.id;
+        if (!roomId) throw new Error('Room creation failed');
+        const targetPeerId = peerId ?? '';
+
+        get().dispatch({
+          type: 'START_OUTGOING',
+          payload: {
+            roomId,
+            chatId,
+            peerId: targetPeerId,
+            kind,
+            title,
+          },
+        });
+
+        if (socket?.isConnected && targetPeerId) {
+          const profile = useProfileStore.getState().user;
+          sendCallInvite(socket, {
+            to: targetPeerId,
             roomId,
             kind,
-            fromName: user.firstName || user.username,
-            fromAvatar: user.avatarUrl || null,
+            fromName: formatCallerName(profile),
+            fromAvatar: profile?.avatarUrl,
             title,
-          })
-        );
+          });
+        }
+
+        // Таймер ожидания ответа 60 секунд
+        const timer = setTimeout(() => {
+          get().endCall('no_answer');
+        }, CALL_TIMEOUT_MS);
+        set({ callTimeoutTimer: timer });
+      } catch {
+        get().dispatch({ type: 'END_CALL', reason: 'network_error' });
+      }
+    },
+
+    acceptCall: () => {
+      stopRingtone();
+      const { fsm, socket } = get();
+      if (!fsm.roomId || !fsm.peerId) return;
+
+      get().dispatch({ type: 'ACCEPT_INCOMING' });
+
+      if (socket?.isConnected) {
+        sendCallInviteResponse(socket, {
+          to: fsm.peerId,
+          roomId: fsm.roomId,
+          accepted: true,
+        });
+      }
+    },
+
+    rejectCall: () => {
+      stopRingtone();
+      const { fsm, socket } = get();
+      if (socket?.isConnected && fsm.roomId && fsm.peerId) {
+        sendCallInviteResponse(socket, {
+          to: fsm.peerId,
+          roomId: fsm.roomId,
+          accepted: false,
+          reason: 'declined',
+        });
+      }
+      const finishedRoomId = fsm.roomId ?? undefined;
+      get().dispatch({ type: 'END_CALL', reason: 'declined' });
+      setTimeout(() => {
+        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+      }, 500);
+    },
+
+    endCall: (reason: TCallEndReason = 'completed') => {
+      stopRingtone();
+      clearTimer();
+      const { fsm, socket } = get();
+
+      if (socket?.isConnected && fsm.roomId) {
+        sendCallLeave(socket, fsm.roomId);
       }
 
-      set({
-        activeCall: { roomId, type: callType, kind, title, chatId },
-        isMinimized: false,
-      });
-    } catch (err) {
-      console.error('Call initiation failed:', err);
-      alert('Не удалось начать звонок');
-    }
-  },
+      const finishedRoomId = fsm.roomId ?? undefined;
+      get().dispatch({ type: 'END_CALL', reason });
 
-  endCall: () => {
-    const { activeCall, callFrameRef } = get();
-    if (!activeCall) return;
-    postHangup(callFrameRef);
-    set({ activeCall: null, isMinimized: false });
-  },
+      setTimeout(() => {
+        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        if (get().fsm.state === 'idle') {
+          set({ isMinimized: false });
+        }
+      }, 800);
+    },
 
-  minimizeCall: () => set({ isMinimized: true }),
-  maximizeCall: () => set({ isMinimized: false }),
-}));
+    minimizeCall: () => set({ isMinimized: true }),
+    maximizeCall: () => set({ isMinimized: false }),
+  };
+});

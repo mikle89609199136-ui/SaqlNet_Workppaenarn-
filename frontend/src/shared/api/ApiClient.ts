@@ -1,6 +1,5 @@
 export interface IApiClientOptions {
-  getToken?: () => string | null;
-  headers?: Record<string, string>;
+  onUnauthorized?: (error: IApiError) => void;
 }
 
 export type TQueryParamValue = string | number | boolean | null | undefined;
@@ -32,96 +31,117 @@ export interface IApiError extends Error {
 
 export class ApiClient {
   private baseUrl: string;
-  private getToken: () => string | null;
+  private onUnauthorized?: (error: IApiError) => void;
   private defaultHeaders: Record<string, string>;
 
   constructor(baseUrl: string, options: IApiClientOptions = {}) {
     this.baseUrl = baseUrl;
-    this.getToken = options.getToken ?? (() => null);
+    this.onUnauthorized = options.onUnauthorized;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
-      ...options.headers,
     };
   }
 
-  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  setOnUnauthorized(handler: ((error: IApiError) => void) | undefined): void {
+    this.onUnauthorized = handler;
   }
 
-  post<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'POST', data });
+  get<T = unknown>(
+    endpoint: string,
+    params: TQueryParams = {},
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
-  put<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+  post<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'POST', data, headers });
+  }
+
+  put<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PUT', data });
   }
 
-  patch<T = unknown>(endpoint: string, data: unknown = null): Promise<IApiResponse<T>> {
+  patch<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
-  delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  /**
+   * `keepalive` — для запроса, который уходит при закрытии вкладки:
+   * без него браузер обрывает его вместе со страницей.
+   */
+  delete<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    options: Pick<IRequestOptions, 'keepalive'> = {}
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE', data });
   }
 
-  async request<T = unknown>(
+  private async request<T = unknown>(
     endpoint: string,
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
-    const token = this.getToken();
-    let requestHeaders: Record<string, string> = {
+    const url = this.buildUrl(endpoint, params);
+    const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    if (data === null || data === undefined) {
-      const { 'Content-Type': _omit, ...rest } = requestHeaders;
-      requestHeaders = rest;
+    const isFormData = data instanceof FormData;
+    const isNoData = data === null || data === undefined;
+    if (isNoData || isFormData) {
+      delete requestHeaders['Content-Type'];
     }
 
-    const response = await fetch(this.buildUrl(endpoint, params), {
+    const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
+
+    /* Сессия — в HttpOnly-cookie (#705): браузер отправляет её сам, а
+       JavaScript токена не видит. `same-origin` — только своему серверу:
+       абсолютный адрес чужого origin получает запрос без неё (#871). */
+    const response = await fetch(url, {
+      credentials: 'same-origin',
       ...requestOptions,
       headers: requestHeaders,
-      body: data === null || data === undefined ? undefined : JSON.stringify(data),
+      body,
     });
 
     return this.parseResponse<T>(response);
   }
 
-  buildUrl(endpoint: string, params: TQueryParams = {}): string {
-    if (/^https?:\/\//.test(String(endpoint))) {
-      const url = new URL(endpoint);
-      this.appendParams(url, params);
-      return url.toString();
-    }
-
-    const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
-    let normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
-    // Относительная база разрешается от адреса страницы; вне браузера
-    // подставляется любой корректный origin — важен только путь.
-    const documentUrl = globalThis.location?.href ?? 'http://localhost/';
-    const absoluteBase = new URL(normalizedBase, documentUrl);
-    const basePath = absoluteBase.pathname.replace(/\/+$/, '').replace(/^\/+/, '');
-    if (basePath && normalizedEndpoint.startsWith(`${basePath}/`)) {
-      normalizedEndpoint = normalizedEndpoint.slice(basePath.length + 1);
-    }
-    const url = new URL(normalizedEndpoint, absoluteBase);
-
-    this.appendParams(url, params);
-    return url.toString();
-  }
-
-  appendParams(url: URL, params: TQueryParams = {}): void {
+  private buildUrl(endpoint: string, params: TQueryParams = {}): string {
+    const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
-        url.searchParams.set(key, String(value));
+        query.set(key, String(value));
       }
     });
+
+    const base = this.baseUrl.replace(/\/+$/, '');
+    // Путь базы — '/api/v2' и у относительной базы, и у абсолютной.
+    const basePath = base.replace(/^https?:\/\/[^/]+/, '');
+    const relative = endpoint.replace(/^\/+/, '');
+
+    // Сервер отдаёт часть адресов уже с базой: mediaUrl вложений —
+    // '/api/v2/media/<id>'. Приклеенная второй раз база давала
+    // '/api/v2/api/v2/media/…' и 404: вложения не открывались ни у
+    // получателя, ни у отправителя после перезагрузки.
+    const path = /^https?:\/\//.test(endpoint)
+      ? endpoint
+      : basePath && `/${relative}`.startsWith(`${basePath}/`)
+        ? `${base.slice(0, base.length - basePath.length)}/${relative}`
+        : `${base}/${relative}`;
+
+    const qs = query.toString();
+    return qs ? `${path}?${qs}` : path;
   }
 
-  async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
+  private async parseResponse<T>(response: Response): Promise<IApiResponse<T>> {
     const contentType = response.headers?.get?.('content-type') ?? '';
     const payload: unknown =
       contentType.includes('application/json') || typeof response.text !== 'function'
@@ -135,11 +155,6 @@ export class ApiClient {
         message?: string;
       };
 
-      if (response.status === 401 && !isUserFacingAuthError(payloadObj.code)) {
-        // Слушатель живёт в AuthGuard. Вне браузера событию некуда идти,
-        // но и падать из-за этого запрос не должен.
-        globalThis.dispatchEvent?.(new CustomEvent('craneapp:unauthorized'));
-      }
       const message =
         payloadObj?.error ||
         payloadObj?.message ||
@@ -149,6 +164,11 @@ export class ApiClient {
       error.status = response.status;
       error.data = payload;
       error.code = payloadObj?.code;
+
+      if (response.status === 401) {
+        this.onUnauthorized?.(error);
+      }
+
       throw error;
     }
 
@@ -158,17 +178,4 @@ export class ApiClient {
       headers: response.headers,
     };
   }
-}
-
-/**
- * Ошибки со статусом 401, которые говорят не о сессии, а о том, что
- * человек ввёл неверный пароль.
- *
- * Раньше любой 401 считался протухшей сессией и выбрасывал на страницу
- * входа. Из-за этого ошибка «неверный текущий пароль» при его смене
- * выкидывала из аккаунта вместе с введённым: сессия была цела, а человек
- * оказывался на форме входа и не понимал почему.
- */
-function isUserFacingAuthError(code: string | undefined): boolean {
-  return code === 'wrong_password' || code === 'invalid_2fa' || code === 'invalid_credentials';
 }

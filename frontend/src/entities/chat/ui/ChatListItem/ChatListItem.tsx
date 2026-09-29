@@ -1,15 +1,16 @@
 import { ROUTES } from '@/shared/config';
-import { useLongPress } from '@/shared/lib';
-import { readDraft, subscribeToDraft } from '@/store/chatDrafts';
-import { useTypingStore } from '../../model/typingStore';
-import { formatChatListTime } from '@/shared/lib/chatListTime';
+import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
+import type { TReceiptState } from '@/shared/lib';
+import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
+import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useMatch } from 'react-router-dom';
 import { Avatar, Badge } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
+import { chatRowStyles, onCurrentRow } from './chatRowStyles';
 import type { IChatDto } from '../../model/types';
 import type { RefObject } from 'react';
 
@@ -26,13 +27,18 @@ interface Props {
   chat: IChatDto;
   /** Сколько чатов уже закреплено: больше пяти держать не даём. */
   pinnedCount?: number;
+  /**
+   * Кто смотрит список: своё последнее сообщение подписывается «Вы:» и
+   * несёт галочки. Приходит сверху — сущность чата о профиле не знает.
+   */
+  currentUserId?: string;
   renderMenu?: (props: IChatListItemMenuProps) => React.ReactNode;
 }
 
-export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
+export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
+  const typingLabel = useTypingLabel(chat);
   const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
 
   /* Долгое нажатие — тот же вызов меню, что правой кнопкой. Хук принимает
@@ -58,12 +64,39 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
     useCallback(() => readDraft(chat.id), [chat.id])
   );
 
-  const lastMessage = typingUserId
-    ? t('typing', 'печатает...')
-    : getLastMessageText(chat.lastMessage, t);
+  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
-  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
+  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingLabel));
+
+  /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
+     чате чужое без подписи: собеседник там один. */
+  const last = chat.lastMessage;
+  const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
+  const prefix =
+    !typingLabel && last
+      ? isOwnLast
+        ? `${t('chatList.you', 'Вы')}: `
+        : chat.type === 'group' && last.senderName
+          ? `${last.senderName}: `
+          : ''
+      : '';
+  /* Галочки своего последнего (#657): в личном чате — отправлено,
+     доставлено или прочитано; в группе, как и в ленте, — «отправлено». */
+  const status: TReceiptState | undefined =
+    isOwnLast && last ? (chat.type === 'private' ? receiptState(last) : 'sent') : undefined;
+  const statusLabel = {
+    sent: t('messageStatus.sent', 'Отправлено'),
+    delivered: t('messageStatus.delivered', 'Доставлено'),
+    read: t('messageStatus.read', 'Прочитано'),
+  };
+
+  /* Открытый чат прочитан — счётчик на нём не нужен, а на заливке он и
+     не виден. Булавка — только у закреплённого без непрочитанных: иначе
+     её место занимает счётчик. */
+  const isCurrent = Boolean(useMatch(ROUTES.CHAT_BY_ID(chat.id)));
+  const hasUnread = (chat.unreadCount > 0 || Boolean(chat.isMarkedUnread)) && !isCurrent;
+  const showPin = chat.isPinned && !hasUnread;
 
   /* Имя ссылки собирается из её содержимого, а не задаётся
      `aria-label`: тот заменяет собой всё внутри, и диктор объявлял одно
@@ -75,47 +108,111 @@ export function ChatListItem({ chat, pinnedCount = 0, renderMenu }: Props) {
   return (
     <>
       <NavLink
-        className="chat-row"
+        aria-haspopup="menu"
+        className={chatRowStyles}
+        data-menu={contextMenu?.open ? 'open' : undefined}
         onContextMenu={handleContextMenu}
         to={ROUTES.CHAT_BY_ID(chat.id)}
         {...longPress}
       >
         <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
-        <div className="chat-main">
-          <div className="chat-topline">
-            <span className="chat-title">{title}</span>
-            {chat.isPinned && (
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.75">
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-body font-semibold text-ink',
+                onCurrentRow
+              )}
+            >
+              {title}
+            </span>
+            {chat.isMuted && (
               <span
-                aria-label={t('pinnedChat', 'Закреплён')}
-                className="shrink-0 text-ink-3 [&>svg]:size-3.5"
+                aria-label={t('chatList.muted', 'Без звука')}
+                className={cn('flex self-center text-ink-3', onCurrentRow)}
                 role="img"
               >
-                <Icon name="pin" />
+                <Icon className="size-3.5" name="bellOff" />
               </span>
             )}
-            {chat.lastMessageAt && (
-              <time className="chat-time" dateTime={new Date(chat.lastMessageAt).toISOString()}>
-                {formatChatListTime(chat.lastMessageAt, i18n.language)}
-              </time>
-            )}
+            <span
+              className={cn(
+                'flex shrink-0 items-center gap-0.75 text-meta text-ink-3',
+                onCurrentRow
+              )}
+            >
+              {status && (
+                <span
+                  aria-label={statusLabel[status]}
+                  className={cn(
+                    'flex',
+                    /* На открытом чате строка залита акцентом — там цвета
+                       те же, что у галочек своего пузыря (#657). */
+                    status === 'read'
+                      ? 'text-brand group-aria-[current=page]:text-out-read'
+                      : 'text-ink-3 group-aria-[current=page]:text-out-tick'
+                  )}
+                  data-receipt={status}
+                  role="img"
+                >
+                  <Icon
+                    className="size-4 stroke-2"
+                    name={status === 'sent' ? 'check' : 'checkCheck'}
+                  />
+                </span>
+              )}
+              {chat.lastMessageAt && (
+                <time
+                  className="tabular-nums"
+                  dateTime={new Date(chat.lastMessageAt).toISOString()}
+                >
+                  {formatChatListTime(chat.lastMessageAt, i18n.language)}
+                </time>
+              )}
+            </span>
           </div>
-          <div className="chat-subline">
+
+          <div className="flex items-center gap-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
-            {draft && !typingUserId ? (
-              <span className="chat-draft">
-                <span className="chat-draft-label">{t('draft', 'Черновик')}: </span>
-                {draft}
-              </span>
-            ) : (
-              <span>{lastMessage}</span>
-            )}
-            {/* Приглушённый оттенок ждёт своего часа: состояние звука живёт
-              на участнике и в списке чатов не приходит вовсе — #387.
-              Пока метка всегда акцентная. */}
-            {chat.unreadCount > 0 && (
-              <Badge label={`${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`}>
-                {chat.unreadCount}
+            <span className={cn('min-w-0 flex-1 truncate text-ui text-ink-2', onCurrentRow)}>
+              {draft && !typingLabel ? (
+                <>
+                  <span className={cn('text-danger', onCurrentRow)}>
+                    {t('draft', 'Черновик')}:{' '}
+                  </span>
+                  {draft}
+                </>
+              ) : typingLabel ? (
+                // Кто печатает — цветом акцента, как живое событие (#837).
+                <span className={cn('text-brand', onCurrentRow)}>{typingLabel}</span>
+              ) : (
+                <>
+                  {prefix}
+                  {lastMessage}
+                </>
+              )}
+            </span>
+            {hasUnread && (
+              <Badge
+                label={
+                  chat.isMarkedUnread && chat.unreadCount === 0
+                    ? t('chatList.markedUnread', 'Отмечен непрочитанным')
+                    : `${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`
+                }
+                tone={chat.isMuted ? 'quiet' : 'brand'}
+              >
+                {chat.isMarkedUnread ? undefined : chat.unreadCount}
               </Badge>
+            )}
+            {showPin && (
+              <span
+                aria-label={t('pinnedChat', 'Закреплён')}
+                className={cn('flex shrink-0 text-ink-3', onCurrentRow)}
+                role="img"
+              >
+                <Icon className="size-3.75 stroke-2" name="pin" />
+              </span>
             )}
           </div>
         </div>

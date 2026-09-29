@@ -1,6 +1,7 @@
-import { useRealtimeSocket } from '@/hooks';
+import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
+import { usePushNotifications, usePushStore } from '@/features/push-notifications';
 import type { ILastMessageDto } from '@/types';
 import { useEffect } from 'react';
 
@@ -34,21 +35,52 @@ async function resolveNotificationBody(chatId: string, message: ILastMessageDto)
   }
 }
 
+/** Нажали на push-уведомление при открытом приложении — перейти без перезагрузки. */
+function isNavigateRequest(data: unknown): data is { type: 'craneapp:navigate'; url: string } {
+  const message = data as { type?: unknown; url?: unknown } | null;
+  return (
+    message?.type === 'craneapp:navigate' &&
+    typeof message.url === 'string' &&
+    // Только свои пути: «//evil.example» — уже чужой адрес.
+    message.url.startsWith('/') &&
+    !message.url.startsWith('//')
+  );
+}
+
+/*
+ * Разрешение на уведомления здесь больше не спрашивается при загрузке
+ * (#882): iPhone разрешает спросить только по нажатию, а в браузере
+ * запрос без повода раздражает. Спрашивает плашка в списке чатов и
+ * переключатель в настройках.
+ */
 export function NotificationManager() {
-  const token = useProfileStore((state) => state.token);
-  const { eventBus } = useRealtimeSocket(!!token);
+  const signedIn = useProfileStore((state) => state.isAuth);
+  const { eventBus } = useRealtimeSocket(signedIn);
+  // Push (#882): подписка устройства и «на экране ли приложение» — серверу.
+  usePushNotifications(signedIn);
+  const pushOn = usePushStore((state) => state.status === 'on');
 
   useEffect(() => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    const container = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker;
+    if (!container) return undefined;
+    const onMessage = (event: MessageEvent) => {
+      if (!isNavigateRequest(event.data)) return;
+      // Роутер слушает popstate: новый адрес в истории + событие — переход
+      // внутри приложения, без перезагрузки и без ссылки на сам роутер.
+      window.history.pushState(null, '', event.data.url);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    };
+    container.addEventListener('message', onMessage);
+    return () => container.removeEventListener('message', onMessage);
   }, []);
 
   useEffect(() => {
     return eventBus.on('new_message', (payload) => {
       if (!document.hidden) return;
-      if (Notification.permission !== 'granted') return;
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      // Push на этом устройстве включён — уведомление покажет service
+      // worker; второе из вкладки было бы дублем.
+      if (pushOn) return;
 
       const message = payload?.message ?? payload ?? {};
       const chatId = message.chatId ?? payload?.chatId;
@@ -61,13 +93,13 @@ export function NotificationManager() {
         try {
           new Notification(title, {
             body,
-            icon: '/favicon.ico',
+            icon: '/icons/icon-192.png',
             tag: chatId,
           });
         } catch (_) {}
       });
     });
-  }, [eventBus]);
+  }, [eventBus, pushOn]);
 
   return null;
 }

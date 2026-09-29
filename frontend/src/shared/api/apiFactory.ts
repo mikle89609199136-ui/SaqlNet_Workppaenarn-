@@ -1,22 +1,19 @@
-import { STORAGE_KEYS, config } from '@/shared/config';
-import { ApiClient } from './ApiClient';
+import { config } from '@/shared/config';
+import { ApiClient, type IApiError } from './ApiClient';
 
 interface ICreateApiClientOptions {
   baseUrl?: string;
-  getToken?: () => string | null;
+  onUnauthorized?: (error: IApiError) => void;
 }
 
 /**
- * Отдельный клиент со своими настройками. Нужен там, где общий синглтон
- * мешает: в тестах и в местах, которым требуется другой адрес или токен.
+ * Фабрика для создания изолированного клиента ApiClient.
+ * Используется преимущественно в тестах для изоляции состояния.
  */
 export function createApiClient(options: ICreateApiClientOptions = {}): ApiClient {
   return new ApiClient(options.baseUrl ?? config.apiBaseUrl, {
-    getToken:
-      options.getToken ?? (() => globalThis.localStorage?.getItem(STORAGE_KEYS.TOKEN) ?? null),
+    onUnauthorized: options.onUnauthorized,
   });
 }
 
 export const apiClient = createApiClient();
-
-export default apiClient;

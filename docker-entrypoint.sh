@@ -6,21 +6,35 @@ MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-craneapp2024}"
 MEDIA_BUCKET="${MEDIA_BUCKET:-crane-media}"
 MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://127.0.0.1:9000}"
 MINIO_REGION="${MINIO_REGION:-us-east-1}"
+REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379}"
 LEGACY_UPLOADS_DIR="${LEGACY_UPLOADS_DIR:-/data/legacy-uploads}"
+AUTH_LOGOUT_ALL_GENERATION_ENABLED="${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}"
 
-export MINIO_ACCESS_KEY MINIO_SECRET_KEY MEDIA_BUCKET MINIO_ENDPOINT MINIO_REGION LEGACY_UPLOADS_DIR
+export MINIO_ACCESS_KEY MINIO_SECRET_KEY MEDIA_BUCKET MINIO_ENDPOINT MINIO_REGION REDIS_URL LEGACY_UPLOADS_DIR AUTH_LOGOUT_ALL_GENERATION_ENABLED
 
 # Generate encryption secret if not provided
 if [ -z "$CRYPTO_ENCRYPTION_SECRET" ]; then
   export CRYPTO_ENCRYPTION_SECRET=$(cat /proc/sys/kernel/random/uuid | tr -d '-')
 fi
 
-# Allow all origins if ALLOWED_ORIGINS is not set (WebSocket is token-protected)
+# Образ Dockerfile.prod — только для прода: всем сервисам (не одному chat)
+# нужен CRANE_ENV=production — от него зависит cookie сессии (#705):
+# __Host-префикс и Secure.
+export CRANE_ENV="${CRANE_ENV:-production}"
+
+# Откуда можно ходить в API. Не задано — "*", как раньше: с cookie сессии
+# (#705) это безопасно — запросы с ней принимаются только со своего адреса
+# или точно перечисленного здесь, а "*" credentials не даёт. Точный адрес
+# в проде всё же лучше — предупреждаем.
 if [ -z "$ALLOWED_ORIGINS" ]; then
+  if [ "$CRANE_ENV" = "production" ]; then
+    echo "[entrypoint] warning: ALLOWED_ORIGINS is not set, using \"*\"; better set the public address, e.g. https://craneapp-timkhazatsky.amvera.io" >&2
+  fi
   export ALLOWED_ORIGINS="*"
 fi
 
-echo "[entrypoint] CRANE_BUILD=csp-v3"
+# Версия выпуска (#892) — из сборки фронтенда, той же, что отдаёт edge.
+echo "[entrypoint] version: $(cat /dist/version.json 2>/dev/null || echo unknown)"
 echo "[entrypoint] running migrations..."
 cd /app && /usr/local/bin/migrate
 

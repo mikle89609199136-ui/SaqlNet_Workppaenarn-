@@ -2,8 +2,11 @@ package chat
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	"craneapp/backend-v2/internal/presence"
 
 	"github.com/gorilla/websocket"
 )
@@ -38,16 +42,34 @@ type tokenVerifier interface {
 }
 
 type Client struct {
-	UserID     string
-	Conn       *websocket.Conn
-	Send       chan []byte
-	done       chan struct{}
-	CallRoomID string // non-empty while in a call room
+	UserID        string
+	Conn          *websocket.Conn
+	Send          chan []byte // не закрывается; завершение сигнализируется через done
+	done          chan struct{}
+	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
+	closeOnce     sync.Once
+	CallRoomID    string // non-empty while in a call room
+	ConnectionID  string // уникальный ID WS-соединения для presence
+
+	// Push (#717): подписка этого устройства и видно ли приложение. На
+	// устройство, где приложение на экране, push не отправляется. Пишет
+	// readPump, читают рассылки — под ws.mu.
+	pushSubscriptionID string
+	visible            bool
+}
+
+// close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
+// горутинам (включая heartbeat) о завершении жизненного цикла клиента.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
 }
 
 type WSServer struct {
 	db             *sql.DB
 	crypto         tokenVerifier
+	tokenChecker   authctx.TokenChecker
 	clients        map[string]map[*Client]bool
 	mu             sync.RWMutex
 	register       chan *Client
@@ -55,20 +77,54 @@ type WSServer struct {
 	callRooms      *CallRoomManager
 	pendingInvites map[string]json.RawMessage
 	inviteMu       sync.Mutex
+	presence       presence.Store
+	activity       presenceActivity // время активности и собеседники; nil — не ведётся
+	pingInterval   time.Duration    // интервал heartbeat; 0 → wsPingInterval
+	stop           chan struct{}
+	stopped        chan struct{}
+	stopOnce       sync.Once
+
+	// «Печатает» (#866): кеш участников и ограничение частоты, см. typing.go.
+	typingOnce          sync.Once
+	typingState         *typingState
+	typingMembersLoader chatMembersLoader // подмена загрузки в тестах; nil — из базы
+	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
+
+	push pushNotifier // push о звонках (#717); nil — выключен
 }
 
-func NewWSServer(db *sql.DB, crypto tokenVerifier) *WSServer {
+// NewWSServer создаёт и запускает новый экземпляр WSServer.
+// store — источник online-состояния; nil допустим (presence отключён).
+func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServer {
 	ws := &WSServer{
 		db:             db,
 		crypto:         crypto,
+		tokenChecker:   authctx.NewDBTokenChecker(db),
 		clients:        make(map[string]map[*Client]bool),
 		register:       make(chan *Client),
 		unreg:          make(chan *Client),
 		callRooms:      NewCallRoomManager(),
 		pendingInvites: make(map[string]json.RawMessage),
+		presence:       store,
+		pingInterval:   wsPingInterval,
+		stop:           make(chan struct{}),
+		stopped:        make(chan struct{}),
+	}
+	if db != nil {
+		ws.activity = dbPresenceActivity{db: db}
 	}
 	go ws.run()
 	return ws
+}
+
+// Close stops the server's registration loop. Call it after the HTTP server
+// has stopped accepting handshakes and active test connections are closed.
+func (ws *WSServer) Close() {
+	if ws == nil || ws.stop == nil || ws.stopped == nil {
+		return
+	}
+	ws.stopOnce.Do(func() { close(ws.stop) })
+	<-ws.stopped
 }
 
 func (ws *WSServer) CallRooms() *CallRoomManager {
@@ -85,8 +141,13 @@ func (ws *WSServer) IsUserConnected(userID string) bool {
 }
 
 func (ws *WSServer) run() {
+	if ws.stopped != nil {
+		defer close(ws.stopped)
+	}
 	for {
 		select {
+		case <-ws.stop:
+			return
 		case client := <-ws.register:
 			ws.mu.Lock()
 			if ws.clients[client.UserID] == nil {
@@ -100,8 +161,7 @@ func (ws *WSServer) run() {
 			if conns, ok := ws.clients[client.UserID]; ok {
 				if _, ok := conns[client]; ok {
 					delete(conns, client)
-					close(client.done)
-					close(client.Send)
+					client.close()
 					if len(conns) == 0 {
 						delete(ws.clients, client.UserID)
 					}
@@ -112,31 +172,49 @@ func (ws *WSServer) run() {
 	}
 }
 
+// ServeWS выполняет HTTP-upgrade до WebSocket, аутентифицирует пользователя
+// по токену, регистрирует соединение в presence.Store и запускает горутины
+// чтения, записи и heartbeat.
 func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	if ws.crypto == nil {
 		http.Error(w, "token verifier unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		header := r.Header.Get("Authorization")
-		if strings.HasPrefix(header, "Bearer ") {
-			token = strings.TrimPrefix(header, "Bearer ")
-		}
-	}
+	// Токен: cookie сессии браузера (#705) или заголовок Bearer. В адресе
+	// (?token=) — больше нет: адреса попадают в журналы.
+	token, source := authctx.TokenFromRequest(r)
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
 		return
 	}
+	// Cookie браузер подставляет сам, и в сокет с ней мог бы подключиться
+	// чужой сайт — только свой или точно разрешённый адрес, без "*".
+	if source == authctx.TokenCookie && !authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin")) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
 
 	claims, err := ws.crypto.VerifyToken(r.Context(), token)
+	if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {
+		http.Error(w, "crypto token-generation protocol is not ready", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil || claims.Subject == "" {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	if authctx.NewDBTokenChecker(ws.db).IsTokenRevoked(r.Context(), token) {
+	if ws.tokenChecker == nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	revoked, err := ws.tokenChecker.IsTokenRevoked(r.Context(), token, claims)
+	if err != nil {
+		http.Error(w, "token revocation check unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if revoked {
 		http.Error(w, "token revoked", http.StatusUnauthorized)
 		return
 	}
@@ -152,7 +230,16 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{})}
+	connID := newConnectionID()
+	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	// Второе окно или вкладка — не новость: о входе сообщаем только тогда,
+	// когда до этого соединений не было вовсе.
+	firstConnection := !ws.isOnlineElsewhere(r.Context(), client.UserID, client)
+	if ws.presence != nil {
+		if err := ws.presence.Connect(r.Context(), client.UserID, client.ConnectionID); err != nil {
+			slog.Error("presence connect error", "userID", client.UserID, "err", err)
+		}
+	}
 	ws.register <- client
 
 	// Deliver pending call invite if any
@@ -174,14 +261,45 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go ws.writePump(client)
 	go ws.readPump(client)
+	// #nosec - горутина долгоживущая, r.Context() отменяется после завершения HTTP-upgrade
 	go ws.heartbeat(client)
+	if firstConnection {
+		go ws.announcePresence(client.UserID, true)
+	} else {
+		go ws.touchPresence(client.UserID)
+	}
 }
 
+// newConnectionID генерирует случайный UUID v4 для идентификации
+// конкретного WebSocket-соединения в presence.Store.
+func newConnectionID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // Version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // Variant RFC4122
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// readPump читает входящие WS-сообщения клиента.
+// При завершении (ошибка чтения или закрытие соединения) удаляет lease
+// из presence.Store и отправляет клиента на отмену регистрации.
 func (ws *WSServer) readPump(client *Client) {
 	defer func() {
+		client.close()
 		ws.handleCallDisconnect(client)
+		if client.heartbeatDone != nil {
+			<-client.heartbeatDone
+		}
+		if ws.presence != nil && client.ConnectionID != "" {
+			// Горутина долгоживущая — r.Context() к этому моменту отменён.
+			if err := ws.presence.Disconnect(context.Background(), client.UserID, client.ConnectionID); err != nil {
+				slog.Error("presence disconnect error", "userID", client.UserID, "err", err)
+			}
+		}
+		// Закрыто последнее соединение — человек вышел из сети.
+		go ws.announceOffline(client)
 		ws.unreg <- client
-		client.Conn.Close()
+		_ = client.Conn.Close()
 	}()
 	for {
 		_, message, err := client.Conn.ReadMessage()
@@ -204,18 +322,10 @@ func (ws *WSServer) readPump(client *Client) {
 
 		case "typing":
 			chatID, _ := msg["chatId"].(string)
-			if chatID != "" {
-				var isMember bool
-				if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember); err != nil {
-					break
-				}
-				if isMember {
-					msg["userId"] = client.UserID
-					msg["senderId"] = client.UserID
-					typingMessage, _ := json.Marshal(msg)
-					ws.BroadcastToChat(chatID, typingMessage, client.UserID)
-				}
-			}
+			ws.handleTyping(client.UserID, chatID)
+
+		case "client_state":
+			ws.handleClientState(client, msg)
 
 		case "call_join":
 			ws.handleCallJoin(client, msg)
@@ -326,6 +436,7 @@ func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
 		go ws.saveCallMessage(lr.Snapshot)
+		ws.notifyMissedCall(roomID, lr.Snapshot)
 		ws.inviteMu.Lock()
 		for uid, inv := range ws.pendingInvites {
 			var tmp map[string]interface{}
@@ -346,6 +457,18 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 	to, _ := msg["to"].(string)
 	roomID, _ := msg["roomId"].(string)
 	if to == "" || roomID == "" {
+		return
+	}
+	// Заблокировавший не получает звонков от заблокированного (#760).
+	if ws.isBlockedBy(to, client.UserID) {
+		refused, _ := json.Marshal(map[string]interface{}{
+			"type":     "call_invite_response",
+			"roomId":   roomID,
+			"from":     to,
+			"accepted": false,
+			"reason":   "blocked_by_user",
+		})
+		ws.sendToUser(client.UserID, refused)
 		return
 	}
 	if ws.callRooms.GetUserRoom(to) != nil {
@@ -370,6 +493,8 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 		"title":      msg["title"],
 	})
 	ws.sendToUser(to, invite)
+	// Push — на устройства, где приложение не на экране (#717).
+	ws.notifyCallInvite(roomID, client.UserID, to, strOrDefault(msg["kind"], "video"))
 	// Store for offline delivery
 	ws.inviteMu.Lock()
 	ws.pendingInvites[to] = invite
@@ -442,8 +567,17 @@ func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {
 	ws.BroadcastToChat(snap.ChatID, out, "")
 }
 
+// heartbeat периодически отправляет ping-сообщение клиенту и продлевает
+// TTL его lease в presence.Store. Останавливается при закрытии client.done.
 func (ws *WSServer) heartbeat(client *Client) {
-	ticker := time.NewTicker(wsPingInterval)
+	if client.heartbeatDone != nil {
+		defer close(client.heartbeatDone)
+	}
+	interval := wsPingInterval
+	if ws.pingInterval > 0 {
+		interval = ws.pingInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	ping, _ := json.Marshal(map[string]string{"type": "ping"})
 	for {
@@ -451,6 +585,13 @@ func (ws *WSServer) heartbeat(client *Client) {
 		case <-client.done:
 			return
 		case <-ticker.C:
+			select {
+			case <-client.done:
+				return
+			default:
+			}
+			ws.sendPresenceHeartbeat(client)
+			ws.touchPresence(client.UserID)
 			select {
 			case client.Send <- ping:
 			case <-client.done:
@@ -462,53 +603,75 @@ func (ws *WSServer) heartbeat(client *Client) {
 	}
 }
 
+// sendPresenceHeartbeat отправляет периодический heartbeat в presence.Store
+// с таймаутом 5 секунд. Ошибки логируются и не прерывают работу сокета.
+func (ws *WSServer) sendPresenceHeartbeat(client *Client) {
+	if ws.presence == nil || client.ConnectionID == "" {
+		return
+	}
+	hbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := ws.presence.Heartbeat(hbCtx, client.UserID, client.ConnectionID)
+	if err != nil {
+		slog.Error("presence heartbeat error", "userID", client.UserID, "err", err)
+	}
+}
+
 func (ws *WSServer) writePump(client *Client) {
 	defer client.Conn.Close()
 	for {
-		message, ok := <-client.Send
-		if !ok {
+		select {
+		case <-client.done:
 			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
 				return
 			}
 			_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
-		}
-		if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
-			return
-		}
-		if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			return
+		case message, ok := <-client.Send:
+			// Send принадлежит производителям сообщений и намеренно не закрывается:
+			// завершение жизненного цикла клиента сигнализируется через done.
+			if !ok {
+				return
+			}
+			if err := client.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+				return
+			}
+			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				return
+			}
 		}
 	}
 }
 
+// BroadcastToChat рассылает сообщение участникам чата, кроме excludeUserID.
+// Если excludeUserID задан, он сам должен быть участником — иначе рассылки
+// нет. Участники читаются одним запросом до блокировки: ws.mu не держится
+// на базе, и подключения с отключениями не ждут чужих запросов (#866).
 func (ws *WSServer) BroadcastToChat(chatID string, message []byte, excludeUserID string) {
-	if excludeUserID != "" {
-		var isMember bool
-		if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, excludeUserID).Scan(&isMember); err != nil || !isMember {
-			return
-		}
-	}
-
 	rows, err := ws.db.Query(`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-
+	var recipients []string
+	senderIsMember := excludeUserID == ""
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
 			continue
 		}
 		if memberID == excludeUserID {
+			senderIsMember = true
 			continue
 		}
-		ws.sendToUserLocked(memberID, message)
+		recipients = append(recipients, memberID)
 	}
+	failed := rows.Err() != nil
+	_ = rows.Close()
+	if failed || !senderIsMember {
+		return
+	}
+
+	ws.BroadcastToUsers(recipients, message)
 }
 
 func (ws *WSServer) BroadcastToUsers(userIDs []string, message []byte) {
@@ -563,4 +726,19 @@ func strOrDefault(v interface{}, def string) string {
 		return s
 	}
 	return def
+}
+
+// isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —
+// считаем, что нет: звонок от этого не ломается, а запись о сбое остаётся.
+func (ws *WSServer) isBlockedBy(owner, userID string) bool {
+	if ws.db == nil {
+		return false
+	}
+	var blocked bool
+	err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM users.blocked_users WHERE user_id = $1::uuid AND blocked_user_id = $2::uuid)`, owner, userID).Scan(&blocked)
+	if err != nil {
+		slog.Error("block check for call invite", "err", err)
+		return false
+	}
+	return blocked
 }
