@@ -70,7 +70,7 @@ export function renderChatThread({
   keyUnavailable = false,
   queryClient = createTestQueryClient(),
   onProfileStateChange = () => {},
-}: IRenderChatThreadOptions): RenderResult {
+}: IRenderChatThreadOptions): RenderResult & { router: ReturnType<typeof createMemoryRouter> } {
   useProfileStore.setState({ user: currentUser, isAuth: true });
 
   // Настоящий WebCrypto под jsdom работает не везде, а страница готовит
@@ -119,7 +119,9 @@ export function renderChatThread({
     { initialEntries: [`/chats/${chat.id}`] }
   );
 
-  return render(
+  /* Роутер — наружу: переход в другой чат без перемонтирования страницы,
+     как в приложении, делается через него (#839). */
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
         {/* События сервера обрабатываются на уровне приложения, а не страницы:
@@ -129,4 +131,5 @@ export function renderChatThread({
       </I18nextProvider>
     </QueryClientProvider>
   );
+  return Object.assign(result, { router });
 }

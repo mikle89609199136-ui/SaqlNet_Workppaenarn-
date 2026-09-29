@@ -52,6 +52,11 @@ export interface IChatDto {
   memberCount: number;
   lastMessageAt?: Date;
   unreadCount: number;
+  /**
+   * До какого момента чат прочитан (время сервера): чужие новее — непрочитанные,
+   * так считается `unreadCount`. Пусто — ещё не читали (#839).
+   */
+  lastReadAt?: string;
   lastMessage?: ILastMessageDto;
   /**
    * Звук чата выключен (#559, #467): приглушённый счётчик и значок после
