@@ -1,5 +1,10 @@
 name: CI
 
+# Проверка — на pull request в dev и master. После слияния в dev повторно
+# не гоняется: тот же код уже проверен в PR, а повторный прогон съедал
+# треть минут Actions (185 из 559 запусков за сентябрь 2026 при лимите
+# 2 000 минут в месяц на приватный репозиторий). Push в master проверяется:
+# с него идёт деплой.
 on:
   pull_request:
     branches:
@@ -8,7 +13,6 @@ on:
   push:
     branches:
       - master
-      - dev
 
 permissions:
   contents: read
