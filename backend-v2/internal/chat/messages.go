@@ -32,7 +32,11 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, offset, _ := parsePagination(r)
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 	msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat_not_found")
@@ -45,6 +49,9 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
 		return
+	}
+	if msgs == nil {
+		msgs = []Message{}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
