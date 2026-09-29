@@ -1,32 +1,25 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
-import type { IMediaItem } from '@/types';
 import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileHeader, useProfileStore } from '@/entities/user';
-import { isDisplayableMedia, ProfileSharedMedia } from './ProfileSharedMedia';
+import { useChatUiStore } from '@/entities/chat';
+import { services } from '@/services/serviceContainer';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { UserProfilePanel } from './UserProfilePanel';
-
-function makeMediaMessage(
-  id: string,
-  type: 'image' | 'video',
-  mediaUrl: string | null
-): IMediaItem {
-  return { ...makeMessage({ id, type }), mediaUrl };
-}
 
 function renderWithI18n(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>);
 }
 
-function renderPanelWithProviders(ui: React.ReactElement) {
+function renderPanelWithProviders(ui: React.ReactElement, path = '/chats') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -35,9 +28,27 @@ function renderPanelWithProviders(ui: React.ReactElement) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>
+      <I18nextProvider i18n={testI18n}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route
+              element={
+                <>
+                  {ui}
+                  <CurrentPath />
+                </>
+              }
+              path="*"
+            />
+          </Routes>
+        </MemoryRouter>
+      </I18nextProvider>
     </QueryClientProvider>
   );
+}
+
+function CurrentPath() {
+  return <output data-testid="path">{useLocation().pathname}</output>;
 }
 
 describe('UserProfile subcomponents and UserProfilePanel', () => {
@@ -181,117 +192,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
     });
   });
 
-  describe('ProfileSharedMedia', () => {
-    it('показывает заглушку при отсутствии медиа', () => {
-      renderWithI18n(<ProfileSharedMedia messages={[]} />);
-      expect(screen.getByText('Медиафайлов пока нет')).toBeInTheDocument();
-    });
-
-    it('рендерит изображения и видео при их наличии', () => {
-      /* Адрес берётся с самого сообщения: он появляется после
-         расшифровки. В `metadata.mediaUrl` лежит эндпойнт с шифровкой,
-         картинкой он не отдаётся. */
-      const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
-      const videoMsg = makeMediaMessage('msg-2', 'video', 'blob:crane/video');
-
-      const { container } = renderWithI18n(<ProfileSharedMedia messages={[imgMsg, videoMsg]} />);
-
-      expect(screen.getAllByRole('button')).toHaveLength(2);
-      expect(container.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
-      expect(container.querySelector('video')).toHaveAttribute('src', 'blob:crane/video');
-    });
-
-    it('открывает изображение в окне просмотра, а не в соседней вкладке', async () => {
-      const imgMsg = makeMediaMessage('msg-1', 'image', 'blob:crane/photo');
-
-      renderWithI18n(<ProfileSharedMedia messages={[imgMsg]} />);
-      await userEvent.click(screen.getByRole('button'));
-
-      const viewer = screen.getByRole('dialog', { name: /просмотр изображения/i });
-      expect(viewer).toBeInTheDocument();
-      expect(viewer.querySelector('img')).toHaveAttribute('src', 'blob:crane/photo');
-    });
-  });
-
-  /* Вкладки общего по макету (#822): собираются из загруженной истории. */
-  describe('вкладки «Медиа», «Файлы», «Ссылки»', () => {
-    it('три вкладки, выбрана «Медиа»', () => {
-      renderWithI18n(<ProfileSharedMedia messages={[]} />);
-
-      const tabs = screen.getAllByRole('tab');
-      expect(tabs.map((tab) => tab.textContent)).toEqual(['Медиа', 'Файлы', 'Ссылки']);
-      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-      expect(screen.getByRole('tabpanel', { name: 'Медиа' })).toBeInTheDocument();
-    });
-
-    it('файлы — с расширением, именем и ссылкой на скачивание', async () => {
-      const file: IMediaItem = {
-        ...makeMessage({ id: 'f-1', type: 'file' }),
-        mediaUrl: 'blob:crane/report',
-        mediaEncryption: { fileName: 'Отчёт.pdf', sizeBytes: 2048 } as never,
-      };
-
-      renderWithI18n(<ProfileSharedMedia messages={[file]} />);
-      await userEvent.click(screen.getByRole('tab', { name: 'Файлы' }));
-
-      const link = screen.getByRole('link', { name: /Скачать Отчёт\.pdf/ });
-      expect(link).toHaveAttribute('href', 'blob:crane/report');
-      expect(link).toHaveAttribute('download', 'Отчёт.pdf');
-      expect(link).toHaveTextContent('PDF');
-    });
-
-    it('ссылки — из расшифрованного текста, открываются в новой вкладке', async () => {
-      const withLink = makeMessage({
-        id: 'm-1',
-        content: 'смотри https://www.example.com/docs и напиши',
-      });
-      const locked = {
-        ...makeMessage({ id: 'm-2', content: 'https://secret.example' }),
-        undecryptable: 'keyUnavailable' as const,
-      };
-
-      renderWithI18n(<ProfileSharedMedia messages={[withLink, locked]} />);
-      await userEvent.click(screen.getByRole('tab', { name: 'Ссылки' }));
-
-      const links = screen.getAllByRole('link');
-      expect(links).toHaveLength(1);
-      expect(links[0]).toHaveAttribute('href', 'https://www.example.com/docs');
-      expect(links[0]).toHaveAttribute('target', '_blank');
-      expect(links[0]).toHaveTextContent('example.com');
-    });
-
-    it('пустая вкладка — сообщение', async () => {
-      renderWithI18n(<ProfileSharedMedia messages={[]} />);
-
-      await userEvent.click(screen.getByRole('tab', { name: 'Ссылки' }));
-      expect(screen.getByText('Ссылок пока нет')).toBeInTheDocument();
-    });
-  });
-
-  describe('isDisplayableMedia', () => {
-    it('пропускает расшифрованное изображение и видео', () => {
-      expect(isDisplayableMedia(makeMediaMessage('msg-1', 'image', 'blob:crane/photo'))).toBe(true);
-      expect(isDisplayableMedia(makeMediaMessage('msg-2', 'video', 'blob:crane/video'))).toBe(true);
-    });
-
-    it('отсеивает вложение без пригодного адреса', () => {
-      const notDecrypted = makeMediaMessage('msg-3', 'image', null);
-      expect(isDisplayableMedia(notDecrypted)).toBe(false);
-    });
-
-    it('отсеивает вложение, помеченное недоступным', () => {
-      const unavailable: IMediaItem = {
-        ...makeMediaMessage('msg-4', 'image', 'blob:crane/legacy'),
-        mediaUnavailable: true,
-      };
-      expect(isDisplayableMedia(unavailable)).toBe(false);
-    });
-
-    it('отсеивает текстовое сообщение', () => {
-      expect(isDisplayableMedia(makeMessage({ id: 'msg-5', type: 'text' }))).toBe(false);
-    });
-  });
-
   describe('UserProfilePanel', () => {
     it('показывает состояние загрузки и ошибку при сбое', async () => {
       server.use(
@@ -308,7 +208,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-999',
             chat: null,
-            messages: [],
           }}
         />
       );
@@ -332,7 +231,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-2',
             chat,
-            messages: [],
           }}
         />
       );
@@ -355,7 +253,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       renderPanelWithProviders(
         <UserProfilePanel
           onClose={vi.fn()}
-          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+          profileState={{ isOpen: true, userId: 'user-2', chat }}
           startCall={startCall}
         />
       );
@@ -381,7 +279,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       renderPanelWithProviders(
         <UserProfilePanel
           onClose={vi.fn()}
-          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+          profileState={{ isOpen: true, userId: 'user-2', chat }}
         />
       );
       await screen.findByText('Алексей');
@@ -407,7 +305,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         <UserProfilePanel
           startCall={vi.fn()}
           onClose={vi.fn()}
-          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+          profileState={{ isOpen: true, userId: 'user-2', chat }}
         />
       );
 
@@ -430,7 +328,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         <UserProfilePanel
           startCall={vi.fn()}
           onClose={vi.fn()}
-          profileState={{ isOpen: true, userId: 'user-2', chat: null, messages: [] }}
+          profileState={{ isOpen: true, userId: 'user-2', chat: null }}
           renderActions={renderActions}
         />
       );
@@ -443,7 +341,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         <UserProfilePanel
           startCall={vi.fn()}
           onClose={vi.fn()}
-          profileState={{ isOpen: true, userId: 'user-1', chat: null, messages: [] }}
+          profileState={{ isOpen: true, userId: 'user-1', chat: null }}
           renderActions={renderActions}
         />
       );
@@ -470,12 +368,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         <UserProfilePanel
           startCall={vi.fn()}
           onClose={vi.fn()}
-          profileState={{
-            isOpen: true,
-            userId: 'user-3',
-            chat,
-            messages: [makeMediaMessage('m-1', 'image', '/api/v2/media/foreign')],
-          }}
+          profileState={{ isOpen: true, userId: 'user-3', chat }}
         />
       );
 
@@ -484,7 +377,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(screen.queryByText('онлайн')).not.toBeInTheDocument();
       // Звонить некуда: общего личного чата нет — кнопка неактивна.
       expect(screen.getByRole('button', { name: /аудиозвонок/i })).toBeDisabled();
-      expect(document.querySelector('img[src*="foreign"]')).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Медиа' })).not.toBeInTheDocument();
     });
 
     it('отображает онлайн статус при получении isOnline: true', async () => {
@@ -505,7 +398,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-2',
             chat: null,
-            messages: [],
           }}
         />
       );
@@ -532,7 +424,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-2',
             chat: null,
-            messages: [],
           }}
         />
       );
@@ -559,7 +450,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-2',
             chat: null,
-            messages: [],
           }}
         />
       );
@@ -594,7 +484,6 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
             isOpen: true,
             userId: 'user-2',
             chat,
-            messages: [],
           }}
         />
       );
@@ -602,6 +491,76 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
       expect(screen.getByText('онлайн')).toBeInTheDocument();
       expect(statusCalled).toBe(false);
+    });
+
+    /* «Перейти к сообщению» из общего (#842): запрос берёт лента чата. */
+    describe('переход к сообщению из общего', () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });
+
+      async function jumpFromMedia() {
+        vi.spyOn(services.messageService, 'fetchSharedPage').mockResolvedValue({
+          messages: [{ ...makeMessage({ id: 'msg-9', type: 'image' }), mediaUrl: 'blob:p' }],
+        });
+        fireEvent.contextMenu(await screen.findByRole('button', { name: 'Изображение' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Перейти к сообщению' }));
+      }
+
+      beforeEach(() => {
+        server.use(
+          http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer }))
+        );
+        useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+        useChatUiStore.setState({ jumpRequest: null });
+      });
+
+      it('в открытом чате — запрос ленте, панель остаётся', async () => {
+        const onClose = vi.fn();
+        renderPanelWithProviders(
+          <UserProfilePanel
+            onClose={onClose}
+            profileState={{ isOpen: true, userId: 'user-2', chat }}
+          />,
+          '/chats/chat-1'
+        );
+        await jumpFromMedia();
+
+        expect(useChatUiStore.getState().jumpRequest).toEqual({
+          chatId: 'chat-1',
+          messageId: 'msg-9',
+        });
+        expect(screen.getByTestId('path')).toHaveTextContent('/chats/chat-1');
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('открыт другой чат (участник группы) — переход в личный', async () => {
+        renderPanelWithProviders(
+          <UserProfilePanel
+            onClose={vi.fn()}
+            profileState={{ isOpen: true, userId: 'user-2', chat }}
+          />,
+          '/chats/group-1'
+        );
+        await jumpFromMedia();
+
+        expect(screen.getByTestId('path')).toHaveTextContent('/chats/chat-1');
+        expect(useChatUiStore.getState().jumpRequest?.messageId).toBe('msg-9');
+      });
+
+      it('окном поверх переписки (телефон) — профиль закрывается', async () => {
+        const onClose = vi.fn();
+        renderPanelWithProviders(
+          <UserProfilePanel
+            closeOnJump
+            onClose={onClose}
+            profileState={{ isOpen: true, userId: 'user-2', chat }}
+          />,
+          '/chats/chat-1'
+        );
+        await jumpFromMedia();
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

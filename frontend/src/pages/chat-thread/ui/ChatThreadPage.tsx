@@ -141,6 +141,7 @@ export function ChatThreadPage() {
           <MessagesList
             bottomRef={bottomRef}
             error={threadError}
+            handleJumpRequests
             hasOlder={hasOlder}
             isGroupChat={chat?.type === 'group'}
             isLoading={isLoading}

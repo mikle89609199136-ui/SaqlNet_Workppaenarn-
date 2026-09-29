@@ -76,7 +76,6 @@ export function useChatThreadPage({
   });
   const { profileModal, setProfileModal } = useProfilePanel({
     chat,
-    messages,
     chatId,
     profileMode,
     profileCloseToken,

@@ -214,7 +214,7 @@ function MyProfile({ userId, onEdit }: { userId?: string; onEdit: () => void }) 
         bar={false}
         onClose={onEdit}
         onEdit={onEdit}
-        profileState={{ isOpen: true, userId, chat: null, messages: [] }}
+        profileState={{ isOpen: true, userId, chat: null }}
       />
     </div>
   );
