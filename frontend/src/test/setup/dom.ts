@@ -131,6 +131,22 @@ if (typeof globalThis.ClipboardEvent === 'undefined') {
     class ClipboardEvent extends Event {} as unknown as typeof ClipboardEvent;
 }
 
+if (typeof globalThis.ClipboardItem === 'undefined') {
+  globalThis.ClipboardItem = class ClipboardItem {
+    readonly types: string[];
+    private data: Record<string, Blob>;
+    constructor(data: Record<string, Blob>) {
+      this.data = data;
+      this.types = Object.keys(data);
+    }
+    async getType(type: string): Promise<Blob> {
+      const blob = this.data[type];
+      if (!blob) throw new Error(`Type ${type} not found`);
+      return blob;
+    }
+  } as unknown as typeof ClipboardItem;
+}
+
 if (!globalThis.matchMedia) {
   globalThis.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,

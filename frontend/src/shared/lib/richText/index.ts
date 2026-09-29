@@ -1,8 +1,11 @@
 export {
   MAX_ENTITIES,
   buildRichBlocks,
+  copyRichTextToClipboard,
+  escapeHtml,
   isSafeLinkUrl,
   normalizeEntities,
+  richTextToHtml,
   trimRichText,
   type IMessageEntity,
   type IRichBlock,

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRichBlocks,
+  escapeHtml,
   isSafeLinkUrl,
   normalizeEntities,
+  richTextToHtml,
   trimRichText,
   type IMessageEntity,
 } from './richText';
@@ -139,6 +141,50 @@ describe('форматированный текст (#656)', () => {
       expect(outline(text, [{ type: 'blockquote', offset: 0, length: text.length }])).toEqual([
         ['quote', text],
       ]);
+    });
+  });
+
+  describe('преобразование в HTML для буфера обмена (#891)', () => {
+    it('экранирует спецсимволы HTML', () => {
+      expect(escapeHtml('<b>"hello" & \'world\'</b>')).toBe(
+        '&lt;b&gt;&quot;hello&quot; &amp; &#39;world&#39;&lt;/b&gt;'
+      );
+    });
+
+    it('форматирует инлайн-стили: жирный, курсив, подчёркивание, зачёркивание, моно, спойлер, ссылка', () => {
+      const text = 'жирный курсив подчёркнутый зачёркнутый код спойлер ссылка';
+      const entities: IMessageEntity[] = [
+        { type: 'bold', offset: 0, length: 6 },
+        { type: 'italic', offset: 7, length: 6 },
+        { type: 'underline', offset: 14, length: 12 },
+        { type: 'strikethrough', offset: 27, length: 11 },
+        { type: 'monospace', offset: 39, length: 3 },
+        { type: 'spoiler', offset: 43, length: 7 },
+        { type: 'link', offset: 51, length: 6, data: { url: 'https://example.com' } },
+      ];
+
+      const html = richTextToHtml({ text, entities });
+      expect(html).toContain('<b>жирный</b>');
+      expect(html).toContain('<i>курсив</i>');
+      expect(html).toContain('<u>подчёркнутый</u>');
+      expect(html).toContain('<s>зачёркнутый</s>');
+      expect(html).toContain('<code>код</code>');
+      expect(html).toContain('<mark class="tg-spoiler">спойлер</mark>');
+      expect(html).toContain('<a href="https://example.com">ссылка</a>');
+    });
+
+    it('форматирует цитату и блок кода', () => {
+      const text = 'до\nцитата\n```js\nconst a = 1;\n```\nпосле';
+      const entities: IMessageEntity[] = [{ type: 'blockquote', offset: 3, length: 6 }];
+
+      const html = richTextToHtml({ text, entities });
+      expect(html).toContain('<blockquote>цитата</blockquote>');
+      expect(html).toContain('<pre><code>const a = 1;</code></pre>');
+    });
+
+    it('сохраняет переносы строк как <br>', () => {
+      const html = richTextToHtml({ text: 'строка 1\nстрока 2', entities: [] });
+      expect(html).toBe('строка 1<br>строка 2');
     });
   });
 });
