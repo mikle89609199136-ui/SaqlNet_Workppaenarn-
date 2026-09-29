@@ -244,4 +244,53 @@ describe('ChatThreadComposer', () => {
       expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
     });
   });
+
+  describe('вставка картинок из буфера обмена (#891)', () => {
+    it('вставка картинки в поле добавляет её во вложения', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).toHaveBeenCalled();
+      expect(pasteEvent.defaultPrevented).toBe(true);
+    });
+
+    it('смешанная вставка с текстом не добавляет вложения (приоритет текста)', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['text/plain', 'Files'],
+          getData: (format: string) => (format === 'text/plain' ? 'Текст из статьи' : ''),
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+  });
 });

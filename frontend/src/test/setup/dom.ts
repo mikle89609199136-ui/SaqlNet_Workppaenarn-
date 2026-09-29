@@ -122,6 +122,15 @@ if (!globalThis.URL.createObjectURL) {
   globalThis.URL.revokeObjectURL = vi.fn();
 }
 
+if (typeof globalThis.DragEvent === 'undefined') {
+  globalThis.DragEvent = class DragEvent extends UIEvent {} as unknown as typeof DragEvent;
+}
+
+if (typeof globalThis.ClipboardEvent === 'undefined') {
+  globalThis.ClipboardEvent =
+    class ClipboardEvent extends Event {} as unknown as typeof ClipboardEvent;
+}
+
 if (!globalThis.matchMedia) {
   globalThis.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,

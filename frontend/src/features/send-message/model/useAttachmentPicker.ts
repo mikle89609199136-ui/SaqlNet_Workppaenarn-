@@ -27,6 +27,35 @@ export function createPendingAttachment(file: File): IPendingAttachment {
   return { id: `attachment-${nextAttachmentId}`, file, type: getMediaMessageType(file.type) };
 }
 
+export function formatScreenshotName(date: Date = new Date(), mimeType = 'image/png'): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const YYYY = date.getFullYear();
+  const MM = pad(date.getMonth() + 1);
+  const DD = pad(date.getDate());
+  const HH = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
+
+  let ext = 'png';
+  if (mimeType === 'image/jpeg') ext = 'jpg';
+  else if (mimeType === 'image/webp') ext = 'webp';
+  else if (mimeType === 'image/gif') ext = 'gif';
+
+  return `Снимок ${YYYY}-${MM}-${DD} ${HH}-${mm}-${ss}.${ext}`;
+}
+
+export function normalizePastedFile(file: File, now: Date = new Date()): File {
+  const name = file.name.trim();
+  const isGenericImage =
+    file.type.startsWith('image/') &&
+    (!name || name === 'image.png' || name === 'blob' || name === 'image');
+  if (isGenericImage) {
+    const newName = formatScreenshotName(now, file.type);
+    return new File([file], newName, { type: file.type, lastModified: file.lastModified });
+  }
+  return file;
+}
+
 /**
  * Выбор вложений. Выбранное добавляется к уже приложенному, а не
  * заменяет его: можно выбрать несколько файлов сразу или добавлять по
@@ -42,13 +71,11 @@ export function useAttachmentPicker({
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const setError = useChatUiStore((state) => state.setError);
 
-  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    // Сброс сразу: тот же файл можно выбрать ещё раз.
-    event.target.value = '';
-    if (files.length === 0) return;
+  function addFiles(files: File[]): boolean {
+    if (files.length === 0) return false;
 
-    const fitting = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    const normalized = files.map((file) => normalizePastedFile(file));
+    const fitting = normalized.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
     const room = Math.max(0, MAX_PENDING_ATTACHMENTS - pendingAttachments.length);
     const added = fitting.slice(0, room).map(createPendingAttachment);
 
@@ -57,13 +84,24 @@ export function useAttachmentPicker({
       error = t('attachmentsLimit', 'Можно приложить не больше {{max}} файлов', {
         max: MAX_PENDING_ATTACHMENTS,
       });
-    } else if (fitting.length < files.length) {
+    } else if (fitting.length < normalized.length) {
       error = t('attachmentTooLarge', 'Файл слишком большой. Максимальный размер — 100 МБ.');
     }
 
-    if (added.length > 0) setPendingAttachments((current) => [...current, ...added]);
+    if (added.length > 0) {
+      setPendingAttachments((current) => [...current, ...added]);
+    }
     setEditingMessage(null);
     setError(error);
+
+    return added.length > 0;
+  }
+
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    // Сброс сразу: тот же файл можно выбрать ещё раз.
+    event.target.value = '';
+    addFiles(files);
   }
 
   function removePendingAttachment(id: string) {
@@ -71,5 +109,5 @@ export function useAttachmentPicker({
     if (attachmentInputRef.current) attachmentInputRef.current.value = '';
   }
 
-  return { handleAttachmentChange, removePendingAttachment };
+  return { addFiles, handleAttachmentChange, removePendingAttachment };
 }
