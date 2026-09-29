@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCallStore } from './callStore';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, blockedUsersQuery } from '@/entities/user';
+import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 
 vi.mock('@/services/ringtone', () => ({
@@ -19,6 +20,9 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    services.userService.listBlocked = vi.fn().mockResolvedValue([]);
+    queryClient.setQueryData(blockedUsersQuery().queryKey, []);
+
     useCallStore.setState({
       fsm: {
         state: 'idle',
@@ -32,8 +36,10 @@ describe('useCallStore', () => {
         title: null,
         endReason: null,
         callStartedAt: null,
+        outgoingPhase: null,
       },
       incomingCall: null,
+      outgoingCall: null,
       activeCall: null,
       isMinimized: false,
       socket: mockSocket,
@@ -50,6 +56,9 @@ describe('useCallStore', () => {
         avatarUrl: 'https://example.com/avatar.png',
         createdAt: '2026-01-01T00:00:00Z',
       },
+      settings: {
+        sounds: true,
+      } as any,
     });
   });
 
@@ -404,5 +413,156 @@ describe('useCallStore', () => {
 
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('busy');
+  });
+
+  it('не запускает рингтон, если звуки выключены в настройках профиля', async () => {
+    useProfileStore.setState({
+      settings: {
+        sounds: false,
+      } as any,
+    });
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-mute',
+      from: 'caller-mute',
+      kind: 'audio',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('тихо игнорирует входящий вызов от пользователя из чёрного списка', async () => {
+    queryClient.setQueryData(blockedUsersQuery().queryKey, [
+      { id: 'blocked-user', username: 'badguy' } as any,
+    ]);
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-blocked',
+      from: 'blocked-user',
+      kind: 'audio',
+    });
+
+    // Карточка не создаётся, рингтон не звенит, FSM остаётся в idle
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(useCallStore.getState().incomingCall).toBeNull();
+    expect(startRingtone).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('загружает список заблокированных с сервера, если кеш пуст, и отсекает заблокированного', async () => {
+    queryClient.clear();
+    services.userService.listBlocked = vi
+      .fn()
+      .mockResolvedValue([{ id: 'server-blocked', username: 'spammer' }]);
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-uncached',
+      from: 'server-blocked',
+      kind: 'audio',
+    });
+
+    expect(services.userService.listBlocked).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('отмена исходящего вызова через cancelCall отправляет leave и сбрасывает FSM', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'outgoing-room-1',
+        peerId: 'peer-alice',
+        outgoingPhase: 'ringing',
+      },
+      outgoingCall: {
+        roomId: 'outgoing-room-1',
+        peerId: 'peer-alice',
+        kind: 'audio',
+        phase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().cancelCall();
+
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'call_leave',
+      roomId: 'outgoing-room-1',
+    });
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('cancelled');
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('cancelled');
+  });
+
+  it('handleBroadcastEvent сбрасывает входящий звонок при ответе в другой вкладке', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'multi-tab-room',
+        peerId: 'caller-1',
+      },
+      incomingCall: {
+        roomId: 'multi-tab-room',
+        from: 'caller-1',
+        kind: 'audio',
+      },
+    });
+
+    useCallStore.getState().handleBroadcastEvent({
+      type: 'CALL_DISMISSED',
+      roomId: 'multi-tab-room',
+    });
+
+    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(useCallStore.getState().incomingCall).toBeNull();
+  });
+
+  it('handleInviteResponse с reason busy переводит outgoingPhase в busy', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'busy-room',
+        peerId: 'peer-busy',
+        outgoingPhase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().handleInviteResponse({
+      type: 'call_invite_response',
+      roomId: 'busy-room',
+      accepted: false,
+      reason: 'busy',
+    });
+
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('busy');
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('busy');
+  });
+
+  it('handleInviteResponse с reason declined переводит outgoingPhase в declined', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'declined-room',
+        peerId: 'peer-declined',
+        outgoingPhase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().handleInviteResponse({
+      type: 'call_invite_response',
+      roomId: 'declined-room',
+      accepted: false,
+      reason: 'declined',
+    });
+
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('declined');
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('declined');
   });
 });

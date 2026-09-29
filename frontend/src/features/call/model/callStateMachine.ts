@@ -1,4 +1,10 @@
-import type { TCallEndReason, TCallKind, TCallRoomType, TCallState } from './types';
+import type {
+  TCallEndReason,
+  TCallKind,
+  TCallRoomType,
+  TCallState,
+  TOutgoingCallPhase,
+} from './types';
 
 export interface ICallFsmContext {
   state: TCallState;
@@ -12,20 +18,27 @@ export interface ICallFsmContext {
   title: string | null;
   endReason: TCallEndReason | null;
   callStartedAt: number | null;
+  outgoingPhase?: TOutgoingCallPhase | null;
 }
 
 export type TCallFsmAction =
   | {
       type: 'START_OUTGOING';
       payload: {
-        roomId: string;
+        roomId?: string;
         chatId: string;
         peerId: string;
-        peerName?: string;
+        peerName?: string | null;
         peerAvatar?: string | null;
         kind: TCallKind;
         title?: string;
+        phase?: TOutgoingCallPhase;
       };
+    }
+  | {
+      type: 'SET_OUTGOING_PHASE';
+      phase: TOutgoingCallPhase;
+      roomId?: string;
     }
   | {
       type: 'RECEIVE_INCOMING';
@@ -58,6 +71,7 @@ export const initialCallContext: ICallFsmContext = {
   title: null,
   endReason: null,
   callStartedAt: null,
+  outgoingPhase: null,
 };
 
 export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): ICallFsmContext {
@@ -69,13 +83,23 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
       return {
         ...initialCallContext,
         state: 'outgoing',
-        roomId: action.payload.roomId,
+        roomId: action.payload.roomId || null,
         chatId: action.payload.chatId,
         peerId: action.payload.peerId,
         peerName: action.payload.peerName ?? null,
         peerAvatar: action.payload.peerAvatar ?? null,
         callKind: action.payload.kind,
         title: action.payload.title ?? null,
+        outgoingPhase: action.payload.phase ?? (action.payload.roomId ? 'ringing' : 'calling'),
+      };
+    }
+
+    case 'SET_OUTGOING_PHASE': {
+      if (ctx.state !== 'outgoing') return ctx;
+      return {
+        ...ctx,
+        outgoingPhase: action.phase,
+        roomId: action.roomId ?? ctx.roomId,
       };
     }
 
@@ -146,7 +170,10 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
     }
 
     case 'RESET_TO_IDLE': {
-      if (ctx.state === 'ended' && (!action.roomId || ctx.roomId === action.roomId)) {
+      if (
+        (ctx.state === 'ended' || ctx.state === 'incoming' || ctx.state === 'outgoing') &&
+        (!action.roomId || ctx.roomId === action.roomId)
+      ) {
         return initialCallContext;
       }
       return ctx;
