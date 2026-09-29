@@ -352,6 +352,18 @@ ReceiptEvent:
     kind: { type: string, enum: [delivered, read] }
     upTo: { type: string, description: 'The boundary, UTC ISO 8601 with milliseconds, rounded down.' }
     at: { type: string, description: 'When the boundary moved, UTC ISO 8601 with milliseconds.' }
+SharedPage:
+  type: object
+  required: [messages]
+  properties:
+    messages:
+      type: array
+      description: Newest first.
+      items: { $ref: '#/Message' }
+    nextCursor:
+      type: string
+      format: uuid
+      description: Pass as before for the next page; absent — nothing older.
 SendMessagesRequest:
   type: object
   required: [messages]

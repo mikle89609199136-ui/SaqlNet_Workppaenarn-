@@ -114,6 +114,9 @@ paths:
   /chats/{chatId}/read: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1read' }
   /chats/{chatId}/messages/delete:
     { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1messages~1delete' }
+  /chats/{chatId}/shared: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1shared' }
+  /chats/{chatId}/messages/{messageId}/position:
+    { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1messages~1{messageId}~1position' }
   /chats/{chatId}/pins: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins' }
   /chats/{chatId}/pins/{messageId}: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pins~1{messageId}' }
 
