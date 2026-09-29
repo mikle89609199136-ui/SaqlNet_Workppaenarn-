@@ -28,7 +28,7 @@ const SIDEBAR_LIMITS = { min: 280, max: 520, fallback: 360 };
 const PANEL_MS = 320;
 const PANEL_EASE = 'ease-[cubic-bezier(0.2,0.8,0.2,1)]';
 
-const CLOSED_PROFILE: IProfileState = { isOpen: false, userId: null, chat: null, messages: [] };
+const CLOSED_PROFILE: IProfileState = { isOpen: false, userId: null, chat: null };
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;

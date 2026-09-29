@@ -93,6 +93,9 @@ export interface IMessageDto {
 
 export type TMessagesList = IMessageDto[];
 
+/** Вид общего в переписке (#842): фото и видео, файлы и аудио, текст (для ссылок). */
+export type TSharedKind = 'media' | 'files' | 'text';
+
 export interface IPinnedMessageDto {
   id: string;
   content: string;
