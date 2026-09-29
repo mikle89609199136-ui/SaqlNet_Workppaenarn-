@@ -58,7 +58,7 @@ export function normalizePastedFile(file: File, now: Date = new Date(), prefix =
   const name = file.name.trim();
   const isGenericImage =
     file.type.startsWith('image/') &&
-    (!name || name === 'image.png' || name === 'blob' || name === 'image');
+    (!name || /^image\.(png|jpe?g|webp|gif)$/i.test(name) || name === 'blob' || name === 'image');
   if (isGenericImage) {
     const newName = formatScreenshotName(now, file.type, prefix);
     return new File([file], newName, { type: file.type, lastModified: file.lastModified });

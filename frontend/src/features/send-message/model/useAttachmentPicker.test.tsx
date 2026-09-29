@@ -109,21 +109,23 @@ describe('выбор вложений', () => {
     expect(names(result.current.pendingAttachments)).toEqual(['a.png']);
   });
 
-  it('addFiles переименовывает скриншоты image.png или без имени в Снимок YYYY-MM-DD HH-mm-ss', () => {
+  it('addFiles переименовывает скриншоты image.png, image.webp или без имени в Снимок YYYY-MM-DD HH-mm-ss', () => {
     const { result } = renderPicker();
     const screenshot = fileOf('image.png', 'image/png');
+    const genericWebp = fileOf('image.webp', 'image/webp');
     const unnamedJpeg = fileOf('', 'image/jpeg');
     const realName = fileOf('my-photo.jpg', 'image/jpeg');
 
     act(() => {
-      const added = result.current.addFiles([screenshot, unnamedJpeg, realName]);
+      const added = result.current.addFiles([screenshot, genericWebp, unnamedJpeg, realName]);
       expect(added).toBe(true);
     });
 
     const addedNames = names(result.current.pendingAttachments);
     expect(addedNames[0]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.png$/);
-    expect(addedNames[1]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.jpg$/);
-    expect(addedNames[2]).toBe('my-photo.jpg');
+    expect(addedNames[1]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.webp$/);
+    expect(addedNames[2]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.jpg$/);
+    expect(addedNames[3]).toBe('my-photo.jpg');
   });
 
   it('addFiles с пустым списком возвращает false', () => {

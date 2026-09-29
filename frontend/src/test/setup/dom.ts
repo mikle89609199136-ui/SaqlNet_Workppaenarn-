@@ -134,15 +134,15 @@ if (typeof globalThis.ClipboardEvent === 'undefined') {
 if (typeof globalThis.ClipboardItem === 'undefined') {
   globalThis.ClipboardItem = class ClipboardItem {
     readonly types: string[];
-    private data: Record<string, Blob>;
-    constructor(data: Record<string, Blob>) {
+    private data: Record<string, Blob | Promise<Blob | string> | string>;
+    constructor(data: Record<string, Blob | Promise<Blob | string> | string>) {
       this.data = data;
       this.types = Object.keys(data);
     }
     async getType(type: string): Promise<Blob> {
-      const blob = this.data[type];
-      if (!blob) throw new Error(`Type ${type} not found`);
-      return blob;
+      const raw = await this.data[type];
+      if (!raw) throw new Error(`Type ${type} not found`);
+      return raw instanceof Blob ? raw : new Blob([raw as BlobPart], { type });
     }
   } as unknown as typeof ClipboardItem;
 }
