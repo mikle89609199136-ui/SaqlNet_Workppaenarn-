@@ -232,4 +232,47 @@ describe('контекстное меню поля ввода (#656)', () => {
       });
     }
   });
+
+  it('не вызывает onPasteFiles при наличии непустого текста в clipboard.read (приоритет текста)', async () => {
+    const onPasteFiles = vi.fn().mockReturnValue(true);
+    const { field } = renderInput(onPasteFiles);
+
+    const blob = new Blob(['image-bytes'], { type: 'image/png' });
+    const textBlob = new Blob(['Текст из таблицы'], { type: 'text/plain' });
+    const mockClipboardItem = {
+      types: ['image/png', 'text/plain'],
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'image/png' ? blob : textBlob)
+        ),
+    };
+
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        read: vi.fn().mockResolvedValue([mockClipboardItem]),
+        readText: vi.fn().mockResolvedValue('Текст из таблицы'),
+        writeText: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      fireEvent.contextMenu(field, { clientX: 20, clientY: 20 });
+      const pasteItem = screen.getByRole('menuitem', { name: /Вставить/ });
+      expect(pasteItem).not.toBeDisabled();
+
+      await userEvent.click(pasteItem);
+
+      expect(onPasteFiles).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: originalClipboard,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 });

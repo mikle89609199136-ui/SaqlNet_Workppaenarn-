@@ -48,6 +48,7 @@ describe('ChatThreadComposer', () => {
       defaultOptions: { queries: { retry: false } },
     });
     clearOutbox();
+    useForwardStore.getState().cancel();
     useProfileStore.setState({
       user: { id: 'user-me', username: 'tester' } as any,
     });

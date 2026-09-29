@@ -31,6 +31,7 @@
   "attach.mediaHint": "Из галереи",
   "attach.menu": "Добавить вложение",
   "attachFile": "Прикрепить файл",
+  "attachmentScreenshotPrefix": "Снимок",
   "attachmentTooLarge": "Файл слишком большой. Максимальный размер — 100 МБ.",
   "attachments": "Вложения",
   "attachmentsLimit": "Можно приложить не больше {{max}} файлов",

@@ -14,7 +14,7 @@ import {
   type EditorThemeClasses,
 } from 'lexical';
 import { LinkNode } from '@lexical/link';
-import { DRAG_DROP_PASTE, QuoteNode } from '@lexical/rich-text';
+import { QuoteNode } from '@lexical/rich-text';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -226,18 +226,8 @@ function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => 
       COMMAND_PRIORITY_LOW
     );
 
-    const unregisterDragDropPaste = editor.registerCommand(
-      DRAG_DROP_PASTE,
-      (files) => {
-        if (!files || files.length === 0) return false;
-        return onPasteFiles(files);
-      },
-      COMMAND_PRIORITY_LOW
-    );
-
     return () => {
       unregisterPaste();
-      unregisterDragDropPaste();
     };
   }, [editor, onPasteFiles]);
 

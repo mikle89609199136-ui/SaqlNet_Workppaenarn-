@@ -329,16 +329,30 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
                 if (onPasteFiles && typeof navigator.clipboard?.read === 'function') {
                   try {
                     const items = await navigator.clipboard.read();
-                    const imageFiles: File[] = [];
+                    let hasText = false;
                     for (const item of items) {
-                      const imageType = item.types.find((type) => type.startsWith('image/'));
-                      if (imageType) {
-                        const blob = await item.getType(imageType);
-                        imageFiles.push(new File([blob], 'image.png', { type: blob.type }));
+                      if (item.types.includes('text/plain')) {
+                        const textBlob = await item.getType('text/plain');
+                        const text = await textBlob.text();
+                        if (text.trim().length > 0) {
+                          hasText = true;
+                          break;
+                        }
                       }
                     }
-                    if (imageFiles.length > 0 && onPasteFiles(imageFiles)) {
-                      return;
+
+                    if (!hasText) {
+                      const imageFiles: File[] = [];
+                      for (const item of items) {
+                        const imageType = item.types.find((type) => type.startsWith('image/'));
+                        if (imageType) {
+                          const blob = await item.getType(imageType);
+                          imageFiles.push(new File([blob], 'image.png', { type: blob.type }));
+                        }
+                      }
+                      if (imageFiles.length > 0 && onPasteFiles(imageFiles)) {
+                        return;
+                      }
                     }
                   } catch {
                     // буфер без картинок, нет прав или ошибка чтения — фоллбэк к тексту

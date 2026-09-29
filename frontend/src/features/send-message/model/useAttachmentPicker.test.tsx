@@ -6,6 +6,7 @@ import { useChatUiStore } from '@/entities/chat';
 import { testI18n } from '@/test/harness/i18n';
 import type { IPendingAttachment } from '@/types';
 import {
+  formatScreenshotName,
   MAX_ATTACHMENT_BYTES,
   MAX_PENDING_ATTACHMENTS,
   useAttachmentPicker,
@@ -133,5 +134,12 @@ describe('выбор вложений', () => {
     });
     expect(added).toBe(false);
     expect(result.current.pendingAttachments).toHaveLength(0);
+  });
+
+  it('formatScreenshotName поддерживает кастомный префикс (локализация)', () => {
+    const fixedDate = new Date(2026, 8, 29, 12, 30, 45);
+    expect(formatScreenshotName(fixedDate, 'image/png', 'Screenshot')).toBe(
+      'Screenshot 2026-09-29 12-30-45.png'
+    );
   });
 });

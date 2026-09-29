@@ -31,6 +31,7 @@
   "attach.mediaHint": "From gallery",
   "attach.menu": "Add attachment",
   "attachFile": "Attach a file",
+  "attachmentScreenshotPrefix": "Screenshot",
   "attachmentTooLarge": "The file is too large. Maximum size is 100 MB.",
   "attachments": "Attachments",
   "attachmentsLimit": "You can attach up to {{max}} files",
