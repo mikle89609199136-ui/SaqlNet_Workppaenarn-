@@ -57,6 +57,7 @@ export function ChatThreadPage() {
     isLoading,
     hasOlder,
     loadOlder,
+    readMark,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -152,6 +153,7 @@ export function ChatThreadPage() {
             onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
+            readMark={readMark}
             setOpenedImage={modals.setOpenedImage}
             showDeliveryStatus={chat?.type === 'private'}
             toggleMessageSelection={toggleMessageSelection}
