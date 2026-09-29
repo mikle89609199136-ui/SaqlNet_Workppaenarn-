@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate } from 'react-router-dom';
 
 export function LoginPage() {
-  const token = useProfileStore((state) => state.token);
+  const signedIn = useProfileStore((state) => state.isAuth);
   const { t } = useTranslation();
   const [method, setMethod] = useState<'password' | 'qr'>('password');
   /* Два направления входа по QR: код показывает это устройство (#745)
@@ -16,7 +16,7 @@ export function LoginPage() {
   const [qrDirection, setQrDirection] = useState<'show' | 'scan'>('show');
 
   /* Уже вошли — на странице входа делать нечего. */
-  if (token) return <Navigate replace to={ROUTES.CHATS} />;
+  if (signedIn) return <Navigate replace to={ROUTES.CHATS} />;
 
   return (
     <AuthLayout

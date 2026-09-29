@@ -71,7 +71,7 @@ export function renderChatThread({
   queryClient = createTestQueryClient(),
   onProfileStateChange = () => {},
 }: IRenderChatThreadOptions): RenderResult {
-  useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: currentUser, isAuth: true });
 
   // Настоящий WebCrypto под jsdom работает не везде, а страница готовит
   // ключ чата при открытии. Криптография проверяется в node-тестах; здесь

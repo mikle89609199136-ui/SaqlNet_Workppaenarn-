@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  currentPushEndpoint,
   pushAvailability,
+  unsubscribePushOnDevice,
   readPushSubscriptionId,
   vapidKeyToBytes,
   writePushSubscriptionId,
@@ -64,5 +66,30 @@ describe('доступность push', () => {
     expect(readPushSubscriptionId()).toBe('sub-1');
     writePushSubscriptionId(null);
     expect(readPushSubscriptionId()).toBeNull();
+  });
+});
+
+/* Выход не должен зависеть от push (#705): браузер без push-сервиса может
+   не ответить на getSubscription() вовсе — тогда ждём недолго и идём дальше. */
+describe('push при выходе из аккаунта', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('браузер не отвечает — адрес подписки null, отписка завершается', async () => {
+    const hanging = { pushManager: { getSubscription: () => new Promise(() => {}) } };
+    vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => hanging } });
+
+    await expect(currentPushEndpoint(20)).resolves.toBeNull();
+    await expect(unsubscribePushOnDevice(20)).resolves.toBeUndefined();
+  });
+
+  it('подписка есть — её адрес и отписка', async () => {
+    const unsubscribe = vi.fn(async () => true);
+    const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', unsubscribe };
+    const registration = { pushManager: { getSubscription: async () => subscription } };
+    vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => registration } });
+
+    await expect(currentPushEndpoint()).resolves.toBe(subscription.endpoint);
+    await unsubscribePushOnDevice();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

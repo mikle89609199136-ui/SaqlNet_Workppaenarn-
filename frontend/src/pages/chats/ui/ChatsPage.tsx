@@ -1,14 +1,17 @@
 import { ChatsList } from '@/widgets/chats-list';
-import { CreateGroupModal, GroupInfoPanel } from '@/features/group-management';
+import { CreateGroupModal } from '@/features/group-management';
+import { GroupInfoPanel } from '@/widgets/group-info';
+import { useCall } from '@/features/call';
+import { CALLS_ENABLED } from '@/shared/config';
 import { UserProfilePanel } from '@/features/user-profile';
 import { cn, useIsMobile, usePaneWidth } from '@/shared/lib';
 import { PaneResizer } from '@/shared/ui';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '@/entities/user';
 import { BlockUserButton } from '@/features/block-user';
-import type { IProfileActionsTarget } from '@/features/user-profile';
+import type { IProfileActionsTarget, IProfileCall } from '@/features/user-profile';
 
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
    стабильная ссылка не перерисовывает мемоизированную панель. */
@@ -49,6 +52,17 @@ export function ChatsPage() {
   const [profileCloseToken, setProfileCloseToken] = useState(0);
   const [isCreateGroupOpen, setCreateGroupOpen] = useState(false);
   const { t } = useTranslation();
+  /* Звонок из профиля (#863): профиль о звонках не знает — действие даёт
+     страница, пока звонки включены. */
+  const { initiateCall } = useCall();
+  const startProfileCall = useMemo(
+    () =>
+      CALLS_ENABLED
+        ? ({ chatId, peerId, peerName, kind }: IProfileCall) =>
+            initiateCall(chatId, 'private', peerName, kind, peerId)
+        : undefined,
+    [initiateCall]
+  );
 
   /* Панель уезжает с анимацией, поэтому её содержимое живёт ещё
      PANEL_MS после закрытия — иначе оно пропало бы в первый же кадр, и
@@ -221,12 +235,18 @@ export function ChatsPage() {
             )}
           >
             {shownProfile.kind === 'group' && chatId ? (
-              <GroupInfoPanel chatId={chatId} key={chatId} onClose={closeProfile} />
+              <GroupInfoPanel
+                chatId={chatId}
+                key={chatId}
+                onClose={closeProfile}
+                startCall={startProfileCall}
+              />
             ) : (
               <UserProfilePanel
                 onClose={closeProfile}
                 profileState={shownProfile}
                 renderActions={renderProfileActions}
+                startCall={startProfileCall}
               />
             )}
           </div>

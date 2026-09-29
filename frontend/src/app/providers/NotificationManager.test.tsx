@@ -29,7 +29,7 @@ describe('системные уведомления', () => {
     // Notification — общая заглушка из тестового setup: вызовы прошлых
     // тестов остались бы в ней и сбили счёт.
     (Notification as unknown as ReturnType<typeof vi.fn>).mockClear();
-    useProfileStore.setState({ token: 'test-token' });
+    useProfileStore.setState({ isAuth: true });
     // Уведомление показывается только при скрытой вкладке.
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     server.use(http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })));

@@ -26,7 +26,6 @@ interface CallStoreState {
   fsm: ICallFsmContext;
   isMinimized: boolean;
   socket: WebSocketClient | null;
-  callFrameRef: HTMLIFrameElement | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
   // Селекторы совместимости с UI
@@ -35,7 +34,6 @@ interface CallStoreState {
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
-  attachCallFrame: (callFrameRef: HTMLIFrameElement | null) => void;
   dispatch: (action: TCallFsmAction) => void;
 
   handleIncoming: (payload: IIncomingCall) => void;
@@ -54,12 +52,6 @@ interface CallStoreState {
   endCall: (reason?: TCallEndReason) => void;
   minimizeCall: () => void;
   maximizeCall: () => void;
-}
-
-function postHangup(frame: HTMLIFrameElement | null): void {
-  try {
-    frame?.contentWindow?.postMessage({ type: 'crane_hangup' }, '*');
-  } catch {}
 }
 
 function formatCallerName(
@@ -110,13 +102,11 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     fsm: initialCallContext,
     isMinimized: false,
     socket: null,
-    callFrameRef: null,
     callTimeoutTimer: null,
     incomingCall: null,
     activeCall: null,
 
     attachSocket: (socket) => set({ socket }),
-    attachCallFrame: (callFrameRef) => set({ callFrameRef }),
 
     dispatch: (action) => {
       const currentFsm = get().fsm;
@@ -275,9 +265,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     endCall: (reason: TCallEndReason = 'completed') => {
       stopRingtone();
       clearTimer();
-      const { fsm, socket, callFrameRef } = get();
-
-      postHangup(callFrameRef);
+      const { fsm, socket } = get();
 
       if (socket?.isConnected && fsm.roomId) {
         sendCallLeave(socket, fsm.roomId);

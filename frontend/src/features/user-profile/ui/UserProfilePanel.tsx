@@ -1,5 +1,4 @@
 import { Spinner } from '@/shared/ui';
-import { useCall } from '@/features/call';
 import { useProfileEdit } from '../model/useProfileEdit';
 import {
   type IProfileState,
@@ -18,6 +17,14 @@ import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileSharedMedia } from './ProfileSharedMedia';
 
+/** Звонок из профиля: в какой личный чат, кому и какой. */
+export interface IProfileCall {
+  chatId: string;
+  peerId: string;
+  peerName: string;
+  kind: 'audio' | 'video';
+}
+
 /** Чей профиль открыт — для действий, которые приходят сверху. */
 export interface IProfileActionsTarget {
   id: string;
@@ -26,6 +33,12 @@ export interface IProfileActionsTarget {
 
 interface Props {
   profileState: IProfileState;
+  /**
+   * Позвонить из профиля. Звонки — отдельная фича, панель о ней не знает:
+   * действие приходит от того, кто собирает экран (#863). Нет его — нет и
+   * кнопок звонка (так и сейчас, пока звонки выключены, #776 → #774).
+   */
+  startCall?: (call: IProfileCall) => void;
   onClose: () => void;
   /**
    * Действия с чужим профилем — сейчас блокировка (#727). Приходят от
@@ -45,10 +58,18 @@ interface Props {
 }
 
 export const UserProfilePanel = memo(
-  ({ profileState, onClose, renderActions, onBack, backLabel, onEdit, bar = true }: Props) => {
+  ({
+    profileState,
+    startCall,
+    onClose,
+    renderActions,
+    onBack,
+    backLabel,
+    onEdit,
+    bar = true,
+  }: Props) => {
     const { t } = useTranslation();
     const now = useNow();
-    const { initiateCall } = useCall();
     const currentUser = useProfileStore((state) => state.user);
     const targetUserId = profileState.userId || '';
 
@@ -142,8 +163,17 @@ export const UserProfilePanel = memo(
           hasChat={Boolean(chat) && !chat?.isBlockedByPeer && !chat?.isPeerBlocked}
           isMyProfile={isMyProfile}
           isPeerOnline={isPeerOnline}
-          onCall={(kind) =>
-            chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
+          onCall={
+            startCall
+              ? (kind) =>
+                  chat &&
+                  startCall({
+                    chatId: chat.id,
+                    peerId: profileUser.id,
+                    peerName: profileUser.username,
+                    kind,
+                  })
+              : undefined
           }
           onStartEdit={onEdit ?? startEdit}
           profileSubtitle={profileSubtitle}

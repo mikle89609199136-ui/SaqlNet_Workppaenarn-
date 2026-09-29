@@ -12,7 +12,8 @@ import {
 import { messagesQuery } from '@/entities/message';
 import { type IProfileState, ProfilePanelBar, useProfileStore } from '@/entities/user';
 import { BlockUserButton } from '@/features/block-user';
-import { UserProfilePanel } from '@/features/user-profile';
+import { UserProfilePanel, type IProfileCall } from '@/features/user-profile';
+import { useLeaveGroupFlow, usePeopleSearch } from '@/features/group-management';
 import { cn } from '@/shared/lib';
 import { Avatar, Button, Chip, ConfirmDialog, Icon, showToast } from '@/shared/ui';
 import type { IMemberDto, ISearchUserDto, TChatRole, TIconTypes } from '@/types';
@@ -20,12 +21,12 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { usePeopleSearch } from '../model/usePeopleSearch';
-import { useLeaveGroupFlow } from '../model/useLeaveGroupFlow';
 
 interface Props {
   chatId: string;
   onClose: () => void;
+  /** Позвонить участнику из его профиля — от страницы, см. UserProfilePanel. */
+  startCall?: (call: IProfileCall) => void;
 }
 
 type TView = { kind: 'info' } | { kind: 'member'; memberId: string } | { kind: 'add' };
@@ -66,7 +67,11 @@ function Tile({ icon, label, onClick }: { icon: TIconTypes; label: string; onCli
  * «Покинуть группу»), профиль участника с «Назад» и действиями владельца,
  * добавление участников с поиском и выбором.
  */
-export function GroupInfoPanel({ chatId, onClose }: Props) {
+/**
+ * Сведения о группе (#822). Виджет, а не фича (#863): собирает управление
+ * группой, профиль участника и блокировку — три отдельные фичи.
+ */
+export function GroupInfoPanel({ chatId, onClose, startCall }: Props) {
   const { t } = useTranslation();
   const [view, setView] = useState<TView>({ kind: 'info' });
 
@@ -77,6 +82,7 @@ export function GroupInfoPanel({ chatId, onClose }: Props) {
         memberId={view.memberId}
         onBack={() => setView({ kind: 'info' })}
         onClose={onClose}
+        startCall={startCall}
       />
     );
   }
@@ -335,11 +341,13 @@ function MemberView({
   memberId,
   onBack,
   onClose,
+  startCall,
 }: {
   chatId: string;
   memberId: string;
   onBack: () => void;
   onClose: () => void;
+  startCall?: (call: IProfileCall) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -445,6 +453,7 @@ function MemberView({
       onClose={onClose}
       profileState={profileState}
       renderActions={renderActions}
+      startCall={startCall}
     />
   );
 }

@@ -18,7 +18,9 @@ import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/tran
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
 import type { IRichTextInputHandle } from '@/shared/ui';
-import type { IMessageDto } from '@/types';
+import type { IMediaItem, IMessageDto } from '@/types';
+import { copyImageToClipboard, mediaFileName, saveMedia } from './mediaActions';
+import { mediaBlobByUrl } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -339,17 +341,54 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     closeMessageActions();
   };
 
-  function handleCopyMessage(message: IMessageDto) {
-    if (selectionMode) {
-      const sortedMessages = sortMessagesChronologically<IMessageDto>(selectedMessages);
+  /**
+   * Текст в буфер обмена (#655). В режиме выбора — все отмеченные по
+   * порядку. Результат подтверждается уведомлением: без него не понять,
+   * сработало ли, а буфер может и отказать (нет разрешения, не HTTPS).
+   */
+  async function handleCopyMessage(message: IMessageDto) {
+    const text = selectionMode
+      ? sortMessagesChronologically<IMessageDto>(selectedMessages)
+          .map((item) => item.content)
+          .filter(Boolean)
+          .join('\n')
+      : message.content;
+    if (selectionMode) handleCancelSelection();
 
-      const allContent = sortedMessages.map((message) => message.content).join('\n');
-      navigator.clipboard.writeText(allContent);
-      handleCancelSelection();
-      return;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('success', t('messageActions.copied', 'Скопировано'));
+    } catch {
+      showToast('error', t('format.copyFailed', 'Не удалось скопировать'));
     }
+  }
 
-    navigator.clipboard.writeText(message.content);
+  /** Фото — в буфер как PNG, подпись — рядом текстом (#655). */
+  async function handleCopyImage(message: IMediaItem) {
+    if (!message.mediaUrl) return;
+    try {
+      await copyImageToClipboard(message.mediaUrl, message.content ?? '');
+      showToast('success', t('messageActions.copied', 'Скопировано'));
+    } catch {
+      showToast('error', t('format.copyFailed', 'Не удалось скопировать'));
+    }
+  }
+
+  /**
+   * «Сохранить как…» (#655): окно выбора места с исходным именем, где
+   * браузер его умеет; иначе — обычное скачивание, и тогда уведомления
+   * нет: дальше окно загрузки самого браузера.
+   */
+  async function handleSaveMedia(message: IMediaItem) {
+    if (!message.mediaUrl) return;
+    try {
+      const result = await saveMedia(message.mediaUrl, mediaFileName(message), {
+        blobByUrl: mediaBlobByUrl,
+      });
+      if (result === 'saved') showToast('success', t('messageActions.saved', 'Файл сохранён'));
+    } catch {
+      showToast('error', t('messageActions.saveFailed', 'Не удалось сохранить файл'));
+    }
   }
 
   function handleCancelSelection() {
@@ -373,6 +412,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     closeMessageActions,
     runMessageAction,
     handleCopyMessage,
+    handleCopyImage,
+    handleSaveMedia,
     handleCancelSelection,
   };
 };

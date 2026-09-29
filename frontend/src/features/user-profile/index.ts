@@ -3,4 +3,8 @@ export { useProfilePanel } from './model/useProfilePanel';
 export { ProfileDetails } from './ui/ProfileDetails';
 export { ProfileSharedMedia, isDisplayableMedia } from './ui/ProfileSharedMedia';
 export { UserProfileModal } from './ui/UserProfileModal';
-export { UserProfilePanel, type IProfileActionsTarget } from './ui/UserProfilePanel';
+export {
+  UserProfilePanel,
+  type IProfileActionsTarget,
+  type IProfileCall,
+} from './ui/UserProfilePanel';

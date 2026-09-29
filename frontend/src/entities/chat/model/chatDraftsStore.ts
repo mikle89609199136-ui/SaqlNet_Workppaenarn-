@@ -84,6 +84,17 @@ export function subscribeToDraft(chatId: string, listener: () => void): () => vo
   };
 }
 
+/**
+ * Есть ли недописанное хоть в одном чате. Черновики живут только в памяти:
+ * перед перезагрузкой (обновление приложения, #892) человека предупреждают.
+ */
+export function hasAnyDraft(): boolean {
+  for (const draft of drafts.values()) {
+    if (draft.text.trim()) return true;
+  }
+  return false;
+}
+
 /** Выход из аккаунта: недописанное не должно достаться следующему. */
 export function clearAllDrafts(): void {
   for (const chatId of [...pending.keys()]) cancelPending(chatId);

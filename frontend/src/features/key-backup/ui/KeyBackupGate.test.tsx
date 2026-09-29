@@ -21,7 +21,7 @@ function renderGate() {
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
         <MemoryRouter>
-          <KeyBackupGate>
+          <KeyBackupGate onSignOut={() => {}} renderQrLogin={() => <p>вход по коду</p>}>
             <p>приложение</p>
           </KeyBackupGate>
         </MemoryRouter>

@@ -8,5 +8,6 @@ export * from './formatFileSize';
 export * from './formatLastSeen';
 export * from './getAttachmentIcon';
 export * from './passwordRules';
+export * from './receipts';
 export * from './sortMessagesChronologically';
 export * from './singlePlayback';

@@ -1,4 +1,4 @@
-export { APP_VERSION } from './appVersion';
+export { APP_BUILD, APP_BUILT_AT, APP_VERSION } from './appVersion';
 export { CHAT_ROLES, CHAT_TYPES, MAX_MESSAGES_PER_SEND } from './chat';
 export { REACT_ROUTES, ROUTES } from './routes';
 export { STORAGE_KEYS } from './storageKeys';
@@ -24,3 +24,4 @@ export {
   type IEmojiCategory,
   type TEmojiCategoryKey,
 } from './emoji';
+export { CALLS_ENABLED } from './calls';

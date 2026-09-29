@@ -18,12 +18,9 @@ export interface ILastMessageDto {
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
-  /**
-   * Дошло ли своё сообщение и прочитано ли (#819). Список рисует по нему
-   * галочки; сервер в списке чатов его пока не присылает — тогда галочек
-   * нет, а не выдуманное «отправлено».
-   */
-  status?: 'sent' | 'read';
+  /** Своё последнее сообщение (#657): когда доставлено и прочитано. */
+  deliveredAt?: string;
+  readAt?: string;
 }
 
 export interface IChatDto {

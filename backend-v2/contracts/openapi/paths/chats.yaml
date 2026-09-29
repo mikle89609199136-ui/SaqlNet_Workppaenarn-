@@ -2,7 +2,7 @@ x-chat-id:
   &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
 x-user-id:
   &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
 /chats:
   get:
     {
@@ -616,6 +616,7 @@ x-secure: &secure [{ bearerAuth: [] }]
     {
       tags: [Chats],
       summary: Mark a chat read,
+      description: "The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).",
       operationId: markChatRead,
       security: *secure,
       parameters: [*chatId],

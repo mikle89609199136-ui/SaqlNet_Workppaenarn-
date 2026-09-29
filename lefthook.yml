@@ -3,16 +3,24 @@ pre-commit:
 
   jobs:
     - name: Format frontend
-      glob: "*.{js,jsx,ts,tsx}"
+      glob: '*.{js,jsx,ts,tsx}'
       run: npx prettier --write {staged_files}
       stage_fixed: true
 
     - name: Format Go
-      glob: "*.go"
+      glob: '*.go'
       run: gofmt -w {staged_files}
       stage_fixed: true
 
     - name: Format Rust
-      glob: "*.rs"
+      glob: '*.rs'
       run: rustfmt --edition 2021 {staged_files}
       stage_fixed: true
+
+# Пуш в master — выпуск: номер версии поднят, и на нужную величину (#892).
+# Та же проверка, что в CI, только до деплоя, а не после.
+pre-push:
+  jobs:
+    - name: Release version
+      run: node scripts/pre-push-release.cjs
+      use_stdin: true
