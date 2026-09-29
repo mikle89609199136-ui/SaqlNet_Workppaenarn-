@@ -81,6 +81,7 @@ func newLimiterSet(cfg rateLimitConfig) *limiterSet {
 			routeGroupMessageRead:   newTokenBucket(cfg.messageRead.rate, float64(cfg.messageRead.burst)),
 			routeGroupMediaUpload:   newTokenBucket(cfg.mediaUpload.rate, float64(cfg.mediaUpload.burst)),
 			routeGroupCalls:         newTokenBucket(cfg.calls.rate, float64(cfg.calls.burst)),
+			routeGroupMLS:           newTokenBucket(cfg.mls.rate, float64(cfg.mls.burst)),
 			routeGroupOtherAPI:      newTokenBucket(cfg.otherAPI.rate, float64(cfg.otherAPI.burst)),
 			routeGroupWebSocket:     newTokenBucket(cfg.websocket.rate, float64(cfg.websocket.burst)),
 		},

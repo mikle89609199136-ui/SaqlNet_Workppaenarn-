@@ -588,3 +588,40 @@ func TestClassifyRouteBatchMessageDelete(t *testing.T) {
 		})
 	}
 }
+
+// commit и welcome ходят во внешний crypto-сервис, а GET keypackages/{userId}
+// расходует одноразовый ключ адресата, поэтому все маршруты MLS получают свою
+// корзину, а не общую с остальными API.
+func TestClassifyRouteMLS(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   routeGroup
+	}{
+		{name: "upload keypackages", method: http.MethodPost, path: "/api/v2/mls/keypackages", want: routeGroupMLS},
+		{name: "fetch a keypackage", method: http.MethodGet, path: "/api/v2/mls/keypackages/user-id", want: routeGroupMLS},
+		{name: "group state", method: http.MethodGet, path: "/api/v2/mls/group/chat-id/state", want: routeGroupMLS},
+		{name: "commit", method: http.MethodPost, path: "/api/v2/mls/group/chat-id/commit", want: routeGroupMLS},
+		{name: "store welcome", method: http.MethodPost, path: "/api/v2/mls/group/chat-id/welcome", want: routeGroupMLS},
+		{name: "fetch welcome", method: http.MethodGet, path: "/api/v2/mls/group/chat-id/welcome", want: routeGroupMLS},
+		{name: "prefix without a trailing part", method: http.MethodGet, path: "/api/v2/mls", want: routeGroupMLS},
+		{
+			// Совпадение по границе сегмента: путь, который лишь начинается так же,
+			// в группу не попадает.
+			name:   "path that only starts the same",
+			method: http.MethodGet,
+			path:   "/api/v2/mlsx/status",
+			want:   routeGroupOtherAPI,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyRoute(tt.method, tt.path)
+			if got != tt.want {
+				t.Errorf("classifyRoute(%q, %q) = %v; want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}

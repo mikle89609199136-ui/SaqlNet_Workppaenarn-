@@ -20,6 +20,7 @@ type rateLimitConfig struct {
 	messageRead   bucketConfig
 	mediaUpload   bucketConfig
 	calls         bucketConfig
+	mls           bucketConfig
 	otherAPI      bucketConfig
 	websocket     bucketConfig
 	global        bucketConfig
@@ -54,6 +55,7 @@ func loadRateLimitConfig() rateLimitConfig {
 		messageRead:   loadBucketConfig("MESSAGE_READ", perSecond(20), 40),
 		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", perMinute(60), 30),
 		calls:         loadBucketConfig("CALLS", perMinute(30), 15),
+		mls:           loadBucketConfig("MLS", perSecond(5), 10),
 		otherAPI:      loadBucketConfig("OTHER_API", perSecond(20), 40),
 		websocket:     loadBucketConfig("WEBSOCKET", perMinute(10), 20),
 		global:        loadBucketConfig("GLOBAL", perSecond(50), 100),
@@ -181,6 +183,8 @@ func (cfg rateLimitConfig) bucketFor(group routeGroup) bucketConfig {
 		return cfg.mediaUpload
 	case routeGroupCalls:
 		return cfg.calls
+	case routeGroupMLS:
+		return cfg.mls
 	case routeGroupOtherAPI:
 		return cfg.otherAPI
 	case routeGroupWebSocket:

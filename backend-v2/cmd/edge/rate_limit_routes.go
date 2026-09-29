@@ -19,6 +19,7 @@ var allRouteGroups = []routeGroup{
 	routeGroupMessageRead,
 	routeGroupMediaUpload,
 	routeGroupCalls,
+	routeGroupMLS,
 	routeGroupOtherAPI,
 	routeGroupWebSocket,
 }
@@ -33,6 +34,7 @@ const (
 	routeGroupMessageRead   routeGroup = "message-read"
 	routeGroupMediaUpload   routeGroup = "media-upload"
 	routeGroupCalls         routeGroup = "calls"
+	routeGroupMLS           routeGroup = "mls"
 	routeGroupOtherAPI      routeGroup = "other-api"
 	routeGroupWebSocket     routeGroup = "websocket"
 	// routeGroupGlobal не возвращается классификатором: это имя глобальной
@@ -68,6 +70,12 @@ func classifyRoute(method, path string) routeGroup {
 	// соединения. Отдельная корзина ограничивает и то и другое.
 	case strings.HasPrefix(path, "/api/v2/calls/"):
 		return routeGroupCalls
+	// Ключи и состояние MLS-групп. commit и welcome ходят во внешний crypto-сервис,
+	// а GET keypackages/{userId} расходует одноразовый ключ адресата, поэтому лимит
+	// строже общего. Граница IP грубая: точный лимит по пользователю и по адресату
+	// возможен только в сервисе chat, где пользователь уже известен.
+	case path == "/api/v2/mls" || strings.HasPrefix(path, "/api/v2/mls/"):
+		return routeGroupMLS
 	case method == http.MethodPost && strings.HasPrefix(path, "/api/v2/chats/") && strings.HasSuffix(path, "/read"):
 		return routeGroupMessageWrite
 	// Пакетное удаление сообщений: запись в БД и рассылка по WebSocket, поэтому
