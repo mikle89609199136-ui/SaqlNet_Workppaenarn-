@@ -7,8 +7,9 @@ name: E2E
 # настоящий сокет. Два десятка таких сценариев в конвейере PR сделали бы
 # ожидание нестерпимым, а красный результат — привычным.
 #
-# Поэтому запуск только по требованию: меткой `e2e` на pull request или
-# вручную.
+# Поэтому запуск только вручную (Actions → E2E → Run workflow). Прежний
+# триггер «метка на pull request» срабатывал на любую метку и тратил
+# минуты Actions впустую, пока сценариев нет.
 #
 # Ночное расписание убрано. За восемнадцать ночей с 3 сентября прогон не
 # прошёл ни разу, и причины были не в сценариях: секрет E2E_BASE_URL не
@@ -17,8 +18,6 @@ name: E2E
 # отсутствия проверки — к этому же выводу приходила и #277. Вернуть
 # расписание стоит тогда, когда появится хотя бы один сценарий.
 on:
-  pull_request:
-    types: [labeled]
   workflow_dispatch:
     inputs:
       base_url:
@@ -40,7 +39,6 @@ jobs:
     name: Smoke
     # Скрипты написаны давно и в конвейере не запускались ни разу.
     # Они дешёвые: несколько curl-запросов к живому стенду.
-    if: github.event_name != 'pull_request' || github.event.label.name == 'e2e'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -60,7 +58,6 @@ jobs:
 
   playwright:
     name: Playwright
-    if: github.event_name != 'pull_request' || github.event.label.name == 'e2e'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
