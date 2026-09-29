@@ -109,7 +109,7 @@ describe('меню действий сообщения (#655)', () => {
     expect(items).not.toContain('Закрепить');
   });
 
-  it('фото с подписью: копировать текст и изображение, сохранить', async () => {
+  it('фото с подписью: один «Копировать» и «Скачать» (окна «Сохранить как» в браузере нет)', async () => {
     vi.stubGlobal('ClipboardItem', class {});
     open([
       makeMessage({
@@ -122,9 +122,9 @@ describe('меню действий сообщения (#655)', () => {
     ]);
 
     const items = await menuItems('закат');
-    expect(items).toEqual(
-      expect.arrayContaining(['Копировать текст', 'Копировать изображение', 'Сохранить как…'])
-    );
+    expect(items.filter((name) => name === 'Копировать')).toHaveLength(1);
+    expect(items).toContain('Скачать');
+    expect(items).not.toContain('Сохранить как…');
   });
 
   it('«Копировать» кладёт текст в буфер и подтверждает уведомлением; меню закрывается', async () => {
@@ -150,7 +150,7 @@ describe('меню действий сообщения (#655)', () => {
     );
   });
 
-  it('«Сохранить как…» скачивает расшифрованный файл под исходным именем', async () => {
+  it('«Скачать» скачивает расшифрованный файл под исходным именем', async () => {
     const clicks: Array<{ href: string; download: string }> = [];
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement
@@ -168,7 +168,7 @@ describe('меню действий сообщения (#655)', () => {
     ]);
 
     fireEvent.contextMenu(await screen.findByText('договор'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Сохранить как…' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Скачать' }));
 
     expect(clicks).toEqual([{ href: 'blob:file', download: 'договор.pdf' }]);
   });

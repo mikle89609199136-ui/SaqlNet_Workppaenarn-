@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
 import type { IMediaItem } from '@/types';
-import { canCopyImageToClipboard, copyImageToClipboard, mediaFileName } from './mediaActions';
+import {
+  canCopyImageToClipboard,
+  copyImageToClipboard,
+  mediaFileName,
+  saveMedia,
+} from './mediaActions';
 
 const at = new Date(2026, 8, 29, 21, 5);
 const media = (extra: Partial<IMediaItem>) =>
@@ -49,7 +54,7 @@ describe('картинка в буфер обмена', () => {
       }
     }
 
-    await copyImageToClipboard('blob:photo', {
+    await copyImageToClipboard('blob:photo', '', {
       clipboard: { write },
       ClipboardItemCtor: FakeItem as never,
       renderPng: async (url) => {
@@ -65,7 +70,7 @@ describe('картинка в буфер обмена', () => {
 
   it('отказ буфера доходит до вызывающего — там показывается ошибка', async () => {
     await expect(
-      copyImageToClipboard('blob:photo', {
+      copyImageToClipboard('blob:photo', '', {
         clipboard: { write: vi.fn().mockRejectedValue(new Error('denied')) },
         ClipboardItemCtor: class {} as never,
         renderPng: async () => new Blob(),
@@ -87,5 +92,80 @@ describe('картинка в буфер обмена', () => {
         ClipboardItemCtor: withSupports as never,
       })
     ).toBe(true);
+  });
+});
+
+describe('копирование фото с подписью', () => {
+  it('подпись ложится рядом с картинкой как текст', async () => {
+    const items: Record<string, unknown>[] = [];
+    await copyImageToClipboard('blob:photo', 'закат', {
+      clipboard: { write: vi.fn().mockResolvedValue(undefined) },
+      ClipboardItemCtor: class {
+        constructor(data: Record<string, unknown>) {
+          items.push(data);
+        }
+      } as never,
+      renderPng: async () => new Blob(['png'], { type: 'image/png' }),
+    });
+
+    expect(Object.keys(items[0]).sort()).toEqual(['image/png', 'text/plain']);
+    await expect((items[0]['text/plain'] as Blob).text()).resolves.toBe('закат');
+  });
+});
+
+describe('«Сохранить как…» (#655)', () => {
+  const blob = new Blob(['pdf'], { type: 'application/pdf' });
+
+  it('окно выбора места: исходное имя, файл записан', async () => {
+    const written: Blob[] = [];
+    const picker = vi.fn().mockResolvedValue({
+      createWritable: async () => ({
+        write: async (data: Blob) => void written.push(data),
+        close: async () => {},
+      }),
+    });
+    const download = vi.fn();
+
+    const result = await saveMedia('blob:file', 'договор.pdf', {
+      picker,
+      blobByUrl: () => blob,
+      download,
+    });
+
+    expect(result).toBe('saved');
+    expect(picker).toHaveBeenCalledWith({
+      suggestedName: 'договор.pdf',
+      types: [{ accept: { 'application/pdf': ['.pdf'] } }],
+    });
+    expect(written).toEqual([blob]);
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it('человек закрыл окно — не ошибка и не скачивание', async () => {
+    const download = vi.fn();
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+
+    const result = await saveMedia('blob:file', 'договор.pdf', {
+      picker: vi.fn().mockRejectedValue(abort),
+      blobByUrl: () => blob,
+      download,
+    });
+
+    expect(result).toBe('cancelled');
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it('окна нет (Firefox, Safari, телефон) или файл уже отпущен — обычное скачивание', async () => {
+    const download = vi.fn();
+    await expect(
+      saveMedia('blob:file', 'a.pdf', { picker: null, blobByUrl: () => blob, download })
+    ).resolves.toBe('downloaded');
+    await expect(
+      saveMedia('blob:file', 'b.pdf', { picker: vi.fn(), blobByUrl: () => undefined, download })
+    ).resolves.toBe('downloaded');
+    expect(download.mock.calls).toEqual([
+      ['blob:file', 'a.pdf'],
+      ['blob:file', 'b.pdf'],
+    ]);
   });
 });

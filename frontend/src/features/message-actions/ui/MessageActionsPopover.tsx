@@ -4,7 +4,7 @@ import { QUICK_REACTIONS } from '@/shared/config';
 import { cn, formatReceipt } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
 import { availableMessageActions, type TMessageActionPlace } from '../model/messageActionRules';
-import { canCopyImageToClipboard } from '../model/mediaActions';
+import { canCopyImageToClipboard, saveFilePicker } from '../model/mediaActions';
 import { pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
@@ -139,7 +139,12 @@ export const MessageActionsPopover = ({
       }),
     [message, mine, place, isPinned]
   );
-  const hasMedia = available.has('copyImage') || available.has('save');
+  // Фото копируется картинкой (с подписью текстом) — одним пунктом
+  // «Копировать», как и текст.
+  const copiesImage = available.has('copyImage') && !selectionMode;
+  // Окно «Сохранить как» есть не везде: где его нет, пункт честно
+  // называется «Скачать».
+  const canPickLocation = saveFilePicker() !== null;
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -155,27 +160,20 @@ export const MessageActionsPopover = ({
       },
       {
         // В режиме выбора копируются все отмеченные — пункт есть всегда.
-        show: available.has('copyText') || selectionMode,
+        show: available.has('copyText') || copiesImage || selectionMode,
         icon: 'copy',
         key: 'copy',
-        def:
-          hasMedia && !selectionMode
-            ? t('messageActions.copyText', 'Копировать текст')
-            : t('messageActions.copy', 'Копировать'),
-        action: () => actions.handleCopyMessage(message),
-      },
-      {
-        show: available.has('copyImage') && !selectionMode,
-        icon: 'image',
-        key: 'copyImage',
-        def: t('messageActions.copyImage', 'Копировать изображение'),
-        action: () => actions.handleCopyImage(message),
+        def: t('messageActions.copy', 'Копировать'),
+        action: () =>
+          copiesImage ? actions.handleCopyImage(message) : actions.handleCopyMessage(message),
       },
       {
         show: available.has('save') && !selectionMode,
         icon: 'download',
         key: 'save',
-        def: t('messageActions.saveAs', 'Сохранить как…'),
+        def: canPickLocation
+          ? t('messageActions.saveAs', 'Сохранить как…')
+          : t('messageActions.download', 'Скачать'),
         action: () => actions.handleSaveMedia(message),
       },
       {
@@ -238,7 +236,17 @@ export const MessageActionsPopover = ({
         className: 'is-danger',
       },
     ],
-    [actions, available, hasMedia, isSelected, message, onSelection, selectionMode, t]
+    [
+      actions,
+      available,
+      canPickLocation,
+      copiesImage,
+      isSelected,
+      message,
+      onSelection,
+      selectionMode,
+      t,
+    ]
   );
 
   return (

@@ -67,8 +67,8 @@ export function mediaFileName(message: IMediaItem): string {
   return `${BASENAME[type] ?? 'file'}-${stamp(when)}.${extension}`;
 }
 
-/** Скачать уже расшифрованное вложение под именем fileName. */
-export function saveMediaAs(url: string, fileName: string, doc: Document = document): void {
+/** Скачать уже расшифрованное вложение под именем fileName — в папку загрузок. */
+export function downloadMedia(url: string, fileName: string, doc: Document = document): void {
   const link = doc.createElement('a');
   link.href = url;
   link.download = fileName;
@@ -77,6 +77,63 @@ export function saveMediaAs(url: string, fileName: string, doc: Document = docum
   doc.body.append(link);
   link.click();
   link.remove();
+}
+
+interface ISaveFileHandle {
+  createWritable: () => Promise<{
+    write: (data: Blob) => Promise<void>;
+    close: () => Promise<void>;
+  }>;
+}
+
+type TSaveFilePicker = (options: {
+  suggestedName: string;
+  types?: { description?: string; accept: Record<string, string[]> }[];
+}) => Promise<ISaveFileHandle>;
+
+/** Системное окно «Сохранить как»: есть в Chrome и Edge на ПК, нет в Firefox, Safari и на телефонах. */
+export function saveFilePicker(win: object = globalThis): TSaveFilePicker | null {
+  const picker = (win as { showSaveFilePicker?: TSaveFilePicker }).showSaveFilePicker;
+  return typeof picker === 'function' ? picker.bind(win) : null;
+}
+
+interface ISaveDeps {
+  picker?: TSaveFilePicker | null;
+  blobByUrl?: (url: string) => Blob | undefined;
+  download?: (url: string, fileName: string) => void;
+}
+
+/**
+ * «Сохранить как…»: окно выбора места с исходным именем, где браузер его
+ * умеет; иначе — обычное скачивание. Отказ в окне — не ошибка, человек
+ * просто передумал: возвращается 'cancelled'.
+ */
+export async function saveMedia(
+  url: string,
+  fileName: string,
+  { picker = saveFilePicker(), blobByUrl, download = downloadMedia }: ISaveDeps = {}
+): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  const blob = blobByUrl?.(url);
+  if (!picker || !blob) {
+    download(url, fileName);
+    return 'downloaded';
+  }
+
+  const extension = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
+  let handle: ISaveFileHandle;
+  try {
+    handle = await picker({
+      suggestedName: fileName,
+      ...(blob.type && extension ? { types: [{ accept: { [blob.type]: [extension] } }] } : {}),
+    });
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') return 'cancelled';
+    throw error;
+  }
+  const writable = await handle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+  return 'saved';
 }
 
 interface IClipboardDeps {
@@ -128,12 +185,14 @@ export function renderPngFromImage(url: string, doc: Document = document): Promi
 
 /**
  * Картинку — в буфер обмена как PNG (его понимают все браузеры с
- * ClipboardItem). PNG передаётся обещанием, а не готовым blob: Safari
- * разрешает запись в буфер только синхронно внутри нажатия, а
- * перекодирование асинхронное.
+ * ClipboardItem), а подпись, если есть, — рядом как текст: вставится то,
+ * что принимает место вставки. PNG передаётся обещанием, а не готовым
+ * blob: Safari разрешает запись в буфер только синхронно внутри нажатия,
+ * а перекодирование асинхронное.
  */
 export async function copyImageToClipboard(
   url: string,
+  caption = '',
   {
     clipboard = navigator.clipboard,
     ClipboardItemCtor = ClipboardItem,
@@ -141,5 +200,7 @@ export async function copyImageToClipboard(
   }: IClipboardDeps = {}
 ): Promise<void> {
   if (!clipboard) throw new Error('clipboard is unavailable');
-  await clipboard.write([new ClipboardItemCtor({ 'image/png': renderPng(url) })]);
+  const data: Record<string, Promise<Blob> | Blob> = { 'image/png': renderPng(url) };
+  if (caption.trim()) data['text/plain'] = new Blob([caption], { type: 'text/plain' });
+  await clipboard.write([new ClipboardItemCtor(data)]);
 }

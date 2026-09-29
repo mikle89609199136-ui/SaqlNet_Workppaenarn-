@@ -19,7 +19,8 @@ import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
 import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMediaItem, IMessageDto } from '@/types';
-import { copyImageToClipboard, mediaFileName, saveMediaAs } from './mediaActions';
+import { copyImageToClipboard, mediaFileName, saveMedia } from './mediaActions';
+import { mediaBlobByUrl } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -362,26 +363,29 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   }
 
-  /** Картинку из сообщения — в буфер как PNG (#655). */
+  /** Фото — в буфер как PNG, подпись — рядом текстом (#655). */
   async function handleCopyImage(message: IMediaItem) {
     if (!message.mediaUrl) return;
     try {
-      await copyImageToClipboard(message.mediaUrl);
-      showToast('success', t('messageActions.imageCopied', 'Изображение скопировано'));
+      await copyImageToClipboard(message.mediaUrl, message.content ?? '');
+      showToast('success', t('messageActions.copied', 'Скопировано'));
     } catch {
       showToast('error', t('format.copyFailed', 'Не удалось скопировать'));
     }
   }
 
   /**
-   * «Сохранить как…» (#655): скачать уже расшифрованное вложение под
-   * исходным именем. Дальше — окно загрузки самого браузера; «сохранено»
-   * не пишем: человек может отменить сохранение в нём.
+   * «Сохранить как…» (#655): окно выбора места с исходным именем, где
+   * браузер его умеет; иначе — обычное скачивание, и тогда уведомления
+   * нет: дальше окно загрузки самого браузера.
    */
-  function handleSaveMedia(message: IMediaItem) {
+  async function handleSaveMedia(message: IMediaItem) {
     if (!message.mediaUrl) return;
     try {
-      saveMediaAs(message.mediaUrl, mediaFileName(message));
+      const result = await saveMedia(message.mediaUrl, mediaFileName(message), {
+        blobByUrl: mediaBlobByUrl,
+      });
+      if (result === 'saved') showToast('success', t('messageActions.saved', 'Файл сохранён'));
     } catch {
       showToast('error', t('messageActions.saveFailed', 'Не удалось сохранить файл'));
     }
