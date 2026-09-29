@@ -170,10 +170,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
     }
 
     case 'RESET_TO_IDLE': {
-      if (
-        (ctx.state === 'ended' || ctx.state === 'incoming' || ctx.state === 'outgoing') &&
-        (!action.roomId || ctx.roomId === action.roomId)
-      ) {
+      if (ctx.state === 'ended' && (!action.roomId || ctx.roomId === action.roomId)) {
         return initialCallContext;
       }
       return ctx;

@@ -27,6 +27,7 @@ const CALL_TIMEOUT_MS = 60_000;
 
 interface CallStoreState {
   fsm: ICallFsmContext;
+  currentAttemptId: number;
   isMinimized: boolean;
   socket: WebSocketClient | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
@@ -87,7 +88,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         : null;
 
     const outgoingCall: IOutgoingCall | null =
-      fsm.state === 'outgoing'
+      fsm.state === 'outgoing' || (fsm.state === 'ended' && fsm.outgoingPhase != null)
         ? {
             roomId: fsm.roomId ?? '',
             peerId: fsm.peerId ?? '',
@@ -122,6 +123,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
   return {
     fsm: initialCallContext,
+    currentAttemptId: 0,
     isMinimized: false,
     socket: null,
     callTimeoutTimer: null,
@@ -173,6 +175,15 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       // Проверяем актуальное состояние FSM после асинхронного вызова
       if (get().fsm.state !== 'idle' && get().fsm.state !== 'ended') {
+        const currentSocket = get().socket;
+        if (currentSocket?.isConnected && payload.from) {
+          sendCallInviteResponse(currentSocket, {
+            to: payload.from,
+            roomId: payload.roomId,
+            accepted: false,
+            reason: 'busy',
+          });
+        }
         return;
       }
 
@@ -203,7 +214,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         const finishedRoomId = fsm.roomId;
         get().dispatch({ type: 'END_CALL', reason: 'peer_ended' });
         setTimeout(() => {
-          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          if (get().fsm.state === 'ended' && get().fsm.roomId === finishedRoomId) {
+            get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          }
         }, 1500);
       }
     },
@@ -213,7 +226,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       if (fsm.state === 'incoming' && (!event.roomId || fsm.roomId === event.roomId)) {
         stopRingtone();
         clearTimer();
-        get().dispatch({ type: 'RESET_TO_IDLE' });
+        get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
+        get().dispatch({ type: 'RESET_TO_IDLE', roomId: event.roomId });
       }
     },
 
@@ -229,9 +243,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         const reason: TCallEndReason = payload.reason === 'busy' ? 'busy' : 'declined';
         get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: reason });
         const finishedRoomId = fsm.roomId ?? undefined;
+        const attemptId = get().currentAttemptId;
         get().dispatch({ type: 'END_CALL', reason });
         setTimeout(() => {
-          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+            get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          }
         }, 1500);
       }
     },
@@ -241,6 +258,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       if (fsm.state !== 'idle' && fsm.state !== 'ended') return;
 
       clearTimer();
+      const attemptId = get().currentAttemptId + 1;
+      set({ currentAttemptId: attemptId });
+
       const targetPeerId = peerId ?? '';
       const targetPeerName = peerName ?? title;
       const targetPeerAvatar = peerAvatar ?? null;
@@ -270,8 +290,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         const roomId = response.room?.id;
         if (!roomId) throw new Error('Room creation failed');
 
-        // Проверяем, не отменил ли пользователь вызов до создания комнаты
-        if (get().fsm.state !== 'outgoing') {
+        // Проверяем, не отменил ли пользователь вызов или не запустил ли новый
+        if (get().currentAttemptId !== attemptId || get().fsm.state !== 'outgoing') {
           if (socket?.isConnected) {
             sendCallLeave(socket, roomId);
           }
@@ -302,10 +322,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         }, CALL_TIMEOUT_MS);
         set({ callTimeoutTimer: timer });
       } catch {
-        if (get().fsm.state === 'outgoing') {
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
           get().dispatch({ type: 'END_CALL', reason: 'network_error' });
           setTimeout(() => {
-            get().dispatch({ type: 'RESET_TO_IDLE' });
+            if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+              get().dispatch({ type: 'RESET_TO_IDLE' });
+            }
           }, 1500);
         }
       }
@@ -325,9 +347,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'cancelled' });
       const finishedRoomId = fsm.roomId ?? undefined;
+      const attemptId = get().currentAttemptId;
       get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
       }, 400);
     },
 
@@ -342,9 +367,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'no_answer' });
       const finishedRoomId = fsm.roomId ?? undefined;
+      const attemptId = get().currentAttemptId;
       get().dispatch({ type: 'END_CALL', reason: 'no_answer' });
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
       }, 1500);
     },
 
@@ -383,7 +411,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       const finishedRoomId = fsm.roomId ?? undefined;
       get().dispatch({ type: 'END_CALL', reason: 'declined' });
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        if (get().fsm.state === 'ended' && get().fsm.roomId === finishedRoomId) {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
       }, 500);
     },
 
@@ -400,9 +430,14 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       get().dispatch({ type: 'END_CALL', reason });
 
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
-        if (get().fsm.state === 'idle') {
-          set({ isMinimized: false });
+        if (
+          get().fsm.state === 'ended' &&
+          (!finishedRoomId || get().fsm.roomId === finishedRoomId)
+        ) {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          if (get().fsm.state === 'idle') {
+            set({ isMinimized: false });
+          }
         }
       }, 800);
     },

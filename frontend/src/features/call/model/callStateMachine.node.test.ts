@@ -134,9 +134,25 @@ describe('callStateMachine', () => {
       state: 'outgoing' as const,
       roomId: 'room-new',
     };
-    const next = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-old' });
-    expect(next.state).toBe('outgoing');
-    expect(next.roomId).toBe('room-new');
+    const next1 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-old' });
+    expect(next1.state).toBe('outgoing');
+    expect(next1.roomId).toBe('room-new');
+
+    const next2 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-new' });
+    expect(next2.state).toBe('outgoing');
+    expect(next2.roomId).toBe('room-new');
+
+    const next3 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE' });
+    expect(next3.state).toBe('outgoing');
+
+    const incomingCtx = {
+      ...initialCallContext,
+      state: 'incoming' as const,
+      roomId: 'room-incoming',
+    };
+    const nextIncoming = callStateReducer(incomingCtx, { type: 'RESET_TO_IDLE' });
+    expect(nextIncoming.state).toBe('incoming');
+    expect(nextIncoming.roomId).toBe('room-incoming');
   });
 
   it('переводит outgoing напрямую в active по PEER_JOINED', () => {
