@@ -90,6 +90,7 @@ export const PinnedMessagesView = ({
         <MessageActionsPopover
           message={selectedActionMessage.message}
           onSelection={onSelection}
+          place="pinned"
           setIsForwardModalOpen={setIsForwardModalOpen}
         />
       )}
