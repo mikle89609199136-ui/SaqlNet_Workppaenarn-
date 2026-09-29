@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import {
   $createParagraphNode,
   $getRoot,
@@ -195,15 +195,13 @@ function ShortcutsPlugin() {
  */
 function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => boolean }) {
   const [editor] = useLexicalComposerContext();
-  const onPasteFilesRef = useRef(onPasteFiles);
-  onPasteFilesRef.current = onPasteFiles;
 
   useEffect(() => {
+    if (!onPasteFiles) return;
+
     return editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
-        if (!onPasteFilesRef.current) return false;
-
         const clipboardData =
           event && typeof event === 'object' && 'clipboardData' in event
             ? (event as { clipboardData: DataTransfer | null }).clipboardData
@@ -218,7 +216,7 @@ function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => 
           return false;
         }
 
-        const handled = onPasteFilesRef.current(files);
+        const handled = onPasteFiles(files);
         if (handled) {
           event.preventDefault();
           return true;
@@ -227,7 +225,7 @@ function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => 
       },
       COMMAND_PRIORITY_LOW
     );
-  }, [editor]);
+  }, [editor, onPasteFiles]);
 
   return null;
 }
