@@ -7,6 +7,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { AppUpdateBanner } from '@/features/app-update';
+import { useStartPrivateChat } from '@/features/chat-actions';
 import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
@@ -76,6 +77,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
     [visibleChats]
   );
   const search = useChatsSearch(visibleChats);
+  // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
+  const startChat = useStartPrivateChat();
 
   /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
@@ -105,6 +108,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         chats={search.chats}
         isEmpty={search.isEmpty}
         isLoadingPeople={search.isLoadingPeople}
+        isStartingChat={startChat.isPending}
+        onStartChat={(userId) => startChat.mutate(userId)}
         people={search.people}
       />
     );

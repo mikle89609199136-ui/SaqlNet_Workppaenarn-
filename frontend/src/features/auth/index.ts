@@ -10,5 +10,4 @@ export {
   type TRegisterStep,
 } from './model/registerSchema';
 export { LoginForm } from './ui/LoginForm';
-export { PasswordRequirements } from './ui/PasswordRequirements';
 export { RegisterWizard } from './ui/RegisterWizard/RegisterWizard';

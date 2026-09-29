@@ -1,4 +1,4 @@
-import { Icon } from '@/shared/ui';
+import { Icon } from '../Icon';
 import { PASSWORD_RULES, checkPassword, cn } from '@/shared/lib';
 
 interface Props {

@@ -1,5 +1,4 @@
 import { Avatar, Spinner } from '@/shared/ui';
-import { useStartPrivateChat } from '@/features/chat-actions';
 import { cn } from '@/shared/lib';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +10,13 @@ interface Props {
   people: ISearchUserDto[];
   isLoadingPeople: boolean;
   isEmpty: boolean;
+  /**
+   * Начать личный чат с найденным человеком. Приходит от того, кто
+   * собирает экран: поиск о действиях над чатами не знает (#863).
+   */
+  onStartChat: (userId: string) => void;
+  /** Чат уже создаётся — строки людей неактивны. */
+  isStartingChat?: boolean;
 }
 
 function SectionTitle({ children }: { children: string }) {
@@ -30,9 +36,15 @@ function SectionTitle({ children }: { children: string }) {
  * почти всегда содержат искомое, а люди приходят с сервера с задержкой.
  * Если бы они шли первыми, список подпрыгивал бы при каждом ответе.
  */
-export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: Props) {
+export function ChatsSearchResults({
+  chats,
+  people,
+  isLoadingPeople,
+  isEmpty,
+  onStartChat,
+  isStartingChat = false,
+}: Props) {
   const { t } = useTranslation();
-  const startChat = useStartPrivateChat();
   const me = useProfileStore((state) => state.user?.id);
 
   return (
@@ -63,9 +75,9 @@ export function ChatsSearchResults({ chats, people, isLoadingPeople, isEmpty }: 
             return (
               <button
                 className={cn(chatRowStyles, 'w-full text-left disabled:opacity-50')}
-                disabled={startChat.isPending}
+                disabled={isStartingChat}
                 key={user.id}
-                onClick={() => startChat.mutate(user.id)}
+                onClick={() => onStartChat(user.id)}
                 type="button"
               >
                 <Avatar id={user.id} name={name} size="lg" src={user.avatarUrl} />

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Icon, Input, Spinner } from '@/shared/ui';
 import { getPasswordScore, MIN_PASSWORD_LENGTH } from '@/shared/lib';
 import { checkUsernameQuery, MIN_USERNAME_LENGTH, USERNAME_PATTERN } from '@/entities/user';
-import { PasswordRequirements } from '../PasswordRequirements';
+import { PasswordRequirements } from '@/shared/ui';
 import { PasswordStrength } from './PasswordStrength';
 import { PasswordToggle } from './PasswordToggle';
 import type { TRegisterForm } from '../../model/registerSchema';

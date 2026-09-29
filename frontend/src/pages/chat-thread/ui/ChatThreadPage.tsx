@@ -1,11 +1,13 @@
 import { ChatThreadHeader, ConnectionBanner, SafetyCodeNotice } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
 import { BlockUserButton, NewChatBanner } from '@/features/block-user';
-import type { IProfileActionsTarget } from '@/features/user-profile';
+import type { IProfileActionsTarget, IProfileCall } from '@/features/user-profile';
 import { ChatThreadComposer, ChatSelectedMessagesActions } from '@/widgets/chat-composer';
 import { PinnedMessagesView } from '@/widgets/pinned-messages';
 import { ForwardChatMessagesModal } from '@/features/forward-messages';
-import { GroupInfoModal } from '@/features/group-management';
+import { GroupInfoModal } from '@/widgets/group-info';
+import { useCall } from '@/features/call';
+import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
@@ -13,7 +15,7 @@ import { PhotoEditorModal } from '@/entities/media';
 
 import { useOutletContext } from 'react-router-dom';
 
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatThreadPage } from '../hooks/useChatThreadPage';
 
@@ -35,6 +37,17 @@ export function ChatThreadPage() {
   const { onProfileStateChange, profileCloseToken, profileMode } =
     useOutletContext<IOutletContext>();
   const { t } = useTranslation();
+  /* Звонок из профиля (#863): профиль о звонках не знает — действие даёт
+     страница, пока звонки включены. */
+  const { initiateCall } = useCall();
+  const startProfileCall = useMemo(
+    () =>
+      CALLS_ENABLED
+        ? ({ chatId, peerId, peerName, kind }: IProfileCall) =>
+            initiateCall(chatId, 'private', peerName, kind, peerId)
+        : undefined,
+    [initiateCall]
+  );
 
   const {
     chatId,
@@ -219,6 +232,7 @@ export function ChatThreadPage() {
             <GroupInfoModal
               isOpen={profileModal.isOpen && profileModal.kind === 'group'}
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
+              startCall={startProfileCall}
             />
           )}
 
@@ -227,6 +241,7 @@ export function ChatThreadPage() {
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
               profileModal={profileModal}
               renderActions={renderProfileActions}
+              startCall={startProfileCall}
             />
           )}
 
