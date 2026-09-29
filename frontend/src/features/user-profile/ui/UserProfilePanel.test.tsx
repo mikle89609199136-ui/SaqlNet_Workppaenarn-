@@ -302,7 +302,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -326,7 +326,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -340,6 +340,33 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
       expect(await screen.findByRole('heading', { level: 2, name: 'Алексей' })).toBeInTheDocument();
       expect(screen.getAllByText(/alex/).length).toBeGreaterThan(0);
       expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeInTheDocument();
+    });
+
+    it('звонок приходит сверху пропом и получает чат, собеседника и вид (#863)', async () => {
+      const peer = makeUser({ id: 'user-2', username: 'alex', firstName: 'Алексей' });
+      server.use(
+        http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+        http.get(api('/users/blocked'), () => HttpResponse.json({ blocked: null }))
+      );
+      useProfileStore.setState({ user: makeUser({ id: 'user-1' }) });
+      const chat = makeChat({ id: 'chat-1', type: 'private', peerId: 'user-2' });
+      const startCall = vi.fn();
+
+      renderPanelWithProviders(
+        <UserProfilePanel
+          onClose={vi.fn()}
+          profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
+          startCall={startCall}
+        />
+      );
+      await userEvent.click(await screen.findByRole('button', { name: /видеозвонок/i }));
+
+      expect(startCall).toHaveBeenCalledWith({
+        chatId: 'chat-1',
+        peerId: 'user-2',
+        peerName: 'alex',
+        kind: 'video',
+      });
     });
 
     it('звонки выключены (#776) — кнопок звонка в профиле нет', async () => {
@@ -378,7 +405,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-2', chat, messages: [] }}
         />
@@ -401,7 +428,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       const { unmount } = renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-2', chat: null, messages: [] }}
           renderActions={renderActions}
@@ -414,7 +441,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{ isOpen: true, userId: 'user-1', chat: null, messages: [] }}
           renderActions={renderActions}
@@ -441,7 +468,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -472,7 +499,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -499,7 +526,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -526,7 +553,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,
@@ -561,7 +588,7 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
 
       renderPanelWithProviders(
         <UserProfilePanel
-          callsEnabled
+          startCall={vi.fn()}
           onClose={vi.fn()}
           profileState={{
             isOpen: true,

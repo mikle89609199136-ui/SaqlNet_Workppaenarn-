@@ -1,9 +1,11 @@
 import { useParams } from 'react-router-dom';
+import type { IProfileCall } from '@/features/user-profile';
 import { GroupInfoPanel } from './GroupInfoPanel';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  startCall?: (call: IProfileCall) => void;
 }
 
 /**
@@ -12,7 +14,7 @@ interface Props {
  * На ПК и планшете та же панель открывается справа, в месте профиля
  * (ChatsPage); здесь — во весь экран, с той же «Закрыть» и «Назад».
  */
-export function GroupInfoModal({ isOpen, onClose }: Props) {
+export function GroupInfoModal({ isOpen, onClose, startCall }: Props) {
   const { chatId = '' } = useParams<{ chatId: string }>();
 
   if (!isOpen || !chatId) return null;
@@ -24,7 +26,7 @@ export function GroupInfoModal({ isOpen, onClose }: Props) {
       role="dialog"
     >
       <div className="flex min-w-0 flex-1 flex-col">
-        <GroupInfoPanel chatId={chatId} onClose={onClose} />
+        <GroupInfoPanel chatId={chatId} onClose={onClose} startCall={startCall} />
       </div>
     </div>
   );

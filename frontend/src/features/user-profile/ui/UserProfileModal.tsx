@@ -3,16 +3,22 @@ import { useThreadMessagesData } from '@/entities/message';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { UserProfilePanel, type IProfileActionsTarget } from './UserProfilePanel';
+import {
+  UserProfilePanel,
+  type IProfileActionsTarget,
+  type IProfileCall,
+} from './UserProfilePanel';
 import type { IProfileModal } from '@/entities/user';
 
 interface Props {
   onClose: () => void;
   renderActions?: (target: IProfileActionsTarget) => ReactNode;
   profileModal: IProfileModal;
+  /** Позвонить из профиля — от страницы, см. UserProfilePanel. */
+  startCall?: (call: IProfileCall) => void;
 }
 
-export const UserProfileModal = ({ onClose, profileModal, renderActions }: Props) => {
+export const UserProfileModal = ({ onClose, profileModal, renderActions, startCall }: Props) => {
   const { chatId = '' } = useParams<{ chatId: string }>();
   // Панель показывает общие медиа, поэтому ей нужна история открытого чата.
   const { data: chat = null } = useQuery(chatQuery(chatId));
@@ -36,6 +42,7 @@ export const UserProfileModal = ({ onClose, profileModal, renderActions }: Props
           onClose={onClose}
           profileState={{ ...profileModal, chat, messages }}
           renderActions={renderActions}
+          startCall={startCall}
         />
       </div>
     </div>
