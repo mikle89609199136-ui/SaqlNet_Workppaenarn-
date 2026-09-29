@@ -14,7 +14,33 @@ export type TCallState =
   'idle' | 'outgoing' | 'incoming' | 'connecting' | 'active' | 'reconnecting' | 'ended';
 
 export type TCallEndReason =
-  'completed' | 'peer_ended' | 'declined' | 'busy' | 'no_answer' | 'network_error' | 'media_denied';
+  | 'completed'
+  | 'peer_ended'
+  | 'declined'
+  | 'busy'
+  | 'no_answer'
+  | 'network_error'
+  | 'media_denied'
+  | 'cancelled';
+
+export type TOutgoingCallPhase =
+  | 'calling'
+  | 'ringing'
+  | 'declined'
+  | 'busy'
+  | 'no_answer'
+  | 'cancelled'
+  | 'failed';
+
+export interface IOutgoingCall {
+  roomId: string;
+  peerId: string;
+  peerName?: string | null;
+  peerAvatar?: string | null;
+  kind: TCallKind;
+  phase: TOutgoingCallPhase;
+  title?: string | null;
+}
 
 export interface ICallPeer {
   userId: string;

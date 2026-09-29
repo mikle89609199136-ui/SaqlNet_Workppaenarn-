@@ -5,8 +5,8 @@ import { usePhotoEditor } from '@/entities/media';
 import { useChatModals } from '@/features/chat-actions';
 import { useMessageActions, useMessageSelection } from '@/features/message-actions';
 import { useProfilePanel } from '@/features/user-profile';
-import { useAutoScrollToBottom, useEscapeKey } from '@/shared/lib';
-import { chatQuery, useChatUiStore } from '@/entities/chat';
+import { useEscapeKey } from '@/shared/lib';
+import { chatQuery, useChatReadMark, useChatUiStore } from '@/entities/chat';
 import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
@@ -56,6 +56,8 @@ export function useChatThreadPage({
   useChatEncryption(chatId);
 
   const { data: chat = null } = useQuery(chatQuery(chatId));
+  // Отметка прочтения на момент открытия: по ней лента встаёт на новые (#839).
+  const readMark = useChatReadMark(chat);
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
   const {
     messages,
@@ -147,8 +149,6 @@ export function useChatThreadPage({
     markMessagesAsRead(unread);
   }, [messages, isLoading, markMessagesAsRead]);
 
-  useAutoScrollToBottom(bottomRef, chatId, isLoading);
-
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
   useEscapeKey({ active: Boolean(modals.openedImage), onClose: () => modals.setOpenedImage(null) });
@@ -173,6 +173,7 @@ export function useChatThreadPage({
     isLoading,
     hasOlder,
     loadOlder,
+    readMark,
     threadError,
     setError,
     setEditingMessage,

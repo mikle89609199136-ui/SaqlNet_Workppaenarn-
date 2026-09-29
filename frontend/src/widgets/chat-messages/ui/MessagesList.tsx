@@ -1,4 +1,5 @@
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
+import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
@@ -45,6 +46,11 @@ interface Props {
    * (#842). Только у ленты открытого чата, не у списка закреплённых.
    */
   handleJumpRequests?: boolean;
+  /**
+   * Отметка прочтения чата (#839): лента открывается на «Новые сообщения».
+   * Нужна, когда `trackUnread`: без неё лента ждёт и не прокручивается.
+   */
+  readMark?: IReadMark;
 }
 
 export const MessagesList = memo(
@@ -66,6 +72,7 @@ export const MessagesList = memo(
     isGroupChat = false,
     trackUnread = true,
     handleJumpRequests = false,
+    readMark,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -90,6 +97,9 @@ export const MessagesList = memo(
       messagesRef,
       currentUserId: user?.id,
       trackUnread,
+      readMark,
+      loadOlder,
+      hasOlder,
     });
 
     // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.

@@ -2,6 +2,7 @@ import { useEffect, type PropsWithChildren } from 'react';
 import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/shared/api';
 import { useCallStore } from '../model/callStore';
+import { subscribeCallBroadcast } from '../model/callBroadcast';
 import type {
   ICallCancelledEvent,
   ICallIncomingEvent,
@@ -19,8 +20,15 @@ export function CallProvider({ children }: PropsWithChildren) {
   }, [socket]);
 
   useEffect(() => {
+    const unsubBroadcast = subscribeCallBroadcast((event) => {
+      useCallStore.getState().handleBroadcastEvent(event);
+    });
+    return unsubBroadcast;
+  }, []);
+
+  useEffect(() => {
     const unsubIncoming = eventBus.on(WS_EVENTS.CALL.INCOMING, (payload: ICallIncomingEvent) => {
-      useCallStore.getState().handleIncoming(payload);
+      void useCallStore.getState().handleIncoming(payload);
     });
 
     const unsubCancelled = eventBus.on(WS_EVENTS.CALL.CANCELED, (payload: ICallCancelledEvent) => {
