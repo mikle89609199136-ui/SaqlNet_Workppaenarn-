@@ -119,4 +119,13 @@ describe('звонки включены', () => {
 
     expect(screen.getByText('Не отвечает')).toBeInTheDocument();
   });
+
+  it('карточка исходящего: отображает Сбой вызова при фазе failed и блокирует Отменить', () => {
+    useCallStore.setState({ outgoingCall: { ...outgoing, phase: 'failed' } });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByText('Сбой вызова')).toBeInTheDocument();
+    const cancelBtn = screen.getByRole('button', { name: 'Отменить' });
+    expect(cancelBtn).toBeDisabled();
+  });
 });

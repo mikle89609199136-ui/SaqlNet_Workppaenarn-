@@ -53,6 +53,7 @@
   "call.status.calling": "Calling…",
   "call.status.cancelled": "Call cancelled",
   "call.status.declined": "Declined",
+  "call.status.failed": "Call failed",
   "call.status.noAnswer": "No answer",
   "call.status.ringing": "Ringing…",
   "call.title": "Call",

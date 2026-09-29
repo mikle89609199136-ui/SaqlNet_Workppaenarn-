@@ -323,6 +323,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         set({ callTimeoutTimer: timer });
       } catch {
         if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
+          get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'failed' });
           get().dispatch({ type: 'END_CALL', reason: 'network_error' });
           setTimeout(() => {
             if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {

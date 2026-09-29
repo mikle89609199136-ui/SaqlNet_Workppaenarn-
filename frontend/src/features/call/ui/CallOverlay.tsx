@@ -88,12 +88,16 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
           return t('call.status.noAnswer', 'Не отвечает');
         case 'cancelled':
           return t('call.status.cancelled', 'Вызов отменён');
+        case 'failed':
+          return t('call.status.failed', 'Сбой вызова');
         default:
           return t('call.status.calling', 'Вызов…');
       }
     };
 
-    const isEnding = ['declined', 'busy', 'no_answer', 'cancelled'].includes(outgoingCall.phase);
+    const isEnding = ['declined', 'busy', 'no_answer', 'cancelled', 'failed'].includes(
+      outgoingCall.phase
+    );
 
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ground/80 backdrop-blur-md p-4 animate-fade-in">

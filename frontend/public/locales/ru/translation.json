@@ -53,6 +53,7 @@
   "call.status.calling": "Вызов…",
   "call.status.cancelled": "Вызов отменён",
   "call.status.declined": "Отклонён",
+  "call.status.failed": "Сбой вызова",
   "call.status.noAnswer": "Не отвечает",
   "call.status.ringing": "Звонит…",
   "call.title": "Звонок",

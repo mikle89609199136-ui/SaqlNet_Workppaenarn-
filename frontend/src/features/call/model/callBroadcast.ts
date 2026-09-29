@@ -46,7 +46,9 @@ export function resetCallBroadcastForTests(): void {
   if (channelInstance) {
     try {
       channelInstance.close();
-    } catch {}
+    } catch {
+      // Игнорируем ошибку закрытия уже уничтоженного канала в тестах
+    }
     channelInstance = null;
   }
 }

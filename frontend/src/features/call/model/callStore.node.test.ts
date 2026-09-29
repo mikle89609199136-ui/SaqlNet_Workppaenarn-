@@ -606,7 +606,7 @@ describe('useCallStore', () => {
       resolveSecondRoom = resolve;
     });
 
-    const createRoomSpy = vi
+    vi
       .spyOn(services.callService, 'createRoom')
       .mockImplementationOnce(() => firstRoomPromise as any)
       .mockImplementationOnce(() => secondRoomPromise as any);
@@ -751,4 +751,52 @@ describe('useCallStore', () => {
 
     vi.useRealTimers();
   });
+
+  it('селектор outgoingCall равен null после завершения принятого звонка', () => {
+    useCallStore.getState().dispatch({
+      type: 'START_OUTGOING',
+      payload: {
+        roomId: 'room-accepted-test',
+        chatId: 'chat-1',
+        peerId: 'peer-1',
+        kind: 'audio',
+      },
+    });
+
+    expect(useCallStore.getState().outgoingCall).not.toBeNull();
+
+    // Собеседник принял вызов
+    useCallStore.getState().handleInviteResponse({
+      roomId: 'room-accepted-test',
+      accepted: true,
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('connecting');
+    expect(useCallStore.getState().fsm.outgoingPhase).toBeNull();
+    expect(useCallStore.getState().outgoingCall).toBeNull();
+
+    // Звонок завершается
+    useCallStore.getState().endCall();
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    // Карточка исходящего звонка не должна всплывать повторно!
+    expect(useCallStore.getState().outgoingCall).toBeNull();
+  });
+
+  it('initiateCall при ошибке сети выставляет фазу failed и завершает звонок с network_error', async () => {
+    vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce(
+      new Error('Network error')
+    );
+
+    await useCallStore
+      .getState()
+      .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+    const state = useCallStore.getState();
+    expect(state.fsm.state).toBe('ended');
+    expect(state.fsm.endReason).toBe('network_error');
+    expect(state.fsm.outgoingPhase).toBe('failed');
+    expect(state.outgoingCall?.phase).toBe('failed');
+  });
 });
+

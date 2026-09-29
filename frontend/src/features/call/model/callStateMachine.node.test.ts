@@ -31,10 +31,16 @@ describe('callStateMachine', () => {
     expect(next.roomId).toBe('r1');
   });
 
-  it('переходит из outgoing в connecting по PEER_ACCEPTED', () => {
-    const outgoingCtx = { ...initialCallContext, state: 'outgoing' as const, roomId: 'r1' };
+  it('переходит из outgoing в connecting по PEER_ACCEPTED и сбрасывает outgoingPhase', () => {
+    const outgoingCtx = {
+      ...initialCallContext,
+      state: 'outgoing' as const,
+      roomId: 'r1',
+      outgoingPhase: 'ringing' as const,
+    };
     const next = callStateReducer(outgoingCtx, { type: 'PEER_ACCEPTED' });
     expect(next.state).toBe('connecting');
+    expect(next.outgoingPhase).toBeNull();
   });
 
   it('игнорирует PEER_ACCEPTED, если состояние не outgoing', () => {
@@ -155,10 +161,16 @@ describe('callStateMachine', () => {
     expect(nextIncoming.roomId).toBe('room-incoming');
   });
 
-  it('переводит outgoing напрямую в active по PEER_JOINED', () => {
-    const outgoingCtx = { ...initialCallContext, state: 'outgoing' as const, roomId: 'r1' };
+  it('переводит outgoing напрямую в active по PEER_JOINED и сбрасывает outgoingPhase', () => {
+    const outgoingCtx = {
+      ...initialCallContext,
+      state: 'outgoing' as const,
+      roomId: 'r1',
+      outgoingPhase: 'ringing' as const,
+    };
     const next = callStateReducer(outgoingCtx, { type: 'PEER_JOINED' });
     expect(next.state).toBe('active');
     expect(next.callStartedAt).toBeGreaterThan(0);
+    expect(next.outgoingPhase).toBeNull();
   });
 });

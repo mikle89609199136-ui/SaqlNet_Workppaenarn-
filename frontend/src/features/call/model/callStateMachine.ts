@@ -132,6 +132,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
       return {
         ...ctx,
         state: 'connecting',
+        outgoingPhase: null,
       };
     }
 
@@ -141,6 +142,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         ...ctx,
         state: 'active',
         callStartedAt: ctx.callStartedAt ?? Date.now(),
+        outgoingPhase: null,
       };
     }
 
