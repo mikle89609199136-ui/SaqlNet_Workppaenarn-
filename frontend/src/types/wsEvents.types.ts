@@ -162,8 +162,9 @@ export interface ICallPeerDto {
 
 export interface ICallErrorEvent {
   type: string;
-  reason: string;
+  reason?: string;
   roomId?: string;
+  message?: string;
 }
 
 export interface ICallJoinedEvent {

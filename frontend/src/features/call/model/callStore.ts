@@ -156,6 +156,16 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     set({ reconnectTimeoutTimer: null });
   };
 
+  const startReconnectTimer = () => {
+    clearReconnectTimer();
+    const timer = setTimeout(() => {
+      if (get().fsm.state === 'reconnecting') {
+        get().endCall('network_error');
+      }
+    }, RECONNECT_TIMEOUT_MS);
+    set({ reconnectTimeoutTimer: timer });
+  };
+
   const clearAllTimers = () => {
     clearCallTimeoutTimer();
     clearReconnectTimer();
@@ -220,17 +230,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         chatId: session.chatId,
       };
 
-      clearReconnectTimer();
-      const timer = setTimeout(() => {
-        if (get().fsm.state === 'reconnecting') {
-          get().endCall('network_error');
-        }
-      }, RECONNECT_TIMEOUT_MS);
-
-      set({
-        ...syncDerivedState(restoredFsm),
-        reconnectTimeoutTimer: timer,
-      });
+      set(syncDerivedState(restoredFsm));
+      startReconnectTimer();
 
       if (get().socket?.isConnected) {
         get().rejoinActiveCall();
@@ -245,13 +246,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       if (nextFsm === currentFsm) return;
 
       if (nextFsm.state === 'reconnecting' && currentFsm.state !== 'reconnecting') {
-        clearReconnectTimer();
-        const timer = setTimeout(() => {
-          if (get().fsm.state === 'reconnecting') {
-            get().endCall('network_error');
-          }
-        }, RECONNECT_TIMEOUT_MS);
-        set({ reconnectTimeoutTimer: timer });
+        startReconnectTimer();
       } else if (nextFsm.state !== 'reconnecting' && currentFsm.state === 'reconnecting') {
         clearReconnectTimer();
       }

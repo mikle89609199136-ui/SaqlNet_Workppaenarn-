@@ -81,7 +81,7 @@ export function CallProvider({ children }: PropsWithChildren) {
 
     const unsubCallError = eventBus.on(
       WS_EVENTS.CALL.ERROR,
-      (payload?: { roomId?: string; message?: string }) => {
+      (payload?: { roomId?: string; reason?: string; message?: string }) => {
         const { fsm } = useCallStore.getState();
         if (fsm.roomId && (!payload?.roomId || payload.roomId === fsm.roomId)) {
           useCallStore.getState().endCall('network_error');
