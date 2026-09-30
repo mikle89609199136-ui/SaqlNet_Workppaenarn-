@@ -48,8 +48,14 @@ type Client struct {
 	done          chan struct{}
 	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
 	closeOnce     sync.Once
-	CallRoomID    string // non-empty while in a call room
-	ConnectionID  string // уникальный ID WS-соединения для presence
+	// Комната звонка этого подключения; пусто — не в звонке. Пишет только
+	// своя горутина и только под ws.mu: доставка сигналов читает поле
+	// чужих подключений (#849).
+	CallRoomID string
+	// Окно частоты сигналов звонка (#849); только своя горутина.
+	signalWindow time.Time
+	signalCount  int
+	ConnectionID string // уникальный ID WS-соединения для presence
 
 	// Push (#717): подписка этого устройства и видно ли приложение. На
 	// устройство, где приложение на экране, push не отправляется. Пишет
@@ -334,41 +340,13 @@ func (ws *WSServer) readPump(client *Client) {
 			ws.handleCallLeave(client, msg)
 
 		case "call_offer", "call_answer", "call_ice":
-			to, _ := msg["to"].(string)
-			if to == "" {
-				break
-			}
-			roomID, _ := msg["roomId"].(string)
-			if roomID == "" {
-				roomID = client.CallRoomID
-			}
-			out, _ := json.Marshal(map[string]interface{}{
-				"type":    msgType,
-				"roomId":  roomID,
-				"from":    client.UserID,
-				"payload": msg["payload"],
-			})
-			ws.sendToUser(to, out)
+			ws.relayCallSignal(client, msgType, msg)
 
 		case "call_invite":
 			ws.handleCallInvite(client, msg)
 
 		case "call_invite_response":
 			ws.handleCallInviteResponse(client, msg)
-
-		// Legacy WebRTC message types — forward as-is with from injected
-		case "webrtc_offer", "webrtc_answer", "webrtc_candidate", "crane_hangup":
-			to, _ := msg["to"].(string)
-			if to != "" {
-				msg["from"] = client.UserID
-				out, _ := json.Marshal(msg)
-				ws.sendToUser(to, out)
-			} else {
-				chatID, _ := msg["chatId"].(string)
-				if chatID != "" {
-					ws.BroadcastToChat(chatID, message, client.UserID)
-				}
-			}
 		}
 	}
 }
@@ -395,7 +373,7 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		client.Send <- out
 		return
 	}
-	client.CallRoomID = roomID
+	ws.setCallRoom(client, roomID)
 	// Send joined confirmation with current peers
 	joined, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_joined",
@@ -436,6 +414,70 @@ func (ws *WSServer) mayJoinCallRoom(userID, roomID string) bool {
 	return member
 }
 
+// Лимиты сигналов звонка с одного подключения (#849): SDP — единицы КБ,
+// кандидатов за раз — десятки.
+const (
+	maxCallSignalBytes      = 64 << 10
+	maxCallSignalsPerSecond = 50
+)
+
+// allowCallSignal — не превышена ли частота сигналов этого подключения.
+func (c *Client) allowCallSignal(now time.Time) bool {
+	if now.Sub(c.signalWindow) >= time.Second {
+		c.signalWindow = now
+		c.signalCount = 0
+	}
+	c.signalCount++
+	return c.signalCount <= maxCallSignalsPerSecond
+}
+
+func (ws *WSServer) setCallRoom(client *Client, roomID string) {
+	ws.mu.Lock()
+	client.CallRoomID = roomID
+	ws.mu.Unlock()
+}
+
+// relayCallSignal — предложение, ответ или кандидат соединения (#849):
+// только если отправитель вошёл в комнату этим подключением, получатель —
+// участник той же комнаты, а roomId сообщения — она же. Доставка — только
+// подключениям получателя в этой комнате. Всё прочее молча отбрасывается:
+// ответ подсказал бы, есть ли у человека звонок.
+func (ws *WSServer) relayCallSignal(client *Client, msgType string, msg map[string]interface{}) {
+	to, _ := msg["to"].(string)
+	roomID, _ := msg["roomId"].(string)
+	current := client.CallRoomID // пишет только своя горутина
+	if to == "" || to == client.UserID || roomID == "" || roomID != current {
+		return
+	}
+	if !client.allowCallSignal(time.Now()) {
+		return
+	}
+	if !ws.callRooms.IsParticipant(roomID, client.UserID) || !ws.callRooms.IsParticipant(roomID, to) {
+		return
+	}
+	payload, err := json.Marshal(msg["payload"])
+	if err != nil || len(payload) > maxCallSignalBytes {
+		return
+	}
+	out, _ := json.Marshal(map[string]interface{}{
+		"type":    msgType,
+		"roomId":  roomID,
+		"from":    client.UserID,
+		"payload": json.RawMessage(payload),
+	})
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	for conn := range ws.clients[to] {
+		if conn.CallRoomID != roomID {
+			continue
+		}
+		select {
+		case conn.Send <- out:
+		default:
+		}
+	}
+}
+
 func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) {
 	roomID, _ := msg["roomId"].(string)
 	if roomID == "" {
@@ -471,7 +513,7 @@ func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
 		}
 		ws.inviteMu.Unlock()
 	}
-	client.CallRoomID = ""
+	ws.setCallRoom(client, "")
 }
 
 func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{}) {
