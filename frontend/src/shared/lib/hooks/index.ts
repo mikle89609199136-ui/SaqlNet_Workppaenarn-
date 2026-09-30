@@ -3,6 +3,7 @@ export * from './useClickOutside';
 export * from './useConnectionStatus';
 export * from './useDebounce';
 export * from './useEscapeKey';
+export * from './useFileDrop';
 export * from './useFullscreen';
 export * from './useIdle';
 export * from './useIsMobile';
