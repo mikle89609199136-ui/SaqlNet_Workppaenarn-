@@ -165,7 +165,7 @@ jobs:
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema|TestMarkReadOnRealSchema|TestReceiptsOnRealSchema|TestReceiptsMigrationBackfill|TestSharedMediaOnRealSchema' ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema|TestMarkReadOnRealSchema|TestReceiptsOnRealSchema|TestReceiptsMigrationBackfill|TestSharedMediaOnRealSchema|TestCallRoomAccessOnRealSchema|TestCallSignalOnRealSchema' ./internal/chat
 
       # Web Push: подписки устройств и получатели уведомлений (#717).
       - name: Run push integration tests

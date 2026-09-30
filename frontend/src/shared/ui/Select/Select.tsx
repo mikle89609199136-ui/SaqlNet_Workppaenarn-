@@ -37,6 +37,7 @@ interface Props {
   disabled?: boolean;
   required?: boolean;
   className?: string;
+  menuClassName?: string;
 }
 
 /**
@@ -60,6 +61,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
     disabled,
     required,
     className,
+    menuClassName,
   },
   ref
 ) {
@@ -262,6 +264,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
       {open && (
         <SelectMenu
           anchorRef={triggerRef}
+          className={menuClassName}
           id={listboxId}
           labelledBy={label ? labelId : undefined}
           menuRef={menuRef}

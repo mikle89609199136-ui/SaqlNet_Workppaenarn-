@@ -6,4 +6,7 @@ export { PeerConnectionManager } from './model/peerConnection';
 export { usePeerConnection } from './model/usePeerConnection';
 export { CallOverlay } from './ui/CallOverlay';
 export { CallProvider } from './ui/CallProvider';
+export { ActiveCallView } from './ui/ActiveCallView';
+export { MinimizedCallBar } from './ui/MinimizedCallBar';
+export { CallLobbyView } from './ui/CallLobbyView';
 export * from './model/types';
