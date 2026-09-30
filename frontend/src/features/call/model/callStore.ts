@@ -11,11 +11,12 @@ import {
   type ICallFsmContext,
   type TCallFsmAction,
 } from './callStateMachine';
-import { sendCallInvite, sendCallInviteResponse, sendCallLeave } from './callSignaling';
+import { sendCallInvite, sendCallInviteResponse, sendCallJoin, sendCallLeave } from './callSignaling';
 import type {
   IActiveCall,
   ICallCancelledPayload,
   ICallInviteResponsePayload,
+  IEndedCall,
   IIncomingCall,
   IOutgoingCall,
   TCallEndReason,
@@ -36,6 +37,7 @@ interface CallStoreState {
   incomingCall: IIncomingCall | null;
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
+  endedCall: IEndedCall | null;
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
@@ -101,7 +103,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         : null;
 
     const activeCall: IActiveCall | null =
-      (fsm.state === 'connecting' || fsm.state === 'active' || fsm.state === 'outgoing') &&
+      (fsm.state === 'connecting' ||
+        fsm.state === 'active' ||
+        fsm.state === 'reconnecting' ||
+        fsm.state === 'outgoing') &&
       fsm.roomId
         ? {
             roomId: fsm.roomId,
@@ -109,10 +114,25 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             kind: fsm.callKind,
             title: fsm.title ?? undefined,
             chatId: fsm.chatId ?? undefined,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            isCaller: fsm.isCaller ?? false,
           }
         : null;
 
-    return { fsm, incomingCall, outgoingCall, activeCall };
+    const endedCall: IEndedCall | null =
+      fsm.state === 'ended' && fsm.outgoingPhase == null && fsm.roomId
+        ? {
+            roomId: fsm.roomId,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            reason: fsm.endReason ?? 'completed',
+          }
+        : null;
+
+    return { fsm, incomingCall, outgoingCall, activeCall, endedCall };
   };
 
   const clearTimer = () => {
@@ -130,6 +150,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     incomingCall: null,
     outgoingCall: null,
     activeCall: null,
+    endedCall: null,
 
     attachSocket: (socket) => set({ socket }),
 
@@ -304,16 +325,27 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           roomId,
         });
 
-        if (socket?.isConnected && targetPeerId) {
+        if (socket?.isConnected) {
           const profile = useProfileStore.getState().user;
-          sendCallInvite(socket, {
-            to: targetPeerId,
+          sendCallJoin(socket, {
             roomId,
-            kind,
-            fromName: formatCallerName(profile),
-            fromAvatar: profile?.avatarUrl,
+            displayName: formatCallerName(profile),
+            avatarUrl: profile?.avatarUrl,
+            callKind: kind,
+            chatId,
             title,
           });
+
+          if (targetPeerId) {
+            sendCallInvite(socket, {
+              to: targetPeerId,
+              roomId,
+              kind,
+              fromName: formatCallerName(profile),
+              fromAvatar: profile?.avatarUrl,
+              title,
+            });
+          }
         }
 
         // Таймер ожидания ответа 60 секунд
@@ -392,6 +424,16 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           roomId: fsm.roomId,
           accepted: true,
         });
+
+        const profile = useProfileStore.getState().user;
+        sendCallJoin(socket, {
+          roomId: fsm.roomId,
+          displayName: formatCallerName(profile),
+          avatarUrl: profile?.avatarUrl,
+          callKind: fsm.callKind,
+          chatId: fsm.chatId ?? undefined,
+          title: fsm.title ?? undefined,
+        });
       }
     },
 
@@ -440,7 +482,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             set({ isMinimized: false });
           }
         }
-      }, 800);
+      }, 1200);
     },
 
     minimizeCall: () => set({ isMinimized: true }),

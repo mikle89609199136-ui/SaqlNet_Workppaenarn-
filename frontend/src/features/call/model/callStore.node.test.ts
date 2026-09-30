@@ -108,7 +108,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.roomId).toBe('existing-room');
   });
 
-  it('принимает входящий звонок и отправляет accept (call_join делегирован iframe)', () => {
+  it('принимает входящий звонок и отправляет accept и call_join', () => {
     useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
@@ -124,9 +124,10 @@ describe('useCallStore', () => {
       roomId: 'room-1',
       accepted: true,
     });
-    expect(mockSend).not.toHaveBeenCalledWith(
+    expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'call_join',
+        roomId: 'room-1',
       })
     );
     expect(useCallStore.getState().fsm.state).toBe('connecting');
@@ -187,6 +188,13 @@ describe('useCallStore', () => {
       fromAvatar: 'https://example.com/avatar.png',
       title: 'Тест',
     });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'call_join',
+        roomId: 'created-room-1',
+      })
+    );
 
     const state = useCallStore.getState();
     expect(state.fsm.state).toBe('outgoing');

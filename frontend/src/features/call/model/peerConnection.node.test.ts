@@ -518,6 +518,29 @@ describe('PeerConnectionManager', () => {
       );
     });
 
+    it('поддерживает ответ сервера с ключом iceServers вместо servers', async () => {
+      vi.spyOn(services.callService, 'getIceServers').mockResolvedValueOnce({
+        iceServers: [{ urls: 'stun:stun.backend.com:19302' }],
+      } as unknown as { servers: [] });
+
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-backend',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      expect(pc).not.toBeNull();
+      expect(pc.iceServers).toEqual([
+        {
+          urls: 'stun:stun.backend.com:19302',
+          username: undefined,
+          credential: undefined,
+        },
+      ]);
+    });
+
     it('вызывает onError, если getIceServers завершился с ошибкой сети', async () => {
       const onError = vi.fn();
       vi.spyOn(services.callService, 'getIceServers').mockRejectedValueOnce(
