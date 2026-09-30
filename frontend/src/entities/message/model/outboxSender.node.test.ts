@@ -176,7 +176,8 @@ describe('outboxSender', () => {
       'image',
       'Картинка',
       null,
-      []
+      [],
+      undefined
     );
     expect(getOutboxItem(tempId)).toBeUndefined();
   });

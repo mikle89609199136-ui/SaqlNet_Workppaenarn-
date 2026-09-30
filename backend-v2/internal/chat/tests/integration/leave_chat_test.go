@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -49,9 +51,10 @@ func TestLeaveChat(t *testing.T) {
 		assertUserSettingsExist(t, db, ctx, chatID, memberID, false)
 	})
 
-	// Contract: leaving is only defined for group chats. For a private chat
-	// the service must reject the call before touching any state, so every
-	// row (members, keys, settings) must remain exactly as seeded.
+	// Contract: leaving is only defined for group chats. For a participant
+	// of a private chat the service must reject the call before touching any
+	// state, so every row (members, keys, settings) must remain exactly as
+	// seeded.
 	t.Run("leave private chat returns ErrInvalidChatType without mutation", func(t *testing.T) {
 		ownerID := seedUser(t, db, ctx)
 		otherID := seedUser(t, db, ctx)
@@ -90,9 +93,10 @@ func TestLeaveChat(t *testing.T) {
 		assertMemberExists(t, db, ctx, chatID, memberID, true)
 	})
 
-	// A user who is not a member of the chat at all must be rejected. The
-	// service surfaces this as ErrForbidden (same error it returns when the
-	// DELETE affects zero rows), which maps to 403 at the HTTP layer.
+	// A user who is not a member of the chat at all must be rejected with
+	// ErrForbidden (maps to 403 at the HTTP layer). Membership is checked
+	// before the chat type, so outsiders cannot use LeaveChat to distinguish
+	// a private chat from a group chat by UUID.
 	t.Run("non-member leave returns ErrForbidden", func(t *testing.T) {
 		ownerID := seedUser(t, db, ctx)
 		nonMemberID := seedUser(t, db, ctx)
@@ -121,8 +125,8 @@ func TestLeaveChat(t *testing.T) {
 	})
 
 	// Idempotency guard: after a member leaves once, the second call must
-	// fail. At that point the member row no longer exists, so memberRole
-	// returns ErrForbidden before any mutation happens.
+	// fail. At that point the member row no longer exists, so the membership
+	// check returns ErrForbidden before any mutation happens.
 	t.Run("leave twice returns ErrForbidden", func(t *testing.T) {
 		ownerID := seedUser(t, db, ctx)
 		memberID := seedUser(t, db, ctx)
@@ -141,10 +145,11 @@ func TestLeaveChat(t *testing.T) {
 		assertMemberCount(t, db, ctx, chatID, 1)
 	})
 
-	// Order-of-checks contract: the service validates chat type before
-	// membership. A non-member attempting to leave a private chat must
-	// therefore get ErrInvalidChatType, not ErrForbidden.
-	t.Run("non-member leave on private chat returns ErrInvalidChatType", func(t *testing.T) {
+	// Information-disclosure contract: a non-member always gets ErrForbidden,
+	// regardless of the chat's type. Returning ErrInvalidChatType to an
+	// outsider would leak the chat's type to anyone who knows its UUID,
+	// letting them distinguish a private chat from a group chat.
+	t.Run("non-member leave on private chat returns ErrForbidden", func(t *testing.T) {
 		ownerID := seedUser(t, db, ctx)
 		otherID := seedUser(t, db, ctx)
 		nonMemberID := seedUser(t, db, ctx)
@@ -154,7 +159,7 @@ func TestLeaveChat(t *testing.T) {
 		})
 
 		err := service.LeaveChat(ctx, nonMemberID, chatID)
-		assert.ErrorIs(t, err, chat.ErrInvalidChatType)
+		assert.ErrorIs(t, err, chat.ErrForbidden)
 
 		assertMemberExists(t, db, ctx, chatID, ownerID, true)
 		assertMemberExists(t, db, ctx, chatID, otherID, true)

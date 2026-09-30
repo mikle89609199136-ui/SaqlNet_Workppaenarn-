@@ -1,6 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { QrLoginPanel } from '@/features/qr-login';
 import { services } from '@/services/serviceContainer';
 import {
   evaluatePasskeySlots,
@@ -17,6 +16,12 @@ interface Props {
   hasPasskey: boolean;
   onDone: () => void;
   footer?: ReactNode;
+  /**
+   * Вход по коду с уже вошедшего устройства. Панель QR — чужая фича, её
+   * подставляет тот, кто собирает экран (#863); принятый ключ она отдаёт
+   * в onKey.
+   */
+  renderQrLogin: (onKey: (masterKey: Uint8Array<ArrayBuffer> | null) => Promise<void>) => ReactNode;
 }
 
 type TView = 'password' | 'qr' | 'forgot';
@@ -28,7 +33,7 @@ type TView = 'password' | 'qr' | 'forgot';
  * облачный пароль, passkey и подтверждение с уже вошедшего устройства.
  * Сброс — последнее средство, и экран говорит о его цене прямо.
  */
-export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
+export function CloudPasswordUnlock({ hasPasskey, onDone, footer, renderQrLogin }: Props) {
   const { t } = useTranslation();
   const [view, setView] = useState<TView>('password');
   const [password, setPassword] = useState('');
@@ -111,13 +116,11 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
     >
       {view === 'qr' && (
         <div className="grid gap-4">
-          <QrLoginPanel
-            onConfirmed={async ({ masterKey }) => {
-              if (!masterKey) throw new Error(t('qrLogin.noKey', 'Устройство не передало ключ'));
-              await services.cryptoService.acceptMasterKey(masterKey);
-              onDone();
-            }}
-          />
+          {renderQrLogin(async (masterKey) => {
+            if (!masterKey) throw new Error(t('qrLogin.noKey', 'Устройство не передало ключ'));
+            await services.cryptoService.acceptMasterKey(masterKey);
+            onDone();
+          })}
           <Button className="w-full text-brand" onClick={() => setView('password')} variant="ghost">
             {t('back', 'Назад')}
           </Button>

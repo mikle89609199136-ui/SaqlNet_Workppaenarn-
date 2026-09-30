@@ -1,5 +1,4 @@
 export * from './useAudio';
-export * from './useAutoScrollToBottom';
 export * from './useClickOutside';
 export * from './useConnectionStatus';
 export * from './useDebounce';

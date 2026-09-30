@@ -1,11 +1,17 @@
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
 x-error: &error { $ref: '../components/responses.yaml#/Error' }
 
 /messages/read:
   post:
     tags: [Messages]
-    summary: Mark a chat as read
-    description: The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+    summary: Mark messages as read
+    description: >-
+      Marks the given messages of the chat as read (#506). The chat keeps one
+      read boundary (unread counts use it): it moves to the newest of the
+      counted messages — incoming and not deleted — and never moves back, so
+      newer messages stay unread. To mark the whole chat, use
+      POST /chats/{chatId}/read. A moved boundary is journaled: the authors see
+      readAt on their messages and get the receipts event (ReceiptEvent, #657).
     operationId: markMessagesRead
     security: *secure
     requestBody:
@@ -15,10 +21,10 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
           schema: { $ref: '../components/schemas.yaml#/MarkMessagesReadRequest' }
     responses:
       '200':
-        description: Chat marked as read
+        description: Messages marked as read
         content:
           application/json:
-            schema: { $ref: '../components/schemas.yaml#/Success' }
+            schema: { $ref: '../components/schemas.yaml#/ReadMark' }
       '400': *error
       '403': *error
 
@@ -132,7 +138,9 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '500': *error
   delete:
     tags: [Messages]
-    summary: Delete a message
+    summary: Delete a message for everyone
+    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    deprecated: true
     operationId: deleteMessage
     security: *secure
     responses:

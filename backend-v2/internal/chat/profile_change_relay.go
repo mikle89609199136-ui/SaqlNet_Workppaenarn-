@@ -71,6 +71,10 @@ func broadcastProfileChange(ctx context.Context, db *sql.DB, realtime userBroadc
 	if event.UserID == "" || event.Username == "" {
 		return fmt.Errorf("profile change event is incomplete")
 	}
+	// Имя в «печатает» (#866) может быть username: кеш участников — заново.
+	if cache, ok := realtime.(interface{ InvalidateUserProfile(string) }); ok {
+		cache.InvalidateUserProfile(event.UserID)
+	}
 
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT recipient_id::text

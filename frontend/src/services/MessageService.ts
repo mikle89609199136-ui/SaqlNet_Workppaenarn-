@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
+import { toPlayableVoiceBlob, type IVoiceMeta } from '@/shared/lib/voice';
 import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
@@ -18,6 +19,7 @@ import type {
   TMediaMessageType,
   TMessagesList,
   TMessageType,
+  TSharedKind,
 } from '@/types';
 import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
 import { trimRichText, type IMessageEntity } from '@/shared/lib/richText';
@@ -32,6 +34,16 @@ interface IPreparedSend {
 }
 
 const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
+
+/** Загрузка в сервисе медиа — единственный адрес вложения, который скачиваем (#871). */
+const OWN_MEDIA_URL =
+  /^\/api\/v2\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isOwnMediaUrl(url: string): boolean {
+  return OWN_MEDIA_URL.test(url);
+}
+
+const FOREIGN_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не из этого приложения';
 
 export class MessageService {
   private apiClient: ApiClient;
@@ -69,6 +81,39 @@ export class MessageService {
         )
       )
     );
+  }
+
+  /**
+   * Общее в переписке для профиля (#842): одна страница сообщений вида kind
+   * от новых к старым, расшифрованная так же, как лента. nextCursor —
+   * передать в before за следующей; нет — дальше ничего.
+   */
+  async fetchSharedPage(
+    chatId: string,
+    kind: TSharedKind,
+    before?: string,
+    limit: number = 24
+  ): Promise<{ messages: TMessagesList; nextCursor?: string }> {
+    const response = await this.apiClient.get<{ messages?: IMessageDto[]; nextCursor?: string }>(
+      API_ENDPOINTS.CHAT_SHARED(chatId),
+      { kind, limit, ...(before ? { before } : {}) }
+    );
+    const items = response.data.messages ?? [];
+    if (items.length === 0) return { messages: [], nextCursor: undefined };
+
+    const chatContext = await this.getChatContext(chatId, 'decryption');
+    const messages = await Promise.all(
+      items.map((item) => this.processMessageForDisplay(chatId, item, chatContext))
+    );
+    return { messages, nextCursor: response.data.nextCursor || undefined };
+  }
+
+  /** Сколько видимых сообщений ленты новее этого — чтобы догрузить ленту до него (#842). */
+  async getMessagePosition(chatId: string, messageId: string): Promise<number> {
+    const response = await this.apiClient.get<{ position: number }>(
+      API_ENDPOINTS.MESSAGE_POSITION(chatId, messageId)
+    );
+    return response.data.position;
   }
 
   /**
@@ -135,7 +180,8 @@ export class MessageService {
     replyTo: string | null,
     forwardedFrom: string | null,
     chatContext: IChatContext,
-    captionEntities: IMessageEntity[] = []
+    captionEntities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<IPreparedSend> {
     if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {
       throw new Error(`Unsupported media message type: ${mediaType}`);
@@ -150,9 +196,17 @@ export class MessageService {
 
     const plainCaption = trimRichText({ text: caption || '', entities: captionEntities });
     const trimmedCaption = plainCaption.text;
-    const sealedCaption = trimmedCaption
-      ? await this.encryptContent(chatId, trimmedCaption, chatContext, plainCaption.entities)
-      : { content: '', entities: [] };
+    // Голосовое без подписи — тоже конверт: в нём длительность и волна (#843).
+    const sealedCaption =
+      trimmedCaption || voice
+        ? await this.encryptContent(
+            chatId,
+            trimmedCaption,
+            chatContext,
+            plainCaption.entities,
+            voice
+          )
+        : { content: '', entities: [] };
     // Never copy the upload response wholesale into message metadata. Some
     // deployments return the ciphertext inside `encryption`, which makes the
     // subsequent /messages request as large as the file and trips the chat
@@ -170,7 +224,7 @@ export class MessageService {
         mediaType,
         mediaEncrypted: true,
         mediaEncryption,
-        isEncrypted: Boolean(trimmedCaption),
+        isEncrypted: Boolean(sealedCaption.content),
         ...(forwardedFrom ? { forwardedFrom } : {}),
       },
       toDisplay: async (sent) => {
@@ -182,15 +236,17 @@ export class MessageService {
           typeof URL.createObjectURL === 'function';
         const localUrl =
           canRegister && uploadedUrl
-            ? await resolveMediaObjectUrl(uploadedUrl, () =>
-                this.cryptoService.decryptMedia(chatId, encryptedMedia)
-              )
+            ? await resolveMediaObjectUrl(uploadedUrl, async () => {
+                const blob = await this.cryptoService.decryptMedia(chatId, encryptedMedia);
+                return mediaType === 'voice' ? toPlayableVoiceBlob(blob) : blob;
+              })
             : uploadedUrl;
 
         return {
           ...sent,
           content: trimmedCaption,
           entities: plainCaption.entities,
+          ...(voice ? { voice } : {}),
           mediaUrl: localUrl,
           mediaEncrypted: true,
           mediaEncryption,
@@ -227,7 +283,8 @@ export class MessageService {
     mediaType: TMediaMessageType,
     caption: string = '',
     replyTo: string | null = null,
-    captionEntities: IMessageEntity[] = []
+    captionEntities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<IMediaItem> {
     const chatContext = await this.getChatContext(chatId, 'media encryption');
     const prepared = await this.prepareMedia(
@@ -238,7 +295,8 @@ export class MessageService {
       replyTo,
       null,
       chatContext,
-      captionEntities
+      captionEntities,
+      voice
     );
     const [message] = await this.sendPrepared(chatId, [prepared]);
 
@@ -256,6 +314,7 @@ export class MessageService {
     // из конверта: серверное поле там всегда пустое.
     let entities = item.entities ?? [];
     let senderVerified: boolean | undefined;
+    let voice: IVoiceMeta | undefined;
     /* Причина, по которой сообщение не прочиталось, едет вместе с ним:
        подпись подставит тот, кто рисует, — он знает язык. */
     let undecryptable: TUndecryptableReason | undefined;
@@ -266,10 +325,20 @@ export class MessageService {
       if (decrypted.entities) entities = decrypted.entities;
       senderVerified = decrypted.senderVerified;
       undecryptable = decrypted.undecryptable;
+      // Только у голосового: у прочих метаданные из конверта не нужны.
+      if (item.type === 'voice') voice = decrypted.voice;
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return { ...item, content, entities, senderVerified, undecryptable, ...mediaPatch };
+    return {
+      ...item,
+      content,
+      entities,
+      senderVerified,
+      undecryptable,
+      ...(voice ? { voice } : {}),
+      ...mediaPatch,
+    };
   }
 
   async processPinnedMessageForDisplay(
@@ -348,12 +417,16 @@ export class MessageService {
     chatId: string,
     content: string,
     chatContext: IChatContext,
-    entities: IMessageEntity[] = []
+    entities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<{ content: string; entities: IMessageEntity[] }> {
-    if (!content || !this.isEncrypted(chatContext)) return { content, entities };
+    /* Метаданные голосового — только внутри шифровки (#843): в открытом
+       чате их нет вовсе, открыто их не отправляем. */
+    if (!this.isEncrypted(chatContext)) return { content, entities };
+    if (!content && !voice) return { content, entities };
 
     return {
-      content: await this.cryptoService.encryptMessage(chatId, content, entities),
+      content: await this.cryptoService.encryptMessage(chatId, content, entities, voice),
       entities: [],
     };
   }
@@ -378,6 +451,18 @@ export class MessageService {
     const mediaUrl = metadata.mediaUrl;
     if (!mediaUrl) return {};
 
+    /* Скачиваем только загрузки сервиса медиа (#871). Любой другой адрес —
+       чужой сервер или другой маршрут API — не трогаем: запрос ушёл бы
+       теми же средствами, что и запросы к API. */
+    if (!isOwnMediaUrl(mediaUrl)) {
+      return {
+        mediaUrl: null,
+        mediaEncrypted: Boolean(metadata.mediaEncrypted),
+        mediaUnavailable: true,
+        mediaUnavailableReason: FOREIGN_MEDIA_UNAVAILABLE,
+      };
+    }
+
     const mediaEncrypted = metadata.mediaEncrypted ?? false;
     if (!mediaEncrypted) {
       if (!MEDIA_MESSAGE_TYPES.has(item.type)) return {};
@@ -397,7 +482,9 @@ export class MessageService {
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
               const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
-              return this.cryptoService.decryptMedia(chatId, response.data);
+              const blob = await this.cryptoService.decryptMedia(chatId, response.data);
+              // Голосовое, которое браузер сам не проиграет, — перекодируется (#843).
+              return item.type === 'voice' ? toPlayableVoiceBlob(blob) : blob;
             })
           : mediaUrl;
 
@@ -456,9 +543,14 @@ export class MessageService {
     return message;
   }
 
-  async deleteMessage(messageId: string) {
-    const response = await this.apiClient.delete<IDeleteMessageResponse>(
-      API_ENDPOINTS.MESSAGE_BY_ID(messageId)
+  /**
+   * Удаляет сообщения одного чата (#840): `forEveryone` — у всех (только
+   * свои), иначе только у себя. До 100 за раз, всё или ничего.
+   */
+  async deleteMessages(chatId: string, messageIds: string[], forEveryone: boolean) {
+    const response = await this.apiClient.post<IDeleteMessageResponse>(
+      API_ENDPOINTS.CHAT_MESSAGES_DELETE(chatId),
+      { messageIds, forEveryone }
     );
     return response.data;
   }
@@ -471,12 +563,14 @@ export class MessageService {
    * при первом открытии чата кеш ещё пуст, и отметка не доходила до интерфейса.
    */
   async markAsRead(chatId: string, messageIds: string[]) {
-    const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_READ, {
-      chatId,
-      messageIds,
-    });
+    const response = await this.apiClient.post<{ readIds?: string[]; lastReadAt?: string }>(
+      API_ENDPOINTS.MESSAGE_READ,
+      { chatId, messageIds }
+    );
 
-    return { ...response.data, readIds: messageIds };
+    /* Прочитанными помечается то, что учёл сервер (#506): свои и удалённые
+       он пропускает. Старый ответ без readIds — отправленные, как раньше. */
+    return { ...response.data, readIds: response.data?.readIds ?? messageIds };
   }
 
   /**
@@ -560,7 +654,8 @@ export class MessageService {
         null,
         message.id,
         chatContext,
-        message.entities ?? []
+        message.entities ?? [],
+        message.type === 'voice' ? message.voice : undefined
       );
     }
 

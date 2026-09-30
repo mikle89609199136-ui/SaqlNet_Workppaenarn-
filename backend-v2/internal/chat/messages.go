@@ -55,18 +55,20 @@ const sendBodyLimit = 2 << 20
 // sendMessageItem — одно сообщение из отправки: то же тело, что раньше
 // принимала одиночная отправка.
 type sendMessageItem struct {
-	Entities        json.RawMessage `json:"entities"`
-	Content         *string         `json:"content"`
-	Type            string          `json:"type"`
-	ReplyTo         *string         `json:"replyTo"`
-	MediaURL        string          `json:"mediaUrl"`
-	MediaType       string          `json:"mediaType"`
-	FileName        string          `json:"fileName"`
-	SizeBytes       int64           `json:"sizeBytes"`
-	MediaEncrypted  bool            `json:"mediaEncrypted"`
-	MediaEncryption map[string]any  `json:"mediaEncryption"`
-	IsEncrypted     bool            `json:"isEncrypted"`
-	ForwardedFrom   *string         `json:"forwardedFrom"`
+	Entities       json.RawMessage `json:"entities"`
+	Content        *string         `json:"content"`
+	Type           string          `json:"type"`
+	ReplyTo        *string         `json:"replyTo"`
+	MediaURL       string          `json:"mediaUrl"`
+	MediaType      string          `json:"mediaType"`
+	FileName       string          `json:"fileName"`
+	SizeBytes      int64           `json:"sizeBytes"`
+	MediaEncrypted bool            `json:"mediaEncrypted"`
+	// MediaEncryption принимается для совместимости и не используется:
+	// конверт берётся из записи загрузки (#871).
+	MediaEncryption map[string]any `json:"mediaEncryption"`
+	IsEncrypted     bool           `json:"isEncrypted"`
+	ForwardedFrom   *string        `json:"forwardedFrom"`
 }
 
 // SendMessage — отправка сообщений в чат, всегда пачкой (#808).
@@ -203,9 +205,9 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 
 	var metadata map[string]any
 	if item.MediaURL != "" {
-		fileName, sizeBytes, err := h.service.ValidateMediaMetadata(r.Context(), item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
+		attachment, err := h.service.ValidateMediaMetadata(r.Context(), userID, item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
 		if errors.Is(err, ErrInvalidInput) {
-			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "fileName or sizeBytes does not match the uploaded file")
+			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must be the sender's own upload matching fileName and sizeBytes")
 			return OutgoingMessage{}, false
 		}
 
@@ -214,13 +216,15 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 			return OutgoingMessage{}, false
 		}
 
+		// Конверт шифрования — из записи загрузки, а не от клиента (#871):
+		// лишнее поле, присланное клиентом, открытым в сообщение не попадёт.
 		metadata = map[string]any{
 			"mediaUrl":        item.MediaURL,
 			"mediaType":       item.MediaType,
-			"fileName":        fileName,
-			"sizeBytes":       sizeBytes,
+			"fileName":        attachment.FileName,
+			"sizeBytes":       attachment.SizeBytes,
 			"mediaEncrypted":  item.MediaEncrypted,
-			"mediaEncryption": item.MediaEncryption,
+			"mediaEncryption": attachment.Encryption,
 			"isEncrypted":     item.IsEncrypted,
 		}
 	}
@@ -360,6 +364,27 @@ func (h *Handler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// deleteMessages — POST /chats/{chatId}/messages/delete (#840): выбранные
+// сообщения чата у всех или только у себя, до 100 за раз.
+func (h *Handler) deleteMessages(w http.ResponseWriter, r *http.Request, userID, chatID string) {
+	var input struct {
+		MessageIDs  []string `json:"messageIds"`
+		ForEveryone bool     `json:"forEveryone"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	lastMessage, err := h.service.DeleteMessages(r.Context(), userID, chatID, input.MessageIDs, input.ForEveryone)
+	if err != nil {
+		respondSuccess(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"success":     true,
+		"lastMessage": lastMessage,
+	})
+}
+
 func (h *Handler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("messageId")
@@ -433,8 +458,29 @@ func (h *Handler) MarkMessagesRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
-	respondSuccess(w, r, err)
+	// Отмечаются переданные сообщения, а не весь чат (#506): весь чат —
+	// POST /chats/{id}/read.
+	if len(input.MessageIDs) == 0 || len(input.MessageIDs) > MaxMarkReadIDs {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "messageIds must contain 1 to 500 ids")
+		return
+	}
+	for _, id := range input.MessageIDs {
+		if err := validate.Var(id, "uuid"); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid messageIds")
+			return
+		}
+	}
+
+	mark, err := h.service.MarkMessagesRead(r.Context(), current.ID, input.ChatID, input.MessageIDs)
+	if errors.Is(err, ErrInvalidMessageIDs) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_message_ids", "messageIds must be messages of this chat")
+		return
+	}
+	if err != nil {
+		respondSuccess(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, mark)
 }
 
 // parsePagination извлекает limit и offset из query-параметров запроса

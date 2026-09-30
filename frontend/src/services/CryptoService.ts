@@ -1,4 +1,5 @@
 import type { ApiClient } from '@/shared/api';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IMessageEntity } from '@/shared/lib/richText';
 import { STORAGE_KEYS } from '@/shared/config';
 import { resolveMembers } from '@/entities/chat/model/chatResolver';
@@ -99,6 +100,8 @@ export interface IDecryptedMessage {
   text: string;
   /** Форматирование из конверта v3 (#656). У прочих сообщений его нет. */
   entities?: IMessageEntity[];
+  /** Длительность и волна голосового (#843) — только из конверта. */
+  voice?: IVoiceMeta;
   /**
    * Почему сообщение не прочиталось. `undefined` — прочиталось.
    *
@@ -393,9 +396,11 @@ export class CryptoService {
   async encryptMessage(
     chatId: string,
     text: string,
-    entities: IMessageEntity[] = []
+    entities: IMessageEntity[] = [],
+    voice?: IVoiceMeta
   ): Promise<string> {
-    if (!text) return text;
+    // Голосовое без подписи — всё равно конверт: в нём длительность и волна.
+    if (!text && !voice) return text;
 
     if (!this.hasWebCrypto()) {
       throw new Error('Шифрование недоступно: откройте приложение по HTTPS');
@@ -418,7 +423,8 @@ export class CryptoService {
         fingerprint: identity.fingerprint,
         sign: (parts) => signParts(identity.ecdsaPrivate, parts),
       },
-      entities
+      entities,
+      voice
     );
   }
 
@@ -472,10 +478,16 @@ export class CryptoService {
           : { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };
       }
 
-      const { text, entities } = await decryptMessage(chatKey.key, chatId, senderId, envelope);
+      const { text, entities, voice } = await decryptMessage(
+        chatKey.key,
+        chatId,
+        senderId,
+        envelope
+      );
+      const extra = voice ? { voice } : {};
 
       // Своё сообщение проверять не у кого и незачем.
-      if (senderId === identity.accountId) return { text, entities };
+      if (senderId === identity.accountId) return { text, entities, ...extra };
 
       const senderVerified = envelope.sig
         ? await this.isSenderConfirmed(
@@ -484,7 +496,7 @@ export class CryptoService {
           )
         : false;
 
-      return { text, entities, senderVerified };
+      return { text, entities, senderVerified, ...extra };
     } catch (error) {
       console.warn('Не удалось расшифровать сообщение', error);
       return { text: KEY_UNAVAILABLE_PLACEHOLDER, undecryptable: 'keyUnavailable' };

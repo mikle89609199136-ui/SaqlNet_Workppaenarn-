@@ -1,9 +1,11 @@
 import { testI18n } from '@/test/harness/i18n';
 import { makeChat } from '@/test/fixtures';
-import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { useTypingStore } from '../../model/typingStore';
 import { ChatListItem } from './ChatListItem';
 
 const CHAT_ID = 'chat-open';
@@ -11,14 +13,22 @@ const CHAT_ID = 'chat-open';
 const ME = 'user-me';
 
 function renderRow(chat = makeChat({ id: CHAT_ID, title: 'Максим' }), openedPath = '/chats/other') {
+  // Подпись «кто печатает» ищет имя в кеше запросов (#837).
   return render(
-    <I18nextProvider i18n={testI18n}>
-      <MemoryRouter initialEntries={[openedPath]}>
-        <ChatListItem chat={chat} currentUserId={ME} />
-      </MemoryRouter>
-    </I18nextProvider>
+    <QueryClientProvider client={new QueryClient()}>
+      <I18nextProvider i18n={testI18n}>
+        <MemoryRouter initialEntries={[openedPath]}>
+          <ChatListItem chat={chat} currentUserId={ME} />
+        </MemoryRouter>
+      </I18nextProvider>
+    </QueryClientProvider>
   );
 }
+
+afterEach(() => {
+  // Стор общий для всех тестов (isolate: false).
+  act(() => useTypingStore.getState().clearTyping(CHAT_ID));
+});
 
 const last = (overrides: Record<string, unknown>) =>
   ({
@@ -100,19 +110,51 @@ describe('строка списка чатов', () => {
       expect(screen.getByText('привет')).toBeInTheDocument();
     });
 
-    it('галочки — только у своего сообщения и только когда сервер прислал статус', () => {
+    it('галочки своего последнего в личном чате: отправлено, доставлено, прочитано (#657)', () => {
+      const at = '2026-09-29T12:00:00.000Z';
+      // Второй цвет — на открытом чате, где строка залита акцентом: там
+      // «доставлено» и «прочитано» тоже должны различаться.
+      const cases = [
+        [
+          last({ senderId: ME }),
+          'Отправлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at }),
+          'Доставлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at, readAt: at }),
+          'Прочитано',
+          'text-brand',
+          'group-aria-[current=page]:text-out-read',
+        ],
+      ] as const;
+
+      for (const [lastMessage, label, color, currentColor] of cases) {
+        const { unmount } = renderRow(makeChat({ id: CHAT_ID, type: 'private', lastMessage }));
+        expect(screen.getByRole('img', { name: label })).toHaveClass(color, currentColor);
+        unmount();
+      }
+    });
+
+    it('у чужого последнего галочек нет, в группе своё — только «отправлено»', () => {
+      const at = '2026-09-29T12:00:00.000Z';
       const { unmount } = renderRow(
-        makeChat({
-          id: CHAT_ID,
-          type: 'private',
-          lastMessage: last({ senderId: ME, status: 'read' }),
-        })
+        makeChat({ id: CHAT_ID, type: 'private', lastMessage: last({ readAt: at }) })
       );
-      expect(screen.getByRole('img', { name: 'Прочитано' })).toHaveClass('text-brand');
+      expect(screen.queryByRole('img', { name: /Прочитано|Доставлено|Отправлено/ })).toBeNull();
       unmount();
 
-      renderRow(makeChat({ id: CHAT_ID, type: 'private', lastMessage: last({ senderId: ME }) }));
-      expect(screen.queryByRole('img', { name: /Прочитано|Отправлено/ })).not.toBeInTheDocument();
+      renderRow(
+        makeChat({ id: CHAT_ID, type: 'group', lastMessage: last({ senderId: ME, readAt: at }) })
+      );
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Прочитано' })).toBeNull();
     });
 
     it('чат без звука — значок после имени и приглушённый счётчик', () => {
@@ -145,6 +187,47 @@ describe('строка списка чатов', () => {
       const link = screen.getByRole('link');
       expect(link).not.toHaveAccessibleName(/непрочитанных/);
       expect(link).toHaveClass('aria-[current=page]:bg-brand-fill');
+    });
+  });
+
+  describe('кто печатает (#837)', () => {
+    it('в группе — имя печатающего вместо превью, цветом акцента', () => {
+      renderRow(makeChat({ id: CHAT_ID, type: 'group', title: 'Команда', lastMessage: last({}) }));
+
+      act(() => useTypingStore.getState().setTyping(CHAT_ID, 'u-3', 'Маша'));
+
+      const label = screen.getByText('Маша печатает…');
+      expect(label).toHaveClass('text-brand');
+      expect(screen.queryByText('привет')).not.toBeInTheDocument();
+    });
+
+    it('имя без запросов: автор последнего сообщения известен по строке', () => {
+      renderRow(makeChat({ id: CHAT_ID, type: 'group', title: 'Команда', lastMessage: last({}) }));
+
+      act(() => useTypingStore.getState().setTyping(CHAT_ID, 'u-2'));
+
+      expect(screen.getByText('Игорь печатает…')).toBeInTheDocument();
+    });
+
+    it('двое и незнакомый участник', () => {
+      renderRow(makeChat({ id: CHAT_ID, type: 'group', title: 'Команда' }));
+
+      act(() => useTypingStore.getState().setTyping(CHAT_ID, 'stranger'));
+      expect(screen.getByText('Участник печатает…')).toBeInTheDocument();
+
+      act(() => {
+        useTypingStore.getState().setTyping(CHAT_ID, 'u-3', 'Маша');
+        useTypingStore.getState().setTyping(CHAT_ID, 'u-4', 'Вера');
+      });
+      expect(screen.getByText('3 участника печатают…')).toBeInTheDocument();
+    });
+
+    it('в личном чате — без имени', () => {
+      renderRow(makeChat({ id: CHAT_ID, type: 'private', title: 'Игорь' }));
+
+      act(() => useTypingStore.getState().setTyping(CHAT_ID, 'u-2', 'Игорь'));
+
+      expect(screen.getByText('печатает...')).toBeInTheDocument();
     });
   });
 });

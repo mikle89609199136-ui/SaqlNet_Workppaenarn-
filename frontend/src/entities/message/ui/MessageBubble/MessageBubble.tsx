@@ -2,7 +2,7 @@ import { Avatar, Icon, NotoEmoji } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto } from '../../model/types';
-import { cn } from '@/shared/lib';
+import { cn, receiptState } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
 import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -202,19 +202,19 @@ export const MessageBubble = memo(
     const showAuthor = groupIn && isFirstInGroup && Boolean(authorName);
     const failed = mine && message.status === 'failed';
 
-    /* Статус своего сообщения, как в макете: часы — пока уходит, одна
-       галочка — отправлено, две — прочитано. Всё, что пришло с сервера и
-       не в очереди отправки, отправлено; «прочитано» бывает, только когда
-       о нём известно (личный чат). */
+    /* Статус своего сообщения (#657): часы — пока уходит, одна галочка —
+       отправлено, две приглушённые — доставлено, две цветные — прочитано.
+       Доставку и прочтение сообщает сервер; показываются они только в
+       личном чате — в группе у них нет одного значения. */
     const sending = message.status === 'pending' || message.status === 'uploading';
-    const delivery: 'sending' | 'sent' | 'read' | null = !mine
+    const delivery: 'sending' | 'sent' | 'delivered' | 'read' | null = !mine
       ? null
       : sending
         ? 'sending'
         : failed
           ? null
-          : message.status === 'read' && showDeliveryStatus
-            ? 'read'
+          : showDeliveryStatus
+            ? receiptState(message)
             : 'sent';
     const deliveryLabel = {
       sending:
@@ -222,6 +222,7 @@ export const MessageBubble = memo(
           ? t('uploading', 'Загрузка...')
           : t('sending', 'Отправка...'),
       sent: t('messageStatus.sent', 'Отправлено'),
+      delivered: t('messageStatus.delivered', 'Доставлено'),
       read: t('messageStatus.read', 'Прочитано'),
     };
 
@@ -241,10 +242,21 @@ export const MessageBubble = memo(
         {message.isEdited && <span>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
         {delivery && (
-          <span aria-label={deliveryLabel[delivery]} className="flex" role="img">
+          <span
+            aria-label={deliveryLabel[delivery]}
+            className="flex data-[delivery=delivered]:text-out-tick data-[delivery=read]:text-out-read data-[delivery=sent]:text-out-tick"
+            data-delivery={delivery}
+            role="img"
+          >
             <Icon
               className="size-4 stroke-2"
-              name={delivery === 'sending' ? 'clock' : delivery === 'read' ? 'checkCheck' : 'check'}
+              name={
+                delivery === 'sending'
+                  ? 'clock'
+                  : delivery === 'delivered' || delivery === 'read'
+                    ? 'checkCheck'
+                    : 'check'
+              }
             />
           </span>
         )}
@@ -328,7 +340,9 @@ export const MessageBubble = memo(
               isVoice && 'py-2 pr-3 pl-2',
               message.undecryptable && 'px-3.5 py-2.5',
               hasMessageMedia(message) && 'has-media',
-              isAudio && 'w-full',
+              /* Плееру аудиофайла нужна ширина под ползунок. Голосовое — по
+                 содержимому (кнопка, волна, время), в пределах максимума. */
+              isAudio && !isVoice && 'w-full',
               /* Выбранное и то, над которым открыто меню, — обводкой через
                  зазор цвета ленты, как в макете. */
               (isSelected || isActionTarget) &&

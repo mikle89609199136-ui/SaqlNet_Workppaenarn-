@@ -76,6 +76,9 @@ type LastMessagePreview struct {
 	SenderID   string          `json:"senderId,omitempty"`
 	SenderName string          `json:"senderName"`
 	Reactions  []Reaction      `json:"reactions"`
+	// DeliveredAt, ReadAt — у своего последнего сообщения (#657).
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Member struct {
@@ -118,11 +121,17 @@ type Message struct {
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
 	DeletedAt         *string `json:"deletedAt,omitempty"`
+	// DeliveredAt, ReadAt — только у своих сообщений (#657): когда граница
+	// другого участника впервые перешла сообщение. Пусто — ещё нет.
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// push — уведомления на устройства (#717); nil — выключены.
+	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
 }
@@ -151,54 +160,85 @@ func sanitizeMediaFilename(filename string) string {
 	return filename
 }
 
-// ValidateMediaMetadata canonicalises client metadata and verifies local,
-// unencrypted uploads against the media record before it is put in a message.
-func (s *Service) ValidateMediaMetadata(ctx context.Context, mediaURL, fileName string, sizeBytes int64, encrypted bool) (string, int64, error) {
+// mediaURLPrefix — единственный допустимый адрес вложения: загрузка в
+// сервисе медиа (#871).
+const mediaURLPrefix = "/api/v2/media/"
+
+// MediaAttachment — вложение сообщения, каким его подтвердил сервер (#871).
+type MediaAttachment struct {
+	FileName  string
+	SizeBytes int64
+	// Encryption — конверт шифрования из записи загрузки: он проверен при
+	// загрузке, клиентскому варианту не доверяем. nil — файл не зашифрован.
+	Encryption map[string]any
+}
+
+// ValidateMediaMetadata сверяет вложение с записью загрузки перед тем, как
+// положить его в сообщение (#871). Адрес — только загрузка самого
+// отправителя в сервисе медиа: чужой адрес получатель скачал бы теми же
+// средствами, что и запросы к API. Пересылка этого не ломает: клиент
+// перезаливает файл под ключ нового чата.
+func (s *Service) ValidateMediaMetadata(ctx context.Context, userID, mediaURL, fileName string, sizeBytes int64, encrypted bool) (MediaAttachment, error) {
 	if sizeBytes < 0 || sizeBytes > maxMediaSizeBytes {
-		return "", 0, ErrInvalidInput
+		return MediaAttachment{}, ErrInvalidInput
+	}
+	uploadID, ok := strings.CutPrefix(mediaURL, mediaURLPrefix)
+	if !ok || validate.Var(uploadID, "required,uuid") != nil {
+		return MediaAttachment{}, ErrInvalidInput
 	}
 	fileName = sanitizeMediaFilename(fileName)
-	uploadID := strings.TrimPrefix(mediaURL, "/api/v2/media/")
-	if uploadID == mediaURL || uploadID == "" || strings.Contains(uploadID, "/") {
-		return fileName, sizeBytes, nil
-	}
 
-	var storedName string
+	var storedName, uploaderID, storedEncryption string
 	var storedSize int64
 	var storedEncrypted bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT filename, size_bytes, is_encrypted
+		SELECT filename, size_bytes, is_encrypted, encryption_key_id, uploader_id::text
 		FROM media.uploads WHERE id = $1
-	`, uploadID).Scan(&storedName, &storedSize, &storedEncrypted)
+	`, uploadID).Scan(&storedName, &storedSize, &storedEncrypted, &storedEncryption, &uploaderID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, ErrInvalidInput
+		return MediaAttachment{}, ErrInvalidInput
 	}
 	if err != nil {
-		return "", 0, err
+		return MediaAttachment{}, err
 	}
+	// Чужая загрузка — как несуществующая: вызывающему незачем знать, что
+	// такой файл есть.
+	if uploaderID != userID || storedEncrypted != encrypted {
+		return MediaAttachment{}, ErrInvalidInput
+	}
+
 	storedName = sanitizeMediaFilename(storedName)
 	if storedName != "" {
 		if fileName != "" && fileName != storedName {
-			return "", 0, ErrInvalidInput
+			return MediaAttachment{}, ErrInvalidInput
 		}
 		fileName = storedName
 	}
-	if !storedEncrypted && !encrypted {
+	attachment := MediaAttachment{FileName: fileName, SizeBytes: sizeBytes}
+	if !storedEncrypted {
 		// A zero value keeps older clients working; the canonical stored size is
 		// still used. Any explicitly supplied non-zero value must match exactly.
 		if sizeBytes != 0 && sizeBytes != storedSize {
-			return "", 0, ErrInvalidInput
+			return MediaAttachment{}, ErrInvalidInput
 		}
-		sizeBytes = storedSize
+		attachment.SizeBytes = storedSize
+		return attachment, nil
 	}
-	return fileName, sizeBytes, nil
+	if storedEncryption != "" {
+		if err := json.Unmarshal([]byte(storedEncryption), &attachment.Encryption); err != nil {
+			return MediaAttachment{}, fmt.Errorf("stored media encryption: %w", err)
+		}
+	}
+	return attachment, nil
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
 	return &Service{db: db, ws: ws, presence: presence}
 }
 
-func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error {
+// hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
+// ответа на скрытое им сообщение показывается как на удалённое (#840).
+func (s *Service) hydrateMessageFields(ctx context.Context, viewerID string, msg *Message) error {
 	msg.SenderFirstName = msg.SenderName
 	if msg.ReplyTo != nil {
 		msg.ReplyToMessageID = msg.ReplyTo
@@ -209,7 +249,8 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 				LEFT JOIN auth.users au ON au.id = m.sender_id
 				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
-			`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+				  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3)
+			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -254,9 +295,9 @@ func (s *Service) hydrateMessageFields(ctx context.Context, msg *Message) error 
 	return nil
 }
 
-func (s *Service) hydrateMessagesFields(ctx context.Context, messages []Message) error {
+func (s *Service) hydrateMessagesFields(ctx context.Context, viewerID string, messages []Message) error {
 	for i := range messages {
-		if err := s.hydrateMessageFields(ctx, &messages[i]); err != nil {
+		if err := s.hydrateMessageFields(ctx, viewerID, &messages[i]); err != nil {
 			return err
 		}
 	}
@@ -364,6 +405,8 @@ func (s *Service) CallRooms() *CallRoomManager {
 }
 
 func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Chat, error) {
+	// Человек загрузил список чатов — пришедшее ему доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, "")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id::text, c.type,
 		       CASE WHEN c.type = 'private' THEN
@@ -393,6 +436,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -422,10 +466,11 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, entities, type
-		  FROM messages.messages
-		  WHERE chat_id = c.id AND deleted_at IS NULL
-		  ORDER BY created_at DESC
+		  SELECT lmm.id, lmm.sender_id, lmm.content, lmm.entities, lmm.type
+		  FROM messages.messages lmm
+		  WHERE lmm.chat_id = c.id AND lmm.deleted_at IS NULL
+		    AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = lmm.id AND hm.user_id = $1)
+		  ORDER BY lmm.created_at DESC
 		  LIMIT 1
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
@@ -447,6 +492,9 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		return nil, err
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
 		return nil, err
 	}
 	return chats, nil
@@ -482,6 +530,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
 		LEFT JOIN chats.members cm_all ON cm_all.chat_id = c.id
 		LEFT JOIN messages.messages m ON m.chat_id = c.id AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		LEFT JOIN LATERAL (
 		  SELECT au.id::text AS peer_id,
 			         COALESCE(up.first_name, au.first_name, '') AS first_name,
@@ -511,10 +560,11 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		  LIMIT 1
 		) peer ON c.type = 'private'
 		LEFT JOIN LATERAL (
-		  SELECT id, sender_id, content, entities, type
-		  FROM messages.messages
-		  WHERE chat_id = c.id AND deleted_at IS NULL
-		  ORDER BY created_at DESC
+		  SELECT lmm.id, lmm.sender_id, lmm.content, lmm.entities, lmm.type
+		  FROM messages.messages lmm
+		  WHERE lmm.chat_id = c.id AND lmm.deleted_at IS NULL
+		    AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = lmm.id AND hm.user_id = $1)
+		  ORDER BY lmm.created_at DESC
 		  LIMIT 1
 		) lm ON TRUE
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
@@ -538,6 +588,9 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		return Chat{}, ErrNotFound
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return Chat{}, err
+	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
 		return Chat{}, err
 	}
 	chat := chats[0]
@@ -879,7 +932,18 @@ func (s *Service) DeleteChat(ctx context.Context, actorID, chatID string) error 
 	}
 
 	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.chats WHERE id = $1`, chatID)
+	if err == nil {
+		s.invalidateMembers(chatID)
+	}
 	return err
+}
+
+// invalidateMembers — состав участников изменился: «печатает» (#866)
+// опирается на кеш участников и не должен видеть старый список.
+func (s *Service) invalidateMembers(chatID string) {
+	if cache, ok := s.ws.(interface{ InvalidateChatMembers(string) }); ok {
+		cache.InvalidateChatMembers(chatID)
+	}
 }
 
 func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member, error) {
@@ -1045,6 +1109,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 	if affected != 1 {
 		return ErrStateUnchanged
 	}
+	s.invalidateMembers(chatID)
 
 	if s.ws != nil {
 		payload, err := json.Marshal(MemberRemovedEvent{
@@ -1091,12 +1156,111 @@ func (s *Service) MarkRead(ctx context.Context, userID, chatID string) error {
 		}
 		return ErrForbidden
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO chats.user_chat_settings (user_id, chat_id, last_read_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (user_id, chat_id) DO UPDATE SET last_read_at = NOW()
-	`, userID, chatID)
-	return err
+	// Весь чат до текущего момента (#599); граница и время — в журнал (#657).
+	return s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, NOW()`, userID, chatID)
+}
+
+// ErrInvalidMessageIDs — среди отмечаемых прочитанными есть ID, которые не
+// сообщения этого чата (#506).
+var ErrInvalidMessageIDs = errors.New("message ids do not belong to the chat")
+
+// MaxMarkReadIDs — столько сообщений отмечается прочитанными за раз.
+const MaxMarkReadIDs = 500
+
+// ReadMark — итог отметки прочтения: какие сообщения учтены и где теперь
+// граница прочитанного чата.
+type ReadMark struct {
+	ReadIDs    []string `json:"readIds"`
+	LastReadAt string   `json:"lastReadAt"`
+}
+
+// MarkMessagesRead отмечает прочитанными переданные сообщения (#506). Модель —
+// отметка чата last_read_at, по ней считаются непрочитанные; граница —
+// самое новое из учтённых сообщений, а не «сейчас»: иначе одно увиденное
+// сообщение закрывало весь чат вместе с пришедшими позже. Граница не
+// сдвигается назад — запоздалая отметка старого сообщения ничего не меняет.
+//
+// Все ID обязаны быть сообщениями этого чата — иначе ErrInvalidMessageIDs,
+// и отметка не трогается. Свои и удалённые пропускаются: не ошибка, но и
+// не граница. Время прочтения каждого сообщения — журнал сдвигов (#657,
+// receipts.go).
+func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, messageIDs []string) (ReadMark, error) {
+	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			return ReadMark{}, err
+		}
+		return ReadMark{}, ErrForbidden
+	}
+	ids := uniqueStrings(messageIDs)
+	if len(ids) == 0 || len(ids) > MaxMarkReadIDs {
+		return ReadMark{}, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
+		FROM messages.messages
+		WHERE chat_id = $1 AND id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids))
+	if err != nil {
+		return ReadMark{}, err
+	}
+	defer rows.Close()
+	found := 0
+	readIDs := []string{}
+	var newest time.Time
+	for rows.Next() {
+		var id, senderID string
+		var deleted bool
+		var createdAt time.Time
+		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+			return ReadMark{}, err
+		}
+		found++
+		if deleted || senderID == userID {
+			continue
+		}
+		readIDs = append(readIDs, id)
+		if createdAt.After(newest) {
+			newest = createdAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ReadMark{}, err
+	}
+	if found != len(ids) {
+		return ReadMark{}, ErrInvalidMessageIDs
+	}
+
+	// Учесть нечего — граница прежняя. Иначе сдвиг вперёд и запись в журнал
+	// (#657): время прочтения — момент первого сдвига через сообщение.
+	if len(readIDs) > 0 {
+		if err := s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, $3::timestamptz`, userID, chatID, newest); err != nil {
+			return ReadMark{}, err
+		}
+	}
+	var lastReadAt sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT last_read_at::text FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2
+	`, userID, chatID).Scan(&lastReadAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	if err != nil {
+		return ReadMark{}, err
+	}
+	return ReadMark{ReadIDs: readIDs, LastReadAt: lastReadAt.String}, nil
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 type Ban struct {
@@ -1283,6 +1447,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.invalidateMembers(chatID)
 
 	// 9. Рассылка WebSocket-события
 	if s.ws != nil {
@@ -1437,6 +1602,9 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if memberRemoved {
+		s.invalidateMembers(chatID)
 	}
 
 	if s.ws != nil {
@@ -1845,6 +2013,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		}
 		return nil, ErrForbidden
 	}
+	// Человек загрузил ленту — пришедшее ему в этот чат доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, chatID)
 
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
@@ -1859,11 +2029,12 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $4)
 		ORDER BY m.created_at DESC
 		LIMIT $2 OFFSET $3
 		) recent_messages
 		ORDER BY created_at ASC
-	`, chatID, limit, offset)
+	`, chatID, limit, offset, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1875,7 +2046,10 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 	if err := s.hydrateMessagesReactions(ctx, userID, messages); err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesReceipts(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -2106,7 +2280,7 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	}
 
 	for i := range msgs {
-		if err := s.hydrateMessageFields(ctx, &msgs[i]); err != nil {
+		if err := s.hydrateMessageFields(ctx, userID, &msgs[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -2120,7 +2294,21 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 			})
 			s.ws.BroadcastToChat(chatID, payload, userID)
 		}
+		// Ушло в открытые сокеты получателей — доставлено (#657); автор
+		// видит это уже в ответе на отправку, а не только по событию.
+		ids := make([]string, len(msgs))
+		for i := range msgs {
+			ids[i] = msgs[i].ID
+		}
+		if s.markDeliveredOnSend(ctx, chatID, userID, ids) {
+			if err := s.hydrateMessagesReceipts(ctx, userID, msgs); err != nil {
+				slog.WarnContext(ctx, "load receipts after send failed", "error", err)
+			}
+		}
 	}
+	// Push — один на отправку, а не на каждое сообщение пачки: они всё
+	// равно сворачиваются в одно уведомление чата.
+	s.notifyMessage(chatID, userID)
 
 	return msgs, nil
 }
@@ -2217,7 +2405,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		}
 	}
 
-	if err := s.hydrateMessageFields(ctx, &msg); err != nil {
+	if err := s.hydrateMessageFields(ctx, userID, &msg); err != nil {
 		return Message{}, err
 	}
 
@@ -2274,11 +2462,11 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 		return nil, err
 	}
 
-	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID)
+	previousMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, &createdAt, messageID, "")
 	if err != nil {
 		return nil, err
 	}
-	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID)
+	lastMessage, err := s.loadMessageAfterDelete(ctx, tx, userID, chatID, nil, messageID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -2294,7 +2482,10 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 			"messageId":       messageID,
 			"previousMessage": forBroadcast(previousMessage),
 		})
-		s.ws.BroadcastToChat(chatID, payload, userID)
+		// Без исключения удалившего: его другие устройства тоже должны
+		// убрать сообщение (#840). Своё устройство событие про уже
+		// удалённое просто перечитает.
+		s.ws.BroadcastToChat(chatID, payload, "")
 	}
 
 	return lastMessage, s.hideSenderPhotos(ctx, userID, lastMessage)
@@ -2302,7 +2493,9 @@ func (s *Service) DeleteMessage(ctx context.Context, userID, messageID string) (
 
 // loadMessageAfterDelete returns either the newest message before the deleted
 // message (when before is non-nil), or the newest remaining message in the chat.
-func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string) (*Message, error) {
+// hiddenFor — чьи скрытые сообщения пропустить (#840); пусто — ничьи: так
+// считается соседнее сообщение для рассылки остальным участникам.
+func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID, chatID string, before *time.Time, messageID string, hiddenFor string) (*Message, error) {
 	var msg Message
 	var replyTo sql.NullString
 	var metadataBytes, reactionsBytes []byte
@@ -2334,9 +2527,10 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		WHERE m.chat_id = $1
 		  AND m.deleted_at IS NULL
 		  AND ($2::timestamptz IS NULL OR (m.created_at, m.id) < ($2, $3::uuid))
+		  AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $5))
 		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 1
-	`, chatID, before, messageID, userID).Scan(
+	`, chatID, before, messageID, userID, nullableUUID(hiddenFor)).Scan(
 		&msg.ID, &msg.ChatID, &msg.SenderID,
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
@@ -2948,8 +3142,9 @@ func (s *Service) ListPins(
 			ON up.user_id = m.sender_id
 		WHERE p.chat_id = $1
 			AND m.deleted_at IS NULL
+			AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
 		ORDER BY p.pinned_at DESC
-	`, chatID)
+	`, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -3008,7 +3203,7 @@ func (s *Service) ListPins(
 		return nil, err
 	}
 	for i := range pins {
-		if err := s.hydrateMessageFields(ctx, &pins[i].Message); err != nil {
+		if err := s.hydrateMessageFields(ctx, userID, &pins[i].Message); err != nil {
 			return nil, err
 		}
 	}
@@ -3159,6 +3354,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		  AND to_tsvector('simple', m.content) @@ plainto_tsquery('simple', $2)
 		ORDER BY m.created_at DESC
 		LIMIT $3
@@ -3171,7 +3367,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 	if err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -3206,6 +3402,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		LEFT JOIN messages.pins p ON p.message_id = m.id
 		WHERE f.user_id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $1)
 		ORDER BY f.created_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
@@ -3217,7 +3414,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 	if err != nil {
 		return nil, err
 	}
-	if err := s.hydrateMessagesFields(ctx, messages); err != nil {
+	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
@@ -3282,11 +3479,22 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		return ErrInvalidInput
 	}
 
-	// Leaving is only supported for group chats.
-	var chatType string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT type FROM chats.chats WHERE id = $1`, chatID,
-	).Scan(&chatType)
+	// Load the chat type and the caller's role in a single query so that a
+	// non-member cannot distinguish "chat does not exist" from "chat exists
+	// but is private" by probing LeaveChat with a known UUID. The LEFT JOIN
+	// returns a row whenever the chat exists; m.role is NULL for outsiders,
+	// which is how membership is detected below.
+	var (
+		chatType string
+		role     sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		LEFT JOIN chats.members m
+		  ON m.chat_id = c.id AND m.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType, &role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			slog.WarnContext(ctx, "chat not found",
@@ -3297,7 +3505,7 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 			)
 			return ErrNotFound
 		}
-		slog.ErrorContext(ctx, "failed to load chat type",
+		slog.ErrorContext(ctx, "failed to load chat type and member role",
 			"layer", "service",
 			"method", method,
 			"user_id", userID,
@@ -3307,6 +3515,21 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		return err
 	}
 
+	// Membership is checked before the chat type so that outsiders always
+	// receive ErrForbidden, regardless of whether the chat is private or
+	// group. Returning ErrInvalidChatType for a non-member would leak the
+	// chat's type to anyone who knows its UUID.
+	if !role.Valid {
+		slog.WarnContext(ctx, "leave attempted by non-member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrForbidden
+	}
+
+	// Leaving is only supported for group chats.
 	if chatType != "group" {
 		slog.WarnContext(ctx, "leave is not allowed for non-group chat",
 			"layer", "service",
@@ -3319,29 +3542,7 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	}
 
 	// The owner must transfer ownership before leaving.
-	role, err := s.memberRole(ctx, userID, chatID)
-	if err != nil {
-		if errors.Is(err, ErrForbidden) {
-			// Ожидаемый бизнес-отказ: пользователь не состоит в чате.
-			slog.WarnContext(ctx, "leave attempted by non-member",
-				"layer", "service",
-				"method", method,
-				"user_id", userID,
-				"chat_id", chatID,
-			)
-			return ErrForbidden
-		}
-		slog.ErrorContext(ctx, "failed to load member role",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"chat_id", chatID,
-			"error", err,
-		)
-		return err
-	}
-
-	if role == "owner" {
+	if role.String == "owner" {
 		slog.WarnContext(ctx, "owner must transfer ownership before leaving",
 			"layer", "service",
 			"method", method,
@@ -3410,28 +3611,18 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 	}
 	_ = rows.Close()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		_ = tx.Rollback()
-		return ErrForbidden
-	}
-	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if err := tx.Commit(); err != nil {
+	// Remove per-user chat data and membership atomically.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
+		chatID, userID,
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to delete encryption keys",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 
@@ -3449,7 +3640,7 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		return err
 	}
 
-	res, err = tx.ExecContext(ctx,
+	res, err := tx.ExecContext(ctx,
 		`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`,
 		chatID, userID,
 	)
@@ -3471,6 +3662,10 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 			"chat_id", chatID,
 		)
 		return ErrForbidden
+	}
+
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {

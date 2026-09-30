@@ -11,7 +11,8 @@ export const API_ENDPOINTS = {
   AUTH_2FA_ENABLE: '/auth/2fa/enable',
   AUTH_2FA_DISABLE: '/auth/2fa/disable',
   AUTH_RESEND_CODE: '/auth/resend-code',
-  AUTH_VALIDATE: '/auth/validate',
+  /** Обмен токена прежней версии на cookie сессии (#705), до уборки. */
+  AUTH_SESSION: '/auth/session',
   AUTH_PUBLIC_KEY: '/auth/public-key',
   AUTH_QR_TOKEN: '/auth/qr-token',
   AUTH_QR_TOKEN_BY_ID: (token: string) => `/auth/qr-token/${token}`,
@@ -40,6 +41,8 @@ export const API_ENDPOINTS = {
   CHAT_PIN: (chatId: string) => `/chats/${chatId}/pin`,
   CHAT_ARCHIVE: (chatId: string) => `/chats/${chatId}/archive`,
   CHAT_READ: (chatId: string) => `/chats/${chatId}/read`,
+  /** Удаление выбранных сообщений у всех или у себя (#840). */
+  CHAT_MESSAGES_DELETE: (chatId: string) => `/chats/${chatId}/messages/delete`,
 
   USER_SEARCH: '/users/search',
   USER_CHECK_USERNAME: '/users/check-username',
@@ -62,6 +65,9 @@ export const API_ENDPOINTS = {
   USER_PRIVACY_EXCEPTION: (rule: string, userId: string) =>
     `/users/privacy/exceptions/${rule}/${userId}`,
   USER_DEVICES: '/users/devices',
+  // Web Push (#717, #882).
+  PUSH_VAPID_KEY: '/users/push/vapid-key',
+  PUSH_SUBSCRIPTIONS: '/users/push/subscriptions',
   USER_DEVICE_REGISTER: '/users/devices/register',
   USER_DEVICE_DELETE: (sessionId: string) => `/users/devices/${sessionId}`,
   USER_DEVICES_TERMINATE_ALL: '/users/devices/terminate-all',
@@ -74,6 +80,10 @@ export const API_ENDPOINTS = {
   MESSAGE_REACTIONS: (messageId: string) => `/messages/${messageId}/reactions`,
 
   CHAT_PINS: (chatId: string) => `/chats/${chatId}/pins`,
+  // Общее в переписке по виду и позиция сообщения в ленте (#842).
+  CHAT_SHARED: (chatId: string) => `/chats/${chatId}/shared`,
+  MESSAGE_POSITION: (chatId: string, messageId: string) =>
+    `/chats/${chatId}/messages/${messageId}/position`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
   ENCRYPTION_KEYS: '/encryption/keys',
@@ -93,5 +103,7 @@ export const API_ENDPOINTS = {
   ADMIN_REPORT_RESOLVE: (reportId: string) => `/admin/reports/${reportId}/resolve`,
 
   CALL_ROOMS: '/calls/rooms',
+  CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
+  CALL_ICE_SERVERS: '/calls/ice-servers',
   EMOJIS: '/emojis',
 };

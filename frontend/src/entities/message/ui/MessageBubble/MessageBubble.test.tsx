@@ -553,8 +553,42 @@ describe('закреплённое сообщение (#170)', () => {
       expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
     });
 
+    it('доставлено — две приглушённые галочки, прочитано — две яркие (#657)', () => {
+      const at = '2026-09-29T12:00:00.000Z';
+      const { unmount } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Доставлено' })).toHaveAttribute(
+        'data-delivery',
+        'delivered'
+      );
+      unmount();
+
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at, readAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Прочитано' })).toHaveAttribute(
+        'data-delivery',
+        'read'
+      );
+    });
+
     it('«Прочитано» — только в личном чате и только когда известно', () => {
-      const read = makeMessage({ senderId: 'me', content: 'моё', status: 'read' });
+      const read = makeMessage({
+        senderId: 'me',
+        content: 'моё',
+        readAt: '2026-09-29T12:00:00.000Z',
+      });
 
       const { unmount } = renderBubble(
         <MessageBubble {...base} currentUserId="me" message={read} showDeliveryStatus />
@@ -622,5 +656,40 @@ describe('закреплённое сообщение (#170)', () => {
       expect(srcs()).toEqual(['/emoji/noto/1f44d.svg', '/emoji/noto/1f44d.webp']);
       window.matchMedia = originalMatchMedia;
     });
+  });
+});
+
+/* Ширина пузыря (#843): голосовое — по содержимому, аудиофайл — во всю
+   доступную ширину под ползунок; максимум у обоих общий. */
+describe('ширина пузыря с аудио', () => {
+  const bubbleOf = (type: 'voice' | 'audio') => {
+    const message = {
+      ...makeMessage({ id: `m-${type}`, content: '' }),
+      type,
+      mediaUrl: 'blob:audio',
+      voice: type === 'voice' ? { durationMs: 3000, waveform: [1, 2] } : undefined,
+    } as never;
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+    return container.querySelector('.message-bubble')!;
+  };
+
+  it('голосовое не растягивается, но ограничено максимумом', () => {
+    const bubble = bubbleOf('voice');
+    expect(bubble).toHaveClass('w-fit');
+    expect(bubble).not.toHaveClass('w-full');
+    expect(bubble.className).toMatch(/max-w-/);
+  });
+
+  it('аудиофайл — во всю ширину под ползунок', () => {
+    expect(bubbleOf('audio')).toHaveClass('w-full');
   });
 });

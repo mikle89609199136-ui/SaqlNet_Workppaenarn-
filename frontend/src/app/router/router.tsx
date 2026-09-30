@@ -11,9 +11,9 @@ import { clearAuthSession } from '@/features/auth';
 import { settingsSectionRoutes } from '@/pages/settings/settingsSectionRoutes';
 
 async function requireSession({ request }: { request: Request }) {
-  const token = useProfileStore.getState().token;
+  const signedIn = useProfileStore.getState().isAuth;
   const from = new URL(request.url).pathname;
-  if (!token) {
+  if (!signedIn) {
     throw redirect(`${REACT_ROUTES.LOGIN}?from=${encodeURIComponent(from)}`);
   }
 
@@ -50,14 +50,12 @@ async function requireSession({ request }: { request: Request }) {
 }
 
 function redirectIfAuthed() {
-  const token = useProfileStore.getState().token;
-  if (token) throw redirect(REACT_ROUTES.CHATS);
+  if (useProfileStore.getState().isAuth) throw redirect(REACT_ROUTES.CHATS);
   return null;
 }
 
 function redirectHome() {
-  const token = useProfileStore.getState().token;
-  return redirect(token ? REACT_ROUTES.CHATS : REACT_ROUTES.LOGIN);
+  return redirect(useProfileStore.getState().isAuth ? REACT_ROUTES.CHATS : REACT_ROUTES.LOGIN);
 }
 
 /**
@@ -183,11 +181,13 @@ export const router = createBrowserRouter([
                     Component: m.SettingsPage,
                   })),
                 children: [
-                  /* Без раздела в адресе показывать нечего: отправляем на
-                     первый, чтобы у открытого экрана всегда был свой адрес. */
+                  /* Без раздела в адресе: на ПК — первый раздел, чтобы у
+                     открытого экрана был свой адрес; на телефоне — меню
+                     настроек, это отдельный экран (#828). */
                   {
                     index: true,
-                    loader: () => redirect(ROUTES.SETTINGS_SECTION(DEFAULT_SETTINGS_SECTION)),
+                    lazy: () =>
+                      import('@/pages/settings').then((m) => ({ Component: m.SettingsIndex })),
                   },
                   ...settingsSectionRoutes,
                   /* Раздел, которого нет в списке, — не ошибка и не пустой

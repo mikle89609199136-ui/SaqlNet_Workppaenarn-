@@ -471,6 +471,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "archive", r.Method == http.MethodPost))
 	case suffix == "/read" && r.Method == http.MethodPost:
 		respondSuccess(w, r, h.service.MarkRead(r.Context(), current.ID, chatID))
+	case suffix == "/messages/delete" && r.Method == http.MethodPost:
+		h.deleteMessages(w, r, current.ID, chatID)
 	default:
 		methodNotAllowed(w, r)
 	}

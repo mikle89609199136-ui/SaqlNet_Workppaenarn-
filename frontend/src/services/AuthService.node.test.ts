@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from './AuthService';
 
 describe('AuthService.logoutAll', () => {
@@ -20,5 +20,74 @@ describe('AuthService.logoutAll', () => {
 
     await expect(service.logoutAll()).rejects.toBe(failure);
     expect(clearProfile).not.toHaveBeenCalled();
+  });
+});
+
+/* Выход — push этому устройству больше не нужен (#882). */
+describe('AuthService: push при выходе', () => {
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/device';
+
+  function withSubscription() {
+    const unsubscribe = vi.fn(async () => true);
+    const subscription = { endpoint, unsubscribe };
+    vi.stubGlobal('navigator', {
+      serviceWorker: {
+        getRegistration: async () => ({
+          pushManager: { getSubscription: async () => subscription },
+        }),
+      },
+    });
+    return unsubscribe;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('выход: сервер забывает подписку, пока токен действует; браузер отписывается', async () => {
+    const unsubscribe = withSubscription();
+    const calls: string[] = [];
+    const post = vi.fn(async () => {
+      calls.push('logout');
+      return { data: {} };
+    });
+    const del = vi.fn(async () => {
+      calls.push('delete-subscription');
+      return { data: {} };
+    });
+    const service = new AuthService({ post, delete: del }, { clearProfile: vi.fn() });
+
+    await service.logout();
+
+    expect(del).toHaveBeenCalledWith('/users/push/subscriptions', { endpoint });
+    expect(calls).toEqual(['delete-subscription', 'logout']);
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('выход со всех устройств: подписки удалил сервер — браузер только отписывается', async () => {
+    const unsubscribe = withSubscription();
+    const del = vi.fn();
+    const service = new AuthService(
+      { post: vi.fn().mockResolvedValue({ data: {} }), delete: del },
+      { clearProfile: vi.fn() }
+    );
+
+    await service.logoutAll();
+
+    expect(del).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('сбой удаления на сервере не мешает выйти', async () => {
+    withSubscription();
+    const clearProfile = vi.fn();
+    const service = new AuthService(
+      {
+        post: vi.fn().mockResolvedValue({ data: {} }),
+        delete: vi.fn().mockRejectedValue(new Error('500')),
+      },
+      { clearProfile }
+    );
+
+    await service.logout();
+    expect(clearProfile).toHaveBeenCalled();
   });
 });

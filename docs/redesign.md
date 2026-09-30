@@ -23,7 +23,7 @@
 
 | Задача | Что переделываем |
 | --- | --- |
-| #816 Токены: палитры, акценты, контраст, шрифт эмодзи | `app/styles/tokens/*`, `docs/ui-kit.tokens.json` |
+| #816 Токены: палитры, акценты, контраст, шрифт эмодзи | `app/styles/tokens/*` |
 | #817 Компоненты `shared/ui` по дизайн-системе | `Button`, `Input`, `Field`, `SegmentedControl`, `ContextMenu`, `Modal`, `Banner`, `Toast`, `Badge`, `Avatar`, `Chip`, `Skeleton`, `Switch`, `Radio`, `Tooltip` |
 
 ### Этап 1 — основной экран

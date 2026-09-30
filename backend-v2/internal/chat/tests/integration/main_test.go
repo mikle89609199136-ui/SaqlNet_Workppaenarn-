@@ -1,3 +1,5 @@
+//go:build integration
+
 // Package integration contains integration tests for the chat service.
 //
 // All tests in this package share a single PostgreSQL container, started once

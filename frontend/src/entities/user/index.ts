@@ -9,6 +9,7 @@ export * from './model/securityQueries';
 export * from './model/blockedUsersQuery';
 export * from './model/privacyExceptionsQuery';
 export * from './model/useApplyPreferences';
+export * from './model/appearanceStore';
 export * from './model/userKeys';
 export * from './model/checkUsernameQuery';
 export * from './model/userStatusQuery';

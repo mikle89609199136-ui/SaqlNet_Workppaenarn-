@@ -50,6 +50,12 @@ type Client struct {
 	closeOnce     sync.Once
 	CallRoomID    string // non-empty while in a call room
 	ConnectionID  string // уникальный ID WS-соединения для presence
+
+	// Push (#717): подписка этого устройства и видно ли приложение. На
+	// устройство, где приложение на экране, push не отправляется. Пишет
+	// readPump, читают рассылки — под ws.mu.
+	pushSubscriptionID string
+	visible            bool
 }
 
 // close безопасно закрывает канал done ровно один раз, сигнализируя фоновым
@@ -77,6 +83,14 @@ type WSServer struct {
 	stop           chan struct{}
 	stopped        chan struct{}
 	stopOnce       sync.Once
+
+	// «Печатает» (#866): кеш участников и ограничение частоты, см. typing.go.
+	typingOnce          sync.Once
+	typingState         *typingState
+	typingMembersLoader chatMembersLoader // подмена загрузки в тестах; nil — из базы
+	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
+
+	push pushNotifier // push о звонках (#717); nil — выключен
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -167,15 +181,17 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		header := r.Header.Get("Authorization")
-		if strings.HasPrefix(header, "Bearer ") {
-			token = strings.TrimPrefix(header, "Bearer ")
-		}
-	}
+	// Токен: cookie сессии браузера (#705) или заголовок Bearer. В адресе
+	// (?token=) — больше нет: адреса попадают в журналы.
+	token, source := authctx.TokenFromRequest(r)
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
+		return
+	}
+	// Cookie браузер подставляет сам, и в сокет с ней мог бы подключиться
+	// чужой сайт — только свой или точно разрешённый адрес, без "*".
+	if source == authctx.TokenCookie && !authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin")) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
 	}
 
@@ -306,18 +322,10 @@ func (ws *WSServer) readPump(client *Client) {
 
 		case "typing":
 			chatID, _ := msg["chatId"].(string)
-			if chatID != "" {
-				var isMember bool
-				if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, client.UserID).Scan(&isMember); err != nil {
-					break
-				}
-				if isMember {
-					msg["userId"] = client.UserID
-					msg["senderId"] = client.UserID
-					typingMessage, _ := json.Marshal(msg)
-					ws.BroadcastToChat(chatID, typingMessage, client.UserID)
-				}
-			}
+			ws.handleTyping(client.UserID, chatID)
+
+		case "client_state":
+			ws.handleClientState(client, msg)
 
 		case "call_join":
 			ws.handleCallJoin(client, msg)
@@ -428,6 +436,7 @@ func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
 		go ws.saveCallMessage(lr.Snapshot)
+		ws.notifyMissedCall(roomID, lr.Snapshot)
 		ws.inviteMu.Lock()
 		for uid, inv := range ws.pendingInvites {
 			var tmp map[string]interface{}
@@ -484,6 +493,8 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 		"title":      msg["title"],
 	})
 	ws.sendToUser(to, invite)
+	// Push — на устройства, где приложение не на экране (#717).
+	ws.notifyCallInvite(roomID, client.UserID, to, strOrDefault(msg["kind"], "video"))
 	// Store for offline delivery
 	ws.inviteMu.Lock()
 	ws.pendingInvites[to] = invite
@@ -632,33 +643,35 @@ func (ws *WSServer) writePump(client *Client) {
 	}
 }
 
+// BroadcastToChat рассылает сообщение участникам чата, кроме excludeUserID.
+// Если excludeUserID задан, он сам должен быть участником — иначе рассылки
+// нет. Участники читаются одним запросом до блокировки: ws.mu не держится
+// на базе, и подключения с отключениями не ждут чужих запросов (#866).
 func (ws *WSServer) BroadcastToChat(chatID string, message []byte, excludeUserID string) {
-	if excludeUserID != "" {
-		var isMember bool
-		if err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`, chatID, excludeUserID).Scan(&isMember); err != nil || !isMember {
-			return
-		}
-	}
-
 	rows, err := ws.db.Query(`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-
+	var recipients []string
+	senderIsMember := excludeUserID == ""
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
 			continue
 		}
 		if memberID == excludeUserID {
+			senderIsMember = true
 			continue
 		}
-		ws.sendToUserLocked(memberID, message)
+		recipients = append(recipients, memberID)
 	}
+	failed := rows.Err() != nil
+	_ = rows.Close()
+	if failed || !senderIsMember {
+		return
+	}
+
+	ws.BroadcastToUsers(recipients, message)
 }
 
 func (ws *WSServer) BroadcastToUsers(userIDs []string, message []byte) {

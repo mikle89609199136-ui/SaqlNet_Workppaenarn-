@@ -32,6 +32,7 @@ LEFT JOIN auth.users au ON au.id = m.sender_id
 LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 LEFT JOIN messages.pins p ON p.message_id = m.id
 WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $4)
 ORDER BY m.created_at DESC
 LIMIT $2 OFFSET $3
 ) recent_messages
@@ -79,7 +80,7 @@ func TestListMessages_Success(t *testing.T) {
 	expectMembershipAndChat(mock, true, false)
 
 	mock.ExpectQuery(selectListMessagesSQL).
-		WithArgs(listMessagesChatID, 50, 0).
+		WithArgs(listMessagesChatID, 50, 0, listMessagesUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
 	svc := NewService(db, nil, nil)
 	_, err = svc.ListMessages(context.Background(), listMessagesUserID, listMessagesChatID, 50, 0)

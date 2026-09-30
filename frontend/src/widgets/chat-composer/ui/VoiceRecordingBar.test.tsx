@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi } from 'vitest';
-import { VoiceLockHint, VoiceRecordingBar } from './VoiceRecordingBar';
+import { VoiceRecordingBar } from './VoiceRecordingBar';
 
 function renderBar(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>);
@@ -43,18 +43,5 @@ describe('полоса записи голосового', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Отменить запись' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
-  });
-
-  it('замок поднимается за пальцем и загорается акцентом наверху', () => {
-    const { container, rerender } = renderBar(<VoiceLockHint progress={0.5} />);
-    const tower = container.firstElementChild as HTMLElement;
-    expect(tower.style.transform).toBe('translateY(-18px)');
-
-    rerender(
-      <I18nextProvider i18n={testI18n}>
-        <VoiceLockHint progress={1} />
-      </I18nextProvider>
-    );
-    expect(tower.querySelector('svg')).toHaveClass('text-brand');
   });
 });

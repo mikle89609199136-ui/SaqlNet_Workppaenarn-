@@ -85,11 +85,6 @@
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
 }
-@keyframes pulse-green {
-  0%   { transform: scale(0.9); opacity: 0.5; }
-  50%  { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.5; }
-}
 /* --- Лента: эффекты из макета (#820) ------------------------------- */
 
 /* Скрытый текст. Закрытый — «пыль»: три слоя точек цвета --dust плывут
@@ -122,6 +117,9 @@
 @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes lock-bounce { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-3px); } }
 @keyframes rec-wave { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+/* Круг записи на телефоне (#843) вырастает из кнопки. Анимируется `scale`,
+   а не transform: transform круга занят смещением за пальцем. */
+@keyframes voice-circle-in { from { scale: 0.55; opacity: 0.5; } to { scale: 1; opacity: 1; } }
 
 /* Голосовое при воспроизведении: столбики волны «дышат». */
 @keyframes voice-bar { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
@@ -162,6 +160,32 @@
   }
 
   body::before { display: none; }
+
+  /* Сенсорные экраны: долгое нажатие открывает наше меню (сообщение,
+     строка списка), а браузер на тех же ~0,5 с начинал выделять текст,
+     показывать своё меню «Скопировать / Поделиться» и предпросмотр ссылок. Как в мессенджерах —
+     без системного выделения: текст сообщения копируется из его меню.
+     Поля ввода — как были: там выделение нужно. */
+  @media (hover: none) and (pointer: coarse) {
+    body {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    /* Строка чата — ссылка: iOS Safari по долгому нажатию показывал
+       предпросмотр страницы («Открыть в новой вкладке…») вместо нашего
+       меню. contextmenu там не приходит, гасится только этим свойством —
+       явно на ссылках и картинках, не полагаясь на наследование. */
+    a, img {
+      -webkit-touch-callout: none;
+    }
+    input, textarea, [contenteditable]:not([contenteditable="false"]),
+    [contenteditable]:not([contenteditable="false"]) * {
+      -webkit-user-select: text;
+      user-select: text;
+      -webkit-touch-callout: default;
+    }
+  }
 
 }
 
@@ -216,33 +240,6 @@
 	}
 
 /* =========================================================
-   Components — Contacts / Settings / Create-group  (was features.css)
-   ========================================================= */
-@layer components {
-
-  .settings-page {
-    @apply w-full box-border;
-    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(90px + env(safe-area-inset-bottom, 0px));
-    @media (min-width: 768px) { @apply h-full overflow-y-auto; padding: 48px 64px; min-height: unset; }
-  }
-  .settings-header {
-    @apply flex items-center gap-[14px] mb-6;
-    & h1 {
-      @apply m-0 text-[22px] font-bold;
-      @media (min-width: 768px) { @apply text-[30px] font-extrabold; }
-    }
-    @media (min-width: 768px) { @apply mb-9; }
-  }
-  /* Group info modal */
-  .close-btn {
-    @apply w-8 h-8 rounded-full text-white text-base cursor-pointer flex items-center justify-center transition-colors duration-200 border-none;
-    background: var(--color-line);
-    &:hover { background: var(--color-line); }
-  }
-  .group-info-body { @apply p-0 overflow-y-auto flex-1; }
-}
-
-/* =========================================================
    Components — Call overlay  (was features.css)
    ========================================================= */
 @layer components {
@@ -262,31 +259,6 @@
     &:hover { transform: scale(1.1); }
     &.accept { background: var(--color-ok); color: white; box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ok) 40%, transparent); }
     &.reject  { background: var(--color-danger); color: white; box-shadow: 0 8px 24px color-mix(in srgb, var(--color-danger) 40%, transparent); }
-  }
-  .fullscreen-call-overlay { @apply fixed inset-0 z-[9998] bg-black; & iframe { @apply w-full h-full border-0; } }
-  .fullscreen-call-overlay.is-minimized {
-    @apply pointer-events-none overflow-hidden;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-  }
-  .minimized-call-bar {
-    @apply fixed left-1/2 -translate-x-1/2 z-[9997] flex items-center justify-between cursor-pointer;
-    top: calc(10px + env(safe-area-inset-top, 0px)); width: min(90%,450px);
-    background: var(--color-sheet); border: 1px solid var(--color-line);
-    padding: 12px 18px; border-radius: 16px; backdrop-filter: blur(20px); box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  }
-  .minimized-call-info { @apply flex items-center gap-[10px] text-sm font-medium; }
-  .call-pulse-dot { @apply w-[10px] h-[10px] bg-[var(--color-ok)] rounded-full; animation: pulse-green 1.5s infinite; }
-  .minimized-call-actions { @apply flex items-center gap-[10px]; }
-  .minimized-return-btn {
-    @apply border-0 rounded-lg text-white text-xs font-semibold cursor-pointer;
-    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2)); padding: 6px 12px;
-  }
-  .minimized-end-btn {
-    @apply border-0 w-6 h-6 rounded-full text-white cursor-pointer flex items-center justify-center text-sm;
-    background: var(--color-line);
-    &:hover { background: color-mix(in srgb, var(--color-danger) 22%, transparent); color: var(--color-danger); }
   }
 }
 
@@ -313,7 +285,6 @@
     color: inherit;
     & .message-media { margin-bottom: 7px; }
   }
-  .message-media-sticker { background: transparent; width: min(180px,100%); }
   .message-media-file, .message-media-unavailable {
     @apply block max-w-full mb-[7px] rounded-lg text-white;
     padding: 9px 10px; background: rgba(0,0,0,0.2); overflow-wrap: anywhere;

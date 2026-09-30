@@ -61,7 +61,7 @@ describe('обзор «Конфиденциальности» (#786)', () => {
       privacy: { lastSeen: 'all', photoVisibility: 'nobody', forwards: 'all' },
     });
 
-    const row = (name: RegExp) => screen.findByRole('button', { name });
+    const row = (name: RegExp) => screen.findByRole('link', { name });
     await waitFor(async () =>
       expect(await row(/Последняя активность/)).toHaveTextContent('Все (−2)')
     );
@@ -73,12 +73,11 @@ describe('обзор «Конфиденциальности» (#786)', () => {
     serveExceptions([]);
     renderSettings({ section: 'privacy', privacy: {} });
 
-    await userEvent.click(await screen.findByRole('button', { name: /Фото профиля/ }));
+    await userEvent.click(await screen.findByRole('link', { name: /Фото профиля/ }));
 
-    expect(await screen.findByRole('heading', { name: 'Фото профиля' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Кто видит моё фото' })).toHaveAccessibleDescription(
-      'При «Никто» другие увидят вместо фото букву или узор.'
-    );
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Кто видит моё фото' })
+    ).toHaveAccessibleDescription('При «Никто» другие увидят вместо фото букву или узор.');
   });
 });
 
@@ -99,14 +98,20 @@ describe('подстраница правила (#786)', () => {
     );
     renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: { lastSeen: 'all' } });
 
-    const never = await screen.findByRole('region', { name: 'Никогда не разрешать' });
+    /* Группа «Исключения» по макету (#828); какой список в ней — говорит
+       ряд «добавить». */
+    const never = await screen.findByRole('region', { name: 'Исключения' });
+    expect(
+      within(never).getByRole('button', { name: /^Никогда не разрешать/ })
+    ).toBeInTheDocument();
     expect(await within(never).findByText('Анна')).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Всегда разрешать' })).not.toBeInTheDocument();
+    expect(within(never).queryByRole('button', { name: /^Всегда разрешать/ })).toBeNull();
 
-    const group = screen.getByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
+    const group = screen.getByRole('radiogroup', { name: 'Кто видит, когда я был(а) в сети' });
     await userEvent.click(within(group).getByRole('radio', { name: 'Никто' }));
 
-    const always = await screen.findByRole('region', { name: 'Всегда разрешать' });
+    const always = screen.getByRole('region', { name: 'Исключения' });
+    await within(always).findByRole('button', { name: /^Всегда разрешать/ });
     expect(await within(always).findByText('Вера')).toBeInTheDocument();
     expect(within(always).queryByText('Анна')).not.toBeInTheDocument();
   });
@@ -131,7 +136,7 @@ describe('подстраница правила (#786)', () => {
       currentUser: makeUser({ id: 'me' }),
     });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Добавить людей' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^Никогда не разрешать/ }));
     await userEvent.type(screen.getByRole('searchbox', { name: 'Найти человека' }), 'ве');
 
     const add = await screen.findByRole('button', { name: 'Добавить Вера' });
@@ -139,7 +144,7 @@ describe('подстраница правила (#786)', () => {
     expect(screen.queryByRole('button', { name: 'Добавить Анна' })).not.toBeInTheDocument();
     await userEvent.click(add);
 
-    const never = screen.getByRole('region', { name: 'Никогда не разрешать' });
+    const never = screen.getByRole('region', { name: 'Исключения' });
     expect(await within(never).findByText('Вера')).toBeInTheDocument();
     expect(calls).toEqual(['put photoVisibility vera deny']);
   });
@@ -150,7 +155,7 @@ describe('подстраница правила (#786)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Убрать Анна' }));
 
-    expect(await screen.findByText('Пока никого')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Анна')).not.toBeInTheDocument());
     expect(calls).toEqual(['delete forwards anna']);
   });
 

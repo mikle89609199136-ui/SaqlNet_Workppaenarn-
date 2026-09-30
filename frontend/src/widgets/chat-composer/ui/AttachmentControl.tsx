@@ -80,6 +80,8 @@ export const AttachmentControl = ({ inputRef, onChange, isSending }: Props) => {
         accept={SOURCES[2].accept}
         aria-label={t('attachFile', 'Прикрепить файл')}
         className="hidden"
+        // Несколько файлов за раз: выбранное добавляется к приложенному.
+        multiple
         onChange={onChange}
         ref={inputRef}
         type="file"

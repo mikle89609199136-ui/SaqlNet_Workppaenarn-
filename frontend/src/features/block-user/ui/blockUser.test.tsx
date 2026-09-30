@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { chatKeys } from '@/entities/chat';
 import { clearToasts, getToasts } from '@/shared/ui';
 import { makeChat } from '@/test/fixtures';
@@ -169,12 +169,12 @@ describe('кнопка в профиле (#727)', () => {
 describe('экран «Чёрный список» (#727)', () => {
   it('показывает заблокированных и разблокирует из списка', async () => {
     const calls = serveBlocked([anna]);
-    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    renderWith(<BlockedUsersManager />, client);
 
     expect(await screen.findByText('Анна')).toBeInTheDocument();
     expect(screen.getByText('@anna')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Разблокировать: Анна' }));
 
     expect(await screen.findByText('Вы никого не заблокировали')).toBeInTheDocument();
     expect(calls).toEqual(['unblock user-anna']);
@@ -185,7 +185,7 @@ describe('экран «Чёрный список» (#727)', () => {
       anna,
       { ...anna, id: 'user-boris', username: 'bob77', firstName: 'Борис', lastName: 'Петров' },
     ]);
-    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    renderWith(<BlockedUsersManager />, client);
     const search = await screen.findByRole('searchbox', { name: 'Поиск в чёрном списке' });
 
     await userEvent.type(search, 'петр');
@@ -204,7 +204,7 @@ describe('экран «Чёрный список» (#727)', () => {
 
   it('пустой список — без поля поиска', async () => {
     serveBlocked([]);
-    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    renderWith(<BlockedUsersManager />, client);
 
     expect(await screen.findByText('Вы никого не заблокировали')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -212,26 +212,16 @@ describe('экран «Чёрный список» (#727)', () => {
 
   it('пустой список — понятная надпись, а не пустота', async () => {
     serveBlocked([]);
-    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    renderWith(<BlockedUsersManager />, client);
 
     expect(await screen.findByText('Вы никого не заблокировали')).toBeInTheDocument();
   });
 
   it('ошибка загрузки — баннер, а не «никого не заблокировали»', async () => {
     server.use(http.get(api('/users/blocked'), () => HttpResponse.json({}, { status: 500 })));
-    renderWith(<BlockedUsersManager onBack={vi.fn()} />, client);
+    renderWith(<BlockedUsersManager />, client);
 
     expect(await screen.findByText(/Не удалось загрузить чёрный список/)).toBeInTheDocument();
     expect(screen.queryByText('Вы никого не заблокировали')).not.toBeInTheDocument();
-  });
-
-  it('«Назад» возвращает к настройкам', async () => {
-    serveBlocked([]);
-    const onBack = vi.fn();
-    renderWith(<BlockedUsersManager onBack={onBack} />, client);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Назад' }));
-
-    expect(onBack).toHaveBeenCalled();
   });
 });

@@ -300,6 +300,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a bearer token for the session cookie
+         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
+         */
+        post: operations["exchangeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -1007,6 +1027,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/push/vapid-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Push VAPID public key
+         * @description Public VAPID key for PushManager.subscribe (applicationServerKey). 404 push_not_configured when push notifications are disabled on this server.
+         */
+        get: operations["getPushVapidKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register this device for Web Push
+         * @description Saves the PushSubscription of the current device. Repeating the same endpoint updates the keys; an endpoint registered by another account on the same device moves to the current account. The endpoint must be an https address of a known push service (Google, Mozilla, Apple, Microsoft) — the server sends requests to it. At most 20 subscriptions per user; older ones are evicted. Push payloads never contain message text (end-to-end encryption): only the event kind, chat id, chat type and title, the sender name and the recipient language.
+         */
+        post: operations["savePushSubscription"];
+        /** Remove the Web Push subscription of this device */
+        delete: operations["deletePushSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/encryption/keys": {
         parameters: {
             query?: never;
@@ -1622,8 +1683,71 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a chat read */
+        /**
+         * Mark a chat read
+         * @description The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).
+         */
         post: operations["markChatRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/messages/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete messages for everyone or only for me
+         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
+         */
+        post: operations["deleteMessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared media, files or text messages of a chat
+         * @description Messages of one kind for the profile panel's tabs (#842), newest first, with a cursor. media — photos and videos, files — files and audio, text — text messages (links are inside the encrypted text, the client collects them). Same visibility as the thread: members only, without deleted messages and messages hidden for the caller.
+         */
+        get: operations["listSharedMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/messages/{messageId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Position of a message in the thread
+         * @description How many messages visible to the caller are newer than this one (#842): the client loads the thread pages up to it to jump there. Deleted and hidden-for-me messages are not counted; such a target is 404.
+         */
+        get: operations["getMessagePosition"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1678,8 +1802,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Mark a chat as read
-         * @description The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+         * Mark messages as read
+         * @description Marks the given messages of the chat as read (#506). The chat keeps one read boundary (unread counts use it): it moves to the newest of the counted messages — incoming and not deleted — and never moves back, so newer messages stay unread. To mark the whole chat, use POST /chats/{chatId}/read. A moved boundary is journaled: the authors see readAt on their messages and get the receipts event (ReceiptEvent, #657).
          */
         post: operations["markMessagesRead"];
         delete?: never;
@@ -1741,7 +1865,11 @@ export interface paths {
          * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
          */
         post: operations["sendMessages"];
-        /** Delete a message */
+        /**
+         * Delete a message for everyone
+         * @deprecated
+         * @description Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+         */
         delete: operations["deleteMessage"];
         options?: never;
         head?: never;
@@ -2376,6 +2504,10 @@ export interface components {
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
         };
         /** @description A range in UTF-16 code units. Both boundaries must be between Unicode code points (never inside a surrogate pair), and offset + length must not exceed the content length. Inline ranges may overlap, except links cannot overlap other links. Blockquotes cover whole lines (start at 0 or after LF; end at content end or before LF), cannot overlap other blockquotes, and any inline range intersecting a blockquote must be fully contained within it. data is required for link and must be absent for every other type. */
         MessageEntity: {
@@ -2414,6 +2546,28 @@ export interface components {
             senderId?: string;
             senderName: string;
             reactions: components["schemas"]["Reaction"][];
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
+        };
+        /** @description WebSocket event {"type":"receipts"} (#657), sent to the other members of a private chat when a member's boundary moves: the member's messages up to upTo inclusive are delivered or read, first at "at". Boundaries only move forward; delivered — the message went to the member's open socket or the member loaded the chat list or the thread; read implies delivered. After a reconnect the same state comes from Message.deliveredAt and readAt. */
+        ReceiptEvent: {
+            /** @enum {string} */
+            type: "receipts";
+            /** Format: uuid */
+            chatId: string;
+            /**
+             * Format: uuid
+             * @description The member whose boundary moved.
+             */
+            userId: string;
+            /** @enum {string} */
+            kind: "delivered" | "read";
+            /** @description The boundary, UTC ISO 8601 with milliseconds, rounded down. */
+            upTo: string;
+            /** @description When the boundary moved, UTC ISO 8601 with milliseconds. */
+            at: string;
         };
         /** @example john_doe */
         Username: string;
@@ -2804,15 +2958,35 @@ export interface components {
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
+        DeleteMessagesRequest: {
+            messageIds: string[];
+            forEveryone: boolean;
+        };
+        DeleteMessageResponse: {
+            /** @enum {boolean} */
+            success: true;
+            lastMessage: components["schemas"]["Message"] | null;
+        };
+        SharedPage: {
+            /** @description Newest first. */
+            messages: components["schemas"]["Message"][];
+            /**
+             * Format: uuid
+             * @description Pass as before for the next page; absent — nothing older.
+             */
+            nextCursor?: string;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Accepted for client compatibility; the current backend marks the whole chat as read. */
-            messageIds?: string[];
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            messageIds: string[];
         };
-        Success: {
-            /** @enum {boolean} */
-            success: true;
+        ReadMark: {
+            /** @description Incoming, not deleted messages that were taken into account. */
+            readIds: string[];
+            /** @description The chat's read boundary after the call: the newest of the counted messages, never moved back. Empty when the chat was never read. */
+            lastReadAt: string;
         };
         MessageListResponse: {
             messages: components["schemas"]["Message"][];
@@ -2852,11 +3026,6 @@ export interface components {
         SendMessagesRequest: {
             /** @description The whole request body is limited to 2 MiB. */
             messages: components["schemas"]["SendMessageRequest"][];
-        };
-        DeleteMessageResponse: {
-            /** @enum {boolean} */
-            success: true;
-            lastMessage: components["schemas"]["Message"] | null;
         };
         ReactionListResponse: {
             reactions: components["schemas"]["Reaction"][];
@@ -2938,6 +3107,8 @@ export interface components {
         EncryptedMediaUploadRequest: {
             /** @enum {string} */
             purpose: "message";
+            /** @description Attachment kind (image, voice, file…). A voice upload over 8 MB of ciphertext returns 413 file_too_large (#843). */
+            type?: string;
             /** @description Fallback filename; at most 255 UTF-8 bytes. */
             fileName?: string;
             file: {
@@ -3030,6 +3201,8 @@ export interface operations {
             /** @description Registered */
             201: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3053,9 +3226,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authenticated or 2FA challenge */
+            /** @description Authenticated (session cookie is set) or 2FA challenge */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3207,9 +3382,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, scanned, confirmed, or expired QR login status */
+            /** @description Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3357,9 +3534,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, confirmed, or expired */
+            /** @description Pending, confirmed, or expired; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3406,7 +3585,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Logged out */
+            /** @description Logged out; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3424,7 +3603,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All sessions revoked */
+            /** @description All sessions revoked; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3433,6 +3612,27 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    exchangeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session cookie set */
+            204: {
+                headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -4532,6 +4732,110 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+        };
+    };
+    getPushVapidKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Base64url, uncompressed P-256 point */
+                        publicKey: string;
+                    };
+                };
+            };
+            /** @description Push notifications are not configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    savePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uri */
+                    endpoint: string;
+                    keys: {
+                        /** @description Base64url, 65-byte P-256 public key */
+                        p256dh: string;
+                        /** @description Base64url, 16-byte auth secret */
+                        auth: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Saved; the id is sent over the socket in client_state so that a visible device gets no push */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            /** @description invalid_json or invalid_push_subscription */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deletePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    endpoint: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Removed (only the requester's own subscription) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description endpoint is required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     uploadEncryptionKey: {
@@ -5726,6 +6030,159 @@ export interface operations {
             };
         };
     };
+    deleteMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteMessagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted; lastMessage is the chat's last message as the caller now sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteMessageResponse"];
+                };
+            };
+            /** @description Empty or more than 100 ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A message is not in this chat or already deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listSharedMessages: {
+        parameters: {
+            query: {
+                kind: "media" | "files" | "text";
+                /** @description nextCursor of the previous page (a message id of this chat); omit for the newest. */
+                before?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedPage"];
+                };
+            };
+            /** @description validation_failed or invalid_cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
+    getMessagePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        position: number;
+                    };
+                };
+            };
+            /** @description validation_failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description chat_not_found or message_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
     listPinnedMessages: {
         parameters: {
             query?: never;
@@ -5801,13 +6258,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Chat marked as read */
+            /** @description Messages marked as read */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Success"];
+                    "application/json": components["schemas"]["ReadMark"];
                 };
             };
             400: components["responses"]["Error"];

@@ -6,6 +6,7 @@ import {
   applyReaction,
   beginReactionChange,
   dropThreadMessage,
+  dropThreadMessages,
   endReactionChange,
   patchThreadMessage,
   removeOutboxItem,
@@ -16,8 +17,11 @@ import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
+import { copyRichTextToClipboard, richTextToHtml } from '@/shared/lib/richText';
 import type { IRichTextInputHandle } from '@/shared/ui';
-import type { IMessageDto } from '@/types';
+import type { IMediaItem, IMessageDto } from '@/types';
+import { copyImageToClipboard } from './mediaActions';
+import { mediaBlobByUrl, mediaFileName, saveMedia } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +62,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const replyToMessage = useChatUiStore((state) => state.replyToMessage);
   const setReplyToMessage = useChatUiStore((state) => state.setReplyToMessage);
+  const setDeleteTargets = useChatUiStore((state) => state.setDeleteTargets);
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const setSelectedMessages = useChatUiStore((state) => state.setSelectedMessages);
   const selectionMode = useChatUiStore((state) => state.selectionMode);
@@ -112,64 +117,54 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
-  const handleDelete = async (message: IMessageDto) => {
+  /**
+   * «Удалить» в меню сообщения или в панели выбора — открывает подтверждение
+   * (#840). Удаляет confirmDelete, когда человек выбрал, у кого.
+   */
+  const handleDelete = (message?: IMessageDto) => {
+    const targets = selectionMode ? selectedMessages : message ? [message] : [];
+    if (targets.length > 0) setDeleteTargets(targets);
+  };
+
+  /**
+   * Удаление выбранного: у всех — только когда все свои, иначе у себя.
+   * Неотправленные просто убираются из очереди. `false` — не вышло,
+   * диалог остаётся открытым.
+   */
+  const confirmDelete = async (targets: IMessageDto[], forEveryone: boolean) => {
+    const isOutbox = (item: IMessageDto) => Boolean(item.tempId) || item.id.startsWith('temp-');
+    const sent = targets.filter((item) => !isOutbox(item));
+
     try {
-      if (selectionMode) {
-        // Удалять можно только свои сообщения — чужие отсеиваются заранее,
-        // иначе в набор попадали undefined вместо идентификаторов.
-        const own = selectedMessages.filter((item) => item.senderId === currentUser?.id);
-
-        const serverMessages = own.filter((item) => !item.tempId && !item.id.startsWith('temp-'));
-        const outboxMessages = own.filter(
-          (item) => Boolean(item.tempId) || item.id.startsWith('temp-')
-        );
-
-        outboxMessages.forEach((item) => {
-          const id = item.tempId || item.id;
-          removeOutboxItem(id);
-          dropThreadMessage(queryClient, chatId, id);
-        });
-
-        if (serverMessages.length > 0) {
-          // Именно возврат промиса делает ожидание настоящим: без него
-          // Promise.all завершался мгновенно, а отказы становились
-          // необработанными и не доходили до catch.
-          await Promise.all(
-            serverMessages.map((item) => services.messageService.deleteMessage(item.id))
-          );
-          serverMessages.forEach((item) => dropThreadMessage(queryClient, chatId, item.id));
-        }
-
-        handleCancelSelection();
+      if (sent.length > 0) {
+        const allOwn = sent.every((item) => item.senderId === currentUser?.id);
+        const ids = sent.map((item) => item.id);
+        await services.messageService.deleteMessages(chatId, ids, forEveryone && allOwn);
+        dropThreadMessages(queryClient, chatId, ids);
       }
-
-      if (!selectionMode) {
-        if (message.senderId !== currentUser?.id) return;
-        const id = message.tempId || message.id;
-        const isOutbox = Boolean(message.tempId) || message.id.startsWith('temp-');
-
-        if (isOutbox) {
-          removeOutboxItem(id);
-          dropThreadMessage(queryClient, chatId, id);
-        } else {
-          await services.messageService.deleteMessage(message.id);
-          dropThreadMessage(queryClient, chatId, message.id);
-        }
-
-        if (editingMessage?.id === message.id) {
-          setEditingMessage(null);
-          draftRef?.current?.clear();
-        }
-        if (replyToMessage?.id === message.id) {
-          setReplyToMessage(null);
-        }
-      }
-      setError('');
     } catch (err: unknown) {
-      setError(
+      showToast(
+        'error',
         describeApiError(err, t, t('messageDeleteError', 'Не удалось удалить сообщение(я)'))
       );
+      return false;
     }
+
+    targets.filter(isOutbox).forEach((item) => {
+      const id = item.tempId || item.id;
+      removeOutboxItem(id);
+      dropThreadMessage(queryClient, chatId, id);
+    });
+
+    const removed = new Set(targets.map((item) => item.id));
+    if (editingMessage && removed.has(editingMessage.id)) {
+      setEditingMessage(null);
+      draftRef?.current?.clear();
+    }
+    if (replyToMessage && removed.has(replyToMessage.id)) setReplyToMessage(null);
+    if (selectionMode) handleCancelSelection();
+    setError('');
+    return true;
   };
 
   /**
@@ -347,17 +342,70 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     closeMessageActions();
   };
 
-  function handleCopyMessage(message: IMessageDto) {
-    if (selectionMode) {
-      const sortedMessages = sortMessagesChronologically<IMessageDto>(selectedMessages);
+  /**
+   * Текст сообщения в буфер обмена (#655, #891). Сохраняет форматирование
+   * (HTML) и обычный текст. В режиме выбора — все отмеченные по порядку.
+   * Результат подтверждается уведомлением.
+   */
+  async function handleCopyMessage(message: IMessageDto) {
+    const messages = selectionMode
+      ? sortMessagesChronologically<IMessageDto>(selectedMessages)
+      : [message];
+    if (selectionMode) handleCancelSelection();
 
-      const allContent = sortedMessages.map((message) => message.content).join('\n');
-      navigator.clipboard.writeText(allContent);
-      handleCancelSelection();
-      return;
+    const plainText = messages
+      .map((item) => item.content)
+      .filter(Boolean)
+      .join('\n');
+
+    const hasFormatting = messages.some(
+      (item) => Boolean(item.entities?.length) || (item.content && item.content.includes('```'))
+    );
+
+    try {
+      if (hasFormatting) {
+        const htmlText = messages
+          .map((item) =>
+            richTextToHtml({ text: item.content || '', entities: item.entities ?? [] })
+          )
+          .filter(Boolean)
+          .join('<br>');
+        await copyRichTextToClipboard(plainText, htmlText);
+      } else {
+        await navigator.clipboard.writeText(plainText);
+      }
+      showToast('success', t('messageActions.copied', 'Скопировано'));
+    } catch {
+      showToast('error', t('format.copyFailed', 'Не удалось скопировать'));
     }
+  }
 
-    navigator.clipboard.writeText(message.content);
+  /** Фото — в буфер как PNG, подпись — рядом текстом (#655). */
+  async function handleCopyImage(message: IMediaItem) {
+    if (!message.mediaUrl) return;
+    try {
+      await copyImageToClipboard(message.mediaUrl, message.content ?? '');
+      showToast('success', t('messageActions.copied', 'Скопировано'));
+    } catch {
+      showToast('error', t('format.copyFailed', 'Не удалось скопировать'));
+    }
+  }
+
+  /**
+   * «Сохранить как…» (#655): окно выбора места с исходным именем, где
+   * браузер его умеет; иначе — обычное скачивание, и тогда уведомления
+   * нет: дальше окно загрузки самого браузера.
+   */
+  async function handleSaveMedia(message: IMediaItem) {
+    if (!message.mediaUrl) return;
+    try {
+      const result = await saveMedia(message.mediaUrl, mediaFileName(message), {
+        blobByUrl: mediaBlobByUrl,
+      });
+      if (result === 'saved') showToast('success', t('messageActions.saved', 'Файл сохранён'));
+    } catch {
+      showToast('error', t('messageActions.saveFailed', 'Не удалось сохранить файл'));
+    }
   }
 
   function handleCancelSelection() {
@@ -369,6 +417,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     translatingIds,
     handleTranslateMessage,
     handleDelete,
+    confirmDelete,
     handleReact,
     handleUnpinMessage,
     handlePinMessage,
@@ -380,6 +429,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     closeMessageActions,
     runMessageAction,
     handleCopyMessage,
+    handleCopyImage,
+    handleSaveMedia,
     handleCancelSelection,
   };
 };

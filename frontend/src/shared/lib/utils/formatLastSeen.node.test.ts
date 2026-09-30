@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import i18n, { type TFunction } from 'i18next';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { formatLastSeen, formatLastSeenApprox } from './formatLastSeen';
-import { getChatSubtitle } from './getChatSubtitle';
 
 const dictionary = (lang: string) =>
   JSON.parse(
@@ -86,47 +85,5 @@ describe('«был(а)» — приблизительное время вмес�
     expect(formatLastSeenApprox('long_ago', ru)).toBe('был(а) давно');
     expect(formatLastSeenApprox('within_week', en)).toBe('last seen within a week');
     expect(formatLastSeenApprox('long_ago', en)).toBe('last seen a long time ago');
-  });
-});
-
-describe('подзаголовок личного чата', () => {
-  const chat = (extra: object) => ({ type: 'private', ...extra });
-
-  it('«в сети» и «печатает» важнее времени', () => {
-    expect(
-      getChatSubtitle(
-        chat({ peerIsOnline: true, peerLastSeen: ago(5).toISOString() }),
-        null,
-        ru,
-        now
-      )
-    ).toBe('онлайн');
-    expect(getChatSubtitle(chat({ peerIsOnline: true }), 'someone', ru, now)).toBe('печатает...');
-  });
-
-  it('точное время, промежуток, а без обоих — «давно»', () => {
-    expect(getChatSubtitle(chat({ peerLastSeen: ago(5).toISOString() }), null, ru, now)).toBe(
-      'был(а) 5 минут назад'
-    );
-    expect(getChatSubtitle(chat({ peerLastSeenApprox: 'within_month' }), null, ru, now)).toBe(
-      'был(а) в этом месяце'
-    );
-    // Время видно, но человек ни разу не был в сети.
-    expect(getChatSubtitle(chat({}), null, ru, now)).toBe('был(а) давно');
-  });
-
-  it('строка пересчитывается от переданного времени', () => {
-    const lastSeen = ago(5).toISOString();
-    expect(getChatSubtitle(chat({ peerLastSeen: lastSeen }), null, ru, now)).toBe(
-      'был(а) 5 минут назад'
-    );
-    expect(
-      getChatSubtitle(
-        chat({ peerLastSeen: lastSeen }),
-        null,
-        ru,
-        new Date(now.getTime() + 10 * 60_000)
-      )
-    ).toBe('был(а) 15 минут назад');
   });
 });

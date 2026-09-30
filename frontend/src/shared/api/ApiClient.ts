@@ -1,5 +1,4 @@
 export interface IApiClientOptions {
-  getToken?: () => string | null;
   onUnauthorized?: (error: IApiError) => void;
 }
 
@@ -32,13 +31,11 @@ export interface IApiError extends Error {
 
 export class ApiClient {
   private baseUrl: string;
-  private getToken: () => string | null;
   private onUnauthorized?: (error: IApiError) => void;
   private defaultHeaders: Record<string, string>;
 
   constructor(baseUrl: string, options: IApiClientOptions = {}) {
     this.baseUrl = baseUrl;
-    this.getToken = options.getToken ?? (() => null);
     this.onUnauthorized = options.onUnauthorized;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -57,8 +54,12 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
-  post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'POST', data });
+  post<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'POST', data, headers });
   }
 
   put<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
@@ -86,11 +87,10 @@ export class ApiClient {
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
-    const token = this.getToken();
+    const url = this.buildUrl(endpoint, params);
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     const isFormData = data instanceof FormData;
@@ -101,7 +101,11 @@ export class ApiClient {
 
     const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
 
-    const response = await fetch(this.buildUrl(endpoint, params), {
+    /* Сессия — в HttpOnly-cookie (#705): браузер отправляет её сам, а
+       JavaScript токена не видит. `same-origin` — только своему серверу:
+       абсолютный адрес чужого origin получает запрос без неё (#871). */
+    const response = await fetch(url, {
+      credentials: 'same-origin',
       ...requestOptions,
       headers: requestHeaders,
       body,

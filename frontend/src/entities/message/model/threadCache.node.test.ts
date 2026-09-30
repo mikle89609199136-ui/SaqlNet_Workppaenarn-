@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
 import {
   appendMessage,
+  applyReceipt,
   canAppendToThread,
   flattenThread,
   patchMessage,
@@ -140,5 +141,66 @@ describe('можно ли дописывать в кеш', () => {
   it('should allow appending to a loaded thread', () => {
     expect(canAppendToThread(pages([]))).toBe(true);
     expect(canAppendToThread(pages([makeMessage()]))).toBe(true);
+  });
+});
+
+describe('галочки по событию receipts (#657)', () => {
+  const me = 'user-1';
+  const peer = 'user-2';
+  const at = '2026-09-29T12:05:00.000Z';
+  const mine = (createdAt: string, extra: Parameters<typeof makeMessage>[0] = {}) =>
+    makeMessage({ senderId: me, createdAt: new Date(createdAt), ...extra });
+
+  it('свои до границы получают время, более новые и чужие — нет', () => {
+    const before = mine('2026-09-29T12:00:00.000Z');
+    const onBoundary = mine('2026-09-29T12:01:00.000Z');
+    const after = mine('2026-09-29T12:02:00.000Z');
+    const peers = makeMessage({ senderId: peer, createdAt: new Date('2026-09-29T11:00:00.000Z') });
+
+    const next = applyReceipt(pages([before, onBoundary, after, peers]), {
+      chatId: 'chat-1',
+      userId: peer,
+      kind: 'read',
+      upTo: '2026-09-29T12:01:00.000Z',
+      at,
+    });
+
+    const [b, o, a, p] = next.pages[0];
+    expect([b.readAt, b.deliveredAt]).toEqual([at, at]);
+    expect([o.readAt, o.deliveredAt]).toEqual([at, at]);
+    expect([a.readAt, a.deliveredAt]).toEqual([undefined, undefined]);
+    expect(p.readAt).toBeUndefined();
+  });
+
+  it('время первого прочтения не перезаписывается повтором', () => {
+    const first = '2026-09-29T12:00:30.000Z';
+    const message = mine('2026-09-29T12:00:00.000Z', { readAt: first, deliveredAt: first });
+    const data = pages([message]);
+
+    const next = applyReceipt(data, {
+      chatId: 'chat-1',
+      userId: peer,
+      kind: 'read',
+      upTo: '2026-09-29T12:10:00.000Z',
+      at,
+    });
+
+    expect(next).toBe(data);
+  });
+
+  it('сообщения из очереди отправки граница не переходит', () => {
+    const pending = mine('2026-09-29T12:00:00.000Z', { status: 'pending', tempId: 'tmp-1' });
+    const failed = mine('2026-09-29T12:00:00.000Z', { status: 'failed' });
+    const data = pages([pending, failed]);
+
+    expect(
+      applyReceipt(data, {
+        chatId: 'chat-1',
+        userId: peer,
+        kind: 'delivered',
+        upTo: '2026-09-29T13:00:00.000Z',
+        at,
+      })
+    ).toBe(data);
   });
 });

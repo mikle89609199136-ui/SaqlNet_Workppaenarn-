@@ -1,5 +1,10 @@
 name: CI
 
+# Проверка — на pull request в dev и master. После слияния в dev повторно
+# не гоняется: тот же код уже проверен в PR, а повторный прогон съедал
+# треть минут Actions (185 из 559 запусков за сентябрь 2026 при лимите
+# 2 000 минут в месяц на приватный репозиторий). Push в master проверяется:
+# с него идёт деплой.
 on:
   pull_request:
     branches:
@@ -8,7 +13,6 @@ on:
   push:
     branches:
       - master
-      - dev
 
 permissions:
   contents: read
@@ -46,6 +50,7 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              - 'scripts/**'
               - '.github/workflows/ci.yml'
             backend:
               - 'backend-v2/**'
@@ -95,6 +100,11 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      # Правила номера версии выпуска (#892): scripts/release-bump.cjs.
+      - name: Release version rules
+        working-directory: .
+        run: node --test scripts/*.test.cjs
 
   backend:
     name: Backend (Go)
@@ -155,7 +165,11 @@ jobs:
       - name: Run privacy integration tests
         run: |
           go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema' ./internal/chat
+          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema|TestMarkReadOnRealSchema|TestReceiptsOnRealSchema|TestReceiptsMigrationBackfill|TestSharedMediaOnRealSchema' ./internal/chat
+
+      # Web Push: подписки устройств и получатели уведомлений (#717).
+      - name: Run push integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestPushOnRealSchema' ./internal/push
 
       # Смена ключа группы: пометка при изменении состава, атомарная запись
       # новой эпохи и одновременные смены (#806).
@@ -196,3 +210,23 @@ jobs:
 
       - name: Build release binary
         run: cargo build --release --locked
+
+  # Выпуск в master повышает номер версии (#892): версия видна в
+  # приложении и в /health/live, и по ней выпуски отличают друг от друга.
+  # В PR — сравнение с master; при пуше в master — с тем, что было до него.
+  release-version:
+    name: Release version
+    if: github.base_ref == 'master' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version is bumped
+        env:
+          BASE: ${{ github.event_name == 'push' && github.event.before || format('origin/{0}', github.base_ref) }}
+        run: node scripts/check-release-version.cjs "$BASE"

@@ -5,12 +5,14 @@ import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,
+  dropThreadMessages,
   isReactionChangePending,
   patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
+  putThreadReceipt,
 } from '@/entities/message';
-import { useTypingStore } from '@/entities/chat';
+import { putChatListReceipt, useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -34,6 +36,7 @@ export function useServerEvents(enabled: boolean): void {
   const queryClient = useQueryClient();
   const { eventBus } = useRealtimeSocket(enabled);
   const setTyping = useTypingStore((state) => state.setTyping);
+  const clearTyping = useTypingStore((state) => state.clearTyping);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -51,6 +54,9 @@ export function useServerEvents(enabled: boolean): void {
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём
         // в кеш, вместо того чтобы запрашивать историю заново.
         if (eventType === WS_EVENTS.MESSAGE.NEW && payload?.chatId && payload?.message) {
+          // Сообщение пришло — автор больше не печатает: не ждём три
+          // секунды таймера над его же сообщением (#837).
+          if (payload.message.senderId) clearTyping(payload.chatId, payload.message.senderId);
           void services.messageService
             .processMessageForDisplay(payload.chatId, payload.message)
             // Превью в списке чатов обновит сама запись в ленту: правило
@@ -62,6 +68,19 @@ export function useServerEvents(enabled: boolean): void {
               console.warn('Не удалось обработать входящее сообщение', error);
               invalidate(eventType, payload);
             });
+          return;
+        }
+
+        // Пачка удалена у всех или скрыта у себя (#840): убираем из ленты на
+        // месте, без перезапроса истории. Своё устройство, которое удаляло,
+        // получает то же событие — повторное удаление ничего не меняет.
+        if (
+          (eventType === WS_EVENTS.MESSAGE.BATCH_DELETED ||
+            eventType === WS_EVENTS.MESSAGE.HIDDEN) &&
+          payload?.chatId &&
+          Array.isArray(payload?.messageIds)
+        ) {
+          dropThreadMessages(queryClient, payload.chatId, payload.messageIds);
           return;
         }
 
@@ -97,6 +116,21 @@ export function useServerEvents(enabled: boolean): void {
               reactions: payload.reactions ?? [],
             });
           }
+          return;
+        }
+
+        // Собеседник получил или прочитал (#657): галочки и время своих
+        // сообщений — в ленте и в списке чатов, без перезапроса.
+        if (
+          eventType === WS_EVENTS.MESSAGE.RECEIPTS &&
+          payload?.chatId &&
+          payload?.userId &&
+          (payload?.kind === 'delivered' || payload?.kind === 'read') &&
+          payload?.upTo &&
+          payload?.at
+        ) {
+          putThreadReceipt(queryClient, payload);
+          putChatListReceipt(queryClient, payload);
           return;
         }
 
@@ -170,7 +204,7 @@ export function useServerEvents(enabled: boolean): void {
     // а эфемерное состояние интерфейса.
     const unsubscribeTyping = eventBus.on(WS_EVENTS.USER.TYPING, (event) => {
       const userId = event.userId || event.senderId;
-      if (event.chatId && userId) setTyping(event.chatId, userId);
+      if (event.chatId && userId) setTyping(event.chatId, userId, event.firstName || undefined);
     });
 
     // Состояние связи отслеживается здесь, а не там, где показывается:
@@ -188,7 +222,7 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribeMemberRemoved();
       stopConnectionWatch();
     };
-  }, [enabled, eventBus, queryClient, setTyping]);
+  }, [enabled, eventBus, queryClient, setTyping, clearTyping]);
 }
 
 /** Типы, которые адаптер сознательно пропускает. Экспорт для тестов. */
