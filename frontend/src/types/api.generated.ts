@@ -2061,7 +2061,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created.
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
          */
         post: operations["createCallRoom"];
         delete?: never;
@@ -3065,7 +3065,7 @@ export interface components {
         };
         CallRoomCreateRequest: {
             /**
-             * @description Defaults to group when omitted.
+             * @description Ignored — calls are one-to-one, the room type is always p2p.
              * @enum {string}
              */
             type?: "p2p" | "group";
@@ -3103,7 +3103,7 @@ export interface components {
             room: components["schemas"]["CallRoom"];
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
-            maxParticipants: 5;
+            maxParticipants: 2;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
