@@ -231,9 +231,11 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
         variant="secondary"
         size={size}
         className={cn(
-          /* Ведёт себя как поле, а не как основная кнопка: заливать
-             выпадающий список фирменным цветом при наведении незачем. */
-          'w-full justify-between text-left font-normal group hover:border-ink-3',
+          /* Выглядит как поле, а не как кнопка: фон ленты, рамка, та же
+             высота 48 (py-3 + 22 + рамка), что у Input. */
+          'w-full justify-between text-left font-normal group',
+          'border bg-chat-bg border-divider not-disabled:hover:brightness-100',
+          size === 'md' && 'py-3',
           open && 'border-brand ring-3 ring-brand-soft',
           isError && !open && 'border-danger'
         )}
@@ -278,11 +280,12 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
                 aria-disabled={option.disabled || undefined}
                 onClick={() => commit(index)}
                 className={cn(
-                  'flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-2 text-body',
+                  /* Как пункт меню (#817): 38px, подсветка слоем. */
+                  'flex min-h-9.5 cursor-pointer items-center gap-2.5 rounded-field px-2.5 py-2 text-ui',
                   'transition-colors duration-fast',
                   option.disabled && 'cursor-not-allowed text-ink-3',
-                  !option.disabled && 'hover:bg-sheet-2',
-                  !option.disabled && isActive && 'bg-sheet-2',
+                  !option.disabled && 'hover:layer-hover',
+                  !option.disabled && isActive && 'layer-hover',
                   isSelected && 'font-semibold'
                 )}
               >

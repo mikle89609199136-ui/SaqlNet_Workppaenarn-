@@ -20,14 +20,22 @@ type userBroadcaster interface {
 // account sharing a chat with the changed user. PostgreSQL delivers NOTIFY only
 // after the rename transaction commits, so clients never observe uncommitted data.
 func ProfileChangeRelay(ctx context.Context, databaseURL string, db *sql.DB, realtime userBroadcaster) {
+	relayNotifications(ctx, databaseURL, profileevent.Channel, func(payload string) error {
+		return broadcastProfileChange(ctx, db, realtime, payload)
+	})
+}
+
+// relayNotifications слушает канал NOTIFY и передаёт каждое уведомление в
+// handle, пока не отменён ctx. Ошибки обработки только логируются.
+func relayNotifications(ctx context.Context, databaseURL, channel string, handle func(payload string) error) {
 	listener := pq.NewListener(databaseURL, time.Second, 30*time.Second, func(event pq.ListenerEventType, err error) {
 		if err != nil {
-			slog.Warn("profile change listener", "event", event, "error", err)
+			slog.Warn("notification listener", "channel", channel, "event", event, "error", err)
 		}
 	})
 	defer listener.Close()
-	if err := listener.Listen(profileevent.Channel); err != nil {
-		slog.Error("listen for profile changes", "error", err)
+	if err := listener.Listen(channel); err != nil {
+		slog.Error("listen for notifications", "channel", channel, "error", err)
 		return
 	}
 
@@ -44,12 +52,12 @@ func ProfileChangeRelay(ctx context.Context, databaseURL string, db *sql.DB, rea
 			if notification == nil {
 				continue
 			}
-			if err := broadcastProfileChange(ctx, db, realtime, notification.Extra); err != nil {
-				slog.Warn("broadcast profile change", "error", err)
+			if err := handle(notification.Extra); err != nil {
+				slog.Warn("relay notification", "channel", channel, "error", err)
 			}
 		case <-ping.C:
 			if err := listener.Ping(); err != nil {
-				slog.Warn("ping profile change listener", "error", err)
+				slog.Warn("ping notification listener", "channel", channel, "error", err)
 			}
 		}
 	}
@@ -62,6 +70,10 @@ func broadcastProfileChange(ctx context.Context, db *sql.DB, realtime userBroadc
 	}
 	if event.UserID == "" || event.Username == "" {
 		return fmt.Errorf("profile change event is incomplete")
+	}
+	// Имя в «печатает» (#866) может быть username: кеш участников — заново.
+	if cache, ok := realtime.(interface{ InvalidateUserProfile(string) }); ok {
+		cache.InvalidateUserProfile(event.UserID)
 	}
 
 	rows, err := db.QueryContext(ctx, `

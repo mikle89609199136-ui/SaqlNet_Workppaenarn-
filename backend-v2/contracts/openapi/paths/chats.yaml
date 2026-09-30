@@ -2,7 +2,7 @@ x-chat-id:
   &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
 x-user-id:
   &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
 /chats:
   get:
     {
@@ -46,7 +46,8 @@ x-secure: &secure [{ bearerAuth: [] }]
   post:
     {
       tags: [Chats],
-      summary: Create or get a private chat,
+      summary: Create or get a private or Saved Messages chat,
+      description: 'Creates or returns the canonical chat with userId. When userId is the authenticated user''s own ID, lazily creates or returns their one-member Saved Messages chat (type self, title «Избранное»). Concurrent calls and calls from multiple devices return the same chat.',
       operationId: createPrivateChat,
       security: *secure,
       requestBody:
@@ -327,6 +328,82 @@ x-secure: &secure [{ bearerAuth: [] }]
           '403': { $ref: '../components/responses.yaml#/Error' },
         },
     }
+/chats/{chatId}/leave:
+  post:
+    {
+      tags: [Chats],
+      summary: Leave a group chat,
+      description: 'Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".',
+      operationId: leaveChat,
+      security: *secure,
+      parameters: [*chatId],
+      responses:
+        {
+          '200': { description: Left },
+          '400': { $ref: '../components/responses.yaml#/Error' },
+          '403':
+            {
+              description: 'access_denied: the caller is not a member (including a repeated leave)',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '409':
+            {
+              description: 'ownership_transfer_required: the caller owns the chat',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+        },
+    }
+/chats/{chatId}/transfer-ownership:
+  post:
+    {
+      tags: [Chats],
+      summary: Transfer group ownership,
+      description: 'Makes another member the owner; the previous owner becomes a regular member. Owner only, group chats only.',
+      operationId: transferChatOwnership,
+      security: *secure,
+      parameters: [*chatId],
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [userId],
+                      properties: { userId: { type: string, format: uuid } },
+                    },
+                },
+            },
+        },
+      responses:
+        {
+          '200': { description: Ownership transferred },
+          '400':
+            {
+              description: 'validation_failed (including transfer to self), not_member, invalid_chat_type',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '403':
+            {
+              description: 'access_denied: the caller is not the owner',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+          '404': { $ref: '../components/responses.yaml#/Error' },
+          '409':
+            {
+              description: 'ownership_conflict: the owner changed concurrently',
+              content:
+                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
+            },
+        },
+    }
 /chats/{chatId}/members/{userId}:
   delete:
     {
@@ -540,10 +617,89 @@ x-secure: &secure [{ bearerAuth: [] }]
     {
       tags: [Chats],
       summary: Mark a chat read,
+      description: "The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).",
       operationId: markChatRead,
       security: *secure,
       parameters: [*chatId],
       responses: { '200': { description: Marked read } },
+    }
+/chats/{chatId}/shared:
+  get:
+    tags: [Chats]
+    summary: Shared media, files or text messages of a chat
+    description: >-
+      Messages of one kind for the profile panel's tabs (#842), newest first,
+      with a cursor. media — photos and videos, files — files and audio,
+      text — text messages (links are inside the encrypted text, the client
+      collects them). Same visibility as the thread: members only, without
+      deleted messages and messages hidden for the caller.
+    operationId: listSharedMessages
+    security: *secure
+    parameters:
+      - *chatId
+      - { name: kind, in: query, required: true, schema: { type: string, enum: [media, files, text] } }
+      - name: before
+        in: query
+        required: false
+        description: nextCursor of the previous page (a message id of this chat); omit for the newest.
+        schema: { type: string, format: uuid }
+      - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 60, default: 30 } }
+    responses:
+      '200':
+        description: A page of messages
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/SharedPage' } } }
+      '400': { description: 'validation_failed or invalid_cursor', content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+      '403': { description: Not a member, content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+      '404': { description: Chat not found, content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+/chats/{chatId}/messages/{messageId}/position:
+  get:
+    tags: [Chats]
+    summary: Position of a message in the thread
+    description: >-
+      How many messages visible to the caller are newer than this one (#842):
+      the client loads the thread pages up to it to jump there. Deleted and
+      hidden-for-me messages are not counted; such a target is 404.
+    operationId: getMessagePosition
+    security: *secure
+    parameters:
+      - *chatId
+      - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+    responses:
+      '200':
+        description: Position
+        content:
+          application/json:
+            schema: { type: object, required: [position], properties: { position: { type: integer, minimum: 0 } } }
+      '400': { description: validation_failed, content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+      '403': { description: Not a member, content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+      '404': { description: 'chat_not_found or message_not_found', content: { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } } }
+/chats/{chatId}/messages/delete:
+  post:
+    {
+      tags: [Messages],
+      summary: Delete messages for everyone or only for me,
+      description: "Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.",
+      operationId: deleteMessages,
+      security: *secure,
+      parameters: [*chatId],
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '../components/schemas.yaml#/DeleteMessagesRequest' } } },
+        },
+      responses:
+        {
+          '200':
+            {
+              description: Deleted; lastMessage is the chat's last message as the caller now sees it,
+              content:
+                { application/json: { schema: { $ref: '../components/schemas.yaml#/DeleteMessageResponse' } } },
+            },
+          '400': { description: Empty or more than 100 ids, or an invalid id },
+          '403': { description: Not a member, or forEveryone with someone else's message },
+          '404': { description: A message is not in this chat or already deleted },
+        },
     }
 /chats/{chatId}/pins:
   get:

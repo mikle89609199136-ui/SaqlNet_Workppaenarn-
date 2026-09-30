@@ -7,3 +7,4 @@ export * from './model/usePhotoEditorDrawing';
 export * from './model/usePhotoEditorHistory';
 export { AudioPlayer, VideoPlayer } from '@/shared/ui';
 export * from './ui/MediaEditor';
+export * from './model/saveMedia';

@@ -24,7 +24,7 @@ function renderForm(user: Partial<IUserDto> = INITIAL_USER, onBack = vi.fn()) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   queryClient.setQueryData(userKeys.me(), user);
-  useProfileStore.setState({ user: user as IUserDto, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: user as IUserDto, isAuth: true });
 
   const result = render(
     <QueryClientProvider client={queryClient}>

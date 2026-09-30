@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
@@ -33,12 +32,12 @@ type TokenVerifier interface {
 func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			header := r.Header.Get("Authorization")
-			if !strings.HasPrefix(header, "Bearer ") {
-				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_token", "authorization bearer token is required")
+			// Cookie сессии браузера (#705) или заголовок Bearer.
+			token, source := TokenFromRequest(r)
+			if source == TokenNone {
+				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_token", "session cookie or bearer token is required")
 				return
 			}
-			token := strings.TrimPrefix(header, "Bearer ")
 			claims, err := crypto.VerifyToken(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {

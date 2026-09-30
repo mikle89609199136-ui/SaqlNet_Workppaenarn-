@@ -7,11 +7,10 @@ export class EventBus<TEvents extends object> {
 
   on<TKey extends keyof TEvents>(event: TKey, callback: Handler<TEvents[TKey]>): () => void {
     if (!this.events.has(event)) {
-      this.events.set(event, new Set<Handler<TEvents[TKey]>>());
+      this.events.set(event, new Set<Handler<any>>());
     }
 
     const handlers = this.events.get(event);
-
     if (!handlers) {
       throw new Error(`Failed to initialize event "${String(event)}"`);
     }
@@ -30,7 +29,6 @@ export class EventBus<TEvents extends object> {
 
   off<TKey extends keyof TEvents>(event: TKey, callback: Handler<TEvents[TKey]>): void {
     const handlers = this.events.get(event);
-
     if (!handlers) {
       return;
     }

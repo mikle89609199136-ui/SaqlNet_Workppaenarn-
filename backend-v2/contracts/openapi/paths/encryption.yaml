@@ -1,4 +1,4 @@
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
 x-error: &error { $ref: '../components/responses.yaml#/Error' }
 
 /encryption/keys:
@@ -55,6 +55,10 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   post:
     tags: [Encryption]
     summary: Save encrypted chat keys
+    description: >-
+      Accepts the current epoch (keys for members who lack a row) or the next
+      one (a new key for everyone, clears rotationNeeded). Written in one
+      transaction under a lock on the chat.
     operationId: saveChatKeys
     security: *secure
     requestBody:
@@ -70,11 +74,23 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/OkResponse' }
       '400': *error
       '403': *error
+      '409':
+        description: >-
+          key_epoch_conflict — the epoch is neither current nor next, someone
+          already changed the key; key_rotation_required — membership changed,
+          the current key must not be handed out, publish the next epoch.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
 
 /encryption/rotate-key/{chatId}:
   post:
     tags: [Encryption]
     summary: Rotate a chat key
+    description: >-
+      Any member may rotate. Only the next epoch (current + 1) is accepted, in
+      one transaction under a lock on the chat; of two concurrent rotations the
+      second gets 409 and adopts the key of the first. Clears rotationNeeded.
     operationId: rotateChatKey
     security: *secure
     parameters:
@@ -92,6 +108,11 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/KeyEpochResponse' }
       '400': *error
       '403': *error
+      '409':
+        description: key_epoch_conflict — the epoch is not current + 1, someone already rotated.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
       '429': *error
 
 /encryption/my-key/{chatId}:

@@ -54,6 +54,10 @@ func TestLogoutAllIncrementsGenerationAndRevokesSessionsAtomically(t *testing.T)
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(userID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	// Отозванные устройства больше не получают push (#717).
+	mock.ExpectExec("DELETE FROM users.push_subscriptions").
+		WithArgs(userID).
+		WillReturnResult(sqlmock.NewResult(0, 3))
 	mock.ExpectCommit()
 
 	if err := svc.LogoutAll(t.Context(), userID); err != nil {

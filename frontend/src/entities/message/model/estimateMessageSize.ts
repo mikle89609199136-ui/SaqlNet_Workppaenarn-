@@ -1,12 +1,14 @@
 import type { IMessageDto } from './types';
 
 export type TEstimatableFeedItem =
-  { type: 'date'; label?: string } | { type: 'message'; message: IMessageDto };
+  { type: 'date'; label?: string } | { type: 'unread' } | { type: 'message'; message: IMessageDto };
 
 const CHARS_PER_LINE = 42;
 const LINE_HEIGHT_PX = 20;
 const BASE_BUBBLE_PADDING_PX = 29;
 const DATE_DIVIDER_HEIGHT_PX = 44;
+/* «Новые сообщения»: строка 16 и отступы 12 / 6. */
+const UNREAD_DIVIDER_HEIGHT_PX = 34;
 const REPLY_PREVIEW_HEIGHT_PX = 48;
 const REACTIONS_ROW_HEIGHT_PX = 28;
 const MEDIA_PHOTO_HEIGHT_PX = 240;
@@ -25,6 +27,10 @@ export function estimateMessageItemSize(item?: TEstimatableFeedItem | null): num
 
   if (item.type === 'date') {
     return DATE_DIVIDER_HEIGHT_PX;
+  }
+
+  if (item.type === 'unread') {
+    return UNREAD_DIVIDER_HEIGHT_PX;
   }
 
   const { message } = item;

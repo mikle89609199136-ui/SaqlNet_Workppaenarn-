@@ -27,10 +27,10 @@ function takeLink() {
 export function QrClaimPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  /* Смотрим на сессию только при открытии: вход по коду сам кладёт токен
-     в хранилище ещё до конца, и живая подписка показала бы «вы уже
-     вошли» посреди входа. */
-  const [signedIn] = useState(() => Boolean(useProfileStore.getState().token));
+  /* Смотрим на сессию только при открытии: вход по коду сам сохраняет
+     профиль ещё до конца, и живая подписка показала бы «вы уже вошли»
+     посреди входа. */
+  const [signedIn] = useState(() => useProfileStore.getState().isAuth);
   const [link] = useState(takeLink);
   const [finished, setFinished] = useState(false);
 

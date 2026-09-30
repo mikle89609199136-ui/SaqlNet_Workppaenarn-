@@ -11,7 +11,8 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { clearDraft, useChatUiStore } from '@/entities/chat';
-import { setComposerText } from '@/shared/lib';
+import { trimRichText } from '@/shared/lib/richText';
+import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMediaItem, IMessageDto, IPendingAttachment } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,9 +28,9 @@ import { useParams } from 'react-router-dom';
 
 interface Params {
   selectionMode: boolean;
-  draftRef: RefObject<HTMLInputElement | null>;
-  pendingAttachment: IPendingAttachment | null;
-  setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
+  pendingAttachments: IPendingAttachment[];
+  setPendingAttachments: Dispatch<SetStateAction<IPendingAttachment[]>>;
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
 }
@@ -38,9 +39,9 @@ export function useComposerSendMessage({
   attachmentInputRef,
   bottomRef,
   draftRef,
-  pendingAttachment,
+  pendingAttachments,
   selectionMode,
-  setPendingAttachment,
+  setPendingAttachments,
 }: Params) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -55,6 +56,20 @@ export function useComposerSendMessage({
 
   const [isSending, setIsSending] = useState(false);
 
+  /* Ошибка отправки — человеку словами. blocked_by_user значит, что
+     собеседник заблокировал, а событие об этом могло не дойти: чат
+     перечитывается, и вместо поля ввода встаёт плашка (#760). */
+  const showSendError = useCallback(
+    (err: unknown) => {
+      const error = err as { code?: string; message?: string };
+      if (error?.code === 'blocked_by_user') {
+        void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId), exact: true });
+      }
+      setError(describeApiError(error, t, t('messageSendError', 'Не удалось отправить сообщение')));
+    },
+    [chatId, queryClient, setError, t]
+  );
+
   function scrollToBottom() {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }
@@ -64,27 +79,25 @@ export function useComposerSendMessage({
       setError('');
       void retryOutboxMessage(queryClient, message.tempId || message.id, {
         onError: (err) => {
-          setError(
-            describeApiError(
-              err as { code?: string; message?: string },
-              t,
-              t('messageSendError', 'Не удалось отправить сообщение')
-            )
-          );
+          showSendError(err);
         },
         onSuccess: () => {
           setError('');
         },
       });
     },
-    [queryClient, setError, t]
+    [queryClient, setError, showSendError]
   );
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (selectionMode) return;
-    const content = (draftRef.current?.value ?? '').trim();
-    if (!content && !pendingAttachment) return;
+    // Текст с форматированием; пробелы по краям срезаются вместе с
+    // диапазонами (#656).
+    const { text: content, entities } = trimRichText(
+      draftRef.current?.getValue() ?? { text: '', entities: [] }
+    );
+    if (!content && pendingAttachments.length === 0) return;
 
     if (editingMessage) {
       if (isSending) return;
@@ -93,102 +106,111 @@ export function useComposerSendMessage({
         const result = await services.messageService.editMessage(
           editingMessage.id,
           chatId,
-          content
+          content,
+          entities
         );
 
         patchThreadMessage(queryClient, chatId, editingMessage.id, {
           content: result.content,
+          entities: result.entities,
           updatedAt: result.updatedAt,
           isEdited: true,
         });
         void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
         setEditingMessage(null);
-        setComposerText(draftRef.current, '');
+        draftRef.current?.clear();
         setError('');
       } catch (err: unknown) {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
+        showSendError(err);
       } finally {
         setIsSending(false);
       }
       return;
     }
 
-    // Оптимистичная отправка: создаём сообщение в ленте мгновенно
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    let blobUrl: string | undefined;
+    /* Оптимистичная отправка: сообщения в ленте появляются мгновенно.
+       Несколько вложений — по сообщению на каждое, пока нет альбомов:
+       подпись и ответ — у первого, как у альбома в Telegram. */
+    const attachments: (IPendingAttachment | null)[] =
+      pendingAttachments.length > 0 ? pendingAttachments : [null];
+    const startedAt = Date.now();
 
-    if (pendingAttachment?.file) {
-      try {
-        blobUrl = URL.createObjectURL(pendingAttachment.file);
-      } catch {
-        // Игнорируем ошибку создания Object URL вне браузера
+    const outboxItems = attachments.map((attachment, index): IOutboxItem => {
+      const tempId = `temp-${startedAt}-${index}-${Math.random().toString(36).slice(2, 9)}`;
+      const first = index === 0;
+      let blobUrl: string | undefined;
+      if (attachment?.file) {
+        try {
+          blobUrl = URL.createObjectURL(attachment.file);
+        } catch {
+          // Игнорируем ошибку создания Object URL вне браузера
+        }
       }
-    }
+      // Миллисекунда разницы держит порядок вложений в ленте.
+      const createdAt = new Date(startedAt + index);
+      const type = attachment ? attachment.type : 'text';
+      const status = attachment ? 'uploading' : 'pending';
+      const itemContent = first ? content : '';
+      const itemEntities = first ? entities : [];
+      const replyToId = first ? replyToMessage?.id : undefined;
 
-    const now = new Date();
+      const optimisticMessage: IMediaItem = {
+        id: tempId,
+        tempId,
+        chatId,
+        senderId: currentUser?.id ?? '',
+        content: itemContent,
+        entities: itemEntities,
+        type,
+        mediaType: attachment ? attachment.type : undefined,
+        mediaUrl: blobUrl,
+        replyTo: replyToId,
+        replyToMessageId: replyToId,
+        status,
+        createdAt,
+        reactions: [],
+      };
+      putThreadMessage(queryClient, chatId, optimisticMessage);
 
-    const optimisticMessage: IMediaItem = {
-      id: tempId,
-      tempId,
-      chatId,
-      senderId: currentUser?.id ?? '',
-      content,
-      type: pendingAttachment ? pendingAttachment.type : 'text',
-      mediaType: pendingAttachment ? pendingAttachment.type : undefined,
-      mediaUrl: blobUrl,
-      replyTo: replyToMessage?.id,
-      replyToMessageId: replyToMessage?.id,
-      status: pendingAttachment ? 'uploading' : 'pending',
-      createdAt: now,
-      reactions: [],
-    };
-
-    const outboxItem: IOutboxItem = {
-      tempId,
-      chatId,
-      content,
-      type: pendingAttachment ? pendingAttachment.type : 'text',
-      file: pendingAttachment?.file,
-      replyToId: replyToMessage?.id ?? null,
-      status: pendingAttachment ? 'uploading' : 'pending',
-      blobUrl,
-      createdAt: now,
-    };
-
-    // 1. Помещаем в кеш TanStack Query и в Outbox store
-    putThreadMessage(queryClient, chatId, optimisticMessage);
-    addOutboxItem(outboxItem);
+      const outboxItem: IOutboxItem = {
+        tempId,
+        chatId,
+        content: itemContent,
+        entities: itemEntities,
+        type,
+        file: attachment?.file,
+        replyToId: replyToId ?? null,
+        status,
+        blobUrl,
+        createdAt,
+      };
+      addOutboxItem(outboxItem);
+      return outboxItem;
+    });
     scrollToBottom();
 
-    // 2. Мгновенно очищаем композер, не блокируя набор следующих сообщений
-    setComposerText(draftRef.current, '');
+    // Мгновенно очищаем композер, не блокируя набор следующих сообщений
+    draftRef.current?.clear();
     clearDraft(chatId);
-    setPendingAttachment(null);
+    setPendingAttachments([]);
     setReplyToMessage(null);
     if (attachmentInputRef.current) attachmentInputRef.current.value = '';
     setError('');
 
-    // 3. Отправляем в фоне через outboxSender
-    void sendOutboxItem(queryClient, outboxItem, {
-      onError: (err) => {
-        setError(
-          describeApiError(
-            err as { code?: string; message?: string },
-            t,
-            t('messageSendError', 'Не удалось отправить сообщение')
-          )
-        );
-      },
-      onSuccess: () => {
-        setError('');
-      },
-    });
+    // Отправка в фоне — по одному, чтобы у собеседника порядок был тот же.
+    // Сбой одного не останавливает остальные: он ждёт повтора в очереди.
+    void (async () => {
+      for (const outboxItem of outboxItems) {
+        await sendOutboxItem(queryClient, outboxItem, {
+          onError: (err) => {
+            showSendError(err);
+          },
+          onSuccess: () => {
+            setError('');
+          },
+        });
+      }
+    })();
   }
 
   return { isSending, handleSubmit, handleRetryMessage };

@@ -65,7 +65,14 @@ func (s *Service) PrivacyExceptions(ctx context.Context, ownerID string, rule pr
 		}
 		exceptions = append(exceptions, item)
 	}
-	return exceptions, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slots := make([]privacy.PhotoSlot, len(exceptions))
+	for i := range exceptions {
+		slots[i] = privacy.PhotoSlot{OwnerID: exceptions[i].ID, URL: &exceptions[i].AvatarURL}
+	}
+	return exceptions, privacy.HidePhotos(ctx, s.db, ownerID, slots)
 }
 
 // SetPrivacyException добавляет человека в исключения правила или
@@ -93,6 +100,10 @@ func (s *Service) SetPrivacyException(ctx context.Context, ownerID string, rule 
 	if errors.Is(err, sql.ErrNoRows) {
 		return PrivacyException{}, ErrNotFound
 	}
+	if err != nil {
+		return PrivacyException{}, err
+	}
+	err = privacy.HidePhotos(ctx, s.db, ownerID, []privacy.PhotoSlot{{OwnerID: item.ID, URL: &item.AvatarURL}})
 	return item, err
 }
 

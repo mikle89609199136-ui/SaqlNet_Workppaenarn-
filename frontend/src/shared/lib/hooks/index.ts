@@ -1,5 +1,4 @@
 export * from './useAudio';
-export * from './useAutoScrollToBottom';
 export * from './useClickOutside';
 export * from './useConnectionStatus';
 export * from './useDebounce';
@@ -8,8 +7,10 @@ export * from './useFullscreen';
 export * from './useIdle';
 export * from './useIsMobile';
 export * from './useLongPress';
+export * from './useNow';
 export * from './useObjectUrl';
 export * from './usePaneWidth';
+export * from './useReducedMotion';
 export * from './useSecurityNotice';
 export * from './useVideo';
 export * from './useVideoQuality';

@@ -1,12 +1,11 @@
 import type { IProfileModal, IProfileState } from '@/entities/user';
-import type { IChatDto, TMessagesList } from '@/types';
+import type { IChatDto } from '@/types';
 import { useEffect, useState } from 'react';
 
 const CLOSED_PROFILE: IProfileModal = { isOpen: false, userId: null };
 
 interface Params {
   chat: IChatDto | null;
-  messages: TMessagesList;
   chatId: string;
   profileMode: 'modal' | 'panel';
   profileCloseToken: number;
@@ -15,7 +14,6 @@ interface Params {
 
 export function useProfilePanel({
   chat,
-  messages,
   chatId,
   profileMode,
   profileCloseToken,
@@ -42,13 +40,9 @@ export function useProfilePanel({
 
   useEffect(() => {
     if (profileMode !== 'panel' || typeof onProfileStateChange !== 'function') return;
-    // Лента нужна панели только чтобы отобрать общие медиа, и только пока
-    // панель открыта. Закрытой отдавать её незачем: ссылка осталась бы в
-    // состоянии ChatsPage, которая при переходе между чатами не
-    // размонтируется, и держала бы расшифрованные сообщения чата, из
-    // которого профиль когда-то открывали.
-    onProfileStateChange({ ...profileModal, chat, messages: profileModal.isOpen ? messages : [] });
-  }, [chat, messages, onProfileStateChange, profileMode, profileModal]);
+    // Ленту панели не отдаём: общее в профиле сервер отдаёт по виду (#842).
+    onProfileStateChange({ ...profileModal, chat });
+  }, [chat, onProfileStateChange, profileMode, profileModal]);
 
   return { profileModal, setProfileModal };
 }

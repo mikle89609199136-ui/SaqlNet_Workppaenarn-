@@ -83,12 +83,14 @@ export const PinnedMessagesView = ({
         messages={pinnedMessages.map((pinned) => pinned.message)}
         setOpenedImage={setOpenedImage}
         toggleMessageSelection={onSelection}
+        trackUnread={false}
       />
 
       {actionMenu && selectedActionMessage && (
         <MessageActionsPopover
           message={selectedActionMessage.message}
           onSelection={onSelection}
+          place="pinned"
           setIsForwardModalOpen={setIsForwardModalOpen}
         />
       )}

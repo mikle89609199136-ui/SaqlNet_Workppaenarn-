@@ -18,10 +18,12 @@ describe('о приложении', () => {
 
     renderSettings({ section: 'about' });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Удалить ключи с этого устройства' })
+    );
 
     // Окно открылось — но пока человек не подтвердил, ничего не произошло.
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     expect(wipeDevice).not.toHaveBeenCalled();
 
     wipeDevice.mockRestore();
@@ -32,10 +34,12 @@ describe('о приложении', () => {
 
     renderSettings({ section: 'about' });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Удалить ключи с этого устройства' })
+    );
     await userEvent.click(await screen.findByRole('button', { name: 'Отмена' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(wipeDevice).not.toHaveBeenCalled();
 
     wipeDevice.mockRestore();
@@ -51,7 +55,9 @@ describe('о приложении', () => {
 
     renderSettings({ queryClient, section: 'about' });
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Удалить ключи с этого устройства' })
+    );
     await userEvent.click(await screen.findByRole('button', { name: 'Удалить ключи' }));
 
     await waitFor(() => expect(wipeDevice).toHaveBeenCalledOnce());
@@ -66,6 +72,6 @@ describe('о приложении', () => {
   it('показывает версию из сборки', async () => {
     renderSettings({ section: 'about' });
 
-    expect(await screen.findByText(APP_VERSION)).toBeInTheDocument();
+    expect(await screen.findByText(`Версия ${APP_VERSION}`)).toBeInTheDocument();
   });
 });

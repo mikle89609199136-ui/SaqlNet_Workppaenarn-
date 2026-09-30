@@ -25,6 +25,8 @@ const MESSAGES: Record<string, string> = {
   member_muted: 'errors.memberMuted',
   member_not_found: 'errors.memberNotFound',
   not_found: 'errors.notFound',
+  not_member: 'errors.notMember',
+  ownership_conflict: 'errors.ownershipConflict',
   rate_limited: 'errors.rateLimited',
   unsupported_type: 'errors.unsupportedType',
   user_not_found: 'errors.userNotFound',

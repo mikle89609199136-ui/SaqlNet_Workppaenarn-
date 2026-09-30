@@ -140,8 +140,8 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 // dialWS подключается к тестовому WS-серверу; регистрирует закрытие.
 func dialWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
 	t.Helper()
-	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?token=tok"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(u, http.Header{"Authorization": {"Bearer tok"}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn

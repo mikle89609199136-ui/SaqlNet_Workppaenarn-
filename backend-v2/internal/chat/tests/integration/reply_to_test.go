@@ -69,7 +69,7 @@ func TestSendMessageRejectsReplyFromAnotherChat(t *testing.T) {
 	var before int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1`, chatBID).Scan(&before))
 
-	_, err = chat.NewService(db, nil, nil).SendMessage(ctx, senderID, chatBID, "cross-chat reply", "text", &replyID, nil)
+	_, err = chat.NewService(db, nil, nil).SendMessages(ctx, senderID, chatBID, []chat.OutgoingMessage{{Content: "cross-chat reply", Type: "text", ReplyTo: &replyID}})
 	require.True(t, errors.Is(err, chat.ErrNotFound), "expected ErrNotFound, got %v", err)
 
 	var after int

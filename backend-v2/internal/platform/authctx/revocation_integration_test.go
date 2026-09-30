@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -203,8 +202,8 @@ func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, me
 
 func assertWebSocketHandshakeStatus(t *testing.T, serverURL, token string, want int) {
 	t.Helper()
-	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws?token=" + url.QueryEscape(token)
-	connection, response, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + token}})
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()
 	}

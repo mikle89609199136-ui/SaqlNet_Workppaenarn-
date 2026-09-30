@@ -32,6 +32,19 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.MESSAGE.DELETED]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
 
+  // Пачка удалена у всех или скрыта у себя (#840). Обычно сообщения
+  // убираются из ленты на месте (useServerEvents); это — запасной путь.
+  [WS_EVENTS.MESSAGE.BATCH_DELETED]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
+
+  [WS_EVENTS.MESSAGE.HIDDEN]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
+
+  // Галочки своих сообщений (#657). Обычно ставятся на месте
+  // (useServerEvents); это — запасной путь.
+  [WS_EVENTS.MESSAGE.RECEIPTS]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.list()] : [],
+
   [WS_EVENTS.REACTIONS.REACTION_UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId)] : [],
 
@@ -49,6 +62,14 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
     chatId ? [chatKeys.members(chatId), chatKeys.detail(chatId)] : [],
 
   [WS_EVENTS.CHAT.MEMBER_ROLE_UPDATED]: ({ chatId }) => (chatId ? [chatKeys.members(chatId)] : []),
+
+  // Блокировка (#760): флаги чата и статус собеседника считает сервер —
+  // перечитываем личный чат и список.
+  [WS_EVENTS.USER.BLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
+
+  [WS_EVENTS.USER.UNBLOCKED]: ({ chatId }) =>
+    chatId ? [chatKeys.detail(chatId), chatKeys.list()] : [chatKeys.list()],
 };
 
 /**

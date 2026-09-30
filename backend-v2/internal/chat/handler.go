@@ -464,6 +464,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "archive", r.Method == http.MethodPost))
 	case suffix == "/read" && r.Method == http.MethodPost:
 		respondSuccess(w, r, h.service.MarkRead(r.Context(), current.ID, chatID))
+	case suffix == "/messages/delete" && r.Method == http.MethodPost:
+		h.deleteMessages(w, r, current.ID, chatID)
 	default:
 		methodNotAllowed(w, r)
 	}
@@ -490,6 +492,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	roomID, err := h.service.CreateCallRoom(r.Context(), current.ID, input.ChatID, input.Type, input.CallKind, input.Title)
 	if errors.Is(err, ErrForbidden) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+		return
+	}
+	if errors.Is(err, ErrInvalidChatType) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
 		return
 	}
 	if err != nil {
@@ -590,7 +596,14 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := r.PathValue("id")
 	room := h.service.CallRooms().GetRoomPublic(roomID)
+	// Комната — только участнику её чата (#848). Чужому — тот же 404, что
+	// и на несуществующую: не раскрываем, что комната есть.
 	if room == nil {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
+		return
+	}
+	current := authctx.MustUser(r)
+	if member, err := h.service.IsMember(r.Context(), current.ID, room.ChatID); err != nil || !member {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
 		return
 	}
@@ -599,18 +612,6 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		"room":            room,
 		"iceServers":      getIceServers(),
 		"maxParticipants": maxCallParticipants,
-	})
-}
-
-func (h *Handler) ListRooms(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r)
-		return
-	}
-	rooms := h.service.CallRooms().ListRoomsPublic()
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"rooms":   rooms,
 	})
 }
 
@@ -664,23 +665,6 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
-}
-
-func (h *Handler) MessagesRead(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r)
-		return
-	}
-	current := authctx.MustUser(r)
-	var input struct {
-		ChatID     string   `json:"chatId"`
-		MessageIDs []string `json:"messageIds"`
-	}
-	if !decode(w, r, &input) {
-		return
-	}
-	err := h.service.MarkRead(r.Context(), current.ID, input.ChatID)
-	respondSuccess(w, r, err)
 }
 
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
@@ -749,27 +733,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case suffix == "/forward" && r.Method == http.MethodPost:
-		var input struct {
-			TargetChatID string `json:"targetChatId"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		msg, err := h.service.ForwardMessage(r.Context(), current.ID, targetID, input.TargetChatID)
-		if errors.Is(err, ErrNotFound) {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
-			return
-		}
-		if errors.Is(err, ErrForbidden) {
-			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
-			return
-		}
-		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "forward failed")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"message": msg})
 	case suffix == "/reactions" && r.Method == http.MethodPost:
 		var input struct {
 			Emoji string `json:"emoji"`
@@ -807,7 +770,6 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
 			"reactions":    reactions,    // full list of emoji counts with myReaction flags
 		})
-
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
@@ -907,7 +869,12 @@ func parseMemberAction(suffix string) (string, string) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(value); err != nil {
+	return decodeLimited(w, r, value, 256<<10)
+}
+
+// decodeLimited — decode со своим пределом тела: отправке пачкой общего не хватает.
+func decodeLimited(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(value); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}

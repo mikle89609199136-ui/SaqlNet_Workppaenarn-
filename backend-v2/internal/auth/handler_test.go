@@ -92,6 +92,9 @@ func TestLogoutAllCanBeActivatedAfterCompatibleRollout(t *testing.T) {
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM users.push_subscriptions").
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	handler := NewHandler(

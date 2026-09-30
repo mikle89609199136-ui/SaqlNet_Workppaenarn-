@@ -4,6 +4,14 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tailwind from 'eslint-plugin-tailwindcss';
 import tseslint from 'typescript-eslint';
+import { readdirSync } from 'node:fs';
+
+/** Слайсы слоя фич — для запрета импортов между ними (#863). */
+const featureSlices = readdirSync(new URL('./src/features', import.meta.url), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
 
 /**
  * Проверка кода.
@@ -178,8 +186,18 @@ export default tseslint.config(
     },
   },
 
-  {
-    files: ['src/features/**/*.{ts,tsx}'],
+  /*
+   * Фичи не знают ни о слоях выше, ни друг о друге (#863): фича — одно
+   * действие человека, и связь двух фич завязывает их в узел, который
+   * потом не разрезать. Общее опускается ниже (entities, shared), а
+   * композиция нескольких фич — дело виджета или страницы; действие можно
+   * и передать пропом от того, кто собирает экран.
+   *
+   * Правило своё у каждого слайса: «кроме себя» шаблоном не выразить,
+   * поэтому блоки строятся по списку папок src/features.
+   */
+  ...featureSlices.map((slice) => ({
+    files: [`src/features/${slice}/**/*.{ts,tsx}`],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -189,11 +207,21 @@ export default tseslint.config(
               group: ['@/widgets', '@/widgets/*', '@/pages', '@/pages/*', '@/app', '@/app/*'],
               message: 'Фичи не знают о виджетах, страницах и приложении.',
             },
+            {
+              group: [
+                '@/features',
+                '@/features/*',
+                `!@/features/${slice}`,
+                `!@/features/${slice}/**`,
+              ],
+              message:
+                'Фича не импортирует другую фичу (#863): общее — в entities или shared, композиция — в widgets или pages, действие — пропом.',
+            },
           ],
         },
       ],
     },
-  },
+  })),
 
   {
     files: ['src/widgets/**/*.{ts,tsx}'],

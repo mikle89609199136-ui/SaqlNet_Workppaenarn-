@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { IMessageDto, IPinnedDto } from './types';
 import { chatKeys } from '@/entities/chat';
+import type { IReceiptEvent } from '@/shared/lib';
 import {
   appendMessage,
+  applyReceipt,
   canAppendToThread,
   patchMessage,
   removeMessage,
@@ -28,9 +30,15 @@ import {
  * Правило живёт здесь, а не в вызывающем коде: раньше связь ленты и
  * превью поддерживал отдельный хук со своими подписками, и стоило
  * появиться новому способу отправки, как превью переставало обновляться.
+ *
+ * Уже идущий перезапрос не прерывается (`cancelRefetch: false`): пачка
+ * сообщений — своя отправка или N событий `new_message` подряд — иначе
+ * давала N запросов списка, каждый из которых отменял предыдущий (#808).
+ * Сервер рассылает события после записи всей пачки, так что первый же
+ * запрос видит её целиком.
  */
 function markChatListStale(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+  void queryClient.invalidateQueries({ queryKey: chatKeys.list() }, { cancelRefetch: false });
 }
 
 export function putThreadMessage(
@@ -38,6 +46,20 @@ export function putThreadMessage(
   chatId: string,
   message: IMessageDto
 ): void {
+  putThreadMessages(queryClient, chatId, [message]);
+}
+
+/**
+ * Несколько сообщений разом — ответ на отправку пачкой (#808): одна запись
+ * в кеш и одна пометка списка чатов на всю пачку.
+ */
+export function putThreadMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  messages: IMessageDto[]
+): void {
+  if (messages.length === 0) return;
+
   const current = queryClient.getQueryData<IThreadPages>(chatKeys.messages(chatId));
 
   // Историю, которую ещё не загружали, дополнять нельзя: одно сообщение
@@ -48,7 +70,10 @@ export function putThreadMessage(
     return;
   }
 
-  queryClient.setQueryData(chatKeys.messages(chatId), appendMessage(current, message));
+  queryClient.setQueryData(
+    chatKeys.messages(chatId),
+    messages.reduce((pages, message) => appendMessage(pages, message), current)
+  );
   markChatListStale(queryClient);
 }
 
@@ -63,6 +88,16 @@ export function patchThreadMessage(
   );
   // Отредактированным могло оказаться последнее сообщение чата.
   markChatListStale(queryClient);
+}
+
+/**
+ * Событие `receipts` (#657): галочки своих сообщений в ленте — на месте.
+ * Список чатов обновляется отдельно и тоже без перезапроса.
+ */
+export function putThreadReceipt(queryClient: QueryClient, event: IReceiptEvent): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(event.chatId), (current) =>
+    current ? applyReceipt(current, event) : current
+  );
 }
 
 export function replaceThreadMessage(
@@ -116,6 +151,20 @@ export function dropThreadMessage(
   // Удалённое сообщение могло быть закреплено — панель обязана это заметить.
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   // ...и быть последним в чате: тогда в списке показывается предыдущее.
+  markChatListStale(queryClient);
+}
+
+/** То же для пачки (#840): одна перерисовка ленты и одно обновление списка. */
+export function dropThreadMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  messageIds: string[]
+): void {
+  if (messageIds.length === 0) return;
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? messageIds.reduce((thread, id) => removeMessage(thread, id), current) : current
+  );
+  void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   markChatListStale(queryClient);
 }
 

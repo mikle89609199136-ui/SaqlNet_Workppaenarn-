@@ -94,6 +94,18 @@ export class ChatService {
       .then((response) => response.data.members ?? []);
   }
 
+  /** Кто из участников группы сейчас в сети — идентификаторы (#822). */
+  async getOnlineMembers(chatId: string): Promise<string[]> {
+    return this.apiClient
+      .get<{ members?: string[] }>(API_ENDPOINTS.CHAT_MEMBERS_ONLINE(chatId))
+      .then((response) => response.data.members ?? []);
+  }
+
+  /** Добавить участника в группу: владелец или админ, по одному (#822). */
+  async addMember(chatId: string, userId: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MEMBER_ADD(chatId), { userId });
+  }
+
   async setMemberRole(chatId: string, userId: string, role: TChatRole) {
     return this.apiClient
       .post(API_ENDPOINTS.CHAT_MEMBER_ROLE(chatId, userId), { role })
@@ -126,8 +138,22 @@ export class ChatService {
     return response.data;
   }
 
-  async muteChat(chatId: string, duration: number) {
-    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), { duration });
+  /**
+   * Выйти из группы самому (#90). Удалить себя через `removeMember` нельзя:
+   * это действие модератора над другим участником, и сервер его отклоняет.
+   * Владельцу выйти нельзя (409 `ownership_transfer_required`), пока он не
+   * передал права.
+   */
+  async leaveChat(chatId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_LEAVE(chatId));
+    return response.data;
+  }
+
+  /** Сделать участника владельцем; прежний владелец становится участником. */
+  async transferOwnership(chatId: string, userId: string) {
+    const response = await this.apiClient.post(API_ENDPOINTS.CHAT_TRANSFER_OWNERSHIP(chatId), {
+      userId,
+    });
     return response.data;
   }
 

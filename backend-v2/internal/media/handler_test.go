@@ -484,3 +484,31 @@ func TestUploadLimitMessageForConfigured100MiB(t *testing.T) {
 		t.Fatalf("uploadLimitMessage()=%q", got)
 	}
 }
+
+// Голосовое больше 8 МБ отклоняется до записи в хранилище (#843); тот же
+// размер обычным файлом проходит.
+func TestVoiceUploadHasItsOwnSizeLimit(t *testing.T) {
+	body := func(kind string, bytes int) string {
+		ciphertext := base64.StdEncoding.EncodeToString(make([]byte, bytes))
+		return `{"purpose":"message","type":"` + kind + `","file":{"version":2,"encrypted":true,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":1,"ciphertext":"` + ciphertext + `","mimeType":"audio/ogg","sizeBytes":1}}`
+	}
+
+	handler, mock, _ := newMediaTestHandler(t, 64<<20)
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes+1)))
+	request.Header.Set("Content-Type", "application/json")
+	response := executeUpload(handler, request)
+	if response.Code != http.StatusRequestEntityTooLarge || !strings.Contains(response.Body.String(), "file_too_large") {
+		t.Fatalf("voice over limit: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err) // в хранилище ничего не ушло
+	}
+
+	within, withinMock, _ := newMediaTestHandler(t, 64<<20)
+	expectUploadInsert(withinMock, "upload", "application/octet-stream", maxVoiceBytes)
+	request = httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes)))
+	request.Header.Set("Content-Type", "application/json")
+	if response := executeUpload(within, request); response.Code != http.StatusCreated {
+		t.Fatalf("voice at limit: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
