@@ -485,6 +485,12 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
+	// Неверный chatId — ошибка запроса, а не сервера: иначе он доходил до
+	// базы и возвращался 500.
+	if validate.Var(input.ChatID, "required,uuid") != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid chatId")
+		return
+	}
 	current := authctx.MustUser(r)
 	if input.CallKind == "" {
 		input.CallKind = "video"
@@ -502,6 +508,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
 		return
 	}
+	if errors.Is(err, ErrGroupCallsUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "group_calls_unavailable", "calls are one-to-one only")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "room creation failed")
 		return
@@ -510,7 +520,7 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"room": map[string]string{
 			"id":       roomID,
-			"type":     input.Type,
+			"type":     "p2p",
 			"chatId":   input.ChatID,
 			"title":    input.Title,
 			"callKind": input.CallKind,

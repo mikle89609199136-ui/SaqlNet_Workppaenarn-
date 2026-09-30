@@ -77,10 +77,11 @@ func TestCallRoomBlockedOnRealSchema(t *testing.T) {
 		require.Equal(t, 1, roomsInChat(private))
 	})
 
-	t.Run("в группе блокировка между двумя не мешает", func(t *testing.T) {
-		code, _ := createRoom(blocked, group)
-		require.Equal(t, http.StatusCreated, code)
-		code, _ = createRoom(third, group)
-		require.Equal(t, http.StatusCreated, code)
+	t.Run("в группе ответ не про блокировку: групповых звонков нет (#715)", func(t *testing.T) {
+		for _, user := range []string{blocked, third} {
+			code, out := createRoom(user, group)
+			require.Equal(t, http.StatusBadRequest, code)
+			require.Equal(t, "group_calls_unavailable", out["code"])
+		}
 	})
 }

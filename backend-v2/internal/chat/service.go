@@ -20,12 +20,14 @@ import (
 )
 
 var (
-	ErrNotFound                  = errors.New("chat not found")
-	ErrForbidden                 = errors.New("access denied")
-	ErrInvalidInput              = errors.New("invalid input")
-	ErrUserNotFound              = errors.New("user not found")
-	ErrBlockedByUser             = errors.New("blocked by user")
-	ErrInvalidChatType           = errors.New("invalid chat type")
+	ErrNotFound        = errors.New("chat not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrInvalidChatType = errors.New("invalid chat type")
+	// ErrGroupCallsUnavailable — в MVP звонки только один на один (#715).
+	ErrGroupCallsUnavailable     = errors.New("group calls are not available")
 	ErrAlreadyMember             = errors.New("user already in group")
 	ErrUserBanned                = errors.New("user is banned")
 	ErrOwnershipTransferRequired = errors.New("ownership transfer required")
@@ -3501,6 +3503,11 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 	if chatType == "self" {
 		return "", ErrInvalidChatType
 	}
+	// В MVP звонки только один на один (#715): комната — только в личном
+	// чате. Групповые звонки — отдельной задачей, вместе с приглашениями.
+	if chatType != "private" {
+		return "", ErrGroupCallsUnavailable
+	}
 	// Ни в базу, ни в память: заблокировавший его звонка не получит.
 	if blockedByPeer {
 		return "", ErrBlockedByUser
@@ -3516,7 +3523,8 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 		RETURNING id::text
 	`, chatID, dbCallType, title, userID).Scan(&roomID)
 	if err == nil {
-		s.CallRooms().CreateRoom(userID, roomID, callType, callKind, chatID, title)
+		// Тип комнаты — от сервера: звонок всегда один на один (#715).
+		s.CallRooms().CreateRoom(userID, roomID, "p2p", callKind, chatID, title)
 	}
 	return roomID, err
 }
