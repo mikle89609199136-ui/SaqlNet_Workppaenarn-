@@ -1,9 +1,9 @@
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useVirtualMessagesFeed } from './useVirtualMessagesFeed';
 
 describe('useVirtualMessagesFeed', () => {
@@ -47,79 +47,105 @@ describe('useVirtualMessagesFeed', () => {
     expect(result.current.messagesById.get('msg-2')?.id).toBe('msg-2');
   });
 
-  /* «Новые сообщения» (#820). */
+  /* «Новые сообщения» (#820): по отметке прочтения чата (#839). */
   describe('разделитель новых сообщений', () => {
     const ME = 'user-me';
-    const incoming = (id: string, isRead: boolean) =>
-      makeMessage({
-        id,
-        chatId: 'chat-1',
-        senderId: 'user-2',
-        isRead,
-        createdAt: '2026-05-10T10:00:00Z',
-      });
-    const own = (id: string) =>
-      makeMessage({
-        id,
-        chatId: 'chat-1',
-        senderId: ME,
-        isRead: false,
-        createdAt: '2026-05-10T10:00:00Z',
-      });
+    /** Минута — время сообщения; отметка прочтения — тоже минутой. */
+    const at = (minute: number) => `2026-05-10T10:${String(minute).padStart(2, '0')}:00Z`;
+    const incoming = (id: string, minute: number) =>
+      makeMessage({ id, chatId: 'chat-1', senderId: 'user-2', createdAt: at(minute) });
+    const own = (id: string, minute: number) =>
+      makeMessage({ id, chatId: 'chat-1', senderId: ME, createdAt: at(minute) });
+    const readMark = (minute: number, unreadCount: number) => ({
+      chatId: 'chat-1',
+      lastReadAt: at(minute),
+      unreadCount,
+    });
 
     const types = (items: { type: string; id: string }[]) =>
       items.map((item) => (item.type === 'message' ? item.id : item.type));
 
-    it('стоит перед первым чужим непрочитанным', () => {
-      const messages = [
-        incoming('m1', true),
-        own('m2'),
-        incoming('m3', false),
-        incoming('m4', false),
-      ];
+    it('стоит перед первым чужим новее отметки прочтения', () => {
+      const messages = [incoming('m1', 1), own('m2', 2), incoming('m3', 3), incoming('m4', 4)];
 
-      const { result } = renderHook(() => useVirtualMessagesFeed({ messages, currentUserId: ME }), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useVirtualMessagesFeed({ messages, currentUserId: ME, readMark: readMark(2, 2) }),
+        { wrapper }
+      );
 
       expect(types(result.current.feedItems)).toEqual(['date', 'm1', 'm2', 'unread', 'm3', 'm4']);
     });
 
-    it('остаётся на месте, когда сообщения отметились прочитанными', () => {
-      /* Лента отмечает прочитанным сразу после загрузки — без снимка на
-         момент открытия разделитель пропал бы в ту же секунду. */
-      let messages = [incoming('m1', true), incoming('m2', false)];
+    it('остаётся на месте, когда чат отметился прочитанным', () => {
+      /* Лента отмечает прочитанным сразу после загрузки, и отметка чата
+         уходит вперёд — без снимка разделитель пропал бы в ту же секунду. */
+      const messages = [incoming('m1', 1), incoming('m2', 2)];
+      let mark = readMark(1, 1);
 
       const { result, rerender } = renderHook(
-        () => useVirtualMessagesFeed({ messages, currentUserId: ME }),
+        () => useVirtualMessagesFeed({ messages, currentUserId: ME, readMark: mark }),
         { wrapper }
       );
 
-      messages = [incoming('m1', true), incoming('m2', true)];
+      mark = readMark(2, 0);
       rerender();
 
       expect(types(result.current.feedItems)).toEqual(['date', 'm1', 'unread', 'm2']);
     });
 
     it('своё непрочитанным не считается, и без чужих новых разделителя нет', () => {
-      const messages = [incoming('m1', true), own('m2')];
+      const messages = [incoming('m1', 1), own('m2', 2)];
 
-      const { result } = renderHook(() => useVirtualMessagesFeed({ messages, currentUserId: ME }), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useVirtualMessagesFeed({ messages, currentUserId: ME, readMark: readMark(1, 0) }),
+        { wrapper }
+      );
 
       expect(types(result.current.feedItems)).not.toContain('unread');
     });
 
     it('в подборке закреплённых разделителя нет', () => {
-      const messages = [incoming('m1', false)];
+      const messages = [incoming('m1', 1)];
 
       const { result } = renderHook(
-        () => useVirtualMessagesFeed({ messages, currentUserId: ME, trackUnread: false }),
+        () =>
+          useVirtualMessagesFeed({
+            messages,
+            currentUserId: ME,
+            trackUnread: false,
+            readMark: readMark(0, 1),
+          }),
         { wrapper }
       );
 
       expect(types(result.current.feedItems)).not.toContain('unread');
+    });
+
+    it('первое непрочитанное выше загруженного — догружает до него', async () => {
+      let messages = [incoming('m3', 3), incoming('m4', 4)];
+      let hasOlder = true;
+      const loadOlder = vi.fn(async () => {
+        messages = [incoming('m1', 1), incoming('m2', 2), ...messages];
+        hasOlder = false;
+      });
+
+      const { result, rerender } = renderHook(
+        () =>
+          useVirtualMessagesFeed({
+            messages,
+            currentUserId: ME,
+            readMark: readMark(1, 3),
+            loadOlder,
+            hasOlder,
+          }),
+        { wrapper }
+      );
+
+      await waitFor(() => expect(loadOlder).toHaveBeenCalledWith({ isJump: true }));
+      rerender();
+
+      expect(loadOlder).toHaveBeenCalledTimes(1);
+      expect(types(result.current.feedItems)).toEqual(['date', 'm1', 'unread', 'm2', 'm3', 'm4']);
     });
   });
 });

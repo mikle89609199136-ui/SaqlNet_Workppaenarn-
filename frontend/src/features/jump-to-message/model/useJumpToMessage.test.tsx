@@ -5,6 +5,8 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MESSAGES_PAGE_SIZE } from '@/entities/message';
+import { services } from '@/services/serviceContainer';
 import { useJumpToMessage } from './useJumpToMessage';
 
 describe('useJumpToMessage', () => {
@@ -21,6 +23,7 @@ describe('useJumpToMessage', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('scrolls to message via onScrollToMessage and sets highlight with auto-clear', async () => {
@@ -111,5 +114,60 @@ describe('useJumpToMessage', () => {
 
     expect(loadOlder).toHaveBeenCalledTimes(3);
     expect(success).toBe(true);
+  });
+
+  /* Старое сообщение (#842): сервер говорит, сколько сообщений новее, —
+     лента догружается до него, а не на пять страниц наугад. */
+  describe('догрузка по позиции сообщения (#842)', () => {
+    function deepHistory(pagesUp: number) {
+      let pages = 0;
+      return {
+        onScrollToMessage: vi.fn().mockImplementation(() => pages >= pagesUp),
+        loadOlder: vi.fn().mockImplementation(async () => {
+          pages++;
+        }),
+      };
+    }
+
+    async function jump(result: { current: ReturnType<typeof useJumpToMessage> }) {
+      let success = false;
+      await act(async () => {
+        const promise = result.current.jumpToMessage('old-msg');
+        await vi.advanceTimersByTimeAsync(2000);
+        success = await promise;
+      });
+      return success;
+    }
+
+    it('сообщение на восьмой странице — догружает восемь, а не пять', async () => {
+      const position = vi
+        .spyOn(services.messageService, 'getMessagePosition')
+        .mockResolvedValue(MESSAGES_PAGE_SIZE * 7 + 10);
+      const history = deepHistory(8);
+      const { result } = renderHook(
+        () => useJumpToMessage({ ...history, hasMoreOlder: true, chatId: 'chat-1' }),
+        { wrapper }
+      );
+
+      expect(await jump(result)).toBe(true);
+      expect(position).toHaveBeenCalledWith('chat-1', 'old-msg');
+      expect(history.loadOlder).toHaveBeenCalledTimes(8);
+      expect(useChatUiStore.getState().highlightedMessageId).toBe('old-msg');
+    });
+
+    it('позицию узнать не удалось — пять страниц, как раньше', async () => {
+      vi.spyOn(services.messageService, 'getMessagePosition').mockRejectedValue(new Error('404'));
+      const history = deepHistory(8);
+      const { result } = renderHook(
+        () => useJumpToMessage({ ...history, hasMoreOlder: true, chatId: 'chat-1' }),
+        { wrapper }
+      );
+
+      expect(await jump(result)).toBe(false);
+      expect(history.loadOlder).toHaveBeenCalledTimes(5);
+      expect(getToasts()).toContainEqual(
+        expect.objectContaining({ message: 'Сообщение находится выше в истории' })
+      );
+    });
   });
 });

@@ -1,5 +1,4 @@
 import { chatQuery } from '@/entities/chat';
-import { useThreadMessagesData } from '@/entities/message';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
@@ -20,9 +19,8 @@ interface Props {
 
 export const UserProfileModal = ({ onClose, profileModal, renderActions, startCall }: Props) => {
   const { chatId = '' } = useParams<{ chatId: string }>();
-  // Панель показывает общие медиа, поэтому ей нужна история открытого чата.
+  // Панель показывает общее в этом чате.
   const { data: chat = null } = useQuery(chatQuery(chatId));
-  const messages = useThreadMessagesData();
 
   if (!profileModal.isOpen) return null;
 
@@ -39,8 +37,9 @@ export const UserProfileModal = ({ onClose, profileModal, renderActions, startCa
         role="dialog"
       >
         <UserProfilePanel
+          closeOnJump
           onClose={onClose}
-          profileState={{ ...profileModal, chat, messages }}
+          profileState={{ ...profileModal, chat }}
           renderActions={renderActions}
           startCall={startCall}
         />

@@ -1,4 +1,4 @@
-import type { IChatDto, TMessagesList } from '@/types';
+import type { IChatDto } from '@/types';
 import type { TLastSeenApprox } from '@/shared/lib';
 
 export interface IUserDto {
@@ -111,5 +111,4 @@ export interface IProfileModal {
 
 export interface IProfileState extends IProfileModal {
   chat: IChatDto | null;
-  messages: TMessagesList;
 }

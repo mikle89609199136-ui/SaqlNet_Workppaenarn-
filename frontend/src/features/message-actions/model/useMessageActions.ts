@@ -17,10 +17,11 @@ import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
+import { copyRichTextToClipboard, richTextToHtml } from '@/shared/lib/richText';
 import type { IRichTextInputHandle } from '@/shared/ui';
 import type { IMediaItem, IMessageDto } from '@/types';
-import { copyImageToClipboard, mediaFileName, saveMedia } from './mediaActions';
-import { mediaBlobByUrl } from '@/entities/media';
+import { copyImageToClipboard } from './mediaActions';
+import { mediaBlobByUrl, mediaFileName, saveMedia } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -342,21 +343,37 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   };
 
   /**
-   * Текст в буфер обмена (#655). В режиме выбора — все отмеченные по
-   * порядку. Результат подтверждается уведомлением: без него не понять,
-   * сработало ли, а буфер может и отказать (нет разрешения, не HTTPS).
+   * Текст сообщения в буфер обмена (#655, #891). Сохраняет форматирование
+   * (HTML) и обычный текст. В режиме выбора — все отмеченные по порядку.
+   * Результат подтверждается уведомлением.
    */
   async function handleCopyMessage(message: IMessageDto) {
-    const text = selectionMode
+    const messages = selectionMode
       ? sortMessagesChronologically<IMessageDto>(selectedMessages)
-          .map((item) => item.content)
-          .filter(Boolean)
-          .join('\n')
-      : message.content;
+      : [message];
     if (selectionMode) handleCancelSelection();
 
+    const plainText = messages
+      .map((item) => item.content)
+      .filter(Boolean)
+      .join('\n');
+
+    const hasFormatting = messages.some(
+      (item) => Boolean(item.entities?.length) || (item.content && item.content.includes('```'))
+    );
+
     try {
-      await navigator.clipboard.writeText(text);
+      if (hasFormatting) {
+        const htmlText = messages
+          .map((item) =>
+            richTextToHtml({ text: item.content || '', entities: item.entities ?? [] })
+          )
+          .filter(Boolean)
+          .join('<br>');
+        await copyRichTextToClipboard(plainText, htmlText);
+      } else {
+        await navigator.clipboard.writeText(plainText);
+      }
       showToast('success', t('messageActions.copied', 'Скопировано'));
     } catch {
       showToast('error', t('format.copyFailed', 'Не удалось скопировать'));

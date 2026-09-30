@@ -57,6 +57,7 @@ export function ChatThreadPage() {
     isLoading,
     hasOlder,
     loadOlder,
+    readMark,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -141,6 +142,7 @@ export function ChatThreadPage() {
           <MessagesList
             bottomRef={bottomRef}
             error={threadError}
+            handleJumpRequests
             hasOlder={hasOlder}
             isGroupChat={chat?.type === 'group'}
             isLoading={isLoading}
@@ -151,6 +153,7 @@ export function ChatThreadPage() {
             onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
+            readMark={readMark}
             setOpenedImage={modals.setOpenedImage}
             showDeliveryStatus={chat?.type === 'private'}
             toggleMessageSelection={toggleMessageSelection}

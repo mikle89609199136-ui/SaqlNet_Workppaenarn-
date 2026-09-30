@@ -198,4 +198,36 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
     expect(useCallStore.getState().isMinimized).toBe(false);
   });
+
+  it('обрабатывает события BroadcastChannel через CallProvider', async () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'tab-room-1',
+        peerId: 'peer-tab',
+      },
+      incomingCall: {
+        roomId: 'tab-room-1',
+        from: 'peer-tab',
+        kind: 'audio',
+      },
+    });
+
+    const otherTabChannel = new BroadcastChannel('craneapp_calls');
+    otherTabChannel.postMessage({ type: 'CALL_DISMISSED', roomId: 'tab-room-1' });
+
+    await vi.waitFor(() => {
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+      expect(useCallStore.getState().incomingCall).toBeNull();
+    });
+
+    otherTabChannel.close();
+  });
 });

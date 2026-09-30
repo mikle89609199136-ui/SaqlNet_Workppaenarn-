@@ -138,6 +138,33 @@ describe('меню действий сообщения (#655)', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
+  it('«Копировать» форматированного сообщения кладёт HTML и текст в буфер (#891)', async () => {
+    open([
+      makeMessage({
+        senderId: ME,
+        content: 'жирный текст',
+        entities: [{ type: 'bold', offset: 0, length: 6 }],
+      }),
+    ]);
+
+    fireEvent.contextMenu(await screen.findByText('жирный'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Копировать' }));
+
+    expect(clipboard.write).toHaveBeenCalled();
+    const items = clipboard.write.mock.calls[0][0];
+    expect(items).toHaveLength(1);
+    const item = items[0];
+    expect(item.types).toEqual(expect.arrayContaining(['text/plain', 'text/html']));
+
+    const plainBlob = await item.getType('text/plain');
+    const htmlBlob = await item.getType('text/html');
+    await expect(plainBlob.text()).resolves.toBe('жирный текст');
+    await expect(htmlBlob.text()).resolves.toContain('<b>жирный</b> текст');
+
+    await waitFor(() => expect(getToasts().map((toast) => toast.message)).toContain('Скопировано'));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
   it('отказ буфера — уведомление об ошибке', async () => {
     clipboard.writeText.mockRejectedValue(new Error('denied'));
     open([makeMessage({ senderId: ME, content: 'не скопируется' })]);

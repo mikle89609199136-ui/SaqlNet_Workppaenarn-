@@ -68,6 +68,8 @@ export const defaultHandlers = [
   ),
 
   http.get(api('/chats/:chatId/pins'), () => HttpResponse.json({ pins: [] })),
+  // Общее в профиле (#842): по умолчанию пусто.
+  http.get(api('/chats/:chatId/shared'), () => HttpResponse.json({ messages: [] })),
 
   http.get(api('/messages/:chatId'), () => HttpResponse.json({ messages: [] })),
 

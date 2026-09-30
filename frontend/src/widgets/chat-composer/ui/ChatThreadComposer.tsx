@@ -129,7 +129,7 @@ export const ChatThreadComposer = ({
 
   const sendTyping = useTypingIndicator();
   const { cancelComposerMode } = useComposerShortcuts(draftRef);
-  const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
+  const { addFiles, handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
     pendingAttachments,
     setPendingAttachments,
@@ -198,6 +198,33 @@ export const ChatThreadComposer = ({
   // выключен — как «Отправить»: голосовое открытым не уйдёт.
   const showMic = !canSend && !editingMessage;
 
+  const handlePasteFiles = useCallback(
+    (files: File[]) => {
+      if (
+        encryption.status !== 'ready' ||
+        recordingVoice ||
+        editingMessage ||
+        Boolean(forward.pending) ||
+        selectionMode
+      ) {
+        return false;
+      }
+
+      addFiles(files);
+      draftRef.current?.focus();
+      return true;
+    },
+    [
+      addFiles,
+      draftRef,
+      editingMessage,
+      encryption.status,
+      forward.pending,
+      recordingVoice,
+      selectionMode,
+    ]
+  );
+
   if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
     return <BlockedComposer chat={chat} />;
   }
@@ -248,6 +275,7 @@ export const ChatThreadComposer = ({
             className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
             disabled={encryption.status !== 'ready'}
             onChange={handleDraftChange}
+            onPasteFiles={handlePasteFiles}
             onSubmit={submitForm}
             placeholder={composerPlaceholder(encryption, t, hasAttachments)}
             ref={draftRef}

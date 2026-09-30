@@ -101,6 +101,18 @@ func (m *CallRoomManager) GetRoom(roomID string) *callRoom {
 	return m.rooms[roomID]
 }
 
+// IsParticipant — пользователь сейчас в этой комнате (#849).
+func (m *CallRoomManager) IsParticipant(roomID, userID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[roomID]
+	if !ok {
+		return false
+	}
+	_, in := r.participants[userID]
+	return in
+}
+
 func (m *CallRoomManager) GetRoomPublic(roomID string) *RoomPublic {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -108,16 +120,6 @@ func (m *CallRoomManager) GetRoomPublic(roomID string) *RoomPublic {
 		return r.toPublic()
 	}
 	return nil
-}
-
-func (m *CallRoomManager) ListRoomsPublic() []*RoomPublic {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	res := make([]*RoomPublic, 0, len(m.rooms))
-	for _, r := range m.rooms {
-		res = append(res, r.toPublic())
-	}
-	return res
 }
 
 func (r *callRoom) toPublic() *RoomPublic {
