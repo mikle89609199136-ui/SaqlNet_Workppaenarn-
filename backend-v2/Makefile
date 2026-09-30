@@ -1,14 +1,14 @@
 GOCACHE  := /tmp/crane-go-cache
 GO_TEST  := GOCACHE=$(GOCACHE) go test
 
-.PHONY: test test-integration build migrate migrate-legacy-dry-run migrate-legacy smoke load-test
+.PHONY: test test-chat-integration build migrate migrate-legacy-dry-run migrate-legacy smoke load-test
 
 BIN_DIR := bin
 
 test:
 	$(GO_TEST) ./...
 
-test-integration:
+test-chat-integration:
 	$(GO_TEST) -tags=integration -count=1 -timeout=15m ./internal/chat/tests/integration/...
 
 build:
