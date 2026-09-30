@@ -1,26 +1,30 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Icon } from '@/shared/ui';
 import { CALLS_ENABLED } from '@/shared/config';
 import { useCall } from '../model/useCall';
 
 import { ActiveCallSession } from './ActiveCallSession';
+import { CallLobbyView } from './CallLobbyView';
 
 /**
  * Оверлей входящего, исходящего и активного вызова поверх приложения (#773, #774).
  */
 export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) {
   const { t } = useTranslation();
+  const [isInLobby, setIsInLobby] = useState(false);
   const {
     incomingCall,
     outgoingCall,
     activeCall,
+    endedCall,
     isMinimized,
     acceptCall,
     rejectCall,
     cancelCall,
     endCall,
   } = useCall();
+
 
   useEffect(() => {
     if (enabled) return;
@@ -30,6 +34,25 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
   }, [enabled, incomingCall, outgoingCall, activeCall, rejectCall, cancelCall, endCall]);
 
   if (!enabled) return null;
+
+  if (isInLobby && incomingCall) {
+    return (
+      <CallLobbyView
+        title={incomingCall.title || undefined}
+        peerName={incomingCall.fromName}
+        peerAvatar={incomingCall.fromAvatar}
+        kind={incomingCall.kind}
+        onJoin={() => {
+          setIsInLobby(false);
+          acceptCall();
+        }}
+        onCancel={() => {
+          setIsInLobby(false);
+          rejectCall();
+        }}
+      />
+    );
+  }
 
   if (incomingCall) {
     return (
@@ -76,6 +99,15 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
               <span className="text-xs text-ink-2 font-medium">{t('call.accept', 'Принять')}</span>
             </button>
           </div>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-xs text-brand hover:underline mt-4 cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
+            onClick={() => setIsInLobby(true)}
+            aria-label={t('call.lobby.configure', 'Настроить перед входом')}
+          >
+            <Icon name="video" className="size-3.5" />
+            <span>{t('call.lobby.checkDevices', 'Проверить камеру и микрофон перед входом')}</span>
+          </button>
         </div>
       </div>
     );
@@ -142,6 +174,40 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
 
   if (activeCall) {
     return <ActiveCallSession activeCall={activeCall} isMinimized={isMinimized} />;
+  }
+
+  if (endedCall) {
+    const getEndedSubtitle = () => {
+      switch (endedCall.reason) {
+        case 'peer_ended':
+          return t('call.ended.peerEnded', 'Собеседник завершил звонок');
+        case 'network_error':
+          return t('call.ended.networkError', 'Связь прервана');
+        case 'media_denied':
+          return t('call.ended.mediaDenied', 'Нет доступа к микрофону или камере');
+        case 'completed':
+        default:
+          return t('call.ended.completed', 'Звонок завершён');
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ground/80 backdrop-blur-md p-4 animate-fade-in select-none">
+        <div className="bg-sheet rounded-window shadow-[var(--elev-2)] p-6 w-full max-w-sm text-center flex flex-col items-center border border-line-soft">
+          <Avatar
+            className="mb-4"
+            id={endedCall.peerId ?? 'peer'}
+            name={endedCall.peerName ?? undefined}
+            size="2xl"
+            src={endedCall.peerAvatar}
+          />
+          <h2 className="text-lg font-bold text-ink mb-1 truncate max-w-full">
+            {endedCall.peerName || t('call.defaultUser', 'Пользователь')}
+          </h2>
+          <p className="text-sm text-ink-2">{getEndedSubtitle()}</p>
+        </div>
+      </div>
+    );
   }
 
   return null;

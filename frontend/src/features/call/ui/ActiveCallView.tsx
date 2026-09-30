@@ -29,6 +29,7 @@ export function ActiveCallView({
   connectionState,
   isAudioEnabled,
   isVideoEnabled,
+  facingMode = 'user',
   availableCamerasCount = 0,
   mediaError,
   callStartedAt,
@@ -51,7 +52,7 @@ export function ActiveCallView({
     }
   }, [localStream, isVideoEnabled]);
 
-  // Привязка удаленного видео и отслеживание активности видео-трека
+  // Привязка удаленного видео и отслеживание активности видео- и аудио-треков
   useEffect(() => {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStream ?? null;
@@ -65,15 +66,15 @@ export function ActiveCallView({
       setTrackUpdate((v) => v + 1);
     };
 
-    const videoTracks = remoteStream.getVideoTracks();
-    videoTracks.forEach((track) => {
+    const tracks = [...remoteStream.getVideoTracks(), ...remoteStream.getAudioTracks()];
+    tracks.forEach((track) => {
       track.addEventListener('mute', onTrackChange);
       track.addEventListener('unmute', onTrackChange);
       track.addEventListener('ended', onTrackChange);
     });
 
     return () => {
-      videoTracks.forEach((track) => {
+      tracks.forEach((track) => {
         track.removeEventListener('mute', onTrackChange);
         track.removeEventListener('unmute', onTrackChange);
         track.removeEventListener('ended', onTrackChange);
@@ -86,6 +87,12 @@ export function ActiveCallView({
       remoteStream
         .getVideoTracks()
         .some((t) => t.enabled && !t.muted && t.readyState === 'live')
+  );
+
+  const remoteAudioMuted = Boolean(
+    remoteStream &&
+      remoteStream.getAudioTracks().length > 0 &&
+      remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
   );
 
   const getStatusText = () => {
@@ -141,9 +148,20 @@ export function ActiveCallView({
         </button>
 
         <div className="flex flex-col items-center text-center max-w-[60%]">
-          <h2 className="text-base font-semibold text-ink truncate max-w-full">
-            {peerDisplayName}
-          </h2>
+          <div className="flex items-center gap-1.5 max-w-full">
+            <h2 className="text-base font-semibold text-ink truncate max-w-full">
+              {peerDisplayName}
+            </h2>
+            {remoteAudioMuted && (
+              <span
+                className="text-danger flex items-center shrink-0"
+                title={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
+                aria-label={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
+              >
+                <Icon name="micOff" className="size-4" />
+              </span>
+            )}
+          </div>
           <span
             aria-live="polite"
             className="text-xs font-medium text-ink-2"
@@ -158,13 +176,14 @@ export function ActiveCallView({
       {/* Основная зона (Видео или Аудио) */}
       <main className="relative flex-1 flex items-center justify-center overflow-hidden">
         {isVideo ? (
-          <div className="relative w-full h-full flex items-center justify-center bg-black">
+          <div className="relative w-full h-full flex items-center justify-center bg-ground">
             {/* Удалённый видеопоток */}
             {remoteVideoActive ? (
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
+                muted
                 className="w-full h-full object-cover"
                 aria-label={t('call.remoteVideo', 'Видео собеседника')}
               />
@@ -192,7 +211,7 @@ export function ActiveCallView({
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  className={`w-full h-full object-cover ${facingMode !== 'environment' ? 'scale-x-[-1]' : ''}`}
                   aria-label={t('call.localVideo', 'Ваша камера')}
                 />
               </div>
@@ -213,9 +232,20 @@ export function ActiveCallView({
               )}
             </div>
             <div className="flex flex-col items-center">
-              <h1 className="text-xl sm:text-2xl font-bold text-ink mb-1 truncate max-w-xs sm:max-w-md">
-                {peerDisplayName}
-              </h1>
+              <div className="flex items-center gap-2 max-w-xs sm:max-w-md">
+                <h1 className="text-xl sm:text-2xl font-bold text-ink truncate">
+                  {peerDisplayName}
+                </h1>
+                {remoteAudioMuted && (
+                  <span
+                    className="size-7 rounded-full bg-danger/15 text-danger flex items-center justify-center shrink-0"
+                    title={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
+                    aria-label={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
+                  >
+                    <Icon name="micOff" className="size-4" />
+                  </span>
+                )}
+              </div>
               <p className="text-sm font-medium text-ink-2">{getStatusText()}</p>
             </div>
           </div>
@@ -240,11 +270,8 @@ export function ActiveCallView({
           <button
             type="button"
             onClick={onToggleAudio}
-            className={`flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand ${
-              isAudioEnabled
-                ? 'bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)]'
-                : 'bg-danger text-white shadow-[var(--elev-2)]'
-            }`}
+            data-muted={!isAudioEnabled}
+            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:bg-danger data-[muted=true]:text-white data-[muted=true]:border-transparent"
             aria-label={
               isAudioEnabled
                 ? t('call.controls.muteMic', 'Выключить микрофон')
@@ -258,11 +285,8 @@ export function ActiveCallView({
           <button
             type="button"
             onClick={onToggleVideo}
-            className={`flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand ${
-              isVideoEnabled
-                ? 'bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)]'
-                : 'bg-sheet text-ink-2 border border-line-soft shadow-[var(--elev-2)] opacity-70'
-            }`}
+            data-muted={!isVideoEnabled}
+            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:text-ink-2 data-[muted=true]:opacity-70"
             aria-label={
               isVideoEnabled
                 ? t('call.controls.stopVideo', 'Выключить камеру')

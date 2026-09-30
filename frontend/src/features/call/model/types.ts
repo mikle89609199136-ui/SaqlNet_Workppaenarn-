@@ -44,6 +44,14 @@ export interface IOutgoingCall {
   title?: string | null;
 }
 
+export interface IEndedCall {
+  roomId: string;
+  peerId?: string;
+  peerName?: string | null;
+  peerAvatar?: string | null;
+  reason: TCallEndReason;
+}
+
 export interface ICallPeer {
   userId: string;
   displayName?: string;

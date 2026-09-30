@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 import { WS_EVENTS } from '@/shared/config';
 import { eventBus } from '@/shared/lib/event-bus';
@@ -154,14 +154,21 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     }
   }, [localStream]);
 
+  const replaceTrack = useCallback(
+    (kind: 'audio' | 'video', newTrack: MediaStreamTrack | null) =>
+      managerRef.current?.replaceTrack(kind, newTrack),
+    []
+  );
+
+  const close = useCallback(() => {
+    unsubRef.current?.();
+  }, []);
+
   return {
     connectionState,
     remoteStream,
     manager,
-    replaceTrack: (kind: 'audio' | 'video', newTrack: MediaStreamTrack | null) =>
-      managerRef.current?.replaceTrack(kind, newTrack),
-    close: () => {
-      unsubRef.current?.();
-    },
+    replaceTrack,
+    close,
   };
 }

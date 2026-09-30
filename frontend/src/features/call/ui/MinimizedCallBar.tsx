@@ -18,6 +18,7 @@ export function MinimizedCallBar({
   connectionState,
   callStartedAt,
   isAudioEnabled,
+  isVideoEnabled,
   onMaximize,
   onEndCall,
 }: IMinimizedCallBarProps) {
@@ -70,6 +71,13 @@ export function MinimizedCallBar({
                 name="micOff"
                 className="size-3 text-danger shrink-0"
                 aria-label={t('call.controls.micMuted', 'Микрофон выключен')}
+              />
+            )}
+            {activeCall.kind === 'video' && !isVideoEnabled && (
+              <Icon
+                name="videoOff"
+                className="size-3 text-ink-2 shrink-0"
+                aria-label={t('call.cameraOff', 'Камера выключена')}
               />
             )}
           </div>

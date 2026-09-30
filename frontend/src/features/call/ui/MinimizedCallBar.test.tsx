@@ -86,4 +86,25 @@ describe('MinimizedCallBar', () => {
 
     expect(screen.getByLabelText('Микрофон выключен')).toBeInTheDocument();
   });
+
+  it('показывает индикатор выключенной камеры в видеозвонке, если isVideoEnabled === false', () => {
+    const videoCall: IActiveCall = {
+      ...activeCall,
+      kind: 'video',
+    };
+
+    render(
+      <MinimizedCallBar
+        activeCall={videoCall}
+        connectionState="connected"
+        callStartedAt={Date.now()}
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        onMaximize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText('Камера выключена')).toBeInTheDocument();
+  });
 });

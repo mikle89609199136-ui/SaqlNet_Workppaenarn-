@@ -162,4 +162,30 @@ describe('звонки включены', () => {
     expect(screen.getByRole('region', { name: 'Свёрнутый звонок' })).toBeInTheDocument();
     expect(screen.getByText('Дмитрий')).toBeInTheDocument();
   });
+
+  it('завершённый звонок: отображает причину «Собеседник завершил звонок»', () => {
+    useCallStore.setState({
+      endedCall: {
+        roomId: 'room-end-1',
+        peerId: 'peer-bob',
+        peerName: 'Боб',
+        reason: 'peer_ended',
+      },
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByText('Собеседник завершил звонок')).toBeInTheDocument();
+    expect(screen.getByText('Боб')).toBeInTheDocument();
+  });
+
+  it('входящий звонок: кнопка «Проверить камеру и микрофон» открывает CallLobbyView', () => {
+    useCallStore.setState({ incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    const lobbyBtn = screen.getByRole('button', { name: 'Настроить перед входом' });
+    expect(lobbyBtn).toBeInTheDocument();
+
+    fireEvent.click(lobbyBtn);
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+  });
 });

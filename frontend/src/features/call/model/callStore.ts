@@ -16,6 +16,7 @@ import type {
   IActiveCall,
   ICallCancelledPayload,
   ICallInviteResponsePayload,
+  IEndedCall,
   IIncomingCall,
   IOutgoingCall,
   TCallEndReason,
@@ -36,6 +37,7 @@ interface CallStoreState {
   incomingCall: IIncomingCall | null;
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
+  endedCall: IEndedCall | null;
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
@@ -119,7 +121,18 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           }
         : null;
 
-    return { fsm, incomingCall, outgoingCall, activeCall };
+    const endedCall: IEndedCall | null =
+      fsm.state === 'ended' && fsm.outgoingPhase == null && fsm.roomId
+        ? {
+            roomId: fsm.roomId,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            reason: fsm.endReason ?? 'completed',
+          }
+        : null;
+
+    return { fsm, incomingCall, outgoingCall, activeCall, endedCall };
   };
 
   const clearTimer = () => {
@@ -137,6 +150,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     incomingCall: null,
     outgoingCall: null,
     activeCall: null,
+    endedCall: null,
 
     attachSocket: (socket) => set({ socket }),
 
@@ -447,7 +461,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             set({ isMinimized: false });
           }
         }
-      }, 800);
+      }, 1200);
     },
 
     minimizeCall: () => set({ isMinimized: true }),

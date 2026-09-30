@@ -3,6 +3,45 @@ import { describe, expect, it, vi } from 'vitest';
 import { ActiveCallView } from './ActiveCallView';
 import type { IActiveCall } from '../model/types';
 
+class FakeTrack {
+  kind: 'audio' | 'video';
+  enabled = true;
+  muted = false;
+  readyState = 'live';
+  stop = vi.fn();
+  addEventListener = vi.fn();
+  removeEventListener = vi.fn();
+  constructor(kind: 'audio' | 'video') {
+    this.kind = kind;
+  }
+}
+
+class FakeStream {
+  private tracks: FakeTrack[] = [];
+  constructor(tracks: FakeTrack[] = []) {
+    this.tracks = tracks;
+  }
+  getTracks() {
+    return [...this.tracks];
+  }
+  getAudioTracks() {
+    return this.tracks.filter((t) => t.kind === 'audio');
+  }
+  getVideoTracks() {
+    return this.tracks.filter((t) => t.kind === 'video');
+  }
+  addTrack(t: FakeTrack) {
+    this.tracks.push(t);
+  }
+  removeTrack(t: FakeTrack) {
+    this.tracks = this.tracks.filter((track) => track !== t);
+  }
+}
+
+if (typeof globalThis.MediaStream === 'undefined') {
+  globalThis.MediaStream = FakeStream as unknown as typeof MediaStream;
+}
+
 describe('ActiveCallView', () => {
   const audioCall: IActiveCall = {
     roomId: 'room-101',
@@ -214,5 +253,63 @@ describe('ActiveCallView', () => {
     );
 
     expect(screen.getAllByText('Соединение…').length).toBeGreaterThan(0);
+  });
+
+  it('не зеркалирует локальное видео PiP при задней камере (facingMode: environment)', () => {
+    const fakeStream = new MediaStream();
+
+    render(
+      <ActiveCallView
+        activeCall={videoCall}
+        localStream={fakeStream}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={true}
+        facingMode="environment"
+        callStartedAt={Date.now()}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const localVideo = screen.getByLabelText('Ваша камера');
+    expect(localVideo).not.toHaveClass('scale-x-[-1]');
+  });
+
+  it('отображает индикатор отключённого микрофона собеседника', () => {
+    const stream = new MediaStream();
+    const mockAudioTrack = {
+      kind: 'audio',
+      enabled: false,
+      muted: true,
+      readyState: 'live',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStreamTrack;
+
+    vi.spyOn(stream, 'getAudioTracks').mockReturnValue([mockAudioTrack]);
+
+    render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={stream}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getAllByLabelText('Собеседник выключил микрофон').length
+    ).toBeGreaterThan(0);
   });
 });

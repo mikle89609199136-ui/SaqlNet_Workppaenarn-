@@ -4,6 +4,7 @@ export function useCall() {
   const incomingCall = useCallStore((s) => s.incomingCall);
   const outgoingCall = useCallStore((s) => s.outgoingCall);
   const activeCall = useCallStore((s) => s.activeCall);
+  const endedCall = useCallStore((s) => s.endedCall);
   const isMinimized = useCallStore((s) => s.isMinimized);
   const acceptCall = useCallStore((s) => s.acceptCall);
   const rejectCall = useCallStore((s) => s.rejectCall);
@@ -17,6 +18,7 @@ export function useCall() {
     incomingCall,
     outgoingCall,
     activeCall,
+    endedCall,
     isMinimized,
     acceptCall,
     rejectCall,
