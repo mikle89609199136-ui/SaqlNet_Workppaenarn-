@@ -15,17 +15,6 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/IceConfiguration' }
 
 /calls/rooms:
-  get:
-    tags: [Calls]
-    summary: List active in-memory call rooms
-    operationId: listCallRooms
-    security: *secure
-    responses:
-      '200':
-        description: Active call rooms
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/CallRoomListResponse' }
   post:
     tags: [Calls]
     summary: Create a call room
@@ -51,6 +40,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   get:
     tags: [Calls]
     summary: Get an active call room
+    description: "Only members of the room's chat get the room. For anyone else, and for a room that does not exist, the answer is the same 404 room_not_found."
     operationId: getCallRoom
     security: *secure
     parameters:

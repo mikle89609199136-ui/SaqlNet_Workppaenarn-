@@ -719,14 +719,6 @@ CallRoomResponse:
       type: array
       items: { $ref: '#/IceServer' }
     maxParticipants: { type: integer, enum: [5] }
-CallRoomListResponse:
-  type: object
-  required: [success, rooms]
-  properties:
-    success: { type: boolean, enum: [true] }
-    rooms:
-      type: array
-      items: { $ref: '#/CallRoom' }
 UploadResponse:
   type: object
   required: [success, url]
