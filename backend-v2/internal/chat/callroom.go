@@ -110,16 +110,6 @@ func (m *CallRoomManager) GetRoomPublic(roomID string) *RoomPublic {
 	return nil
 }
 
-func (m *CallRoomManager) ListRoomsPublic() []*RoomPublic {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	res := make([]*RoomPublic, 0, len(m.rooms))
-	for _, r := range m.rooms {
-		res = append(res, r.toPublic())
-	}
-	return res
-}
-
 func (r *callRoom) toPublic() *RoomPublic {
 	participants := make([]*Participant, 0, len(r.participants))
 	for _, p := range r.participants {

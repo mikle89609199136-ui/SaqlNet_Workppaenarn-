@@ -378,12 +378,14 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	if roomID == "" {
 		return
 	}
-	// Ensure room exists — create if caller is first to join
-	if ws.callRooms.GetRoom(roomID) == nil {
-		callKind, _ := msg["callKind"].(string)
-		chatID, _ := msg["chatId"].(string)
-		title, _ := msg["title"].(string)
-		ws.callRooms.CreateRoom(client.UserID, roomID, "group", callKind, chatID, title)
+	// Войти можно только в комнату, созданную через POST /calls/rooms, и
+	// только участнику её чата (#848). Комната входом не создаётся.
+	// «Нет комнаты» и «чужая» отвечаются одинаково: не раскрываем, что
+	// комната есть.
+	if !ws.mayJoinCallRoom(client.UserID, roomID) {
+		out, _ := json.Marshal(map[string]interface{}{"type": "call_error", "roomId": roomID, "reason": "room_not_found"})
+		client.Send <- out
+		return
 	}
 	displayName, _ := msg["displayName"].(string)
 	avatarURL, _ := msg["avatarUrl"].(string)
@@ -413,6 +415,25 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		},
 	})
 	ws.sendToCallRoom(roomID, peerJoined, client.UserID)
+}
+
+// mayJoinCallRoom — комната есть и пользователь участник её чата. Ошибка
+// базы — не пускать.
+func (ws *WSServer) mayJoinCallRoom(userID, roomID string) bool {
+	room := ws.callRooms.GetRoom(roomID)
+	if room == nil || room.chatID == "" || ws.db == nil {
+		return false
+	}
+	var member bool
+	err := ws.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
+		userID, room.chatID,
+	).Scan(&member)
+	if err != nil {
+		slog.Error("call room membership check", "err", err)
+		return false
+	}
+	return member
 }
 
 func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) {
