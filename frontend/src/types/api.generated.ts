@@ -3162,6 +3162,40 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Too many requests. Returned with code rate_limited when a limit is exceeded (MLS routes: per user; GET /mls/keypackages/{userId}: also per requester-target pair and per target user). Retry after the delay given in Retry-After. */
+        RateLimited: {
+            headers: {
+                /** @description Seconds to wait before retrying (integer, at least 1). */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "rate_limited",
+                 *       "message": "too many requests"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The crypto service is at its limit of concurrent requests (code crypto_busy) or unreachable (code crypto_unavailable). The request changed nothing; retry after the delay given in Retry-After. */
+        CryptoBusy: {
+            headers: {
+                /** @description Seconds to wait before retrying (integer, at least 1). Present for crypto_busy. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "crypto_busy",
+                 *       "message": "crypto service is busy"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Media payload exceeds the configured upload limit */
         FileTooLarge: {
             headers: {
@@ -6572,6 +6606,8 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getMlsKeyPackage: {
@@ -6593,6 +6629,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getMlsGroupState: {
@@ -6613,6 +6650,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     commitMlsUpdate: {
@@ -6637,6 +6675,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getMlsWelcome: {
@@ -6657,6 +6697,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     storeMlsWelcome: {
@@ -6681,6 +6722,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     listMlsProposals: {
@@ -6701,6 +6744,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     addMlsProposal: {
@@ -6725,6 +6769,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getIceServers: {

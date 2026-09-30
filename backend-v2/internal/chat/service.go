@@ -134,6 +134,8 @@ type Service struct {
 	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
+	// mls — лимиты MLS; nil только в тестах.
+	mls *mlsLimits
 }
 
 type realtimeServer interface {
@@ -234,7 +236,7 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, userID, mediaURL, f
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
-	return &Service{db: db, ws: ws, presence: presence}
+	return &Service{db: db, ws: ws, presence: presence, mls: newMLSLimitsFromEnv()}
 }
 
 // hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата

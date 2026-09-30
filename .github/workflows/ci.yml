@@ -176,6 +176,10 @@ jobs:
       - name: Run chat key rotation integration tests
         run: go test -count=1 -tags=integration -v -run 'TestKeyRotationOnRealSchema' ./internal/chat
 
+      # Второй слой лимитов MLS в chat: выдача KeyPackage, потолок вызовов crypto (#916).
+      - name: Run chat MLS limits integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestMLSKeyPackageLimitsOnRealSchema|TestMLSBusyCryptoAnswers503OnCommitWelcomeAndProposals|TestMLSNonMemberIsDeniedBeforeCryptoSlotIsTaken|TestMLSNormalGroupAdditionFitsDefaultLimits|TestMLSUploadIsAtomicWhenCryptoBecomesBusyMidway' ./internal/chat
+
       - name: Build services
         run: go build ./...
 

@@ -83,6 +83,7 @@ func main() {
 		log.Printf("VAPID keys are not set — push notifications are disabled")
 	}
 
+	go svc.RunMLSLimitsCleanup(workerCtx)
 	go chat.OutboxRelay(workerCtx, pool, natsConn)
 	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
