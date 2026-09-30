@@ -20,6 +20,10 @@ export function CallProvider({ children }: PropsWithChildren) {
   }, [socket]);
 
   useEffect(() => {
+    useCallStore.getState().restoreActiveSession();
+  }, []);
+
+  useEffect(() => {
     const unsubBroadcast = subscribeCallBroadcast((event) => {
       useCallStore.getState().handleBroadcastEvent(event);
     });

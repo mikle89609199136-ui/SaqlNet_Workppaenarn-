@@ -948,6 +948,104 @@ describe('useCallStore', () => {
         })
       );
     });
+
+    describe('персистентность сессии и восстановление после F5', () => {
+      const mockStorage = new Map<string, string>();
+      const fakeSessionStorage = {
+        getItem: vi.fn((k: string) => mockStorage.get(k) ?? null),
+        setItem: vi.fn((k: string, v: string) => mockStorage.set(k, String(v))),
+        removeItem: vi.fn((k: string) => mockStorage.delete(k)),
+        clear: vi.fn(() => mockStorage.clear()),
+      };
+
+      beforeEach(() => {
+        mockStorage.clear();
+        vi.stubGlobal('sessionStorage', fakeSessionStorage);
+      });
+
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      it('сохраняет сессию в sessionStorage при переходе звонка в active', () => {
+        useCallStore.setState({
+          fsm: {
+            ...useCallStore.getState().fsm,
+            state: 'connecting',
+            roomId: 'room-persist-1',
+            peerId: 'peer-alice',
+            peerName: 'Алиса',
+            callKind: 'audio',
+            roomType: 'p2p',
+            isCaller: true,
+          },
+        });
+
+        useCallStore.getState().dispatch({ type: 'PEER_JOINED' });
+
+        expect(useCallStore.getState().fsm.state).toBe('active');
+        expect(fakeSessionStorage.setItem).toHaveBeenCalledWith(
+          'crane_active_call_session',
+          expect.stringContaining('room-persist-1')
+        );
+      });
+
+      it('очищает сессию из sessionStorage при завершении звонка endCall', () => {
+        useCallStore.setState({
+          fsm: {
+            ...useCallStore.getState().fsm,
+            state: 'active',
+            roomId: 'room-persist-1',
+            peerId: 'peer-alice',
+          },
+        });
+
+        useCallStore.getState().endCall('completed');
+
+        expect(fakeSessionStorage.removeItem).toHaveBeenCalledWith('crane_active_call_session');
+      });
+
+      it('restoreActiveSession восстанавливает FSM в reconnecting и запускает таймаут 25с', () => {
+        mockStorage.set(
+          'crane_active_call_session',
+          JSON.stringify({
+            roomId: 'saved-room-1',
+            peerId: 'saved-peer-1',
+            peerName: 'Боб',
+            callKind: 'video',
+            roomType: 'p2p',
+            callStartedAt: 1234567,
+            isCaller: false,
+            savedAt: Date.now(),
+          })
+        );
+
+        mockSend.mockClear();
+        const restored = useCallStore.getState().restoreActiveSession();
+
+        expect(restored).toBe(true);
+        const state = useCallStore.getState();
+        expect(state.fsm.state).toBe('reconnecting');
+        expect(state.fsm.roomId).toBe('saved-room-1');
+        expect(state.fsm.peerId).toBe('saved-peer-1');
+        expect(state.activeCall?.roomId).toBe('saved-room-1');
+        expect(state.reconnectTimeoutTimer).not.toBeNull();
+
+        // По сокету отправлен call_join
+        expect(mockSend).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'call_join',
+            roomId: 'saved-room-1',
+          })
+        );
+      });
+
+      it('restoreActiveSession возвращает false, если хранилище пусто', () => {
+        const restored = useCallStore.getState().restoreActiveSession();
+        expect(restored).toBe(false);
+        expect(useCallStore.getState().fsm.state).toBe('idle');
+      });
+    });
   });
 });
 

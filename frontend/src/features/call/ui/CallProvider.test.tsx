@@ -269,4 +269,16 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('network_error');
   });
+
+  it('при монтировании вызывает restoreActiveSession', () => {
+    const restoreSpy = vi.spyOn(useCallStore.getState(), 'restoreActiveSession');
+
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    expect(restoreSpy).toHaveBeenCalledTimes(1);
+  });
 });
