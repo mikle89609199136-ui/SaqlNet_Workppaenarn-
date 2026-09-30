@@ -2897,7 +2897,7 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	}
 	defer rows.Close()
 
-	var result []Reaction
+	result := make([]Reaction, 0)
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
