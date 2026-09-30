@@ -190,7 +190,7 @@ func assertAuthenticatedHTTPStatus(t *testing.T, handler http.Handler, token str
 func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, method, token string, want int) {
 	t.Helper()
 	request := httptest.NewRequest(method, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: token})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -203,7 +203,8 @@ func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, me
 func assertWebSocketHandshakeStatus(t *testing.T, serverURL, token string, want int) {
 	t.Helper()
 	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
-	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + token}})
+	header := http.Header{"Cookie": {"craneapp_session=" + token}, "Origin": {serverURL}}
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()
 	}

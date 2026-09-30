@@ -128,7 +128,7 @@ export interface paths {
         };
         /**
          * Get QR login status
-         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status sets the session cookie and carries the encrypted payload once; later polls report expired. Not cacheable.
          */
         get: operations["getQrStatus"];
         put?: never;
@@ -232,7 +232,7 @@ export interface paths {
         };
         /**
          * Get the result of a claimed code
-         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status sets the session cookie and carries the encrypted payload once; later polls, a declined or an expired code report expired. Not cacheable.
          */
         get: operations["getQrOfferStatus"];
         put?: never;
@@ -294,26 +294,6 @@ export interface paths {
          * @description May return 503 while generation revocation is disabled during a compatibility rollout.
          */
         post: operations["logoutAll"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Exchange a bearer token for the session cookie
-         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
-         */
-        post: operations["exchangeSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2586,7 +2566,6 @@ export interface components {
         };
         AuthResponse: {
             user: components["schemas"]["User"];
-            token: string;
         };
         LoginRequest: {
             username: string;
@@ -2637,7 +2616,6 @@ export interface components {
             status: "pending" | "scanned" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrConfirmRequest: {
@@ -2688,7 +2666,6 @@ export interface components {
             status: "pending" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrOfferConfirmRequest: {
@@ -3612,27 +3589,6 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
-        };
-    };
-    exchangeSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session cookie set */
-            204: {
-                headers: {
-                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {

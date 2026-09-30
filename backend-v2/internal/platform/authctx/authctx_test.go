@@ -25,7 +25,7 @@ func TestMiddlewareReportsIncompatibleCryptoAsUnavailable(t *testing.T) {
 		t.Fatal("protected handler must not run with an incompatible crypto service")
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer token")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "token"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -52,7 +52,7 @@ func TestMiddlewareFailsClosedWhenRevocationCheckFails(t *testing.T) {
 		}),
 	)
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer token")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "token"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -68,7 +68,7 @@ func TestMiddlewareFailsClosedWhenRevocationCheckerIsNil(t *testing.T) {
 		t.Fatal("protected handler must not run without a revocation checker")
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer token")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "token"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -84,7 +84,7 @@ func TestMiddlewareRejectsRevokedToken(t *testing.T) {
 		t.Fatal("protected handler must not run for a revoked token")
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer token")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "token"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -108,7 +108,7 @@ func TestMiddlewareStoresVerifiedTokenGenerationInContext(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer token")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "token"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -126,15 +126,14 @@ func (v recordingVerifier) VerifyToken(_ context.Context, token string) (cryptoc
 	return cryptoclient.TokenClaims{Subject: "user-id", Username: "ivan"}, nil
 }
 
-// Сессия браузера — в cookie (#705): защищённые адреса принимают её так же,
-// как заголовок; без того и другого — 401.
+// Сессия браузера — только в cookie (#705); без неё — 401.
 func TestMiddlewareAcceptsSessionCookie(t *testing.T) {
 	var verified string
 	handler := Middleware(recordingVerifier{token: &verified}, middlewareTokenChecker{})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	request.AddCookie(&http.Cookie{Name: "__Host-craneapp_session", Value: "cookie-token"})
+	request.AddCookie(&http.Cookie{Name: SessionCookieName(), Value: "cookie-token"})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent || verified != "cookie-token" {
@@ -145,5 +144,21 @@ func TestMiddlewareAcceptsSessionCookie(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/protected", nil))
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: status %d, want 401", response.Code)
+	}
+}
+
+func TestMiddlewareRejectsBearerToken(t *testing.T) {
+	handler := Middleware(middlewareTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user-id"}}, middlewareTokenChecker{})(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("protected handler must not run for a bearer token")
+		}))
+	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	request.Header.Set("Authorization", "Bearer token")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected %d, got %d", http.StatusUnauthorized, response.Code)
 	}
 }

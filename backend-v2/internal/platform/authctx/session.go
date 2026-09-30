@@ -58,36 +58,27 @@ func ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, sessionCookie("", -1))
 }
 
-// TokenSource — откуда взят токен. Cookie браузер подставляет сам — такие
-// запросы надо защищать от подделки с чужих сайтов; заголовок — нет.
+// TokenSource описывает наличие cookie-сессии в запросе.
 type TokenSource int
 
 const (
 	TokenNone TokenSource = iota
 	TokenCookie
-	TokenBearer
 )
 
-// SessionCookie — cookie сессии из запроса. Читаются оба имени: у сервисов
-// может не быть CRANE_ENV, а имя выбирает тот, кто ставит cookie (auth).
+// SessionCookie — cookie сессии из запроса. Принимается только имя текущего
+// окружения: в production это сохраняет гарантию __Host- против cookie,
+// подброшенной соседним поддоменом.
 func SessionCookie(r *http.Request) (string, bool) {
-	for _, name := range []string{sessionCookieProduction, sessionCookieDevelopment} {
-		if cookie, err := r.Cookie(name); err == nil && cookie.Value != "" {
-			return cookie.Value, true
-		}
+	if cookie, err := r.Cookie(SessionCookieName()); err == nil && cookie.Value != "" {
+		return cookie.Value, true
 	}
 	return "", false
 }
 
-// TokenFromRequest — токен запроса: заголовок `Authorization: Bearer`, если
-// он есть (его передают явно — скрипты, тесты, обмен старого токена), иначе
-// cookie сессии.
+// TokenFromRequest возвращает токен только из защищённой cookie-сессии.
+// Bearer-аутентификация удалена после переходного выпуска #705.
 func TokenFromRequest(r *http.Request) (string, TokenSource) {
-	if header := r.Header.Get("Authorization"); strings.HasPrefix(header, "Bearer ") {
-		if token := strings.TrimPrefix(header, "Bearer "); token != "" {
-			return token, TokenBearer
-		}
-	}
 	if token, ok := SessionCookie(r); ok {
 		return token, TokenCookie
 	}
@@ -99,10 +90,20 @@ func TokenFromRequest(r *http.Request) (string, TokenSource) {
 // нужен точный адрес, иначе любой сайт действовал бы от имени человека.
 func OwnOrAllowedOrigin(r *http.Request, origin string) bool {
 	parsed, err := url.Parse(origin)
-	if err != nil || parsed.Host == "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return false
 	}
-	if strings.EqualFold(parsed.Host, r.Host) {
+	requestScheme := r.URL.Scheme
+	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); forwarded != "" {
+		requestScheme = forwarded
+	} else if requestScheme == "" && r.TLS != nil {
+		requestScheme = "https"
+	}
+	// За TLS-терминатором scheme известен только по X-Forwarded-Proto. Если
+	// прокси его не передал, всё равно безопасно сверить Host: чужой сайт не
+	// может заставить браузер прислать Origin с нашим host.
+	if strings.EqualFold(parsed.Host, r.Host) &&
+		(requestScheme == "" || strings.EqualFold(parsed.Scheme, requestScheme)) {
 		return true
 	}
 	for _, allowed := range strings.Split(config.Value("ALLOWED_ORIGINS", ""), ",") {
@@ -115,10 +116,9 @@ func OwnOrAllowedOrigin(r *http.Request, origin string) bool {
 }
 
 // CrossSiteCookieRequest — запрос несёт cookie сессии, меняет данные и пришёл
-// не со своего сайта: такой запрос отклоняется (подделка запроса). Браузер
-// всегда шлёт `Origin` с POST/PUT/PATCH/DELETE; нет его — смотрим
-// `Sec-Fetch-Site`; нет и его — это не браузер, и cookie он сам не
-// подставлял.
+// не со своего сайта: такой запрос отклоняется (подделка запроса). Для
+// cookie-аутентификации Origin обязателен и должен совпасть точно; скрипты и
+// другие небраузерные клиенты тоже передают свой адрес явно.
 func CrossSiteCookieRequest(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
@@ -127,12 +127,5 @@ func CrossSiteCookieRequest(r *http.Request) bool {
 	if _, ok := SessionCookie(r); !ok {
 		return false
 	}
-	if origin := r.Header.Get("Origin"); origin != "" {
-		return !OwnOrAllowedOrigin(r, origin)
-	}
-	switch r.Header.Get("Sec-Fetch-Site") {
-	case "", "same-origin", "none":
-		return false
-	}
-	return true
+	return !OwnOrAllowedOrigin(r, r.Header.Get("Origin"))
 }

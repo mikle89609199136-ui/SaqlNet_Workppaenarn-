@@ -1,4 +1,4 @@
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 x-error: &error { $ref: '../components/responses.yaml#/Error' }
 
 /calls/ice-servers:

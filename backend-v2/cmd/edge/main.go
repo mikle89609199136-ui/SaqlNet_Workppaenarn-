@@ -352,7 +352,7 @@ func originGuard(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Crane-Language")
 			// С credentials (cookie сессии, #705) — только точно
 			// перечисленным адресам: "*" разрешает чужой Origin без них,
 			// иначе любой сайт читал бы ответы от имени человека.

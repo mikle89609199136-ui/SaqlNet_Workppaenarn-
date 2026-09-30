@@ -107,10 +107,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "registration failed")
 		return
 	}
-	// Сессия браузера — в cookie (#705); токен в теле — для старого
-	// клиента до уборки.
+	// Токен доступен браузеру только как HttpOnly-cookie (#705).
 	authctx.SetSessionCookie(w, token)
-	httpx.JSON(w, http.StatusCreated, map[string]any{"user": user, "token": token})
+	httpx.JSON(w, http.StatusCreated, map[string]any{"user": user})
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +148,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authctx.SetSessionCookie(w, token)
-	httpx.JSON(w, http.StatusOK, map[string]any{"user": user, "token": token})
+	httpx.JSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
 func (h *Handler) PublicKey(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +180,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	// Отзывается тот токен, которым пришёл запрос: из cookie или заголовка.
+	// Отзывается токен текущей cookie-сессии.
 	token, _ := authctx.TokenFromRequest(r)
 	// Token from Rust service expires in 30 days; store hash for that duration.
 	if err := h.service.Logout(r.Context(), current.ID, token, time.Now().Add(authctx.SessionTTL)); err != nil {
@@ -208,20 +207,6 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 	authctx.ClearSessionCookie(w)
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
-}
-
-// Session — обмен токена из заголовка на cookie сессии (#705): клиент,
-// вошедший до перехода на cookie, один раз меняет токен из localStorage на
-// cookie и стирает его — без повторного входа. Удаляется при уборке, когда
-// старых клиентов не останется.
-func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-		return
-	}
-	token, _ := authctx.TokenFromRequest(r)
-	authctx.SetSessionCookie(w, token)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
@@ -699,9 +684,8 @@ func (h *Handler) QRStatus(w http.ResponseWriter, r *http.Request) {
 		// Новое устройство получает сессию в cookie (#705).
 		authctx.SetSessionCookie(w, data.AuthToken)
 		httpx.JSON(w, http.StatusOK, map[string]any{
-			"status":    "confirmed",
-			"authToken": data.AuthToken,
-			"payload":   data.Payload,
+			"status":  "confirmed",
+			"payload": data.Payload,
 		})
 		return
 	}

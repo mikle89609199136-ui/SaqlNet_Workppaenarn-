@@ -55,31 +55,46 @@ func TestClearSessionCookieExpiresIt(t *testing.T) {
 	}
 }
 
-func TestTokenFromRequestPrefersExplicitBearerThenCookie(t *testing.T) {
+func TestTokenFromRequestAcceptsOnlySessionCookie(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	if _, source := TokenFromRequest(r); source != TokenNone {
 		t.Fatalf("empty request: source %v", source)
 	}
 
-	// Сервис без CRANE_ENV читает cookie под любым из двух имён.
-	for _, name := range []string{"__Host-craneapp_session", "craneapp_session"} {
+	for _, tc := range []struct {
+		environment string
+		name        string
+	}{
+		{environment: "production", name: "__Host-craneapp_session"},
+		{environment: "development", name: "craneapp_session"},
+	} {
+		t.Setenv("CRANE_ENV", tc.environment)
 		r = httptest.NewRequest(http.MethodGet, "/", nil)
-		r.AddCookie(&http.Cookie{Name: name, Value: "from-cookie"})
+		r.AddCookie(&http.Cookie{Name: tc.name, Value: "from-cookie"})
 		if token, source := TokenFromRequest(r); token != "from-cookie" || source != TokenCookie {
-			t.Fatalf("%s: %q %v", name, token, source)
+			t.Fatalf("%s: %q %v", tc.name, token, source)
 		}
 	}
 
-	// Заголовок передают явно (скрипты, обмен старого токена) — он важнее.
+	// Bearer больше не является способом аутентификации, даже рядом с cookie.
 	r.Header.Set("Authorization", "Bearer from-header")
-	if token, source := TokenFromRequest(r); token != "from-header" || source != TokenBearer {
+	if token, source := TokenFromRequest(r); token != "from-cookie" || source != TokenCookie {
 		t.Fatalf("both: %q %v", token, source)
 	}
 
 	r = httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("Authorization", "Bearer ")
+	r.Header.Set("Authorization", "Bearer from-header")
 	if _, source := TokenFromRequest(r); source != TokenNone {
-		t.Fatalf("empty bearer: source %v", source)
+		t.Fatalf("bearer-only request: source %v", source)
+	}
+}
+
+func TestSessionCookieRejectsCookieNameFromAnotherEnvironment(t *testing.T) {
+	t.Setenv("CRANE_ENV", "production")
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "insecure-cookie"})
+	if _, ok := SessionCookie(r); ok {
+		t.Fatal("production accepted the non-__Host cookie")
 	}
 }
 
@@ -88,11 +103,13 @@ func TestOwnOrAllowedOriginNeedsExactAddress(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "https://craneapp.example/api", nil)
 
 	cases := map[string]bool{
-		"https://craneapp.example": true,  // свой адрес
-		"https://app.example":      true,  // перечислен точно
-		"https://evil.example":     false, // "*" для cookie ничего не разрешает
-		"null":                     false,
-		"":                         false,
+		"https://craneapp.example":   true,  // свой адрес
+		"https://app.example":        true,  // перечислен точно
+		"http://craneapp.example":    false, // другой scheme — другой origin
+		"https://evil.example":       false, // "*" для cookie ничего не разрешает
+		"https://craneapp.example/x": false,
+		"null":                       false,
+		"":                           false,
 	}
 	for origin, want := range cases {
 		if got := OwnOrAllowedOrigin(r, origin); got != want {
@@ -104,6 +121,7 @@ func TestOwnOrAllowedOriginNeedsExactAddress(t *testing.T) {
 // Подделка запроса: меняющий данные запрос с cookie — только со своего сайта.
 func TestCrossSiteCookieRequest(t *testing.T) {
 	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("CRANE_ENV", "production")
 	request := func(method, origin, fetchSite string, cookie bool) *http.Request {
 		r := httptest.NewRequest(method, "https://craneapp.example/api/v2/messages/c1", nil)
 		if origin != "" {
@@ -128,8 +146,8 @@ func TestCrossSiteCookieRequest(t *testing.T) {
 		{"POST с cookie с соседнего поддомена", request(http.MethodPost, "", "same-site", true), true},
 		{"POST с cookie со своего сайта", request(http.MethodPost, "https://craneapp.example", "same-origin", true), false},
 		{"GET с cookie с чужого сайта — не меняет данные", request(http.MethodGet, "https://evil.example", "", true), false},
-		{"POST без cookie (Bearer) с чужого сайта", request(http.MethodPost, "https://evil.example", "", false), false},
-		{"POST с cookie не из браузера (нет Origin и Sec-Fetch-Site)", request(http.MethodPost, "", "", true), false},
+		{"POST без cookie с чужого сайта", request(http.MethodPost, "https://evil.example", "", false), false},
+		{"POST с cookie без Origin", request(http.MethodPost, "", "", true), true},
 	}
 	for _, c := range cases {
 		if got := CrossSiteCookieRequest(c.r); got != c.want {

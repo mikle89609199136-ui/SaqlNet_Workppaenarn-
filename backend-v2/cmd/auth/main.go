@@ -68,8 +68,6 @@ func main() {
 	mux.Handle("/api/v2/auth/public-key", authenticated(http.HandlerFunc(handler.PublicKey)))
 	mux.Handle("/api/v2/auth/logout", authenticated(http.HandlerFunc(handler.Logout)))
 	mux.Handle("/api/v2/auth/logout-all", authenticated(http.HandlerFunc(handler.LogoutAll)))
-	// Обмен старого токена на cookie сессии (#705), до уборки.
-	mux.Handle("/api/v2/auth/session", authenticated(http.HandlerFunc(handler.Session)))
 	mux.Handle("/api/v2/auth/sessions", authenticated(http.HandlerFunc(handler.Sessions)))
 	mux.Handle("/api/v2/auth/change-password", authenticated(http.HandlerFunc(handler.ChangePassword)))
 	mux.Handle("/api/v2/auth/2fa/status", authenticated(http.HandlerFunc(handler.TwoFAStatus)))

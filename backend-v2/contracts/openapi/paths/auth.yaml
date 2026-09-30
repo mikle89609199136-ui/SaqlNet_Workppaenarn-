@@ -34,7 +34,7 @@
     tags: [Auth]
     summary: Save the authenticated user's public key
     operationId: saveAuthPublicKey
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string } } } } }
@@ -85,7 +85,7 @@
       404 qr_rotated means the code was replaced by a newer one, invalid_token
       that it expired or was used. Not cacheable.
     operationId: getQrRequest
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '200':
@@ -98,7 +98,7 @@
     summary: Decline a scanned QR login
     description: Drops a code this account captured; the device showing it draws a new one.
     operationId: declineQrRequest
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '204': { description: Declined }
@@ -110,8 +110,8 @@
     description: >-
       Polled by the new device with the secret from creation in X-QR-Secret.
       scanned means another device captured the code and the person is deciding.
-      A confirmed status carries the session token and the encrypted payload and
-      is returned once; later polls report expired. Not cacheable.
+      A confirmed status sets the session cookie and carries the encrypted
+      payload once; later polls report expired. Not cacheable.
     operationId: getQrStatus
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
@@ -131,7 +131,7 @@
       confirm it (403 not_scanned). A code can be confirmed only once; a second
       confirmation gets 409 already_confirmed.
     operationId: confirmQrLogin
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrConfirmRequest' } } }
@@ -152,7 +152,7 @@
       every 30 by passing the previous token; a claimed code is not replaced
       (409 qr_scanned).
     operationId: createQrOffer
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferRequest' } } }
@@ -173,7 +173,7 @@
       and the HMAC over it, which the owner checks with the MAC key from the QR
       code before confirming. Somebody else's code reports expired. Not cacheable.
     operationId: getQrOffer
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '200':
@@ -185,7 +185,7 @@
     summary: Withdraw the code
     description: The page showing it went away, or the person declined the claim.
     operationId: withdrawQrOffer
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '204': { description: Withdrawn }
@@ -215,8 +215,8 @@
     summary: Get the result of a claimed code
     description: >-
       Polled by the new device with the claim secret in X-QR-Secret. A confirmed
-      status carries the session token and the encrypted payload and is returned
-      once; later polls, a declined or an expired code report expired. Not cacheable.
+      status sets the session cookie and carries the encrypted payload once;
+      later polls, a declined or an expired code report expired. Not cacheable.
     operationId: getQrOfferStatus
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
@@ -236,7 +236,7 @@
       once (409 already_confirmed). payload is the master key encrypted to the
       claimed public key.
     operationId: confirmQrOffer
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     requestBody:
       required: true
@@ -252,7 +252,7 @@
     tags: [Auth]
     summary: Revoke the current token
     operationId: logout
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses: { '200': { description: Logged out; the session cookie is cleared } }
 /auth/logout-all:
   post:
@@ -260,7 +260,7 @@
     summary: Revoke all user tokens
     description: May return 503 while generation revocation is disabled during a compatibility rollout.
     operationId: logoutAll
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses:
       '200': { description: All sessions revoked; the session cookie is cleared }
       '401': { $ref: '../components/responses.yaml#/Error' }
@@ -270,14 +270,14 @@
     tags: [Auth]
     summary: List authenticated sessions
     operationId: listAuthSessions
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses: { '200': { description: Sessions } }
 /auth/change-password:
   post:
     tags: [Auth]
     summary: Change password
     operationId: changePassword
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { $ref: '../components/schemas.yaml#/Password' } } } } }
@@ -287,14 +287,14 @@
     tags: [Auth]
     summary: Get 2FA status
     operationId: getTwoFactorStatus
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses: { '200': { description: 2FA status } }
 /auth/2fa/enable:
   post:
     tags: [Auth]
     summary: Enable 2FA
     operationId: enableTwoFactor
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { $ref: '../components/schemas.yaml#/Password' } } } } } }
     responses: { '200': { description: 2FA enabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/disable:
@@ -302,7 +302,7 @@
     tags: [Auth]
     summary: Disable 2FA
     operationId: disableTwoFactor
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
     responses: { '200': { description: 2FA disabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/verify:
@@ -310,19 +310,6 @@
     tags: [Auth]
     summary: Verify 2FA password
     operationId: verifyTwoFactor
-    security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
     responses: { '200': { description: Verification result }, '401': { $ref: '../components/responses.yaml#/Error' } }
-/auth/session:
-  post:
-    tags: [Auth]
-    summary: Exchange a bearer token for the session cookie
-    description: >-
-      Transition to cookie sessions (#705): a client signed in before the move
-      sends its stored token once as Bearer and gets the session cookie, then
-      forgets the token. Removed once no such clients remain.
-    operationId: exchangeSession
-    security: [{ bearerAuth: [] }]
-    responses:
-      '204': { description: Session cookie set, headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } } }
-      '401': { $ref: '../components/responses.yaml#/Error' }

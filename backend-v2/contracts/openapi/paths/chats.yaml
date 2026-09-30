@@ -2,7 +2,7 @@ x-chat-id:
   &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
 x-user-id:
   &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 /chats:
   get:
     {

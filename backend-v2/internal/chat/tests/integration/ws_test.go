@@ -182,11 +182,12 @@ func countMessages(t *testing.T, db *sql.DB, chatID string) int {
 	return n
 }
 
-// dialWS открывает WS-соединение: токен = userID (см. stubTokenVerifier).
+// dialWS открывает WS-соединение: cookie-токен = userID (см. stubTokenVerifier).
 func dialWS(t *testing.T, srv *httptest.Server, userID string) *websocket.Conn {
 	t.Helper()
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{"Authorization": {"Bearer " + userID}})
+	header := http.Header{"Cookie": {"craneapp_session=" + userID}, "Origin": {srv.URL}}
+	conn, _, err := websocket.DefaultDialer.Dial(url, header)
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)
 	}
