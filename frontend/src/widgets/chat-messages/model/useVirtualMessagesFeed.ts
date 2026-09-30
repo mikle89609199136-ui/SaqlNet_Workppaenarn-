@@ -1,5 +1,5 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
-import { formatDateDivider, isDifferentDay } from '@/shared/lib';
+import { formatDateDivider, isDifferentDay, usePageVisible } from '@/shared/lib';
 import { estimateMessageItemSize } from '@/entities/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
@@ -10,6 +10,7 @@ import {
   hasUnreadAbove,
   needsOlderForUnread,
   openingScrollTarget,
+  selectReadUpTo,
   takeUnreadSnapshot,
   type IReadMark,
   type IUnreadSnapshot,
@@ -49,6 +50,7 @@ interface IUseVirtualMessagesFeedOptions {
   /** Догрузка истории — при открытии до первого непрочитанного. */
   loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
   hasOlder?: boolean;
+  onMessagesSeen?: (messages: IMessageDto[]) => void;
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -64,6 +66,7 @@ export function useVirtualMessagesFeed({
   readMark,
   loadOlder,
   hasOlder = false,
+  onMessagesSeen,
 }: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
 
@@ -315,6 +318,16 @@ export function useVirtualMessagesFeed({
   }, [feedItems.length, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  const isPageVisible = usePageVisible();
+  const lastSeenIndex = virtualizer.range?.endIndex ?? -1;
+  const seenReadMark = readMark?.chatId === chatId ? readMark?.lastReadAt : undefined;
+  const canReportSeen = isPageVisible && (!trackUnread || Boolean(snapshot?.settled));
+  useEffect(() => {
+    if (!onMessagesSeen || !canReportSeen || lastSeenIndex < 0) return;
+    const seen = selectReadUpTo(feedItems, lastSeenIndex, seenReadMark, currentUserId);
+    if (seen.length > 0) onMessagesSeen(seen);
+  }, [canReportSeen, currentUserId, feedItems, lastSeenIndex, onMessagesSeen, seenReadMark]);
 
   /* Сколько новых ниже экрана — число на кнопке «вниз». */
   const lastVisibleIndex = virtualizer.range?.endIndex ?? feedItems.length - 1;

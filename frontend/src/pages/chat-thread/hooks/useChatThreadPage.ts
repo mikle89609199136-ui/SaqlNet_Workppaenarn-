@@ -138,17 +138,6 @@ export function useChatThreadPage({
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
 
-  // Отмечаются только те, что ещё не отмечены: история меняется и от
-  // собственных отправок, и от входящих, а лишний запрос здесь не нужен.
-  useEffect(() => {
-    if (isLoading) return;
-
-    const unread = messages.filter((message) => !message.isRead);
-    if (unread.length === 0) return;
-
-    markMessagesAsRead(unread);
-  }, [messages, isLoading, markMessagesAsRead]);
-
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
   useEscapeKey({ active: Boolean(modals.openedImage), onClose: () => modals.setOpenedImage(null) });
@@ -174,6 +163,7 @@ export function useChatThreadPage({
     hasOlder,
     loadOlder,
     readMark,
+    markMessagesAsRead,
     threadError,
     setError,
     setEditingMessage,
