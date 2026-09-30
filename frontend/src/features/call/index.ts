@@ -1,6 +1,9 @@
 export { useCallStore } from './model/callStore';
 export { useCall } from './model/useCall';
-export { CallFrame } from './ui/CallFrame';
+export { LocalMediaManager, parseMediaError } from './model/localMedia';
+export { useLocalMedia } from './model/useLocalMedia';
+export { PeerConnectionManager } from './model/peerConnection';
+export { usePeerConnection } from './model/usePeerConnection';
 export { CallOverlay } from './ui/CallOverlay';
 export { CallProvider } from './ui/CallProvider';
 export * from './model/types';

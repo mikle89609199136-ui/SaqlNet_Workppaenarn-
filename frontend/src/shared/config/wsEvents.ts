@@ -6,6 +6,8 @@ export const WS_EVENTS = {
     // Пачка удалена у всех / скрыта у себя (#840).
     BATCH_DELETED: 'messages_deleted',
     HIDDEN: 'messages_hidden',
+    // Собеседник получил или прочитал сообщения до upTo (#657).
+    RECEIPTS: 'receipts',
     PINNED: 'message_pinned',
     UNPINNED: 'message_unpinned',
   },

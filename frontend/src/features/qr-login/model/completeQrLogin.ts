@@ -10,16 +10,17 @@ import type { IQrLoginResult } from './useQrLogin';
  * сохранении запускает подготовку ключей, и к этому моменту ключ уже
  * должен ждать — тогда история откроется без облачного пароля.
  */
-export async function completeQrLogin({ authToken, masterKey }: IQrLoginResult): Promise<void> {
+export async function completeQrLogin({ masterKey }: IQrLoginResult): Promise<void> {
+  // Сессию новому устройству сервер уже поставил в cookie — ответом на
+  // подтверждённый статус входа (#705); хранить токен не нужно.
   const store = useProfileStore.getState();
-  store.setToken(authToken);
 
   try {
     const user = await services.userService.getMe();
     const settings = await fetchUserSettings();
 
     if (masterKey) await services.cryptoService.acceptMasterKey(masterKey);
-    saveAuthSession({ settings, token: authToken, user });
+    saveAuthSession({ settings, user });
   } catch (error) {
     store.clearProfile();
     throw error;

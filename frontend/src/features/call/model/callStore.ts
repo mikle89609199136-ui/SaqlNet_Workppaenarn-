@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { WebSocketClient } from '@/services/WebSocketClient';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, blockedUsersQuery, type IBlockedUserDto } from '@/entities/user';
+import { queryClient } from '@/shared/api';
+import { broadcastCallEvent, type TCallBroadcastEvent } from './callBroadcast';
 import {
   callStateReducer,
   initialCallContext,
@@ -15,6 +17,7 @@ import type {
   ICallCancelledPayload,
   ICallInviteResponsePayload,
   IIncomingCall,
+  IOutgoingCall,
   TCallEndReason,
   TCallKind,
   TCallRoomType,
@@ -24,42 +27,41 @@ const CALL_TIMEOUT_MS = 60_000;
 
 interface CallStoreState {
   fsm: ICallFsmContext;
+  currentAttemptId: number;
   isMinimized: boolean;
   socket: WebSocketClient | null;
-  callFrameRef: HTMLIFrameElement | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
   // Селекторы совместимости с UI
   incomingCall: IIncomingCall | null;
+  outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
-  attachCallFrame: (callFrameRef: HTMLIFrameElement | null) => void;
   dispatch: (action: TCallFsmAction) => void;
 
-  handleIncoming: (payload: IIncomingCall) => void;
+  handleIncoming: (payload: IIncomingCall) => Promise<void>;
   handleCancelled: (payload: ICallCancelledPayload | string) => void;
   handleInviteResponse: (payload: ICallInviteResponsePayload) => void;
+  handleBroadcastEvent: (event: TCallBroadcastEvent) => void;
+  handleOutgoingTimeout: () => void;
 
   initiateCall: (
     chatId: string,
     type: TCallRoomType,
     title: string,
     kind: TCallKind,
-    peerId?: string | null
+    peerId?: string | null,
+    peerAvatar?: string | null,
+    peerName?: string | null
   ) => Promise<void>;
+  cancelCall: () => void;
   acceptCall: () => void;
   rejectCall: () => void;
   endCall: (reason?: TCallEndReason) => void;
   minimizeCall: () => void;
   maximizeCall: () => void;
-}
-
-function postHangup(frame: HTMLIFrameElement | null): void {
-  try {
-    frame?.contentWindow?.postMessage({ type: 'crane_hangup' }, '*');
-  } catch {}
 }
 
 function formatCallerName(
@@ -85,6 +87,19 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           }
         : null;
 
+    const outgoingCall: IOutgoingCall | null =
+      fsm.state === 'outgoing' || (fsm.state === 'ended' && fsm.outgoingPhase != null)
+        ? {
+            roomId: fsm.roomId ?? '',
+            peerId: fsm.peerId ?? '',
+            peerName: fsm.peerName ?? fsm.title,
+            peerAvatar: fsm.peerAvatar,
+            kind: fsm.callKind,
+            phase: fsm.outgoingPhase ?? (fsm.roomId ? 'ringing' : 'calling'),
+            title: fsm.title,
+          }
+        : null;
+
     const activeCall: IActiveCall | null =
       (fsm.state === 'connecting' || fsm.state === 'active' || fsm.state === 'outgoing') &&
       fsm.roomId
@@ -97,7 +112,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           }
         : null;
 
-    return { fsm, incomingCall, activeCall };
+    return { fsm, incomingCall, outgoingCall, activeCall };
   };
 
   const clearTimer = () => {
@@ -108,15 +123,15 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
   return {
     fsm: initialCallContext,
+    currentAttemptId: 0,
     isMinimized: false,
     socket: null,
-    callFrameRef: null,
     callTimeoutTimer: null,
     incomingCall: null,
+    outgoingCall: null,
     activeCall: null,
 
     attachSocket: (socket) => set({ socket }),
-    attachCallFrame: (callFrameRef) => set({ callFrameRef }),
 
     dispatch: (action) => {
       const currentFsm = get().fsm;
@@ -125,7 +140,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       set(syncDerivedState(nextFsm));
     },
 
-    handleIncoming: (payload) => {
+    handleIncoming: async (payload) => {
       const { fsm, socket } = get();
 
       // Повторный incoming для той же комнаты игнорируем (уже звенит)
@@ -137,6 +152,32 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       if (fsm.state !== 'idle' && fsm.state !== 'ended') {
         if (socket?.isConnected && payload.from) {
           sendCallInviteResponse(socket, {
+            to: payload.from,
+            roomId: payload.roomId,
+            accepted: false,
+            reason: 'busy',
+          });
+        }
+        return;
+      }
+
+      // Проверка чёрного списка (#727, #773)
+      try {
+        const query = blockedUsersQuery();
+        const cachedBlocked = queryClient.getQueryData<IBlockedUserDto[]>(query.queryKey);
+        const blockedUsers = cachedBlocked ?? (await queryClient.ensureQueryData(query));
+        if (blockedUsers?.some((u) => u.id === payload.from)) {
+          return;
+        }
+      } catch {
+        // При сетевой ошибке не блокируем вызов ложно
+      }
+
+      // Проверяем актуальное состояние FSM после асинхронного вызова
+      if (get().fsm.state !== 'idle' && get().fsm.state !== 'ended') {
+        const currentSocket = get().socket;
+        if (currentSocket?.isConnected && payload.from) {
+          sendCallInviteResponse(currentSocket, {
             to: payload.from,
             roomId: payload.roomId,
             accepted: false,
@@ -158,7 +199,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         },
       });
 
-      startRingtone();
+      const soundsEnabled = useProfileStore.getState().settings.sounds;
+      if (soundsEnabled !== false) {
+        startRingtone();
+      }
     },
 
     handleCancelled: (payload) => {
@@ -170,8 +214,20 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         const finishedRoomId = fsm.roomId;
         get().dispatch({ type: 'END_CALL', reason: 'peer_ended' });
         setTimeout(() => {
-          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          if (get().fsm.state === 'ended' && get().fsm.roomId === finishedRoomId) {
+            get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          }
         }, 1500);
+      }
+    },
+
+    handleBroadcastEvent: (event) => {
+      const { fsm } = get();
+      if (fsm.state === 'incoming' && (!event.roomId || fsm.roomId === event.roomId)) {
+        stopRingtone();
+        clearTimer();
+        get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
+        get().dispatch({ type: 'RESET_TO_IDLE', roomId: event.roomId });
       }
     },
 
@@ -185,13 +241,43 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         get().dispatch({ type: 'PEER_ACCEPTED' });
       } else {
         const reason: TCallEndReason = payload.reason === 'busy' ? 'busy' : 'declined';
-        get().endCall(reason);
+        get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: reason });
+        const finishedRoomId = fsm.roomId ?? undefined;
+        const attemptId = get().currentAttemptId;
+        get().dispatch({ type: 'END_CALL', reason });
+        setTimeout(() => {
+          if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+            get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          }
+        }, 1500);
       }
     },
 
-    initiateCall: async (chatId, type, title, kind, peerId) => {
+    initiateCall: async (chatId, type, title, kind, peerId, peerAvatar, peerName) => {
       const { socket, fsm } = get();
       if (fsm.state !== 'idle' && fsm.state !== 'ended') return;
+
+      clearTimer();
+      const attemptId = get().currentAttemptId + 1;
+      set({ currentAttemptId: attemptId });
+
+      const targetPeerId = peerId ?? '';
+      const targetPeerName = peerName ?? title;
+      const targetPeerAvatar = peerAvatar ?? null;
+
+      get().dispatch({
+        type: 'START_OUTGOING',
+        payload: {
+          roomId: '',
+          chatId,
+          peerId: targetPeerId,
+          peerName: targetPeerName,
+          peerAvatar: targetPeerAvatar,
+          kind,
+          title,
+          phase: 'calling',
+        },
+      });
 
       try {
         const response = await services.callService.createRoom({
@@ -203,17 +289,19 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
         const roomId = response.room?.id;
         if (!roomId) throw new Error('Room creation failed');
-        const targetPeerId = peerId ?? '';
+
+        // Проверяем, не отменил ли пользователь вызов или не запустил ли новый
+        if (get().currentAttemptId !== attemptId || get().fsm.state !== 'outgoing') {
+          if (socket?.isConnected) {
+            sendCallLeave(socket, roomId);
+          }
+          return;
+        }
 
         get().dispatch({
-          type: 'START_OUTGOING',
-          payload: {
-            roomId,
-            chatId,
-            peerId: targetPeerId,
-            kind,
-            title,
-          },
+          type: 'SET_OUTGOING_PHASE',
+          phase: 'ringing',
+          roomId,
         });
 
         if (socket?.isConnected && targetPeerId) {
@@ -230,18 +318,71 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
         // Таймер ожидания ответа 60 секунд
         const timer = setTimeout(() => {
-          get().endCall('no_answer');
+          get().handleOutgoingTimeout();
         }, CALL_TIMEOUT_MS);
         set({ callTimeoutTimer: timer });
       } catch {
-        get().dispatch({ type: 'END_CALL', reason: 'network_error' });
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
+          get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'failed' });
+          get().dispatch({ type: 'END_CALL', reason: 'network_error' });
+          setTimeout(() => {
+            if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+              get().dispatch({ type: 'RESET_TO_IDLE' });
+            }
+          }, 1500);
+        }
       }
+    },
+
+    cancelCall: () => {
+      clearTimer();
+      const { fsm, socket } = get();
+      if (fsm.state !== 'outgoing') return;
+
+      if (socket?.isConnected && fsm.roomId) {
+        sendCallLeave(socket, fsm.roomId);
+      }
+      if (fsm.roomId) {
+        broadcastCallEvent({ type: 'CALL_DISMISSED', roomId: fsm.roomId });
+      }
+
+      get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'cancelled' });
+      const finishedRoomId = fsm.roomId ?? undefined;
+      const attemptId = get().currentAttemptId;
+      get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
+      setTimeout(() => {
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
+      }, 400);
+    },
+
+    handleOutgoingTimeout: () => {
+      const { fsm, socket } = get();
+      if (fsm.state !== 'outgoing') return;
+
+      clearTimer();
+      if (socket?.isConnected && fsm.roomId) {
+        sendCallLeave(socket, fsm.roomId);
+      }
+
+      get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'no_answer' });
+      const finishedRoomId = fsm.roomId ?? undefined;
+      const attemptId = get().currentAttemptId;
+      get().dispatch({ type: 'END_CALL', reason: 'no_answer' });
+      setTimeout(() => {
+        if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
+      }, 1500);
     },
 
     acceptCall: () => {
       stopRingtone();
       const { fsm, socket } = get();
       if (!fsm.roomId || !fsm.peerId) return;
+
+      broadcastCallEvent({ type: 'CALL_ACCEPTED', roomId: fsm.roomId });
 
       get().dispatch({ type: 'ACCEPT_INCOMING' });
 
@@ -257,6 +398,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     rejectCall: () => {
       stopRingtone();
       const { fsm, socket } = get();
+      if (fsm.roomId) {
+        broadcastCallEvent({ type: 'CALL_DISMISSED', roomId: fsm.roomId });
+      }
       if (socket?.isConnected && fsm.roomId && fsm.peerId) {
         sendCallInviteResponse(socket, {
           to: fsm.peerId,
@@ -268,16 +412,16 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       const finishedRoomId = fsm.roomId ?? undefined;
       get().dispatch({ type: 'END_CALL', reason: 'declined' });
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        if (get().fsm.state === 'ended' && get().fsm.roomId === finishedRoomId) {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+        }
       }, 500);
     },
 
     endCall: (reason: TCallEndReason = 'completed') => {
       stopRingtone();
       clearTimer();
-      const { fsm, socket, callFrameRef } = get();
-
-      postHangup(callFrameRef);
+      const { fsm, socket } = get();
 
       if (socket?.isConnected && fsm.roomId) {
         sendCallLeave(socket, fsm.roomId);
@@ -287,9 +431,14 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       get().dispatch({ type: 'END_CALL', reason });
 
       setTimeout(() => {
-        get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
-        if (get().fsm.state === 'idle') {
-          set({ isMinimized: false });
+        if (
+          get().fsm.state === 'ended' &&
+          (!finishedRoomId || get().fsm.roomId === finishedRoomId)
+        ) {
+          get().dispatch({ type: 'RESET_TO_IDLE', roomId: finishedRoomId });
+          if (get().fsm.state === 'idle') {
+            set({ isMinimized: false });
+          }
         }
       }, 800);
     },

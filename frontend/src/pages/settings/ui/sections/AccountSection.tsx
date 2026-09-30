@@ -11,6 +11,7 @@ import { ProfileEditForm } from '@/features/user-profile-edit';
 import { ChangePasswordForm } from '@/features/change-password';
 import { SessionsManager } from '@/features/session-management';
 import { KeyBackupSettings } from '@/features/key-backup';
+import { LinkDevicePanel, QrOfferPanel } from '@/features/qr-login';
 import { UserProfilePanel } from '@/features/user-profile';
 import type { IUserDto } from '@/types';
 import { ListGroup, ListIntro, ListNavItem, ListStaticItem } from '@/shared/ui';
@@ -82,7 +83,12 @@ export function AccountSection() {
     }
 
     if (view === 'encryption') {
-      return <KeyBackupSettings />;
+      return (
+        <KeyBackupSettings
+          renderLinkDevice={(onDone) => <LinkDevicePanel onDone={onDone} />}
+          renderLoginCode={(onDone) => <QrOfferPanel onDone={onDone} />}
+        />
+      );
     }
 
     return (
@@ -208,7 +214,7 @@ function MyProfile({ userId, onEdit }: { userId?: string; onEdit: () => void }) 
         bar={false}
         onClose={onEdit}
         onEdit={onEdit}
-        profileState={{ isOpen: true, userId, chat: null, messages: [] }}
+        profileState={{ isOpen: true, userId, chat: null }}
       />
     </div>
   );

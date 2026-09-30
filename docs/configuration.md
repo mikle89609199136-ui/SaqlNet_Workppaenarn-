@@ -9,7 +9,16 @@ Key variables:
 - `JWT_SECRET` — legacy backend token signing (required).
 - `CRYPTO_SIGNING_SECRET`, `CRYPTO_ENCRYPTION_SECRET` — Rust crypto service;
   each must be at least 32 random characters.
-- `ALLOWED_ORIGINS` — CORS allowlist (comma-separated).
+- `ALLOWED_ORIGINS` — CORS allowlist (comma-separated). The browser session
+  lives in a cookie (#705): state-changing requests and WebSocket handshakes
+  that carry it are accepted only from the site itself or an origin listed
+  **exactly** here; `*` never allows credentials. Unset — `*` (the image logs
+  a warning in production); better set the public address, e.g.
+  `https://craneapp-timkhazatsky.amvera.io`.
+- `CRANE_ENV` — `production` in the combined image (`docker-entrypoint.sh`
+  sets it for every service). Production issues the session cookie as
+  `__Host-craneapp_session` (Secure, host-only); elsewhere it is
+  `craneapp_session` without Secure, so `http://localhost` works.
 - `PORT`, `BCRYPT_ROUNDS`, `RATE_LIMIT_*` — server tuning.
 - `MEDIA_UPLOAD_PATH`, `MAX_FILE_SIZE`, `ALLOWED_FILE_TYPES` — media uploads.
 - `ADMIN_PASSWORD` — seeding.

@@ -4,9 +4,9 @@ import { ROUTES } from '@/shared/config/routes';
 import { Navigate } from 'react-router-dom';
 
 export function RegisterPage() {
-  const token = useProfileStore((state) => state.token);
+  const signedIn = useProfileStore((state) => state.isAuth);
 
-  if (token) return <Navigate replace to={ROUTES.CHATS} />;
+  if (signedIn) return <Navigate replace to={ROUTES.CHATS} />;
 
   return <RegisterWizard />;
 }

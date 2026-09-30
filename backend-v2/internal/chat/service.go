@@ -76,6 +76,9 @@ type LastMessagePreview struct {
 	SenderID   string          `json:"senderId,omitempty"`
 	SenderName string          `json:"senderName"`
 	Reactions  []Reaction      `json:"reactions"`
+	// DeliveredAt, ReadAt — у своего последнего сообщения (#657).
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Member struct {
@@ -118,6 +121,10 @@ type Message struct {
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
 	DeletedAt         *string `json:"deletedAt,omitempty"`
+	// DeliveredAt, ReadAt — только у своих сообщений (#657): когда граница
+	// другого участника впервые перешла сообщение. Пусто — ещё нет.
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Service struct {
@@ -139,6 +146,7 @@ type realtimeServer interface {
 const (
 	maxMediaFilenameBytes = 255
 	maxMediaSizeBytes     = 100 << 20
+	savedMessagesTitle    = "Избранное"
 )
 
 func sanitizeMediaFilename(filename string) string {
@@ -398,6 +406,8 @@ func (s *Service) CallRooms() *CallRoomManager {
 }
 
 func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Chat, error) {
+	// Человек загрузил список чатов — пришедшее ему доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, "")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id::text, c.type,
 		       CASE WHEN c.type = 'private' THEN
@@ -483,6 +493,9 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		return nil, err
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
 		return nil, err
 	}
 	return chats, nil
@@ -578,6 +591,9 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
 		return Chat{}, err
 	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
+		return Chat{}, err
+	}
 	chat := chats[0]
 	if chat.Type == "private" {
 		chat.PeerPublicKey, err = s.peerPublicKey(ctx, userID, chatID)
@@ -607,8 +623,11 @@ func markKeyRotationNeeded(ctx context.Context, tx *sql.Tx, chatID string) error
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
-	if peerID == "" || peerID == userID {
+	if peerID == "" {
 		return "", false, ErrInvalidInput
+	}
+	if peerID == userID {
+		return s.createSelfChat(ctx, userID)
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
@@ -661,6 +680,54 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 		return "", false, err
 	}
 	return chatID, false, tx.Commit()
+}
+
+// createSelfChat lazily creates the user's canonical Saved Messages chat.
+//
+// The partial unique index from migration 0034 is the source of truth for
+// uniqueness. INSERT ... ON CONFLICT makes concurrent requests from several
+// devices converge on the same chat without serializable retries. Re-inserting
+// the membership also repairs an incomplete row left by an interrupted manual
+// migration.
+func (s *Service) createSelfChat(ctx context.Context, userID string) (string, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var chatID string
+	created := true
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO chats.chats (type, title, owner_id)
+		VALUES ('self', $2, $1)
+		ON CONFLICT (owner_id) WHERE type = 'self' DO NOTHING
+		RETURNING id::text
+	`, userID, savedMessagesTitle).Scan(&chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		created = false
+		err = tx.QueryRowContext(ctx, `
+			SELECT id::text
+			FROM chats.chats
+			WHERE owner_id = $1 AND type = 'self'
+		`, userID).Scan(&chatID)
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.members (chat_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+		ON CONFLICT (chat_id, user_id) DO NOTHING
+	`, chatID, userID); err != nil {
+		return "", false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", false, err
+	}
+	return chatID, !created, nil
 }
 
 // CreateGroup creates a new group chat owned by ownerID and adds the
@@ -1141,12 +1208,111 @@ func (s *Service) MarkRead(ctx context.Context, userID, chatID string) error {
 		}
 		return ErrForbidden
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO chats.user_chat_settings (user_id, chat_id, last_read_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (user_id, chat_id) DO UPDATE SET last_read_at = NOW()
-	`, userID, chatID)
-	return err
+	// Весь чат до текущего момента (#599); граница и время — в журнал (#657).
+	return s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, NOW()`, userID, chatID)
+}
+
+// ErrInvalidMessageIDs — среди отмечаемых прочитанными есть ID, которые не
+// сообщения этого чата (#506).
+var ErrInvalidMessageIDs = errors.New("message ids do not belong to the chat")
+
+// MaxMarkReadIDs — столько сообщений отмечается прочитанными за раз.
+const MaxMarkReadIDs = 500
+
+// ReadMark — итог отметки прочтения: какие сообщения учтены и где теперь
+// граница прочитанного чата.
+type ReadMark struct {
+	ReadIDs    []string `json:"readIds"`
+	LastReadAt string   `json:"lastReadAt"`
+}
+
+// MarkMessagesRead отмечает прочитанными переданные сообщения (#506). Модель —
+// отметка чата last_read_at, по ней считаются непрочитанные; граница —
+// самое новое из учтённых сообщений, а не «сейчас»: иначе одно увиденное
+// сообщение закрывало весь чат вместе с пришедшими позже. Граница не
+// сдвигается назад — запоздалая отметка старого сообщения ничего не меняет.
+//
+// Все ID обязаны быть сообщениями этого чата — иначе ErrInvalidMessageIDs,
+// и отметка не трогается. Свои и удалённые пропускаются: не ошибка, но и
+// не граница. Время прочтения каждого сообщения — журнал сдвигов (#657,
+// receipts.go).
+func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, messageIDs []string) (ReadMark, error) {
+	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			return ReadMark{}, err
+		}
+		return ReadMark{}, ErrForbidden
+	}
+	ids := uniqueStrings(messageIDs)
+	if len(ids) == 0 || len(ids) > MaxMarkReadIDs {
+		return ReadMark{}, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
+		FROM messages.messages
+		WHERE chat_id = $1 AND id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids))
+	if err != nil {
+		return ReadMark{}, err
+	}
+	defer rows.Close()
+	found := 0
+	readIDs := []string{}
+	var newest time.Time
+	for rows.Next() {
+		var id, senderID string
+		var deleted bool
+		var createdAt time.Time
+		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+			return ReadMark{}, err
+		}
+		found++
+		if deleted || senderID == userID {
+			continue
+		}
+		readIDs = append(readIDs, id)
+		if createdAt.After(newest) {
+			newest = createdAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ReadMark{}, err
+	}
+	if found != len(ids) {
+		return ReadMark{}, ErrInvalidMessageIDs
+	}
+
+	// Учесть нечего — граница прежняя. Иначе сдвиг вперёд и запись в журнал
+	// (#657): время прочтения — момент первого сдвига через сообщение.
+	if len(readIDs) > 0 {
+		if err := s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, $3::timestamptz`, userID, chatID, newest); err != nil {
+			return ReadMark{}, err
+		}
+	}
+	var lastReadAt sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT last_read_at::text FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2
+	`, userID, chatID).Scan(&lastReadAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	if err != nil {
+		return ReadMark{}, err
+	}
+	return ReadMark{ReadIDs: readIDs, LastReadAt: lastReadAt.String}, nil
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 type Ban struct {
@@ -1895,6 +2061,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		}
 		return nil, ErrForbidden
 	}
+	// Человек загрузил ленту — пришедшее ему в этот чат доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, chatID)
 
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
@@ -1927,6 +2095,9 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		return nil, err
 	}
 	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesReceipts(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -1975,13 +2146,14 @@ const sendPermissionQuery = `
 		       -- Собеседник по личному чату заблокировал отправителя (#760).
 		       EXISTS(
 		         SELECT 1
-		         FROM chats.chats c
-		         JOIN chats.members peer ON peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		         FROM chats.members peer
 		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
-		         WHERE c.id = cm.chat_id AND c.type = 'private'
-		       )
+		         WHERE peer.chat_id = cm.chat_id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       ),
+		       c.type
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
+		JOIN chats.chats c ON c.id = cm.chat_id
 		WHERE cm.chat_id = $1 AND cm.user_id = $2
 	`
 
@@ -2062,7 +2234,8 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	var role string
 	var isMuted sql.NullBool
 	var blockedByPeer bool
-	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer)
+	var chatType string
+	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer, &chatType)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2169,12 +2342,28 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 				"chatId":  chatID,
 				"message": forBroadcast(&msgs[i]),
 			})
+			// В self-chat других участников нет, поэтому исключение владельца
+			// одновременно не даёт его устройствам показать уведомление о
+			// собственном сообщении.
 			s.ws.BroadcastToChat(chatID, payload, userID)
+		}
+		// Ушло в открытые сокеты получателей — доставлено (#657); автор
+		// видит это уже в ответе на отправку, а не только по событию.
+		ids := make([]string, len(msgs))
+		for i := range msgs {
+			ids[i] = msgs[i].ID
+		}
+		if s.markDeliveredOnSend(ctx, chatID, userID, ids) {
+			if err := s.hydrateMessagesReceipts(ctx, userID, msgs); err != nil {
+				slog.WarnContext(ctx, "load receipts after send failed", "error", err)
+			}
 		}
 	}
 	// Push — один на отправку, а не на каждое сообщение пачки: они всё
 	// равно сворачиваются в одно уведомление чата.
-	s.notifyMessage(chatID, userID)
+	if chatType != "self" {
+		s.notifyMessage(chatID, userID)
+	}
 
 	return msgs, nil
 }
@@ -3287,15 +3476,28 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
-	if ok, err := s.IsMember(ctx, userID, chatID); err != nil || !ok {
+	var chatType string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type
+		FROM chats.chats c
+		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
+	}
+	if err != nil {
+		return "", err
+	}
+	if chatType == "self" {
+		return "", ErrInvalidChatType
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {
 		dbCallType = "voice"
 	}
 	var roomID string
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO calls.rooms (chat_id, type, title, initiator_id)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id::text

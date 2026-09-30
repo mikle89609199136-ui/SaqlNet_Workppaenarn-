@@ -49,15 +49,15 @@ function forgetLink() {
 export function LinkPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const token = useProfileStore((state) => state.token);
+  const signedIn = useProfileStore((state) => state.isAuth);
   const [link] = useState(takeLink);
 
   useEffect(() => {
     // Код одноразовый и живёт пять минут: хранить его дольше незачем.
-    if (token) return forgetLink;
-  }, [token]);
+    if (signedIn) return forgetLink;
+  }, [signedIn]);
 
-  if (!token) {
+  if (!signedIn) {
     return (
       <Navigate
         replace

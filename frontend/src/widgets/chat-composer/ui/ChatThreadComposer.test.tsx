@@ -3,14 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ChatThreadComposer } from './ChatThreadComposer';
 import { clearOutbox } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { makeChat, makeMessage } from '@/test/fixtures';
-import { chatKeys } from '@/entities/chat';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useForwardStore } from '@/features/forward-messages';
+import { forgetEncryptionStates, setEncryptionState } from '@/shared/crypto';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createRef } from 'react';
@@ -48,10 +49,17 @@ describe('ChatThreadComposer', () => {
       defaultOptions: { queries: { retry: false } },
     });
     clearOutbox();
+    useForwardStore.getState().cancel();
     useProfileStore.setState({
       user: { id: 'user-me', username: 'tester' } as any,
     });
+    useChatUiStore.setState({ error: '', editingMessage: null });
+    setEncryptionState('chat-test-1', { status: 'ready', unreachable: [] });
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    forgetEncryptionStates();
   });
 
   function setupProps(overrides = {}) {
@@ -242,6 +250,109 @@ describe('ChatThreadComposer', () => {
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
 
       expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('вставка картинок из буфера обмена (#891)', () => {
+    it('вставка картинки в поле добавляет её во вложения', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).toHaveBeenCalled();
+      expect(pasteEvent.defaultPrevented).toBe(true);
+    });
+
+    it('смешанная вставка с текстом не добавляет вложения (приоритет текста)', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['text/plain', 'Files'],
+          getData: (format: string) => (format === 'text/plain' ? 'Текст из статьи' : ''),
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('при редактировании сообщения вставка картинки не прикладывает файл', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      useChatUiStore
+        .getState()
+        .setEditingMessage(makeMessage({ id: 'msg-edit', content: 'Текст' }));
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('вставка более 10 картинок прикладывает допустимое число и выводит ошибку лимита', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const files = Array.from(
+        { length: 11 },
+        (_, i) => new File([`c${i}`], `shot-${i}.png`, { type: 'image/png' })
+      );
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files,
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).toHaveBeenCalled();
+      expect(useChatUiStore.getState().error).toBe('Можно приложить не больше 10 файлов');
     });
   });
 });

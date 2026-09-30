@@ -1,5 +1,6 @@
 import { ROUTES } from '@/shared/config';
-import { cn, formatChatListTime, useLongPress } from '@/shared/lib';
+import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
+import type { TReceiptState } from '@/shared/lib';
 import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
 import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
@@ -80,7 +81,15 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
           ? `${last.senderName}: `
           : ''
       : '';
-  const status = isOwnLast ? last?.status : undefined;
+  /* Галочки своего последнего (#657): в личном чате — отправлено,
+     доставлено или прочитано; в группе, как и в ленте, — «отправлено». */
+  const status: TReceiptState | undefined =
+    isOwnLast && last ? (chat.type === 'private' ? receiptState(last) : 'sent') : undefined;
+  const statusLabel = {
+    sent: t('messageStatus.sent', 'Отправлено'),
+    delivered: t('messageStatus.delivered', 'Доставлено'),
+    read: t('messageStatus.read', 'Прочитано'),
+  };
 
   /* Открытый чат прочитан — счётчик на нём не нужен, а на заливке он и
      не виден. Булавка — только у закреплённого без непрочитанных: иначе
@@ -135,21 +144,21 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
             >
               {status && (
                 <span
-                  aria-label={
-                    status === 'read'
-                      ? t('messageStatus.read', 'Прочитано')
-                      : t('messageStatus.sent', 'Отправлено')
-                  }
+                  aria-label={statusLabel[status]}
                   className={cn(
                     'flex',
-                    status === 'read' ? 'text-brand' : 'text-ink-3',
-                    onCurrentRow
+                    /* На открытом чате строка залита акцентом — там цвета
+                       те же, что у галочек своего пузыря (#657). */
+                    status === 'read'
+                      ? 'text-brand group-aria-[current=page]:text-out-read'
+                      : 'text-ink-3 group-aria-[current=page]:text-out-tick'
                   )}
+                  data-receipt={status}
                   role="img"
                 >
                   <Icon
                     className="size-4 stroke-2"
-                    name={status === 'read' ? 'checkCheck' : 'check'}
+                    name={status === 'sent' ? 'check' : 'checkCheck'}
                   />
                 </span>
               )}

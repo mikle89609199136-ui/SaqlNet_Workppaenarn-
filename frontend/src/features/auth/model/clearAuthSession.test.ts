@@ -7,7 +7,7 @@ import { clearAuthSession } from './clearAuthSession';
 describe('выход из сессии', () => {
   beforeEach(() => {
     queryClient.clear();
-    useProfileStore.setState({ token: 'токен-сессии', isAuth: true });
+    useProfileStore.setState({ isAuth: true });
   });
 
   it('should wipe decrypted messages from the query cache', () => {
@@ -35,7 +35,7 @@ describe('выход из сессии', () => {
   });
 
   it('should do nothing without an active session', () => {
-    useProfileStore.setState({ token: '', isAuth: false });
+    useProfileStore.setState({ isAuth: false });
     queryClient.setQueryData(chatKeys.detail('chat-1'), { id: 'chat-1' });
 
     clearAuthSession();

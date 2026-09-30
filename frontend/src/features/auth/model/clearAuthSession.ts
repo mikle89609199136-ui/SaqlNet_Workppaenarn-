@@ -8,8 +8,8 @@ import { unsubscribePushOnDevice } from '@/shared/lib';
 import { useProfileStore } from '@/entities/user';
 
 export function clearAuthSession() {
-  const { token, clearProfile } = useProfileStore.getState();
-  if (!token) return;
+  const { isAuth, clearProfile } = useProfileStore.getState();
+  if (!isAuth) return;
   disconnectRealtimeSocket();
   // Push этому устройству больше не нужен (#882): вышли — уведомления
   // о чужом аккаунте следующему, кто здесь войдёт, ни к чему.

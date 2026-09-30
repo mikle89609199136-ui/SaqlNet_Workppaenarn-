@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { IMessageDto, IPinnedDto } from './types';
 import { chatKeys } from '@/entities/chat';
+import type { IReceiptEvent } from '@/shared/lib';
 import {
   appendMessage,
+  applyReceipt,
   canAppendToThread,
   patchMessage,
   removeMessage,
@@ -86,6 +88,16 @@ export function patchThreadMessage(
   );
   // Отредактированным могло оказаться последнее сообщение чата.
   markChatListStale(queryClient);
+}
+
+/**
+ * Событие `receipts` (#657): галочки своих сообщений в ленте — на месте.
+ * Список чатов обновляется отдельно и тоже без перезапроса.
+ */
+export function putThreadReceipt(queryClient: QueryClient, event: IReceiptEvent): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(event.chatId), (current) =>
+    current ? applyReceipt(current, event) : current
+  );
 }
 
 export function replaceThreadMessage(

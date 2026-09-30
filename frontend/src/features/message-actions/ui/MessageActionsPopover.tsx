@@ -1,8 +1,11 @@
 import type { IRichTextInputHandle } from '@/shared/ui';
 import { ContextMenu, Icon, NotoEmoji } from '@/shared/ui';
 import { QUICK_REACTIONS } from '@/shared/config';
-import { cn } from '@/shared/lib';
+import { cn, formatReceipt } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
+import { availableMessageActions, type TMessageActionPlace } from '../model/messageActionRules';
+import { canCopyImageToClipboard } from '../model/mediaActions';
+import { saveFilePicker } from '@/entities/media';
 import { pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
@@ -72,6 +75,17 @@ interface Props {
   onSelection: (message: IMessageDto) => void;
   draftRef?: RefObject<IRichTextInputHandle | null>;
   setIsForwardModalOpen: Dispatch<SetStateAction<boolean>>;
+  /**
+   * Первой строкой — когда своё сообщение доставлено или прочитано (#657).
+   * Только в личном чате: в группе у этого нет одного значения.
+   */
+  showReceipt?: boolean;
+  /**
+   * Где открыто меню. В списке закреплённых нет поля ввода и диалога
+   * удаления — «Ответить», «Изменить», «Выбрать» и «Удалить» там не
+   * показываются (#655).
+   */
+  place?: TMessageActionPlace;
 }
 
 interface IActionButton {
@@ -88,6 +102,8 @@ export const MessageActionsPopover = ({
   onSelection,
   draftRef,
   setIsForwardModalOpen,
+  showReceipt = false,
+  place = 'thread',
 }: Props) => {
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
@@ -111,6 +127,25 @@ export const MessageActionsPopover = ({
   const myReaction = message.reactions?.find((reaction) => reaction.myReaction)?.emoji;
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
+  const receipt = mine && showReceipt ? formatReceipt(message, t) : null;
+  // Что вообще можно сделать с этим сообщением (#655): недоступное
+  // скрывается, а не отключается.
+  const available = useMemo(
+    () =>
+      availableMessageActions(message, {
+        mine,
+        place,
+        isPinned,
+        canCopyImage: canCopyImageToClipboard(),
+      }),
+    [message, mine, place, isPinned]
+  );
+  // Фото копируется картинкой (с подписью текстом) — одним пунктом
+  // «Копировать», как и текст.
+  const copiesImage = available.has('copyImage') && !selectionMode;
+  // Окно «Сохранить как» есть не везде: где его нет, пункт честно
+  // называется «Скачать».
+  const canPickLocation = saveFilePicker() !== null;
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -118,28 +153,39 @@ export const MessageActionsPopover = ({
   const buttons: IActionButton[] = useMemo(
     () => [
       {
-        show: !selectionMode,
+        show: available.has('reply') && !selectionMode,
         icon: 'reply',
         key: 'reply',
         def: t('messageActions.reply', 'Ответить'),
         action: () => actions.startReply(message),
       },
       {
-        show: true,
+        // В режиме выбора копируются все отмеченные — пункт есть всегда.
+        show: available.has('copyText') || copiesImage || selectionMode,
         icon: 'copy',
         key: 'copy',
         def: t('messageActions.copy', 'Копировать'),
-        action: () => actions.handleCopyMessage(message),
+        action: () =>
+          copiesImage ? actions.handleCopyImage(message) : actions.handleCopyMessage(message),
       },
       {
-        show: !mine && !selectionMode,
+        show: available.has('save') && !selectionMode,
+        icon: 'download',
+        key: 'save',
+        def: canPickLocation
+          ? t('messageActions.saveAs', 'Сохранить как…')
+          : t('messageActions.download', 'Скачать'),
+        action: () => actions.handleSaveMedia(message),
+      },
+      {
+        show: available.has('translate') && !selectionMode,
         icon: 'language',
         key: 'translate',
         def: t('action.translate', 'Перевести'),
         action: () => actions.handleTranslateMessage(message),
       },
       {
-        show: mine && !selectionMode,
+        show: available.has('edit') && !selectionMode,
         icon: 'edit',
         key: 'edit',
         def: t('messageActions.edit', 'Изменить'),
@@ -149,7 +195,7 @@ export const MessageActionsPopover = ({
       // выделения действие применяется ко всем отмеченным, поэтому
       // «Закрепить всё».
       {
-        show: !isPinned,
+        show: available.has('pin'),
         icon: 'pin',
         key: 'pin',
         def: selectionMode
@@ -158,7 +204,7 @@ export const MessageActionsPopover = ({
         action: () => actions.handlePinMessage(message),
       },
       {
-        show: isPinned,
+        show: available.has('unpin'),
         icon: 'pin',
         key: 'unpin',
         def: selectionMode
@@ -167,7 +213,7 @@ export const MessageActionsPopover = ({
         action: () => actions.handleUnpinMessage(message),
       },
       {
-        show: true,
+        show: available.has('forward'),
         icon: 'forward',
         key: 'forward',
         def: t('messageActions.forward', 'Переслать'),
@@ -175,7 +221,7 @@ export const MessageActionsPopover = ({
       },
       // «Выбрать» — перед удалением: опасное действие по макету последнее.
       {
-        show: true,
+        show: available.has('select'),
         icon: 'checkCircle',
         key: 'select',
         def: isSelected ? t('uncheckMessage', 'Снять выбор') : t('checkMessage', 'Выбрать'),
@@ -183,7 +229,7 @@ export const MessageActionsPopover = ({
       },
       // Удалить можно и чужое — у себя (#840); у кого, решает диалог.
       {
-        show: true,
+        show: available.has('delete'),
         icon: 'trash',
         key: 'delete',
         def: t('messageActions.delete', 'Удалить'),
@@ -191,7 +237,17 @@ export const MessageActionsPopover = ({
         className: 'is-danger',
       },
     ],
-    [actions, isPinned, isSelected, message, mine, onSelection, selectionMode, t]
+    [
+      actions,
+      available,
+      canPickLocation,
+      copiesImage,
+      isSelected,
+      message,
+      onSelection,
+      selectionMode,
+      t,
+    ]
   );
 
   return (
@@ -203,33 +259,46 @@ export const MessageActionsPopover = ({
       x={actionMenu?.x}
       y={actionMenu?.y}
     >
+      {receipt && (
+        <div
+          aria-label={receipt}
+          className="mb-1 flex items-center gap-1.5 border-b border-divider px-2 pt-1 pb-1.75 text-meta text-ink-3"
+          role="group"
+        >
+          <Icon aria-hidden="true" className="size-4 shrink-0 stroke-2" name="checkCheck" />
+          <span aria-hidden="true">{receipt}</span>
+        </div>
+      )}
+
       {/* Реакции идут рядом, а не столбиком: их шесть, они короткие, и
           выбирают из них глазами, а не по названию. Роль у каждой та же,
           что у обычного пункта, — иначе стрелки перескакивали бы через
-          весь ряд. */}
-      <div
-        aria-label={t('messageActions.reactions', 'Реакции')}
-        className="mb-1 flex justify-between border-b border-divider px-0.5 pt-0.5 pb-1.75"
-        role="group"
-      >
-        {QUICK_REACTIONS.map(({ emoji, label }) => {
-          /* Поставленная реакция видна и в меню, не только на самом
-             сообщении: иначе, открыв меню второй раз, не понять, что уже
-             отмечено, — а нажатие на неё снимает. */
-          const chosen = myReaction === emoji;
-          const name = t(label[0], label[1]);
+          весь ряд. Неотправленному реакцию не поставить — ряда нет. */}
+      {available.has('react') && (
+        <div
+          aria-label={t('messageActions.reactions', 'Реакции')}
+          className="mb-1 flex justify-between border-b border-divider px-0.5 pt-0.5 pb-1.75"
+          role="group"
+        >
+          {QUICK_REACTIONS.map(({ emoji, label }) => {
+            /* Поставленная реакция видна и в меню, не только на самом
+               сообщении: иначе, открыв меню второй раз, не понять, что уже
+               отмечено, — а нажатие на неё снимает. */
+            const chosen = myReaction === emoji;
+            const name = t(label[0], label[1]);
 
-          return (
-            <ReactionPick
-              chosen={chosen}
-              emoji={emoji}
-              key={emoji}
-              label={chosen ? `${name} ${t('reactionChosen', '— ваша реакция')}` : name}
-              onPick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
-            />
-          );
-        })}
-      </div>
+            return (
+              <ReactionPick
+                chosen={chosen}
+                emoji={emoji}
+                key={emoji}
+                label={chosen ? `${name} ${t('reactionChosen', '— ваша реакция')}` : name}
+                onPick={() => actions.runMessageAction(() => actions.handleReact(message, emoji))}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {buttons
         .filter((b) => b.show)

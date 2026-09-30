@@ -23,7 +23,7 @@ const (
 func expectMutedMembership(mock sqlmock.Sqlmock, role string) {
 	mock.ExpectQuery(memberMuteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow(role, true, false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow(role, true, false, "private"))
 }
 
 // TestSendMessage_MutedMember проверяет, что замьюченный member не может
@@ -74,7 +74,7 @@ func TestSendMessage_BlockedByPeer(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	mock.ExpectQuery(memberMuteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, true))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, true, "private"))
 
 	_, err = chat.NewService(db, nil, nil).SendMessages(context.Background(), muteTestUserID, muteTestChatID, []chat.OutgoingMessage{{Content: "hello", Type: "text"}})
 

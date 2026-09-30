@@ -4,6 +4,16 @@ import { estimateMessageItemSize } from '@/entities/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  countUnreadBelow,
+  findFirstUnreadId,
+  hasUnreadAbove,
+  needsOlderForUnread,
+  openingScrollTarget,
+  takeUnreadSnapshot,
+  type IReadMark,
+  type IUnreadSnapshot,
+} from './unread';
 
 export type TFeedItem =
   | { id: string; type: 'date'; label: string }
@@ -31,16 +41,14 @@ interface IUseVirtualMessagesFeedOptions {
    * «вниз». В подборке закреплённых это не нужно.
    */
   trackUnread?: boolean;
-}
-
-/* Что было непрочитанным, когда чат открыли. Запоминается один раз на
-   чат: сами сообщения отмечаются прочитанными сразу после загрузки, и
-   без снимка разделитель исчез бы в первую же секунду. */
-interface IUnreadSnapshot {
-  chatId: string;
-  firstUnreadId: string | null;
-  /** Что уже было в ленте при открытии: пришедшее позже — тоже новое. */
-  knownIds: Set<string>;
+  /**
+   * Отметка прочтения открытого чата (#839): по ней при открытии ставится
+   * «Новые сообщения» и лента встаёт на них. Пока её нет — лента ждёт.
+   */
+  readMark?: IReadMark;
+  /** Догрузка истории — при открытии до первого непрочитанного. */
+  loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
+  hasOlder?: boolean;
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -53,6 +61,9 @@ export function useVirtualMessagesFeed({
   messagesRef,
   currentUserId,
   trackUnread = true,
+  readMark,
+  loadOlder,
+  hasOlder = false,
 }: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
 
@@ -60,16 +71,38 @@ export function useVirtualMessagesFeed({
   const [unread, setUnread] = useState<IUnreadSnapshot | null>(null);
   // Снимок делается при отрисовке, а не эффектом: иначе первый кадр
   // ленты вышел бы без разделителя и дёрнулся бы следующим.
-  if (trackUnread && chatId && unread?.chatId !== chatId) {
-    const first = messages.find(
-      (message) => message.senderId !== currentUserId && message.isRead === false
-    );
-    setUnread({
-      chatId,
-      firstUnreadId: first?.id ?? null,
-      knownIds: new Set(messages.map((message) => message.id)),
-    });
+  if (trackUnread && chatId && unread?.chatId !== chatId && readMark?.chatId === chatId) {
+    setUnread(takeUnreadSnapshot(messages, readMark, currentUserId, hasOlder, Boolean(loadOlder)));
   }
+  const snapshot = unread?.chatId === chatId ? unread : null;
+  const firstUnreadId = useMemo(
+    () => (snapshot ? findFirstUnreadId(messages, snapshot, currentUserId, hasOlder) : null),
+    [messages, snapshot, currentUserId, hasOlder]
+  );
+
+  /* Первое непрочитанное старше загруженного — догрузить до него, как при
+     переходе к сообщению, но не больше потолка. */
+  const loadingOlderRef = useRef(false);
+  useEffect(() => {
+    if (!snapshot || snapshot.settled || loadingOlderRef.current) return;
+    if (!loadOlder || !needsOlderForUnread(messages, snapshot, currentUserId, hasOlder)) {
+      setUnread((current) =>
+        current?.chatId === snapshot.chatId ? { ...current, settled: true } : current
+      );
+      return;
+    }
+    loadingOlderRef.current = true;
+    void Promise.resolve(loadOlder({ isJump: true }))
+      .catch(() => {})
+      .finally(() => {
+        loadingOlderRef.current = false;
+        setUnread((current) =>
+          current?.chatId === snapshot.chatId
+            ? { ...current, pagesLoaded: current.pagesLoaded + 1 }
+            : current
+        );
+      });
+  }, [snapshot, messages, currentUserId, hasOlder, loadOlder]);
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [isScrollingState, setIsScrollingState] = useState(false);
@@ -77,9 +110,10 @@ export function useVirtualMessagesFeed({
   const dateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottomRef = useRef(true);
 
+  /** Чат, в котором лента уже встала на место при открытии. */
+  const openedChatRef = useRef<string | null>(null);
   const prevFirstIdRef = useRef<string | null>(null);
   const prevLastIdRef = useRef<string | null>(null);
-  const prevCountRef = useRef(0);
 
   const setContainerRef = useCallback(
     (node: HTMLElement | null) => {
@@ -144,7 +178,7 @@ export function useVirtualMessagesFeed({
         }
       }
 
-      if (message.id === unread?.firstUnreadId) raw.push({ id: 'unread-divider', type: 'unread' });
+      if (message.id === firstUnreadId) raw.push({ id: 'unread-divider', type: 'unread' });
 
       raw.push({ id: message.id, type: 'message', message });
     }
@@ -175,7 +209,7 @@ export function useVirtualMessagesFeed({
     }
 
     return items;
-  }, [messages, t, unread?.firstUnreadId]);
+  }, [messages, t, firstUnreadId]);
 
   const virtualizer = useVirtualizer({
     count: feedItems.length,
@@ -230,7 +264,8 @@ export function useVirtualMessagesFeed({
     };
   }, [triggerDateVisibility]);
 
-  // Умный скролл: вниз при открытии чата и новых сообщениях, сохранение позиции при подгрузке старых сверху
+  /* Умный скролл: при открытии — на «Новые сообщения» или вниз, вниз при
+     новых сообщениях, позиция сохраняется при подгрузке старых сверху. */
   useEffect(() => {
     if (feedItems.length === 0) return;
 
@@ -239,19 +274,19 @@ export function useVirtualMessagesFeed({
 
     const prevFirstId = prevFirstIdRef.current;
     const prevLastId = prevLastIdRef.current;
-    const prevCount = prevCountRef.current;
 
     prevFirstIdRef.current = firstItem.id;
     prevLastIdRef.current = lastItem.id;
-    prevCountRef.current = feedItems.length;
 
-    // 1. Первый вход в чат / монтирование
-    if (prevCount === 0 || !prevLastId) {
+    // 1. Открытие чата — и первое, и смена чата без перемонтирования (#839).
+    //    Встаём один раз, когда снимок снят и история догружена.
+    if (openedChatRef.current !== chatId) {
+      if (trackUnread && !snapshot?.settled) return;
+      openedChatRef.current = chatId ?? null;
+      const capped = snapshot ? hasUnreadAbove(messages, snapshot, currentUserId, hasOlder) : false;
+      const target = openingScrollTarget(feedItems, capped);
       requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(feedItems.length - 1, {
-          align: 'end',
-          behavior: 'auto',
-        });
+        virtualizer.scrollToIndex(target.index, { align: target.align, behavior: 'auto' });
       });
       return;
     }
@@ -272,7 +307,7 @@ export function useVirtualMessagesFeed({
         });
       });
     }
-  }, [feedItems, virtualizer]);
+  }, [feedItems, virtualizer, chatId, trackUnread, snapshot, hasOlder, messages, currentUserId]);
 
   const scrollToBottom = useCallback(() => {
     if (feedItems.length === 0) return;
@@ -281,21 +316,12 @@ export function useVirtualMessagesFeed({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  /* Сколько новых ниже экрана — число на кнопке «вниз». Новые — чужие,
-     что были непрочитанными при открытии, и пришедшие после. */
+  /* Сколько новых ниже экрана — число на кнопке «вниз». */
   const lastVisibleIndex = virtualizer.range?.endIndex ?? feedItems.length - 1;
-  const unreadBelow = useMemo(() => {
-    if (!unread) return 0;
-    const anchor = feedItems.findIndex((item) => item.type === 'unread');
-    let count = 0;
-    for (let index = lastVisibleIndex + 1; index < feedItems.length; index++) {
-      const item = feedItems[index];
-      if (item.type !== 'message' || item.message.senderId === currentUserId) continue;
-      const isFresh = (anchor !== -1 && index > anchor) || !unread.knownIds.has(item.id);
-      if (isFresh) count++;
-    }
-    return count;
-  }, [feedItems, lastVisibleIndex, unread, currentUserId]);
+  const unreadBelow = useMemo(
+    () => countUnreadBelow(feedItems, lastVisibleIndex, snapshot, currentUserId),
+    [feedItems, lastVisibleIndex, snapshot, currentUserId]
+  );
 
   // Расчёт стики-поведения в стиле Telegram: выталкивание следующим дивайдером и активная дата
   const { activeDate, stickyPushOffset, isInlineAtTop } = useMemo(() => {

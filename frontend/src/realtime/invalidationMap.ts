@@ -40,6 +40,11 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.MESSAGE.HIDDEN]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId), chatKeys.pins(chatId), chatKeys.list()] : [],
 
+  // Галочки своих сообщений (#657). Обычно ставятся на месте
+  // (useServerEvents); это — запасной путь.
+  [WS_EVENTS.MESSAGE.RECEIPTS]: ({ chatId }) =>
+    chatId ? [chatKeys.messages(chatId), chatKeys.list()] : [],
+
   [WS_EVENTS.REACTIONS.REACTION_UPDATED]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId)] : [],
 

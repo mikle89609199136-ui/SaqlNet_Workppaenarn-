@@ -6,6 +6,8 @@ import {
 } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
+import { AppUpdateBanner } from '@/features/app-update';
+import { useStartPrivateChat } from '@/features/chat-actions';
 import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
@@ -75,6 +77,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
     [visibleChats]
   );
   const search = useChatsSearch(visibleChats);
+  // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
+  const startChat = useStartPrivateChat();
 
   /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
@@ -104,6 +108,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         chats={search.chats}
         isEmpty={search.isEmpty}
         isLoadingPeople={search.isLoadingPeople}
+        isStartingChat={startChat.isPending}
+        onStartChat={(userId) => startChat.mutate(userId)}
         people={search.people}
       />
     );
@@ -212,6 +218,9 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       <div className="px-4 pb-2.5">
         <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
       </div>
+
+      {/* Новая версия приложения (#892) — важнее просьбы включить уведомления. */}
+      <AppUpdateBanner />
 
       {/* «Включить уведомления» — пока не включили и не закрыли (#882). */}
       <PushPrompt />
