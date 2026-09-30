@@ -146,6 +146,7 @@ export function CallLobbyView({
             <Select
               id="lobby-mic-select"
               label={t('call.lobby.microphone', 'Микрофон')}
+              menuClassName="z-[10000]"
               options={audioInputs.map((d, idx) => ({
                 value: d.deviceId,
                 label: d.label || `${t('call.lobby.microphone', 'Микрофон')} ${idx + 1}`,
@@ -159,6 +160,7 @@ export function CallLobbyView({
             <Select
               id="lobby-cam-select"
               label={t('call.lobby.video', 'Камера')}
+              menuClassName="z-[10000]"
               options={videoInputs.map((d, idx) => ({
                 value: d.deviceId,
                 label: d.label || `${t('call.lobby.video', 'Камера')} ${idx + 1}`,
