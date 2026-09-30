@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -677,9 +676,10 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "q parameter required")
 			return
 		}
-		limit := 50
-		if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-			limit = l
+		limit, err := parseLimit(r)
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
 		}
 		msgs, err := h.service.SearchMessages(r.Context(), current.ID, q, limit)
 		if err != nil {

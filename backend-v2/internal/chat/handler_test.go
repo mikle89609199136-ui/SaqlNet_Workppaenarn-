@@ -1599,6 +1599,38 @@ func TestHandler_Favorites_PaginationValidation(t *testing.T) {
 	}
 }
 
+// TestHandler_Search_PaginationValidation проверяет, что эндпоинт GET /api/v2/messages/search
+// отклоняет невалидные значения параметра limit с ошибкой 400 validation_failed без обращений к БД.
+func TestHandler_Search_PaginationValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		query       string
+		wantMessage string
+	}{
+		{name: "limit below minimum", query: "?q=test&limit=0", wantMessage: "invalid limit"},
+		{name: "negative limit", query: "?q=test&limit=-1", wantMessage: "invalid limit"},
+		{name: "limit above maximum", query: "?q=test&limit=101", wantMessage: "invalid limit"},
+		{name: "non-numeric limit", query: "?q=test&limit=abc", wantMessage: "invalid limit"},
+		{name: "empty limit param", query: "?q=test&limit=", wantMessage: "invalid limit"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/messages/search"+tt.query, nil, handlerActorID)
+			rr := httptest.NewRecorder()
+			handler.Messages(rr, req)
+			assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+			var errResp struct {
+				Message string `json:"message"`
+			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
+			assert.Equal(t, tt.wantMessage, errResp.Message)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 // assertErrorCode fails the test if the response body does not contain
 // the expected "code" field.
 func assertErrorCode(t *testing.T, rr *httptest.ResponseRecorder, want string) {
