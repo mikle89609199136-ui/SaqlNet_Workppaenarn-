@@ -41,23 +41,85 @@ export function ActiveCallView({
 }: IActiveCallViewProps) {
   const { t } = useTranslation();
   const duration = useCallDuration(callStartedAt);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
+
+  const remoteVideoActive = Boolean(
+    remoteStream &&
+      remoteStream
+        .getVideoTracks()
+        .some((t) => t.enabled && !t.muted && t.readyState === 'live')
+  );
+
+  const remoteAudioMuted = Boolean(
+    remoteStream &&
+      remoteStream.getAudioTracks().length > 0 &&
+      remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
+  );
+
+  // Удержание фокуса внутри диалога (WAI-ARIA modal)
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+
+    const focusable = el.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length > 0) {
+      focusable[0].focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const elements = el.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (elements.length === 0) return;
+
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Привязка локального видео
   useEffect(() => {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = isVideoEnabled ? localStream : null;
+      if (isVideoEnabled && localStream) {
+        localVideoRef.current.play()?.catch(() => {});
+      }
     }
   }, [localStream, isVideoEnabled]);
 
-  // Привязка удаленного видео и отслеживание активности видео- и аудио-треков
+  // Привязка удаленного видео при появлении потока и размучивании трека
   useEffect(() => {
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream ?? null;
+      remoteVideoRef.current.srcObject = remoteVideoActive ? (remoteStream ?? null) : null;
+      if (remoteVideoActive && remoteStream) {
+        remoteVideoRef.current.play()?.catch(() => {});
+      }
     }
+  }, [remoteStream, remoteVideoActive]);
 
+  // Отслеживание активности видео- и аудио-треков удаленного потока
+  useEffect(() => {
     if (!remoteStream) {
       return;
     }
@@ -81,19 +143,6 @@ export function ActiveCallView({
       });
     };
   }, [remoteStream]);
-
-  const remoteVideoActive = Boolean(
-    remoteStream &&
-      remoteStream
-        .getVideoTracks()
-        .some((t) => t.enabled && !t.muted && t.readyState === 'live')
-  );
-
-  const remoteAudioMuted = Boolean(
-    remoteStream &&
-      remoteStream.getAudioTracks().length > 0 &&
-      remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
-  );
 
   const getStatusText = () => {
     if (connectionState === 'connecting') {
@@ -131,6 +180,7 @@ export function ActiveCallView({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-label={t('call.activeDialog', 'Активный звонок')}
       aria-modal="true"
@@ -228,7 +278,7 @@ export function ActiveCallView({
                 className="shadow-[var(--elev-2)]"
               />
               {connectionState === 'connected' && (
-                <div className="absolute -inset-2 rounded-full border-2 border-brand/40 animate-ping pointer-events-none" />
+                <div className="absolute -inset-2 rounded-full border-2 border-brand/40 animate-ping motion-reduce:animate-none pointer-events-none" />
               )}
             </div>
             <div className="flex flex-col items-center">

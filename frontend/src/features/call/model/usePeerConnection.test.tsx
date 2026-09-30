@@ -239,4 +239,35 @@ describe('usePeerConnection', () => {
     // Менеджер не был пересоздан (ссылка сохранена)
     expect(result.current.manager).toBe(initialManager);
   });
+
+  it('корректно обрабатывает оффер при развёрнутом payload из WebSocketClient', async () => {
+    const { result } = renderHook(() =>
+      usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // WebSocketClient распаковывает payload прямо в eventData
+    await act(async () => {
+      eventBus.emit(WS_EVENTS.CALL.OFFER, {
+        type: 'offer',
+        sdp: 'flattened-sdp',
+        roomId: 'room-100',
+        from: 'peer-200',
+      } as unknown as Parameters<typeof eventBus.emit>[1]);
+      await Promise.resolve();
+    });
+
+    const pc = result.current.manager?.getPeerConnection() as unknown as MockRTCPeerConnection;
+    expect(pc.setRemoteDescription).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'offer', sdp: 'flattened-sdp' })
+    );
+  });
 });

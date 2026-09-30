@@ -312,4 +312,68 @@ describe('ActiveCallView', () => {
       screen.getAllByLabelText('Собеседник выключил микрофон').length
     ).toBeGreaterThan(0);
   });
+
+  it('присваивает srcObject удалённому видео после unmute трека', async () => {
+    let unmuteHandler: (() => void) | null = null;
+    const mockVideoTrack = {
+      kind: 'video',
+      enabled: true,
+      muted: true, // Изначально заглушён
+      readyState: 'live',
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        if (event === 'unmute') {
+          unmuteHandler = handler;
+        }
+      }),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStreamTrack;
+
+    const stream = new MediaStream();
+    vi.spyOn(stream, 'getVideoTracks').mockReturnValue([mockVideoTrack]);
+
+    const { rerender } = render(
+      <ActiveCallView
+        activeCall={videoCall}
+        localStream={null}
+        remoteStream={stream}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    // Пока трек muted — видео собеседника скрыто (показывается аватар)
+    expect(screen.queryByLabelText('Видео собеседника')).toBeNull();
+
+    // Трек размучивается
+    mockVideoTrack.muted = false;
+    expect(unmuteHandler).not.toBeNull();
+    unmuteHandler!();
+
+    // Ререндерим компонент
+    rerender(
+      <ActiveCallView
+        activeCall={videoCall}
+        localStream={null}
+        remoteStream={stream}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const remoteVideo = screen.getByLabelText('Видео собеседника') as HTMLVideoElement;
+    expect(remoteVideo).toBeInTheDocument();
+    expect(remoteVideo.srcObject).toBe(stream);
+  });
 });

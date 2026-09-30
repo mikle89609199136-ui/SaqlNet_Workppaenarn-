@@ -11,7 +11,7 @@ import {
   type ICallFsmContext,
   type TCallFsmAction,
 } from './callStateMachine';
-import { sendCallInvite, sendCallInviteResponse, sendCallLeave } from './callSignaling';
+import { sendCallInvite, sendCallInviteResponse, sendCallJoin, sendCallLeave } from './callSignaling';
 import type {
   IActiveCall,
   ICallCancelledPayload,
@@ -325,16 +325,27 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           roomId,
         });
 
-        if (socket?.isConnected && targetPeerId) {
+        if (socket?.isConnected) {
           const profile = useProfileStore.getState().user;
-          sendCallInvite(socket, {
-            to: targetPeerId,
+          sendCallJoin(socket, {
             roomId,
-            kind,
-            fromName: formatCallerName(profile),
-            fromAvatar: profile?.avatarUrl,
+            displayName: formatCallerName(profile),
+            avatarUrl: profile?.avatarUrl,
+            callKind: kind,
+            chatId,
             title,
           });
+
+          if (targetPeerId) {
+            sendCallInvite(socket, {
+              to: targetPeerId,
+              roomId,
+              kind,
+              fromName: formatCallerName(profile),
+              fromAvatar: profile?.avatarUrl,
+              title,
+            });
+          }
         }
 
         // Таймер ожидания ответа 60 секунд
@@ -412,6 +423,16 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           to: fsm.peerId,
           roomId: fsm.roomId,
           accepted: true,
+        });
+
+        const profile = useProfileStore.getState().user;
+        sendCallJoin(socket, {
+          roomId: fsm.roomId,
+          displayName: formatCallerName(profile),
+          avatarUrl: profile?.avatarUrl,
+          callKind: fsm.callKind,
+          chatId: fsm.chatId ?? undefined,
+          title: fsm.title ?? undefined,
         });
       }
     },

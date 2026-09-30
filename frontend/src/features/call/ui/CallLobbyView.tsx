@@ -56,6 +56,9 @@ export function CallLobbyView({
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.srcObject = !isVideoMuted ? stream : null;
+      if (!isVideoMuted && stream) {
+        videoRef.current.play()?.catch(() => {});
+      }
     }
   }, [stream, isVideoMuted]);
 

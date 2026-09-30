@@ -45,6 +45,13 @@ export function CallOverlay({
     }
   }, [isInLobby, activeCall, incomingCall, outgoingCall, stream, stopMedia]);
 
+  // Сброс лобби, если входящий вызов отменён или завершён
+  useEffect(() => {
+    if (!incomingCall && isInLobby) {
+      setIsInLobby(false);
+    }
+  }, [incomingCall, isInLobby]);
+
   useEffect(() => {
     if (enabled) return;
     if (incomingCall) rejectCall();

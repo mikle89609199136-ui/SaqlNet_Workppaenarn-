@@ -199,4 +199,46 @@ describe('звонки включены', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }));
     expect(acceptCall).toHaveBeenCalledTimes(1);
   });
+
+  it('сбрасывает лобби и останавливает медиа при отмене входящего звонка', () => {
+    const mockStopMedia = vi.fn();
+    const fakeStream = {} as MediaStream;
+    const fakeLocalMedia = {
+      stream: fakeStream,
+      stopMedia: mockStopMedia,
+      startMedia: vi.fn(),
+      toggleAudio: vi.fn(),
+      toggleVideo: vi.fn(),
+      switchCamera: vi.fn(),
+      switchMicrophone: vi.fn(),
+      enumerateDevices: vi.fn(),
+      manager: {} as any,
+      audioTrack: null,
+      videoTrack: null,
+      isAudioMuted: false,
+      isVideoMuted: false,
+      audioInputs: [],
+      videoInputs: [],
+      selectedAudioDeviceId: null,
+      selectedVideoDeviceId: null,
+      facingMode: 'user' as const,
+      error: null,
+      isLoading: false,
+    };
+
+    useCallStore.setState({ incomingCall: incoming });
+    const { rerender } = render(<CallOverlay enabled localMedia={fakeLocalMedia} />);
+
+    // Открываем лобби
+    fireEvent.click(screen.getByRole('button', { name: 'Настроить перед входом' }));
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+
+    // Звонящий отменяет вызов
+    useCallStore.setState({ incomingCall: null });
+    rerender(<CallOverlay enabled localMedia={fakeLocalMedia} />);
+
+    // Лобби закрыто, вызван stopMedia
+    expect(screen.queryByRole('dialog', { name: 'Лобби звонка' })).toBeNull();
+    expect(mockStopMedia).toHaveBeenCalled();
+  });
 });
