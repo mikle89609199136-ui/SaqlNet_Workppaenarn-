@@ -145,8 +145,15 @@ Chat:
   required: [id, type]
   properties:
     id: { type: string, format: uuid }
-    type: { type: string, enum: [private, group, channel] }
-    title: { type: string }
+    type:
+      type: string
+      enum: [private, group, channel, self]
+      description: >-
+        self is the caller's canonical one-member Saved Messages chat. It has
+        no peer or presence fields.
+    title:
+      type: string
+      description: For a self chat, always «Избранное».
     description: { type: string }
     avatarUrl:
       type: string
@@ -162,7 +169,7 @@ Chat:
     createdAt: { type: string }
     updatedAt: { type: string }
     lastMessage: { $ref: '#/LastMessagePreview' }
-    peerId: { type: string, format: uuid, description: Private chats only. }
+    peerId: { type: string, format: uuid, description: Two-member private chats only; omitted for self chats. }
     peerIsOnline:
       type: boolean
       description: >-

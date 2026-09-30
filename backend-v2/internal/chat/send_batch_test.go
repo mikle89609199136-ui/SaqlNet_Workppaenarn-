@@ -45,7 +45,7 @@ func textItem(content string) string {
 func expectSendAllowed(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 }
 
 func expectInsert(mock sqlmock.Sqlmock, content string, index int) {

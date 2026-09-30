@@ -69,7 +69,7 @@ func TestSendMessageAnswersBlockedByUser(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, true))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, true, "private"))
 
 	recorder := httptest.NewRecorder()
 	handler.SendMessage(recorder, messageValidationRequest(
