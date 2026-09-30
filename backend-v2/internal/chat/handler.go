@@ -493,6 +493,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 		return
 	}
+	if errors.Is(err, ErrInvalidChatType) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "room creation failed")
 		return
@@ -591,7 +595,14 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := r.PathValue("id")
 	room := h.service.CallRooms().GetRoomPublic(roomID)
+	// Комната — только участнику её чата (#848). Чужому — тот же 404, что
+	// и на несуществующую: не раскрываем, что комната есть.
 	if room == nil {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
+		return
+	}
+	current := authctx.MustUser(r)
+	if member, err := h.service.IsMember(r.Context(), current.ID, room.ChatID); err != nil || !member {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
 		return
 	}
@@ -600,18 +611,6 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		"room":            room,
 		"iceServers":      getIceServers(),
 		"maxParticipants": maxCallParticipants,
-	})
-}
-
-func (h *Handler) ListRooms(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r)
-		return
-	}
-	rooms := h.service.CallRooms().ListRoomsPublic()
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"rooms":   rooms,
 	})
 }
 

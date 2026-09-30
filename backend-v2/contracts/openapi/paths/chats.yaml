@@ -46,7 +46,8 @@ x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
   post:
     {
       tags: [Chats],
-      summary: Create or get a private chat,
+      summary: Create or get a private or Saved Messages chat,
+      description: 'Creates or returns the canonical chat with userId. When userId is the authenticated user''s own ID, lazily creates or returns their one-member Saved Messages chat (type self, title «Избранное»). Concurrent calls and calls from multiple devices return the same chat.',
       operationId: createPrivateChat,
       security: *secure,
       requestBody:
