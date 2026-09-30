@@ -29,13 +29,13 @@ export function ActiveCallSession({
 
   // Инициализация локального медиа при старте звонка
   useEffect(() => {
-    if (customLocalMedia) return;
+    if (localMedia.stream) return;
     void startMedia({
       audio: true,
       video: activeCall.kind === 'video',
     });
     // При размонтировании stopMedia вызовется автоматически внутри useLocalMedia
-  }, [activeCall.kind, startMedia, customLocalMedia]);
+  }, [activeCall.kind, startMedia, localMedia.stream]);
 
   // Callee — polite (true), Caller — impolite (false)
   const isPolite = !activeCall.isCaller;

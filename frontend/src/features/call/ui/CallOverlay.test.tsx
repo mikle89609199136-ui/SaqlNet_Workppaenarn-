@@ -188,4 +188,15 @@ describe('звонки включены', () => {
     fireEvent.click(lobbyBtn);
     expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
   });
+
+  it('входящий звонок: кнопка «Присоединиться» в лобби вызывает acceptCall', () => {
+    useCallStore.setState({ incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Настроить перед входом' }));
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }));
+    expect(acceptCall).toHaveBeenCalledTimes(1);
+  });
 });

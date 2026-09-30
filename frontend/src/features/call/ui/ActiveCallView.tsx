@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Icon } from '@/shared/ui';
+import { Avatar, Banner, Icon } from '@/shared/ui';
 import type { IActiveCall, IMediaError, TCallConnectionState, TFacingMode } from '../model/types';
 import { useCallDuration } from './useCallDuration';
 
@@ -253,12 +253,10 @@ export function ActiveCallView({
 
         {/* Баннер ошибки медиаустройств */}
         {mediaError && (
-          <div
-            role="alert"
-            className="absolute top-4 left-4 right-4 z-30 flex items-center gap-3 p-3 bg-danger/15 border border-danger/30 rounded-window text-danger text-sm shadow-[var(--elev-2)] backdrop-blur-md"
-          >
-            <Icon name="warning" className="size-5 shrink-0" />
-            <span className="flex-1">{getErrorMessage()}</span>
+          <div className="absolute top-4 left-4 right-4 z-30 shadow-[var(--elev-2)]">
+            <Banner tone="danger" role="alert">
+              {getErrorMessage()}
+            </Banner>
           </div>
         )}
       </main>
@@ -271,7 +269,7 @@ export function ActiveCallView({
             type="button"
             onClick={onToggleAudio}
             data-muted={!isAudioEnabled}
-            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:bg-danger data-[muted=true]:text-white data-[muted=true]:border-transparent"
+            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:bg-danger data-[muted=true]:text-on-brand data-[muted=true]:border-danger"
             aria-label={
               isAudioEnabled
                 ? t('call.controls.muteMic', 'Выключить микрофон')
@@ -312,7 +310,7 @@ export function ActiveCallView({
           <button
             type="button"
             onClick={onEndCall}
-            className="flex flex-col items-center gap-1.5 p-3.5 rounded-full bg-danger text-white shadow-[var(--elev-2)] cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-danger"
+            className="flex flex-col items-center gap-1.5 p-3.5 rounded-full bg-danger text-on-brand shadow-[var(--elev-2)] cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-danger"
             aria-label={t('call.controls.end', 'Завершить')}
           >
             <Icon name="phone" className="size-6 rotate-[135deg]" />

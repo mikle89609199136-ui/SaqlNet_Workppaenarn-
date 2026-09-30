@@ -80,8 +80,11 @@ export class PeerConnectionManager {
         if (!this.options.iceServers || this.options.iceServers.length === 0) {
           try {
             const iceConfig = await services.callService.getIceServers();
-            if (iceConfig?.servers && iceConfig.servers.length > 0) {
-              this.iceServers = iceConfig.servers.map((s: IIceServer) => ({
+            const rawServers =
+              iceConfig?.servers ??
+              (iceConfig as unknown as { iceServers?: IIceServer[] })?.iceServers;
+            if (rawServers && rawServers.length > 0) {
+              this.iceServers = rawServers.map((s: IIceServer) => ({
                 urls: s.urls,
                 username: s.username,
                 credential: s.credential,

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Icon } from '@/shared/ui';
+import { Avatar, Button, Icon, Select } from '@/shared/ui';
 import { useLocalMedia } from '../model/useLocalMedia';
 import type { TCallKind } from '../model/types';
 
@@ -46,13 +46,12 @@ export function CallLobbyView({
   } = localMedia;
 
   useEffect(() => {
-    if (customLocalMedia) return;
     void startMedia({
       audio: true,
       video: kind === 'video',
     });
     void enumerateDevices();
-  }, [kind, startMedia, enumerateDevices, customLocalMedia]);
+  }, [kind, startMedia, enumerateDevices]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -84,7 +83,7 @@ export function CallLobbyView({
         </div>
 
         {/* Превью камеры */}
-        <div className="relative w-full aspect-video rounded-window overflow-hidden bg-ground border border-line-soft flex items-center justify-center shadow-inner">
+        <div className="relative w-full aspect-video rounded-window overflow-hidden bg-ground border border-line-soft flex items-center justify-center">
           {isVideoEnabled && stream ? (
             <video
               ref={videoRef}
@@ -115,7 +114,7 @@ export function CallLobbyView({
               type="button"
               onClick={() => toggleAudio()}
               data-muted={!isAudioEnabled}
-              className="size-10 rounded-full flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink data-[muted=true]:bg-danger data-[muted=true]:text-white"
+              className="size-10 rounded-full flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:bg-danger data-[muted=true]:text-on-brand data-[muted=true]:border-danger"
               aria-label={
                 isAudioEnabled
                   ? t('call.controls.muteMic', 'Выключить микрофон')
@@ -129,7 +128,7 @@ export function CallLobbyView({
               type="button"
               onClick={() => toggleVideo()}
               data-muted={!isVideoEnabled}
-              className="size-10 rounded-full flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink data-[muted=true]:text-ink-2 data-[muted=true]:opacity-70"
+              className="size-10 rounded-full flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:text-ink-2 data-[muted=true]:opacity-70"
               aria-label={
                 isVideoEnabled
                   ? t('call.controls.stopVideo', 'Выключить камеру')
@@ -144,64 +143,50 @@ export function CallLobbyView({
         {/* Выбор устройств */}
         <div className="w-full flex flex-col gap-3 text-xs text-ink-2">
           {audioInputs.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="lobby-mic-select" className="font-medium text-ink">
-                {t('call.lobby.microphone', 'Микрофон')}
-              </label>
-              <select
-                id="lobby-mic-select"
-                aria-label={t('call.lobby.microphone', 'Микрофон')}
-                value={selectedAudioDeviceId ?? ''}
-                onChange={(e) => void switchMicrophone(e.target.value)}
-                className="w-full bg-ground text-ink border border-line-soft rounded-field px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-brand cursor-pointer"
-              >
-                {audioInputs.map((d, idx) => (
-                  <option key={d.deviceId || idx} value={d.deviceId}>
-                    {d.label || `${t('call.lobby.microphone', 'Микрофон')} ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="lobby-mic-select"
+              label={t('call.lobby.microphone', 'Микрофон')}
+              options={audioInputs.map((d, idx) => ({
+                value: d.deviceId,
+                label: d.label || `${t('call.lobby.microphone', 'Микрофон')} ${idx + 1}`,
+              }))}
+              value={selectedAudioDeviceId}
+              onChange={(val) => void switchMicrophone(val)}
+            />
           )}
 
           {kind === 'video' && videoInputs.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="lobby-cam-select" className="font-medium text-ink">
-                {t('call.lobby.video', 'Камера')}
-              </label>
-              <select
-                id="lobby-cam-select"
-                aria-label={t('call.lobby.video', 'Камера')}
-                value={selectedVideoDeviceId ?? ''}
-                onChange={(e) => void switchCamera(e.target.value)}
-                className="w-full bg-ground text-ink border border-line-soft rounded-field px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-brand cursor-pointer"
-              >
-                {videoInputs.map((d, idx) => (
-                  <option key={d.deviceId || idx} value={d.deviceId}>
-                    {d.label || `${t('call.lobby.video', 'Камера')} ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="lobby-cam-select"
+              label={t('call.lobby.video', 'Камера')}
+              options={videoInputs.map((d, idx) => ({
+                value: d.deviceId,
+                label: d.label || `${t('call.lobby.video', 'Камера')} ${idx + 1}`,
+              }))}
+              value={selectedVideoDeviceId}
+              onChange={(val) => void switchCamera(val)}
+            />
           )}
         </div>
 
         {/* Кнопки действий */}
         <div className="w-full flex items-center justify-end gap-3 mt-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={onCancel}
-            className="px-5 py-2.5 rounded-field border border-line-soft text-ink font-medium hover:bg-ground active:scale-95 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
           >
             {t('call.lobby.cancel', 'Отмена')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={onJoin}
-            className="px-6 py-2.5 rounded-field bg-brand text-white font-medium hover:opacity-95 active:scale-95 transition-transform shadow-[var(--elev-2)] cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
           >
             {t('call.lobby.join', 'Присоединиться')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

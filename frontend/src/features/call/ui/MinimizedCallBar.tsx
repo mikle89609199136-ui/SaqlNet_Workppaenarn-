@@ -101,7 +101,7 @@ export function MinimizedCallBar({
         <button
           type="button"
           onClick={onEndCall}
-          className="size-8 rounded-full bg-danger text-white flex items-center justify-center hover:opacity-90 active:scale-95 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-danger"
+          className="size-8 rounded-full bg-danger text-on-brand flex items-center justify-center hover:opacity-90 active:scale-95 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-danger"
           aria-label={t('call.controls.end', 'Завершить')}
         >
           <Icon name="phone" className="size-4 rotate-[135deg]" />

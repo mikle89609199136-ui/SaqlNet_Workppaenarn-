@@ -3,16 +3,27 @@ import { useTranslation } from 'react-i18next';
 import { Avatar, Icon } from '@/shared/ui';
 import { CALLS_ENABLED } from '@/shared/config';
 import { useCall } from '../model/useCall';
-
+import { useLocalMedia } from '../model/useLocalMedia';
 import { ActiveCallSession } from './ActiveCallSession';
 import { CallLobbyView } from './CallLobbyView';
+
+export interface ICallOverlayProps {
+  enabled?: boolean;
+  localMedia?: ReturnType<typeof useLocalMedia>;
+}
 
 /**
  * Оверлей входящего, исходящего и активного вызова поверх приложения (#773, #774).
  */
-export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) {
+export function CallOverlay({
+  enabled = CALLS_ENABLED,
+  localMedia: customLocalMedia,
+}: ICallOverlayProps) {
   const { t } = useTranslation();
   const [isInLobby, setIsInLobby] = useState(false);
+  const defaultLocalMedia = useLocalMedia();
+  const localMedia = customLocalMedia ?? defaultLocalMedia;
+
   const {
     incomingCall,
     outgoingCall,
@@ -25,6 +36,14 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
     endCall,
   } = useCall();
 
+  const { stopMedia, stream } = localMedia;
+
+  // Очистка медиа-потоков при завершении разговора и закрытии лобби
+  useEffect(() => {
+    if (!isInLobby && !activeCall && !incomingCall && !outgoingCall && stream) {
+      stopMedia();
+    }
+  }, [isInLobby, activeCall, incomingCall, outgoingCall, stream, stopMedia]);
 
   useEffect(() => {
     if (enabled) return;
@@ -42,12 +61,14 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
         peerName={incomingCall.fromName}
         peerAvatar={incomingCall.fromAvatar}
         kind={incomingCall.kind}
+        localMedia={localMedia}
         onJoin={() => {
           setIsInLobby(false);
           acceptCall();
         }}
         onCancel={() => {
           setIsInLobby(false);
+          localMedia.stopMedia();
           rejectCall();
         }}
       />
@@ -80,7 +101,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
               onClick={rejectCall}
               aria-label={t('call.reject', 'Отклонить')}
             >
-              <div className="size-14 rounded-full bg-danger text-white flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95">
+              <div className="size-14 rounded-full bg-danger text-on-brand flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95">
                 <Icon name="phone" className="size-6 rotate-[135deg]" />
               </div>
               <span className="text-xs text-ink-2 font-medium">
@@ -93,7 +114,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
               onClick={acceptCall}
               aria-label={t('call.accept', 'Принять')}
             >
-              <div className="size-14 rounded-full bg-ok text-white flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95">
+              <div className="size-14 rounded-full bg-ok text-on-brand flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95">
                 <Icon name={incomingCall.kind === 'video' ? 'video' : 'phone'} className="size-6" />
               </div>
               <span className="text-xs text-ink-2 font-medium">{t('call.accept', 'Принять')}</span>
@@ -161,7 +182,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
               disabled={isEnding}
               aria-label={t('call.cancel', 'Отменить')}
             >
-              <div className="size-14 rounded-full bg-danger text-white flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95 group-disabled:opacity-50">
+              <div className="size-14 rounded-full bg-danger text-on-brand flex items-center justify-center shadow-[var(--elev-2)] transition-transform group-hover:scale-105 active:scale-95 group-disabled:opacity-50">
                 <Icon name="phone" className="size-6 rotate-[135deg]" />
               </div>
               <span className="text-xs text-ink-2 font-medium">{t('call.cancel', 'Отменить')}</span>
@@ -173,7 +194,13 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
   }
 
   if (activeCall) {
-    return <ActiveCallSession activeCall={activeCall} isMinimized={isMinimized} />;
+    return (
+      <ActiveCallSession
+        activeCall={activeCall}
+        isMinimized={isMinimized}
+        localMedia={localMedia}
+      />
+    );
   }
 
   if (endedCall) {

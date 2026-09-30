@@ -103,8 +103,8 @@ describe('CallLobbyView', () => {
     expect(screen.getByLabelText('Ваша камера')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выключить микрофон' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выключить камеру' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Микрофон' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Камера' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Микрофон/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Камера/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Присоединиться' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отмена' })).toBeInTheDocument();
   });
@@ -131,12 +131,16 @@ describe('CallLobbyView', () => {
       />
     );
 
-    const micSelect = screen.getByRole('combobox', { name: 'Микрофон' });
-    fireEvent.change(micSelect, { target: { value: 'mic-usb' } });
+    const micSelect = screen.getByRole('combobox', { name: /Микрофон/ });
+    fireEvent.click(micSelect);
+    const micOption = screen.getByRole('option', { name: /USB Микрофон/ });
+    fireEvent.click(micOption);
     expect(localMedia.switchMicrophone).toHaveBeenCalledWith('mic-usb');
 
-    const camSelect = screen.getByRole('combobox', { name: 'Камера' });
-    fireEvent.change(camSelect, { target: { value: 'cam-back' } });
+    const camSelect = screen.getByRole('combobox', { name: /Камера/ });
+    fireEvent.click(camSelect);
+    const camOption = screen.getByRole('option', { name: /Основная камера/ });
+    fireEvent.click(camOption);
     expect(localMedia.switchCamera).toHaveBeenCalledWith('cam-back');
   });
 
@@ -169,8 +173,8 @@ describe('CallLobbyView', () => {
       />
     );
 
-    expect(screen.getByRole('combobox', { name: 'Микрофон' })).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Камера' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Микрофон/ })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Камера/ })).not.toBeInTheDocument();
   });
 
   it('показывает аватар заглушки при выключенной камере', () => {
