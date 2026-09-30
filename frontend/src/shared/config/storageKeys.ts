@@ -1,4 +1,9 @@
 export const STORAGE_KEYS = {
+  /**
+   * Токен версии до #705. Новый клиент его не читает и не использует для
+   * входа — ключ нужен временно только для удаления остатка при запуске.
+   */
+  LEGACY_TOKEN: 'craneapp_auth_token',
   /** Сохранённый профиль. Есть — человек вошёл (сама сессия — в cookie). */
   USER: 'craneapp_user_data',
   SETTINGS: 'craneapp_settings',

@@ -59,6 +59,8 @@ export const useProfileStore = create<InitialState>((set, get) => ({
     set({ user: { ...user, ...data } });
   },
   clearProfile: () => {
+    // Дополнительная очистка токена версии до #705 при явном выходе.
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
     set({
       user: null,

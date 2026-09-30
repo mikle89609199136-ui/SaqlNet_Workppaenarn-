@@ -19,3 +19,12 @@ function storage(): Storage | null {
 export function hasStoredSession(): boolean {
   return Boolean(storage()?.getItem(STORAGE_KEYS.USER));
 }
+
+/** Удаляет оставшийся от версии до #705 токен, не используя его в JS. */
+export function clearLegacySessionToken(): void {
+  try {
+    storage()?.removeItem(STORAGE_KEYS.LEGACY_TOKEN);
+  } catch {
+    // В приватном режиме некоторые браузеры запрещают доступ к storage.
+  }
+}

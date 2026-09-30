@@ -1,6 +1,7 @@
 import { registerChatResolver } from '@/entities/chat';
 import { registerAuthInterceptor } from '@/features/auth';
 import { startCryptoAutoInit } from '@/services/serviceContainer';
+import { clearLegacySessionToken } from '@/shared/api';
 import { App } from './App';
 import {
   registerServiceWorker,
@@ -32,6 +33,10 @@ void registerServiceWorker();
 reloadOnStaleBuild();
 // Ключи шифрования — в хранилище, которое браузер не чистит без спроса.
 void requestPersistentStorage();
+
+// У старых клиентов токен мог остаться в localStorage. Сервер больше не
+// принимает Bearer, поэтому не читаем его и сразу удаляем при запуске.
+clearLegacySessionToken();
 
 // Ключи шифрования готовятся здесь, а не при импорте контейнера сервисов:
 // импорт не должен ничего запускать.

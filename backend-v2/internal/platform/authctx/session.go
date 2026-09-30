@@ -76,6 +76,20 @@ func SessionCookie(r *http.Request) (string, bool) {
 	return "", false
 }
 
+// HasAnySessionCookie сообщает, что запрос несёт cookie сессии одного из
+// окружений. Это намеренно шире SessionCookie: edge обязан применить
+// Origin-защиту, даже если его CRANE_ENV временно отличается от окружения
+// сервиса, который выдал и принимает cookie. Для аутентификации по-прежнему
+// принимается только имя текущего окружения.
+func HasAnySessionCookie(r *http.Request) bool {
+	for _, name := range []string{sessionCookieProduction, sessionCookieDevelopment} {
+		if cookie, err := r.Cookie(name); err == nil && cookie.Value != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // TokenFromRequest возвращает токен только из защищённой cookie-сессии.
 // Bearer-аутентификация удалена после переходного выпуска #705.
 func TokenFromRequest(r *http.Request) (string, TokenSource) {
@@ -124,7 +138,7 @@ func CrossSiteCookieRequest(r *http.Request) bool {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return false
 	}
-	if _, ok := SessionCookie(r); !ok {
+	if !HasAnySessionCookie(r) {
 		return false
 	}
 	return !OwnOrAllowedOrigin(r, r.Header.Get("Origin"))

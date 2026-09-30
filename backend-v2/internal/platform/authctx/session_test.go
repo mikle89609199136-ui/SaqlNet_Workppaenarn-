@@ -96,6 +96,9 @@ func TestSessionCookieRejectsCookieNameFromAnotherEnvironment(t *testing.T) {
 	if _, ok := SessionCookie(r); ok {
 		t.Fatal("production accepted the non-__Host cookie")
 	}
+	if !HasAnySessionCookie(r) {
+		t.Fatal("CSRF guard did not detect a session cookie from another environment")
+	}
 }
 
 func TestOwnOrAllowedOriginNeedsExactAddress(t *testing.T) {
@@ -153,5 +156,25 @@ func TestCrossSiteCookieRequest(t *testing.T) {
 		if got := CrossSiteCookieRequest(c.r); got != c.want {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestCrossSiteCookieRequestProtectsBothCookieNames(t *testing.T) {
+	for _, tc := range []struct {
+		environment string
+		cookieName  string
+	}{
+		{environment: "production", cookieName: "craneapp_session"},
+		{environment: "development", cookieName: "__Host-craneapp_session"},
+	} {
+		t.Run(tc.environment+" detects "+tc.cookieName, func(t *testing.T) {
+			t.Setenv("CRANE_ENV", tc.environment)
+			r := httptest.NewRequest(http.MethodPost, "https://craneapp.example/api", nil)
+			r.Header.Set("Origin", "https://evil.example")
+			r.AddCookie(&http.Cookie{Name: tc.cookieName, Value: "tok"})
+			if !CrossSiteCookieRequest(r) {
+				t.Fatal("request with a session cookie from another environment bypassed Origin protection")
+			}
+		})
 	}
 }
