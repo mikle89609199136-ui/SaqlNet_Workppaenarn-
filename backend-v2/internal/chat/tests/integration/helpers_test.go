@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -313,12 +314,14 @@ func randomUUID(t *testing.T) string {
 // WebSocket helpers
 // -----------------------------------------------------------------------------
 
-// dialWS opens a WebSocket connection to srv, using userID as the auth token.
-// This matches the behaviour of the stub token verifier used by the WS tests.
+// dialWS opens a WebSocket connection to srv, passing userID as a Bearer
+// token. ServeWS accepts tokens from the Authorization header.
 func dialWS(t *testing.T, srv *httptest.Server, userID string) *websocket.Conn {
 	t.Helper()
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "?token=" + userID
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{
+		"Authorization": {"Bearer " + userID},
+	})
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)
 	}
