@@ -29,6 +29,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   post:
     tags: [Calls]
     summary: Create a call room
+    description: Self chats do not support calls and return 400 invalid_chat_type.
     operationId: createCallRoom
     security: *secure
     requestBody:
@@ -42,6 +43,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/CallRoomResponse' }
+      '400': *error
       '403': *error
       '500': *error
 

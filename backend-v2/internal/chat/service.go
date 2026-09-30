@@ -146,6 +146,7 @@ type realtimeServer interface {
 const (
 	maxMediaFilenameBytes = 255
 	maxMediaSizeBytes     = 100 << 20
+	savedMessagesTitle    = "Избранное"
 )
 
 func sanitizeMediaFilename(filename string) string {
@@ -622,8 +623,11 @@ func markKeyRotationNeeded(ctx context.Context, tx *sql.Tx, chatID string) error
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
-	if peerID == "" || peerID == userID {
+	if peerID == "" {
 		return "", false, ErrInvalidInput
+	}
+	if peerID == userID {
+		return s.createSelfChat(ctx, userID)
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
@@ -676,6 +680,54 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 		return "", false, err
 	}
 	return chatID, false, tx.Commit()
+}
+
+// createSelfChat lazily creates the user's canonical Saved Messages chat.
+//
+// The partial unique index from migration 0034 is the source of truth for
+// uniqueness. INSERT ... ON CONFLICT makes concurrent requests from several
+// devices converge on the same chat without serializable retries. Re-inserting
+// the membership also repairs an incomplete row left by an interrupted manual
+// migration.
+func (s *Service) createSelfChat(ctx context.Context, userID string) (string, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var chatID string
+	created := true
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO chats.chats (type, title, owner_id)
+		VALUES ('self', $2, $1)
+		ON CONFLICT (owner_id) WHERE type = 'self' DO NOTHING
+		RETURNING id::text
+	`, userID, savedMessagesTitle).Scan(&chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		created = false
+		err = tx.QueryRowContext(ctx, `
+			SELECT id::text
+			FROM chats.chats
+			WHERE owner_id = $1 AND type = 'self'
+		`, userID).Scan(&chatID)
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.members (chat_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+		ON CONFLICT (chat_id, user_id) DO NOTHING
+	`, chatID, userID); err != nil {
+		return "", false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", false, err
+	}
+	return chatID, !created, nil
 }
 
 // CreateGroup creates a new group chat owned by ownerID and adds the
@@ -2094,13 +2146,14 @@ const sendPermissionQuery = `
 		       -- Собеседник по личному чату заблокировал отправителя (#760).
 		       EXISTS(
 		         SELECT 1
-		         FROM chats.chats c
-		         JOIN chats.members peer ON peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		         FROM chats.members peer
 		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
-		         WHERE c.id = cm.chat_id AND c.type = 'private'
-		       )
+		         WHERE peer.chat_id = cm.chat_id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       ),
+		       c.type
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
+		JOIN chats.chats c ON c.id = cm.chat_id
 		WHERE cm.chat_id = $1 AND cm.user_id = $2
 	`
 
@@ -2181,7 +2234,8 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	var role string
 	var isMuted sql.NullBool
 	var blockedByPeer bool
-	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer)
+	var chatType string
+	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer, &chatType)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2288,6 +2342,9 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 				"chatId":  chatID,
 				"message": forBroadcast(&msgs[i]),
 			})
+			// В self-chat других участников нет, поэтому исключение владельца
+			// одновременно не даёт его устройствам показать уведомление о
+			// собственном сообщении.
 			s.ws.BroadcastToChat(chatID, payload, userID)
 		}
 		// Ушло в открытые сокеты получателей — доставлено (#657); автор
@@ -2304,7 +2361,9 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	}
 	// Push — один на отправку, а не на каждое сообщение пачки: они всё
 	// равно сворачиваются в одно уведомление чата.
-	s.notifyMessage(chatID, userID)
+	if chatType != "self" {
+		s.notifyMessage(chatID, userID)
+	}
 
 	return msgs, nil
 }
@@ -3417,15 +3476,28 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
-	if ok, err := s.IsMember(ctx, userID, chatID); err != nil || !ok {
+	var chatType string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type
+		FROM chats.chats c
+		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType)
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
+	}
+	if err != nil {
+		return "", err
+	}
+	if chatType == "self" {
+		return "", ErrInvalidChatType
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {
 		dbCallType = "voice"
 	}
 	var roomID string
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO calls.rooms (chat_id, type, title, initiator_id)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id::text

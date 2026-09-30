@@ -494,6 +494,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 		return
 	}
+	if errors.Is(err, ErrInvalidChatType) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "room creation failed")
 		return
