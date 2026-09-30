@@ -498,6 +498,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
 		return
 	}
+	if errors.Is(err, ErrBlockedByUser) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "room creation failed")
 		return
