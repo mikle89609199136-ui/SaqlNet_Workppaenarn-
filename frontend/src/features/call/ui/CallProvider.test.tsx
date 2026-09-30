@@ -76,7 +76,7 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
   });
 
-  it('завершает звонок при call_peer_left из текущей комнаты', () => {
+  it('переводит звонок в reconnecting при call_peer_left из текущей комнаты для active', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -97,8 +97,80 @@ describe('CallProvider', () => {
       peer: { userId: 'partner' },
     });
 
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('переводит звонок в reconnecting при call_peer_left для connecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'connecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('завершает звонок при call_peer_left, если состояние не active/connecting/reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+    });
+
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('не завершает звонок при call_peer_left, если уже идет reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
   });
 
   it('переводит принявшего звонок (callee) в active при получении call_joined с участниками', () => {

@@ -82,7 +82,11 @@ const mockLocalMedia = {
   } as any,
 };
 
+import { eventBus } from '@/shared/lib/event-bus';
+import { WS_EVENTS } from '@/shared/config';
+
 const mockRestartIce = vi.fn(async () => {});
+const mockResetConnection = vi.fn();
 
 const makePeerConn = (connState: RTCPeerConnectionState, stream: MediaStream | null = null) => ({
   connectionState: connState,
@@ -90,6 +94,7 @@ const makePeerConn = (connState: RTCPeerConnectionState, stream: MediaStream | n
   manager: null,
   replaceTrack: mockReplaceTrack,
   restartIce: mockRestartIce,
+  resetConnection: mockResetConnection,
   close: vi.fn(),
 });
 
@@ -217,5 +222,115 @@ describe('ActiveCallSession', () => {
     );
 
     expect(screen.getByRole('region', { name: 'Свёрнутый звонок' })).toBeInTheDocument();
+  });
+
+  it('вызывает resetConnection при call_peer_joined, если звонок в состоянии reconnecting', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('new')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('вызывает resetConnection и переводит в reconnecting при call_peer_joined, если звонок ранее был connected', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connected')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('вызывает resetConnection при call_joined, если соединение уже было установлено', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connected')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peers: [],
+        self: { userId: 'callee' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('не вызывает resetConnection при call_peer_joined во время первичного установления соединения', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'connecting',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connecting')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).not.toHaveBeenCalled();
   });
 });

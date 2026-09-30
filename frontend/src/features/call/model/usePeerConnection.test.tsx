@@ -293,4 +293,34 @@ describe('usePeerConnection', () => {
 
     expect(restartSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('предоставляет функцию resetConnection, закрывает старый менеджер и создает новый', async () => {
+    const closeSpy = vi.spyOn(MockRTCPeerConnection.prototype, 'close');
+
+    const { result } = renderHook(() =>
+      usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const initialManager = result.current.manager;
+    expect(initialManager).not.toBeNull();
+
+    await act(async () => {
+      result.current.resetConnection();
+      await Promise.resolve();
+    });
+
+    expect(closeSpy).toHaveBeenCalled();
+    expect(result.current.manager).not.toBeNull();
+    expect(result.current.manager).not.toBe(initialManager);
+    expect(result.current.connectionState).toBe('new');
+  });
 });
