@@ -3477,12 +3477,21 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
 	var chatType string
+	var blockedByPeer bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT c.type
+		SELECT c.type,
+		       -- Собеседник по личному чату заблокировал звонящего (#912) —
+		       -- как у сообщений (sendPermissionQuery).
+		       EXISTS(
+		         SELECT 1
+		         FROM chats.members peer
+		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
+		         WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       )
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
 		WHERE c.id = $1
-	`, chatID, userID).Scan(&chatType)
+	`, chatID, userID).Scan(&chatType, &blockedByPeer)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
 	}
@@ -3491,6 +3500,10 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 	}
 	if chatType == "self" {
 		return "", ErrInvalidChatType
+	}
+	// Ни в базу, ни в память: заблокировавший его звонка не получит.
+	if blockedByPeer {
+		return "", ErrBlockedByUser
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {

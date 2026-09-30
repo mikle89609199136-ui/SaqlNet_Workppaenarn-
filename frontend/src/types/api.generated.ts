@@ -2061,7 +2061,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type.
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created.
          */
         post: operations["createCallRoom"];
         delete?: never;
