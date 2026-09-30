@@ -270,4 +270,27 @@ describe('usePeerConnection', () => {
       expect.objectContaining({ type: 'offer', sdp: 'flattened-sdp' })
     );
   });
+
+  it('предоставляет функцию restartIce и делегирует её вызов менеджеру', async () => {
+    const { result } = renderHook(() =>
+      usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const restartSpy = vi.spyOn(result.current.manager!, 'restartIce').mockResolvedValue();
+
+    await act(async () => {
+      await result.current.restartIce();
+    });
+
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+  });
 });

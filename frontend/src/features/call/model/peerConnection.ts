@@ -267,6 +267,40 @@ export class PeerConnectionManager {
     }
   }
 
+  async restartIce(): Promise<void> {
+    if (this.isClosed) return;
+    const pc = await this.ensureInitialized();
+    if (!pc || this.isClosed) return;
+
+    try {
+      if (typeof pc.restartIce === 'function') {
+        pc.restartIce();
+      }
+      if (pc.signalingState !== 'stable' || this.makingOffer) return;
+
+      this.makingOffer = true;
+      const offer = await pc.createOffer({ iceRestart: true });
+      if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (!this.pc || this.isClosed) return;
+
+      if (pc.localDescription && this.socket.isConnected) {
+        sendCallOffer(this.socket, {
+          to: this.peerId,
+          roomId: this.roomId,
+          payload: {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch (err) {
+      this.options.onError?.(err as Error);
+    } finally {
+      this.makingOffer = false;
+    }
+  }
+
   async handleRemoteOffer(offer: RTCSessionDescriptionInit): Promise<void> {
     if (this.isClosed) return;
     const pc = await this.ensureInitialized();

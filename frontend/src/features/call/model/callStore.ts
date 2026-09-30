@@ -24,7 +24,8 @@ import type {
   TCallRoomType,
 } from './types';
 
-const CALL_TIMEOUT_MS = 60_000;
+export const CALL_TIMEOUT_MS = 60_000;
+export const RECONNECT_TIMEOUT_MS = 25_000;
 
 interface CallStoreState {
   fsm: ICallFsmContext;
@@ -32,6 +33,7 @@ interface CallStoreState {
   isMinimized: boolean;
   socket: WebSocketClient | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
+  reconnectTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
   // Селекторы совместимости с UI
   incomingCall: IIncomingCall | null;
@@ -42,6 +44,7 @@ interface CallStoreState {
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
   dispatch: (action: TCallFsmAction) => void;
+  rejoinActiveCall: () => void;
 
   handleIncoming: (payload: IIncomingCall) => Promise<void>;
   handleCancelled: (payload: ICallCancelledPayload | string) => void;
@@ -135,11 +138,24 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     return { fsm, incomingCall, outgoingCall, activeCall, endedCall };
   };
 
-  const clearTimer = () => {
+  const clearCallTimeoutTimer = () => {
     const timer = get().callTimeoutTimer;
     if (timer) clearTimeout(timer);
     set({ callTimeoutTimer: null });
   };
+
+  const clearReconnectTimer = () => {
+    const timer = get().reconnectTimeoutTimer;
+    if (timer) clearTimeout(timer);
+    set({ reconnectTimeoutTimer: null });
+  };
+
+  const clearAllTimers = () => {
+    clearCallTimeoutTimer();
+    clearReconnectTimer();
+  };
+
+  const clearTimer = clearAllTimers;
 
   return {
     fsm: initialCallContext,
@@ -147,17 +163,52 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     isMinimized: false,
     socket: null,
     callTimeoutTimer: null,
+    reconnectTimeoutTimer: null,
     incomingCall: null,
     outgoingCall: null,
     activeCall: null,
     endedCall: null,
 
-    attachSocket: (socket) => set({ socket }),
+    attachSocket: (socket) => {
+      set({ socket });
+      if (socket?.isConnected) {
+        get().rejoinActiveCall();
+      }
+    },
+
+    rejoinActiveCall: () => {
+      const { fsm, socket } = get();
+      if (!socket?.isConnected || !fsm.roomId) return;
+      if (fsm.state !== 'active' && fsm.state !== 'reconnecting') return;
+
+      const profile = useProfileStore.getState().user;
+      sendCallJoin(socket, {
+        roomId: fsm.roomId,
+        displayName: formatCallerName(profile),
+        avatarUrl: profile?.avatarUrl,
+        callKind: fsm.callKind,
+        chatId: fsm.chatId ?? undefined,
+        title: fsm.title ?? undefined,
+      });
+    },
 
     dispatch: (action) => {
       const currentFsm = get().fsm;
       const nextFsm = callStateReducer(currentFsm, action);
       if (nextFsm === currentFsm) return;
+
+      if (nextFsm.state === 'reconnecting' && currentFsm.state !== 'reconnecting') {
+        clearReconnectTimer();
+        const timer = setTimeout(() => {
+          if (get().fsm.state === 'reconnecting') {
+            get().endCall('network_error');
+          }
+        }, RECONNECT_TIMEOUT_MS);
+        set({ reconnectTimeoutTimer: timer });
+      } else if (nextFsm.state !== 'reconnecting' && currentFsm.state === 'reconnecting') {
+        clearReconnectTimer();
+      }
+
       set(syncDerivedState(nextFsm));
     },
 
@@ -367,7 +418,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     cancelCall: () => {
-      clearTimer();
+      clearAllTimers();
       const { fsm, socket } = get();
       if (fsm.state !== 'outgoing') return;
 
@@ -393,7 +444,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       const { fsm, socket } = get();
       if (fsm.state !== 'outgoing') return;
 
-      clearTimer();
+      clearAllTimers();
       if (socket?.isConnected && fsm.roomId) {
         sendCallLeave(socket, fsm.roomId);
       }
@@ -462,7 +513,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
     endCall: (reason: TCallEndReason = 'completed') => {
       stopRingtone();
-      clearTimer();
+      clearAllTimers();
       const { fsm, socket } = get();
 
       if (socket?.isConnected && fsm.roomId) {

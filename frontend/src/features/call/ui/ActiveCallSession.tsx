@@ -51,7 +51,7 @@ export function ActiveCallSession({
 
   const peerConnection = customPeerConnection ?? defaultPeerConnection;
 
-  const { replaceTrack } = peerConnection;
+  const { replaceTrack, restartIce } = peerConnection;
 
   // Воспроизведение звука собеседника через постоянный audio-элемент (живет всю сессию звонка)
   useEffect(() => {
@@ -84,10 +84,11 @@ export function ActiveCallSession({
 
     if ((connState === 'disconnected' || connState === 'failed') && currentState === 'active') {
       useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      void restartIce?.();
     } else if (connState === 'connected' && currentState === 'reconnecting') {
       useCallStore.getState().dispatch({ type: 'CONNECTION_RESTORED' });
     }
-  }, [peerConnection.connectionState]);
+  }, [peerConnection.connectionState, restartIce]);
 
   const handleToggleAudio = () => localMedia.toggleAudio();
   const handleToggleVideo = () => localMedia.toggleVideo();

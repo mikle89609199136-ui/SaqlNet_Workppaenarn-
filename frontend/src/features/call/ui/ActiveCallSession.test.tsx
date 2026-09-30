@@ -82,11 +82,14 @@ const mockLocalMedia = {
   } as any,
 };
 
+const mockRestartIce = vi.fn(async () => {});
+
 const makePeerConn = (connState: RTCPeerConnectionState, stream: MediaStream | null = null) => ({
   connectionState: connState,
   remoteStream: stream,
   manager: null,
   replaceTrack: mockReplaceTrack,
+  restartIce: mockRestartIce,
   close: vi.fn(),
 });
 
@@ -186,6 +189,7 @@ describe('ActiveCallSession', () => {
     );
 
     expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+    expect(mockRestartIce).toHaveBeenCalledTimes(1);
 
     // Восстановление соединения
     act(() => {

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useCallStore } from './callStore';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECONNECT_TIMEOUT_MS, useCallStore } from './callStore';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { useProfileStore, blockedUsersQuery } from '@/entities/user';
@@ -44,6 +44,7 @@ describe('useCallStore', () => {
       isMinimized: false,
       socket: mockSocket,
       callTimeoutTimer: null,
+      reconnectTimeoutTimer: null,
     });
 
     useProfileStore.setState({
@@ -805,6 +806,148 @@ describe('useCallStore', () => {
     expect(state.fsm.endReason).toBe('network_error');
     expect(state.fsm.outgoingPhase).toBe('failed');
     expect(state.outgoingCall?.phase).toBe('failed');
+  });
+
+  describe('восстановление связи и реконнект (PR 1 / #775)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('при переходе в reconnecting запускает таймер на 25 секунд и завершает звонок по таймауту', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      // Прошло 24.9 сек — всё ещё reconnecting
+      vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS - 100);
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+
+      // Прошло 25 сек — автозавершение с network_error
+      vi.advanceTimersByTime(100);
+      expect(useCallStore.getState().fsm.state).toBe('ended');
+      expect(useCallStore.getState().fsm.endReason).toBe('network_error');
+    });
+
+    it('при восстановлении связи (CONNECTION_RESTORED) сбрасывает reconnectTimeoutTimer', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      // Связь восстановилась через 5 секунд
+      vi.advanceTimersByTime(5000);
+      useCallStore.getState().dispatch({ type: 'CONNECTION_RESTORED' });
+
+      expect(useCallStore.getState().fsm.state).toBe('active');
+      expect(useCallStore.getState().reconnectTimeoutTimer).toBeNull();
+
+      // Дальнейшее течение времени не завершает звонок
+      vi.advanceTimersByTime(30000);
+      expect(useCallStore.getState().fsm.state).toBe('active');
+    });
+
+    it('ручной endCall во время reconnecting сбрасывает таймер переподключения', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      useCallStore.getState().endCall('completed');
+
+      expect(useCallStore.getState().fsm.state).toBe('ended');
+      expect(useCallStore.getState().reconnectTimeoutTimer).toBeNull();
+    });
+
+    it('rejoinActiveCall отправляет call_join в комнату при активном звонке', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+          callKind: 'video',
+          chatId: 'chat-1',
+        },
+      });
+
+      useCallStore.getState().rejoinActiveCall();
+
+      expect(mockSend).toHaveBeenCalledWith({
+        type: 'call_join',
+        roomId: 'active-room',
+        displayName: 'Иван Иванов',
+        avatarUrl: 'https://example.com/avatar.png',
+        callKind: 'video',
+        chatId: 'chat-1',
+        title: undefined,
+      });
+    });
+
+    it('rejoinActiveCall ничего не шлет, если звонок в idle', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'idle',
+          roomId: null,
+        },
+      });
+
+      useCallStore.getState().rejoinActiveCall();
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('attachSocket с подключенным сокетом вызывает rejoinActiveCall при активном звонке', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        socket: null,
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'room-reconnect',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().attachSocket(mockSocket);
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'call_join',
+          roomId: 'room-reconnect',
+        })
+      );
+    });
   });
 });
 

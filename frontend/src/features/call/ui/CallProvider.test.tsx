@@ -230,4 +230,43 @@ describe('CallProvider', () => {
 
     otherTabChannel.close();
   });
+
+  it('при событии socket:connected вызывает rejoinActiveCall', () => {
+    const rejoinSpy = vi.spyOn(useCallStore.getState(), 'rejoinActiveCall');
+
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    eventBus.emit('socket:connected', undefined);
+
+    expect(rejoinSpy).toHaveBeenCalled();
+  });
+
+  it('при событии call_error для текущей комнаты завершает звонок с network_error', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+        roomId: 'room-err-1',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_error',
+      roomId: 'room-err-1',
+      message: 'Room expired',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('network_error');
+  });
 });

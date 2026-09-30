@@ -173,6 +173,10 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     []
   );
 
+  const restartIce = useCallback(async () => {
+    await managerRef.current?.restartIce();
+  }, []);
+
   const close = useCallback(() => {
     unsubRef.current?.();
   }, []);
@@ -182,6 +186,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     remoteStream,
     manager,
     replaceTrack,
+    restartIce,
     close,
   };
 }

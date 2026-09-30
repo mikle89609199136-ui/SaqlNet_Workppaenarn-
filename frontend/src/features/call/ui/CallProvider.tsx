@@ -71,6 +71,20 @@ export function CallProvider({ children }: PropsWithChildren) {
       }
     });
 
+    const unsubSocketConnected = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
+      useCallStore.getState().rejoinActiveCall();
+    });
+
+    const unsubCallError = eventBus.on(
+      WS_EVENTS.CALL.ERROR,
+      (payload?: { roomId?: string; message?: string }) => {
+        const { fsm } = useCallStore.getState();
+        if (fsm.roomId && (!payload?.roomId || payload.roomId === fsm.roomId)) {
+          useCallStore.getState().endCall('network_error');
+        }
+      }
+    );
+
     return () => {
       unsubIncoming();
       unsubCancelled();
@@ -78,6 +92,8 @@ export function CallProvider({ children }: PropsWithChildren) {
       unsubJoined();
       unsubPeerJoined();
       unsubPeerLeft();
+      unsubSocketConnected();
+      unsubCallError();
     };
   }, [eventBus]);
 
