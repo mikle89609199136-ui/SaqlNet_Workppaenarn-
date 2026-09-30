@@ -4,15 +4,23 @@ import { Avatar, Icon } from '@/shared/ui';
 import { CALLS_ENABLED } from '@/shared/config';
 import { useCall } from '../model/useCall';
 
+import { ActiveCallSession } from './ActiveCallSession';
+
 /**
- * Оверлей входящего и исходящего вызова поверх приложения (#773).
- *
- * Экран активного разговора реализуется в #774.
+ * Оверлей входящего, исходящего и активного вызова поверх приложения (#773, #774).
  */
 export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) {
   const { t } = useTranslation();
-  const { incomingCall, outgoingCall, activeCall, acceptCall, rejectCall, cancelCall, endCall } =
-    useCall();
+  const {
+    incomingCall,
+    outgoingCall,
+    activeCall,
+    isMinimized,
+    acceptCall,
+    rejectCall,
+    cancelCall,
+    endCall,
+  } = useCall();
 
   useEffect(() => {
     if (enabled) return;
@@ -45,7 +53,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
           <div className="flex items-center justify-center gap-8">
             <button
               type="button"
-              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
               onClick={rejectCall}
               aria-label={t('call.reject', 'Отклонить')}
             >
@@ -58,7 +66,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
             </button>
             <button
               type="button"
-              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
               onClick={acceptCall}
               aria-label={t('call.accept', 'Принять')}
             >
@@ -116,7 +124,7 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
           <div className="flex items-center justify-center">
             <button
               type="button"
-              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+              className="flex flex-col items-center gap-2 group cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
               onClick={cancelCall}
               disabled={isEnding}
               aria-label={t('call.cancel', 'Отменить')}
@@ -130,6 +138,10 @@ export function CallOverlay({ enabled = CALLS_ENABLED }: { enabled?: boolean }) 
         </div>
       </div>
     );
+  }
+
+  if (activeCall) {
+    return <ActiveCallSession activeCall={activeCall} isMinimized={isMinimized} />;
   }
 
   return null;

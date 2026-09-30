@@ -128,4 +128,38 @@ describe('звонки включены', () => {
     const cancelBtn = screen.getByRole('button', { name: 'Отменить' });
     expect(cancelBtn).toBeDisabled();
   });
+
+  it('активный звонок: отображает ActiveCallView в развёрнутом режиме', () => {
+    useCallStore.setState({
+      activeCall: {
+        roomId: 'room-act-1',
+        type: 'p2p',
+        kind: 'audio',
+        peerId: 'peer-act',
+        peerName: 'Дмитрий',
+      },
+      isMinimized: false,
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('dialog', { name: 'Активный звонок' })).toBeInTheDocument();
+    expect(screen.getAllByText('Дмитрий').length).toBeGreaterThan(0);
+  });
+
+  it('активный звонок: отображает MinimizedCallBar в свёрнутом режиме', () => {
+    useCallStore.setState({
+      activeCall: {
+        roomId: 'room-act-2',
+        type: 'p2p',
+        kind: 'audio',
+        peerId: 'peer-act',
+        peerName: 'Дмитрий',
+      },
+      isMinimized: true,
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('region', { name: 'Свёрнутый звонок' })).toBeInTheDocument();
+    expect(screen.getByText('Дмитрий')).toBeInTheDocument();
+  });
 });

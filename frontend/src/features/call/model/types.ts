@@ -13,6 +13,8 @@ import type { TCallKind, TCallRoomType } from '@/services/types/callApi.types';
 export type TCallState =
   'idle' | 'outgoing' | 'incoming' | 'connecting' | 'active' | 'reconnecting' | 'ended';
 
+export type TCallConnectionState = RTCPeerConnectionState | 'reconnecting';
+
 export type TCallEndReason =
   | 'completed'
   | 'peer_ended'
@@ -215,6 +217,10 @@ export interface IActiveCall {
   kind: TCallKind;
   title?: string;
   chatId?: string;
+  peerId?: string;
+  peerName?: string;
+  peerAvatar?: string | null;
+  isCaller?: boolean;
 }
 
 export interface IRingtone {

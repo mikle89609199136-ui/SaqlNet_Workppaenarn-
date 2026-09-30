@@ -101,7 +101,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         : null;
 
     const activeCall: IActiveCall | null =
-      (fsm.state === 'connecting' || fsm.state === 'active' || fsm.state === 'outgoing') &&
+      (fsm.state === 'connecting' ||
+        fsm.state === 'active' ||
+        fsm.state === 'reconnecting' ||
+        fsm.state === 'outgoing') &&
       fsm.roomId
         ? {
             roomId: fsm.roomId,
@@ -109,6 +112,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             kind: fsm.callKind,
             title: fsm.title ?? undefined,
             chatId: fsm.chatId ?? undefined,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            isCaller: fsm.isCaller ?? false,
           }
         : null;
 
