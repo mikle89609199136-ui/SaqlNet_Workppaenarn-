@@ -472,15 +472,24 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 	if roomID == "" {
 		return
 	}
-	ws.doLeaveRoom(client, roomID)
+	ws.doLeaveRoom(client, roomID, peerLeftByLeave)
 }
 
-func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
+// Почему собеседник вышел из звонка (#775): сам («Завершить») — звонок
+// закончен; оборвался сокет (перезагрузка, пропала сеть) — клиент ждёт
+// его возвращения и восстанавливает звонок.
+const (
+	peerLeftByLeave      = "left"
+	peerLeftByDisconnect = "disconnected"
+)
+
+func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
 	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
 	peerLeft, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_left",
 		"roomId": roomID,
 		"peer":   map[string]string{"userId": client.UserID},
+		"reason": reason,
 	})
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
@@ -491,7 +500,7 @@ func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
 
 func (ws *WSServer) handleCallDisconnect(client *Client) {
 	if client.CallRoomID != "" {
-		ws.doLeaveRoom(client, client.CallRoomID)
+		ws.doLeaveRoom(client, client.CallRoomID, peerLeftByDisconnect)
 	}
 	// Звал и не дождался ответа — приглашение больше не звонит (#850).
 	ws.cancelInvitesFrom(client)

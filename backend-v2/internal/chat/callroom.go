@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-const maxCallParticipants = 5
+// maxCallParticipants — звонки только один на один (#715).
+const maxCallParticipants = 2
 
 type Participant struct {
 	UserID      string `json:"userId"`
