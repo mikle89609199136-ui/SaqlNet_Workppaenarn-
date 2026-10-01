@@ -42,10 +42,19 @@ export function useChatReadMark(chat: IChatDto | null): IChatReadMark | undefine
  * «Новые сообщения» при следующем открытии, и прочитанное не должно снова
  * оказаться новым, пока кеш не обновился.
  */
-export function markChatRead(queryClient: QueryClient, chatId: string, lastReadAt: string) {
+export function markChatRead(
+  queryClient: QueryClient,
+  chatId: string,
+  lastReadAt: string,
+  readCount: number
+) {
   const apply = (chat: IChatDto): IChatDto =>
     chat.id === chatId
-      ? { ...chat, lastReadAt: later(chat.lastReadAt, lastReadAt), unreadCount: 0 }
+      ? {
+          ...chat,
+          lastReadAt: later(chat.lastReadAt, lastReadAt),
+          unreadCount: Math.max(0, (chat.unreadCount ?? 0) - readCount),
+        }
       : chat;
   queryClient.setQueryData<IChatDto>(chatKeys.detail(chatId), (chat) => chat && apply(chat));
   for (const key of LISTS) {

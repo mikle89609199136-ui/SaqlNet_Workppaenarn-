@@ -9,6 +9,7 @@ export * from './useIsMobile';
 export * from './useLongPress';
 export * from './useNow';
 export * from './useObjectUrl';
+export * from './usePageActive';
 export * from './usePaneWidth';
 export * from './useReducedMotion';
 export * from './useSecurityNotice';

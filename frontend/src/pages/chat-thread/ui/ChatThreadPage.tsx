@@ -58,6 +58,7 @@ export function ChatThreadPage() {
     hasOlder,
     loadOlder,
     readMark,
+    markMessagesAsRead,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -150,6 +151,7 @@ export function ChatThreadPage() {
             messages={messages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
+            onMessagesSeen={markMessagesAsRead}
             onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
