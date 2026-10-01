@@ -337,11 +337,17 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			bans = []Ban{}
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"bans": bans})
+
 	case suffix == "/leave" && r.Method == http.MethodPost:
 		err := h.service.LeaveChat(r.Context(), current.ID, chatID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrInvalidChatType):
+			// Leaving is only allowed for group chats.
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", err.Error())
 		case errors.Is(err, ErrForbidden):
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
 		case errors.Is(err, ErrOwnershipTransferRequired):
@@ -351,6 +357,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		default:
 			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 		}
+
 	// POST /api/v2/chats/{id}/transfer-ownership — передача владения чатом.
 	// Разрешена только для групповых чатов (type = 'group')
 	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:

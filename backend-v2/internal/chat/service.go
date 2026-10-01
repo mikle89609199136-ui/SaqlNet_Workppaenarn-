@@ -1730,8 +1730,12 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 	return nil
 }
 
+type listBansInput struct {
+	ChatID string `validate:"required,uuid"`
+}
+
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
-	input := leaveChatInput{ChatID: chatID}
+	input := listBansInput{ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
 		return nil, ErrInvalidInput
 	}
@@ -3655,6 +3659,7 @@ func (s *Service) GetMlsState(ctx context.Context, chatID string) (int64, string
 
 type leaveChatInput struct {
 	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
 }
 
 type MemberRemovedEvent struct {
@@ -3664,73 +3669,227 @@ type MemberRemovedEvent struct {
 	Reason string `json:"reason"`
 }
 
+// LeaveChat removes a non-owner member from a group chat.
+// Private chats are rejected before any membership data is changed.
 func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
-	input := leaveChatInput{ChatID: chatID}
+	const method = "LeaveChat"
+
+	input := leaveChatInput{UserID: userID, ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
+		slog.WarnContext(ctx, "invalid leave chat input",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return ErrInvalidInput
 	}
 
-	role, err := s.memberRole(ctx, userID, chatID)
+	// Load the chat type and the caller's role in a single query so that a
+	// non-member cannot distinguish "chat does not exist" from "chat exists
+	// but is private" by probing LeaveChat with a known UUID. The LEFT JOIN
+	// returns a row whenever the chat exists; m.role is NULL for outsiders,
+	// which is how membership is detected below.
+	var (
+		chatType string
+		role     sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		LEFT JOIN chats.members m
+		  ON m.chat_id = c.id AND m.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType, &role)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "chat not found",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+			)
+			return ErrNotFound
+		}
+		slog.ErrorContext(ctx, "failed to load chat type and member role",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
-	if role == "owner" {
+
+	// Membership is checked before the chat type so that outsiders always
+	// receive ErrForbidden, regardless of whether the chat is private or
+	// group. Returning ErrInvalidChatType for a non-member would leak the
+	// chat's type to anyone who knows its UUID.
+	if !role.Valid {
+		slog.WarnContext(ctx, "leave attempted by non-member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrForbidden
+	}
+
+	// Leaving is only supported for group chats.
+	if chatType != "group" {
+		slog.WarnContext(ctx, "leave is not allowed for non-group chat",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"chat_type", chatType,
+		)
+		return ErrInvalidChatType
+	}
+
+	// The owner must transfer ownership before leaving.
+	if role.String == "owner" {
+		slog.WarnContext(ctx, "owner must transfer ownership before leaving",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
 		return ErrOwnershipTransferRequired
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 
-	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
+	defer func() { _ = tx.Rollback() }()
+
+	// Snapshot recipients before deletion so remaining members can be notified.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
-		_ = tx.Rollback()
+		slog.ErrorContext(ctx, "failed to query current members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
+
 	var recipients []string
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
 			_ = rows.Close()
-			_ = tx.Rollback()
+			slog.ErrorContext(ctx, "failed to scan member id",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+				"error", err,
+			)
 			return err
 		}
-		recipients = append(recipients, memberID)
+		if memberID != userID {
+			recipients = append(recipients, memberID)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		_ = tx.Rollback()
+		slog.ErrorContext(ctx, "failed to iterate members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 	_ = rows.Close()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
-		_ = tx.Rollback()
+	// Remove per-user chat data and membership atomically.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
+		chatID, userID,
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to delete encryption keys",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
-		_ = tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`,
+		userID, chatID,
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to delete chat settings",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
+
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`,
+		chatID, userID,
+	)
 	if err != nil {
-		_ = tx.Rollback()
+		slog.ErrorContext(ctx, "failed to delete member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		_ = tx.Rollback()
+		slog.WarnContext(ctx, "member not removed",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
 		return ErrForbidden
 	}
+
 	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
+
 	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
+
+	// Membership changed: drop the cached member list for typing (#866).
 	s.invalidateMembers(chatID)
 
+	// Notify remaining members only.
 	if s.ws != nil {
 		event := MemberRemovedEvent{
 			Type:   "chat_member_removed",
@@ -3740,11 +3899,18 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
-			slog.Error("failed to marshal member_removed event", "err", err, "chatID", chatID, "userID", userID)
+			slog.ErrorContext(ctx, "failed to marshal member_removed event",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+				"error", err,
+			)
 		} else {
 			s.ws.BroadcastToUsers(recipients, payload)
 		}
 	}
+
 	return nil
 }
 

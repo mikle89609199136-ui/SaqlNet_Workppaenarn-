@@ -614,8 +614,7 @@ describe('useCallStore', () => {
       resolveSecondRoom = resolve;
     });
 
-    vi
-      .spyOn(services.callService, 'createRoom')
+    vi.spyOn(services.callService, 'createRoom')
       .mockImplementationOnce(() => firstRoomPromise as any)
       .mockImplementationOnce(() => secondRoomPromise as any);
 
@@ -792,9 +791,7 @@ describe('useCallStore', () => {
   });
 
   it('initiateCall при ошибке сети выставляет фазу failed и завершает звонок с network_error', async () => {
-    vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce(
-      new Error('Network error')
-    );
+    vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce(new Error('Network error'));
 
     await useCallStore
       .getState()
@@ -807,4 +804,3 @@ describe('useCallStore', () => {
     expect(state.outgoingCall?.phase).toBe('failed');
   });
 });
-

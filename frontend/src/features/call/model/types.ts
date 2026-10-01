@@ -26,13 +26,7 @@ export type TCallEndReason =
   | 'cancelled';
 
 export type TOutgoingCallPhase =
-  | 'calling'
-  | 'ringing'
-  | 'declined'
-  | 'busy'
-  | 'no_answer'
-  | 'cancelled'
-  | 'failed';
+  'calling' | 'ringing' | 'declined' | 'busy' | 'no_answer' | 'cancelled' | 'failed';
 
 export interface IOutgoingCall {
   roomId: string;
