@@ -3886,6 +3886,9 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		return err
 	}
 
+	// Membership changed: drop the cached member list for typing (#866).
+	s.invalidateMembers(chatID)
+
 	// Notify remaining members only.
 	if s.ws != nil {
 		event := MemberRemovedEvent{

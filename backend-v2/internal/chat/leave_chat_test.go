@@ -216,3 +216,89 @@ func TestLeaveChat_ChatNotFound(t *testing.T) {
 	require.ErrorIs(t, err, chat.ErrNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+// invalidatingRealtime — фейковый realtimeServer, фиксирующий вызовы
+// InvalidateChatMembers: проверяем сброс кеша участников после LeaveChat (#866).
+type invalidatingRealtime struct {
+	invalidatedChatIDs []string
+}
+
+func (r *invalidatingRealtime) CallRooms() *chat.CallRoomManager   { return nil }
+func (r *invalidatingRealtime) IsUserConnected(userID string) bool { return false }
+func (r *invalidatingRealtime) BroadcastToChat(chatID string, message []byte, excludeUserID string) {
+}
+func (r *invalidatingRealtime) BroadcastToUsers(userIDs []string, message []byte) {}
+func (r *invalidatingRealtime) InvalidateChatMembers(chatID string) {
+	r.invalidatedChatIDs = append(r.invalidatedChatIDs, chatID)
+}
+
+// TestLeaveChat_InvalidatesMemberCache проверяет, что успешный выход
+// участника сбрасывает кеш участников (#866): «печатает» не должен
+// видеть ушедшего.
+func TestLeaveChat_InvalidatesMemberCache(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	ws := &invalidatingRealtime{}
+	svc := chat.NewService(db, ws, nil)
+
+	chatID := "550e8400-e29b-41d4-a716-446655440002"
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+	peerID := "550e8400-e29b-41d4-a716-446655440004"
+
+	mock.ExpectQuery(leaveChatTypeRoleQuery).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "member"))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT user_id FROM chats.members WHERE chat_id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(userID).AddRow(peerID))
+	mock.ExpectExec(`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`).
+		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
+		WithArgs(userID, chatID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`).
+		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+		WithArgs(chatID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = svc.LeaveChat(context.Background(), userID, chatID)
+	require.NoError(t, err)
+	require.Equal(t, []string{chatID}, ws.invalidatedChatIDs)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestLeaveChat_NoInvalidateOnRollback проверяет, что при откате транзакции
+// кеш участников не сбрасывается: иначе он отражал бы состояние, которого
+// нет в БД.
+func TestLeaveChat_NoInvalidateOnRollback(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	ws := &invalidatingRealtime{}
+	svc := chat.NewService(db, ws, nil)
+
+	chatID := "550e8400-e29b-41d4-a716-446655440002"
+	userID := "550e8400-e29b-41d4-a716-446655440003"
+
+	mock.ExpectQuery(leaveChatTypeRoleQuery).
+		WithArgs(chatID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "member"))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT user_id FROM chats.members WHERE chat_id = $1`).
+		WithArgs(chatID).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(userID))
+	mock.ExpectExec(`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`).
+		WithArgs(chatID, userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
+		WithArgs(userID, chatID).WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	err = svc.LeaveChat(context.Background(), userID, chatID)
+	require.ErrorIs(t, err, sql.ErrConnDone)
+	require.Empty(t, ws.invalidatedChatIDs)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
