@@ -70,6 +70,8 @@ export function ChatThreadPage() {
     attachmentInputRef,
     draftRef,
     messagesRef,
+    threadElement,
+    setThreadElement,
 
     modals,
     closePhotoEditor,
@@ -127,7 +129,7 @@ export function ChatThreadPage() {
         />
       )}
       {!modals.isPinnedMessagesOpen && (
-        <main className="thread-page">
+        <main className="thread-page" ref={setThreadElement}>
           <ChatThreadHeader setProfileModal={setProfileModal} profileModal={profileModal} />
           {/* Нет связи или идёт переподключение — плашкой под шапкой (#826). */}
           <ConnectionBanner />
@@ -214,6 +216,7 @@ export function ChatThreadPage() {
               bottomRef={bottomRef}
               attachmentInputRef={attachmentInputRef}
               draftRef={draftRef}
+              dropZone={threadElement}
               setPhotoEditorFile={modals.setPhotoEditorFile}
               setOpenedImage={modals.setOpenedImage}
             />

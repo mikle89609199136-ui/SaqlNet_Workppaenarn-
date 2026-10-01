@@ -14,8 +14,9 @@ import { useForwardStore } from '@/features/forward-messages';
 import { forgetEncryptionStates, setEncryptionState } from '@/shared/crypto';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
 import type { IRichTextInputHandle } from '@/shared/ui';
+import type { IPendingAttachment } from '@/types';
 import { typeIntoComposer } from '@/test/harness/composer';
 
 vi.mock('@/features/chat-encryption', () => ({
@@ -27,7 +28,7 @@ vi.mock('@/features/typing-indicator', () => ({
   useTypingIndicator: () => vi.fn(),
 }));
 
-function renderComposer(ui: React.ReactElement, client: QueryClient) {
+function renderComposer(ui: React.ReactElement, client: QueryClient, container?: HTMLElement) {
   return render(
     <QueryClientProvider client={client}>
       <I18nextProvider i18n={testI18n}>
@@ -37,12 +38,14 @@ function renderComposer(ui: React.ReactElement, client: QueryClient) {
           </Routes>
         </MemoryRouter>
       </I18nextProvider>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { container }
   );
 }
 
 describe('ChatThreadComposer', () => {
   let queryClient: QueryClient;
+  let dropZone: HTMLElement;
 
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -56,10 +59,12 @@ describe('ChatThreadComposer', () => {
     useChatUiStore.setState({ error: '', editingMessage: null });
     setEncryptionState('chat-test-1', { status: 'ready', unreachable: [] });
     vi.restoreAllMocks();
+    dropZone = document.body.appendChild(document.createElement('main'));
   });
 
   afterEach(() => {
     forgetEncryptionStates();
+    dropZone.remove();
   });
 
   function setupProps(overrides = {}) {
@@ -73,6 +78,7 @@ describe('ChatThreadComposer', () => {
       bottomRef: { current: bottomDiv },
       attachmentInputRef: { current: attachmentInput },
       draftRef: createRef<IRichTextInputHandle>(),
+      dropZone,
       setPhotoEditorFile: vi.fn(),
       setOpenedImage: vi.fn(),
       ...overrides,
@@ -353,6 +359,129 @@ describe('ChatThreadComposer', () => {
 
       expect(setPendingAttachments).toHaveBeenCalled();
       expect(useChatUiStore.getState().error).toBe('Можно приложить не больше 10 файлов');
+    });
+  });
+
+  describe('перетаскивание файлов (#896)', () => {
+    const photo = () => new File(['x'], 'photo.png', { type: 'image/png' });
+    const withFiles = (files: File[] = []) => ({ dataTransfer: { types: ['Files'], files } });
+
+    function StatefulComposer(props: ReturnType<typeof setupProps>) {
+      const [pendingAttachments, setPendingAttachments] = useState<IPendingAttachment[]>([]);
+      return (
+        <ChatThreadComposer
+          {...props}
+          pendingAttachments={pendingAttachments}
+          setPendingAttachments={setPendingAttachments}
+        />
+      );
+    }
+
+    function renderStateful() {
+      const props = setupProps();
+      renderComposer(<StatefulComposer {...props} />, queryClient, dropZone);
+      return props;
+    }
+
+    const overlay = () => screen.queryByTestId('file-drop-overlay');
+
+    it('файл над чатом показывает зону сброса, уход из чата её прячет', () => {
+      renderStateful();
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      expect(overlay()).toBeInTheDocument();
+      expect(dropZone).toContainElement(overlay());
+      expect(screen.getByText('Перетащите файлы сюда, чтобы отправить')).toBeInTheDocument();
+
+      fireEvent.dragLeave(dropZone, withFiles());
+      expect(overlay()).not.toBeInTheDocument();
+    });
+
+    it('сброшенные файлы появляются во вложениях, набранный текст остаётся, фокус в поле', async () => {
+      renderStateful();
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      await typeIntoComposer(input, 'подпись');
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      fireEvent.drop(input, withFiles([photo()]));
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: /Открыть изображение: photo.png/ })
+      ).toBeInTheDocument();
+      expect(input.textContent).toBe('подпись');
+      expect(input).toHaveFocus();
+    });
+
+    it('больше 10 файлов — прикладываются 10 и сообщение о лимите', async () => {
+      renderStateful();
+      const files = Array.from(
+        { length: 12 },
+        (_, i) => new File(['x'], `doc-${i}.pdf`, { type: 'application/pdf' })
+      );
+
+      fireEvent.drop(dropZone, withFiles(files));
+
+      expect(await screen.findAllByRole('button', { name: /Удалить вложение/ })).toHaveLength(10);
+      expect(useChatUiStore.getState().error).toBe('Можно приложить не больше 10 файлов');
+    });
+
+    it('файл больше 100 МБ отклоняется с ошибкой', () => {
+      renderStateful();
+      const huge = new File(['x'], 'movie.mp4', { type: 'video/mp4' });
+      Object.defineProperty(huge, 'size', { value: 100 * 1024 * 1024 + 1 });
+
+      fireEvent.drop(dropZone, withFiles([huge]));
+
+      expect(screen.queryByRole('button', { name: /Удалить вложение/ })).not.toBeInTheDocument();
+      expect(useChatUiStore.getState().error).toBe(
+        'Файл слишком большой. Максимальный размер — 100 МБ.'
+      );
+    });
+
+    it('перетаскивание текста не перехватывается', () => {
+      renderStateful();
+      const text = { dataTransfer: { types: ['text/plain'], files: [] } };
+
+      fireEvent.dragEnter(dropZone, text);
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(fireEvent.drop(dropZone, text)).toBe(true);
+    });
+
+    it('при редактировании сообщения зона не появляется и файлы не принимаются', () => {
+      const setPendingAttachments = vi.fn();
+      useChatUiStore
+        .getState()
+        .setEditingMessage(makeMessage({ id: 'msg-edit', content: 'Текст' }));
+      renderComposer(
+        <ChatThreadComposer {...setupProps({ setPendingAttachments })} />,
+        queryClient
+      );
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      expect(overlay()).not.toBeInTheDocument();
+
+      expect(fireEvent.drop(dropZone, withFiles([photo()]))).toBe(false);
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('в заблокированном чате зона не появляется и файлы не принимаются', () => {
+      const setPendingAttachments = vi.fn();
+      queryClient.setQueryData(
+        chatKeys.detail('chat-test-1'),
+        makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer', isBlockedByPeer: true })
+      );
+      renderComposer(
+        <ChatThreadComposer {...setupProps({ setPendingAttachments })} />,
+        queryClient
+      );
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      fireEvent.drop(dropZone, withFiles([photo()]));
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(setPendingAttachments).not.toHaveBeenCalled();
     });
   });
 });

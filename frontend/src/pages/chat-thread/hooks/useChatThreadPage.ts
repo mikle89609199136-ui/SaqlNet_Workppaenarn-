@@ -11,7 +11,14 @@ import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/m
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -51,6 +58,7 @@ export function useChatThreadPage({
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
+  const [threadElement, setThreadElement] = useState<HTMLElement | null>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
   useChatEncryption(chatId);
@@ -178,6 +186,8 @@ export function useChatThreadPage({
     attachmentInputRef,
     draftRef,
     messagesRef,
+    threadElement,
+    setThreadElement,
     socket,
 
     modals,

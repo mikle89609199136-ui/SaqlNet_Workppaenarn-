@@ -4,6 +4,7 @@ export * from './cn';
 export * from './dateGroup';
 export * from './downscaleImage';
 export * from './editorCanvas';
+export * from './fileDrop';
 export * from './formatFileSize';
 export * from './formatLastSeen';
 export * from './getAttachmentIcon';
