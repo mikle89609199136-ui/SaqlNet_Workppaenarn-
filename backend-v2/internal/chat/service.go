@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"log/slog"
 	"path"
 	"strings"
@@ -20,12 +19,14 @@ import (
 )
 
 var (
-	ErrNotFound                  = errors.New("chat not found")
-	ErrForbidden                 = errors.New("access denied")
-	ErrInvalidInput              = errors.New("invalid input")
-	ErrUserNotFound              = errors.New("user not found")
-	ErrBlockedByUser             = errors.New("blocked by user")
-	ErrInvalidChatType           = errors.New("invalid chat type")
+	ErrNotFound        = errors.New("chat not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrInvalidChatType = errors.New("invalid chat type")
+	// ErrGroupCallsUnavailable — в MVP звонки только один на один (#715).
+	ErrGroupCallsUnavailable     = errors.New("group calls are not available")
 	ErrAlreadyMember             = errors.New("user already in group")
 	ErrUserBanned                = errors.New("user is banned")
 	ErrOwnershipTransferRequired = errors.New("ownership transfer required")
@@ -2865,13 +2866,24 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
-// Querier is an interface that both *sql.DB and *sql.Tx implement.
+// Querier is an interface implemented by both *sql.DB and *sql.Tx, allowing
+// the same query helper to run either standalone or inside a transaction.
 type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
+// listReactionsInternal runs the aggregation query against any Querier
+// (either *sql.DB or *sql.Tx), so the same helper can be reused inside a
+// transaction — this is required by ToggleReaction, which must read the
+// post-mutation aggregate under the same lock.
+//
+// The query groups reactions by emoji and, for each group, reports whether
+// the requesting user has reacted with that emoji via bool_or. Ordering by
+// count descending puts the most popular reactions first.
 func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
+	const method = "listReactionsInternal"
+
 	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
 		FROM messages.reactions
@@ -2880,6 +2892,13 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to query reactions",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return nil, err
 	}
 	defer rows.Close()
@@ -2888,53 +2907,113 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
+			slog.ErrorContext(ctx, "failed to scan reaction row",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", err,
+			)
 			return nil, err
 		}
 		result = append(result, r)
 	}
 
-	return result, rows.Err()
+	// rows.Err() catches errors that surface after iteration finishes,
+	// such as a dropped connection or a mid-stream decode failure.
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating reaction rows",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	if result == nil {
+		result = []Reaction{}
+	}
+
+	return result, nil
 }
 
-// isMemberWithQuerier executes the query using any Querier
-// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+// isMemberWithQuerier checks chat membership using any Querier (either
+// *sql.DB or *sql.Tx). Running it inside a transaction keeps the membership
+// check consistent with the rest of the operation — a user removed from the
+// chat mid-request cannot slip through.
 func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
+	const method = "isMemberWithQuerier"
+
 	var exists bool
 	err := q.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 		userID, chatID,
 	).Scan(&exists)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to check chat membership",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return false, err
 	}
 	return exists, nil
 }
 
-// ToggleReaction adds or removes a reaction (toggle semantics).
-// Returns:
-//   - ReactionStatus: "added", "removed", "replaced"
-//   - string: current emoji for response
-//   - []Reaction: aggregated reactions with the myReaction flag.
-//   - error: if we have error.
+// ToggleReaction adds, removes, or replaces a user's reaction on a message.
+// Toggle semantics:
+//   - no reaction yet      → INSERT  (StatusAdded)
+//   - same reaction        → DELETE  (StatusRemoved)
+//   - different reaction   → UPDATE  (StatusReplaced)
+//
+// Returns the operation status, the user's current emoji (empty string if
+// the reaction was removed), the aggregated reaction list for the message
+// (with the myReaction flag), and an error.
+//
+// Message existence and membership checks are all performed inside a single
+// transaction under an advisory lock on the (message_id, user_id) pair, so
+// that concurrent toggles by the same user cannot race.
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
-	// check - if emoji not empty
+	const method = "ToggleReaction"
+
 	if emoji == "" {
-		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		slog.WarnContext(ctx, "empty emoji rejected",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"message_id", messageID,
+		)
 		return "", "", nil, ErrInvalidInput
 	}
-	// check the length of emoji and symbols
+	// Length limit and rejection of characters that would break rendering
+	// or downstream consumers (HTML/JSON). UTF-8 is measured in bytes: 64
+	// bytes comfortably covers any single emoji with modifiers.
 	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		slog.WarnContext(ctx, "invalid emoji rejected",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"message_id", messageID,
+			"emoji_len", len(emoji),
+		)
 		return "", "", nil, ErrInvalidInput
 	}
 
-	// 1. Start transaction with READ COMMITTED isolation level
+	// READ COMMITTED is enough here: serialization of concurrent toggles
+	// is provided by the advisory lock, not by the isolation level.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to begin transaction: %v", err)
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("begin tx: %w", err)
 	}
-
 	committed := false
 	defer func() {
 		if !committed {
@@ -2942,43 +3021,63 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		}
 	}()
 
-	// 2. Check message existence and get chatID inside transaction
+	// chatID is needed both for the membership check and for the WS
+	// broadcast. It is read inside the transaction so that it does not
+	// drift away from the subsequent locking.
 	var chatID string
 	err = tx.QueryRowContext(ctx,
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 		messageID,
 	).Scan(&chatID)
-
 	if errors.Is(err, sql.ErrNoRows) {
-		log.Printf("[chat-service-ToggleReaction]:chat was not found: %v", err)
 		return "", "", nil, ErrNotFound
-	} else if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to get chatID: %v", err)
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load chat id",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("get chatID: %w", err)
 	}
 
-	// 3. Check membership inside transaction
-	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
-		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
-			return "", "", nil, fmt.Errorf("check membership: %w", err)
-		}
-		log.Printf("[chat-service-ToggleReaction]:user not a member: %v", userID)
+	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil {
+		slog.ErrorContext(ctx, "failed to check membership",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
+		return "", "", nil, fmt.Errorf("check membership: %w", err)
+	} else if !ok {
+		slog.WarnContext(ctx, "user is not a member of the chat",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
 		return "", "", nil, ErrForbidden
 	}
 
-	// 4. Acquire advisory lock for the (message_id, user_id) pair
-	// pg_advisory_xact_lock blocks until lock is available or timeout occurs
-	_, err = tx.ExecContext(ctx,
+	// The advisory lock serializes concurrent toggles by the same user on
+	// the same message. It is released automatically when the tx ends.
+	if _, err := tx.ExecContext(ctx,
 		`SELECT pg_advisory_xact_lock($1)`,
 		getAdvisoryKey(messageID, userID),
-	)
-	if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to acquire advisory lock",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("acquire lock: %w", err)
 	}
 
-	// 5. Now safely query the current reaction (with lock held)
+	// With the lock held, reading the current reaction is safe.
 	var currentEmoji string
 	err = tx.QueryRowContext(ctx,
 		`SELECT emoji FROM messages.reactions
@@ -2990,119 +3089,130 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	if errors.Is(err, sql.ErrNoRows) {
 		hasCurrent = false
 	} else if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to get current reaction: %v", err)
+		slog.ErrorContext(ctx, "failed to read current reaction",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
 	}
 
-	// Store the previous emoji (if any) as a pointer
 	var previousEmoji *string
 	if hasCurrent {
 		prev := currentEmoji
 		previousEmoji = &prev
-	} else {
-		previousEmoji = nil
 	}
 
-	// create status variable
 	var status ReactionStatus
-
-	// 6. Perform the appropriate action based on the current state
 	switch {
 	case !hasCurrent:
-		// No reaction yet – insert the new one
 		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji)
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
 		if execErr != nil {
-			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", execErr)
+			slog.ErrorContext(ctx, "insert reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("insert reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "insert reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = emoji
 		status = StatusAdded
 
 	case currentEmoji == emoji:
-		// Same emoji – remove the reaction (toggle off)
 		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
 		if execErr != nil {
-			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", execErr)
+			slog.ErrorContext(ctx, "delete reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("delete reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "delete reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = ""
 		status = StatusRemoved
 
 	default:
-		// Different emoji – update the existing one
 		result, execErr := tx.ExecContext(ctx,
 			`UPDATE messages.reactions SET emoji = $1
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
 		if execErr != nil {
+			slog.ErrorContext(ctx, "update reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("update reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "update reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = emoji
 		status = StatusReplaced
 	}
 
-	// 7. Fetch the aggregated counts per emoji for the message
 	reactions, err := s.listReactionsInternal(ctx, tx, messageID, userID)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("get aggregates: %w", err)
 	}
 
-	// 8. Commit transaction (automatically releases advisory lock)
 	if err = tx.Commit(); err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to commit transaction: %v", err)
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("commit transaction: %w", err)
 	}
 	committed = true
 
-	// 9. Build the change response
-	change := ChangeResponse{
-		Action: string(status),
-	}
-
-	switch status {
-	case StatusAdded:
-		change.Emoji = &emoji
-		change.PreviousEmoji = nil
-	case StatusRemoved:
-		change.Emoji = nil
-		change.PreviousEmoji = previousEmoji
-	case StatusReplaced:
-		change.Emoji = &emoji                // new emoji
-		change.PreviousEmoji = previousEmoji // old emoji
-	}
-
-	// 10. Convert reactions to response format without myReaction flag
-	reactionResponses := make([]ReactionResponse, len(reactions))
-	for i, r := range reactions {
-		reactionResponses[i] = ReactionResponse{
-			Emoji: r.Emoji,
-			Count: r.Count,
-		}
-	}
-
-	// 11. Send WebSocket notification
+	// The WS notification is sent after the commit: if the broadcast
+	// fails, the transaction still remains consistent.
 	if s.ws != nil {
+		change := ChangeResponse{Action: string(status)}
+		switch status {
+		case StatusAdded:
+			change.Emoji = &emoji
+		case StatusRemoved:
+			change.PreviousEmoji = previousEmoji
+		case StatusReplaced:
+			change.Emoji = &emoji
+			change.PreviousEmoji = previousEmoji
+		}
+
+		// myReaction must not leak into the broadcast — the flag depends
+		// on the recipient and is computed on their side.
+		reactionResponses := make([]ReactionResponse, len(reactions))
+		for i, r := range reactions {
+			reactionResponses[i] = ReactionResponse{
+				Emoji: r.Emoji,
+				Count: r.Count,
+			}
+		}
+
 		payload, err := json.Marshal(map[string]any{
 			"type":      "reaction_updated",
 			"chatId":    chatID,
@@ -3112,7 +3222,13 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 			"reactions": reactionResponses,
 		})
 		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
+			slog.ErrorContext(ctx, "failed to marshal reaction payload",
+				"layer", "service",
+				"method", method,
+				"chat_id", chatID,
+				"message_id", messageID,
+				"error", err,
+			)
 		} else {
 			s.ws.BroadcastToChat(chatID, payload, "")
 		}
@@ -3481,12 +3597,21 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
 	var chatType string
+	var blockedByPeer bool
 	err := s.db.QueryRowContext(ctx, `
-		SELECT c.type
+		SELECT c.type,
+		       -- Собеседник по личному чату заблокировал звонящего (#912) —
+		       -- как у сообщений (sendPermissionQuery).
+		       EXISTS(
+		         SELECT 1
+		         FROM chats.members peer
+		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
+		         WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       )
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
 		WHERE c.id = $1
-	`, chatID, userID).Scan(&chatType)
+	`, chatID, userID).Scan(&chatType, &blockedByPeer)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
 	}
@@ -3495,6 +3620,15 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 	}
 	if chatType == "self" {
 		return "", ErrInvalidChatType
+	}
+	// В MVP звонки только один на один (#715): комната — только в личном
+	// чате. Групповые звонки — отдельной задачей, вместе с приглашениями.
+	if chatType != "private" {
+		return "", ErrGroupCallsUnavailable
+	}
+	// Ни в базу, ни в память: заблокировавший его звонка не получит.
+	if blockedByPeer {
+		return "", ErrBlockedByUser
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {
@@ -3507,7 +3641,8 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 		RETURNING id::text
 	`, chatID, dbCallType, title, userID).Scan(&roomID)
 	if err == nil {
-		s.CallRooms().CreateRoom(userID, roomID, callType, callKind, chatID, title)
+		// Тип комнаты — от сервера: звонок всегда один на один (#715).
+		s.CallRooms().CreateRoom(userID, roomID, "p2p", callKind, chatID, title)
 	}
 	return roomID, err
 }
