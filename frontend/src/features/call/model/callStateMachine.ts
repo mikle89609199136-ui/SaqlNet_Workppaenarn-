@@ -151,7 +151,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
     }
 
     case 'CONNECTION_LOST': {
-      if (ctx.state !== 'active') return ctx;
+      if (ctx.state !== 'active' && ctx.state !== 'connecting') return ctx;
       return {
         ...ctx,
         state: 'reconnecting',

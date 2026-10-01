@@ -1,4 +1,7 @@
 import { useEffect, useRef } from 'react';
+import { WS_EVENTS } from '@/shared/config';
+import { eventBus } from '@/shared/lib/event-bus';
+import type { ICallJoinedEvent, ICallPeerJoinedEvent } from '@/types';
 import { useCallStore } from '../model/callStore';
 import { useLocalMedia } from '../model/useLocalMedia';
 import { usePeerConnection } from '../model/usePeerConnection';
@@ -51,7 +54,7 @@ export function ActiveCallSession({
 
   const peerConnection = customPeerConnection ?? defaultPeerConnection;
 
-  const { replaceTrack } = peerConnection;
+  const { replaceTrack, restartIce } = peerConnection;
 
   // Воспроизведение звука собеседника через постоянный audio-элемент (живет всю сессию звонка)
   useEffect(() => {
@@ -84,10 +87,60 @@ export function ActiveCallSession({
 
     if ((connState === 'disconnected' || connState === 'failed') && currentState === 'active') {
       useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      void restartIce?.();
     } else if (connState === 'connected' && currentState === 'reconnecting') {
       useCallStore.getState().dispatch({ type: 'CONNECTION_RESTORED' });
     }
+  }, [peerConnection.connectionState, restartIce]);
+
+  // Отслеживаем, было ли соединение успешно установлено хотя бы один раз
+  const hasConnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (peerConnection.connectionState === 'connected') {
+      hasConnectedRef.current = true;
+    }
   }, [peerConnection.connectionState]);
+
+  // При возвращении собеседника в комнату или повторном входе пересоздаем WebRTC-соединение (#775)
+  useEffect(() => {
+    const unsubPeerJoined = eventBus.on(
+      WS_EVENTS.CALL.PEER_JOINED,
+      (payload: ICallPeerJoinedEvent) => {
+        if (payload.roomId === activeCall.roomId) {
+          const currentState = useCallStore.getState().fsm.state;
+          if (currentState === 'reconnecting' || hasConnectedRef.current) {
+            hasConnectedRef.current = false;
+            if (currentState === 'active') {
+              useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+            }
+            peerConnection.resetConnection?.();
+          }
+        }
+      }
+    );
+
+    const unsubJoined = eventBus.on(
+      WS_EVENTS.CALL.JOINED,
+      (payload: ICallJoinedEvent) => {
+        if (payload.roomId === activeCall.roomId) {
+          const currentState = useCallStore.getState().fsm.state;
+          if (hasConnectedRef.current) {
+            hasConnectedRef.current = false;
+            if (currentState === 'active') {
+              useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+            }
+            peerConnection.resetConnection?.();
+          }
+        }
+      }
+    );
+
+    return () => {
+      unsubPeerJoined();
+      unsubJoined();
+    };
+  }, [activeCall.roomId, peerConnection]);
 
   const handleToggleAudio = () => localMedia.toggleAudio();
   const handleToggleVideo = () => localMedia.toggleVideo();

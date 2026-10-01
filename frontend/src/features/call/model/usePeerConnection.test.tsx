@@ -270,4 +270,57 @@ describe('usePeerConnection', () => {
       expect.objectContaining({ type: 'offer', sdp: 'flattened-sdp' })
     );
   });
+
+  it('предоставляет функцию restartIce и делегирует её вызов менеджеру', async () => {
+    const { result } = renderHook(() =>
+      usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const restartSpy = vi.spyOn(result.current.manager!, 'restartIce').mockResolvedValue();
+
+    await act(async () => {
+      await result.current.restartIce();
+    });
+
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('предоставляет функцию resetConnection, закрывает старый менеджер и создает новый', async () => {
+    const closeSpy = vi.spyOn(MockRTCPeerConnection.prototype, 'close');
+
+    const { result } = renderHook(() =>
+      usePeerConnection({
+        socket: mockSocket,
+        roomId: 'room-100',
+        peerId: 'peer-200',
+        isPolite: true,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const initialManager = result.current.manager;
+    expect(initialManager).not.toBeNull();
+
+    await act(async () => {
+      result.current.resetConnection();
+      await Promise.resolve();
+    });
+
+    expect(closeSpy).toHaveBeenCalled();
+    expect(result.current.manager).not.toBeNull();
+    expect(result.current.manager).not.toBe(initialManager);
+    expect(result.current.connectionState).toBe('new');
+  });
 });
