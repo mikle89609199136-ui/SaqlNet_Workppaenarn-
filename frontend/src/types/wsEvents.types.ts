@@ -184,6 +184,7 @@ export interface ICallPeerLeftEvent {
   type: string;
   roomId: string;
   peer: { userId: string };
+  reason?: 'left' | 'disconnected';
 }
 
 export interface ICallIncomingEvent {

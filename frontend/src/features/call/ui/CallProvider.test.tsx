@@ -76,7 +76,7 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
   });
 
-  it('переводит звонок в reconnecting при call_peer_left из текущей комнаты для active', () => {
+  it('завершает звонок с peer_ended при call_peer_left с reason: left для active', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -95,6 +95,59 @@ describe('CallProvider', () => {
       type: 'call_peer_left',
       roomId: 'current-room',
       peer: { userId: 'partner' },
+      reason: 'left',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('завершает звонок с peer_ended при call_peer_left с reason: left для reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'left',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('переводит звонок в reconnecting при call_peer_left с reason: disconnected для active', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'disconnected',
     });
 
     expect(useCallStore.getState().fsm.state).toBe('reconnecting');
@@ -119,6 +172,7 @@ describe('CallProvider', () => {
       type: 'call_peer_left',
       roomId: 'current-room',
       peer: { userId: 'partner' },
+      reason: 'disconnected',
     });
 
     expect(useCallStore.getState().fsm.state).toBe('reconnecting');
@@ -143,13 +197,14 @@ describe('CallProvider', () => {
       type: 'call_peer_left',
       roomId: 'current-room',
       peer: { userId: 'partner' },
+      reason: 'disconnected',
     });
 
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
   });
 
-  it('не завершает звонок при call_peer_left, если уже идет reconnecting', () => {
+  it('не завершает звонок при call_peer_left с reason: disconnected, если уже идет reconnecting', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -168,6 +223,7 @@ describe('CallProvider', () => {
       type: 'call_peer_left',
       roomId: 'current-room',
       peer: { userId: 'partner' },
+      reason: 'disconnected',
     });
 
     expect(useCallStore.getState().fsm.state).toBe('reconnecting');

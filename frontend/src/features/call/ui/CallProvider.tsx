@@ -71,7 +71,9 @@ export function CallProvider({ children }: PropsWithChildren) {
     const unsubPeerLeft = eventBus.on(WS_EVENTS.CALL.PEER_LEFT, (payload: ICallPeerLeftEvent) => {
       const { fsm } = useCallStore.getState();
       if (fsm.roomId && payload.roomId === fsm.roomId) {
-        if (fsm.state === 'active' || fsm.state === 'connecting') {
+        if (payload.reason === 'left') {
+          useCallStore.getState().endCall('peer_ended');
+        } else if (fsm.state === 'active' || fsm.state === 'connecting') {
           useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
         } else if (fsm.state !== 'reconnecting') {
           useCallStore.getState().endCall('peer_ended');
