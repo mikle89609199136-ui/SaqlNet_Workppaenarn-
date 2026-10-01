@@ -18,6 +18,7 @@ interface Props {
   id: string;
   /* Списку нужно имя, иначе он объявляется просто «список». */
   labelledBy?: string;
+  className?: string;
 }
 
 interface Rect {
@@ -33,6 +34,7 @@ export const SelectMenu = ({
   onClose,
   id,
   labelledBy,
+  className,
   children,
 }: PropsWithChildren<Props>) => {
   const [rect, setRect] = useState<Rect | null>(null);
@@ -90,7 +92,8 @@ export const SelectMenu = ({
       className={cn(
         'fixed z-30 m-0 max-h-61 list-none overflow-y-auto p-1.5 styled-scrollbar',
         'rounded-bubble border border-divider bg-menu shadow-[var(--shadow-menu)] min-w-min',
-        '[overscroll-behavior:contain]'
+        '[overscroll-behavior:contain]',
+        className
       )}
       style={{
         top: rect.top !== undefined ? rect.top : undefined,

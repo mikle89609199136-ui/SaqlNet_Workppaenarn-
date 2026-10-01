@@ -23,16 +23,28 @@ type FetchMock = ReturnType<typeof vi.fn<(request: Request) => Promise<Response>
 const keyOf = (request: Request | string) =>
   typeof request === 'string' ? new URL(request, ORIGIN).href : request.url;
 
+const originOf = (request: Request | string) =>
+  typeof request === 'string' ? null : request.headers.get('origin');
+
 class FakeCache {
   entries = new Map<string, Response>();
+  /** Origin запроса, которым файл положили: для Vary, как в браузере. */
+  private origins = new Map<string, string | null>();
   private readonly network: FetchMock;
   constructor(network: FetchMock) {
     this.network = network;
   }
-  async match(request: Request | string) {
-    return this.entries.get(keyOf(request))?.clone();
+  async match(request: Request | string, options?: { ignoreVary?: boolean }) {
+    const response = this.entries.get(keyOf(request));
+    // Как в браузере: `Vary: Origin` и другой Origin у запроса — промах.
+    const varies = /origin/i.test(response?.headers.get('vary') ?? '');
+    if (response && varies && !options?.ignoreVary) {
+      if (this.origins.get(keyOf(request)) !== originOf(request)) return undefined;
+    }
+    return response?.clone();
   }
   async put(request: Request | string, response: Response) {
+    this.origins.set(keyOf(request), originOf(request));
     this.entries.set(keyOf(request), response);
   }
   // Как в браузере: скачать и сохранить; сбой — отказ.
@@ -52,8 +64,14 @@ class FakeCache {
   }
 }
 
+interface DisplayedNotification {
+  tag?: string;
+  close: ReturnType<typeof vi.fn>;
+}
+
 function loadWorker() {
   const listeners: Record<string, Listener> = {};
+  const displayed: DisplayedNotification[] = [];
   const fetchMock: FetchMock = vi.fn<(request: Request) => Promise<Response>>();
   const stores = new Map<string, FakeCache>();
   const caches = {
@@ -75,7 +93,25 @@ function loadWorker() {
       matchAll: vi.fn(async (): Promise<FakeWindow[]> => []),
       openWindow: vi.fn(async () => null),
     },
-    registration: { showNotification: vi.fn(async () => undefined) },
+    registration: {
+      // Показанные уведомления живут, пока их не закроют, — как в Центре
+      // уведомлений.
+      showNotification: vi.fn(async (_title: string, options?: { tag?: string }) => {
+        const notification: DisplayedNotification = { tag: options?.tag, close: vi.fn() };
+        notification.close.mockImplementation(() => {
+          displayed.splice(displayed.indexOf(notification), 1);
+        });
+        displayed.push(notification);
+      }),
+      getNotifications: vi.fn(async (filter?: { tag?: string }) =>
+        displayed.filter((notification) => !filter?.tag || notification.tag === filter.tag)
+      ),
+    } as {
+      showNotification: ReturnType<typeof vi.fn>;
+      getNotifications?: ReturnType<typeof vi.fn>;
+      /** Уже работающий worker — значит, идёт обновление, а не первая установка. */
+      active?: unknown;
+    },
   };
   // Файл worker выполняется как есть; глобальные — поддельные.
   new Function('self', 'caches', 'fetch', 'BUILD_ID', 'PRECACHE_URLS', source)(
@@ -87,8 +123,14 @@ function loadWorker() {
   );
 
   /** Прогнать запрос через worker: ответ или null — не перехвачен. */
-  async function dispatch(url: string, init: { mode?: string; method?: string } = {}) {
-    const request = new Request(new URL(url, ORIGIN), { method: init.method ?? 'GET' });
+  async function dispatch(
+    url: string,
+    init: { mode?: string; method?: string; headers?: Record<string, string> } = {}
+  ) {
+    const request = new Request(new URL(url, ORIGIN), {
+      method: init.method ?? 'GET',
+      headers: init.headers,
+    });
     Object.defineProperty(request, 'mode', { value: init.mode ?? 'cors' });
     let responded: Promise<Response> | null = null;
     listeners.fetch({ request, respondWith: (p: Promise<Response>) => (responded = p) });
@@ -116,7 +158,11 @@ function loadWorker() {
     await waited;
     return notification;
   }
-  return { dispatch, lifecycle, stores, fetchMock, self, push, click };
+  /** Сообщение от страницы. */
+  function message(data: unknown) {
+    listeners.message({ data });
+  }
+  return { dispatch, lifecycle, stores, fetchMock, self, push, click, displayed, message };
 }
 
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html' } });
@@ -141,7 +187,7 @@ describe('service worker (#880)', () => {
     expect(worker.fetchMock).not.toHaveBeenCalled();
   });
 
-  it('установка: оболочка и её файлы — заранее; не скачался один — остальные есть', async () => {
+  it('первая установка: оболочка и её файлы — заранее, worker включается сразу; не скачался один — остальные есть', async () => {
     worker.fetchMock.mockImplementation(async (request) =>
       request.url.endsWith('main-a.css')
         ? new Response('', { status: 404 })
@@ -161,6 +207,47 @@ describe('service worker (#880)', () => {
     for (const cache of worker.stores.values()) {
       expect(cache.paths().some((path) => path.startsWith('/api/'))).toBe(false);
     }
+  });
+
+  describe('обновление (#892)', () => {
+    it('новая сборка поверх работающей ждёт «Обновить», а не включается сама', async () => {
+      worker.fetchMock.mockResolvedValue(new Response('file'));
+      worker.self.registration.active = {};
+
+      await worker.lifecycle('install');
+      expect(worker.self.skipWaiting).not.toHaveBeenCalled();
+
+      worker.message({ type: 'craneapp:update' });
+      expect(worker.self.skipWaiting).toHaveBeenCalledTimes(1);
+    });
+
+    it('чужие сообщения worker не включают', () => {
+      worker.message({ type: 'other' });
+      worker.message(null);
+      expect(worker.self.skipWaiting).not.toHaveBeenCalled();
+    });
+
+    it('/version.json не перехватывается: версия — всегда с сервера', async () => {
+      expect(await worker.dispatch('/version.json')).toBeNull();
+      expect(worker.fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it('файл, положенный при установке, находится и при Vary: Origin — иначе кусок прошлой сборки шёл бы в сеть', async () => {
+    worker.fetchMock.mockImplementation(async (request) =>
+      request.url.endsWith('/index.html')
+        ? html('shell')
+        : new Response('file-a', { headers: { vary: 'Origin' } })
+    );
+    await worker.lifecycle('install');
+    worker.fetchMock.mockClear();
+
+    // import() прошлой сборки — с Origin, а файла на сервере уже нет.
+    worker.fetchMock.mockResolvedValue(html('app page'));
+    const response = await worker.dispatch('/assets/main-a.js', { headers: { origin: ORIGIN } });
+
+    expect(await response!.text()).toBe('file-a');
+    expect(worker.fetchMock).not.toHaveBeenCalled();
   });
 
   it('навигация — сначала сеть: после деплоя сразу новая версия', async () => {
@@ -196,7 +283,7 @@ describe('service worker (#880)', () => {
   });
 
   it('отдельные страницы, документация и /mobile — как есть', async () => {
-    for (const url of ['/call.html', '/server-down.html', '/docs/', '/mobile/x']) {
+    for (const url of ['/server-down.html', '/docs/', '/mobile/x']) {
       expect(await worker.dispatch(url, { mode: 'navigate' })).toBeNull();
     }
   });
@@ -316,6 +403,49 @@ describe('service worker (#880)', () => {
       expect(missed.body).toBe('Пропущенный звонок');
       expect(missed.tag).toBe(call.tag);
       expect(missed.requireInteraction).toBe(false);
+    });
+
+    it('новое сообщение чата закрывает прежнее уведомление, а не заменяет: Safari заменяет молча', async () => {
+      const message = (chatId: string) => ({
+        v: 1,
+        kind: 'message',
+        chatId,
+        chatType: 'private',
+        actorName: 'Игорь',
+        lang: 'ru',
+      });
+      await worker.push(message('c1'));
+      await worker.push(message('c2'));
+      const [first, other] = [...worker.displayed];
+
+      await worker.push(message('c1'));
+
+      // Закрыто до показа нового — тогда новое не замена и звучит.
+      expect(first.close).toHaveBeenCalledTimes(1);
+      const lastShow = worker.self.registration.showNotification.mock.invocationCallOrder.at(-1)!;
+      expect(first.close.mock.invocationCallOrder[0]).toBeLessThan(lastShow);
+      // Уведомление другого чата не трогается; на чат по-прежнему одно.
+      expect(other.close).not.toHaveBeenCalled();
+      expect(worker.displayed.map((notification) => notification.tag)).toEqual([
+        'chat:c2',
+        'chat:c1',
+      ]);
+    });
+
+    it('пропущенный звонок сменяет входящий заменой, не закрывая его', async () => {
+      const call = { v: 1, chatId: 'c1', chatType: 'private', actorName: 'Игорь', roomId: 'r1' };
+      await worker.push({ ...call, kind: 'call', callKind: 'audio', lang: 'ru' });
+      const [incoming] = worker.displayed;
+
+      await worker.push({ ...call, kind: 'missed_call', lang: 'ru' });
+
+      expect(incoming.close).not.toHaveBeenCalled();
+    });
+
+    it('браузер без getNotifications — уведомление всё равно показывается', async () => {
+      delete worker.self.registration.getNotifications;
+      await worker.push({ v: 1, kind: 'message', chatId: 'c1', chatType: 'private', lang: 'ru' });
+      expect(shown()).toHaveLength(1);
     });
 
     it('пустой или битый push — всё равно уведомление: iOS иначе отберёт разрешение', async () => {

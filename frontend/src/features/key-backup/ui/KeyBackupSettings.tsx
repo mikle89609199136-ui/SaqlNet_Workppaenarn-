@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LinkDevicePanel, QrOfferPanel } from '@/features/qr-login';
 import { services } from '@/services/serviceContainer';
 import { isPasskeyAvailable, type TBackupSlot } from '@/shared/crypto';
 import {
@@ -25,7 +24,16 @@ type TPanel = 'password' | 'passkey' | 'device' | 'code' | null;
  * Здесь всё, что держит историю доступной на всех устройствах: облачный
  * пароль, запасной passkey и подключение нового устройства по QR.
  */
-export function KeyBackupSettings() {
+interface Props {
+  /**
+   * Панели входа по QR — чужая фича: их подставляет страница настроек
+   * (#863). onDone закрывает панель.
+   */
+  renderLinkDevice: (onDone: () => void) => ReactNode;
+  renderLoginCode: (onDone: () => void) => ReactNode;
+}
+
+export function KeyBackupSettings({ renderLinkDevice, renderLoginCode }: Props) {
   const { t } = useTranslation();
   const { status } = useBackupState();
   const [panel, setPanel] = useState<TPanel>(null);
@@ -110,11 +118,11 @@ export function KeyBackupSettings() {
           onClose={close}
           title={t('keyBackup.settings.linkDevice', 'Подключить устройство')}
         >
-          <LinkDevicePanel onDone={close} />
+          {renderLinkDevice(close)}
         </PanelCard>
       ) : panel === 'code' ? (
         <PanelCard onClose={close} title={t('keyBackup.settings.loginCode', 'Код для входа')}>
-          <QrOfferPanel onDone={close} />
+          {renderLoginCode(close)}
         </PanelCard>
       ) : (
         <>

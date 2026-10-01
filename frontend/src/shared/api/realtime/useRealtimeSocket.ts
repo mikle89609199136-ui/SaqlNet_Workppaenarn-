@@ -1,4 +1,5 @@
-import { STORAGE_KEYS, config } from '@/shared/config';
+import { config } from '@/shared/config';
+import { hasStoredSession } from '../session';
 import { eventBus } from '@/shared/lib/event-bus';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import { useEffect } from 'react';
@@ -18,7 +19,7 @@ interface IUseRealtimeSocketResult {
 function sharedRealtimeSocket(): WebSocketClient {
   if (!sharedSocket) {
     sharedSocket = new WebSocketClient(config.socketUrl, {
-      getToken: () => window.localStorage.getItem(STORAGE_KEYS.TOKEN),
+      hasSession: hasStoredSession,
       reconnectDelay: config.reconnectDelay,
       maxReconnectDelay: config.maxReconnectDelay,
     });

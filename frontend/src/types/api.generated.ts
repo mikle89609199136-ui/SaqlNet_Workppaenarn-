@@ -300,6 +300,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a bearer token for the session cookie
+         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
+         */
+        post: operations["exchangeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -1340,7 +1360,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create or get a private chat */
+        /**
+         * Create or get a private or Saved Messages chat
+         * @description Creates or returns the canonical chat with userId. When userId is the authenticated user's own ID, lazily creates or returns their one-member Saved Messages chat (type self, title «Избранное»). Concurrent calls and calls from multiple devices return the same chat.
+         */
         post: operations["createPrivateChat"];
         delete?: never;
         options?: never;
@@ -1663,7 +1686,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a chat read */
+        /**
+         * Mark a chat read
+         * @description The whole chat up to now (#599). The moved boundary is journaled — the authors see readAt and get the receipts event (ReceiptEvent, #657).
+         */
         post: operations["markChatRead"];
         delete?: never;
         options?: never;
@@ -1685,6 +1711,46 @@ export interface paths {
          * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
          */
         post: operations["deleteMessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared media, files or text messages of a chat
+         * @description Messages of one kind for the profile panel's tabs (#842), newest first, with a cursor. media — photos and videos, files — files and audio, text — text messages (links are inside the encrypted text, the client collects them). Same visibility as the thread: members only, without deleted messages and messages hidden for the caller.
+         */
+        get: operations["listSharedMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/messages/{messageId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Position of a message in the thread
+         * @description How many messages visible to the caller are newer than this one (#842): the client loads the thread pages up to it to jump there. Deleted and hidden-for-me messages are not counted; such a target is 404.
+         */
+        get: operations["getMessagePosition"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1739,8 +1805,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Mark a chat as read
-         * @description The current backend marks the entire chat as read. messageIds is accepted for client compatibility but is not processed individually.
+         * Mark messages as read
+         * @description Marks the given messages of the chat as read (#506). The chat keeps one read boundary (unread counts use it): it moves to the newest of the counted messages — incoming and not deleted — and never moves back, so newer messages stay unread. To mark the whole chat, use POST /chats/{chatId}/read. A moved boundary is journaled: the authors see readAt on their messages and get the receipts event (ReceiptEvent, #657).
          */
         post: operations["markMessagesRead"];
         delete?: never;
@@ -1991,10 +2057,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List active in-memory call rooms */
-        get: operations["listCallRooms"];
+        get?: never;
         put?: never;
-        /** Create a call room */
+        /**
+         * Create a call room
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
+         */
         post: operations["createCallRoom"];
         delete?: never;
         options?: never;
@@ -2009,7 +2077,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get an active call room */
+        /**
+         * Get an active call room
+         * @description Only members of the room's chat get the room. For anyone else, and for a room that does not exist, the answer is the same 404 room_not_found.
+         */
         get: operations["getCallRoom"];
         put?: never;
         post?: never;
@@ -2441,6 +2512,10 @@ export interface components {
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
         };
         /** @description A range in UTF-16 code units. Both boundaries must be between Unicode code points (never inside a surrogate pair), and offset + length must not exceed the content length. Inline ranges may overlap, except links cannot overlap other links. Blockquotes cover whole lines (start at 0 or after LF; end at content end or before LF), cannot overlap other blockquotes, and any inline range intersecting a blockquote must be fully contained within it. data is required for link and must be absent for every other type. */
         MessageEntity: {
@@ -2479,6 +2554,28 @@ export interface components {
             senderId?: string;
             senderName: string;
             reactions: components["schemas"]["Reaction"][];
+            /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
+            deliveredAt?: string;
+            /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
+            readAt?: string;
+        };
+        /** @description WebSocket event {"type":"receipts"} (#657), sent to the other members of a private chat when a member's boundary moves: the member's messages up to upTo inclusive are delivered or read, first at "at". Boundaries only move forward; delivered — the message went to the member's open socket or the member loaded the chat list or the thread; read implies delivered. After a reconnect the same state comes from Message.deliveredAt and readAt. */
+        ReceiptEvent: {
+            /** @enum {string} */
+            type: "receipts";
+            /** Format: uuid */
+            chatId: string;
+            /**
+             * Format: uuid
+             * @description The member whose boundary moved.
+             */
+            userId: string;
+            /** @enum {string} */
+            kind: "delivered" | "read";
+            /** @description The boundary, UTC ISO 8601 with milliseconds, rounded down. */
+            upTo: string;
+            /** @description When the boundary moved, UTC ISO 8601 with milliseconds. */
+            at: string;
         };
         /** @example john_doe */
         Username: string;
@@ -2838,8 +2935,12 @@ export interface components {
         Chat: {
             /** Format: uuid */
             id: string;
-            /** @enum {string} */
-            type: "private" | "group" | "channel";
+            /**
+             * @description self is the caller's canonical one-member Saved Messages chat. It has no peer or presence fields.
+             * @enum {string}
+             */
+            type: "private" | "group" | "channel" | "self";
+            /** @description For a self chat, always «Избранное». */
             title?: string;
             description?: string;
             /** @description For a private chat, the peer's avatar. Empty when the peer's photoVisibility hides it (contacts and nobody both hide: there are no contacts). */
@@ -2855,7 +2956,7 @@ export interface components {
             lastMessage?: components["schemas"]["LastMessagePreview"];
             /**
              * Format: uuid
-             * @description Private chats only.
+             * @description Two-member private chats only; omitted for self chats.
              */
             peerId?: string;
             /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden, see peerLastSeenApprox. Changes arrive as the presence_changed WebSocket event. */
@@ -2878,15 +2979,26 @@ export interface components {
             success: true;
             lastMessage: components["schemas"]["Message"] | null;
         };
+        SharedPage: {
+            /** @description Newest first. */
+            messages: components["schemas"]["Message"][];
+            /**
+             * Format: uuid
+             * @description Pass as before for the next page; absent — nothing older.
+             */
+            nextCursor?: string;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Accepted for client compatibility; the current backend marks the whole chat as read. */
-            messageIds?: string[];
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            messageIds: string[];
         };
-        Success: {
-            /** @enum {boolean} */
-            success: true;
+        ReadMark: {
+            /** @description Incoming, not deleted messages that were taken into account. */
+            readIds: string[];
+            /** @description The chat's read boundary after the call: the newest of the counted messages, never moved back. Empty when the chat was never read. */
+            lastReadAt: string;
         };
         MessageListResponse: {
             messages: components["schemas"]["Message"][];
@@ -2951,6 +3063,21 @@ export interface components {
             meteredConfigured: boolean;
             meteredTest: unknown;
         };
+        CallRoomCreateRequest: {
+            /**
+             * @description Ignored — calls are one-to-one, the room type is always p2p.
+             * @enum {string}
+             */
+            type?: "p2p" | "group";
+            /** Format: uuid */
+            chatId: string;
+            title?: string;
+            /**
+             * @description Defaults to video when omitted.
+             * @enum {string}
+             */
+            callKind?: "audio" | "video";
+        };
         CallParticipant: {
             /** Format: uuid */
             userId: string;
@@ -2970,33 +3097,13 @@ export interface components {
             hostId: string;
             participants?: components["schemas"]["CallParticipant"][];
         };
-        CallRoomListResponse: {
-            /** @enum {boolean} */
-            success: true;
-            rooms: components["schemas"]["CallRoom"][];
-        };
-        CallRoomCreateRequest: {
-            /**
-             * @description Defaults to group when omitted.
-             * @enum {string}
-             */
-            type?: "p2p" | "group";
-            /** Format: uuid */
-            chatId: string;
-            title?: string;
-            /**
-             * @description Defaults to video when omitted.
-             * @enum {string}
-             */
-            callKind?: "audio" | "video";
-        };
         CallRoomResponse: {
             /** @enum {boolean} */
             success: true;
             room: components["schemas"]["CallRoom"];
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
-            maxParticipants: 5;
+            maxParticipants: 2;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -3101,6 +3208,8 @@ export interface operations {
             /** @description Registered */
             201: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3124,9 +3233,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authenticated or 2FA challenge */
+            /** @description Authenticated (session cookie is set) or 2FA challenge */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3278,9 +3389,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, scanned, confirmed, or expired QR login status */
+            /** @description Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3428,9 +3541,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pending, confirmed, or expired */
+            /** @description Pending, confirmed, or expired; confirmed sets the session cookie */
             200: {
                 headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3477,7 +3592,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Logged out */
+            /** @description Logged out; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3495,7 +3610,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All sessions revoked */
+            /** @description All sessions revoked; the session cookie is cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3504,6 +3619,27 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    exchangeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session cookie set */
+            204: {
+                headers: {
+                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -5948,6 +6084,112 @@ export interface operations {
             };
         };
     };
+    listSharedMessages: {
+        parameters: {
+            query: {
+                kind: "media" | "files" | "text";
+                /** @description nextCursor of the previous page (a message id of this chat); omit for the newest. */
+                before?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedPage"];
+                };
+            };
+            /** @description validation_failed or invalid_cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Chat not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
+    getMessagePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        position: number;
+                    };
+                };
+            };
+            /** @description validation_failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description Not a member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+            /** @description chat_not_found or message_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["responses_Error"];
+                };
+            };
+        };
+    };
     listPinnedMessages: {
         parameters: {
             query?: never;
@@ -6023,13 +6265,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Chat marked as read */
+            /** @description Messages marked as read */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Success"];
+                    "application/json": components["schemas"]["ReadMark"];
                 };
             };
             400: components["responses"]["Error"];
@@ -6505,26 +6747,6 @@ export interface operations {
             };
         };
     };
-    listCallRooms: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Active call rooms */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CallRoomListResponse"];
-                };
-            };
-        };
-    };
     createCallRoom: {
         parameters: {
             query?: never;
@@ -6547,6 +6769,7 @@ export interface operations {
                     "application/json": components["schemas"]["CallRoomResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             403: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };

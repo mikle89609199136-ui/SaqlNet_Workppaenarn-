@@ -54,10 +54,10 @@ function isNavigateRequest(data: unknown): data is { type: 'craneapp:navigate'; 
  * переключатель в настройках.
  */
 export function NotificationManager() {
-  const token = useProfileStore((state) => state.token);
-  const { eventBus } = useRealtimeSocket(!!token);
+  const signedIn = useProfileStore((state) => state.isAuth);
+  const { eventBus } = useRealtimeSocket(signedIn);
   // Push (#882): подписка устройства и «на экране ли приложение» — серверу.
-  usePushNotifications(!!token);
+  usePushNotifications(signedIn);
   const pushOn = usePushStore((state) => state.status === 'on');
 
   useEffect(() => {

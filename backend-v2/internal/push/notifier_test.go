@@ -2,8 +2,13 @@ package push
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -80,7 +85,7 @@ type fakeTransport struct {
 	statuses []int // по очереди на каждую попытку; кончились — 201
 }
 
-func (f *fakeTransport) Send(_ context.Context, message []byte, sub Subscription, options SendOptions) (int, error) {
+func (f *fakeTransport) Send(_ context.Context, message []byte, sub Subscription, options SendOptions) (int, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var payload Payload
@@ -90,7 +95,7 @@ func (f *fakeTransport) Send(_ context.Context, message []byte, sub Subscription
 	if len(f.statuses) > 0 {
 		status, f.statuses = f.statuses[0], f.statuses[1:]
 	}
-	return status, nil
+	return status, "", nil
 }
 
 func target(user, sub, lang string) Target {
@@ -320,9 +325,136 @@ func TestNotifierWorkersDeliverQueuedEvents(t *testing.T) {
 // Транспорт не идёт в сеть по адресу, не прошедшему проверку.
 func TestWebPushTransportRefusesUnknownEndpoint(t *testing.T) {
 	transport := NewWebPushTransport(Config{PublicKey: "x", PrivateKey: "y"})
-	status, err := transport.Send(context.Background(), []byte("{}"),
+	status, _, err := transport.Send(context.Background(), []byte("{}"),
 		Subscription{Endpoint: "https://127.0.0.1:9/push", Keys: validKeys()}, SendOptions{TTL: 1})
 	if err != nil || status != http.StatusGone {
 		t.Fatalf("status %d, err %v; want refused as gone", status, err)
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// deviceKeys — настоящие ключи устройства: webpush-go шифрует ими push.
+func deviceKeys(t *testing.T) Keys {
+	t.Helper()
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := make([]byte, 16)
+	_, _ = rand.Read(auth)
+	return Keys{
+		P256dh: base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()),
+		Auth:   base64.RawURLEncoding.EncodeToString(auth),
+	}
+}
+
+// sendThroughTransport — один push через настоящий транспорт с подменённой
+// сетью: что ушло (заголовок подписи) и что сервис ответил.
+func sendThroughTransport(t *testing.T, subject string, status int, body string) (string, int, string) {
+	t.Helper()
+	privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := NewWebPushTransport(Config{PublicKey: publicKey, PrivateKey: privateKey, Subject: subject})
+	var authorization string
+	transport.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		authorization = r.Header.Get("Authorization")
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+	})}
+	gotStatus, reason, err := transport.Send(context.Background(), []byte(`{}`),
+		Subscription{Endpoint: "https://web.push.apple.com/QGuQ", Keys: deviceKeys(t)}, SendOptions{TTL: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authorization, gotStatus, reason
+}
+
+// jwtSubject — поле sub подписи VAPID из заголовка «vapid t=<jwt>, k=…».
+func jwtSubject(t *testing.T, authorization string) string {
+	t.Helper()
+	token := strings.TrimPrefix(strings.SplitN(authorization, ",", 2)[0], "vapid t=")
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("authorization = %q", authorization)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		t.Fatal(err)
+	}
+	return claims.Sub
+}
+
+// Apple отклоняет подпись с «mailto:mailto:…» (403 BadJwtToken): контакт
+// должен уходить ровно одним «mailto:», как бы его ни записали.
+func TestVapidSubjectHasSingleMailto(t *testing.T) {
+	cases := map[string]string{
+		"mailto:admin@example.com":    "mailto:admin@example.com",
+		"admin@example.com":           "mailto:admin@example.com",
+		" MAILTO: admin@example.com ": "mailto:admin@example.com",
+		"https://craneapp.example":    "https://craneapp.example",
+	}
+	for subject, want := range cases {
+		authorization, _, _ := sendThroughTransport(t, subject, http.StatusCreated, "")
+		if got := jwtSubject(t, authorization); got != want {
+			t.Errorf("VAPID_SUBJECT %q → sub %q, want %q", subject, got, want)
+		}
+	}
+}
+
+// Отказ push-сервиса — с причиной: по одному коду 403 не понять, подпись
+// это или устройство.
+func TestRejectReasonFromPushService(t *testing.T) {
+	_, status, reason := sendThroughTransport(t, "admin@example.com", http.StatusForbidden, `{"reason":"BadJwtToken"}`)
+	if status != http.StatusForbidden || reason != "BadJwtToken" {
+		t.Fatalf("apple: status %d, reason %q", status, reason)
+	}
+	_, _, reason = sendThroughTransport(t, "admin@example.com", http.StatusBadRequest, "  invalid\nJWT  provided ")
+	if reason != "invalid JWT provided" {
+		t.Fatalf("text: reason %q", reason)
+	}
+	_, _, reason = sendThroughTransport(t, "admin@example.com", http.StatusCreated, `{"reason":"ignored"}`)
+	if reason != "" {
+		t.Fatalf("success: reason %q, want empty", reason)
+	}
+}
+
+// В лог отказа — причина, push-сервис и вид события; адреса подписки нет.
+func TestRejectedPushIsLoggedWithReasonAndService(t *testing.T) {
+	var logs strings.Builder
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+
+	transport := &reasonTransport{status: http.StatusForbidden, reason: "BadJwtToken"}
+	n := newTestNotifier(newDirectory(), nil, transport)
+	deliverNow(n, Event{Kind: KindMessage, ChatID: "private", ActorID: "masha"})
+
+	line := logs.String()
+	for _, want := range []string{"push rejected", "status=403", "reason=BadJwtToken", "service=fcm.googleapis.com", "kind=message"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log %q has no %q", line, want)
+		}
+	}
+	if strings.Contains(line, "igor-phone") {
+		t.Errorf("log leaks the subscription endpoint: %q", line)
+	}
+}
+
+type reasonTransport struct {
+	status int
+	reason string
+}
+
+func (r *reasonTransport) Send(context.Context, []byte, Subscription, SendOptions) (int, string, error) {
+	return r.status, r.reason, nil
 }

@@ -485,6 +485,12 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
+	// Неверный chatId — ошибка запроса, а не сервера: иначе он доходил до
+	// базы и возвращался 500.
+	if validate.Var(input.ChatID, "required,uuid") != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid chatId")
+		return
+	}
 	current := authctx.MustUser(r)
 	if input.CallKind == "" {
 		input.CallKind = "video"
@@ -492,6 +498,18 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	roomID, err := h.service.CreateCallRoom(r.Context(), current.ID, input.ChatID, input.Type, input.CallKind, input.Title)
 	if errors.Is(err, ErrForbidden) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+		return
+	}
+	if errors.Is(err, ErrInvalidChatType) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
+		return
+	}
+	if errors.Is(err, ErrBlockedByUser) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
+		return
+	}
+	if errors.Is(err, ErrGroupCallsUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "group_calls_unavailable", "calls are one-to-one only")
 		return
 	}
 	if err != nil {
@@ -502,7 +520,7 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"room": map[string]string{
 			"id":       roomID,
-			"type":     input.Type,
+			"type":     "p2p",
 			"chatId":   input.ChatID,
 			"title":    input.Title,
 			"callKind": input.CallKind,
@@ -592,7 +610,14 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID := r.PathValue("id")
 	room := h.service.CallRooms().GetRoomPublic(roomID)
+	// Комната — только участнику её чата (#848). Чужому — тот же 404, что
+	// и на несуществующую: не раскрываем, что комната есть.
 	if room == nil {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
+		return
+	}
+	current := authctx.MustUser(r)
+	if member, err := h.service.IsMember(r.Context(), current.ID, room.ChatID); err != nil || !member {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "room_not_found", "Room not found")
 		return
 	}
@@ -601,18 +626,6 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		"room":            room,
 		"iceServers":      getIceServers(),
 		"maxParticipants": maxCallParticipants,
-	})
-}
-
-func (h *Handler) ListRooms(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r)
-		return
-	}
-	rooms := h.service.CallRooms().ListRoomsPublic()
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"rooms":   rooms,
 	})
 }
 

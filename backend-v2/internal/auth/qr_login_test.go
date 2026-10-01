@@ -137,6 +137,8 @@ func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {
 	confirmed := decodeJSON(t, status)
 	require.Equal(t, "confirmed", confirmed["status"])
 	require.Equal(t, "token", confirmed["authToken"])
+	// Новое устройство получает сессию в cookie (#705).
+	require.Equal(t, "token", sessionCookieValue(t, status))
 	payload, err := json.Marshal(confirmed["payload"])
 	require.NoError(t, err)
 	require.JSONEq(t, qrPayload, string(payload))

@@ -12,14 +12,18 @@ const JITTER = 0.2;
 
 /** Что можно переопределить при создании клиента. */
 export interface IWebSocketClientOptions {
-  getToken?: () => string | null;
+  /**
+   * Вошёл ли человек. Сама сессия — в HttpOnly-cookie (#705): браузер
+   * отправит её при подключении сам, в адресе токена нет.
+   */
+  hasSession?: () => boolean;
   reconnectDelay?: number;
   maxReconnectDelay?: number;
 }
 
 export class WebSocketClient {
   private url: string;
-  private getToken: () => string | null;
+  private hasSession: () => boolean;
   private reconnectDelay: number;
   private maxReconnectDelay: number;
   private socket: WebSocket | null;
@@ -32,7 +36,7 @@ export class WebSocketClient {
 
   constructor(url: string, options: IWebSocketClientOptions = {}) {
     this.url = url;
-    this.getToken = options.getToken ?? (() => null);
+    this.hasSession = options.hasSession ?? (() => false);
     this.reconnectDelay = options.reconnectDelay ?? 1000;
     this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY_MS;
     this.socket = null;
@@ -50,8 +54,7 @@ export class WebSocketClient {
   }
 
   connect() {
-    const token = this.getToken();
-    if (!token) {
+    if (!this.hasSession()) {
       return null;
     }
 
@@ -70,7 +73,7 @@ export class WebSocketClient {
     // если клиент успел переключиться на другое. Иначе события уходящего
     // соединения распоряжаются текущим: закрытие старого обнуляло ссылку
     // на живое новое, и закрыть его после этого было уже некому.
-    const socket = new WebSocket(this.buildUrl(token));
+    const socket = new WebSocket(this.url);
     this.socket = socket;
 
     socket.addEventListener('open', () => {
@@ -136,14 +139,6 @@ export class WebSocketClient {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
-  buildUrl(token = this.getToken()) {
-    if (!token) return this.url;
-
-    const url = new URL(this.url, window.location.href);
-    url.searchParams.set('token', token);
-    return url.toString();
-  }
-
   handleOpen() {
     this.reconnectAttempts = 0;
     eventBus.emit('socket:connected', undefined);
@@ -207,7 +202,7 @@ export class WebSocketClient {
    */
   scheduleReconnect() {
     if (!this.shouldReconnect) return;
-    if (!this.getToken()) return;
+    if (!this.hasSession()) return;
     // Попытка уже назначена. Второй таймер означал бы два соединения.
     if (this.reconnectTimer !== null) return;
 
@@ -243,7 +238,7 @@ export class WebSocketClient {
    * человек видит, что сеть вернулась, а приложение — ещё нет.
    */
   reconnectNow() {
-    if (!this.shouldReconnect || this.isConnected || !this.getToken()) return;
+    if (!this.shouldReconnect || this.isConnected || !this.hasSession()) return;
 
     // Соединение могло зависнуть в попытке подключиться ещё тогда, когда
     // сети не было: мёртвым браузер признает его нескоро. Начинаем начисто.

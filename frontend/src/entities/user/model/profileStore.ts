@@ -3,14 +3,16 @@ import { DEFAULT_PROFILE_SETTINGS } from './defaultProfileSettings';
 import type { ISettingsDto, IUserDto } from './types';
 import { create } from 'zustand';
 
+/*
+ * Токена здесь нет (#705): сессия — в HttpOnly-cookie, её ставит сервер при
+ * входе и отправляет браузер. «Вошёл» — есть сохранённый профиль (isAuth).
+ */
 interface InitialState {
-  token: string | null;
   isAuth: boolean;
   isLoading: boolean;
   user: IUserDto | null;
   settings: ISettingsDto;
   setUser: (user: IUserDto) => void;
-  setToken: (token: string) => void;
   setSettings: (settings: ISettingsDto) => void;
   updateUser: (data: Partial<Omit<IUserDto, 'id'>>) => void;
   clearProfile: () => void;
@@ -37,7 +39,6 @@ function readStoredSettings(): ISettingsDto {
 const storedUser = readStoredUser();
 
 export const useProfileStore = create<InitialState>((set, get) => ({
-  token: localStorage.getItem(STORAGE_KEYS.TOKEN) || '',
   user: storedUser,
   settings: readStoredSettings(),
   isAuth: !!storedUser,
@@ -45,10 +46,6 @@ export const useProfileStore = create<InitialState>((set, get) => ({
   setUser: (user) => {
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
     set({ user, isAuth: !!user });
-  },
-  setToken: (token) => {
-    localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    set({ token });
   },
   setSettings: (settings) => {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -62,12 +59,12 @@ export const useProfileStore = create<InitialState>((set, get) => ({
     set({ user: { ...user, ...data } });
   },
   clearProfile: () => {
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    // Токен прежней версии (до #705) — если обмен на cookie не успел.
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
     set({
       user: null,
       isAuth: false,
-      token: null,
     });
   },
 }));

@@ -90,6 +90,10 @@ interface ISelectionInfo {
 
 const NOTHING: ISelectionInfo = { hasText: false, formats: new Set(), linkUrl: null, quote: false };
 
+interface Props {
+  onPasteFiles?: (files: File[]) => boolean;
+}
+
 /**
  * Своё контекстное меню поля ввода, как в Telegram (#656).
  *
@@ -101,7 +105,7 @@ const NOTHING: ISelectionInfo = { hasText: false, formats: new Set(), linkUrl: n
  * Выделение запоминается при открытии: фокус уходит в меню и в окно, а
  * действовать надо над тем, что было выделено.
  */
-export function ComposerContextMenu() {
+export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
   const { t } = useTranslation();
   const [editor] = useLexicalComposerContext();
   const [menu, setMenu] = useState<IMenuState | null>(null);
@@ -221,7 +225,9 @@ export function ComposerContextMenu() {
       $setBlocksType(selection, () => (info.quote ? $createParagraphNode() : $createQuoteNode()));
     });
 
-  const canPaste = typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText);
+  const canPaste =
+    typeof navigator !== 'undefined' &&
+    Boolean(navigator.clipboard?.readText || (onPasteFiles && navigator.clipboard?.read));
 
   return (
     <>
@@ -318,14 +324,54 @@ export function ComposerContextMenu() {
             <ContextMenu.Item
               icon={<Icon name="paste" />}
               disabled={!canPaste}
-              onClick={() => {
+              onClick={async () => {
                 close();
-                void navigator.clipboard.readText().then((text) =>
-                  run(() => {
-                    const selection = $getSelection();
-                    if ($isRangeSelection(selection)) selection.insertRawText(text);
-                  })
-                );
+                if (onPasteFiles && typeof navigator.clipboard?.read === 'function') {
+                  try {
+                    const items = await navigator.clipboard.read();
+                    let hasText = false;
+                    for (const item of items) {
+                      if (item.types.includes('text/plain')) {
+                        const textBlob = await item.getType('text/plain');
+                        const text = await textBlob.text();
+                        if (text.trim().length > 0) {
+                          hasText = true;
+                          break;
+                        }
+                      }
+                    }
+
+                    if (!hasText) {
+                      const imageFiles: File[] = [];
+                      for (const item of items) {
+                        const imageType = item.types.find((type) => type.startsWith('image/'));
+                        if (imageType) {
+                          const blob = await item.getType(imageType);
+                          imageFiles.push(new File([blob], 'image.png', { type: blob.type }));
+                        }
+                      }
+                      if (imageFiles.length > 0 && onPasteFiles(imageFiles)) {
+                        return;
+                      }
+                    }
+                  } catch {
+                    // буфер без картинок, нет прав или ошибка чтения — фоллбэк к тексту
+                  }
+                }
+
+                if (typeof navigator.clipboard?.readText === 'function') {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                      run(() => {
+                        const selection = $getSelection();
+                        if ($isRangeSelection(selection)) selection.insertRawText(text);
+                      });
+                    }
+                  } catch {
+                    // ошибка чтения текста
+                  }
+                }
               }}
               shortcut="Ctrl+V"
             >

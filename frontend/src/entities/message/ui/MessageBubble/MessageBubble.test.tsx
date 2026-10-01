@@ -553,8 +553,42 @@ describe('закреплённое сообщение (#170)', () => {
       expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
     });
 
+    it('доставлено — две приглушённые галочки, прочитано — две яркие (#657)', () => {
+      const at = '2026-09-29T12:00:00.000Z';
+      const { unmount } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Доставлено' })).toHaveAttribute(
+        'data-delivery',
+        'delivered'
+      );
+      unmount();
+
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at, readAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Прочитано' })).toHaveAttribute(
+        'data-delivery',
+        'read'
+      );
+    });
+
     it('«Прочитано» — только в личном чате и только когда известно', () => {
-      const read = makeMessage({ senderId: 'me', content: 'моё', status: 'read' });
+      const read = makeMessage({
+        senderId: 'me',
+        content: 'моё',
+        readAt: '2026-09-29T12:00:00.000Z',
+      });
 
       const { unmount } = renderBubble(
         <MessageBubble {...base} currentUserId="me" message={read} showDeliveryStatus />
