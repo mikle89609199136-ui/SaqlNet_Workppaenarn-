@@ -698,13 +698,6 @@ func allowedWSOrigin(origin string) bool {
 	return false
 }
 
-func strOrDefault(v interface{}, def string) string {
-	if s, ok := v.(string); ok && s != "" {
-		return s
-	}
-	return def
-}
-
 // isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —
 // считаем, что нет: звонок от этого не ломается, а запись о сбое остаётся.
 func (ws *WSServer) isBlockedBy(owner, userID string) bool {
