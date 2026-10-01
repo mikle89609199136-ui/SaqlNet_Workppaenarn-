@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasDraggedFiles } from '../utils/fileDrop';
 
 interface Params {
   enabled: boolean;
   onDrop: (files: File[]) => void;
 }
-
-const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false;
 
 export function useFileDrop(element: HTMLElement | null, { enabled, onDrop }: Params): boolean {
   const [isDragging, setIsDragging] = useState(false);
@@ -25,7 +24,7 @@ export function useFileDrop(element: HTMLElement | null, { enabled, onDrop }: Pa
     };
 
     const intercept = (event: DragEvent) => {
-      if (!hasFiles(event)) return false;
+      if (!hasDraggedFiles(event)) return false;
       event.preventDefault();
       event.stopPropagation();
       return true;
