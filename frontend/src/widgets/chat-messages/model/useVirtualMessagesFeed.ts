@@ -1,5 +1,5 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
-import { formatDateDivider, isDifferentDay, usePageVisible } from '@/shared/lib';
+import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
 import { estimateMessageItemSize } from '@/entities/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
@@ -319,10 +319,10 @@ export function useVirtualMessagesFeed({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  const isPageVisible = usePageVisible();
+  const isPageActive = usePageActive();
   const lastSeenIndex = virtualizer.range?.endIndex ?? -1;
   const seenReadMark = readMark?.chatId === chatId ? readMark?.lastReadAt : undefined;
-  const canReportSeen = isPageVisible && (!trackUnread || Boolean(snapshot?.settled));
+  const canReportSeen = isPageActive && (!trackUnread || Boolean(snapshot?.settled));
   useEffect(() => {
     if (!onMessagesSeen || !canReportSeen || lastSeenIndex < 0) return;
     const seen = selectReadUpTo(feedItems, lastSeenIndex, seenReadMark, currentUserId);

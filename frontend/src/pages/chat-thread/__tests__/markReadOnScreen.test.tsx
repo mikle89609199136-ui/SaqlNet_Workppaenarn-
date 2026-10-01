@@ -5,7 +5,7 @@ import { chatKeys } from '@/entities/chat';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { makeChat, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { createTestQueryClient, renderChatThread } from '@/test/harness/renderChatThread';
-import { mockThreadLayout, setPageVisible } from '@/test/harness/threadLayout';
+import { mockThreadLayout, setPageActive } from '@/test/harness/threadLayout';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import type { IChatDto, IMessageDto } from '@/types';
@@ -60,12 +60,12 @@ describe('отметка прочтения по мере показа на эк
   beforeEach(() => {
     resetFixtures();
     readRequests = [];
-    setPageVisible(true);
+    setPageActive();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    setPageVisible(true);
+    setPageActive();
   });
 
   it('открыл чат с 30 непрочитанными — прочитаны только показанные, счётчик уменьшился на них', async () => {
@@ -121,7 +121,7 @@ describe('отметка прочтения по мере показа на эк
     open(chat, messages);
     await screen.findByText('[3]');
 
-    setPageVisible(false);
+    setPageActive({ visible: false });
     const incoming = makeMessage({
       chatId: chat.id,
       senderId: PEER,
@@ -136,7 +136,34 @@ describe('отметка прочтения по мере показа на эк
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(readRequests).toEqual([]);
 
-    act(() => setPageVisible(true));
+    act(() => setPageActive());
+
+    await waitFor(() => expect(readRequests).toEqual([[incoming.id]]));
+  });
+
+  it('окно без фокуса — новое входящее не отмечается, пока в окно не вернулись', async () => {
+    mockThreadLayout({ viewport: 20_000 });
+    const chat = makeChat({ type: 'private', lastReadAt: at(3), unreadCount: 0 } as never);
+    const messages = history(chat, 3);
+    open(chat, messages);
+    await screen.findByText('[3]');
+
+    setPageActive({ focused: false });
+    const incoming = makeMessage({
+      chatId: chat.id,
+      senderId: PEER,
+      content: 'пришло без фокуса',
+      createdAt: at(4),
+    } as never);
+    answerRead([...messages, incoming]);
+    await act(async () => {
+      fakeSocket.emit('new_message', { chatId: chat.id, message: incoming });
+    });
+    await screen.findByText('пришло без фокуса');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(readRequests).toEqual([]);
+
+    act(() => setPageActive());
 
     await waitFor(() => expect(readRequests).toEqual([[incoming.id]]));
   });
