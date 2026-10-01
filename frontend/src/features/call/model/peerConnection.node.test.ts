@@ -38,9 +38,11 @@ class MockRTCPeerConnection {
     this.iceServers = config?.iceServers ?? [];
   }
 
-  createOffer = vi.fn(async () => {
+  createOffer = vi.fn(async (_options?: RTCOfferOptions) => {
     return { type: 'offer' as const, sdp: 'fake-local-offer-sdp' };
   });
+
+  restartIce = vi.fn(() => {});
 
   createAnswer = vi.fn(async () => {
     return { type: 'answer' as const, sdp: 'fake-local-answer-sdp' };
@@ -706,6 +708,52 @@ describe('PeerConnectionManager', () => {
       // Повторный initialize после close возвращает null
       const reinit = await manager.initialize();
       expect(reinit).toBeNull();
+    });
+
+    it('restartIce() вызывает pc.restartIce() и отправляет новый offer c iceRestart: true', async () => {
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      sentMessages = [];
+
+      await manager.restartIce();
+
+      expect(pc.restartIce).toHaveBeenCalledTimes(1);
+      expect(pc.createOffer).toHaveBeenCalledWith({ iceRestart: true });
+      expect(pc.setLocalDescription).toHaveBeenCalled();
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toEqual({
+        type: 'call_offer',
+        to: 'user-callee',
+        roomId: 'room-1',
+        payload: {
+          type: 'offer',
+          sdp: 'fake-local-offer-sdp',
+        },
+      });
+    });
+
+    it('restartIce() не выполняет действий, если менеджер закрыт', async () => {
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      manager.close();
+      sentMessages = [];
+
+      await manager.restartIce();
+
+      expect(pc.createOffer).not.toHaveBeenCalled();
+      expect(sentMessages).toHaveLength(0);
     });
   });
 });
