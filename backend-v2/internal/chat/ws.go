@@ -81,7 +81,7 @@ type WSServer struct {
 	register       chan *Client
 	unreg          chan *Client
 	callRooms      *CallRoomManager
-	pendingInvites map[string]json.RawMessage
+	pendingInvites map[string]*pendingInvite // по получателю (#850)
 	inviteMu       sync.Mutex
 	presence       presence.Store
 	activity       presenceActivity // время активности и собеседники; nil — не ведётся
@@ -110,7 +110,7 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 		register:       make(chan *Client),
 		unreg:          make(chan *Client),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		presence:       store,
 		pingInterval:   wsPingInterval,
 		stop:           make(chan struct{}),
@@ -248,22 +248,8 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.register <- client
 
-	// Deliver pending call invite if any
-	ws.inviteMu.Lock()
-	if invite, ok := ws.pendingInvites[client.UserID]; ok {
-		// Check if the room is still alive
-		var roomID string
-		var tmp map[string]interface{}
-		if json.Unmarshal(invite, &tmp) == nil {
-			roomID, _ = tmp["roomId"].(string)
-		}
-		if roomID != "" && ws.callRooms.GetRoom(roomID) != nil {
-			client.Send <- invite
-		} else {
-			delete(ws.pendingInvites, client.UserID)
-		}
-	}
-	ws.inviteMu.Unlock()
+	// Входящий, пришедший, пока человек был не в сети (#850).
+	ws.deliverPendingInvite(client)
 
 	go ws.writePump(client)
 	go ws.readPump(client)
@@ -486,110 +472,38 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 	if roomID == "" {
 		return
 	}
-	ws.doLeaveRoom(client, roomID)
+	ws.doLeaveRoom(client, roomID, peerLeftByLeave)
 }
 
-func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
+// Почему собеседник вышел из звонка (#775): сам («Завершить») — звонок
+// закончен; оборвался сокет (перезагрузка, пропала сеть) — клиент ждёт
+// его возвращения и восстанавливает звонок.
+const (
+	peerLeftByLeave      = "left"
+	peerLeftByDisconnect = "disconnected"
+)
+
+func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
 	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
 	peerLeft, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_left",
 		"roomId": roomID,
 		"peer":   map[string]string{"userId": client.UserID},
+		"reason": reason,
 	})
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
-		go ws.saveCallMessage(lr.Snapshot)
-		ws.notifyMissedCall(roomID, lr.Snapshot)
-		ws.inviteMu.Lock()
-		for uid, inv := range ws.pendingInvites {
-			var tmp map[string]interface{}
-			if json.Unmarshal(inv, &tmp) == nil {
-				if rid, _ := tmp["roomId"].(string); rid == roomID {
-					cancelled, _ := json.Marshal(map[string]interface{}{"type": "call_cancelled", "roomId": roomID})
-					ws.sendToUser(uid, cancelled)
-					delete(ws.pendingInvites, uid)
-				}
-			}
-		}
-		ws.inviteMu.Unlock()
+		ws.callRoomClosed(roomID, lr.Snapshot)
 	}
 	ws.setCallRoom(client, "")
 }
 
-func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{}) {
-	to, _ := msg["to"].(string)
-	roomID, _ := msg["roomId"].(string)
-	if to == "" || roomID == "" {
-		return
-	}
-	// Заблокировавший не получает звонков от заблокированного (#760).
-	if ws.isBlockedBy(to, client.UserID) {
-		refused, _ := json.Marshal(map[string]interface{}{
-			"type":     "call_invite_response",
-			"roomId":   roomID,
-			"from":     to,
-			"accepted": false,
-			"reason":   "blocked_by_user",
-		})
-		ws.sendToUser(client.UserID, refused)
-		return
-	}
-	if ws.callRooms.GetUserRoom(to) != nil {
-		busy, _ := json.Marshal(map[string]interface{}{
-			"type":     "call_invite_response",
-			"roomId":   roomID,
-			"from":     to,
-			"accepted": false,
-			"reason":   "busy",
-		})
-		ws.sendToUser(client.UserID, busy)
-		return
-	}
-	invite, _ := json.Marshal(map[string]interface{}{
-		"type":       "call_incoming",
-		"roomId":     roomID,
-		"kind":       strOrDefault(msg["kind"], "video"),
-		"callType":   strOrDefault(msg["callType"], "p2p"),
-		"from":       client.UserID,
-		"fromName":   msg["fromName"],
-		"fromAvatar": msg["fromAvatar"],
-		"title":      msg["title"],
-	})
-	ws.sendToUser(to, invite)
-	// Push — на устройства, где приложение не на экране (#717).
-	ws.notifyCallInvite(roomID, client.UserID, to, strOrDefault(msg["kind"], "video"))
-	// Store for offline delivery
-	ws.inviteMu.Lock()
-	ws.pendingInvites[to] = invite
-	ws.inviteMu.Unlock()
-}
-
-func (ws *WSServer) handleCallInviteResponse(client *Client, msg map[string]interface{}) {
-	to, _ := msg["to"].(string)
-	if to == "" {
-		return
-	}
-	roomID, _ := msg["roomId"].(string)
-	accepted, _ := msg["accepted"].(bool)
-	reason, _ := msg["reason"].(string)
-	out, _ := json.Marshal(map[string]interface{}{
-		"type":     "call_invite_response",
-		"roomId":   roomID,
-		"from":     client.UserID,
-		"accepted": accepted,
-		"reason":   reason,
-	})
-	ws.sendToUser(to, out)
-	ws.inviteMu.Lock()
-	delete(ws.pendingInvites, client.UserID)
-	ws.inviteMu.Unlock()
-}
-
 func (ws *WSServer) handleCallDisconnect(client *Client) {
-	if client.CallRoomID == "" {
-		return
+	if client.CallRoomID != "" {
+		ws.doLeaveRoom(client, client.CallRoomID, peerLeftByDisconnect)
 	}
-	ws.doLeaveRoom(client, client.CallRoomID)
+	// Звал и не дождался ответа — приглашение больше не звонит (#850).
+	ws.cancelInvitesFrom(client)
 }
 
 func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {

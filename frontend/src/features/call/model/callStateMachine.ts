@@ -19,6 +19,7 @@ export interface ICallFsmContext {
   endReason: TCallEndReason | null;
   callStartedAt: number | null;
   outgoingPhase?: TOutgoingCallPhase | null;
+  isCaller?: boolean;
 }
 
 export type TCallFsmAction =
@@ -72,6 +73,7 @@ export const initialCallContext: ICallFsmContext = {
   endReason: null,
   callStartedAt: null,
   outgoingPhase: null,
+  isCaller: false,
 };
 
 export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): ICallFsmContext {
@@ -91,6 +93,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         callKind: action.payload.kind,
         title: action.payload.title ?? null,
         outgoingPhase: action.payload.phase ?? (action.payload.roomId ? 'ringing' : 'calling'),
+        isCaller: true,
       };
     }
 
@@ -116,6 +119,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         peerAvatar: action.payload.fromAvatar ?? null,
         callKind: action.payload.kind,
         title: action.payload.title ?? null,
+        isCaller: false,
       };
     }
 

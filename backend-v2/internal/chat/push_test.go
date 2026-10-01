@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"encoding/json"
 	"net/http"
 	"sync"
 	"testing"
@@ -86,25 +85,37 @@ func TestClientStateMarksVisibleDevices(t *testing.T) {
 }
 
 func TestCallInviteNotifiesPushOnlyForRoomWithChat(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
 	ws := &WSServer{
+		db:             db,
 		clients:        make(map[string]map[*Client]bool),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: map[string]json.RawMessage{},
+		pendingInvites: map[string]*pendingInvite{},
 	}
 	pushed := &recordingPush{}
 	ws.SetPush(pushed)
 	caller := &Client{UserID: "igor", Send: make(chan []byte, 4)}
 
-	// Комнаты нет — push нет (приглашение уходит как раньше).
+	// Комнаты нет — приглашение не уходит, и push нет (#850).
 	ws.handleCallInvite(caller, map[string]interface{}{"to": "masha", "roomId": "no-room"})
 	require.Empty(t, pushed.events)
 
 	ws.callRooms.CreateRoom("igor", "room-1", "p2p", "audio", "chat-1", "")
-	ws.handleCallInvite(caller, map[string]interface{}{"to": "masha", "roomId": "room-1", "kind": "audio"})
+	mock.ExpectQuery(`FROM chats\.chats c`).WithArgs("chat-1", "igor", "masha").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(`users\.blocked_users`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery(`FROM auth\.users au`).WillReturnRows(sqlmock.NewRows([]string{"name", "avatar"}).AddRow("Игорь", ""))
+	ws.handleCallInvite(caller, map[string]interface{}{"to": "masha", "roomId": "room-1", "kind": "video"})
 	require.Equal(t, []push.Event{{
 		Kind: push.KindCall, ChatID: "chat-1", ActorID: "igor", CalleeID: "masha",
 		RoomID: "room-1", CallKind: "audio",
-	}}, pushed.events)
+	}}, pushed.events, "вид звонка — из комнаты, а не из сообщения")
+	ws.inviteMu.Lock()
+	ws.pendingInvites["masha"].timer.Stop()
+	ws.inviteMu.Unlock()
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestMissedCallNotifiesOnlyWhenUnanswered(t *testing.T) {

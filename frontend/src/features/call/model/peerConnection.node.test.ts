@@ -288,6 +288,103 @@ describe('PeerConnectionManager', () => {
       );
     });
 
+    /* Первое согласование начинает звонящий. Встречные предложения в начале
+       звонка кончались откатом у принимающего, и Chrome оставлял его дорожки
+       собеседника «заглушёнными»: медиа шло, а на экране «Камера выключена»
+       и выключенный микрофон. */
+    describe('первое согласование начинает звонящий', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('принимающий не шлёт своё предложение, ждёт предложение звонящего и отвечает без отката', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        expect(pc.createOffer).not.toHaveBeenCalled();
+
+        await manager.handleRemoteOffer({ type: 'offer', sdp: 'caller-offer' });
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(pc.setLocalDescription).not.toHaveBeenCalledWith({ type: 'rollback' });
+        expect(pc.createOffer).not.toHaveBeenCalled();
+        expect(mockSocket.send).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_answer' })
+        );
+        expect(mockSocket.send).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer' })
+        );
+      });
+
+      it('предложение звонящего не пришло — принимающий предлагает сам, чтобы звонок не повис', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        await vi.advanceTimersByTimeAsync(4000);
+
+        expect(pc.createOffer).toHaveBeenCalledTimes(1);
+        expect(mockSocket.send).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer', to: 'user-caller' })
+        );
+      });
+
+      it('close() до истечения ожидания — своё предложение не уходит', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        manager.close();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(pc.createOffer).not.toHaveBeenCalled();
+      });
+
+      it('встречное предложение между createOffer и setLocalDescription — не ошибка', async () => {
+        const onError = vi.fn();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-callee',
+          isPolite: false,
+          onError,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+        pc.setLocalDescription.mockImplementationOnce(async () => {
+          pc.signalingState = 'have-remote-offer';
+          throw Object.assign(new Error('Failed to set local offer'), {
+            name: 'InvalidStateError',
+          });
+        });
+
+        await pc.onnegotiationneeded?.();
+
+        expect(onError).not.toHaveBeenCalled();
+        expect(mockSocket.send).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer' })
+        );
+      });
+    });
+
     it('невежливый пир (impolite) при коллизии игнорирует входящий offer и не делает rollback', async () => {
       const manager = new PeerConnectionManager({
         socket: mockSocket,
@@ -516,6 +613,29 @@ describe('PeerConnectionManager', () => {
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Invalid SDP syntax' })
       );
+    });
+
+    it('поддерживает ответ сервера с ключом iceServers вместо servers', async () => {
+      vi.spyOn(services.callService, 'getIceServers').mockResolvedValueOnce({
+        iceServers: [{ urls: 'stun:stun.backend.com:19302' }],
+      } as unknown as { servers: [] });
+
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-backend',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      expect(pc).not.toBeNull();
+      expect(pc.iceServers).toEqual([
+        {
+          urls: 'stun:stun.backend.com:19302',
+          username: undefined,
+          credential: undefined,
+        },
+      ]);
     });
 
     it('вызывает onError, если getIceServers завершился с ошибкой сети', async () => {
