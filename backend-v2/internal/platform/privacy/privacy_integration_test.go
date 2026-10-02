@@ -313,7 +313,13 @@ func TestPhotoHiddenEverywhere(t *testing.T) {
 	dbtest.User(t, db, other, "other_user")
 	ctx := context.Background()
 	const avatar = "/api/v2/media/owner-avatar"
-	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name, avatar_url) VALUES ($1, 'Owner', $2), ($3, 'Other', '/api/v2/media/other')`, owner, avatar, other)
+	_, err := db.Exec(`
+    INSERT INTO users.profiles (user_id, first_name, avatar_url)
+    VALUES ($1, 'Owner', $2), ($3, 'Other', '/api/v2/media/other')
+    ON CONFLICT (user_id) DO UPDATE
+    SET first_name = EXCLUDED.first_name,
+        avatar_url = EXCLUDED.avatar_url
+`, owner, avatar, other)
 	require.NoError(t, err)
 
 	users := user.NewService(db)
@@ -488,7 +494,10 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 			require.NotContains(t, payload, owner, "автор в событии")
 		}
 	}
-	_, err = db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Owner')`, owner)
+	_, err = db.Exec(`
+    INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Owner')
+    ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name
+`, owner)
 	require.NoError(t, err)
 
 	requireLinked(forward())
