@@ -2,3 +2,13 @@ bearerAuth:
   type: http
   scheme: bearer
   bearerFormat: JWT
+sessionCookie:
+  type: apiKey
+  in: cookie
+  name: __Host-craneapp_session
+  description: >-
+    Browser session (#705): HttpOnly, Secure, SameSite=Lax, Path=/, host-only.
+    Set by register, login and a confirmed QR status; cleared by logout.
+    Outside production the name is craneapp_session (no Secure, works on
+    http://localhost). State-changing requests carrying it must come from the
+    site itself or an origin listed exactly in ALLOWED_ORIGINS, otherwise 403.

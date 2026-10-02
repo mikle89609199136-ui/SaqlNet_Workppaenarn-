@@ -66,6 +66,24 @@ describe('вход в аккаунт', () => {
     expect(requested).toBe(false);
   });
 
+  it('«@» в начале имени не мешает: оно уже стоит перед полем (#827)', async () => {
+    let sentUsername: unknown;
+    server.use(
+      http.post(api('/auth/login'), async ({ request }) => {
+        sentUsername = ((await request.json()) as { username: string }).username;
+        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1', username: 'tester' } });
+      })
+    );
+
+    renderAuth();
+
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), '@tester');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'right-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
+
+    await waitFor(() => expect(sentUsername).toBe('tester'));
+  });
+
   it('после успешного входа уводит в чаты', async () => {
     server.use(
       http.post(api('/auth/login'), () =>

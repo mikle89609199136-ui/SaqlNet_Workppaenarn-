@@ -2,17 +2,20 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
+import {
+  Banner,
+  ConfirmDialog,
+  ListGroup,
+  ListIntro,
+  ListNavItem,
+  ListStaticItem,
+} from '@/shared/ui';
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { disconnectRealtimeSocket } from '@/shared/api';
 import type { ISessionDto } from '@/types';
 
-interface Props {
-  onBack: () => void;
-}
-
-export function SessionsManager({ onBack }: Props) {
+export function SessionsManager() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -20,15 +23,17 @@ export function SessionsManager({ onBack }: Props) {
 
   const [asked, setAsked] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
 
   async function handleLogoutAll() {
     setLeaving(true);
+    setLogoutError(false);
     try {
-      await services.authService.logoutAll().catch(() => {});
+      await services.authService.logoutAll();
 
       // Завершение всех сеансов стирает и ключи шифрования: это тот самый
       // случай, ради которого кнопку нажимают — чужой или потерянный
-      // компьютер.
+      // компьютер. История не пропадает: она в резервной копии (#739).
       await services.cryptoService.wipeDevice().catch(() => {});
 
       disconnectRealtimeSocket();
@@ -39,6 +44,10 @@ export function SessionsManager({ onBack }: Props) {
       queryClient.clear();
 
       navigate('/login');
+    } catch {
+      // Do not wipe this device or claim success when the server did not revoke
+      // the other tokens (for example while a safe rollout gate is disabled).
+      setLogoutError(true);
     } finally {
       setLeaving(false);
       setAsked(false);
@@ -47,30 +56,34 @@ export function SessionsManager({ onBack }: Props) {
 
   const sessionList = (sessions.data ?? []) as ISessionDto[];
 
-  return (
-    <section>
-      <button
-        className="text-caption -ml-2 mb-3 flex items-center gap-1 rounded-control px-2 py-1 text-ink-2 transition-colors duration-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
-        onClick={onBack}
-        type="button"
-      >
-        <Icon className="rotate-180" name="chevronRight" size="sm" />
-        {t('back', 'Назад')}
-      </button>
+  const [current, ...others] = sessionList;
+  const sessionItem = (session: ISessionDto) => (
+    <ListStaticItem
+      hint={`${session.deviceType || 'неизвестно'} · ${formatDate(session.lastActive)}`}
+      icon={session.deviceType === 'mobile' ? 'smartphone' : 'laptop'}
+      key={session.id}
+      label={session.deviceName || 'Устройство'}
+    />
+  );
 
-      <header className="mb-4">
-        <h1 className="mb-1 text-[21px] leading-tight font-semibold text-ink">
-          {t('settings.account.sessions', 'Активные сеансы')}
-        </h1>
-        <p className="text-caption text-ink-2">
-          {t('settings.sessions.description', 'Устройства, на которых выполнен вход в аккаунт.')}
-        </p>
-      </header>
+  /* Заголовок и «назад» — в шапке раздела настроек (#828). */
+  return (
+    <>
+      <ListIntro>
+        {t('settings.sessions.description', 'Устройства, на которых выполнен вход в аккаунт.')}
+      </ListIntro>
 
       {sessions.isError && (
         <Banner tone="danger">
           Не удалось получить список устройств. Это не значит, что их нет, — попробуйте обновить
           страницу.
+        </Banner>
+      )}
+
+      {logoutError && (
+        <Banner tone="danger">
+          Не удалось завершить сеансы. Другие устройства всё ещё могут иметь доступ к аккаунту;
+          повторите попытку позже.
         </Banner>
       )}
 
@@ -82,40 +95,38 @@ export function SessionsManager({ onBack }: Props) {
         </Banner>
       )}
 
-      <div className="mt-4 divide-y divide-divider overflow-hidden rounded-bubble border border-line bg-sheet">
-        {sessions.isPending ? (
-          <div className="text-body p-5 text-center text-ink-2">Загрузка…</div>
-        ) : sessionList.length > 0 ? (
-          sessionList.map((session, index) => (
-            <div className="flex items-center gap-3 p-4" key={session.id}>
-              <Icon
-                className="shrink-0 text-ink-3"
-                name={session.deviceType === 'mobile' ? 'phone' : 'monitor'}
-                size="md"
-              />
-              <div className="min-w-0">
-                <strong className="text-body block truncate text-ink">
-                  {session.deviceName || 'Устройство'}
-                </strong>
-                <span className="text-caption text-ink-2">
-                  {session.deviceType || 'неизвестно'} · {formatDate(session.lastActive)}
-                </span>
-              </div>
-              {index === 0 && (
-                <b className="text-caption ml-auto shrink-0 font-medium text-ok">Текущий</b>
-              )}
-            </div>
-          ))
-        ) : (
-          <div className="text-body p-5 text-center text-ink-2">
-            {sessions.isError ? 'Список недоступен' : 'Список пуст'}
-          </div>
-        )}
-      </div>
+      {sessions.isPending ? (
+        <ListGroup>
+          <ListStaticItem label={t('loading', 'Загрузка...')} />
+        </ListGroup>
+      ) : (
+        current && (
+          <>
+            <ListGroup title={t('settings.sessions.current', 'Это устройство')}>
+              {sessionItem(current)}
+            </ListGroup>
+            {others.length > 0 && (
+              <ListGroup title={t('settings.sessions.others', 'Другие сеансы')}>
+                {others.map(sessionItem)}
+              </ListGroup>
+            )}
+          </>
+        )
+      )}
 
-      <Button className="mt-4" onClick={() => setAsked(true)} variant="danger">
-        {t('settings.sessions.terminate', 'Завершить все сеансы')}
-      </Button>
+      <ListGroup
+        note={t(
+          'settings.sessions.terminateNote',
+          'Выход произойдёт на всех устройствах, включая это.'
+        )}
+      >
+        <ListNavItem
+          icon="logOut"
+          label={t('settings.sessions.terminate', 'Завершить все сеансы')}
+          onClick={() => setAsked(true)}
+          tone="danger"
+        />
+      </ListGroup>
 
       <ConfirmDialog
         confirmLabel="Завершить сеансы"
@@ -126,10 +137,10 @@ export function SessionsManager({ onBack }: Props) {
         open={asked}
         title="Завершить все сеансы?"
       >
-        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Прошлая
-        переписка здесь больше не откроется — восстановить её нечем.
+        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Переписка
+        сохранена в резервной копии: после входа откройте её облачным паролем.
       </ConfirmDialog>
-    </section>
+    </>
   );
 }
 

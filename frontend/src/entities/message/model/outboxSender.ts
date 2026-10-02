@@ -62,7 +62,9 @@ export async function sendOutboxItem(
         item.file,
         item.type as TMediaMessageType,
         item.content,
-        item.replyToId ?? null
+        item.replyToId ?? null,
+        item.entities ?? [],
+        item.voice
       );
 
       /* `sent` — это «сервер принял», и ничего больше: ответ на отправку и
@@ -79,7 +81,8 @@ export async function sendOutboxItem(
         item.chatId,
         item.content,
         'text',
-        item.replyToId ?? null
+        item.replyToId ?? null,
+        item.entities ?? []
       );
 
       replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });

@@ -7,22 +7,33 @@ import { useAvatarShape, type TAvatarShape } from './avatarShape';
    единственные, что были написаны целиком. */
 const tones = ['bg-av-1', 'bg-av-2', 'bg-av-3', 'bg-av-4', 'bg-av-5', 'bg-av-6'] as const;
 
-/* Кит рисовался под списки и знал три ступени: 28 / 40 / 56. В
-   приложении нашлись ещё две, и обе не случайные.
+/* Ступени дизайн-системы (#817) и макета:
+     xs  24 — в чипе выбранного участника
+     header 36 — своя аватарка в шапке списка чатов (макет, #818)
+     sm  32 — комментарии, участники группы
+     md  40 — шапка чата
+     sample 44 — образец вида аватарки во «Внешнем виде» (#828)
+     lg  46 — строка списка: имя и превью в два ряда
+     menu 52 — своя карточка в меню настроек (#828)
+     xl  56 — крупные строки настроек
+     card 72 — карточка профиля в «Аккаунте» и форма профиля (#828)
+     2xl 96 — профиль, сведения о группе и канале, входящий звонок
 
-   48 — строка списка в два ряда: имя и превью сообщения. Сорок в ней
-   мелковато, это и был исходный размер в списке чатов. 96 — «герой»:
-   карточка профиля, входящий звонок, шапка настроек; там стояли 100,
-   112, 72 и 88, каждое своё. Обе добавлены и в кит.
-
-   Кегль от кита: 12 / 15 / 20 на 28 / 40 / 56. Точного токена на 12
-   нет, берём ближайший. */
+   Точка «в сети» — по макету, для каждой ступени своя. Размер указан
+   вместе с обводкой: в строке списка зелёный круг 12px и обводка 2px
+   снаружи, всего 16; в шапке — 12 вместе с обводкой, на пиксель наружу;
+   в профиле — 18 с обводкой 3 и отступом 4 от края. */
 const sizes = {
-  sm: { box: 'size-7 text-caption', dot: 'size-2', grid: 28 },
-  md: { box: 'size-10 text-body', dot: 'size-3', grid: 40 },
-  lg: { box: 'size-12 text-title', dot: 'size-3', grid: 48 },
-  xl: { box: 'size-14 text-section', dot: 'size-3.5', grid: 56 },
-  '2xl': { box: 'size-24 text-display', dot: 'size-5', grid: 96 },
+  xs: { box: 'size-6 text-micro', dot: 'size-2 border-2 right-0 bottom-0', grid: 24 },
+  sm: { box: 'size-8 text-caption', dot: 'size-2.5 border-2 right-0 bottom-0', grid: 32 },
+  header: { box: 'size-9 text-ui', dot: 'size-3 border-2 -right-px -bottom-px', grid: 36 },
+  md: { box: 'size-10 text-body', dot: 'size-3 border-2 -right-px -bottom-px', grid: 40 },
+  sample: { box: 'size-11 text-[18px]', dot: 'size-3 border-2 -right-px -bottom-px', grid: 44 },
+  lg: { box: 'size-11.5 text-title', dot: 'size-4 border-2 right-0 bottom-0', grid: 46 },
+  menu: { box: 'size-13 text-[20px]', dot: 'size-4 border-2 right-0 bottom-0', grid: 52 },
+  xl: { box: 'size-14 text-section', dot: 'size-4 border-2 right-0 bottom-0', grid: 56 },
+  card: { box: 'size-18 text-[28px]', dot: 'size-4.5 border-3 right-0.5 bottom-0.5', grid: 72 },
+  '2xl': { box: 'size-24 text-display', dot: 'size-4.5 border-3 right-1 bottom-1', grid: 96 },
 } as const;
 
 /* Тот же хеш, что был в Identicon: он уже разложен по чужим аватаркам,
@@ -107,10 +118,22 @@ interface Props {
      Без пропа вид берётся из настроек оформления (#375). */
   shape?: TAvatarShape;
   online?: boolean;
+  /* На чём лежит аватарка: обводка точки «в сети» — цвета этого фона.
+     Панель — по умолчанию; шапка чата лежит на фоне ленты. */
+  surface?: 'sheet' | 'chat';
   className?: string;
 }
 
-export const Avatar = ({ id, name, src, size = 'md', shape, online = false, className }: Props) => {
+export const Avatar = ({
+  id,
+  name,
+  src,
+  size = 'md',
+  shape,
+  online = false,
+  surface = 'sheet',
+  className,
+}: Props) => {
   /* Проп важнее настройки: он ставится там, где вид выбран замыслом
      экрана, а не человеком в настройках. */
   const preferredShape = useAvatarShape();
@@ -144,7 +167,11 @@ export const Avatar = ({ id, name, src, size = 'md', shape, online = false, clas
       {online && (
         <span
           aria-hidden="true"
-          className={cn('absolute right-0 bottom-0 rounded-pill border-2 border-sheet bg-ok', dot)}
+          className={cn(
+            'absolute rounded-pill bg-ok',
+            surface === 'chat' ? 'border-chat-bg' : 'border-sheet',
+            dot
+          )}
         />
       )}
     </span>

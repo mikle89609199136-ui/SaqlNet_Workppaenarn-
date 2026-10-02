@@ -8,11 +8,11 @@ import { listKeys, removeKeysWithPrefix, useMemoryKeyStore } from './keyStore';
 /**
  * Поддельный сервер ключей.
  *
- * Повторяет поведение настоящего, проверенное запросами к живому стеку:
- * запись построчно и без транзакции, понижение эпохи молча отбрасывается,
- * та же эпоха перезаписывает, список отдаёт строки только нынешних
- * участников, своя копия ключа доступна и после выхода из чата, у ротации
- * есть предел в час.
+ * Повторяет поведение настоящего: запись атомарна и принимает только
+ * текущую эпоху (доворачивание) или следующую (новый ключ); пока поднята
+ * пометка «нужна смена ключа», текущую записать нельзя (#806). Список отдаёт
+ * строки только нынешних участников вместе с эпохой и пометкой, своя копия
+ * ключа доступна и после выхода из чата, у ротации есть предел в час.
  */
 
 const CHAT = 'chat-1';
@@ -33,9 +33,31 @@ function createKeyServer() {
     rotateLimit: Number.POSITIVE_INFINITY,
     rotateCalls: 0,
     writes: 0,
+    /** Пометка «нужна смена ключа»: её поднимает изменение состава. */
+    rotationNeeded: false,
+    /** Поднять пометку прямо перед следующей записью — гонка с изменением состава. */
+    raiseFlagBeforeNextWrite: false,
   };
 
-  function save(userId: string, incoming: IServerRow[], epoch: number) {
+  const conflict = (code: string) => Object.assign(new Error(code), { status: 409, code });
+
+  function currentEpoch() {
+    return [...rows.values()].reduce((top, row) => Math.max(top, row.keyEpoch), 0);
+  }
+
+  function save(userId: string, incoming: IServerRow[], epoch: number, rotation: boolean) {
+    if (state.raiseFlagBeforeNextWrite) {
+      state.raiseFlagBeforeNextWrite = false;
+      state.rotationNeeded = true;
+    }
+
+    const current = currentEpoch();
+    const next = epoch === current + 1;
+    if (!next) {
+      if (epoch !== current || current === 0 || rotation) throw conflict('key_epoch_conflict');
+      if (state.rotationNeeded) throw conflict('key_rotation_required');
+    }
+
     for (const row of incoming) {
       // Не-участники молча пропускаются.
       if (!members.has(row.userId)) continue;
@@ -47,6 +69,7 @@ function createKeyServer() {
       rows.set(row.userId, { ...row, keyEpoch: epoch });
     }
 
+    if (next) state.rotationNeeded = false;
     state.writes += 1;
     return { ok: true };
   }
@@ -69,7 +92,11 @@ function createKeyServer() {
         if (url.startsWith('/encryption/chat-keys/')) {
           requireMember();
           return {
-            data: { keys: [...rows.values()].filter((row) => members.has(row.userId)) },
+            data: {
+              keys: [...rows.values()].filter((row) => members.has(row.userId)),
+              keyEpoch: currentEpoch(),
+              rotationNeeded: state.rotationNeeded,
+            },
           };
         }
 
@@ -95,12 +122,12 @@ function createKeyServer() {
             throw Object.assign(new Error('rate limit'), { status: 429 });
           }
 
-          return { data: save(userId, payload.encryptedKeys, payload.keyEpoch) };
+          return { data: save(userId, payload.encryptedKeys, payload.keyEpoch, true) };
         }
 
         if (url.startsWith('/encryption/chat-keys/')) {
           requireMember();
-          return { data: save(userId, payload.encryptedKeys, payload.keyEpoch) };
+          return { data: save(userId, payload.encryptedKeys, payload.keyEpoch, false) };
         }
 
         if (url === '/encryption/keys' || url === '/auth/public-key') {
@@ -196,9 +223,8 @@ describe('раздача ключа чата', () => {
   });
 
   it('should adopt the key that actually ended up on the server', async () => {
-    // Запись не транзакционна: двое могут создать ключ одновременно.
-    // Побеждает тот, чья запись легла последней, и второй обязан принять
-    // её, иначе чат распадётся на два набора ключей.
+    // Двое могут создать ключ одновременно. Сервер примет одного, и второй
+    // обязан принять его ключ, иначе чат распадётся на два набора ключей.
     const server = createKeyServer();
     const alice = await createParticipant(server, 'alice');
     const boris = await createParticipant(server, 'boris');
@@ -372,6 +398,95 @@ describe('смена состава', () => {
     const second = await alice.manager.rotate(CHAT);
 
     expect(second.chatKey?.epoch).toBe(first.chatKey?.epoch);
+  });
+});
+
+describe('смена ключа не зависит от владельца (#806)', () => {
+  it('should rotate when the first member opens the chat after someone left while everyone was offline', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    const boris = await createParticipant(server, 'boris');
+    await createParticipant(server, 'carol');
+    await alice.manager.ensure(CHAT);
+
+    // Карина вышла, в сети никого: сервер только поднял пометку.
+    server.members.delete('carol');
+    server.state.rotationNeeded = true;
+
+    // Борис — не владелец — первым открывает чат.
+    const opened = await boris.manager.ensure(CHAT);
+
+    expect(opened.chatKey?.epoch).toBe(2);
+    expect(server.state.rotationNeeded).toBe(false);
+    expect(server.rows.get('carol')?.keyEpoch).toBe(1);
+    alice.manager.forget();
+    expect(keyText((await alice.manager.ensure(CHAT)).chatKey?.key)).toBe(
+      keyText(opened.chatKey?.key)
+    );
+  });
+
+  it('should not hand the current key to a newcomer while rotation is pending', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    const first = await alice.manager.ensure(CHAT);
+
+    // Даниила добавили, пока владельца не было в сети.
+    const daniil = await createParticipant(server, 'daniil');
+    server.state.rotationNeeded = true;
+
+    // Алиса открыла чат и доворачивает ключ: вместо прежнего — новая эпоха.
+    await alice.manager.heal(CHAT);
+
+    expect(server.rows.get('daniil')?.keyEpoch).toBe(2);
+    const received = await daniil.manager.acceptFromServer(CHAT);
+    expect(received?.epoch).toBe(2);
+    expect(keyText(received?.key)).not.toBe(keyText(first.chatKey?.key));
+    expect(await daniil.manager.forEpoch(CHAT, 1)).toBeNull();
+  });
+
+  it('should end with one key when two members rotate at once', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    const boris = await createParticipant(server, 'boris');
+    await alice.manager.ensure(CHAT);
+    await boris.manager.ensure(CHAT);
+    server.state.rotationNeeded = true;
+
+    const [byAlice, byBoris] = await Promise.all([
+      alice.manager.rotateIfNeeded(CHAT),
+      boris.manager.rotateIfNeeded(CHAT),
+    ]);
+
+    expect(byAlice.chatKey?.epoch).toBe(2);
+    expect(byBoris.chatKey?.epoch).toBe(2);
+    expect(keyText(byAlice.chatKey?.key)).toBe(keyText(byBoris.chatKey?.key));
+  });
+
+  it('should not rotate when nobody changed the membership', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    await alice.manager.ensure(CHAT);
+    const writesBefore = server.state.writes;
+
+    const result = await alice.manager.rotateIfNeeded(CHAT);
+
+    expect(result.chatKey?.epoch).toBe(1);
+    expect(server.state.writes).toBe(writesBefore);
+  });
+
+  it('should rotate when membership changes between reading and healing', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    await alice.manager.ensure(CHAT);
+    const erik = await createParticipant(server, 'erik');
+
+    // Пометка поднялась между чтением и записью: сервер не даст раздать
+    // прежний ключ.
+    server.state.raiseFlagBeforeNextWrite = true;
+    await alice.manager.heal(CHAT);
+
+    expect(server.state.rotationNeeded).toBe(false);
+    expect((await erik.manager.acceptFromServer(CHAT))?.epoch).toBe(2);
   });
 });
 

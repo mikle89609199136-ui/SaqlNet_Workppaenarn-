@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -119,15 +118,19 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 	ws := &WSServer{
 		db:             db,
 		crypto:         fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "pres-user1"}},
+		tokenChecker:   fakeTokenChecker{},
 		presence:       store,
 		pingInterval:   5 * time.Millisecond,
 		clients:        make(map[string]map[*Client]bool),
 		register:       make(chan *Client, 1),
 		unreg:          make(chan *Client, 1),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
+		stop:           make(chan struct{}),
+		stopped:        make(chan struct{}),
 	}
 	go ws.run()
+	t.Cleanup(ws.Close)
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 	return srv, ws
@@ -136,8 +139,8 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 // dialWS подключается к тестовому WS-серверу; регистрирует закрытие.
 func dialWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
 	t.Helper()
-	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?token=tok"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(u, http.Header{"Authorization": {"Bearer tok"}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn

@@ -42,13 +42,20 @@ services:
     environment:
       CRYPTO_SIGNING_SECRET: local-signing-secret-change-me-32-chars
       CRYPTO_ENCRYPTION_SECRET: local-encryption-secret-change-me-32-chars
+  # Тот же Go-мигратор, что на проде (docker-entrypoint.sh): каждая миграция
+  # применяется один раз и записывается в schema_migrations. Прежде здесь
+  # psql прогонял все файлы при каждом запуске, и одна неповторяемая миграция
+  # (0020 после 0025) не давала подняться стенду со второго запуска.
+  # Миграции смонтированы, а не вшиты: новые подхватываются без пересборки.
   migrate:
-    image: postgres:16-alpine
+    build:
+      context: ../../backend-v2
+      args:
+        SERVICE: migrate
     environment:
-      PGPASSWORD: craneapp-local
+      DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
     volumes:
       - ../../backend-v2/migrations:/migrations:ro
-    command: [ '/bin/sh', '-c', 'set -e; for migration in /migrations/*.sql; do psql -h postgres -U craneapp -d craneapp -v ON_ERROR_STOP=1 -f $$migration; done' ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,6 +68,7 @@ services:
     environment:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
+      AUTH_LOGOUT_ALL_GENERATION_ENABLED: ${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -75,6 +83,8 @@ services:
     environment:
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
+      # Web Push (#717): пусто — push выключен. Ключи: go run ./cmd/vapidkeys.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -92,6 +102,9 @@ services:
       NATS_URL: nats://nats:4222
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
       REDIS_URL: redis://redis:6379
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@craneapp.local}
     depends_on:
       migrate:
         condition: service_completed_successfully

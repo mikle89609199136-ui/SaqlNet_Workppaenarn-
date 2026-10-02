@@ -1,5 +1,4 @@
 export interface IApiClientOptions {
-  getToken?: () => string | null;
   onUnauthorized?: (error: IApiError) => void;
 }
 
@@ -32,13 +31,11 @@ export interface IApiError extends Error {
 
 export class ApiClient {
   private baseUrl: string;
-  private getToken: () => string | null;
   private onUnauthorized?: (error: IApiError) => void;
   private defaultHeaders: Record<string, string>;
 
   constructor(baseUrl: string, options: IApiClientOptions = {}) {
     this.baseUrl = baseUrl;
-    this.getToken = options.getToken ?? (() => null);
     this.onUnauthorized = options.onUnauthorized;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -49,12 +46,20 @@ export class ApiClient {
     this.onUnauthorized = handler;
   }
 
-  get<T = unknown>(endpoint: string, params: TQueryParams = {}): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  get<T = unknown>(
+    endpoint: string,
+    params: TQueryParams = {},
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', params, headers });
   }
 
-  post<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'POST', data });
+  post<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    headers?: Record<string, string>
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'POST', data, headers });
   }
 
   put<T = unknown>(endpoint: string, data?: unknown): Promise<IApiResponse<T>> {
@@ -65,8 +70,16 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'PATCH', data });
   }
 
-  delete<T = unknown>(endpoint: string): Promise<IApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  /**
+   * `keepalive` — для запроса, который уходит при закрытии вкладки:
+   * без него браузер обрывает его вместе со страницей.
+   */
+  delete<T = unknown>(
+    endpoint: string,
+    data?: unknown,
+    options: Pick<IRequestOptions, 'keepalive'> = {}
+  ): Promise<IApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE', data });
   }
 
   private async request<T = unknown>(
@@ -74,11 +87,10 @@ export class ApiClient {
     options: IRequestOptions = {}
   ): Promise<IApiResponse<T>> {
     const { params, data, headers, ...requestOptions } = options;
-    const token = this.getToken();
+    const url = this.buildUrl(endpoint, params);
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
       ...headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     const isFormData = data instanceof FormData;
@@ -89,7 +101,11 @@ export class ApiClient {
 
     const body = isFormData ? data : isNoData ? undefined : JSON.stringify(data);
 
-    const response = await fetch(this.buildUrl(endpoint, params), {
+    /* Сессия — в HttpOnly-cookie (#705): браузер отправляет её сам, а
+       JavaScript токена не видит. `same-origin` — только своему серверу:
+       абсолютный адрес чужого origin получает запрос без неё (#871). */
+    const response = await fetch(url, {
+      credentials: 'same-origin',
       ...requestOptions,
       headers: requestHeaders,
       body,
@@ -106,9 +122,20 @@ export class ApiClient {
       }
     });
 
+    const base = this.baseUrl.replace(/\/+$/, '');
+    // Путь базы — '/api/v2' и у относительной базы, и у абсолютной.
+    const basePath = base.replace(/^https?:\/\/[^/]+/, '');
+    const relative = endpoint.replace(/^\/+/, '');
+
+    // Сервер отдаёт часть адресов уже с базой: mediaUrl вложений —
+    // '/api/v2/media/<id>'. Приклеенная второй раз база давала
+    // '/api/v2/api/v2/media/…' и 404: вложения не открывались ни у
+    // получателя, ни у отправителя после перезагрузки.
     const path = /^https?:\/\//.test(endpoint)
       ? endpoint
-      : `${this.baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+      : basePath && `/${relative}`.startsWith(`${basePath}/`)
+        ? `${base.slice(0, base.length - basePath.length)}/${relative}`
+        : `${base}/${relative}`;
 
     const qs = query.toString();
     return qs ? `${path}?${qs}` : path;

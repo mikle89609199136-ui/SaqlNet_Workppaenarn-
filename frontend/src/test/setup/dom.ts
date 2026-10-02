@@ -23,6 +23,8 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
 
+Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 Element.prototype.getBoundingClientRect = function () {
   const original = originalGetBoundingClientRect ? originalGetBoundingClientRect.call(this) : null;
@@ -41,6 +43,29 @@ Element.prototype.getBoundingClientRect = function () {
   }
   return original;
 };
+
+/* У Range в jsdom нет размеров, а редактор Lexical прокручивает к выделению
+   после каждой правки и падал бы на этом (#656). */
+if (typeof Range !== 'undefined' && !Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () =>
+    ({
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => '',
+    }) as DOMRect;
+  Range.prototype.getClientRects = () =>
+    ({
+      length: 0,
+      item: () => null,
+      [Symbol.iterator]: [][Symbol.iterator],
+    }) as unknown as DOMRectList;
+}
 
 if (!Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get) {
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
@@ -97,6 +122,31 @@ if (!globalThis.requestAnimationFrame) {
 if (!globalThis.URL.createObjectURL) {
   globalThis.URL.createObjectURL = vi.fn(() => 'blob:test');
   globalThis.URL.revokeObjectURL = vi.fn();
+}
+
+if (typeof globalThis.DragEvent === 'undefined') {
+  globalThis.DragEvent = class DragEvent extends UIEvent {} as unknown as typeof DragEvent;
+}
+
+if (typeof globalThis.ClipboardEvent === 'undefined') {
+  globalThis.ClipboardEvent =
+    class ClipboardEvent extends Event {} as unknown as typeof ClipboardEvent;
+}
+
+if (typeof globalThis.ClipboardItem === 'undefined') {
+  globalThis.ClipboardItem = class ClipboardItem {
+    readonly types: string[];
+    private data: Record<string, Blob | Promise<Blob | string> | string>;
+    constructor(data: Record<string, Blob | Promise<Blob | string> | string>) {
+      this.data = data;
+      this.types = Object.keys(data);
+    }
+    async getType(type: string): Promise<Blob> {
+      const raw = await this.data[type];
+      if (!raw) throw new Error(`Type ${type} not found`);
+      return raw instanceof Blob ? raw : new Blob([raw as BlobPart], { type });
+    }
+  } as unknown as typeof ClipboardItem;
 }
 
 if (!globalThis.matchMedia) {

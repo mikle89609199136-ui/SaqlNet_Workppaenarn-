@@ -5,13 +5,16 @@ import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
   dropPinnedMessage,
+  dropThreadMessages,
   isReactionChangePending,
   patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
+  putThreadReceipt,
 } from '@/entities/message';
-import { useTypingStore, resolveChat } from '@/entities/chat';
+import { putChatListReceipt, useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
+import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
@@ -26,10 +29,14 @@ import { resyncAfterReconnect } from './resyncAfterReconnect';
  * Исключение сделано для нового сообщения: инвалидация означала бы поход
  * на сервер и задержку в ленте, поэтому оно кладётся в кеш напрямую.
  */
+/** Не чаще — перечитывание статусов при возврате во вкладку. */
+const PRESENCE_REFRESH_MS = 30_000;
+
 export function useServerEvents(enabled: boolean): void {
   const queryClient = useQueryClient();
   const { eventBus } = useRealtimeSocket(enabled);
   const setTyping = useTypingStore((state) => state.setTyping);
+  const clearTyping = useTypingStore((state) => state.clearTyping);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -47,6 +54,9 @@ export function useServerEvents(enabled: boolean): void {
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём
         // в кеш, вместо того чтобы запрашивать историю заново.
         if (eventType === WS_EVENTS.MESSAGE.NEW && payload?.chatId && payload?.message) {
+          // Сообщение пришло — автор больше не печатает: не ждём три
+          // секунды таймера над его же сообщением (#837).
+          if (payload.message.senderId) clearTyping(payload.chatId, payload.message.senderId);
           void services.messageService
             .processMessageForDisplay(payload.chatId, payload.message)
             // Превью в списке чатов обновит сама запись в ленту: правило
@@ -58,6 +68,19 @@ export function useServerEvents(enabled: boolean): void {
               console.warn('Не удалось обработать входящее сообщение', error);
               invalidate(eventType, payload);
             });
+          return;
+        }
+
+        // Пачка удалена у всех или скрыта у себя (#840): убираем из ленты на
+        // месте, без перезапроса истории. Своё устройство, которое удаляло,
+        // получает то же событие — повторное удаление ничего не меняет.
+        if (
+          (eventType === WS_EVENTS.MESSAGE.BATCH_DELETED ||
+            eventType === WS_EVENTS.MESSAGE.HIDDEN) &&
+          payload?.chatId &&
+          Array.isArray(payload?.messageIds)
+        ) {
+          dropThreadMessages(queryClient, payload.chatId, payload.messageIds);
           return;
         }
 
@@ -96,6 +119,21 @@ export function useServerEvents(enabled: boolean): void {
           return;
         }
 
+        // Собеседник получил или прочитал (#657): галочки и время своих
+        // сообщений — в ленте и в списке чатов, без перезапроса.
+        if (
+          eventType === WS_EVENTS.MESSAGE.RECEIPTS &&
+          payload?.chatId &&
+          payload?.userId &&
+          (payload?.kind === 'delivered' || payload?.kind === 'read') &&
+          payload?.upTo &&
+          payload?.at
+        ) {
+          putThreadReceipt(queryClient, payload);
+          putChatListReceipt(queryClient, payload);
+          return;
+        }
+
         if (eventType === WS_EVENTS.MESSAGE.UNPINNED && payload?.chatId && payload?.messageId) {
           dropPinnedMessage(queryClient, payload.chatId, payload.messageId);
           return;
@@ -111,43 +149,62 @@ export function useServerEvents(enabled: boolean): void {
     // появилось бы в разговоре никогда.
     const unsubscribeReconnect = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
       void resyncAfterReconnect(queryClient);
+      // Пока связи не было, собеседники могли войти и выйти.
+      refreshPresence(queryClient);
     });
+
+    // Статус собеседника кладётся в кеш прямо из события (#780); выход —
+    // с задержкой, чтобы обрыв связи на пару секунд не давал мигания.
+    const presence = createPresenceBuffer(queryClient);
+    const unsubscribePresence = eventBus.on(WS_EVENTS.USER.PRESENCE, (event) => {
+      presence.push(event);
+    });
+
+    // Вкладка спала: браузер мог придержать сокет, и события прошли мимо.
+    // Перечитываем статусы при возврате, но не чаще раза в полминуты.
+    let lastPresenceRefresh = Date.now();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastPresenceRefresh < PRESENCE_REFRESH_MS) return;
+      lastPresenceRefresh = Date.now();
+      refreshPresence(queryClient);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Состав чата изменился — ключ чата пора менять: вошедший не должен
     // читать написанное до него, вышедший — написанное после.
     //
-    // Ротацию делает только владелец чата. Если бы её начинал каждый, кто
-    // услышал событие, несколько участников одновременно записали бы разные
-    // ключи одной эпохи, и часть чата осталась бы с чужим ключом: запись на
-    // сервере идёт построчно, без транзакции.
-    const rotateIfOwner = async (chatId?: string) => {
+    // Менять может любой участник, кто в сети (#806). Сервер при изменении
+    // состава поднимает пометку «нужна смена ключа» и принимает смену
+    // атомарно: из одновременных проходит одна, остальные принимают её ключ.
+    // Кто услышал событие позже, видит снятую пометку и ничего не делает.
+    // Если в сети никого не было, ключ сменит первый, кто откроет чат.
+    const rotateAfterMembershipChange = async (chatId?: string, removedUserId?: string) => {
       if (!chatId) return;
 
-      try {
-        const chat = await resolveChat(chatId);
-        const me = services.cryptoService.getAccountId();
+      // Ушли мы сами: в этом чате нас больше нет, и ключ менять не нам.
+      if (removedUserId && removedUserId === services.cryptoService.getAccountId()) return;
 
-        if (chat?.ownerId && me && chat.ownerId === me) {
-          await services.cryptoService.rotateChatKey(chatId);
-        }
+      try {
+        await services.cryptoService.rotateChatKeyIfNeeded(chatId);
       } catch (error) {
         console.warn('Не удалось обновить ключ чата после смены состава', error);
       }
     };
 
     const unsubscribeMemberAdded = eventBus.on(WS_EVENTS.CHAT.MEMBER_ADDED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateAfterMembershipChange(event?.chatId);
     });
 
     const unsubscribeMemberRemoved = eventBus.on(WS_EVENTS.CHAT.MEMBER_REMOVED, (event) => {
-      void rotateIfOwner(event?.chatId);
+      void rotateAfterMembershipChange(event?.chatId, event?.userId);
     });
 
     // «Печатает» живёт три секунды и не кешируется — это не данные,
     // а эфемерное состояние интерфейса.
     const unsubscribeTyping = eventBus.on(WS_EVENTS.USER.TYPING, (event) => {
       const userId = event.userId || event.senderId;
-      if (event.chatId && userId) setTyping(event.chatId, userId);
+      if (event.chatId && userId) setTyping(event.chatId, userId, event.firstName || undefined);
     });
 
     // Состояние связи отслеживается здесь, а не там, где показывается:
@@ -158,11 +215,14 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribeTyping();
       unsubscribeReconnect();
+      unsubscribePresence();
+      presence.dispose();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubscribeMemberAdded();
       unsubscribeMemberRemoved();
       stopConnectionWatch();
     };
-  }, [enabled, eventBus, queryClient, setTyping]);
+  }, [enabled, eventBus, queryClient, setTyping, clearTyping]);
 }
 
 /** Типы, которые адаптер сознательно пропускает. Экспорт для тестов. */

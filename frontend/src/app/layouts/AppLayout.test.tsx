@@ -1,7 +1,7 @@
 import { testI18n } from '@/test/harness/i18n';
 import { render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from './AppLayout';
 
@@ -23,44 +23,32 @@ function renderLayout() {
   return render(
     <I18nextProvider i18n={testI18n}>
       <MemoryRouter initialEntries={['/chats']}>
-        <AppLayout />
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route element={<p>Содержимое раздела</p>} path="/chats" />
+          </Route>
+        </Routes>
       </MemoryRouter>
     </I18nextProvider>
   );
 }
 
-describe('навигация приложения', () => {
+/* Разделы — вкладки списка чатов, настройки — кнопка в его шапке (#818).
+   Каркасу остаётся только фон окна и место под содержимое. */
+describe('каркас приложения', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('на телефоне есть вход в настройки', () => {
-    /* До этого попасть в них с телефона было нельзя вовсе: бургер и
-       настройки добавлялись только в широкую раскладку. */
-    setScreen(true);
+  it.each([
+    ['на телефоне', true],
+    ['на широком экране', false],
+  ])('%s нет ни боковой, ни нижней навигации', (_, mobile) => {
+    setScreen(mobile);
     renderLayout();
 
-    const настройки = screen.getByRole('link', { name: /Настройки/i });
-    expect(настройки).toHaveAttribute('href', '/settings');
-  });
-
-  it('на телефоне пять разделов', () => {
-    setScreen(true);
-    renderLayout();
-
-    expect(screen.getAllByRole('link')).toHaveLength(5);
-  });
-
-  it('на широком экране настройки не задваиваются', () => {
-    /* Там для них есть своё место внизу рельса, поэтому пункт из общего
-       списка отсекается. */
-    setScreen(false);
-    renderLayout();
-
-    const ссылки = screen
-      .getAllByRole('link')
-      .filter((link) => link.getAttribute('href') === '/settings');
-
-    expect(ссылки).toHaveLength(1);
+    expect(screen.getByText('Содержимое раздела')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 });

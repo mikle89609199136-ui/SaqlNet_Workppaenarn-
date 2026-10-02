@@ -11,10 +11,11 @@ describe('скелетон строки чата', () => {
 
   it('should match the avatar size of the real row', () => {
     /* Порознь они разъезжаются молча: прежний скелетон рисовал кружок в
-       40 пикселей, а строка перешла на 48, и список при загрузке дёргался. */
+       40 пикселей, а строка перешла на 48, и список при загрузке дёргался.
+       Теперь строка — 46 (#819). */
     const { container } = render(<ChatListItemSkeleton rows={1} />);
 
-    expect(container.querySelector('.size-12')).toBeInTheDocument();
+    expect(container.querySelector('.size-11\\.5')).toBeInTheDocument();
   });
 
   it('should not catch clicks meant for the list', () => {

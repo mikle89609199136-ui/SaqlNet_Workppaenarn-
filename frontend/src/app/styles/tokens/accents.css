@@ -5,32 +5,50 @@
    меняться. Размазать его по системе — значит потом переписывать
    каждый компонент; здесь смена схемы это один атрибут на <html>.
 
-   В наборе пять значений, и вот почему не одно:
+   В наборе четыре роли, и вот почему не одна:
 
-     brand-lo   цвет, читаемый как текст на СВЕТЛОМ фоне
-     brand-hi   цвет, читаемый как текст на ТЁМНОМ фоне
-     brand-fill заливка кнопок и меток
+     brand-fill заливка: основная кнопка, счётчик, исходящий пузырь
+     brand-ink  акцент как ТЕКСТ на светлой теме
+     brand-hi   акцент как ТЕКСТ на тёмной теме
      on-brand   чем писать поверх заливки
-     bubble-out свой пузырь — оттенок того же цвета
 
-   Один цвет не годится: то, что читается текстом на тёмном фоне,
-   слишком светло для заливки под белыми буквами, и наоборот.
-   Тема сама берёт нужный вариант — см. themes.css.
+   Один цвет не годится: заливка под белыми буквами обязана быть
+   тёмной, а текст тем же цветом на светлой панели или на мягкой
+   подложке уже не держит 4.5:1. Поэтому у светлой темы свой оттенок
+   для текста — на ступень темнее заливки (у сливового их хватило
+   одного). На тёмной теме текст — светлый вариант акцента.
+   Тема сама берёт нужный — см. semantic.css и themes.css.
 
-   on-brand тоже часть набора, а не общее правило: у янтаря поверх
-   заливки идёт тёмный текст, у остальных — белый.
+   Мягкая подложка (brand-soft) — та же заливка с прозрачностью, своя
+   доля для каждой темы. Хранится готовым rgba, а не примесью
+   color-mix: для браузеров без color-mix сборка подставляет вместо
+   примеси сплошной цвет, и акцентный текст на такой «подложке»
+   пропал бы.
+
+   Белый поверх заливки — у всех шести, янтарь тоже: его заливка
+   затемнена до #936e46, и белый на ней проходит 4.5:1.
+
+   Акценты приглушённые: насыщенность в OKLCH снижена примерно на 40 %
+   при той же светлоте — заливка пузырей и строки открытого чата не
+   спорит с содержимым, а контраст прежний. Значения — из дизайн-системы
+   CraneApp; менять вместе с ней, тест контраста проверит все сочетания.
 
    Схема по умолчанию задана на :root, чтобы всё работало и без
    атрибута. [data-accent] только переопределяет.
+
+   bubble-out — оттенок акцента под свой пузырь. По дизайн-системе
+   свой пузырь — это заливка, но пузырь переходит на неё вместе с
+   содержимым (#820); до тех пор остаются тонированные пузыри.
    ============================================================= */
 
 :root,
 [data-accent='violet'] {
-  --brand-lo: #7c4dd8;
-  --brand-hi: #b48cec;
-  --brand-fill: #7c4dd8;
-  --on-brand: #ffffff;
-  --brand-soft: rgba(124, 77, 216, 0.11);
+  --brand-fill: #7661b0;
+  --brand-ink: #66539c;
+  --brand-hi: #ad97d0;
+  --brand-soft-light: rgba(118, 97, 176, 0.1);
+  --brand-soft-dark: rgba(118, 97, 176, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #f0eafb;
   --bubble-out-dark: #292234;
   --bubble-out-ink-light: #3d2a63;
@@ -38,11 +56,12 @@
 }
 
 [data-accent='plum'] {
-  --brand-lo: #8e3e86;
-  --brand-hi: #d392cb;
-  --brand-fill: #8e3e86;
-  --on-brand: #ffffff;
-  --brand-soft: rgba(142, 62, 134, 0.11);
+  --brand-fill: #7e4f78;
+  --brand-ink: #784972;
+  --brand-hi: #c49dbf;
+  --brand-soft-light: rgba(126, 79, 120, 0.1);
+  --brand-soft-dark: rgba(126, 79, 120, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #f8eaf6;
   --bubble-out-dark: #2f2433;
   --bubble-out-ink-light: #4e1b49;
@@ -50,11 +69,12 @@
 }
 
 [data-accent='orchid'] {
-  --brand-lo: #c2459b;
-  --brand-hi: #ec8cc8;
-  --brand-fill: #c2459b;
-  --on-brand: #ffffff;
-  --brand-soft: rgba(194, 69, 155, 0.11);
+  --brand-fill: #a55d8a;
+  --brand-ink: #874a71;
+  --brand-hi: #d69cbf;
+  --brand-soft-light: rgba(165, 93, 138, 0.1);
+  --brand-soft-dark: rgba(165, 93, 138, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #fce9f5;
   --bubble-out-dark: #322431;
   --bubble-out-ink-light: #66194a;
@@ -62,25 +82,28 @@
 }
 
 [data-accent='indigo'] {
-  --brand-lo: #4c5fd0;
-  --brand-hi: #9baaf2;
-  --brand-fill: #4c5fd0;
-  --on-brand: #ffffff;
-  --brand-soft: rgba(76, 95, 208, 0.11);
+  --brand-fill: #5868a9;
+  --brand-ink: #4d5a97;
+  --brand-hi: #a3add8;
+  --brand-soft-light: rgba(88, 104, 169, 0.1);
+  --brand-soft-dark: rgba(88, 104, 169, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #e9ecfc;
   --bubble-out-dark: #232839;
   --bubble-out-ink-light: #23306e;
   --bubble-out-ink-dark: #dfe4f7;
 }
 
-/* Единственная схема с тёмным текстом поверх заливки: жёлтый под
-   белыми буквами даёт 3,2:1 и норму не проходит. */
+/* Прежде единственная схема с тёмным текстом поверх заливки: светлый
+   янтарь под белыми буквами давал 3,2:1. Теперь заливка темнее, и
+   правило «поверх заливки — белый» общее для всех. */
 [data-accent='amber'] {
-  --brand-lo: #a9690c;
-  --brand-hi: #f2a93b;
-  --brand-fill: #f2a93b;
-  --on-brand: #1a1203;
-  --brand-soft: rgba(169, 105, 12, 0.12);
+  --brand-fill: #936e46;
+  --brand-ink: #775835;
+  --brand-hi: #dcb179;
+  --brand-soft-light: rgba(147, 110, 70, 0.1);
+  --brand-soft-dark: rgba(147, 110, 70, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #fbf0dc;
   --bubble-out-dark: #33291a;
   --bubble-out-ink-light: #5a4318;
@@ -88,11 +111,12 @@
 }
 
 [data-accent='teal'] {
-  --brand-lo: #17806e;
-  --brand-hi: #5fd3be;
-  --brand-fill: #17806e;
-  --on-brand: #ffffff;
-  --brand-soft: rgba(23, 128, 110, 0.11);
+  --brand-fill: #49796e;
+  --brand-ink: #39635a;
+  --brand-hi: #8dcabd;
+  --brand-soft-light: rgba(73, 121, 110, 0.1);
+  --brand-soft-dark: rgba(73, 121, 110, 0.18);
+  --on-brand: var(--white);
   --bubble-out-light: #e3f5f1;
   --bubble-out-dark: #1e2e2c;
   --bubble-out-ink-light: #0d4a3f;

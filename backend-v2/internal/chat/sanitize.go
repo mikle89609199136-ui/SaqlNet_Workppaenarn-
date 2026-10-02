@@ -2,15 +2,7 @@ package chat
 
 import (
 	"encoding/json"
-	"html"
 )
-
-func sanitizeMessageContent(content string) string {
-	if isEncryptedMessagePayload(content) {
-		return content
-	}
-	return html.EscapeString(content)
-}
 
 func isEncryptedMessagePayload(content string) bool {
 	var payload struct {

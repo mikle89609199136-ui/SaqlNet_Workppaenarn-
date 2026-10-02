@@ -29,7 +29,10 @@ describe('конверт сообщения', () => {
     const envelope = parseEnvelope(payload);
 
     expect(envelope).not.toBeNull();
-    expect(await decryptMessage(key, CHAT, SENDER, envelope!)).toBe('привет');
+    expect(await decryptMessage(key, CHAT, SENDER, envelope!)).toEqual({
+      text: 'привет',
+      entities: [],
+    });
   });
 
   it('should not carry the text anywhere in the payload', async () => {
@@ -96,6 +99,118 @@ describe('конверт сообщения', () => {
     const broken = { ...envelope, data: `${head}${envelope.data.slice(1)}` };
 
     await expect(decryptMessage(key, CHAT, SENDER, broken)).rejects.toThrow();
+  });
+});
+
+describe('конверт с форматированием, v3 (#656)', () => {
+  const text = 'жирный и ссылка';
+  const entities = [
+    { type: 'bold' as const, offset: 0, length: 6 },
+    { type: 'link' as const, offset: 9, length: 6, data: { url: 'https://example.com' } },
+  ];
+
+  it('возвращает текст вместе с форматированием', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, text, undefined, entities);
+    const envelope = parseEnvelope(payload)!;
+
+    expect(envelope.v).toBe(3);
+    expect(await decryptMessage(key, CHAT, SENDER, envelope)).toEqual({ text, entities });
+  });
+
+  it('не показывает серверу ни текст, ни форматирование', async () => {
+    const payload = await encryptMessage(chatKey(), CHAT, EPOCH, SENDER, text, undefined, entities);
+
+    expect(payload).not.toContain(text);
+    expect(payload).not.toContain('bold');
+    expect(payload).not.toContain('example.com');
+  });
+
+  it('без форматирования остаётся v2, как раньше', async () => {
+    const payload = await encryptMessage(chatKey(), CHAT, EPOCH, SENDER, text, undefined, []);
+
+    expect(parseEnvelope(payload)!.v).toBe(2);
+  });
+
+  it('подменённую версию не расшифровывает', async () => {
+    // Выдать v3 за v2 значило бы показать получателю сырой JSON.
+    const key = chatKey();
+    const rich = parseEnvelope(
+      await encryptMessage(key, CHAT, EPOCH, SENDER, text, undefined, entities)
+    )!;
+    const plain = parseEnvelope(await encryptMessage(key, CHAT, EPOCH, SENDER, text))!;
+
+    await expect(decryptMessage(key, CHAT, SENDER, { ...rich, v: 2 })).rejects.toThrow();
+    await expect(decryptMessage(key, CHAT, SENDER, { ...plain, v: 3 })).rejects.toThrow();
+  });
+
+  it('чистит пришедшее форматирование', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, text, undefined, [
+      ...entities,
+      { type: 'link', offset: 0, length: 3, data: { url: 'javascript:alert(1)' } },
+    ]);
+
+    expect((await decryptMessage(key, CHAT, SENDER, parseEnvelope(payload)!)).entities).toEqual(
+      entities
+    );
+  });
+
+  it('не считает v3 сообщением прежней схемы', async () => {
+    const payload = await encryptMessage(chatKey(), CHAT, EPOCH, SENDER, text, undefined, entities);
+
+    expect(isLegacyContent(payload)).toBe(false);
+  });
+});
+
+describe('метаданные голосового в конверте (#843)', () => {
+  const voice = { durationMs: 12_345, waveform: [0, 5, 31, 12] };
+
+  it('едут в v3 даже без подписи и возвращаются как были', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, '', undefined, [], voice);
+    const envelope = parseEnvelope(payload)!;
+
+    expect(envelope.v).toBe(3);
+    expect(await decryptMessage(key, CHAT, SENDER, envelope)).toEqual({
+      text: '',
+      entities: [],
+      voice,
+    });
+  });
+
+  it('сервер не видит ни длительности, ни волны', async () => {
+    const payload = await encryptMessage(chatKey(), CHAT, EPOCH, SENDER, '', undefined, [], voice);
+
+    expect(payload).not.toContain('12345');
+    expect(payload).not.toMatch(/"voice"|"d"|"w"/);
+  });
+
+  it.each([
+    ['длительность не число', { durationMs: Number.NaN, waveform: [1] }],
+    ['длительность нулевая', { durationMs: 0, waveform: [1] }],
+    ['длиннее 15 минут', { durationMs: 60 * 60 * 1000, waveform: [1] }],
+    ['миллион точек волны', { durationMs: 5000, waveform: new Array(1_000_000).fill(1) }],
+  ])('отбрасывает негодные метаданные: %s — сообщение остаётся', async (_title, bad) => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, 'подпись', undefined, [], bad);
+    const decrypted = await decryptMessage(key, CHAT, SENDER, parseEnvelope(payload)!);
+
+    expect(decrypted.text).toBe('подпись');
+    expect(decrypted.voice).toBeUndefined();
+  });
+
+  it('уровни вне 0…31 обрезаются, нечисла становятся нулём', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, '', undefined, [], {
+      durationMs: 3000,
+      waveform: [-5, 999, 7.6, 'x' as unknown as number],
+    });
+
+    expect((await decryptMessage(key, CHAT, SENDER, parseEnvelope(payload)!)).voice).toEqual({
+      durationMs: 3000,
+      waveform: [0, 31, 8, 0],
+    });
   });
 });
 

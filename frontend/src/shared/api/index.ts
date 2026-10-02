@@ -12,4 +12,4 @@ export { apiClient, createApiClient } from './apiFactory';
 export { API_ENDPOINTS } from './endpoints';
 export * from './realtime/useRealtimeSocket';
 export { queryClient } from './queryClient';
-
+export { exchangeLegacySession, hasStoredSession } from './session';

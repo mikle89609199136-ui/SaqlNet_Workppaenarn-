@@ -2,22 +2,28 @@ import { useCallStore } from './callStore';
 
 export function useCall() {
   const incomingCall = useCallStore((s) => s.incomingCall);
+  const outgoingCall = useCallStore((s) => s.outgoingCall);
   const activeCall = useCallStore((s) => s.activeCall);
+  const endedCall = useCallStore((s) => s.endedCall);
   const isMinimized = useCallStore((s) => s.isMinimized);
   const acceptCall = useCallStore((s) => s.acceptCall);
   const rejectCall = useCallStore((s) => s.rejectCall);
   const initiateCall = useCallStore((s) => s.initiateCall);
+  const cancelCall = useCallStore((s) => s.cancelCall);
   const endCall = useCallStore((s) => s.endCall);
   const minimizeCall = useCallStore((s) => s.minimizeCall);
   const maximizeCall = useCallStore((s) => s.maximizeCall);
 
   return {
     incomingCall,
+    outgoingCall,
     activeCall,
+    endedCall,
     isMinimized,
     acceptCall,
     rejectCall,
     initiateCall,
+    cancelCall,
     endCall,
     minimizeCall,
     maximizeCall,

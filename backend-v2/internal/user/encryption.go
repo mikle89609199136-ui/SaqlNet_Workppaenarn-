@@ -9,7 +9,24 @@ import (
 
 var ErrKeyNotFound = errors.New("key not found")
 
+var (
+	// ErrKeyEpochConflict — эпоха не «текущая» и не «следующая»: ключ уже
+	// сменил кто-то другой. Клиент принимает то, что лежит на сервере.
+	ErrKeyEpochConflict = errors.New("key epoch conflict")
+	// ErrKeyRotationRequired — состав изменился, а ключ ещё нет: раздавать
+	// текущий нельзя, сначала новая эпоха (#806).
+	ErrKeyRotationRequired = errors.New("key rotation required")
+	// ErrKeyRotationRateLimited — больше maxKeyRotationsPerHour смен за час.
+	ErrKeyRotationRateLimited = errors.New("key rotation rate limit exceeded")
+)
+
 const maxKeyRotationsPerHour = 10
+
+// ChatKeyState — текущая эпоха ключа чата и нужна ли его смена.
+type ChatKeyState struct {
+	KeyEpoch       int  `json:"keyEpoch"`
+	RotationNeeded bool `json:"rotationNeeded"`
+}
 
 type PublicKeyData struct {
 	PublicKey   string  `json:"publicKey"`
@@ -125,15 +142,102 @@ func (s *Service) GetChatKeys(ctx context.Context, userID, chatID string) ([]Cha
 	return keys, rows.Err()
 }
 
+// GetChatKeyState — текущая эпоха ключа и пометка «нужна смена» (#806).
+// Текущая эпоха — наибольшая из записанных; до первого ключа — 0.
+func (s *Service) GetChatKeyState(ctx context.Context, userID, chatID string) (ChatKeyState, error) {
+	if err := s.assertChatMember(ctx, chatID, userID); err != nil {
+		return ChatKeyState{}, err
+	}
+	var state ChatKeyState
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.key_rotation_needed,
+		       COALESCE((SELECT MAX(key_epoch) FROM crypto.chat_encryption_keys WHERE chat_id = c.id), 0)
+		FROM chats.chats c WHERE c.id = $1
+	`, chatID).Scan(&state.RotationNeeded, &state.KeyEpoch)
+	return state, err
+}
+
+// SaveChatKeys записывает ключ текущей эпохи тем, у кого его нет, или
+// ключ следующей эпохи — всем.
 func (s *Service) SaveChatKeys(ctx context.Context, userID, chatID string, keys []ChatEncryptedKey, epoch int) error {
+	return s.writeChatKeys(ctx, userID, chatID, keys, epoch, false)
+}
+
+// RotateChatKey — смена ключа: только эпоха «текущая + 1».
+func (s *Service) RotateChatKey(ctx context.Context, userID, chatID string, keys []ChatEncryptedKey, epoch int) error {
 	if err := s.assertChatMember(ctx, chatID, userID); err != nil {
 		return err
 	}
-	for _, k := range keys {
-		if err := s.assertChatMember(ctx, chatID, k.UserID); err != nil {
-			continue // skip non-members silently
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM crypto.audit_log
+		WHERE event_type = 'key_rotation' AND chat_id = $1 AND created_at > NOW() - INTERVAL '1 hour'
+	`, chatID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= maxKeyRotationsPerHour {
+		return ErrKeyRotationRateLimited
+	}
+	return s.writeChatKeys(ctx, userID, chatID, keys, epoch, true)
+}
+
+// writeChatKeys — запись ключей одной транзакцией (#806).
+//
+// Строка чата блокируется, поэтому две записи одного чата идут по очереди:
+// из двух одновременных смен ключа проходит первая, вторая получает
+// ErrKeyEpochConflict и принимает ключ первой. Раньше ключи писались
+// построчно, и часть участников могла получить один ключ эпохи, часть —
+// другой.
+//
+// Принимается эпоха «текущая + 1» (новый ключ, снимает пометку «нужна
+// смена») или «текущая» — доворачивание тем, у кого строки нет. Второе
+// запрещено, пока пометка поднята: новичку нельзя раздавать ключ, которым
+// зашифровано написанное до него.
+func (s *Service) writeChatKeys(ctx context.Context, userID, chatID string, keys []ChatEncryptedKey, epoch int, rotation bool) error {
+	if err := s.assertChatMember(ctx, chatID, userID); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var rotationNeeded bool
+	err = tx.QueryRowContext(ctx, `SELECT key_rotation_needed FROM chats.chats WHERE id = $1 FOR UPDATE`, chatID).Scan(&rotationNeeded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("access denied")
+	}
+	if err != nil {
+		return err
+	}
+	var current int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(key_epoch), 0) FROM crypto.chat_encryption_keys WHERE chat_id = $1`, chatID).Scan(&current); err != nil {
+		return err
+	}
+
+	nextEpoch := epoch == current+1
+	switch {
+	case nextEpoch:
+	case epoch == current && current > 0 && !rotation:
+		if rotationNeeded {
+			return ErrKeyRotationRequired
 		}
-		_, err := s.db.ExecContext(ctx, `
+	default:
+		return ErrKeyEpochConflict
+	}
+
+	for _, k := range keys {
+		var member bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`,
+			chatID, k.UserID).Scan(&member); err != nil {
+			return err
+		}
+		if !member {
+			continue // не участник — пропускаем молча
+		}
+		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO crypto.chat_encryption_keys
 			    (chat_id, user_id, encrypted_key, sender_key_id, pq_ciphertext, key_epoch, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -144,37 +248,25 @@ func (s *Service) SaveChatKeys(ctx context.Context, userID, chatID string, keys 
 			    key_epoch     = EXCLUDED.key_epoch,
 			    updated_at    = NOW()
 			WHERE crypto.chat_encryption_keys.key_epoch <= EXCLUDED.key_epoch
-		`, chatID, k.UserID, k.EncryptedKey, k.SenderKeyID, k.PQCiphertext, epoch)
-		if err != nil {
+		`, chatID, k.UserID, k.EncryptedKey, k.SenderKeyID, k.PQCiphertext, epoch); err != nil {
 			return err
 		}
 	}
-	return nil
-}
 
-func (s *Service) RotateChatKey(ctx context.Context, userID, chatID string, keys []ChatEncryptedKey, epoch int) error {
-	if err := s.assertChatMember(ctx, chatID, userID); err != nil {
-		return err
+	if nextEpoch {
+		if _, err := tx.ExecContext(ctx, `UPDATE chats.chats SET key_rotation_needed = FALSE WHERE id = $1`, chatID); err != nil {
+			return err
+		}
 	}
-	// Rate limit: max 10 rotations per hour.
-	var count int
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM crypto.audit_log
-		WHERE event_type = 'key_rotation' AND chat_id = $1 AND created_at > NOW() - INTERVAL '1 hour'
-	`, chatID).Scan(&count); err != nil {
-		return err
+	if rotation {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO crypto.audit_log (user_id, chat_id, event_type, created_at)
+			VALUES ($1, $2, 'key_rotation', NOW())
+		`, userID, chatID); err != nil {
+			return err
+		}
 	}
-	if count >= maxKeyRotationsPerHour {
-		return errors.New("key rotation rate limit exceeded")
-	}
-	if err := s.SaveChatKeys(ctx, userID, chatID, keys, epoch); err != nil {
-		return err
-	}
-	_, _ = s.db.ExecContext(ctx, `
-		INSERT INTO crypto.audit_log (user_id, chat_id, event_type, created_at)
-		VALUES ($1, $2, 'key_rotation', NOW())
-	`, userID, chatID)
-	return nil
+	return tx.Commit()
 }
 
 func (s *Service) GetMyKey(ctx context.Context, userID, chatID string) (ChatEncryptedKey, error) {

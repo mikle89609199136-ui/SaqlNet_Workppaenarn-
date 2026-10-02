@@ -120,7 +120,6 @@ IP. При необходимости auth и другие сервисы дол
 - `POST /api/v2/messages/read`;
 - `POST /api/v2/messages/{chatId}`;
 - `PUT|DELETE /api/v2/messages/{messageId}`;
-- `POST /api/v2/messages/{messageId}/forward`;
 - `POST /api/v2/messages/{messageId}/reactions`;
 - `POST|DELETE /api/v2/messages/{messageId}/favorite`;
 - `POST /api/v2/chats/{chatId}/read`;

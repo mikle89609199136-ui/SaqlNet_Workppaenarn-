@@ -1,34 +1,61 @@
 import { useEncryptionState } from '@/features/chat-encryption';
+import { PendingForwardBanner, useForwardSend } from '@/features/forward-messages';
 import { useTypingIndicator } from '@/features/typing-indicator';
+import {
+  useSendVoiceMessage,
+  useVoiceErrorToast,
+  useVoiceRecorder,
+  VoiceButton,
+} from '@/features/voice-message';
 import {
   useAttachmentPicker,
   useComposerSendMessage,
   useComposerShortcuts,
 } from '@/features/send-message';
-import { clearDraft, readDraft, writeDraft } from '@/entities/chat';
+import {
+  chatQuery,
+  clearDraft,
+  readDraft,
+  readRichDraft,
+  useChatUiStore,
+  writeDraft,
+} from '@/entities/chat';
+import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn } from '@/shared/lib';
+import { cn, useFileDrop } from '@/shared/lib';
+import type { IRichText } from '@/shared/lib/richText';
+import { Button, Icon, RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
-  type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
+  type SubmitEvent,
 } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
+import { EmojiControl } from './EmojiControl';
+import { EncryptionUnavailableComposer } from './EncryptionUnavailableComposer';
+import { FileDropOverlay } from './FileDropOverlay';
 import { AttachmentPreview } from './AttachmentPreview';
+import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
 import { ComposerForm } from './ComposerForm';
 import { ComposerRow } from './ComposerRow';
+import { VoiceRecordingBar } from './VoiceRecordingBar';
 
 /** Что написано в поле ввода, пока сообщение не набрано. */
-function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string {
+function composerPlaceholder(
+  encryption: IEncryptionState,
+  t: TFunction,
+  hasAttachment: boolean
+): string {
   if (encryption.status === 'preparing') {
     return t('encryptionPreparing', 'Готовим шифрование...');
   }
@@ -41,27 +68,32 @@ function composerPlaceholder(encryption: IEncryptionState, t: TFunction): string
     return t('peerNeedsUpdate', 'Собеседник прочтёт после обновления приложения');
   }
 
-  return t('messagePlaceholder', 'Сообщение...');
+  // С вложением текст — подпись к нему, как в макете.
+  if (hasAttachment) return t('captionPlaceholder', 'Добавьте подпись');
+
+  return t('messagePlaceholder', 'Сообщение');
 }
 
 interface Props {
   selectionMode: boolean;
-  pendingAttachment: IPendingAttachment | null;
+  pendingAttachments: IPendingAttachment[];
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
-  draftRef: RefObject<HTMLInputElement | null>;
-  setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
+  draftRef: RefObject<IRichTextInputHandle | null>;
+  dropZone: HTMLElement | null;
+  setPendingAttachments: Dispatch<SetStateAction<IPendingAttachment[]>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   setOpenedImage?: Dispatch<SetStateAction<string | null>>;
 }
 
 export const ChatThreadComposer = ({
   selectionMode,
-  pendingAttachment,
-  setPendingAttachment,
+  pendingAttachments,
+  setPendingAttachments,
   bottomRef,
   attachmentInputRef,
   draftRef,
+  dropZone,
   setPhotoEditorFile,
   setOpenedImage,
 }: Props) => {
@@ -95,84 +127,187 @@ export const ChatThreadComposer = ({
   }
 
   useEffect(() => {
-    if (draftRef.current) draftRef.current.value = readDraft(chatId);
+    draftRef.current?.setValue(readRichDraft(chatId));
   }, [chatId, draftRef]);
 
   const sendTyping = useTypingIndicator();
-  const { cancelComposerMode } = useComposerShortcuts(draftRef, formRef);
-  const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
+  const { cancelComposerMode } = useComposerShortcuts(draftRef);
+  const { addFiles, handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
-    setPendingAttachment,
-    setPhotoEditorFile,
+    pendingAttachments,
+    setPendingAttachments,
   });
   const { handleSubmit, isSending } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
     draftRef,
-    pendingAttachment,
+    pendingAttachments,
     selectionMode,
-    setPendingAttachment,
+    setPendingAttachments,
   });
+  const hasAttachments = pendingAttachments.length > 0;
+  const forward = useForwardSend(chatId);
+  // Голосовые (#843): запись живёт, пока открыт этот чат.
+  const voice = useVoiceRecorder(chatId);
+  const sendVoice = useSendVoiceMessage(chatId);
+  useVoiceErrorToast(voice.state);
+  const [voiceCancelProgress, setVoiceCancelProgress] = useState(0);
+  const editingMessage = useChatUiStore((state) => state.editingMessage);
+  // Блокировка в личном чате (#760) — вместо поля ввода. Проверка после
+  // всех хуков: их порядок не должен зависеть от данных.
+  const { data: chat } = useQuery(chatQuery(chatId));
 
-  function handleDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    const text = event.target.value;
+  /* Пересылка ждёт в этом чате: «Отправить» уносит комментарий из поля
+     (если он есть) и пересланные сообщения, а не обычное сообщение. */
+  async function handleComposerSubmit(event: SubmitEvent<HTMLFormElement>) {
+    if (!forward.pending || selectionMode) {
+      await handleSubmit(event);
+      return;
+    }
 
+    event.preventDefault();
+    const comment = draftRef.current?.getValue() ?? { text: '', entities: [] };
+    draftRef.current?.clear();
+    clearDraft(chatId);
+    setHasText(false);
+
+    const { commentSent } = await forward.send(comment);
+    if (comment.text.trim() && !commentSent) {
+      draftRef.current?.setValue(comment);
+      writeDraft(chatId, comment);
+      setHasText(true);
+    }
+  }
+
+  function handleDraftChange(value: IRichText, { external }: { external: boolean }) {
     // Пустое поле — не черновик: пометка в списке чатов должна пропасть
     // сразу, а не через полсекунды после стирания последнего символа.
-    if (text) writeDraft(chatId, text);
+    if (value.text.trim()) writeDraft(chatId, value);
     else clearDraft(chatId);
 
     // Перерисовка только на переходе «пусто ↔ есть текст»: остальные
     // символы состояние не трогают.
-    setHasText(text.trim().length > 0);
-    sendTyping();
+    setHasText(value.text.trim().length > 0);
+    // «Печатает» — только когда печатает человек, а не когда поле
+    // заполнила программа (черновик, правка).
+    if (!external) sendTyping();
+  }
+
+  const submitForm = useCallback(() => formRef.current?.requestSubmit(), []);
+  const canSend = hasText || Boolean(forward.pending) || hasAttachments;
+  const recordingVoice = voice.state.status !== 'idle';
+  // Микрофон — когда отправлять нечего: пустое поле, без вложения, не
+  // правка и не пересылка. Пока шифрование не готово, он виден, но
+  // выключен — как «Отправить»: голосовое открытым не уйдёт.
+  const showMic = !canSend && !editingMessage;
+
+  const isBlocked = chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked);
+  const canAttachFiles =
+    encryption.status === 'ready' &&
+    !isBlocked &&
+    !recordingVoice &&
+    !editingMessage &&
+    !forward.pending &&
+    !selectionMode;
+
+  const attachFiles = useCallback(
+    (files: File[]) => {
+      if (!canAttachFiles) return false;
+
+      addFiles(files);
+      draftRef.current?.focus();
+      return true;
+    },
+    [addFiles, canAttachFiles, draftRef]
+  );
+
+  const isDraggingFiles = useFileDrop(dropZone, {
+    enabled: canAttachFiles,
+    onDrop: attachFiles,
+  });
+
+  if (isBlocked) {
+    return <BlockedComposer chat={chat} />;
+  }
+
+  // Без ключа писать некуда — плашка с «Проверить» вместо поля (#826).
+  if (encryption.status === 'unavailable') {
+    return <EncryptionUnavailableComposer chatId={chatId} />;
   }
 
   return (
-    <ComposerForm onSubmit={handleSubmit} ref={formRef}>
-      <ComposerContextBanner onCancel={cancelComposerMode} />
+    <ComposerForm onSubmit={handleComposerSubmit} ref={formRef}>
+      {isDraggingFiles && dropZone && <FileDropOverlay container={dropZone} />}
+      {forward.pending ? (
+        <PendingForwardBanner forward={forward.pending} onCancel={forward.cancel} />
+      ) : (
+        <ComposerContextBanner onCancel={cancelComposerMode} />
+      )}
       <AttachmentPreview
-        attachment={pendingAttachment}
+        attachments={pendingAttachments}
         onEdit={setPhotoEditorFile}
         onOpenImage={setOpenedImage ? (url) => setOpenedImage(url) : undefined}
         onRemove={removePendingAttachment}
       />
       <ComposerRow>
-        <AttachmentControl
-          isSending={isSending}
-          inputRef={attachmentInputRef}
-          onChange={handleAttachmentChange}
-        />
+        {/* Идёт запись голосового — полоса записи вместо поля. Поле не
+            размонтируется: скрыто, и его состояние остаётся на месте. */}
+        {recordingVoice && (
+          <VoiceRecordingBar
+            cancelProgress={voiceCancelProgress}
+            levels={voice.state.levels}
+            locked={voice.state.status === 'locked' || voice.state.status === 'stopping'}
+            onCancel={() => voice.recorder.cancel()}
+            seconds={voice.state.elapsedMs / 1000}
+          />
+        )}
+        <div className={cn('contents', recordingVoice && 'hidden')}>
+          {/* К пересылке прикладывается только комментарий: вложение ушло бы
+            отдельным сообщением неизвестно где в очереди. */}
+          <AttachmentControl
+            isSending={isSending || Boolean(forward.pending)}
+            inputRef={attachmentInputRef}
+            onChange={handleAttachmentChange}
+          />
 
-        <input
-          ref={draftRef}
-          aria-label={t('message', 'Сообщение')}
-          className="thread-composer-input min-h-11"
-          disabled={encryption.status !== 'ready'}
-          onChange={handleDraftChange}
-          placeholder={composerPlaceholder(encryption, t)}
-        />
+          {/* Поле: 40px в одну строку, растёт до ~7 строк (164px), текст
+            15/22 — как в макете. */}
+          <RichTextInput
+            ariaLabel={t('message', 'Сообщение')}
+            className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
+            disabled={encryption.status !== 'ready'}
+            onChange={handleDraftChange}
+            onPasteFiles={attachFiles}
+            onSubmit={submitForm}
+            placeholder={composerPlaceholder(encryption, t, hasAttachments)}
+            ref={draftRef}
+          />
 
-        <button
-          aria-label={t('sendMessage', 'Отправить сообщение')}
-          className={cn('thread-composer-action-btn', hasText && 'is-active')}
-          disabled={encryption.status !== 'ready'}
-          type="submit"
-        >
-          <svg
-            fill="none"
-            height="18"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-            width="18"
+          <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+        </div>
+
+        {/* Отправлять нечего — микрофон (#843); иначе «Отправить», залитая
+            акцентом, когда есть что отправить. */}
+        {showMic || recordingVoice ? (
+          <VoiceButton
+            onCancelProgress={setVoiceCancelProgress}
+            disabled={encryption.status !== 'ready'}
+            onRecorded={sendVoice}
+            recorder={voice.recorder}
+            state={voice.state}
+          />
+        ) : (
+          <Button
+            aria-label={t('sendMessage', 'Отправить сообщение')}
+            className={cn(!canSend && 'text-ink-3')}
+            disabled={encryption.status !== 'ready' || forward.isForwarding}
+            iconOnly
+            type="submit"
+            variant={canSend ? 'primary' : 'ghost'}
           >
-            <line x1="22" x2="11" y1="2" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+            <Icon className="size-4.75 stroke-2" name="send" />
+          </Button>
+        )}
       </ComposerRow>
     </ComposerForm>
   );

@@ -39,7 +39,10 @@ describe('MediaService: upload', () => {
   it('should throw error when server returns failure status', async () => {
     server.use(
       http.post(api('/media'), () =>
-        HttpResponse.json({ error: 'file_too_large', message: 'Файл слишком большой' }, { status: 413 })
+        HttpResponse.json(
+          { error: 'file_too_large', message: 'Файл слишком большой' },
+          { status: 413 }
+        )
       )
     );
 

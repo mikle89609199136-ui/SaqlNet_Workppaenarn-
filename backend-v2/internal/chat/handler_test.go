@@ -28,7 +28,18 @@ const (
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
 const (
-	memberRoleQuery = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	memberRoleQuery    = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	leaveChatTypeQuery = `SELECT type FROM chats.chats WHERE id = $1`
+	// leaveChatTypeRoleQuery — an exact copy of SQL Service.LeaveChat:
+	// chat type and actor role in a single query with LEFT JOIN.
+	// Role = NULL if the actor is not a member (then the service will return ErrForbidden).
+	leaveChatTypeRoleQuery = `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		LEFT JOIN chats.members m
+		  ON m.chat_id = c.id AND m.user_id = $2
+		WHERE c.id = $1
+	`
 	// actorChatInfoQuery — точная копия SQL getChatInfo: тип чата и роль
 	// актора одним запросом. Используется moderation-методами (mute/ban/...),
 	// которые после правки №1 проверяют chats.chats.type = 'group'.
@@ -39,18 +50,9 @@ const (
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
-	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`
-	// sendMessageMuteQuery — точная копия SQL проверки mute в Service.SendMessage.
-	sendMessageMuteQuery = `
-	SELECT cm.role,
-	       (
-	         COALESCE(u.is_muted AND (u.muted_until IS NULL OR u.muted_until > NOW()), false) OR
-	         (cm.muted_at IS NOT NULL AND (cm.muted_until IS NULL OR cm.muted_until > NOW()))
-	       )
-	FROM chats.members cm
-	JOIN auth.users u ON u.id = cm.user_id
-	WHERE cm.chat_id = $1 AND cm.user_id = $2
-	`
+	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`
+	// sendMessageMuteQuery — проверка права писать в Service.SendMessage.
+	sendMessageMuteQuery = sendPermissionQuery
 	// muteMemberSelectQuery — точная копия SQL чтения состояния цели в Service.MuteMember.
 	muteMemberTargetQuery = `
 		SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2
@@ -63,8 +65,14 @@ const (
 	banSelectQuery       = `SELECT banned_until, reason FROM chats.bans WHERE chat_id = $1 AND user_id = $2`
 	banInsertQuery       = `INSERT INTO chats.bans (chat_id, user_id, banned_by, reason, banned_until) VALUES ($1, $2, $3, $4, $5)`
 	onlineTypeQuery      = `SELECT type FROM chats.chats WHERE id = $1`
-	onlineMemberIDsQuery = `SELECT user_id::text FROM chats.members WHERE chat_id = $1`
+	onlineMemberIDsQuery = membersWithPrivacyQuery
 )
+
+// onlineMemberColumns — столбцы membersWithPrivacyQuery.
+var onlineMemberColumns = []string{
+	"user_id", "privacy_settings", "blocked", "exceptions",
+	"viewer_privacy", "viewer_blocks", "viewer_exceptions",
+}
 
 // newTestHandler собирает Handler на sqlmock с точным совпадением SQL.
 func newTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock) {
@@ -176,6 +184,7 @@ func TestHandler_AddMember(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectQuery(`pg_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil))
 				mock.ExpectExec(`INSERT INTO chats\.members`).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectExec(`UPDATE chats\.chats SET key_rotation_needed = TRUE`).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery(`SELECT .* FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url", "role", "permissions", "muted_until", "muted_at", "joined_at"}).AddRow(handlerTargetID, "u", "A", "B", "", "member", "{}", "", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339)))
 				mock.ExpectCommit()
 			},
@@ -246,21 +255,19 @@ func TestHandler_AddMember(t *testing.T) {
 
 // TestHandler_LeaveChat проверяет маппинг LeaveChat-ошибок в HTTP статусы и JSON-коды.
 func TestHandler_LeaveChat(t *testing.T) {
-	h, mock := newTestHandler(t)
-
 	tests := []struct {
 		name           string
-		setupMock      func()
+		setupMock      func(mock sqlmock.Sqlmock)
 		wantStatus     int
 		wantCode       string
-		chatIDOverride string // если задан — подставляется в URL вместо handlerChatID
+		chatIDOverride string
 	}{
 		{
 			name: "success_member_200",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "member"))
 				mock.ExpectBegin()
 				mock.ExpectQuery(leaveMemberListQuery).
 					WithArgs(handlerChatID).
@@ -271,35 +278,37 @@ func TestHandler_LeaveChat(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(leaveMembershipDelete).
 					WithArgs(handlerChatID, handlerActorID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
-			wantCode:   "", // success не требует code
+			wantCode:   "",
 		},
 		{
 			name: "owner_409_ownership_transfer_required",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 			},
 			wantStatus: http.StatusConflict,
 			wantCode:   "ownership_transfer_required",
 		},
 		{
 			name: "not_member_403_access_denied",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnError(sql.ErrNoRows)
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", nil))
 			},
 			wantStatus: http.StatusForbidden,
 			wantCode:   "access_denied",
 		},
 		{
 			name: "invalid_chatID_400_validation_failed",
-			setupMock: func() {
-				// SQL ожиданий нет — up-сайд
+			setupMock: func(mock sqlmock.Sqlmock) {
+				// SQL ожиданий нет — валидация падает до обращения к БД
 			},
 			wantStatus:     http.StatusBadRequest,
 			wantCode:       "validation_failed",
@@ -309,7 +318,9 @@ func TestHandler_LeaveChat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setupMock()
+			h, mock := newTestHandler(t) // fresh mock pre case
+			tt.setupMock(mock)
+
 			chatID := handlerChatID
 			if tt.chatIDOverride != "" {
 				chatID = tt.chatIDOverride
@@ -320,9 +331,7 @@ func TestHandler_LeaveChat(t *testing.T) {
 			h.Chat(rr, req)
 
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatalf("mock expectations: %v", err)
-			}
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }
@@ -463,7 +472,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 			"MemberMuted",
 			func() {
 				mock.ExpectQuery(sendMessageMuteQuery).
-					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted"}).AddRow("member", true))
+					WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", true, false, "private"))
 			},
 			http.StatusForbidden, // 403
 			"member_muted",
@@ -482,7 +491,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			body, _ := json.Marshal(map[string]string{"content": "hello"})
+			body := []byte(sendBody(`{"content":"hello"}`))
 			req := newAuthedRequest(http.MethodPost, "/api/v2/messages/"+handlerChatID, body, handlerTargetID)
 			req.SetPathValue("chatId", handlerChatID)
 
@@ -599,6 +608,8 @@ func TestHandler_BanMember_Body(t *testing.T) {
 					WillReturnError(sql.ErrNoRows)
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
+					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(banUpsertQuery).
 					WithArgs(handlerChatID, handlerTargetID, handlerActorID, "spam", future).WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
@@ -795,9 +806,10 @@ func TestHandler_GetOnlineMembers(t *testing.T) {
 					WithArgs(handlerActorID, handlerChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
 				m.ExpectQuery(onlineMemberIDsQuery).
-					WithArgs(handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
-						AddRow(handlerActorID).AddRow(handlerTargetID))
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows(onlineMemberColumns).
+						AddRow(handlerActorID, nil, false, nil, nil, false, nil).
+						AddRow(handlerTargetID, nil, false, nil, nil, false, nil))
 			},
 			wantStatus:  http.StatusOK,
 			wantMembers: []string{handlerActorID},
@@ -857,7 +869,8 @@ func TestHandler_List(t *testing.T) {
 		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
-		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	tests := []struct {
@@ -1356,14 +1369,15 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"id", "type", "title", "description", "avatar_url", "owner_id", "role",
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
-		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_type", "lm_sender",
+		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", "", "",
+			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil,
 		)
 	}
 

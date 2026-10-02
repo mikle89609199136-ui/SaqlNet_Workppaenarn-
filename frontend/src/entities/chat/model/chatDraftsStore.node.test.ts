@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAllDrafts, clearDraft, readDraft, subscribeToDraft, writeDraft } from './chatDraftsStore';
+import {
+  clearAllDrafts,
+  clearDraft,
+  hasAnyDraft,
+  readDraft,
+  subscribeToDraft,
+  writeDraft,
+} from './chatDraftsStore';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -106,5 +113,15 @@ describe('черновики чатов', () => {
 
     expect(readDraft('chat-1')).toBe('');
     expect(readDraft('chat-2')).toBe('');
+  });
+
+  it('есть ли недописанное хоть в одном чате — пробелы не считаются (#892)', () => {
+    expect(hasAnyDraft()).toBe(false);
+    writeDraft('chat-1', '   ');
+    expect(hasAnyDraft()).toBe(false);
+    writeDraft('chat-2', 'привет');
+    expect(hasAnyDraft()).toBe(true);
+    clearDraft('chat-2');
+    expect(hasAnyDraft()).toBe(false);
   });
 });

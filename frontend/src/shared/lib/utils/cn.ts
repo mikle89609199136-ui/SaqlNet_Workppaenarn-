@@ -13,13 +13,46 @@ import { extendTailwindMerge } from 'tailwind-merge';
 
    Здесь перечислены наши имена целиком: с ними text-caption попадает в
    группу размера, rounded-bubble в группу радиуса, и спорить им есть о
-   чём. Новое имя в scales.css надо добавлять и сюда. */
+   чём. Новое имя в scales.css надо добавлять и сюда.
+
+   Слои наведения layer-hover и layer-press — это background-image
+   (tailwind.css), поэтому они в одной группе с bg-none: место, которому
+   подсветка не нужна, гасит её обычным hover:bg-none. */
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'font-size': [{ text: ['micro', 'caption', 'body', 'title', 'section', 'display'] }],
-      rounded: [{ rounded: ['control', 'field', 'bubble', 'window', 'pill'] }],
+      'font-size': [
+        {
+          text: [
+            'micro',
+            'meta',
+            'caption',
+            'ui',
+            'body',
+            'subtitle',
+            'title',
+            'section',
+            'display',
+          ],
+        },
+      ],
+      rounded: [
+        {
+          rounded: [
+            'control',
+            'field',
+            'icon',
+            'button',
+            'bubble',
+            'dialog',
+            'window',
+            'card',
+            'pill',
+          ],
+        },
+      ],
       'transition-duration': [{ duration: ['fast', 'panel', 'modal'] }],
+      'bg-image': [{ layer: ['hover', 'press'] }],
     },
   },
 });

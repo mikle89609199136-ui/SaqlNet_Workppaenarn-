@@ -1,9 +1,6 @@
 export { clearAuthSession } from './model/clearAuthSession';
 export { isUserFacingAuthError } from './model/authErrors';
-export {
-  handleAuthUnauthorized,
-  registerAuthInterceptor,
-} from './model/registerAuthInterceptor';
+export { handleAuthUnauthorized, registerAuthInterceptor } from './model/registerAuthInterceptor';
 export { loginFormSchema, type TLoginForm } from './model/loginSchema';
 export {
   registerFormSchema,
@@ -13,5 +10,4 @@ export {
   type TRegisterStep,
 } from './model/registerSchema';
 export { LoginForm } from './ui/LoginForm';
-export { PasswordRequirements } from './ui/PasswordRequirements';
 export { RegisterWizard } from './ui/RegisterWizard/RegisterWizard';
