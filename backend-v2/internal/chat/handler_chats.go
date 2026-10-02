@@ -45,7 +45,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"method", method,
 			"path", r.URL.Path,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "chat ID is required")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"user_id", current.ID,
 			"chat_id", chatID,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "at least one field is required")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "at least one field is required")
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"user_id", current.ID,
 			"chat_id", chatID,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "title must not be empty")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title must not be empty")
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 			"length", utf8.RuneCountInString(*input.Title),
 			"max", maxTitleLen,
 		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json",
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
 			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
 		return
 	}
@@ -124,7 +124,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	// Map domain errors to appropriate HTTP status codes.
 	switch {
 	case errors.Is(err, ErrInvalidInput):
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid input")
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat not found")
 	case errors.Is(err, ErrForbidden):

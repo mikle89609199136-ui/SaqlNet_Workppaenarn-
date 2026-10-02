@@ -984,6 +984,13 @@ func TestDecodeNegativeScenarios(t *testing.T) {
 			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/mute",
 			valid:   `{}`,
 		},
+		{
+			name:    "Chat_DeleteMessages",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/messages/delete",
+			valid:   `{"messageIds":["` + messageID + `"],"forEveryone":true}`,
+		},
 
 		// Messages mini-router branch.
 
@@ -1643,7 +1650,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "invalid_json",
+			wantErrorCode: "validation_failed",
 		},
 		{
 			// Handler rejects an empty body before calling the service.
@@ -1653,7 +1660,7 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			requestBody:   map[string]any{},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "invalid_json",
+			wantErrorCode: "validation_failed",
 		},
 		{
 			// Guards decodeStrict's DisallowUnknownFields in the PATCH path.
