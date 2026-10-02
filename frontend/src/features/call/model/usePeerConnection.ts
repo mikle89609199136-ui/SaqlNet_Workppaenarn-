@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 import { WS_EVENTS } from '@/shared/config';
 import { eventBus } from '@/shared/lib/event-bus';
@@ -25,6 +25,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     onError,
   } = options;
 
+  const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [manager, setManager] = useState<PeerConnectionManager | null>(null);
@@ -110,19 +111,32 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
 
     const unsubOffer = eventBus.on(WS_EVENTS.CALL.OFFER, (event: ICallOfferEvent) => {
       if (event.roomId === roomId && event.from === peerId) {
-        void nextManager.handleRemoteOffer(event.payload);
+        const payload =
+          event.payload ??
+          ({
+            type: (event as unknown as { type: RTCSdpType }).type,
+            sdp: (event as unknown as { sdp: string }).sdp,
+          } as RTCSessionDescriptionInit);
+        void nextManager.handleRemoteOffer(payload);
       }
     });
 
     const unsubAnswer = eventBus.on(WS_EVENTS.CALL.ANSWER, (event: ICallAnswerEvent) => {
       if (event.roomId === roomId && event.from === peerId) {
-        void nextManager.handleRemoteAnswer(event.payload);
+        const payload =
+          event.payload ??
+          ({
+            type: (event as unknown as { type: RTCSdpType }).type,
+            sdp: (event as unknown as { sdp: string }).sdp,
+          } as RTCSessionDescriptionInit);
+        void nextManager.handleRemoteAnswer(payload);
       }
     });
 
     const unsubIce = eventBus.on(WS_EVENTS.CALL.ICE, (event: ICallIceEvent) => {
       if (event.roomId === roomId && event.from === peerId) {
-        void nextManager.handleRemoteIce(event.payload);
+        const payload = event.payload ?? (event as unknown as RTCIceCandidateInit);
+        void nextManager.handleRemoteIce(payload);
       }
     });
 
@@ -144,7 +158,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
         unsubRef.current = null;
       }
     };
-  }, [socket, roomId, peerId, isPolite, autoConnect]);
+  }, [socket, roomId, peerId, isPolite, autoConnect, connectionEpoch]);
 
   // Синхронизация локального стрима при его изменении (включая сброс в null)
   useEffect(() => {
@@ -154,14 +168,34 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     }
   }, [localStream]);
 
+  const replaceTrack = useCallback(
+    (kind: 'audio' | 'video', newTrack: MediaStreamTrack | null) =>
+      managerRef.current?.replaceTrack(kind, newTrack),
+    []
+  );
+
+  const restartIce = useCallback(async () => {
+    await managerRef.current?.restartIce();
+  }, []);
+
+  const resetConnection = useCallback(() => {
+    unsubRef.current?.();
+    setConnectionState('new');
+    setRemoteStream(null);
+    setConnectionEpoch((v) => v + 1);
+  }, []);
+
+  const close = useCallback(() => {
+    unsubRef.current?.();
+  }, []);
+
   return {
     connectionState,
     remoteStream,
     manager,
-    replaceTrack: (kind: 'audio' | 'video', newTrack: MediaStreamTrack | null) =>
-      managerRef.current?.replaceTrack(kind, newTrack),
-    close: () => {
-      unsubRef.current?.();
-    },
+    replaceTrack,
+    restartIce,
+    resetConnection,
+    close,
   };
 }

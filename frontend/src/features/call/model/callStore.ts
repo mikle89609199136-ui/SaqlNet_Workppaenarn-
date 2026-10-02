@@ -11,11 +11,17 @@ import {
   type ICallFsmContext,
   type TCallFsmAction,
 } from './callStateMachine';
-import { sendCallInvite, sendCallInviteResponse, sendCallLeave } from './callSignaling';
+import { sendCallInvite, sendCallInviteResponse, sendCallJoin, sendCallLeave } from './callSignaling';
+import {
+  clearCallSession,
+  loadCallSession,
+  saveCallSession,
+} from './callSessionStorage';
 import type {
   IActiveCall,
   ICallCancelledPayload,
   ICallInviteResponsePayload,
+  IEndedCall,
   IIncomingCall,
   IOutgoingCall,
   TCallEndReason,
@@ -23,7 +29,8 @@ import type {
   TCallRoomType,
 } from './types';
 
-const CALL_TIMEOUT_MS = 60_000;
+export const CALL_TIMEOUT_MS = 60_000;
+export const RECONNECT_TIMEOUT_MS = 25_000;
 
 interface CallStoreState {
   fsm: ICallFsmContext;
@@ -31,15 +38,19 @@ interface CallStoreState {
   isMinimized: boolean;
   socket: WebSocketClient | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
+  reconnectTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
   // Селекторы совместимости с UI
   incomingCall: IIncomingCall | null;
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
+  endedCall: IEndedCall | null;
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
   dispatch: (action: TCallFsmAction) => void;
+  rejoinActiveCall: () => void;
+  restoreActiveSession: () => boolean;
 
   handleIncoming: (payload: IIncomingCall) => Promise<void>;
   handleCancelled: (payload: ICallCancelledPayload | string) => void;
@@ -101,7 +112,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         : null;
 
     const activeCall: IActiveCall | null =
-      (fsm.state === 'connecting' || fsm.state === 'active' || fsm.state === 'outgoing') &&
+      (fsm.state === 'connecting' ||
+        fsm.state === 'active' ||
+        fsm.state === 'reconnecting' ||
+        fsm.state === 'outgoing') &&
       fsm.roomId
         ? {
             roomId: fsm.roomId,
@@ -109,17 +123,56 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             kind: fsm.callKind,
             title: fsm.title ?? undefined,
             chatId: fsm.chatId ?? undefined,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            isCaller: fsm.isCaller ?? false,
           }
         : null;
 
-    return { fsm, incomingCall, outgoingCall, activeCall };
+    const endedCall: IEndedCall | null =
+      fsm.state === 'ended' && fsm.outgoingPhase == null && fsm.roomId
+        ? {
+            roomId: fsm.roomId,
+            peerId: fsm.peerId ?? undefined,
+            peerName: fsm.peerName ?? fsm.title ?? undefined,
+            peerAvatar: fsm.peerAvatar,
+            reason: fsm.endReason ?? 'completed',
+          }
+        : null;
+
+    return { fsm, incomingCall, outgoingCall, activeCall, endedCall };
   };
 
-  const clearTimer = () => {
+  const clearCallTimeoutTimer = () => {
     const timer = get().callTimeoutTimer;
     if (timer) clearTimeout(timer);
     set({ callTimeoutTimer: null });
   };
+
+  const clearReconnectTimer = () => {
+    const timer = get().reconnectTimeoutTimer;
+    if (timer) clearTimeout(timer);
+    set({ reconnectTimeoutTimer: null });
+  };
+
+  const startReconnectTimer = () => {
+    clearReconnectTimer();
+    const timer = setTimeout(() => {
+      if (get().fsm.state === 'reconnecting') {
+        get().endCall('network_error');
+      }
+    }, RECONNECT_TIMEOUT_MS);
+    set({ reconnectTimeoutTimer: timer });
+  };
+
+  const clearAllTimers = () => {
+    clearCallTimeoutTimer();
+    clearReconnectTimer();
+    clearCallSession();
+  };
+
+  const clearTimer = clearAllTimers;
 
   return {
     fsm: initialCallContext,
@@ -127,16 +180,97 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     isMinimized: false,
     socket: null,
     callTimeoutTimer: null,
+    reconnectTimeoutTimer: null,
     incomingCall: null,
     outgoingCall: null,
     activeCall: null,
+    endedCall: null,
 
-    attachSocket: (socket) => set({ socket }),
+    attachSocket: (socket) => {
+      set({ socket });
+      if (socket?.isConnected) {
+        get().rejoinActiveCall();
+      }
+    },
+
+    rejoinActiveCall: () => {
+      const { fsm, socket } = get();
+      if (!socket?.isConnected || !fsm.roomId) return;
+      if (fsm.state !== 'active' && fsm.state !== 'reconnecting') return;
+
+      const profile = useProfileStore.getState().user;
+      sendCallJoin(socket, {
+        roomId: fsm.roomId,
+        displayName: formatCallerName(profile),
+        avatarUrl: profile?.avatarUrl,
+        callKind: fsm.callKind,
+        chatId: fsm.chatId ?? undefined,
+        title: fsm.title ?? undefined,
+      });
+    },
+
+    restoreActiveSession: () => {
+      const session = loadCallSession();
+      if (!session) return false;
+      if (get().fsm.state !== 'idle') return false;
+
+      const restoredFsm: ICallFsmContext = {
+        state: 'reconnecting',
+        roomId: session.roomId,
+        peerId: session.peerId,
+        peerName: session.peerName,
+        peerAvatar: session.peerAvatar,
+        callKind: session.callKind,
+        roomType: session.roomType,
+        title: session.title,
+        endReason: null,
+        callStartedAt: session.callStartedAt,
+        outgoingPhase: null,
+        isCaller: session.isCaller,
+        chatId: session.chatId,
+      };
+
+      set(syncDerivedState(restoredFsm));
+      startReconnectTimer();
+
+      if (get().socket?.isConnected) {
+        get().rejoinActiveCall();
+      }
+
+      return true;
+    },
 
     dispatch: (action) => {
       const currentFsm = get().fsm;
       const nextFsm = callStateReducer(currentFsm, action);
       if (nextFsm === currentFsm) return;
+
+      if (nextFsm.state === 'reconnecting' && currentFsm.state !== 'reconnecting') {
+        startReconnectTimer();
+      } else if (nextFsm.state !== 'reconnecting' && currentFsm.state === 'reconnecting') {
+        clearReconnectTimer();
+      }
+
+      // Сохраняем сессию в sessionStorage для переживания перезагрузки страницы (F5)
+      if (nextFsm.state === 'active') {
+        if (nextFsm.roomId && nextFsm.peerId) {
+          saveCallSession({
+            roomId: nextFsm.roomId,
+            peerId: nextFsm.peerId,
+            peerName: nextFsm.peerName,
+            peerAvatar: nextFsm.peerAvatar,
+            callKind: nextFsm.callKind,
+            roomType: nextFsm.roomType,
+            callStartedAt: nextFsm.callStartedAt,
+            isCaller: nextFsm.isCaller ?? false,
+            chatId: nextFsm.chatId,
+            title: nextFsm.title,
+          });
+        }
+      } else if (nextFsm.state === 'ended' || nextFsm.state === 'idle') {
+        clearCallSession();
+      }
+
       set(syncDerivedState(nextFsm));
     },
 
@@ -304,16 +438,27 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           roomId,
         });
 
-        if (socket?.isConnected && targetPeerId) {
+        if (socket?.isConnected) {
           const profile = useProfileStore.getState().user;
-          sendCallInvite(socket, {
-            to: targetPeerId,
+          sendCallJoin(socket, {
             roomId,
-            kind,
-            fromName: formatCallerName(profile),
-            fromAvatar: profile?.avatarUrl,
+            displayName: formatCallerName(profile),
+            avatarUrl: profile?.avatarUrl,
+            callKind: kind,
+            chatId,
             title,
           });
+
+          if (targetPeerId) {
+            sendCallInvite(socket, {
+              to: targetPeerId,
+              roomId,
+              kind,
+              fromName: formatCallerName(profile),
+              fromAvatar: profile?.avatarUrl,
+              title,
+            });
+          }
         }
 
         // Таймер ожидания ответа 60 секунд
@@ -335,7 +480,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     cancelCall: () => {
-      clearTimer();
+      clearAllTimers();
       const { fsm, socket } = get();
       if (fsm.state !== 'outgoing') return;
 
@@ -361,7 +506,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       const { fsm, socket } = get();
       if (fsm.state !== 'outgoing') return;
 
-      clearTimer();
+      clearAllTimers();
       if (socket?.isConnected && fsm.roomId) {
         sendCallLeave(socket, fsm.roomId);
       }
@@ -392,6 +537,16 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           roomId: fsm.roomId,
           accepted: true,
         });
+
+        const profile = useProfileStore.getState().user;
+        sendCallJoin(socket, {
+          roomId: fsm.roomId,
+          displayName: formatCallerName(profile),
+          avatarUrl: profile?.avatarUrl,
+          callKind: fsm.callKind,
+          chatId: fsm.chatId ?? undefined,
+          title: fsm.title ?? undefined,
+        });
       }
     },
 
@@ -420,7 +575,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
     endCall: (reason: TCallEndReason = 'completed') => {
       stopRingtone();
-      clearTimer();
+      clearAllTimers();
       const { fsm, socket } = get();
 
       if (socket?.isConnected && fsm.roomId) {
@@ -440,7 +595,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
             set({ isMinimized: false });
           }
         }
-      }, 800);
+      }, 1200);
     },
 
     minimizeCall: () => set({ isMinimized: true }),

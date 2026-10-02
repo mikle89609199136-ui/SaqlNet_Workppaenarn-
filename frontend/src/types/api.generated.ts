@@ -1486,14 +1486,27 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                chatId: string;
+            };
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
          * Leave a group chat
-         * @description Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".
+         * @description Removes the authenticated user from a group chat they are a member of.
+         *
+         *     Leaving is only allowed for group chats. Private chats are rejected
+         *     with `invalid_chat_type` before any membership data is changed.
+         *
+         *     The chat owner cannot leave: ownership must be transferred first,
+         *     otherwise the request fails with `ownership_transfer_required`.
+         *
+         *     On success, the user's encryption keys and per-user chat settings
+         *     are deleted together with the membership row, and the remaining
+         *     members are notified over WebSocket with the `chat_member_removed`
+         *     event and `reason: "left"`.
          */
         post: operations["leaveChat"];
         delete?: never;
@@ -2061,7 +2074,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type.
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
          */
         post: operations["createCallRoom"];
         delete?: never;
@@ -3065,7 +3078,7 @@ export interface components {
         };
         CallRoomCreateRequest: {
             /**
-             * @description Defaults to group when omitted.
+             * @description Ignored — calls are one-to-one, the room type is always p2p.
              * @enum {string}
              */
             type?: "p2p" | "group";
@@ -3103,7 +3116,7 @@ export interface components {
             room: components["schemas"]["CallRoom"];
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
-            maxParticipants: 5;
+            maxParticipants: 2;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -5661,30 +5674,61 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Left */
+            /** @description Successfully left the chat. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        success: true;
+                    };
+                };
             };
-            400: components["responses"]["Error"];
-            /** @description access_denied: the caller is not a member (including a repeated leave) */
+            /** @description Invalid request (validation_failed, invalid_chat_type). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied — the authenticated user is not a member of the chat. */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description ownership_transfer_required: the caller owns the chat */
+            /** @description Chat not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The owner must transfer ownership before leaving. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

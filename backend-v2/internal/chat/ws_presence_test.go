@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -126,7 +125,7 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 		register:       make(chan *Client, 1),
 		unreg:          make(chan *Client, 1),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		stop:           make(chan struct{}),
 		stopped:        make(chan struct{}),
 	}

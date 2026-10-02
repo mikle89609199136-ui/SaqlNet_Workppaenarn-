@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-const maxCallParticipants = 5
+// maxCallParticipants — звонки только один на один (#715).
+const maxCallParticipants = 2
 
 type Participant struct {
 	UserID      string `json:"userId"`
@@ -167,6 +168,21 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 		}
 	}
 	return JoinResult{OK: true, Peers: peers}
+}
+
+// CloseIfEmpty — закрыть комнату, в которую никто не вошёл (#850).
+func (m *CallRoomManager) CloseIfEmpty(roomID string) (*RoomSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[roomID]
+	if !ok || len(r.participants) > 0 {
+		return nil, false
+	}
+	delete(m.rooms, roomID)
+	return &RoomSnapshot{
+		ChatID: r.chatID, CallKind: r.callKind,
+		AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+	}, true
 }
 
 func (m *CallRoomManager) LeaveRoom(roomID, userID string) LeaveResult {

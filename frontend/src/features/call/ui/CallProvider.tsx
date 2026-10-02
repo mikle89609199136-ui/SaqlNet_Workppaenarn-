@@ -20,6 +20,10 @@ export function CallProvider({ children }: PropsWithChildren) {
   }, [socket]);
 
   useEffect(() => {
+    useCallStore.getState().restoreActiveSession();
+  }, []);
+
+  useEffect(() => {
     const unsubBroadcast = subscribeCallBroadcast((event) => {
       useCallStore.getState().handleBroadcastEvent(event);
     });
@@ -67,9 +71,29 @@ export function CallProvider({ children }: PropsWithChildren) {
     const unsubPeerLeft = eventBus.on(WS_EVENTS.CALL.PEER_LEFT, (payload: ICallPeerLeftEvent) => {
       const { fsm } = useCallStore.getState();
       if (fsm.roomId && payload.roomId === fsm.roomId) {
-        useCallStore.getState().endCall('peer_ended');
+        if (payload.reason === 'left') {
+          useCallStore.getState().endCall('peer_ended');
+        } else if (fsm.state === 'active' || fsm.state === 'connecting') {
+          useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+        } else if (fsm.state !== 'reconnecting') {
+          useCallStore.getState().endCall('peer_ended');
+        }
       }
     });
+
+    const unsubSocketConnected = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
+      useCallStore.getState().rejoinActiveCall();
+    });
+
+    const unsubCallError = eventBus.on(
+      WS_EVENTS.CALL.ERROR,
+      (payload?: { roomId?: string; reason?: string; message?: string }) => {
+        const { fsm } = useCallStore.getState();
+        if (fsm.roomId && (!payload?.roomId || payload.roomId === fsm.roomId)) {
+          useCallStore.getState().endCall('network_error');
+        }
+      }
+    );
 
     return () => {
       unsubIncoming();
@@ -78,6 +102,8 @@ export function CallProvider({ children }: PropsWithChildren) {
       unsubJoined();
       unsubPeerJoined();
       unsubPeerLeft();
+      unsubSocketConnected();
+      unsubCallError();
     };
   }, [eventBus]);
 

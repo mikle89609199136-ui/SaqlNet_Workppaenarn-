@@ -730,3 +730,80 @@ x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
       security: *secure,
       responses: { '200': { description: Unpinned } },
     }
+/chats/{chatId}/leave:
+  parameters: [*chatId]
+  post:
+    tags: [Chats]
+    summary: Leave a group chat
+    description: |
+      Removes the authenticated user from a group chat they are a member of.
+
+      Leaving is only allowed for group chats. Private chats are rejected
+      with `invalid_chat_type` before any membership data is changed.
+
+      The chat owner cannot leave: ownership must be transferred first,
+      otherwise the request fails with `ownership_transfer_required`.
+
+      On success, the user's encryption keys and per-user chat settings
+      are deleted together with the membership row, and the remaining
+      members are notified over WebSocket with the `chat_member_removed`
+      event and `reason: "left"`.
+    operationId: leaveChat
+    security: *secure
+    responses:
+      '200':
+        description: Successfully left the chat.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [success]
+              properties:
+                success: { type: boolean, enum: [true] }
+      '400':
+        description: 'Invalid request (validation_failed, invalid_chat_type).'
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              validationFailed:
+                value: { code: validation_failed, message: 'invalid chat id' }
+              invalidChatType:
+                value:
+                  { code: invalid_chat_type, message: 'leave is not allowed for non-group chat' }
+      '403':
+        description: Access denied — the authenticated user is not a member of the chat.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              accessDenied:
+                value: { code: access_denied, message: 'forbidden' }
+      '404':
+        description: Chat not found.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              notFound:
+                value: { code: not_found, message: 'chat not found' }
+      '409':
+        description: The owner must transfer ownership before leaving.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              ownershipTransferRequired:
+                value:
+                  {
+                    code: ownership_transfer_required,
+                    message: 'owner must transfer ownership before leaving',
+                  }
+      '500':
+        description: Internal server error.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              internalError:
+                value: { code: internal_error, message: 'failed to leave chat' }
