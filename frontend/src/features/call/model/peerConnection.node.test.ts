@@ -6,8 +6,16 @@ import { services } from '@/services/serviceContainer';
 // Mock RTP Sender
 class MockRTCRtpSender {
   track: MediaStreamTrack | null;
+  /** Как в браузере после согласования: одна кодировка с приоритетом по умолчанию. */
+  parameters: RTCRtpSendParameters = {
+    encodings: [{ active: true, priority: 'low', networkPriority: 'low' }],
+  } as RTCRtpSendParameters;
   replaceTrack = vi.fn(async (newTrack: MediaStreamTrack | null) => {
     this.track = newTrack;
+  });
+  getParameters = vi.fn(() => structuredClone(this.parameters));
+  setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
+    this.parameters = parameters;
   });
 
   constructor(track: MediaStreamTrack | null) {
@@ -38,9 +46,11 @@ class MockRTCPeerConnection {
     this.iceServers = config?.iceServers ?? [];
   }
 
-  createOffer = vi.fn(async () => {
+  createOffer = vi.fn(async (_options?: RTCOfferOptions) => {
     return { type: 'offer' as const, sdp: 'fake-local-offer-sdp' };
   });
+
+  restartIce = vi.fn(() => {});
 
   createAnswer = vi.fn(async () => {
     return { type: 'answer' as const, sdp: 'fake-local-answer-sdp' };
@@ -288,6 +298,103 @@ describe('PeerConnectionManager', () => {
       );
     });
 
+    /* Первое согласование начинает звонящий. Встречные предложения в начале
+       звонка кончались откатом у принимающего, и Chrome оставлял его дорожки
+       собеседника «заглушёнными»: медиа шло, а на экране «Камера выключена»
+       и выключенный микрофон. */
+    describe('первое согласование начинает звонящий', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('принимающий не шлёт своё предложение, ждёт предложение звонящего и отвечает без отката', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        expect(pc.createOffer).not.toHaveBeenCalled();
+
+        await manager.handleRemoteOffer({ type: 'offer', sdp: 'caller-offer' });
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(pc.setLocalDescription).not.toHaveBeenCalledWith({ type: 'rollback' });
+        expect(pc.createOffer).not.toHaveBeenCalled();
+        expect(mockSocket.send).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_answer' })
+        );
+        expect(mockSocket.send).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer' })
+        );
+      });
+
+      it('предложение звонящего не пришло — принимающий предлагает сам, чтобы звонок не повис', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        await vi.advanceTimersByTimeAsync(4000);
+
+        expect(pc.createOffer).toHaveBeenCalledTimes(1);
+        expect(mockSocket.send).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer', to: 'user-caller' })
+        );
+      });
+
+      it('close() до истечения ожидания — своё предложение не уходит', async () => {
+        vi.useFakeTimers();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-caller',
+          isPolite: true,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+
+        await pc.onnegotiationneeded?.();
+        manager.close();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(pc.createOffer).not.toHaveBeenCalled();
+      });
+
+      it('встречное предложение между createOffer и setLocalDescription — не ошибка', async () => {
+        const onError = vi.fn();
+        const manager = new PeerConnectionManager({
+          socket: mockSocket,
+          roomId: 'room-1',
+          peerId: 'user-callee',
+          isPolite: false,
+          onError,
+        });
+        const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+        pc.setLocalDescription.mockImplementationOnce(async () => {
+          pc.signalingState = 'have-remote-offer';
+          throw Object.assign(new Error('Failed to set local offer'), {
+            name: 'InvalidStateError',
+          });
+        });
+
+        await pc.onnegotiationneeded?.();
+
+        expect(onError).not.toHaveBeenCalled();
+        expect(mockSocket.send).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'call_offer' })
+        );
+      });
+    });
+
     it('невежливый пир (impolite) при коллизии игнорирует входящий offer и не делает rollback', async () => {
       const manager = new PeerConnectionManager({
         socket: mockSocket,
@@ -390,6 +497,68 @@ describe('PeerConnectionManager', () => {
       expect(sender.track).toBe(newTrack);
       // Соединение не закрывалось
       expect(pc.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Приоритет звука (#948)', () => {
+    const makeManager = () =>
+      new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+    const priorities = (sender: MockRTCRtpSender) =>
+      (sender.parameters.encodings ?? []).map((e) => `${e.priority}/${e.networkPriority}`);
+
+    it('соединение установилось — звуку высокий приоритет, видео не меняется', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+      pc.addTrack({ kind: 'video', id: 'cam' } as MediaStreamTrack);
+      const [audio, video] = pc.senders;
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      expect(priorities(audio)).toEqual(['high/high']);
+      expect(video.setParameters).not.toHaveBeenCalled();
+      expect(priorities(video)).toEqual(['low/low']);
+    });
+
+    it('до согласования кодировок нет — приоритет не трогается', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+      pc.senders[0].parameters = { encodings: [] } as unknown as RTCRtpSendParameters;
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      expect(pc.senders[0].setParameters).not.toHaveBeenCalled();
+    });
+
+    it('замена звукового трека — приоритет высокий и у нового', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+
+      await manager.replaceTrack('audio', { kind: 'audio', id: 'processed' } as MediaStreamTrack);
+
+      expect(priorities(pc.senders[0])).toEqual(['high/high']);
+    });
+
+    it('уже высокий — повторно не ставится', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+      pc.onconnectionstatechange?.();
+
+      expect(pc.senders[0].setParameters).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -609,6 +778,52 @@ describe('PeerConnectionManager', () => {
       // Повторный initialize после close возвращает null
       const reinit = await manager.initialize();
       expect(reinit).toBeNull();
+    });
+
+    it('restartIce() вызывает pc.restartIce() и отправляет новый offer c iceRestart: true', async () => {
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      sentMessages = [];
+
+      await manager.restartIce();
+
+      expect(pc.restartIce).toHaveBeenCalledTimes(1);
+      expect(pc.createOffer).toHaveBeenCalledWith({ iceRestart: true });
+      expect(pc.setLocalDescription).toHaveBeenCalled();
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toEqual({
+        type: 'call_offer',
+        to: 'user-callee',
+        roomId: 'room-1',
+        payload: {
+          type: 'offer',
+          sdp: 'fake-local-offer-sdp',
+        },
+      });
+    });
+
+    it('restartIce() не выполняет действий, если менеджер закрыт', async () => {
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      manager.close();
+      sentMessages = [];
+
+      await manager.restartIce();
+
+      expect(pc.createOffer).not.toHaveBeenCalled();
+      expect(sentMessages).toHaveLength(0);
     });
   });
 });

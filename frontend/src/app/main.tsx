@@ -3,6 +3,7 @@ import { registerAuthInterceptor } from '@/features/auth';
 import { startCryptoAutoInit } from '@/services/serviceContainer';
 import { exchangeLegacySession } from '@/shared/api';
 import {
+  preventStrayFileDrop,
   registerServiceWorker,
   reloadOnStaleBuild,
   requestPersistentStorage,
@@ -24,6 +25,8 @@ registerChatResolver();
 // Реакция на 401: при истёкшей сессии объявляется событие разлогина.
 // Связка настраивается здесь, чтобы транспортный слой shared/api не зависел от фич.
 registerAuthInterceptor();
+
+preventStrayFileDrop();
 
 // PWA (#880): установка на экран «Домой»; строка состояния — цвета темы.
 syncThemeColor();

@@ -23,6 +23,8 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
 
+Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 Element.prototype.getBoundingClientRect = function () {
   const original = originalGetBoundingClientRect ? originalGetBoundingClientRect.call(this) : null;
