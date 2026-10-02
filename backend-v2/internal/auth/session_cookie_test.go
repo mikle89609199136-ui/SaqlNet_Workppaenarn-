@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 
@@ -45,10 +46,14 @@ func TestLoginSetsSessionCookie(t *testing.T) {
 	mock.ExpectQuery("SELECT token_generation").
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs("user-id", sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), "Chrome on Linux", "desktop", "203.0.113.7").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{verifyResult: true}))
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/login",
-		strings.NewReader(`{"username":"ivan","password":"Password1"}`))
+		strings.NewReader(`{"username":"ivan","password":"Password1","deviceName":" Chrome on Linux ","deviceType":"desktop"}`))
+	request.Header.Set(clientIPHeader, "203.0.113.7")
 	response := httptest.NewRecorder()
 	handler.Login(response, request)
 
@@ -70,9 +75,15 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	expiresAt := time.Unix(1_900_000_123, 0).UTC()
+	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
-		WithArgs(tokenHash("cookie-token"), "user-id", sqlmock.AnyArg()).
+		WithArgs(tokenHash("cookie-token"), "user-id", expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE auth.sessions").
+		WithArgs("user-id", tokenHash("cookie-token")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -80,7 +91,7 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 	handler := NewHandler(NewService(db, handlerCryptoStub{}))
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout", nil)
 	request.AddCookie(&http.Cookie{Name: "__Host-craneapp_session", Value: "cookie-token"})
-	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id", ExpiresAt: expiresAt}))
 	response := httptest.NewRecorder()
 	handler.Logout(response, request)
 

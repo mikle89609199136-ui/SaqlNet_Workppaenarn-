@@ -118,3 +118,29 @@ func TestRateLimitMiddlewareDoesNotApplyUsernameLimitToOtherRoutes(t *testing.T)
 		}
 	}
 }
+
+func TestRateLimitMiddlewareOverwritesClientIPHeader(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(clientIPHeader); got != "192.0.2.44" {
+			t.Errorf("forwarded client IP = %q, want %q", got, "192.0.2.44")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := rateLimitMiddleware(
+		trustedProxySet{},
+		newTokenBucket(100, 100),
+		newTokenBucket(100, 100),
+		newTokenBucket(100, 100),
+		next,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/me", nil)
+	request.RemoteAddr = "192.0.2.44:1234"
+	request.Header.Set(clientIPHeader, "203.0.113.99")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+}
