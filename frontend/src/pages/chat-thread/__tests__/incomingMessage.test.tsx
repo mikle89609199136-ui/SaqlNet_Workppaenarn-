@@ -1,11 +1,12 @@
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { makeChatScenario, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
+import { mockThreadLayout } from '@/test/harness/threadLayout';
 import type { IChatDto, IMessageDto } from '@/types';
 
 /**
@@ -39,6 +40,10 @@ describe('входящее сообщение по веб-сокету', () => {
   beforeEach(() => {
     resetFixtures();
     readRequests = [];
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should show an incoming message for the open chat exactly once', async () => {
@@ -147,6 +152,7 @@ describe('входящее сообщение по веб-сокету', () => {
   });
 
   it('should mark only the incoming message of the open chat as read', async () => {
+    mockThreadLayout({ viewport: 20_000 });
     const { chat, messages } = makeChatScenario({ messages: 1 });
     const { chat: otherChat } = makeChatScenario({ messages: 0 });
     useChatHandlers(chat, messages);
@@ -181,8 +187,8 @@ describe('входящее сообщение по веб-сокету', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('входящее с отметкой')).toBeInTheDocument();
+      expect(readRequests).toEqual([{ chatId: chat.id, messageIds: [incoming.id] }]);
     });
-    expect(readRequests).toEqual([{ chatId: chat.id, messageIds: [incoming.id] }]);
+    expect(screen.getByText('входящее с отметкой')).toBeInTheDocument();
   });
 });

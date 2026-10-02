@@ -119,6 +119,8 @@ export class LocalMediaManager {
   private cameraSwitchOpId = 0;
   private micSwitchOpId = 0;
   private isStopped = false;
+  /** Настройки микрофона из `startMedia` — их же берёт смена микрофона (#947). */
+  private audioBaseConstraints: MediaTrackConstraints = {};
 
   constructor() {
     this.handleDeviceChange = this.handleDeviceChange.bind(this);
@@ -209,6 +211,12 @@ export class LocalMediaManager {
             autoGainControl: true,
             ...(options.audioDeviceId ? { deviceId: { exact: options.audioDeviceId } } : {}),
           };
+    if (typeof audioConstraints === 'object') {
+      const { deviceId: _deviceId, ...base } = audioConstraints;
+      this.audioBaseConstraints = base;
+    } else {
+      this.audioBaseConstraints = {};
+    }
 
     const videoConstraints: MediaTrackConstraints | boolean = isAudioOnly
       ? false
@@ -602,7 +610,7 @@ export class LocalMediaManager {
 
     try {
       const tempStream = await nav.mediaDevices.getUserMedia({
-        audio: { deviceId: { exact: deviceId } },
+        audio: { ...this.audioBaseConstraints, deviceId: { exact: deviceId } },
         video: false,
       });
 
@@ -650,8 +658,10 @@ export class LocalMediaManager {
       // Восстанавливаем прежний микрофон при ошибке
       try {
         const fallbackConstraint: boolean | MediaTrackConstraints = prevDeviceId
-          ? { deviceId: { exact: prevDeviceId } }
-          : true;
+          ? { ...this.audioBaseConstraints, deviceId: { exact: prevDeviceId } }
+          : Object.keys(this.audioBaseConstraints).length > 0
+            ? this.audioBaseConstraints
+            : true;
 
         const fallbackStream = await nav.mediaDevices.getUserMedia({
           audio: fallbackConstraint,

@@ -16,6 +16,34 @@ export interface IPeerConnectionOptions {
   onError?: (err: Error) => void;
 }
 
+/**
+ * Сколько вежливый пир (принимающий) ждёт первое предложение звонящего,
+ * прежде чем предложить сам. Ждать нужно: встречные предложения в начале
+ * звонка кончаются откатом у принимающего, и Chrome оставляет его дорожки
+ * собеседника «заглушёнными» — медиа идёт, а на экране «Камера выключена».
+ */
+const POLITE_FIRST_OFFER_WAIT_MS = 4000;
+
+/**
+ * Звук в звонке важнее видео (#948): при нехватке канала первым уступает
+ * видео. До согласования у отправителя нет `encodings` — поэтому приоритет
+ * ставится, когда соединение установилось, и после замены звукового трека.
+ */
+export function raiseAudioPriority(pc: RTCPeerConnection): void {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'audio' || !sender.getParameters || !sender.setParameters) continue;
+    const parameters = sender.getParameters();
+    const encodings = parameters.encodings ?? [];
+    if (encodings.length === 0) continue;
+    if (encodings.every((e) => e.priority === 'high' && e.networkPriority === 'high')) continue;
+    encodings.forEach((encoding) => {
+      encoding.priority = 'high';
+      encoding.networkPriority = 'high';
+    });
+    void sender.setParameters(parameters).catch(() => undefined);
+  }
+}
+
 export class PeerConnectionManager {
   private pc: RTCPeerConnection | null = null;
   private readonly socket: WebSocketClient;
@@ -32,6 +60,7 @@ export class PeerConnectionManager {
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
   private remoteStream: MediaStream;
   private isClosed = false;
+  private politeWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
   private options: IPeerConnectionOptions;
 
@@ -116,30 +145,16 @@ export class PeerConnectionManager {
         const pc = new PeerConnectionClass({ iceServers: this.iceServers });
         this.pc = pc;
 
-        // Perfect Negotiation: обработка необходимости согласования
-        pc.onnegotiationneeded = async () => {
-          try {
-            this.makingOffer = true;
-            const offer = await pc.createOffer();
-            if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
-            await pc.setLocalDescription(offer);
-            if (!this.pc || this.isClosed) return;
-
-            if (pc.localDescription && this.socket.isConnected) {
-              sendCallOffer(this.socket, {
-                to: this.peerId,
-                roomId: this.roomId,
-                payload: {
-                  type: pc.localDescription.type,
-                  sdp: pc.localDescription.sdp,
-                },
-              });
-            }
-          } catch (err) {
-            this.options.onError?.(err as Error);
-          } finally {
-            this.makingOffer = false;
+        // Perfect Negotiation: обработка необходимости согласования.
+        // Первое согласование начинает звонящий: принимающий (вежливый)
+        // ждёт его предложение и отвечает, а сам предлагает, только если
+        // оно так и не пришло.
+        pc.onnegotiationneeded = () => {
+          if (this.isPolite && !pc.remoteDescription) {
+            this.waitForFirstOffer(pc);
+            return;
           }
+          return this.makeOffer(pc);
         };
 
         // Отправка локальных ICE-кандидатов собеседнику
@@ -176,6 +191,7 @@ export class PeerConnectionManager {
         // Состояние соединения
         pc.onconnectionstatechange = () => {
           if (!this.pc) return;
+          if (this.pc.connectionState === 'connected') raiseAudioPriority(this.pc);
           this.options.onConnectionStateChange?.(this.pc.connectionState);
         };
 
@@ -207,6 +223,43 @@ export class PeerConnectionManager {
     })();
 
     return this.initPromise;
+  }
+
+  private waitForFirstOffer(pc: RTCPeerConnection): void {
+    if (this.politeWaitTimer) return;
+    this.politeWaitTimer = setTimeout(() => {
+      this.politeWaitTimer = null;
+      if (this.isClosed || this.pc !== pc || pc.remoteDescription) return;
+      void this.makeOffer(pc);
+    }, POLITE_FIRST_OFFER_WAIT_MS);
+  }
+
+  private async makeOffer(pc: RTCPeerConnection): Promise<void> {
+    try {
+      this.makingOffer = true;
+      const offer = await pc.createOffer();
+      if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (!this.pc || this.isClosed) return;
+
+      if (pc.localDescription && this.socket.isConnected) {
+        sendCallOffer(this.socket, {
+          to: this.peerId,
+          roomId: this.roomId,
+          payload: {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch (err) {
+      // Встречное предложение успело прийти между createOffer и
+      // setLocalDescription: наше устарело, согласование идёт по чужому.
+      if ((err as Error)?.name === 'InvalidStateError' && pc.signalingState !== 'stable') return;
+      this.options.onError?.(err as Error);
+    } finally {
+      this.makingOffer = false;
+    }
   }
 
   private async ensureInitialized(): Promise<RTCPeerConnection | null> {
@@ -264,6 +317,41 @@ export class PeerConnectionManager {
       await sender.replaceTrack(newTrack);
     } else if (newTrack) {
       pc.addTrack(newTrack, this.localStream ?? undefined);
+    }
+    if (kind === 'audio') raiseAudioPriority(pc);
+  }
+
+  async restartIce(): Promise<void> {
+    if (this.isClosed) return;
+    const pc = await this.ensureInitialized();
+    if (!pc || this.isClosed) return;
+
+    try {
+      if (typeof pc.restartIce === 'function') {
+        pc.restartIce();
+      }
+      if (pc.signalingState !== 'stable' || this.makingOffer) return;
+
+      this.makingOffer = true;
+      const offer = await pc.createOffer({ iceRestart: true });
+      if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (!this.pc || this.isClosed) return;
+
+      if (pc.localDescription && this.socket.isConnected) {
+        sendCallOffer(this.socket, {
+          to: this.peerId,
+          roomId: this.roomId,
+          payload: {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch (err) {
+      this.options.onError?.(err as Error);
+    } finally {
+      this.makingOffer = false;
     }
   }
 
@@ -398,6 +486,10 @@ export class PeerConnectionManager {
     if (this.isClosed) return;
     this.isClosed = true;
     this.initPromise = null;
+    if (this.politeWaitTimer) {
+      clearTimeout(this.politeWaitTimer);
+      this.politeWaitTimer = null;
+    }
 
     if (this.pc) {
       this.pc.onicecandidate = null;

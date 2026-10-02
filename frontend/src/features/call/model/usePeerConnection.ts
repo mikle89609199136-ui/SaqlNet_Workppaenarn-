@@ -25,6 +25,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     onError,
   } = options;
 
+  const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [manager, setManager] = useState<PeerConnectionManager | null>(null);
@@ -157,7 +158,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
         unsubRef.current = null;
       }
     };
-  }, [socket, roomId, peerId, isPolite, autoConnect]);
+  }, [socket, roomId, peerId, isPolite, autoConnect, connectionEpoch]);
 
   // Синхронизация локального стрима при его изменении (включая сброс в null)
   useEffect(() => {
@@ -173,6 +174,17 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     []
   );
 
+  const restartIce = useCallback(async () => {
+    await managerRef.current?.restartIce();
+  }, []);
+
+  const resetConnection = useCallback(() => {
+    unsubRef.current?.();
+    setConnectionState('new');
+    setRemoteStream(null);
+    setConnectionEpoch((v) => v + 1);
+  }, []);
+
   const close = useCallback(() => {
     unsubRef.current?.();
   }, []);
@@ -182,6 +194,8 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     remoteStream,
     manager,
     replaceTrack,
+    restartIce,
+    resetConnection,
     close,
   };
 }

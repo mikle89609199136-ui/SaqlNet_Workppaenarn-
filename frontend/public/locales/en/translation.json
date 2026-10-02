@@ -165,6 +165,7 @@
   "done": "Done",
   "download": "Download",
   "draft": "Draft",
+  "dropFilesHint": "Drop files here to send them",
   "edit": "Edit",
   "editAttachment": "Edit photo",
   "editMenu.copy": "Copy",
