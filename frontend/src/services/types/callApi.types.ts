@@ -38,8 +38,9 @@ export interface ICallRoomResponse {
 }
 
 export interface IIceConfiguration {
-  servers: IIceServer[];
-  hasTurn: boolean;
-  meteredConfigured: boolean;
+  servers?: IIceServer[];
+  iceServers?: IIceServer[];
+  hasTurn?: boolean;
+  meteredConfigured?: boolean;
   meteredTest?: unknown;
 }

@@ -27,7 +27,18 @@ const (
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
 const (
-	memberRoleQuery = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	memberRoleQuery    = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
+	leaveChatTypeQuery = `SELECT type FROM chats.chats WHERE id = $1`
+	// leaveChatTypeRoleQuery — an exact copy of SQL Service.LeaveChat:
+	// chat type and actor role in a single query with LEFT JOIN.
+	// Role = NULL if the actor is not a member (then the service will return ErrForbidden).
+	leaveChatTypeRoleQuery = `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		LEFT JOIN chats.members m
+		  ON m.chat_id = c.id AND m.user_id = $2
+		WHERE c.id = $1
+	`
 	// actorChatInfoQuery — точная копия SQL getChatInfo: тип чата и роль
 	// актора одним запросом. Используется moderation-методами (mute/ban/...),
 	// которые после правки №1 проверяют chats.chats.type = 'group'.
@@ -38,7 +49,7 @@ const (
 	leaveMemberListQuery  = `SELECT user_id FROM chats.members WHERE chat_id = $1`
 	leaveKeysDelete       = `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`
 	leaveSettingsDelete   = `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`
-	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`
+	leaveMembershipDelete = `DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`
 	// sendMessageMuteQuery — проверка права писать в Service.SendMessage.
 	sendMessageMuteQuery = sendPermissionQuery
 	// muteMemberSelectQuery — точная копия SQL чтения состояния цели в Service.MuteMember.
@@ -227,21 +238,19 @@ func TestHandler_AddMember(t *testing.T) {
 
 // TestHandler_LeaveChat проверяет маппинг LeaveChat-ошибок в HTTP статусы и JSON-коды.
 func TestHandler_LeaveChat(t *testing.T) {
-	h, mock := newTestHandler(t)
-
 	tests := []struct {
 		name           string
-		setupMock      func()
+		setupMock      func(mock sqlmock.Sqlmock)
 		wantStatus     int
 		wantCode       string
-		chatIDOverride string // если задан — подставляется в URL вместо handlerChatID
+		chatIDOverride string
 	}{
 		{
 			name: "success_member_200",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("member"))
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "member"))
 				mock.ExpectBegin()
 				mock.ExpectQuery(leaveMemberListQuery).
 					WithArgs(handlerChatID).
@@ -257,32 +266,32 @@ func TestHandler_LeaveChat(t *testing.T) {
 				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
-			wantCode:   "", // success не требует code
+			wantCode:   "",
 		},
 		{
 			name: "owner_409_ownership_transfer_required",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("owner"))
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 			},
 			wantStatus: http.StatusConflict,
 			wantCode:   "ownership_transfer_required",
 		},
 		{
 			name: "not_member_403_access_denied",
-			setupMock: func() {
-				mock.ExpectQuery(memberRoleQuery).
-					WithArgs(handlerActorID, handlerChatID).
-					WillReturnError(sql.ErrNoRows)
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(leaveChatTypeRoleQuery).
+					WithArgs(handlerChatID, handlerActorID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", nil))
 			},
 			wantStatus: http.StatusForbidden,
 			wantCode:   "access_denied",
 		},
 		{
 			name: "invalid_chatID_400_validation_failed",
-			setupMock: func() {
-				// SQL ожиданий нет — up-сайд
+			setupMock: func(mock sqlmock.Sqlmock) {
+				// SQL ожиданий нет — валидация падает до обращения к БД
 			},
 			wantStatus:     http.StatusBadRequest,
 			wantCode:       "validation_failed",
@@ -292,7 +301,9 @@ func TestHandler_LeaveChat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setupMock()
+			h, mock := newTestHandler(t) // fresh mock pre case
+			tt.setupMock(mock)
+
 			chatID := handlerChatID
 			if tt.chatIDOverride != "" {
 				chatID = tt.chatIDOverride
@@ -303,9 +314,7 @@ func TestHandler_LeaveChat(t *testing.T) {
 			h.Chat(rr, req)
 
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantCode)
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatalf("mock expectations: %v", err)
-			}
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }

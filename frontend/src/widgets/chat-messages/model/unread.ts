@@ -163,3 +163,22 @@ export function openingScrollTarget(
   if (capped) return { index: 0, align: 'start' };
   return { index: items.length - 1, align: 'end' };
 }
+
+export function selectReadUpTo(
+  items: readonly TCountable[],
+  lastVisibleIndex: number,
+  lastReadAt: string | null | undefined,
+  currentUserId?: string
+): IMessageDto[] {
+  const readMs = timeMs(lastReadAt);
+  return items
+    .slice(0, lastVisibleIndex + 1)
+    .flatMap((item) =>
+      item.type === 'message' &&
+      isIncoming(item.message, currentUserId) &&
+      !item.message.isRead &&
+      !(timeMs(item.message.createdAt) <= readMs)
+        ? [item.message]
+        : []
+    );
+}

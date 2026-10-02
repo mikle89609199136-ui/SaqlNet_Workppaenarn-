@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -339,11 +338,17 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			bans = []Ban{}
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"bans": bans})
+
 	case suffix == "/leave" && r.Method == http.MethodPost:
 		err := h.service.LeaveChat(r.Context(), current.ID, chatID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		case errors.Is(err, ErrInvalidChatType):
+			// Leaving is only allowed for group chats.
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", err.Error())
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", err.Error())
 		case errors.Is(err, ErrForbidden):
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", err.Error())
 		case errors.Is(err, ErrOwnershipTransferRequired):
@@ -353,6 +358,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		default:
 			httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 		}
+
 	// POST /api/v2/chats/{id}/transfer-ownership — передача владения чатом.
 	// Разрешена только для групповых чатов (type = 'group')
 	case suffix == "/transfer-ownership" && r.Method == http.MethodPost:
@@ -521,6 +527,12 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
+	// Неверный chatId — ошибка запроса, а не сервера: иначе он доходил до
+	// базы и возвращался 500.
+	if validate.Var(input.ChatID, "required,uuid") != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid chatId")
+		return
+	}
 	current := authctx.MustUser(r)
 	if input.CallKind == "" {
 		input.CallKind = "video"
@@ -534,6 +546,14 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_chat_type", "calls are not available in self chats")
 		return
 	}
+	if errors.Is(err, ErrBlockedByUser) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
+		return
+	}
+	if errors.Is(err, ErrGroupCallsUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "group_calls_unavailable", "calls are one-to-one only")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "room creation failed")
 		return
@@ -542,7 +562,7 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"room": map[string]string{
 			"id":       roomID,
-			"type":     input.Type,
+			"type":     "p2p",
 			"chatId":   input.ChatID,
 			"title":    input.Title,
 			"callKind": input.CallKind,
@@ -704,8 +724,10 @@ func respondSuccess(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
+	const method = "Messages"
+
 	current := authctx.MustUser(r)
-	// Handle special non-ID routes first.
+
 	if r.URL.Path == "/api/v2/messages/search" && r.Method == http.MethodGet {
 		q := r.URL.Query().Get("q")
 		if q == "" {
@@ -718,6 +740,12 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		}
 		msgs, err := h.service.SearchMessages(r.Context(), current.ID, q, limit)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "search messages failed",
+				"layer", "handler",
+				"method", method,
+				"user_id", current.ID,
+				"error", err,
+			)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "search failed")
 			return
 		}
@@ -727,6 +755,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
 		return
 	}
+
 	if r.URL.Path == "/api/v2/messages/favorites" && r.Method == http.MethodGet {
 		limit, offset := 50, 0
 		if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
@@ -737,6 +766,12 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		}
 		msgs, err := h.service.ListFavorites(r.Context(), current.ID, limit, offset)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "list favorites failed",
+				"layer", "handler",
+				"method", method,
+				"user_id", current.ID,
+				"error", err,
+			)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "favorites fetch failed")
 			return
 		}
@@ -748,6 +783,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetID, suffix := parseMessagePath(r.URL.Path)
+
 	if targetID == "" {
 		httpx.ErrorJSON(
 			w, r,
@@ -776,43 +812,55 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		// Call the service layer to toggle the user's reaction on the target message.
-		// Returns the operation status, the current emoji after toggling, the updated reaction list, and any error.
-		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
 
+		// The service implements the toggle semantics itself and returns
+		// the resulting state: operation status, the user's current emoji,
+		// and the aggregated reaction list.
+		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
 		if err != nil {
-			// Handle known domain errors with appropriate HTTP status codes and user-friendly messages.
 			switch {
 			case errors.Is(err, ErrNotFound):
-				// The target message does not exist or was deleted.
 				httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
 			case errors.Is(err, ErrForbidden):
-				// The current user is not a member of the chat, so they cannot react.
 				httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
 			case errors.Is(err, ErrInvalidInput):
-				// The provided emoji is empty or contains invalid characters.
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
 			default:
-				// Any unexpected error (e.g., database failures) is treated as internal server error.
-				log.Printf("[chat-handler-Messages]:unexpected error toggling reaction:%v", err)
+				// Unexpected error (e.g. DB or WS failure). Only log it at
+				// the handler level — the expected domain errors are
+				// already covered above.
+				slog.ErrorContext(r.Context(), "unexpected error toggling reaction",
+					"layer", "handler",
+					"method", method,
+					"user_id", current.ID,
+					"message_id", targetID,
+					"error", err,
+				)
 				httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction failed")
 			}
 			return
 		}
 
-		// Success: return the action result, the current emoji (empty if removed), and the aggregated reaction list.
 		httpx.JSON(w, http.StatusOK, map[string]any{
 			"action":       status,       // "added", "removed", or "replaced"
-			"currentEmoji": currentEmoji, // the emoji the user has after the toggle, or "" if removed
-			"reactions":    reactions,    // full list of emoji counts with myReaction flags
+			"currentEmoji": currentEmoji, // the user's emoji after the toggle, "" if removed
+			"reactions":    reactions,    // aggregated list with the myReaction flag
 		})
 	case suffix == "/favorite" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		added, err := h.service.ToggleFavorite(r.Context(), current.ID, targetID)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "toggle favorite failed",
+				"layer", "handler",
+				"method", method,
+				"user_id", current.ID,
+				"message_id", targetID,
+				"error", err,
+			)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "favorite failed")
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"favorited": added})
+
 	default:
 		methodNotAllowed(w, r)
 	}

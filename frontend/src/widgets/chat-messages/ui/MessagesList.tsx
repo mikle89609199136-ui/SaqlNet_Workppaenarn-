@@ -51,6 +51,7 @@ interface Props {
    * Нужна, когда `trackUnread`: без неё лента ждёт и не прокручивается.
    */
   readMark?: IReadMark;
+  onMessagesSeen?: (messages: IMessageDto[]) => void;
 }
 
 export const MessagesList = memo(
@@ -73,6 +74,7 @@ export const MessagesList = memo(
     trackUnread = true,
     handleJumpRequests = false,
     readMark,
+    onMessagesSeen,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -100,6 +102,7 @@ export const MessagesList = memo(
       readMark,
       loadOlder,
       hasOlder,
+      onMessagesSeen,
     });
 
     // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.

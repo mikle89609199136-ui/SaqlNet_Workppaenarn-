@@ -147,8 +147,8 @@ export const ChatThreadHeader = ({
 
       <div className="flex shrink-0 items-center gap-0.5">
         {/* Поиск по переписке появится с #841. */}
-        {/* Звонки выключены до нового экрана (#774): старый удалён в #776. */}
-        {CALLS_ENABLED && (
+        {/* Звонки — только один на один (#715): в группе кнопок нет. */}
+        {CALLS_ENABLED && chat.type === 'private' && (
           <>
             <Button
               aria-label={t('audioCall', 'Позвонить')}
