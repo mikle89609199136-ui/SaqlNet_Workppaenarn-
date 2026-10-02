@@ -24,6 +24,26 @@ export interface IPeerConnectionOptions {
  */
 const POLITE_FIRST_OFFER_WAIT_MS = 4000;
 
+/**
+ * Звук в звонке важнее видео (#948): при нехватке канала первым уступает
+ * видео. До согласования у отправителя нет `encodings` — поэтому приоритет
+ * ставится, когда соединение установилось, и после замены звукового трека.
+ */
+export function raiseAudioPriority(pc: RTCPeerConnection): void {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'audio' || !sender.getParameters || !sender.setParameters) continue;
+    const parameters = sender.getParameters();
+    const encodings = parameters.encodings ?? [];
+    if (encodings.length === 0) continue;
+    if (encodings.every((e) => e.priority === 'high' && e.networkPriority === 'high')) continue;
+    encodings.forEach((encoding) => {
+      encoding.priority = 'high';
+      encoding.networkPriority = 'high';
+    });
+    void sender.setParameters(parameters).catch(() => undefined);
+  }
+}
+
 export class PeerConnectionManager {
   private pc: RTCPeerConnection | null = null;
   private readonly socket: WebSocketClient;
@@ -171,6 +191,7 @@ export class PeerConnectionManager {
         // Состояние соединения
         pc.onconnectionstatechange = () => {
           if (!this.pc) return;
+          if (this.pc.connectionState === 'connected') raiseAudioPriority(this.pc);
           this.options.onConnectionStateChange?.(this.pc.connectionState);
         };
 
@@ -297,6 +318,7 @@ export class PeerConnectionManager {
     } else if (newTrack) {
       pc.addTrack(newTrack, this.localStream ?? undefined);
     }
+    if (kind === 'audio') raiseAudioPriority(pc);
   }
 
   async restartIce(): Promise<void> {

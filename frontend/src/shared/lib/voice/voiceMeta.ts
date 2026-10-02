@@ -39,7 +39,7 @@ export const VOICE_TARGET_DBFS = -18;
 export const VOICE_GAIN_MIN_DB = -12;
 export const VOICE_GAIN_MAX_DB = 18;
 /** Тише этого — пауза, а не речь: в громкость речи не входит (−40 дБFS). */
-const SPEECH_RMS_FLOOR = 0.01;
+export const SPEECH_RMS_FLOOR = 0.01;
 
 export interface IVoiceMeta {
   durationMs: number;
