@@ -702,7 +702,7 @@ CallRoomCreateRequest:
     type:
       type: string
       enum: [p2p, group]
-      description: Defaults to group when omitted.
+      description: Ignored — calls are one-to-one, the room type is always p2p.
     chatId: { type: string, format: uuid }
     title: { type: string }
     callKind:
@@ -718,7 +718,7 @@ CallRoomResponse:
     iceServers:
       type: array
       items: { $ref: '#/IceServer' }
-    maxParticipants: { type: integer, enum: [5] }
+    maxParticipants: { type: integer, enum: [2] }
 UploadResponse:
   type: object
   required: [success, url]

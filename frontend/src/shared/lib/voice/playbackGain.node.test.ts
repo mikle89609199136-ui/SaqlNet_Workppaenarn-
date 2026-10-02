@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compressorMakeupDb } from '../audio/dynamics';
 import {
   applyPlaybackGain,
-  compressorMakeupDb,
   releasePlaybackGain,
   resetPlaybackGainContext,
   safePlaybackGainDb,

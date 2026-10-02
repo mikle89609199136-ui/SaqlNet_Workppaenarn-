@@ -90,6 +90,18 @@ describe('callStateMachine', () => {
     expect(next.state).toBe('reconnecting');
   });
 
+  it('переходит из connecting в reconnecting при обрыве связи', () => {
+    const connectingCtx = { ...initialCallContext, state: 'connecting' as const, roomId: 'r1' };
+    const next = callStateReducer(connectingCtx, { type: 'CONNECTION_LOST' });
+    expect(next.state).toBe('reconnecting');
+  });
+
+  it('игнорирует PEER_JOINED в состоянии reconnecting (восстановление только по CONNECTION_RESTORED)', () => {
+    const reconCtx = { ...initialCallContext, state: 'reconnecting' as const, roomId: 'r1' };
+    const next = callStateReducer(reconCtx, { type: 'PEER_JOINED' });
+    expect(next.state).toBe('reconnecting');
+  });
+
   it('восстанавливает active из reconnecting при восстановлении связи', () => {
     const reconCtx = { ...initialCallContext, state: 'reconnecting' as const, roomId: 'r1' };
     const next = callStateReducer(reconCtx, { type: 'CONNECTION_RESTORED' });

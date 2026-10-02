@@ -1,7 +1,9 @@
-import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActiveCallSession } from './ActiveCallSession';
+import type { ICallAudioEnvironment } from '../model/callAudioPipeline';
 import { useCallStore } from '../model/callStore';
+import type { TTrackReplacedCallback } from '../model/localMedia';
 import type { IActiveCall } from '../model/types';
 
 class FakeTrack {
@@ -82,11 +84,19 @@ const mockLocalMedia = {
   } as any,
 };
 
+import { eventBus } from '@/shared/lib/event-bus';
+import { WS_EVENTS } from '@/shared/config';
+
+const mockRestartIce = vi.fn(async () => {});
+const mockResetConnection = vi.fn();
+
 const makePeerConn = (connState: RTCPeerConnectionState, stream: MediaStream | null = null) => ({
   connectionState: connState,
   remoteStream: stream,
   manager: null,
   replaceTrack: mockReplaceTrack,
+  restartIce: mockRestartIce,
+  resetConnection: mockResetConnection,
   close: vi.fn(),
 });
 
@@ -186,6 +196,7 @@ describe('ActiveCallSession', () => {
     );
 
     expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+    expect(mockRestartIce).toHaveBeenCalledTimes(1);
 
     // Восстановление соединения
     act(() => {
@@ -213,5 +224,343 @@ describe('ActiveCallSession', () => {
     );
 
     expect(screen.getByRole('region', { name: 'Свёрнутый звонок' })).toBeInTheDocument();
+  });
+
+  it('вызывает resetConnection при call_peer_joined, если звонок в состоянии reconnecting', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('new')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('вызывает resetConnection и переводит в reconnecting при call_peer_joined, если звонок ранее был connected', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connected')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('вызывает resetConnection при call_joined, если соединение уже было установлено', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connected')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peers: [],
+        self: { userId: 'callee' },
+      });
+    });
+
+    expect(mockResetConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('не вызывает resetConnection при call_peer_joined во время первичного установления соединения', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'connecting',
+      },
+    });
+
+    render(
+      <ActiveCallSession
+        activeCall={calleeActiveCall}
+        isMinimized={false}
+        localMedia={mockLocalMedia}
+        peerConnection={makePeerConn('connecting')}
+      />
+    );
+
+    act(() => {
+      eventBus.emit(WS_EVENTS.CALL.PEER_JOINED, {
+        roomId: calleeActiveCall.roomId,
+        peer: { userId: 'alice' },
+      });
+    });
+
+    expect(mockResetConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('ActiveCallSession: обработка микрофона (#947)', () => {
+  class SendTrack {
+    enabled = true;
+    applyConstraints = vi.fn(async () => undefined);
+    readonly kind: 'audio' | 'video';
+    readonly label: string;
+    constructor(kind: 'audio' | 'video', label: string) {
+      this.kind = kind;
+      this.label = label;
+    }
+    stop() {}
+  }
+
+  /** Поток с подменой треков на месте — как настоящий `MediaStream`. */
+  class SendStream {
+    private tracks: SendTrack[];
+    constructor(tracks: SendTrack[] = []) {
+      this.tracks = [...tracks];
+    }
+    getTracks() {
+      return [...this.tracks];
+    }
+    getAudioTracks() {
+      return this.tracks.filter((t) => t.kind === 'audio');
+    }
+    getVideoTracks() {
+      return this.tracks.filter((t) => t.kind === 'video');
+    }
+    addTrack(track: SendTrack) {
+      this.tracks.push(track);
+    }
+    removeTrack(track: SendTrack) {
+      this.tracks = this.tracks.filter((t) => t !== track);
+    }
+  }
+
+  const processed = new SendTrack('audio', 'processed');
+  const node = () => ({ connect: (to: unknown) => to, disconnect: vi.fn(), destroy: vi.fn() });
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn() });
+  const context = {
+    state: 'suspended',
+    currentTime: 0,
+    createGain: () => ({ ...node(), gain: param() }),
+    createDynamicsCompressor: () => ({
+      ...node(),
+      threshold: param(),
+      knee: param(),
+      ratio: param(),
+      attack: param(),
+      release: param(),
+    }),
+    createAnalyser: () => ({ ...node(), fftSize: 0, getFloatTimeDomainData: vi.fn() }),
+    resume: vi.fn(async () => {
+      context.state = 'running';
+    }),
+    close: vi.fn(async () => undefined),
+    createMediaStreamDestination: () => ({
+      ...node(),
+      stream: { getAudioTracks: () => [processed] },
+    }),
+  };
+  const createSource = vi.fn(() => node());
+  // Один объект на все тесты: окружение — зависимость эффекта обработки.
+  const audioEnvironment = {
+    isSupported: () => true,
+    canDenoise: () => true,
+    every: () => () => undefined,
+    createAudioContext: () => context,
+    createDenoiser: async () => node(),
+    createSource,
+    onUserGesture: () => () => undefined,
+  } as unknown as ICallAudioEnvironment;
+
+  const audioCall: IActiveCall = {
+    roomId: 'room-947',
+    type: 'p2p',
+    kind: 'video',
+    peerId: 'peer-alice',
+    peerName: 'Алиса',
+    isCaller: true,
+  };
+
+  let originalMediaStream: typeof MediaStream;
+  let handlers: TTrackReplacedCallback[];
+
+  const makeLocalMedia = (stream: SendStream | null, isAudioMuted = false) => ({
+    ...mockLocalMedia,
+    stream: stream as unknown as MediaStream,
+    isAudioMuted,
+    manager: {
+      onTrackReplaced: (cb: TTrackReplacedCallback) => {
+        handlers.push(cb);
+        return () => {
+          handlers = handlers.filter((h) => h !== cb);
+        };
+      },
+    } as any,
+  });
+
+  const replaceTrackCalls = (kind: 'audio' | 'video') =>
+    mockReplaceTrack.mock.calls
+      .filter(([k]) => k === kind)
+      .map(([, track]) => (track as unknown as SendTrack).label);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    handlers = [];
+    context.state = 'suspended';
+    originalMediaStream = globalThis.MediaStream;
+    globalThis.MediaStream = SendStream as unknown as typeof MediaStream;
+  });
+
+  afterEach(() => {
+    globalThis.MediaStream = originalMediaStream;
+  });
+
+  it('микрофон просится без браузерного шумодава, если будет свой', () => {
+    render(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(null)}
+        peerConnection={makePeerConn('connecting')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+
+    expect(mockStartMedia).toHaveBeenCalledWith({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: false,
+        autoGainControl: true,
+      },
+      video: true,
+    });
+  });
+
+  it('в соединение уходит обработанный звук', async () => {
+    const mic = new SendTrack('audio', 'mic');
+    render(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(new SendStream([mic, new SendTrack('video', 'cam')]))}
+        peerConnection={makePeerConn('connected')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+
+    await waitFor(() => expect(replaceTrackCalls('audio')).toEqual(['processed']));
+    expect(mic.applyConstraints).toHaveBeenLastCalledWith({ noiseSuppression: false });
+  });
+
+  it('смена камеры — в соединение уходит новая камера, а не прежняя', async () => {
+    const cam = new SendTrack('video', 'cam');
+    render(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(new SendStream([new SendTrack('audio', 'mic'), cam]))}
+        peerConnection={makePeerConn('connected')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+    await waitFor(() => expect(replaceTrackCalls('audio')).toEqual(['processed']));
+
+    const nextCam = new SendTrack('video', 'next-cam');
+    act(() => {
+      handlers.forEach((h) =>
+        h('video', cam as unknown as MediaStreamTrack, nextCam as unknown as MediaStreamTrack)
+      );
+    });
+
+    expect(replaceTrackCalls('video')).toEqual(['next-cam']);
+  });
+
+  it('смена микрофона перецепляет обработку и не трогает отправку звука', async () => {
+    const mic = new SendTrack('audio', 'mic');
+    render(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(new SendStream([mic]))}
+        peerConnection={makePeerConn('connected')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+    await waitFor(() => expect(replaceTrackCalls('audio')).toEqual(['processed']));
+
+    const nextMic = new SendTrack('audio', 'next-mic');
+    act(() => {
+      handlers.forEach((h) =>
+        h('audio', mic as unknown as MediaStreamTrack, nextMic as unknown as MediaStreamTrack)
+      );
+    });
+
+    expect(createSource).toHaveBeenLastCalledWith(context, nextMic);
+    expect(replaceTrackCalls('audio')).toEqual(['processed']);
+  });
+
+  it('выключение микрофона гасит отправляемый трек', async () => {
+    const stream = new SendStream([new SendTrack('audio', 'mic')]);
+    const { rerender } = render(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(stream)}
+        peerConnection={makePeerConn('connected')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+    await waitFor(() => expect(replaceTrackCalls('audio')).toEqual(['processed']));
+
+    rerender(
+      <ActiveCallSession
+        activeCall={audioCall}
+        isMinimized={false}
+        localMedia={makeLocalMedia(stream, true)}
+        peerConnection={makePeerConn('connected')}
+        audioEnvironment={audioEnvironment}
+      />
+    );
+
+    expect(processed.enabled).toBe(false);
   });
 });
