@@ -43,7 +43,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	var inputParams ChatID
 	inputParams.ChatID = chatID
 
-	if !validateInput(w, r, inputParams, method, current.ID, "invalid chat ID") {
+	if !validateAndLogInput(w, r, inputParams, method, current.ID, "invalid chat ID") {
 		return
 	}
 
@@ -185,6 +185,14 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
 func (h *Handler) GetOnlineMembers(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID := r.PathValue("chatID")
+
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
 
 	members, err := h.service.GetOnlineMembers(r.Context(), chatID, current.ID)
 	switch {

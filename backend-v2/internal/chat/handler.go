@@ -32,7 +32,7 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func validateInput(w http.ResponseWriter, r *http.Request, input any, method, currentID, text string) bool {
+func validateAndLogInput(w http.ResponseWriter, r *http.Request, input any, method, currentID, text string) bool {
 	if err := validate.Struct(input); err != nil {
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
 			slog.WarnContext(
@@ -45,6 +45,29 @@ func validateInput(w http.ResponseWriter, r *http.Request, input any, method, cu
 				"errors", validationErrors,
 			)
 
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid input",
+			)
+			return false
+		}
+
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusInternalServerError,
+			"internal_error",
+			err.Error(),
+		)
+		return false
+	}
+	return true
+}
+
+func validateInput(w http.ResponseWriter, r *http.Request, input any) bool {
+	if err := validate.Struct(input); err != nil {
+		if _, ok := err.(validator.ValidationErrors); ok {
 			httpx.ErrorJSON(
 				w, r,
 				http.StatusBadRequest,
@@ -151,27 +174,12 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 	current := authctx.MustUser(r)
 	var input UserID
+
 	if !decode(w, r, &input) {
 		return
 	}
 
-	if err := validate.Struct(input); err != nil {
-		if _, ok := err.(validator.ValidationErrors); ok {
-			httpx.ErrorJSON(
-				w, r,
-				http.StatusBadRequest,
-				"validation_failed",
-				"invalid input",
-			)
-			return
-		}
-
-		httpx.ErrorJSON(
-			w, r,
-			http.StatusInternalServerError,
-			"internal_error",
-			err.Error(),
-		)
+	if !validateInput(w, r, input) {
 		return
 	}
 
@@ -226,7 +234,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	input.Description = strings.TrimSpace(input.Description)
 	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
 
-	if !validateInput(w, r, input, method, current.ID, "group creation validation failed") {
+	if !validateAndLogInput(w, r, input, method, current.ID, "group creation validation failed") {
 		return
 	}
 
@@ -257,6 +265,17 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID, suffix := parseChatPath(r.URL.Path)
+
+	// Данная проверка валидирует chatId для всех кейсов в функции Chat.
+	// Если вы будете выносить кейс в отдельную функцию, добавьте такую же проверку.
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
+
 	switch {
 	case chatID == "":
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
@@ -275,6 +294,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 	case suffix == "/members" && r.Method == http.MethodGet:
+
 		members, err := h.service.Members(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
@@ -286,12 +306,15 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"members": members})
 	case suffix == "/members" && r.Method == http.MethodPost:
-		var input struct {
-			UserID string `json:"userId"`
-		}
+		var input UserID
 		if !decode(w, r, &input) {
 			return
 		}
+
+		if !validateInput(w, r, input) {
+			return
+		}
+
 		member, err := h.service.AddMember(r.Context(), current.ID, chatID, input.UserID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
@@ -377,6 +400,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
+
 		err := h.service.TransferOwnership(r.Context(), current.ID, chatID, input.UserID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
@@ -403,6 +427,15 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			methodNotAllowed(w, r)
 			return
 		}
+
+		userIDInput := UUIDInput{
+			ID: memberID,
+		}
+
+		if !validateInput(w, r, userIDInput) {
+			return
+		}
+
 		if action == "/role" && r.Method == http.MethodPost {
 			var input struct {
 				Role string `json:"role"`
@@ -842,6 +875,14 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 	chatID, suffix := parseChatPath(r.URL.Path)
 	if chatID == "" || suffix != "/pins" && !strings.HasPrefix(suffix, "/pins/") {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
 		return
 	}
 
