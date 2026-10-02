@@ -375,8 +375,20 @@ describe('ActiveCallSession: обработка микрофона (#947)', () =
 
   const processed = new SendTrack('audio', 'processed');
   const node = () => ({ connect: (to: unknown) => to, disconnect: vi.fn(), destroy: vi.fn() });
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn() });
   const context = {
     state: 'suspended',
+    currentTime: 0,
+    createGain: () => ({ ...node(), gain: param() }),
+    createDynamicsCompressor: () => ({
+      ...node(),
+      threshold: param(),
+      knee: param(),
+      ratio: param(),
+      attack: param(),
+      release: param(),
+    }),
+    createAnalyser: () => ({ ...node(), fftSize: 0, getFloatTimeDomainData: vi.fn() }),
     resume: vi.fn(async () => {
       context.state = 'running';
     }),
@@ -390,6 +402,8 @@ describe('ActiveCallSession: обработка микрофона (#947)', () =
   // Один объект на все тесты: окружение — зависимость эффекта обработки.
   const audioEnvironment = {
     isSupported: () => true,
+    canDenoise: () => true,
+    every: () => () => undefined,
     createAudioContext: () => context,
     createDenoiser: async () => node(),
     createSource,

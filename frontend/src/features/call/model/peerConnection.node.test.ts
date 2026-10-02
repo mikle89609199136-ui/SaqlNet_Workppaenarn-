@@ -6,8 +6,16 @@ import { services } from '@/services/serviceContainer';
 // Mock RTP Sender
 class MockRTCRtpSender {
   track: MediaStreamTrack | null;
+  /** Как в браузере после согласования: одна кодировка с приоритетом по умолчанию. */
+  parameters: RTCRtpSendParameters = {
+    encodings: [{ active: true, priority: 'low', networkPriority: 'low' }],
+  } as RTCRtpSendParameters;
   replaceTrack = vi.fn(async (newTrack: MediaStreamTrack | null) => {
     this.track = newTrack;
+  });
+  getParameters = vi.fn(() => structuredClone(this.parameters));
+  setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
+    this.parameters = parameters;
   });
 
   constructor(track: MediaStreamTrack | null) {
@@ -489,6 +497,68 @@ describe('PeerConnectionManager', () => {
       expect(sender.track).toBe(newTrack);
       // Соединение не закрывалось
       expect(pc.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Приоритет звука (#948)', () => {
+    const makeManager = () =>
+      new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+      });
+
+    const priorities = (sender: MockRTCRtpSender) =>
+      (sender.parameters.encodings ?? []).map((e) => `${e.priority}/${e.networkPriority}`);
+
+    it('соединение установилось — звуку высокий приоритет, видео не меняется', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+      pc.addTrack({ kind: 'video', id: 'cam' } as MediaStreamTrack);
+      const [audio, video] = pc.senders;
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      expect(priorities(audio)).toEqual(['high/high']);
+      expect(video.setParameters).not.toHaveBeenCalled();
+      expect(priorities(video)).toEqual(['low/low']);
+    });
+
+    it('до согласования кодировок нет — приоритет не трогается', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+      pc.senders[0].parameters = { encodings: [] } as unknown as RTCRtpSendParameters;
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      expect(pc.senders[0].setParameters).not.toHaveBeenCalled();
+    });
+
+    it('замена звукового трека — приоритет высокий и у нового', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+
+      await manager.replaceTrack('audio', { kind: 'audio', id: 'processed' } as MediaStreamTrack);
+
+      expect(priorities(pc.senders[0])).toEqual(['high/high']);
+    });
+
+    it('уже высокий — повторно не ставится', async () => {
+      const manager = makeManager();
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.addTrack({ kind: 'audio', id: 'mic' } as MediaStreamTrack);
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+      pc.onconnectionstatechange?.();
+
+      expect(pc.senders[0].setParameters).toHaveBeenCalledTimes(1);
     });
   });
 
