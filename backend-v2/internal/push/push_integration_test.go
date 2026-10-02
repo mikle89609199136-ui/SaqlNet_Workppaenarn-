@@ -25,7 +25,8 @@ func TestPushOnRealSchema(t *testing.T) {
 	dbtest.User(t, db, igor, "push_igor")
 	dbtest.User(t, db, masha, "push_masha")
 	dbtest.User(t, db, oleg, "push_oleg")
-	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Игорь')`, igor)
+	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Игорь')
+	ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name`, igor)
 	require.NoError(t, err)
 
 	var chatID string

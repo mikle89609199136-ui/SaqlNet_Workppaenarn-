@@ -29,7 +29,11 @@ func TestCallInviteOnRealSchema(t *testing.T) {
 	dbtest.User(t, db, igor, "invite_igor")
 	dbtest.User(t, db, stranger, "invite_stranger")
 	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name, last_name, avatar_url)
-		VALUES ($1, 'Мария', 'Иванова', '/api/v2/media/masha-avatar')`, masha)
+	VALUES ($1, 'Мария', 'Иванова', '/api/v2/media/masha-avatar')
+	ON CONFLICT (user_id) DO UPDATE
+	SET first_name = EXCLUDED.first_name,
+	    last_name  = EXCLUDED.last_name,
+	    avatar_url = EXCLUDED.avatar_url`, masha)
 	require.NoError(t, err)
 
 	prevTTL := callInviteTTL

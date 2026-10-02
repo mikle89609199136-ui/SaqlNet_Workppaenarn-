@@ -27,7 +27,8 @@ func TestTypingOnRealSchema(t *testing.T) {
 	dbtest.User(t, db, named, "typing_named")
 	dbtest.User(t, db, nameless, "typing_nameless")
 	// Имя из профиля важнее имени учётной записи; пустое имя — username.
-	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Игорь')`, named)
+	_, err := db.Exec(`INSERT INTO users.profiles (user_id, first_name) VALUES ($1, 'Игорь')
+	ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name`, named)
 	require.NoError(t, err)
 	_, err = db.Exec(`UPDATE auth.users SET first_name = '' WHERE id = $1`, nameless)
 	require.NoError(t, err)
