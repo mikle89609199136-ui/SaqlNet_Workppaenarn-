@@ -24,7 +24,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { IEncryptionState } from '@/shared/crypto';
 import type { TFunction } from 'i18next';
 import type { IPendingAttachment } from '@/types';
-import { cn } from '@/shared/lib';
+import { cn, useFileDrop } from '@/shared/lib';
 import type { IRichText } from '@/shared/lib/richText';
 import { Button, Icon, RichTextInput, type IRichTextInputHandle } from '@/shared/ui';
 import {
@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next';
 import { AttachmentControl } from './AttachmentControl';
 import { EmojiControl } from './EmojiControl';
 import { EncryptionUnavailableComposer } from './EncryptionUnavailableComposer';
+import { FileDropOverlay } from './FileDropOverlay';
 import { AttachmentPreview } from './AttachmentPreview';
 import { BlockedComposer } from './BlockedComposer';
 import { ComposerContextBanner } from './ComposerContextBanner';
@@ -79,6 +80,7 @@ interface Props {
   bottomRef: RefObject<HTMLDivElement | null>;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   draftRef: RefObject<IRichTextInputHandle | null>;
+  dropZone: HTMLElement | null;
   setPendingAttachments: Dispatch<SetStateAction<IPendingAttachment[]>>;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
   setOpenedImage?: Dispatch<SetStateAction<string | null>>;
@@ -91,6 +93,7 @@ export const ChatThreadComposer = ({
   bottomRef,
   attachmentInputRef,
   draftRef,
+  dropZone,
   setPhotoEditorFile,
   setOpenedImage,
 }: Props) => {
@@ -129,7 +132,7 @@ export const ChatThreadComposer = ({
 
   const sendTyping = useTypingIndicator();
   const { cancelComposerMode } = useComposerShortcuts(draftRef);
-  const { handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
+  const { addFiles, handleAttachmentChange, removePendingAttachment } = useAttachmentPicker({
     attachmentInputRef,
     pendingAttachments,
     setPendingAttachments,
@@ -198,7 +201,32 @@ export const ChatThreadComposer = ({
   // выключен — как «Отправить»: голосовое открытым не уйдёт.
   const showMic = !canSend && !editingMessage;
 
-  if (chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked)) {
+  const isBlocked = chat?.type === 'private' && (chat.isBlockedByPeer || chat.isPeerBlocked);
+  const canAttachFiles =
+    encryption.status === 'ready' &&
+    !isBlocked &&
+    !recordingVoice &&
+    !editingMessage &&
+    !forward.pending &&
+    !selectionMode;
+
+  const attachFiles = useCallback(
+    (files: File[]) => {
+      if (!canAttachFiles) return false;
+
+      addFiles(files);
+      draftRef.current?.focus();
+      return true;
+    },
+    [addFiles, canAttachFiles, draftRef]
+  );
+
+  const isDraggingFiles = useFileDrop(dropZone, {
+    enabled: canAttachFiles,
+    onDrop: attachFiles,
+  });
+
+  if (isBlocked) {
     return <BlockedComposer chat={chat} />;
   }
 
@@ -209,6 +237,7 @@ export const ChatThreadComposer = ({
 
   return (
     <ComposerForm onSubmit={handleComposerSubmit} ref={formRef}>
+      {isDraggingFiles && dropZone && <FileDropOverlay container={dropZone} />}
       {forward.pending ? (
         <PendingForwardBanner forward={forward.pending} onCancel={forward.cancel} />
       ) : (
@@ -248,6 +277,7 @@ export const ChatThreadComposer = ({
             className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
             disabled={encryption.status !== 'ready'}
             onChange={handleDraftChange}
+            onPasteFiles={attachFiles}
             onSubmit={submitForm}
             placeholder={composerPlaceholder(encryption, t, hasAttachments)}
             ref={draftRef}

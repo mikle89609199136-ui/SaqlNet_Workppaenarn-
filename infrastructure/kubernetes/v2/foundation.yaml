@@ -56,7 +56,7 @@ spec:
       labels: { app: auth, crypto-client: "true" }
     spec:
       initContainers:
-        - name: require-auth-token-generation-schema
+        - name: require-auth-session-schema
           image: postgres:16-alpine
           command:
             - /bin/sh
@@ -69,6 +69,10 @@ spec:
                   WHERE version = '0025_auth_token_generation.sql'
                 ) AND EXISTS (
                   SELECT 1
+                  FROM public.schema_migrations
+                  WHERE version = '0035_auth_login_sessions.sql'
+                ) AND EXISTS (
+                  SELECT 1
                   FROM information_schema.columns
                   WHERE table_schema = 'auth'
                     AND table_name = 'users'
@@ -76,9 +80,25 @@ spec:
                     AND data_type = 'bigint'
                     AND is_nullable = 'NO'
                     AND column_default IS NOT NULL
+                ) AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_schema = 'auth'
+                    AND table_name = 'sessions'
+                    AND column_name = 'access_token_hash'
+                    AND data_type = 'text'
+                ) AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_schema = 'auth'
+                    AND table_name = 'sessions'
+                    AND column_name = 'token_generation'
+                    AND data_type = 'bigint'
+                    AND is_nullable = 'NO'
+                    AND column_default IS NOT NULL
                 ) THEN 'ready' ELSE 'waiting' END
               " 2>/dev/null)" = "ready" ]; do
-                echo "waiting for migration 0025_auth_token_generation.sql"
+                echo "waiting for auth schema migrations 0025 and 0035"
                 sleep 2
               done
           env:

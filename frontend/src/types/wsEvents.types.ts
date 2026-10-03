@@ -32,6 +32,15 @@ export interface IMessagesRemovedEvent {
   chatId: string;
   messageIds: string[];
 }
+/** Граница собеседника userId сдвинулась до upTo в момент at (#657). */
+export interface IReceiptsEvent {
+  type: string;
+  chatId: string;
+  userId: string;
+  kind: 'delivered' | 'read';
+  upTo: string;
+  at: string;
+}
 export interface IMessagePinEvent {
   type: string;
   chatId: string;
@@ -153,8 +162,9 @@ export interface ICallPeerDto {
 
 export interface ICallErrorEvent {
   type: string;
-  reason: string;
+  reason?: string;
   roomId?: string;
+  message?: string;
 }
 
 export interface ICallJoinedEvent {
@@ -174,6 +184,7 @@ export interface ICallPeerLeftEvent {
   type: string;
   roomId: string;
   peer: { userId: string };
+  reason?: 'left' | 'disconnected';
 }
 
 export interface ICallIncomingEvent {
@@ -222,6 +233,9 @@ export interface ICallIceEvent {
 }
 
 export interface IWsEventMap {
+  // Служебные события самого соединения — без данных.
+  [WS_EVENTS.SOCKET.CONNECTED]: void;
+  [WS_EVENTS.SOCKET.DISCONNECTED]: void;
   [WS_EVENTS.CALL.ANSWER]: ICallAnswerEvent;
   [WS_EVENTS.CALL.CANCELED]: ICallCancelledEvent;
   [WS_EVENTS.CALL.ERROR]: ICallErrorEvent;
@@ -244,6 +258,7 @@ export interface IWsEventMap {
   [WS_EVENTS.MESSAGE.EDITED]: IMessageEditedEvent;
   [WS_EVENTS.MESSAGE.NEW]: IMessageNewEvent;
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
+  [WS_EVENTS.MESSAGE.RECEIPTS]: IReceiptsEvent;
   [WS_EVENTS.MESSAGE.UNPINNED]: IMessageUnpinEvent;
 
   [WS_EVENTS.OTHER.PING]: IPingEvent;

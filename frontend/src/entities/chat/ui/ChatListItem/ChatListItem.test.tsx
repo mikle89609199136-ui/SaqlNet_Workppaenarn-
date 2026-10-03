@@ -110,19 +110,51 @@ describe('строка списка чатов', () => {
       expect(screen.getByText('привет')).toBeInTheDocument();
     });
 
-    it('галочки — только у своего сообщения и только когда сервер прислал статус', () => {
+    it('галочки своего последнего в личном чате: отправлено, доставлено, прочитано (#657)', () => {
+      const at = '2026-09-29T12:00:00.000Z';
+      // Второй цвет — на открытом чате, где строка залита акцентом: там
+      // «доставлено» и «прочитано» тоже должны различаться.
+      const cases = [
+        [
+          last({ senderId: ME }),
+          'Отправлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at }),
+          'Доставлено',
+          'text-ink-3',
+          'group-aria-[current=page]:text-out-tick',
+        ],
+        [
+          last({ senderId: ME, deliveredAt: at, readAt: at }),
+          'Прочитано',
+          'text-brand',
+          'group-aria-[current=page]:text-out-read',
+        ],
+      ] as const;
+
+      for (const [lastMessage, label, color, currentColor] of cases) {
+        const { unmount } = renderRow(makeChat({ id: CHAT_ID, type: 'private', lastMessage }));
+        expect(screen.getByRole('img', { name: label })).toHaveClass(color, currentColor);
+        unmount();
+      }
+    });
+
+    it('у чужого последнего галочек нет, в группе своё — только «отправлено»', () => {
+      const at = '2026-09-29T12:00:00.000Z';
       const { unmount } = renderRow(
-        makeChat({
-          id: CHAT_ID,
-          type: 'private',
-          lastMessage: last({ senderId: ME, status: 'read' }),
-        })
+        makeChat({ id: CHAT_ID, type: 'private', lastMessage: last({ readAt: at }) })
       );
-      expect(screen.getByRole('img', { name: 'Прочитано' })).toHaveClass('text-brand');
+      expect(screen.queryByRole('img', { name: /Прочитано|Доставлено|Отправлено/ })).toBeNull();
       unmount();
 
-      renderRow(makeChat({ id: CHAT_ID, type: 'private', lastMessage: last({ senderId: ME }) }));
-      expect(screen.queryByRole('img', { name: /Прочитано|Отправлено/ })).not.toBeInTheDocument();
+      renderRow(
+        makeChat({ id: CHAT_ID, type: 'group', lastMessage: last({ senderId: ME, readAt: at }) })
+      );
+      expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Прочитано' })).toBeNull();
     });
 
     it('чат без звука — значок после имени и приглушённый счётчик', () => {

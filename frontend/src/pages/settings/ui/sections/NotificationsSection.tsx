@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { PushSettingItem } from '@/features/push-notifications';
 import { ListGroup, ListSwitchItem } from '@/shared/ui';
 import { useSettingsData } from './useSettingsData';
 
@@ -16,6 +17,8 @@ export function NotificationsSection() {
         label={t('settings.notifications.enabled', 'Уведомления')}
         onChange={(checked) => saveSettings({ notifications: checked })}
       />
+      {/* Push на этом устройстве, когда приложение закрыто (#882). */}
+      <PushSettingItem />
       <ListSwitchItem
         checked={settings.sounds}
         hint={t('settings.notifications.soundsHint', 'Звук при входящем сообщении')}

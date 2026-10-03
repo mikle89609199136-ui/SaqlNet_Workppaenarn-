@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -37,6 +38,17 @@ type Session struct {
 	IPAddress  string    `json:"ipAddress"`
 	LastActive time.Time `json:"lastActive"`
 	CreatedAt  time.Time `json:"createdAt"`
+	IsCurrent  bool      `json:"isCurrent"`
+}
+
+// SessionMetadata describes the client that receives a newly issued token.
+// It is deliberately separate from public.user_sessions: that legacy table
+// tracks presence/device API state, while auth.sessions is the credential
+// lifecycle source used by GET /auth/sessions and logout.
+type SessionMetadata struct {
+	DeviceName string
+	DeviceType string
+	IPAddress  string
 }
 
 type User struct {
@@ -52,7 +64,7 @@ type User struct {
 type CryptoClient interface {
 	HashPassword(ctx context.Context, password string) (string, error)
 	VerifyPassword(ctx context.Context, password, hash string) (bool, error)
-	IssueToken(ctx context.Context, userID, username string, tokenGeneration int64) (string, error)
+	IssueToken(ctx context.Context, userID, username string, tokenGeneration int64) (cryptoclient.IssuedToken, error)
 }
 
 type Service struct {
@@ -64,7 +76,7 @@ func NewService(db *sql.DB, crypto CryptoClient) *Service {
 	return &Service{db: db, crypto: crypto}
 }
 
-func (s *Service) Register(ctx context.Context, username, password, firstName, lastName, language string) (User, string, error) {
+func (s *Service) Register(ctx context.Context, username, password, firstName, lastName, language string, sessionMetadata ...SessionMetadata) (User, string, error) {
 	username = usernamepolicy.Normalize(username)
 	if err := ValidatePassword(password); err != nil {
 		return User{}, "", err
@@ -143,18 +155,21 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 	// back instead of leaving an account that received no usable first token.
 	// The uncommitted user row cannot be logged out concurrently, so the
 	// generation returned by INSERT remains current through this issuance.
-	token, err := s.crypto.IssueToken(ctx, user.ID, user.Username, tokenGeneration)
+	issuedToken, err := s.crypto.IssueToken(ctx, user.ID, user.Username, tokenGeneration)
 	if err != nil {
+		return User{}, "", err
+	}
+	if err := recordSession(ctx, tx, user.ID, issuedToken, tokenGeneration, firstSessionMetadata(sessionMetadata)); err != nil {
 		return User{}, "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return User{}, "", err
 	}
 
-	return user, token, nil
+	return user, issuedToken.Token, nil
 }
 
-func (s *Service) Login(ctx context.Context, username, password, twoFAPassword string) (User, string, error) {
+func (s *Service) Login(ctx context.Context, username, password, twoFAPassword string, sessionMetadata ...SessionMetadata) (User, string, error) {
 	username = usernamepolicy.Normalize(username)
 
 	var user User
@@ -208,7 +223,7 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 		}
 	}
 
-	token, err := s.issueTokenWithStableGeneration(ctx, user.ID, user.Username, tokenGeneration)
+	token, err := s.issueTokenWithStableGeneration(ctx, user.ID, user.Username, tokenGeneration, firstSessionMetadata(sessionMetadata))
 	return user, token, err
 }
 
@@ -239,7 +254,7 @@ func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) e
 // this confirmation still belongs to the user's current generation. Unlike a
 // password login, an in-flight QR confirmation must not cross logout-all and
 // regain access with the newly incremented generation.
-func (s *Service) IssueQRToken(ctx context.Context, userID string, authorizedGeneration int64) (string, error) {
+func (s *Service) IssueQRToken(ctx context.Context, userID string, authorizedGeneration int64, sessionMetadata ...SessionMetadata) (string, error) {
 	var username string
 	var currentGeneration int64
 	err := s.db.QueryRowContext(ctx, `
@@ -254,7 +269,7 @@ func (s *Service) IssueQRToken(ctx context.Context, userID string, authorizedGen
 		return "", ErrAuthorizationRevoked
 	}
 
-	token, err := s.crypto.IssueToken(ctx, userID, username, authorizedGeneration)
+	issuedToken, err := s.crypto.IssueToken(ctx, userID, username, authorizedGeneration)
 	if err != nil {
 		return "", err
 	}
@@ -268,16 +283,19 @@ func (s *Service) IssueQRToken(ctx context.Context, userID string, authorizedGen
 	if currentGeneration != authorizedGeneration {
 		return "", ErrAuthorizationRevoked
 	}
-	return token, nil
+	if err := recordSession(ctx, s.db, userID, issuedToken, authorizedGeneration, firstSessionMetadata(sessionMetadata)); err != nil {
+		return "", err
+	}
+	return issuedToken.Token, nil
 }
 
 // issueTokenWithStableGeneration prevents a concurrent logout-all from making
 // a newly returned token stale. The successful generation re-read is the
 // issuance linearization point: a logout-all committed before it forces a
 // retry, while one committed afterwards logically revokes this issuance.
-func (s *Service) issueTokenWithStableGeneration(ctx context.Context, userID, username string, tokenGeneration int64) (string, error) {
+func (s *Service) issueTokenWithStableGeneration(ctx context.Context, userID, username string, tokenGeneration int64, metadata SessionMetadata) (string, error) {
 	for attempt := 0; attempt < tokenIssueMaxAttempts; attempt++ {
-		token, err := s.crypto.IssueToken(ctx, userID, username, tokenGeneration)
+		issuedToken, err := s.crypto.IssueToken(ctx, userID, username, tokenGeneration)
 		if err != nil {
 			return "", err
 		}
@@ -291,7 +309,10 @@ func (s *Service) issueTokenWithStableGeneration(ctx context.Context, userID, us
 			return "", err
 		}
 		if currentGeneration == tokenGeneration {
-			return token, nil
+			if err := recordSession(ctx, s.db, userID, issuedToken, tokenGeneration, metadata); err != nil {
+				return "", err
+			}
+			return issuedToken.Token, nil
 		}
 		tokenGeneration = currentGeneration
 	}
@@ -304,6 +325,46 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(h[:])
 }
 
+type sessionExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func firstSessionMetadata(values []SessionMetadata) SessionMetadata {
+	metadata := SessionMetadata{DeviceType: "unknown"}
+	if len(values) > 0 {
+		metadata = values[0]
+		if strings.TrimSpace(metadata.DeviceType) == "" {
+			metadata.DeviceType = "unknown"
+		}
+	}
+	metadata.DeviceName = strings.TrimSpace(metadata.DeviceName)
+	metadata.DeviceType = strings.ToLower(strings.TrimSpace(metadata.DeviceType))
+	metadata.IPAddress = strings.TrimSpace(metadata.IPAddress)
+	return metadata
+}
+
+// recordSession stores only a token fingerprint. Reissuing an identical JWT
+// updates the same credential row instead of showing duplicate sessions.
+func recordSession(ctx context.Context, executor sessionExecutor, userID string, issuedToken cryptoclient.IssuedToken, tokenGeneration int64, metadata SessionMetadata) error {
+	_, err := executor.ExecContext(ctx, `
+		INSERT INTO auth.sessions (
+			user_id, access_token_hash, token_generation, expires_at,
+			device_name, device_type, ip_address, last_active
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		ON CONFLICT (access_token_hash) WHERE access_token_hash IS NOT NULL
+		DO UPDATE SET
+			token_generation = EXCLUDED.token_generation,
+			expires_at = EXCLUDED.expires_at,
+			device_name = EXCLUDED.device_name,
+			device_type = EXCLUDED.device_type,
+			ip_address = EXCLUDED.ip_address,
+			last_active = NOW()
+	`, userID, tokenHash(issuedToken.Token), tokenGeneration, issuedToken.ExpiresAt,
+		metadata.DeviceName, metadata.DeviceType, metadata.IPAddress)
+	return err
+}
+
 // IsTokenRevoked returns true if this token was revoked explicitly or was
 // issued before the user's most recent logout-all operation.
 func (s *Service) IsTokenRevoked(ctx context.Context, token string, claims cryptoclient.TokenClaims) (bool, error) {
@@ -312,19 +373,44 @@ func (s *Service) IsTokenRevoked(ctx context.Context, token string, claims crypt
 
 // Logout revokes the given token.
 func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt time.Time) error {
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	hash := tokenHash(token)
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO auth.revoked_tokens (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, tokenHash(token), userID, expiresAt); err != nil {
+	`, hash, userID, expiresAt); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE auth.sessions
+		SET revoked_at = COALESCE(revoked_at, NOW()), last_active = NOW()
+		WHERE user_id = $1 AND access_token_hash = $2
+	`, userID, hash); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// public.user_sessions is legacy presence state, not credential state.
+	// Its failure must never roll back or report failure for a token that has
+	// already been securely revoked.
+	if _, err := s.db.ExecContext(ctx, `
 		UPDATE public.user_sessions
 		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
 		WHERE user_id = $1
-	`, userID)
-	return err
+	`, userID); err != nil {
+		log.Printf("auth: legacy session cleanup failed after logout for user %s: %v", userID, err)
+	}
+	return nil
 }
 
 // LogoutAll revokes all tokens issued for a user up to the current moment.
@@ -352,14 +438,25 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 	`, userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Presence and push delivery are cleanup concerns, not authorization.
+	// Once the generation increment commits, their failure must not restore old
+	// credentials or make a successful security operation look unsuccessful.
+	if _, err := s.db.ExecContext(ctx, `
 		UPDATE public.user_sessions
 		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
 		WHERE user_id = $1
 	`, userID); err != nil {
-		return err
+		log.Printf("auth: legacy session cleanup failed after logout-all for user %s: %v", userID, err)
 	}
-	return tx.Commit()
+	// Вышли со всех устройств — push на них больше не идёт (#717).
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM users.push_subscriptions WHERE user_id = $1`, userID); err != nil {
+		log.Printf("auth: push cleanup failed after logout-all for user %s: %v", userID, err)
+	}
+	return nil
 }
 
 // ChangePassword verifies the current password and replaces the hash.
@@ -446,13 +543,28 @@ func (s *Service) TwoFAVerify(ctx context.Context, userID, password string) (req
 }
 
 // Sessions lists active (non-revoked) sessions for a user.
-func (s *Service) Sessions(ctx context.Context, userID string) ([]Session, error) {
+func (s *Service) Sessions(ctx context.Context, userID, currentToken string) ([]Session, error) {
+	currentTokenHash := ""
+	if currentToken != "" {
+		currentTokenHash = tokenHash(currentToken)
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id::text, device_name, device_type, ip_address, last_active, created_at
-		FROM auth.sessions
-		WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
-		ORDER BY last_active DESC
-	`, userID)
+		SELECT s.id::text, s.device_name, s.device_type, s.ip_address, s.last_active, s.created_at,
+			COALESCE(s.access_token_hash = $2, FALSE) AS is_current
+		FROM auth.sessions s
+		JOIN auth.users u ON u.id = s.user_id
+		WHERE s.user_id = $1
+			AND s.revoked_at IS NULL
+			AND s.expires_at > NOW()
+			AND s.token_generation = u.token_generation
+			AND (
+				s.access_token_hash IS NULL OR NOT EXISTS (
+					SELECT 1 FROM auth.revoked_tokens rt
+					WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW()
+				)
+			)
+		ORDER BY COALESCE(s.access_token_hash = $2, FALSE) DESC, s.last_active DESC
+	`, userID, currentTokenHash)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +574,7 @@ func (s *Service) Sessions(ctx context.Context, userID string) ([]Session, error
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		if err := rows.Scan(&s.ID, &s.DeviceName, &s.DeviceType, &s.IPAddress, &s.LastActive, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.DeviceName, &s.DeviceType, &s.IPAddress, &s.LastActive, &s.CreatedAt, &s.IsCurrent); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)

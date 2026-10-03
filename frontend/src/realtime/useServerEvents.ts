@@ -10,8 +10,9 @@ import {
   patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
+  putThreadReceipt,
 } from '@/entities/message';
-import { useTypingStore } from '@/entities/chat';
+import { putChatListReceipt, useTypingStore } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -115,6 +116,21 @@ export function useServerEvents(enabled: boolean): void {
               reactions: payload.reactions ?? [],
             });
           }
+          return;
+        }
+
+        // Собеседник получил или прочитал (#657): галочки и время своих
+        // сообщений — в ленте и в списке чатов, без перезапроса.
+        if (
+          eventType === WS_EVENTS.MESSAGE.RECEIPTS &&
+          payload?.chatId &&
+          payload?.userId &&
+          (payload?.kind === 'delivered' || payload?.kind === 'read') &&
+          payload?.upTo &&
+          payload?.at
+        ) {
+          putThreadReceipt(queryClient, payload);
+          putChatListReceipt(queryClient, payload);
           return;
         }
 

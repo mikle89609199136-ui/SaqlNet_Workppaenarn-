@@ -55,18 +55,18 @@
 /* Графит — по умолчанию. */
 :root,
 [data-preview='graphite-light'] {
-  --neutral-ground: #e4e9f1;
-  --neutral-panel: #ffffff;
-  --neutral-chat: #f6f8fb;
-  --neutral-raised: #eef2f7;
-  --neutral-bubble-in: #ffffff;
-  --neutral-composer: #ffffff;
-  --neutral-menu: #ffffff;
-  --neutral-line: #dfe4ed;
+  --neutral-ground: #e7e5ec;
+  --neutral-panel: #f7f6f9;
+  --neutral-chat: #f0eef4;
+  --neutral-raised: #e9e7ef;
+  --neutral-bubble-in: #fcfbfe;
+  --neutral-composer: #fbfafc;
+  --neutral-menu: #fbfafc;
+  --neutral-line: #dddae5;
   --neutral-outline: #7a8494;
   --neutral-ink-1: #1f252e;
   --neutral-ink-2: #566172;
-  --neutral-ink-3: #5f6b7c;
+  --neutral-ink-3: #59647a;
 }
 
 :root[data-theme='dark'],
@@ -88,14 +88,14 @@
 /* Полночь — синий уклон. */
 :root[data-palette='midnight'],
 [data-preview='midnight-light'] {
-  --neutral-ground: #dfe6f3;
-  --neutral-panel: #ffffff;
-  --neutral-chat: #f2f5fb;
-  --neutral-raised: #e9eef8;
-  --neutral-bubble-in: #ffffff;
-  --neutral-composer: #ffffff;
-  --neutral-menu: #ffffff;
-  --neutral-line: #d5deee;
+  --neutral-ground: #e0e5ef;
+  --neutral-panel: #f5f7fb;
+  --neutral-chat: #edf0f7;
+  --neutral-raised: #e5e9f2;
+  --neutral-bubble-in: #fbfcfe;
+  --neutral-composer: #f9fafd;
+  --neutral-menu: #f9fafd;
+  --neutral-line: #d6dcea;
   --neutral-outline: #758198;
   --neutral-ink-1: #1a2233;
   --neutral-ink-2: #4f5c75;
@@ -121,14 +121,14 @@
 /* Тёплая — бумажный уклон. */
 :root[data-palette='warm'],
 [data-preview='warm-light'] {
-  --neutral-ground: #ece5dc;
-  --neutral-panel: #fffdf9;
-  --neutral-chat: #f8f3ed;
-  --neutral-raised: #f2ebe3;
-  --neutral-bubble-in: #fffdf9;
-  --neutral-composer: #fffdf9;
-  --neutral-menu: #fffdf9;
-  --neutral-line: #e3d9cd;
+  --neutral-ground: #ebe4da;
+  --neutral-panel: #faf6f0;
+  --neutral-chat: #f3ede5;
+  --neutral-raised: #ece5db;
+  --neutral-bubble-in: #fdfaf5;
+  --neutral-composer: #fbf8f2;
+  --neutral-menu: #fbf8f2;
+  --neutral-line: #e1d7ca;
   --neutral-outline: #8b7f73;
   --neutral-ink-1: #2a221c;
   --neutral-ink-2: #65584d;
@@ -156,6 +156,8 @@
    themes.css). */
 :root {
   --white: #ffffff;
+  /* Галочки «прочитано» на своём пузыре (#657): одни во всех акцентах. */
+  --read-tick: #a5f3fc;
 
   /* --- Состояния ------------------------------------------- */
   /* Отдельно от акцента: акцент меняется, «в сети» и «ошибка» — нет.

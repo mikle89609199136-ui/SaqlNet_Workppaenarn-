@@ -58,14 +58,14 @@ export function LoginForm() {
         return;
       }
 
-      if (!data.token) {
+      if (!data.user) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
       const settings = await fetchUserSettings();
       // Облачный пароль не должен совпасть с этим: его знает сервер.
       await rememberLoginPassword(values.password);
-      saveAuthSession({ settings, token: data.token, user: data.user! });
+      saveAuthSession({ settings, user: data.user });
       navigate(safeReturnPath(searchParams.get('from')), { replace: true });
     } catch (error) {
       const code = (error as { data?: { code?: string } })?.data?.code;

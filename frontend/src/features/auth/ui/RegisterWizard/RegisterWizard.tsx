@@ -162,13 +162,13 @@ export function RegisterWizard() {
         username: values.username.trim(),
       });
 
-      if (!data.token) {
+      if (!data.user) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
       // Следующий шаг — облачный пароль, и он не должен совпасть с этим.
       await rememberLoginPassword(values.password);
-      saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
+      saveAuthSession({ settings: undefined, user: data.user });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
          неудачная загрузка значит лишь аватарку по умолчанию. */
       if (avatarFile) {

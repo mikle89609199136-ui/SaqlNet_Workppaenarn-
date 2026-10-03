@@ -7,6 +7,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Button, buttonStyles, Icon } from '@/shared/ui';
+import { CALLS_ENABLED } from '@/shared/config';
 
 interface Props {
   profileModal?: IProfileModal;
@@ -146,26 +147,31 @@ export const ChatThreadHeader = ({
 
       <div className="flex shrink-0 items-center gap-0.5">
         {/* Поиск по переписке появится с #841. */}
-        <Button
-          aria-label={t('audioCall', 'Позвонить')}
-          disabled={callsBlocked}
-          iconOnly
-          onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
-          title={t('audioCall', 'Позвонить')}
-          variant="ghost"
-        >
-          <Icon className="size-5" name="phone" />
-        </Button>
-        <Button
-          aria-label={t('videoCall', 'Видеозвонок')}
-          disabled={callsBlocked}
-          iconOnly
-          onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
-          title={t('videoCall', 'Видеозвонок')}
-          variant="ghost"
-        >
-          <Icon className="size-5" name="video" />
-        </Button>
+        {/* Звонки — только один на один (#715): в группе кнопок нет. */}
+        {CALLS_ENABLED && chat.type === 'private' && (
+          <>
+            <Button
+              aria-label={t('audioCall', 'Позвонить')}
+              disabled={callsBlocked}
+              iconOnly
+              onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
+              title={t('audioCall', 'Позвонить')}
+              variant="ghost"
+            >
+              <Icon className="size-5" name="phone" />
+            </Button>
+            <Button
+              aria-label={t('videoCall', 'Видеозвонок')}
+              disabled={callsBlocked}
+              iconOnly
+              onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
+              title={t('videoCall', 'Видеозвонок')}
+              variant="ghost"
+            >
+              <Icon className="size-5" name="video" />
+            </Button>
+          </>
+        )}
         <Button
           aria-label={t('closeChat', 'Закрыть чат')}
           className="max-md:hidden"

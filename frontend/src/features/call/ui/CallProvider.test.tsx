@@ -48,7 +48,6 @@ describe('CallProvider', () => {
       socket: mockSocket,
       incomingCall: null,
       activeCall: null,
-      callFrameRef: null,
       isMinimized: false,
     });
   });
@@ -77,7 +76,7 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
   });
 
-  it('завершает звонок при call_peer_left из текущей комнаты', () => {
+  it('завершает звонок с peer_ended при call_peer_left с reason: left для active', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -96,10 +95,138 @@ describe('CallProvider', () => {
       type: 'call_peer_left',
       roomId: 'current-room',
       peer: { userId: 'partner' },
+      reason: 'left',
     });
 
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('завершает звонок с peer_ended при call_peer_left с reason: left для reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'left',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('переводит звонок в reconnecting при call_peer_left с reason: disconnected для active', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'disconnected',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('переводит звонок в reconnecting при call_peer_left для connecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'connecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'disconnected',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+  });
+
+  it('завершает звонок при call_peer_left, если состояние не active/connecting/reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'disconnected',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('peer_ended');
+  });
+
+  it('не завершает звонок при call_peer_left с reason: disconnected, если уже идет reconnecting', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'reconnecting',
+        roomId: 'current-room',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_peer_left',
+      roomId: 'current-room',
+      peer: { userId: 'partner' },
+      reason: 'disconnected',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('reconnecting');
   });
 
   it('переводит принявшего звонок (callee) в active при получении call_joined с участниками', () => {
@@ -177,7 +304,7 @@ describe('CallProvider', () => {
     expect(useCallStore.getState().fsm.state).toBe('active');
   });
 
-  it('обрабатывает завершение звонка из iframe (crane_call_ended)', () => {
+  it('сообщения окон (старый call.html) звонок не завершают и не сворачивают (#776)', () => {
     render(
       <CallProvider>
         <div>child</div>
@@ -192,31 +319,94 @@ describe('CallProvider', () => {
       },
     });
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'crane_call_ended' },
-      })
-    );
+    for (const type of ['crane_call_ended', 'crane_call_minimize']) {
+      window.dispatchEvent(new MessageEvent('message', { data: { type } }));
+    }
 
-    expect(useCallStore.getState().fsm.state).toBe('ended');
-    expect(useCallStore.getState().fsm.endReason).toBe('completed');
+    expect(useCallStore.getState().fsm.state).toBe('active');
+    expect(useCallStore.getState().isMinimized).toBe(false);
   });
 
-  it('обрабатывает сворачивание звонка из iframe (crane_call_minimize)', () => {
+  it('обрабатывает события BroadcastChannel через CallProvider', async () => {
     render(
       <CallProvider>
         <div>child</div>
       </CallProvider>
     );
 
-    expect(useCallStore.getState().isMinimized).toBe(false);
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'tab-room-1',
+        peerId: 'peer-tab',
+      },
+      incomingCall: {
+        roomId: 'tab-room-1',
+        from: 'peer-tab',
+        kind: 'audio',
+      },
+    });
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'crane_call_minimize' },
-      })
+    const otherTabChannel = new BroadcastChannel('craneapp_calls');
+    otherTabChannel.postMessage({ type: 'CALL_DISMISSED', roomId: 'tab-room-1' });
+
+    await vi.waitFor(() => {
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+      expect(useCallStore.getState().incomingCall).toBeNull();
+    });
+
+    otherTabChannel.close();
+  });
+
+  it('при событии socket:connected вызывает rejoinActiveCall', () => {
+    const rejoinSpy = vi.spyOn(useCallStore.getState(), 'rejoinActiveCall');
+
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
     );
 
-    expect(useCallStore.getState().isMinimized).toBe(true);
+    eventBus.emit('socket:connected', undefined);
+
+    expect(rejoinSpy).toHaveBeenCalled();
+  });
+
+  it('при событии call_error для текущей комнаты завершает звонок с network_error', () => {
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'active',
+        roomId: 'room-err-1',
+      },
+    });
+
+    fakeSocket.emitFlat({
+      type: 'call_error',
+      roomId: 'room-err-1',
+      message: 'Room expired',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('network_error');
+  });
+
+  it('при монтировании вызывает restoreActiveSession', () => {
+    const restoreSpy = vi.spyOn(useCallStore.getState(), 'restoreActiveSession');
+
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+
+    expect(restoreSpy).toHaveBeenCalledTimes(1);
   });
 });

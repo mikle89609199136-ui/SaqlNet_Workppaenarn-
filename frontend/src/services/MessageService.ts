@@ -19,6 +19,7 @@ import type {
   TMediaMessageType,
   TMessagesList,
   TMessageType,
+  TSharedKind,
 } from '@/types';
 import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
 import { trimRichText, type IMessageEntity } from '@/shared/lib/richText';
@@ -80,6 +81,39 @@ export class MessageService {
         )
       )
     );
+  }
+
+  /**
+   * Общее в переписке для профиля (#842): одна страница сообщений вида kind
+   * от новых к старым, расшифрованная так же, как лента. nextCursor —
+   * передать в before за следующей; нет — дальше ничего.
+   */
+  async fetchSharedPage(
+    chatId: string,
+    kind: TSharedKind,
+    before?: string,
+    limit: number = 24
+  ): Promise<{ messages: TMessagesList; nextCursor?: string }> {
+    const response = await this.apiClient.get<{ messages?: IMessageDto[]; nextCursor?: string }>(
+      API_ENDPOINTS.CHAT_SHARED(chatId),
+      { kind, limit, ...(before ? { before } : {}) }
+    );
+    const items = response.data.messages ?? [];
+    if (items.length === 0) return { messages: [], nextCursor: undefined };
+
+    const chatContext = await this.getChatContext(chatId, 'decryption');
+    const messages = await Promise.all(
+      items.map((item) => this.processMessageForDisplay(chatId, item, chatContext))
+    );
+    return { messages, nextCursor: response.data.nextCursor || undefined };
+  }
+
+  /** Сколько видимых сообщений ленты новее этого — чтобы догрузить ленту до него (#842). */
+  async getMessagePosition(chatId: string, messageId: string): Promise<number> {
+    const response = await this.apiClient.get<{ position: number }>(
+      API_ENDPOINTS.MESSAGE_POSITION(chatId, messageId)
+    );
+    return response.data.position;
   }
 
   /**
@@ -529,12 +563,14 @@ export class MessageService {
    * при первом открытии чата кеш ещё пуст, и отметка не доходила до интерфейса.
    */
   async markAsRead(chatId: string, messageIds: string[]) {
-    const response = await this.apiClient.post(API_ENDPOINTS.MESSAGE_READ, {
-      chatId,
-      messageIds,
-    });
+    const response = await this.apiClient.post<{ readIds?: string[]; lastReadAt?: string }>(
+      API_ENDPOINTS.MESSAGE_READ,
+      { chatId, messageIds }
+    );
 
-    return { ...response.data, readIds: messageIds };
+    /* Прочитанными помечается то, что учёл сервер (#506): свои и удалённые
+       он пропускает. Старый ответ без readIds — отправленные, как раньше. */
+    return { ...response.data, readIds: response.data?.readIds ?? messageIds };
   }
 
   /**

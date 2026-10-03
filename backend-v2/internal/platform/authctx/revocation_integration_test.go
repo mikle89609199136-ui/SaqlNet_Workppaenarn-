@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -119,6 +118,9 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 		assertTokenGenerationBackfill(t, db, userID)
 	})
 	applyRevocationMigrations(t, db, migrationFiles[tokenGenerationMigration+1:])
+	if err := auth.CheckSessionSchema(t.Context(), db); err != nil {
+		t.Fatalf("auth session schema after migrations: %v", err)
+	}
 
 	cryptoServer := startIntegrationCryptoServer(t)
 	crypto := cryptoclient.NewClient(cryptoServer.URL)
@@ -126,6 +128,7 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 	checker := authctx.NewDBTokenChecker(db)
 	oldToken1 := loginIntegrationToken(t, service)
 	oldToken2 := loginIntegrationToken(t, service)
+	assertSessionCount(t, service, userID, oldToken1, 2)
 	oldClaims, err := crypto.VerifyToken(t.Context(), oldToken1)
 	if err != nil {
 		t.Fatalf("verify old token: %v", err)
@@ -152,6 +155,7 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 	assertRevocation(t, checker, oldToken2, oldClaims, true)
 	assertAuthenticatedHTTPStatus(t, httpHandler, oldToken1, http.StatusUnauthorized)
 	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, oldToken2, http.StatusUnauthorized)
+	assertSessionCount(t, service, userID, oldToken1, 0)
 
 	newToken := loginIntegrationToken(t, service)
 	newClaims, err := crypto.VerifyToken(t.Context(), newToken)
@@ -162,6 +166,7 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 		t.Fatalf("expected post-logout login generation 1, got %d", newClaims.TokenGeneration)
 	}
 	assertRevocation(t, checker, newToken, newClaims, false)
+	assertSessionCount(t, service, userID, newToken, 1)
 	assertAuthenticatedHTTPStatus(t, httpHandler, newToken, http.StatusNoContent)
 	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken, http.StatusSwitchingProtocols)
 
@@ -169,8 +174,20 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 		t.Fatalf("logout current token: %v", err)
 	}
 	assertRevocation(t, checker, newToken, newClaims, true)
+	assertSessionCount(t, service, userID, newToken, 0)
 	assertAuthenticatedHTTPStatus(t, httpHandler, newToken, http.StatusUnauthorized)
 	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken, http.StatusUnauthorized)
+}
+
+func assertSessionCount(t *testing.T, service *auth.Service, userID, currentToken string, want int) {
+	t.Helper()
+	sessions, err := service.Sessions(t.Context(), userID, currentToken)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != want {
+		t.Fatalf("session count = %d, want %d: %+v", len(sessions), want, sessions)
+	}
 }
 
 func authenticatedIntegrationHandler(verifier authctx.TokenVerifier, checker *authctx.DBTokenChecker) http.Handler {
@@ -203,8 +220,8 @@ func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, me
 
 func assertWebSocketHandshakeStatus(t *testing.T, serverURL, token string, want int) {
 	t.Helper()
-	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws?token=" + url.QueryEscape(token)
-	connection, response, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + token}})
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()
 	}

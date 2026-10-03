@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"log/slog"
 	"path"
 	"strings"
@@ -20,12 +19,14 @@ import (
 )
 
 var (
-	ErrNotFound                  = errors.New("chat not found")
-	ErrForbidden                 = errors.New("access denied")
-	ErrInvalidInput              = errors.New("invalid input")
-	ErrUserNotFound              = errors.New("user not found")
-	ErrBlockedByUser             = errors.New("blocked by user")
-	ErrInvalidChatType           = errors.New("invalid chat type")
+	ErrNotFound        = errors.New("chat not found")
+	ErrForbidden       = errors.New("access denied")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrUserNotFound    = errors.New("user not found")
+	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrInvalidChatType = errors.New("invalid chat type")
+	// ErrGroupCallsUnavailable — в MVP звонки только один на один (#715).
+	ErrGroupCallsUnavailable     = errors.New("group calls are not available")
 	ErrAlreadyMember             = errors.New("user already in group")
 	ErrUserBanned                = errors.New("user is banned")
 	ErrOwnershipTransferRequired = errors.New("ownership transfer required")
@@ -76,6 +77,9 @@ type LastMessagePreview struct {
 	SenderID   string          `json:"senderId,omitempty"`
 	SenderName string          `json:"senderName"`
 	Reactions  []Reaction      `json:"reactions"`
+	// DeliveredAt, ReadAt — у своего последнего сообщения (#657).
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Member struct {
@@ -118,11 +122,17 @@ type Message struct {
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
 	DeletedAt         *string `json:"deletedAt,omitempty"`
+	// DeliveredAt, ReadAt — только у своих сообщений (#657): когда граница
+	// другого участника впервые перешла сообщение. Пусто — ещё нет.
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
 }
 
 type Service struct {
 	db *sql.DB
 	ws realtimeServer
+	// push — уведомления на устройства (#717); nil — выключены.
+	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
 }
@@ -137,6 +147,7 @@ type realtimeServer interface {
 const (
 	maxMediaFilenameBytes = 255
 	maxMediaSizeBytes     = 100 << 20
+	savedMessagesTitle    = "Избранное"
 )
 
 func sanitizeMediaFilename(filename string) string {
@@ -396,6 +407,8 @@ func (s *Service) CallRooms() *CallRoomManager {
 }
 
 func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Chat, error) {
+	// Человек загрузил список чатов — пришедшее ему доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, "")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id::text, c.type,
 		       CASE WHEN c.type = 'private' THEN
@@ -481,6 +494,9 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		return nil, err
 	}
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
 		return nil, err
 	}
 	return chats, nil
@@ -576,6 +592,9 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 	if err := s.hydrateChatsLastMessageReactions(ctx, userID, chats); err != nil {
 		return Chat{}, err
 	}
+	if err := s.hydrateChatsLastMessageReceipts(ctx, userID, chats); err != nil {
+		return Chat{}, err
+	}
 	chat := chats[0]
 	if chat.Type == "private" {
 		chat.PeerPublicKey, err = s.peerPublicKey(ctx, userID, chatID)
@@ -605,8 +624,11 @@ func markKeyRotationNeeded(ctx context.Context, tx *sql.Tx, chatID string) error
 }
 
 func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (string, bool, error) {
-	if peerID == "" || peerID == userID {
+	if peerID == "" {
 		return "", false, ErrInvalidInput
+	}
+	if peerID == userID {
+		return s.createSelfChat(ctx, userID)
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
@@ -659,6 +681,54 @@ func (s *Service) CreatePrivate(ctx context.Context, userID, peerID string) (str
 		return "", false, err
 	}
 	return chatID, false, tx.Commit()
+}
+
+// createSelfChat lazily creates the user's canonical Saved Messages chat.
+//
+// The partial unique index from migration 0034 is the source of truth for
+// uniqueness. INSERT ... ON CONFLICT makes concurrent requests from several
+// devices converge on the same chat without serializable retries. Re-inserting
+// the membership also repairs an incomplete row left by an interrupted manual
+// migration.
+func (s *Service) createSelfChat(ctx context.Context, userID string) (string, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var chatID string
+	created := true
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO chats.chats (type, title, owner_id)
+		VALUES ('self', $2, $1)
+		ON CONFLICT (owner_id) WHERE type = 'self' DO NOTHING
+		RETURNING id::text
+	`, userID, savedMessagesTitle).Scan(&chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		created = false
+		err = tx.QueryRowContext(ctx, `
+			SELECT id::text
+			FROM chats.chats
+			WHERE owner_id = $1 AND type = 'self'
+		`, userID).Scan(&chatID)
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chats.members (chat_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+		ON CONFLICT (chat_id, user_id) DO NOTHING
+	`, chatID, userID); err != nil {
+		return "", false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", false, err
+	}
+	return chatID, !created, nil
 }
 
 // CreateGroup creates a new group chat owned by ownerID and adds the
@@ -915,7 +985,18 @@ func (s *Service) DeleteChat(ctx context.Context, actorID, chatID string) error 
 	}
 
 	_, err = s.db.ExecContext(ctx, `DELETE FROM chats.chats WHERE id = $1`, chatID)
+	if err == nil {
+		s.invalidateMembers(chatID)
+	}
 	return err
+}
+
+// invalidateMembers — состав участников изменился: «печатает» (#866)
+// опирается на кеш участников и не должен видеть старый список.
+func (s *Service) invalidateMembers(chatID string) {
+	if cache, ok := s.ws.(interface{ InvalidateChatMembers(string) }); ok {
+		cache.InvalidateChatMembers(chatID)
+	}
 }
 
 func (s *Service) Members(ctx context.Context, userID, chatID string) ([]Member, error) {
@@ -1081,6 +1162,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 	if affected != 1 {
 		return ErrStateUnchanged
 	}
+	s.invalidateMembers(chatID)
 
 	if s.ws != nil {
 		payload, err := json.Marshal(MemberRemovedEvent{
@@ -1127,12 +1209,111 @@ func (s *Service) MarkRead(ctx context.Context, userID, chatID string) error {
 		}
 		return ErrForbidden
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO chats.user_chat_settings (user_id, chat_id, last_read_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (user_id, chat_id) DO UPDATE SET last_read_at = NOW()
-	`, userID, chatID)
-	return err
+	// Весь чат до текущего момента (#599); граница и время — в журнал (#657).
+	return s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, NOW()`, userID, chatID)
+}
+
+// ErrInvalidMessageIDs — среди отмечаемых прочитанными есть ID, которые не
+// сообщения этого чата (#506).
+var ErrInvalidMessageIDs = errors.New("message ids do not belong to the chat")
+
+// MaxMarkReadIDs — столько сообщений отмечается прочитанными за раз.
+const MaxMarkReadIDs = 500
+
+// ReadMark — итог отметки прочтения: какие сообщения учтены и где теперь
+// граница прочитанного чата.
+type ReadMark struct {
+	ReadIDs    []string `json:"readIds"`
+	LastReadAt string   `json:"lastReadAt"`
+}
+
+// MarkMessagesRead отмечает прочитанными переданные сообщения (#506). Модель —
+// отметка чата last_read_at, по ней считаются непрочитанные; граница —
+// самое новое из учтённых сообщений, а не «сейчас»: иначе одно увиденное
+// сообщение закрывало весь чат вместе с пришедшими позже. Граница не
+// сдвигается назад — запоздалая отметка старого сообщения ничего не меняет.
+//
+// Все ID обязаны быть сообщениями этого чата — иначе ErrInvalidMessageIDs,
+// и отметка не трогается. Свои и удалённые пропускаются: не ошибка, но и
+// не граница. Время прочтения каждого сообщения — журнал сдвигов (#657,
+// receipts.go).
+func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, messageIDs []string) (ReadMark, error) {
+	if ok, err := s.isMember(ctx, userID, chatID); err != nil || !ok {
+		if err != nil {
+			return ReadMark{}, err
+		}
+		return ReadMark{}, ErrForbidden
+	}
+	ids := uniqueStrings(messageIDs)
+	if len(ids) == 0 || len(ids) > MaxMarkReadIDs {
+		return ReadMark{}, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
+		FROM messages.messages
+		WHERE chat_id = $1 AND id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids))
+	if err != nil {
+		return ReadMark{}, err
+	}
+	defer rows.Close()
+	found := 0
+	readIDs := []string{}
+	var newest time.Time
+	for rows.Next() {
+		var id, senderID string
+		var deleted bool
+		var createdAt time.Time
+		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+			return ReadMark{}, err
+		}
+		found++
+		if deleted || senderID == userID {
+			continue
+		}
+		readIDs = append(readIDs, id)
+		if createdAt.After(newest) {
+			newest = createdAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ReadMark{}, err
+	}
+	if found != len(ids) {
+		return ReadMark{}, ErrInvalidMessageIDs
+	}
+
+	// Учесть нечего — граница прежняя. Иначе сдвиг вперёд и запись в журнал
+	// (#657): время прочтения — момент первого сдвига через сообщение.
+	if len(readIDs) > 0 {
+		if err := s.advanceRead(ctx, `SELECT $1::uuid, $2::uuid, $3::timestamptz`, userID, chatID, newest); err != nil {
+			return ReadMark{}, err
+		}
+	}
+	var lastReadAt sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT last_read_at::text FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2
+	`, userID, chatID).Scan(&lastReadAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	if err != nil {
+		return ReadMark{}, err
+	}
+	return ReadMark{ReadIDs: readIDs, LastReadAt: lastReadAt.String}, nil
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 type Ban struct {
@@ -1319,6 +1500,7 @@ func (s *Service) AddMember(ctx context.Context, actorID, chatID, userID string)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.invalidateMembers(chatID)
 
 	// 9. Рассылка WebSocket-события
 	if s.ws != nil {
@@ -1474,6 +1656,9 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	if memberRemoved {
+		s.invalidateMembers(chatID)
+	}
 
 	if s.ws != nil {
 		payload, _ := json.Marshal(MemberBanEvent{
@@ -1545,8 +1730,12 @@ func (s *Service) UnbanMember(ctx context.Context, actorID, chatID, userID strin
 	return nil
 }
 
+type listBansInput struct {
+	ChatID string `validate:"required,uuid"`
+}
+
 func (s *Service) ListBans(ctx context.Context, actorID, chatID string) ([]Ban, error) {
-	input := leaveChatInput{ChatID: chatID}
+	input := listBansInput{ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
 		return nil, ErrInvalidInput
 	}
@@ -1877,6 +2066,8 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		}
 		return nil, ErrForbidden
 	}
+	// Человек загрузил ленту — пришедшее ему в этот чат доставлено (#657).
+	s.markDeliveredOnLoad(ctx, userID, chatID)
 
 	rows, err := s.db.QueryContext(ctx, `
 				SELECT *
@@ -1909,6 +2100,9 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		return nil, err
 	}
 	if err := s.hydrateMessagesFields(ctx, userID, messages); err != nil {
+		return nil, err
+	}
+	if err := s.hydrateMessagesReceipts(ctx, userID, messages); err != nil {
 		return nil, err
 	}
 	return messages, s.hideMessageListPhotos(ctx, userID, messages)
@@ -1957,13 +2151,14 @@ const sendPermissionQuery = `
 		       -- Собеседник по личному чату заблокировал отправителя (#760).
 		       EXISTS(
 		         SELECT 1
-		         FROM chats.chats c
-		         JOIN chats.members peer ON peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		         FROM chats.members peer
 		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
-		         WHERE c.id = cm.chat_id AND c.type = 'private'
-		       )
+		         WHERE peer.chat_id = cm.chat_id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       ),
+		       c.type
 		FROM chats.members cm
 		JOIN auth.users u ON u.id = cm.user_id
+		JOIN chats.chats c ON c.id = cm.chat_id
 		WHERE cm.chat_id = $1 AND cm.user_id = $2
 	`
 
@@ -2044,7 +2239,8 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 	var role string
 	var isMuted sql.NullBool
 	var blockedByPeer bool
-	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer)
+	var chatType string
+	err := s.db.QueryRowContext(ctx, sendPermissionQuery, chatID, userID).Scan(&role, &isMuted, &blockedByPeer, &chatType)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2151,8 +2347,27 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 				"chatId":  chatID,
 				"message": forBroadcast(&msgs[i]),
 			})
+			// В self-chat других участников нет, поэтому исключение владельца
+			// одновременно не даёт его устройствам показать уведомление о
+			// собственном сообщении.
 			s.ws.BroadcastToChat(chatID, payload, userID)
 		}
+		// Ушло в открытые сокеты получателей — доставлено (#657); автор
+		// видит это уже в ответе на отправку, а не только по событию.
+		ids := make([]string, len(msgs))
+		for i := range msgs {
+			ids[i] = msgs[i].ID
+		}
+		if s.markDeliveredOnSend(ctx, chatID, userID, ids) {
+			if err := s.hydrateMessagesReceipts(ctx, userID, msgs); err != nil {
+				slog.WarnContext(ctx, "load receipts after send failed", "error", err)
+			}
+		}
+	}
+	// Push — один на отправку, а не на каждое сообщение пачки: они всё
+	// равно сворачиваются в одно уведомление чата.
+	if chatType != "self" {
+		s.notifyMessage(chatID, userID)
 	}
 
 	return msgs, nil
@@ -2651,13 +2866,24 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 	return s.listReactionsInternal(ctx, s.db, messageID, userID)
 }
 
-// Querier is an interface that both *sql.DB and *sql.Tx implement.
+// Querier is an interface implemented by both *sql.DB and *sql.Tx, allowing
+// the same query helper to run either standalone or inside a transaction.
 type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
+// listReactionsInternal runs the aggregation query against any Querier
+// (either *sql.DB or *sql.Tx), so the same helper can be reused inside a
+// transaction — this is required by ToggleReaction, which must read the
+// post-mutation aggregate under the same lock.
+//
+// The query groups reactions by emoji and, for each group, reports whether
+// the requesting user has reacted with that emoji via bool_or. Ordering by
+// count descending puts the most popular reactions first.
 func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageID, userID string) ([]Reaction, error) {
+	const method = "listReactionsInternal"
+
 	rows, err := q.QueryContext(ctx, `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
 		FROM messages.reactions
@@ -2666,6 +2892,13 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 		ORDER BY cnt DESC
 	`, messageID, userID)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to query reactions",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return nil, err
 	}
 	defer rows.Close()
@@ -2674,53 +2907,113 @@ func (s *Service) listReactionsInternal(ctx context.Context, q Querier, messageI
 	for rows.Next() {
 		var r Reaction
 		if err := rows.Scan(&r.Emoji, &r.Count, &r.MyReaction); err != nil {
+			slog.ErrorContext(ctx, "failed to scan reaction row",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", err,
+			)
 			return nil, err
 		}
 		result = append(result, r)
 	}
 
-	return result, rows.Err()
+	// rows.Err() catches errors that surface after iteration finishes,
+	// such as a dropped connection or a mid-stream decode failure.
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "error iterating reaction rows",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	if result == nil {
+		result = []Reaction{}
+	}
+
+	return result, nil
 }
 
-// isMemberWithQuerier executes the query using any Querier
-// (either *sql.DB or *sql.Tx), allowing it to run inside a transaction.
+// isMemberWithQuerier checks chat membership using any Querier (either
+// *sql.DB or *sql.Tx). Running it inside a transaction keeps the membership
+// check consistent with the rest of the operation — a user removed from the
+// chat mid-request cannot slip through.
 func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, chatID string) (bool, error) {
+	const method = "isMemberWithQuerier"
+
 	var exists bool
 	err := q.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
 		userID, chatID,
 	).Scan(&exists)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to check chat membership",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return false, err
 	}
 	return exists, nil
 }
 
-// ToggleReaction adds or removes a reaction (toggle semantics).
-// Returns:
-//   - ReactionStatus: "added", "removed", "replaced"
-//   - string: current emoji for response
-//   - []Reaction: aggregated reactions with the myReaction flag.
-//   - error: if we have error.
+// ToggleReaction adds, removes, or replaces a user's reaction on a message.
+// Toggle semantics:
+//   - no reaction yet      → INSERT  (StatusAdded)
+//   - same reaction        → DELETE  (StatusRemoved)
+//   - different reaction   → UPDATE  (StatusReplaced)
+//
+// Returns the operation status, the user's current emoji (empty string if
+// the reaction was removed), the aggregated reaction list for the message
+// (with the myReaction flag), and an error.
+//
+// Message existence and membership checks are all performed inside a single
+// transaction under an advisory lock on the (message_id, user_id) pair, so
+// that concurrent toggles by the same user cannot race.
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
-	// check - if emoji not empty
+	const method = "ToggleReaction"
+
 	if emoji == "" {
-		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		slog.WarnContext(ctx, "empty emoji rejected",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"message_id", messageID,
+		)
 		return "", "", nil, ErrInvalidInput
 	}
-	// check the length of emoji and symbols
+	// Length limit and rejection of characters that would break rendering
+	// or downstream consumers (HTML/JSON). UTF-8 is measured in bytes: 64
+	// bytes comfortably covers any single emoji with modifiers.
 	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		log.Printf("[chat-service-ToggleReaction]:invalid input for emoji: %v", emoji)
+		slog.WarnContext(ctx, "invalid emoji rejected",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"message_id", messageID,
+			"emoji_len", len(emoji),
+		)
 		return "", "", nil, ErrInvalidInput
 	}
 
-	// 1. Start transaction with READ COMMITTED isolation level
+	// READ COMMITTED is enough here: serialization of concurrent toggles
+	// is provided by the advisory lock, not by the isolation level.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to begin transaction: %v", err)
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("begin tx: %w", err)
 	}
-
 	committed := false
 	defer func() {
 		if !committed {
@@ -2728,43 +3021,63 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		}
 	}()
 
-	// 2. Check message existence and get chatID inside transaction
+	// chatID is needed both for the membership check and for the WS
+	// broadcast. It is read inside the transaction so that it does not
+	// drift away from the subsequent locking.
 	var chatID string
 	err = tx.QueryRowContext(ctx,
 		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
 		messageID,
 	).Scan(&chatID)
-
 	if errors.Is(err, sql.ErrNoRows) {
-		log.Printf("[chat-service-ToggleReaction]:chat was not found: %v", err)
 		return "", "", nil, ErrNotFound
-	} else if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to get chatID: %v", err)
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load chat id",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("get chatID: %w", err)
 	}
 
-	// 3. Check membership inside transaction
-	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil || !ok {
-		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]:failed to check membership: %v", err)
-			return "", "", nil, fmt.Errorf("check membership: %w", err)
-		}
-		log.Printf("[chat-service-ToggleReaction]:user not a member: %v", userID)
+	if ok, err := s.isMemberWithQuerier(ctx, tx, userID, chatID); err != nil {
+		slog.ErrorContext(ctx, "failed to check membership",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
+		return "", "", nil, fmt.Errorf("check membership: %w", err)
+	} else if !ok {
+		slog.WarnContext(ctx, "user is not a member of the chat",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
 		return "", "", nil, ErrForbidden
 	}
 
-	// 4. Acquire advisory lock for the (message_id, user_id) pair
-	// pg_advisory_xact_lock blocks until lock is available or timeout occurs
-	_, err = tx.ExecContext(ctx,
+	// The advisory lock serializes concurrent toggles by the same user on
+	// the same message. It is released automatically when the tx ends.
+	if _, err := tx.ExecContext(ctx,
 		`SELECT pg_advisory_xact_lock($1)`,
 		getAdvisoryKey(messageID, userID),
-	)
-	if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to acquire advisory lock: %v", err)
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to acquire advisory lock",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("acquire lock: %w", err)
 	}
 
-	// 5. Now safely query the current reaction (with lock held)
+	// With the lock held, reading the current reaction is safe.
 	var currentEmoji string
 	err = tx.QueryRowContext(ctx,
 		`SELECT emoji FROM messages.reactions
@@ -2776,119 +3089,130 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	if errors.Is(err, sql.ErrNoRows) {
 		hasCurrent = false
 	} else if err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to get current reaction: %v", err)
+		slog.ErrorContext(ctx, "failed to read current reaction",
+			"layer", "service",
+			"method", method,
+			"message_id", messageID,
+			"user_id", userID,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("get current reaction: %w", err)
 	}
 
-	// Store the previous emoji (if any) as a pointer
 	var previousEmoji *string
 	if hasCurrent {
 		prev := currentEmoji
 		previousEmoji = &prev
-	} else {
-		previousEmoji = nil
 	}
 
-	// create status variable
 	var status ReactionStatus
-
-	// 6. Perform the appropriate action based on the current state
 	switch {
 	case !hasCurrent:
-		// No reaction yet – insert the new one
 		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji)
 			 VALUES ($1, $2, $3)`,
 			messageID, userID, emoji,
 		)
 		if execErr != nil {
-			log.Printf("[chat-service-ToggleReaction]:insert reaction failed: %v", execErr)
+			slog.ErrorContext(ctx, "insert reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("insert reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "insert reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = emoji
 		status = StatusAdded
 
 	case currentEmoji == emoji:
-		// Same emoji – remove the reaction (toggle off)
 		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
 			messageID, userID,
 		)
 		if execErr != nil {
-			log.Printf("[chat-service-ToggleReaction]:delete reaction failed: %v", execErr)
+			slog.ErrorContext(ctx, "delete reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("delete reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "delete reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = ""
 		status = StatusRemoved
 
 	default:
-		// Different emoji – update the existing one
 		result, execErr := tx.ExecContext(ctx,
 			`UPDATE messages.reactions SET emoji = $1
 			 WHERE message_id = $2 AND user_id = $3`,
 			emoji, messageID, userID,
 		)
 		if execErr != nil {
+			slog.ErrorContext(ctx, "update reaction failed",
+				"layer", "service",
+				"method", method,
+				"message_id", messageID,
+				"user_id", userID,
+				"error", execErr,
+			)
 			return "", "", nil, fmt.Errorf("update reaction: %w", execErr)
 		}
 		if err := requireOneAffectedRow(result, "update reaction"); err != nil {
 			return "", "", nil, err
 		}
-
 		currentEmoji = emoji
 		status = StatusReplaced
 	}
 
-	// 7. Fetch the aggregated counts per emoji for the message
 	reactions, err := s.listReactionsInternal(ctx, tx, messageID, userID)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("get aggregates: %w", err)
 	}
 
-	// 8. Commit transaction (automatically releases advisory lock)
 	if err = tx.Commit(); err != nil {
-		log.Printf("[chat-service-ToggleReaction]:failed to commit transaction: %v", err)
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"error", err,
+		)
 		return "", "", nil, fmt.Errorf("commit transaction: %w", err)
 	}
 	committed = true
 
-	// 9. Build the change response
-	change := ChangeResponse{
-		Action: string(status),
-	}
-
-	switch status {
-	case StatusAdded:
-		change.Emoji = &emoji
-		change.PreviousEmoji = nil
-	case StatusRemoved:
-		change.Emoji = nil
-		change.PreviousEmoji = previousEmoji
-	case StatusReplaced:
-		change.Emoji = &emoji                // new emoji
-		change.PreviousEmoji = previousEmoji // old emoji
-	}
-
-	// 10. Convert reactions to response format without myReaction flag
-	reactionResponses := make([]ReactionResponse, len(reactions))
-	for i, r := range reactions {
-		reactionResponses[i] = ReactionResponse{
-			Emoji: r.Emoji,
-			Count: r.Count,
-		}
-	}
-
-	// 11. Send WebSocket notification
+	// The WS notification is sent after the commit: if the broadcast
+	// fails, the transaction still remains consistent.
 	if s.ws != nil {
+		change := ChangeResponse{Action: string(status)}
+		switch status {
+		case StatusAdded:
+			change.Emoji = &emoji
+		case StatusRemoved:
+			change.PreviousEmoji = previousEmoji
+		case StatusReplaced:
+			change.Emoji = &emoji
+			change.PreviousEmoji = previousEmoji
+		}
+
+		// myReaction must not leak into the broadcast — the flag depends
+		// on the recipient and is computed on their side.
+		reactionResponses := make([]ReactionResponse, len(reactions))
+		for i, r := range reactions {
+			reactionResponses[i] = ReactionResponse{
+				Emoji: r.Emoji,
+				Count: r.Count,
+			}
+		}
+
 		payload, err := json.Marshal(map[string]any{
 			"type":      "reaction_updated",
 			"chatId":    chatID,
@@ -2898,7 +3222,13 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 			"reactions": reactionResponses,
 		})
 		if err != nil {
-			log.Printf("[chat-service-ToggleReaction]: failed to marshal payload: %v", err)
+			slog.ErrorContext(ctx, "failed to marshal reaction payload",
+				"layer", "service",
+				"method", method,
+				"chat_id", chatID,
+				"message_id", messageID,
+				"error", err,
+			)
 		} else {
 			s.ws.BroadcastToChat(chatID, payload, "")
 		}
@@ -3266,21 +3596,53 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
-	if ok, err := s.IsMember(ctx, userID, chatID); err != nil || !ok {
+	var chatType string
+	var blockedByPeer bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type,
+		       -- Собеседник по личному чату заблокировал звонящего (#912) —
+		       -- как у сообщений (sendPermissionQuery).
+		       EXISTS(
+		         SELECT 1
+		         FROM chats.members peer
+		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
+		         WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id AND c.type = 'private'
+		       )
+		FROM chats.chats c
+		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType, &blockedByPeer)
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
+	}
+	if err != nil {
+		return "", err
+	}
+	if chatType == "self" {
+		return "", ErrInvalidChatType
+	}
+	// В MVP звонки только один на один (#715): комната — только в личном
+	// чате. Групповые звонки — отдельной задачей, вместе с приглашениями.
+	if chatType != "private" {
+		return "", ErrGroupCallsUnavailable
+	}
+	// Ни в базу, ни в память: заблокировавший его звонка не получит.
+	if blockedByPeer {
+		return "", ErrBlockedByUser
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {
 		dbCallType = "voice"
 	}
 	var roomID string
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO calls.rooms (chat_id, type, title, initiator_id)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id::text
 	`, chatID, dbCallType, title, userID).Scan(&roomID)
 	if err == nil {
-		s.CallRooms().CreateRoom(userID, roomID, callType, callKind, chatID, title)
+		// Тип комнаты — от сервера: звонок всегда один на один (#715).
+		s.CallRooms().CreateRoom(userID, roomID, "p2p", callKind, chatID, title)
 	}
 	return roomID, err
 }
@@ -3297,6 +3659,7 @@ func (s *Service) GetMlsState(ctx context.Context, chatID string) (int64, string
 
 type leaveChatInput struct {
 	ChatID string `validate:"required,uuid"`
+	UserID string `validate:"required,uuid"`
 }
 
 type MemberRemovedEvent struct {
@@ -3306,72 +3669,227 @@ type MemberRemovedEvent struct {
 	Reason string `json:"reason"`
 }
 
+// LeaveChat removes a non-owner member from a group chat.
+// Private chats are rejected before any membership data is changed.
 func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
-	input := leaveChatInput{ChatID: chatID}
+	const method = "LeaveChat"
+
+	input := leaveChatInput{UserID: userID, ChatID: chatID}
 	if err := validate.Struct(input); err != nil {
+		slog.WarnContext(ctx, "invalid leave chat input",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return ErrInvalidInput
 	}
 
-	role, err := s.memberRole(ctx, userID, chatID)
+	// Load the chat type and the caller's role in a single query so that a
+	// non-member cannot distinguish "chat does not exist" from "chat exists
+	// but is private" by probing LeaveChat with a known UUID. The LEFT JOIN
+	// returns a row whenever the chat exists; m.role is NULL for outsiders,
+	// which is how membership is detected below.
+	var (
+		chatType string
+		role     sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT c.type, m.role
+		FROM chats.chats c
+		LEFT JOIN chats.members m
+		  ON m.chat_id = c.id AND m.user_id = $2
+		WHERE c.id = $1
+	`, chatID, userID).Scan(&chatType, &role)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "chat not found",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+			)
+			return ErrNotFound
+		}
+		slog.ErrorContext(ctx, "failed to load chat type and member role",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
-	if role == "owner" {
+
+	// Membership is checked before the chat type so that outsiders always
+	// receive ErrForbidden, regardless of whether the chat is private or
+	// group. Returning ErrInvalidChatType for a non-member would leak the
+	// chat's type to anyone who knows its UUID.
+	if !role.Valid {
+		slog.WarnContext(ctx, "leave attempted by non-member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrForbidden
+	}
+
+	// Leaving is only supported for group chats.
+	if chatType != "group" {
+		slog.WarnContext(ctx, "leave is not allowed for non-group chat",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"chat_type", chatType,
+		)
+		return ErrInvalidChatType
+	}
+
+	// The owner must transfer ownership before leaving.
+	if role.String == "owner" {
+		slog.WarnContext(ctx, "owner must transfer ownership before leaving",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
 		return ErrOwnershipTransferRequired
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to begin transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 
-	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
+	defer func() { _ = tx.Rollback() }()
+
+	// Snapshot recipients before deletion so remaining members can be notified.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT user_id FROM chats.members WHERE chat_id = $1`, chatID)
 	if err != nil {
-		_ = tx.Rollback()
+		slog.ErrorContext(ctx, "failed to query current members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
+
 	var recipients []string
 	for rows.Next() {
 		var memberID string
 		if err := rows.Scan(&memberID); err != nil {
 			_ = rows.Close()
-			_ = tx.Rollback()
+			slog.ErrorContext(ctx, "failed to scan member id",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+				"error", err,
+			)
 			return err
 		}
-		recipients = append(recipients, memberID)
+		if memberID != userID {
+			recipients = append(recipients, memberID)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		_ = tx.Rollback()
+		slog.ErrorContext(ctx, "failed to iterate members",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 	_ = rows.Close()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`, chatID, userID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE chat_id=$1 AND user_id=$2 AND role<>'owner'`, chatID, userID)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		_ = tx.Rollback()
-		return ErrForbidden
-	}
-	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if err := tx.Commit(); err != nil {
+	// Remove per-user chat data and membership atomically.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM crypto.chat_encryption_keys WHERE chat_id = $1 AND user_id = $2`,
+		chatID, userID,
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to delete encryption keys",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
 		return err
 	}
 
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`,
+		userID, chatID,
+	); err != nil {
+		slog.ErrorContext(ctx, "failed to delete chat settings",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
+		return err
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role <> 'owner'`,
+		chatID, userID,
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to delete member",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		slog.WarnContext(ctx, "member not removed",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+		)
+		return ErrForbidden
+	}
+
+	if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		slog.ErrorContext(ctx, "failed to commit transaction",
+			"layer", "service",
+			"method", method,
+			"user_id", userID,
+			"chat_id", chatID,
+			"error", err,
+		)
+		return err
+	}
+
+	// Membership changed: drop the cached member list for typing (#866).
+	s.invalidateMembers(chatID)
+
+	// Notify remaining members only.
 	if s.ws != nil {
 		event := MemberRemovedEvent{
 			Type:   "chat_member_removed",
@@ -3381,11 +3899,18 @@ func (s *Service) LeaveChat(ctx context.Context, userID, chatID string) error {
 		}
 		payload, err := json.Marshal(event)
 		if err != nil {
-			slog.Error("failed to marshal member_removed event", "err", err, "chatID", chatID, "userID", userID)
+			slog.ErrorContext(ctx, "failed to marshal member_removed event",
+				"layer", "service",
+				"method", method,
+				"user_id", userID,
+				"chat_id", chatID,
+				"error", err,
+			)
 		} else {
 			s.ws.BroadcastToUsers(recipients, payload)
 		}
 	}
+
 	return nil
 }
 

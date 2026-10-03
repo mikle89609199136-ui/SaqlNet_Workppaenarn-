@@ -6,6 +6,7 @@ import { useChatUiStore } from '@/entities/chat';
 import { testI18n } from '@/test/harness/i18n';
 import type { IPendingAttachment } from '@/types';
 import {
+  formatScreenshotName,
   MAX_ATTACHMENT_BYTES,
   MAX_PENDING_ATTACHMENTS,
   useAttachmentPicker,
@@ -106,5 +107,41 @@ describe('выбор вложений', () => {
     pick(fileOf('a.png'));
     pick();
     expect(names(result.current.pendingAttachments)).toEqual(['a.png']);
+  });
+
+  it('addFiles переименовывает скриншоты image.png, image.webp или без имени в Снимок YYYY-MM-DD HH-mm-ss', () => {
+    const { result } = renderPicker();
+    const screenshot = fileOf('image.png', 'image/png');
+    const genericWebp = fileOf('image.webp', 'image/webp');
+    const unnamedJpeg = fileOf('', 'image/jpeg');
+    const realName = fileOf('my-photo.jpg', 'image/jpeg');
+
+    act(() => {
+      const added = result.current.addFiles([screenshot, genericWebp, unnamedJpeg, realName]);
+      expect(added).toBe(true);
+    });
+
+    const addedNames = names(result.current.pendingAttachments);
+    expect(addedNames[0]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.png$/);
+    expect(addedNames[1]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.webp$/);
+    expect(addedNames[2]).toMatch(/^Снимок \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.jpg$/);
+    expect(addedNames[3]).toBe('my-photo.jpg');
+  });
+
+  it('addFiles с пустым списком возвращает false', () => {
+    const { result } = renderPicker();
+    let added = false;
+    act(() => {
+      added = result.current.addFiles([]);
+    });
+    expect(added).toBe(false);
+    expect(result.current.pendingAttachments).toHaveLength(0);
+  });
+
+  it('formatScreenshotName поддерживает кастомный префикс (локализация)', () => {
+    const fixedDate = new Date(2026, 8, 29, 12, 30, 45);
+    expect(formatScreenshotName(fixedDate, 'image/png', 'Screenshot')).toBe(
+      'Screenshot 2026-09-29 12-30-45.png'
+    );
   });
 });

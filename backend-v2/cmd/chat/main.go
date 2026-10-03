@@ -15,6 +15,7 @@ import (
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
 	"craneapp/backend-v2/internal/presence"
+	"craneapp/backend-v2/internal/push"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
@@ -68,6 +69,20 @@ func main() {
 	} else {
 		log.Printf("NATS_URL not set — outbox events will accumulate until NATS is configured")
 	}
+	// Web Push (#717): без ключей VAPID push выключен, остальное работает.
+	vapid := push.Config{
+		PublicKey:  config.Value("VAPID_PUBLIC_KEY", ""),
+		PrivateKey: config.Value("VAPID_PRIVATE_KEY", ""),
+		Subject:    config.Value("VAPID_SUBJECT", "mailto:admin@craneapp.local"),
+	}
+	if vapid.Enabled() {
+		notifier := push.NewNotifier(workerCtx, push.DBDirectory{DB: pool}, wsServer, push.NewWebPushTransport(vapid))
+		svc.SetPush(notifier)
+		wsServer.SetPush(notifier)
+	} else {
+		log.Printf("VAPID keys are not set — push notifications are disabled")
+	}
+
 	go chat.OutboxRelay(workerCtx, pool, natsConn)
 	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
@@ -107,7 +122,6 @@ func main() {
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
 
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
-	mux.Handle("GET /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.ListRooms)))
 	mux.Handle("POST /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.CallRoom)))
 	mux.Handle("GET /api/v2/calls/rooms/{id}", authenticated(http.HandlerFunc(handler.GetRoom)))
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	openapi "craneapp/backend-v2/contracts/openapi"
+	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
 
@@ -29,6 +30,8 @@ type rateLimitConfig struct {
 	globalRate         float64
 	globalBurst        int
 }
+
+const clientIPHeader = "X-Crane-Client-IP"
 
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -110,6 +113,9 @@ func min(a, b float64) float64 {
 func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, usernameCheckLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := trustedProxies.clientIP(r)
+		// Replace any client-supplied value with the address resolved from the
+		// trusted-proxy policy before forwarding the request to internal services.
+		r.Header.Set(clientIPHeader, ip)
 		// Stricter limit for auth endpoints (login/register brute-force).
 		if strings.HasPrefix(r.URL.Path, "/api/v2/auth/") {
 			if !authLimiter.Allow(ip) {
@@ -207,11 +213,12 @@ func main() {
 	}
 
 	frontendDir := config.Value("FRONTEND_DIR", "../dist")
-	fs := http.FileServer(http.Dir(frontendDir))
+	// Версия выпуска (#892) — из той же сборки, что отдаётся клиентам.
+	build := readBuildInfo(frontendDir)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
-		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok", "v": "csp-v3"})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok", "version": build.Version, "build": build.Build})
 	})
 
 	// API documentation. The OpenAPI contract is embedded in the edge binary.
@@ -254,27 +261,7 @@ func main() {
 	mux.Handle("/api/v2/stickers/", mediaProxy)
 
 	// Serve static files for frontend, fallback to index.html for React Router
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// If requesting API or WS but not matched above, return 404
-		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws") {
-			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "route not found")
-			return
-		}
-
-		// Content-hashed assets can be cached forever; HTML must never be cached
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		}
-
-		// Attempt to serve file
-		if _, err := http.Dir(frontendDir).Open(r.URL.Path); err != nil {
-			http.ServeFile(w, r, frontendFallback(frontendDir, r.URL.Path))
-			return
-		}
-		fs.ServeHTTP(w, r)
-	})
+	mux.Handle("/", frontendHandler(frontendDir))
 
 	// Rate limits use safe defaults and can be overridden through environment variables.
 	limits := loadRateLimitConfig()
@@ -283,26 +270,13 @@ func main() {
 	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
 	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, usernameCheckLimiter, globalLimiter, mux)
 
-	handler := httpx.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-		}
-		limitedMux.ServeHTTP(w, r)
-	}))
+	handler := httpx.Middleware(originGuard(limitedMux))
 
 	server := &http.Server{Addr: edgeAddress(), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 120 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Printf("CRANE_BUILD_VERSION=csp-v3")
+		log.Printf("CRANE_VERSION=%s build=%s", build.Version, build.Build)
 		log.Printf("edge gateway listening on %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
@@ -324,11 +298,95 @@ func edgeAddress() string {
 	return ":8080"
 }
 
+// isBuildAsset — путь к файлу сборки (/assets/…): у него нет запасной
+// страницы, отсутствующий — 404.
+func isBuildAsset(requestPath string) bool {
+	return strings.HasPrefix(requestPath, "/assets/")
+}
+
+// frontendHandler отдаёт собранный фронтенд: файлы как есть, маршруты
+// приложения — index.html (React Router), неизвестные /api и /ws — 404.
+func frontendHandler(frontendDir string) http.Handler {
+	dir := http.Dir(frontendDir)
+	files := http.FileServer(dir)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If requesting API or WS but not matched above, return 404
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws") {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "route not found")
+			return
+		}
+
+		// Content-hashed assets can be cached forever; HTML must never be cached
+		if isBuildAsset(r.URL.Path) {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+
+		file, err := dir.Open(r.URL.Path)
+		if err != nil {
+			// Файл сборки, которого нет (открытая вкладка просит кусок
+			// прошлой версии после деплоя), — честный 404, а не страница
+			// приложения с кодом 200: иначе браузер получит HTML вместо
+			// скрипта, а service worker сохранит его под именем скрипта.
+			if isBuildAsset(r.URL.Path) {
+				w.Header().Set("Cache-Control", "no-store")
+				http.NotFound(w, r)
+				return
+			}
+			http.ServeFile(w, r, frontendFallback(frontendDir, r.URL.Path))
+			return
+		}
+		_ = file.Close()
+		files.ServeHTTP(w, r)
+	})
+}
+
 func frontendFallback(frontendDir, requestPath string) string {
 	if requestPath == "/mobile" || strings.HasPrefix(requestPath, "/mobile/") {
 		return frontendDir + "/mobile.html"
 	}
 	return frontendDir + "/index.html"
+}
+
+// originGuard — CORS и защита от подделки запросов (#705) перед всеми
+// маршрутами edge.
+func originGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
+			// С credentials (cookie сессии, #705) — только точно
+			// перечисленным адресам: "*" разрешает чужой Origin без них,
+			// иначе любой сайт читал бы ответы от имени человека.
+			if explicitlyAllowedOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		// Подделка запроса (#705): cookie сессии браузер подставляет сам,
+		// поэтому меняющий данные запрос с ней — только со своего сайта.
+		if authctx.CrossSiteCookieRequest(r) {
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "cross_site_request", "request from another site is not allowed")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// explicitlyAllowedOrigin — адрес перечислен в ALLOWED_ORIGINS точно, не "*".
+func explicitlyAllowedOrigin(origin string) bool {
+	for _, allowed := range strings.Split(config.Required("ALLOWED_ORIGINS"), ",") {
+		if allowed = strings.TrimSpace(allowed); allowed != "*" && allowed == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func allowedOrigin(origin string) bool {

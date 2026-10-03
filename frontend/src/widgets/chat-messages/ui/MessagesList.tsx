@@ -1,9 +1,10 @@
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
+import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
-import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { memo, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
 import { cn } from '@/shared/lib';
@@ -40,6 +41,17 @@ interface Props {
   isGroupChat?: boolean;
   /** «Новые сообщения» и счётчик на кнопке «вниз» — только в самом чате. */
   trackUnread?: boolean;
+  /**
+   * Выполнять запросы «перейти к сообщению» из других частей экрана
+   * (#842). Только у ленты открытого чата, не у списка закреплённых.
+   */
+  handleJumpRequests?: boolean;
+  /**
+   * Отметка прочтения чата (#839): лента открывается на «Новые сообщения».
+   * Нужна, когда `trackUnread`: без неё лента ждёт и не прокручивается.
+   */
+  readMark?: IReadMark;
+  onMessagesSeen?: (messages: IMessageDto[]) => void;
 }
 
 export const MessagesList = memo(
@@ -60,6 +72,9 @@ export const MessagesList = memo(
     showDeliveryStatus = false,
     isGroupChat = false,
     trackUnread = true,
+    handleJumpRequests = false,
+    readMark,
+    onMessagesSeen,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -84,13 +99,30 @@ export const MessagesList = memo(
       messagesRef,
       currentUserId: user?.id,
       trackUnread,
+      readMark,
+      loadOlder,
+      hasOlder,
+      onMessagesSeen,
     });
 
+    // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.
+    const threadChatId = messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,
       hasMoreOlder: hasOlder,
+      chatId: threadChatId,
     });
+
+    /* Переход, запрошенный из другой части экрана — из общего в профиле
+       (#842). Запрос чужого чата не трогаем: его выполнит своя лента. */
+    const jumpRequest = useChatUiStore((state) => state.jumpRequest);
+    const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
+    useEffect(() => {
+      if (!handleJumpRequests || !jumpRequest || jumpRequest.chatId !== threadChatId) return;
+      setJumpRequest(null);
+      void handleJumpToMessage(jumpRequest.messageId);
+    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, threadChatId]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">

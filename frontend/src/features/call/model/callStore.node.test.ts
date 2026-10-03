@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useCallStore } from './callStore';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECONNECT_TIMEOUT_MS, useCallStore } from './callStore';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, blockedUsersQuery } from '@/entities/user';
+import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 
 vi.mock('@/services/ringtone', () => ({
@@ -19,6 +20,9 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    services.userService.listBlocked = vi.fn().mockResolvedValue([]);
+    queryClient.setQueryData(blockedUsersQuery().queryKey, []);
+
     useCallStore.setState({
       fsm: {
         state: 'idle',
@@ -32,13 +36,15 @@ describe('useCallStore', () => {
         title: null,
         endReason: null,
         callStartedAt: null,
+        outgoingPhase: null,
       },
       incomingCall: null,
+      outgoingCall: null,
       activeCall: null,
       isMinimized: false,
       socket: mockSocket,
-      callFrameRef: null,
       callTimeoutTimer: null,
+      reconnectTimeoutTimer: null,
     });
 
     useProfileStore.setState({
@@ -51,6 +57,9 @@ describe('useCallStore', () => {
         avatarUrl: 'https://example.com/avatar.png',
         createdAt: '2026-01-01T00:00:00Z',
       },
+      settings: {
+        sounds: true,
+      } as any,
     });
   });
 
@@ -100,7 +109,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.roomId).toBe('existing-room');
   });
 
-  it('принимает входящий звонок и отправляет accept (call_join делегирован iframe)', () => {
+  it('принимает входящий звонок и отправляет accept и call_join', () => {
     useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
@@ -116,9 +125,10 @@ describe('useCallStore', () => {
       roomId: 'room-1',
       accepted: true,
     });
-    expect(mockSend).not.toHaveBeenCalledWith(
+    expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'call_join',
+        roomId: 'room-1',
       })
     );
     expect(useCallStore.getState().fsm.state).toBe('connecting');
@@ -179,6 +189,13 @@ describe('useCallStore', () => {
       fromAvatar: 'https://example.com/avatar.png',
       title: 'Тест',
     });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'call_join',
+        roomId: 'created-room-1',
+      })
+    );
 
     const state = useCallStore.getState();
     expect(state.fsm.state).toBe('outgoing');
@@ -405,5 +422,626 @@ describe('useCallStore', () => {
 
     expect(useCallStore.getState().fsm.state).toBe('ended');
     expect(useCallStore.getState().fsm.endReason).toBe('busy');
+  });
+
+  it('не запускает рингтон, если звуки выключены в настройках профиля', async () => {
+    useProfileStore.setState({
+      settings: {
+        sounds: false,
+      } as any,
+    });
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-mute',
+      from: 'caller-mute',
+      kind: 'audio',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('тихо игнорирует входящий вызов от пользователя из чёрного списка', async () => {
+    queryClient.setQueryData(blockedUsersQuery().queryKey, [
+      { id: 'blocked-user', username: 'badguy' } as any,
+    ]);
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-blocked',
+      from: 'blocked-user',
+      kind: 'audio',
+    });
+
+    // Карточка не создаётся, рингтон не звенит, FSM остаётся в idle
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(useCallStore.getState().incomingCall).toBeNull();
+    expect(startRingtone).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('загружает список заблокированных с сервера, если кеш пуст, и отсекает заблокированного', async () => {
+    queryClient.clear();
+    services.userService.listBlocked = vi
+      .fn()
+      .mockResolvedValue([{ id: 'server-blocked', username: 'spammer' }]);
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-uncached',
+      from: 'server-blocked',
+      kind: 'audio',
+    });
+
+    expect(services.userService.listBlocked).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('отмена исходящего вызова через cancelCall отправляет leave и сбрасывает FSM', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'outgoing-room-1',
+        peerId: 'peer-alice',
+        outgoingPhase: 'ringing',
+      },
+      outgoingCall: {
+        roomId: 'outgoing-room-1',
+        peerId: 'peer-alice',
+        kind: 'audio',
+        phase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().cancelCall();
+
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'call_leave',
+      roomId: 'outgoing-room-1',
+    });
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('cancelled');
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('cancelled');
+  });
+
+  it('handleBroadcastEvent сбрасывает входящий звонок при ответе в другой вкладке', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'incoming',
+        roomId: 'multi-tab-room',
+        peerId: 'caller-1',
+      },
+      incomingCall: {
+        roomId: 'multi-tab-room',
+        from: 'caller-1',
+        kind: 'audio',
+      },
+    });
+
+    useCallStore.getState().handleBroadcastEvent({
+      type: 'CALL_DISMISSED',
+      roomId: 'multi-tab-room',
+    });
+
+    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(useCallStore.getState().fsm.state).toBe('idle');
+    expect(useCallStore.getState().incomingCall).toBeNull();
+  });
+
+  it('handleInviteResponse с reason busy переводит outgoingPhase в busy', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'busy-room',
+        peerId: 'peer-busy',
+        outgoingPhase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().handleInviteResponse({
+      type: 'call_invite_response',
+      roomId: 'busy-room',
+      accepted: false,
+      reason: 'busy',
+    });
+
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('busy');
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('busy');
+  });
+
+  it('handleInviteResponse с reason declined переводит outgoingPhase в declined', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'declined-room',
+        peerId: 'peer-declined',
+        outgoingPhase: 'ringing',
+      },
+    });
+
+    useCallStore.getState().handleInviteResponse({
+      type: 'call_invite_response',
+      roomId: 'declined-room',
+      accepted: false,
+      reason: 'declined',
+    });
+
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('declined');
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    expect(useCallStore.getState().fsm.endReason).toBe('declined');
+  });
+
+  it('outgoingCall остаётся доступным в состоянии ended до RESET_TO_IDLE для отображения статуса', () => {
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'room-status',
+        peerId: 'peer-status',
+        peerName: 'Сергей',
+        outgoingPhase: 'ringing',
+      },
+    });
+
+    // Респондент занят
+    useCallStore.getState().handleInviteResponse({
+      type: 'call_invite_response',
+      roomId: 'room-status',
+      accepted: false,
+      reason: 'busy',
+    });
+
+    const state = useCallStore.getState();
+    expect(state.fsm.state).toBe('ended');
+    expect(state.fsm.outgoingPhase).toBe('busy');
+    // Селектор outgoingCall не должен быть null, чтобы оверлей показал "Занят"
+    expect(state.outgoingCall).not.toBeNull();
+    expect(state.outgoingCall?.phase).toBe('busy');
+    expect(state.outgoingCall?.peerName).toBe('Сергей');
+  });
+
+  it('быстрый перенабор: устаревший createRoom не перезаписывает новый звонок и отправляет leave', async () => {
+    let resolveFirstRoom!: (val: any) => void;
+    const firstRoomPromise = new Promise((resolve) => {
+      resolveFirstRoom = resolve;
+    });
+
+    let resolveSecondRoom!: (val: any) => void;
+    const secondRoomPromise = new Promise((resolve) => {
+      resolveSecondRoom = resolve;
+    });
+
+    vi.spyOn(services.callService, 'createRoom')
+      .mockImplementationOnce(() => firstRoomPromise as any)
+      .mockImplementationOnce(() => secondRoomPromise as any);
+
+    // 1. Начинаем первый вызов
+    const p1 = useCallStore
+      .getState()
+      .initiateCall('chat-1', 'p2p', 'Первый', 'audio', 'peer-1', null, 'Алиса');
+
+    expect(useCallStore.getState().fsm.state).toBe('outgoing');
+    expect(useCallStore.getState().fsm.phase ?? useCallStore.getState().fsm.outgoingPhase).toBe(
+      'calling'
+    );
+
+    // 2. Пользователь отменяет и сразу начинает второй звонок
+    useCallStore.getState().cancelCall();
+
+    const p2 = useCallStore
+      .getState()
+      .initiateCall('chat-2', 'p2p', 'Второй', 'audio', 'peer-2', null, 'Боб');
+
+    mockSend.mockClear();
+
+    // 3. Первый createRoom с опозданием завершается
+    resolveFirstRoom({
+      success: true,
+      room: { id: 'room-stale', type: 'p2p', callKind: 'audio', chatId: 'chat-1' },
+    });
+    await p1;
+
+    // Первый (устаревший) звонок должен отправить leave для созданной устаревшей комнаты
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'call_leave',
+      roomId: 'room-stale',
+    });
+    // И НЕ должен отправлять invite для peer-1
+    expect(mockSend).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'call_invite',
+        to: 'peer-1',
+      })
+    );
+
+    // Состояние второго звонка не должно пострадать
+    expect(useCallStore.getState().fsm.state).toBe('outgoing');
+    expect(useCallStore.getState().fsm.peerId).toBe('peer-2');
+
+    // 4. Второй createRoom завершается успешно
+    resolveSecondRoom({
+      success: true,
+      room: { id: 'room-active-2', type: 'p2p', callKind: 'audio', chatId: 'chat-2' },
+    });
+    await p2;
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'call_invite',
+        to: 'peer-2',
+        roomId: 'room-active-2',
+      })
+    );
+    expect(useCallStore.getState().fsm.roomId).toBe('room-active-2');
+    expect(useCallStore.getState().fsm.outgoingPhase).toBe('ringing');
+  });
+
+  it('отправляет busy, если во время асинхронной проверки чёрного списка начался другой звонок', async () => {
+    let resolveBlockedQuery!: (val: any) => void;
+    queryClient.clear();
+    services.userService.listBlocked = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveBlockedQuery = resolve;
+        })
+    );
+
+    // Приходит входящий вызов от caller-a, начинается асинхронный ensureQueryData
+    const incomingPromise = useCallStore.getState().handleIncoming({
+      roomId: 'room-race',
+      from: 'caller-a',
+      kind: 'audio',
+    });
+
+    // Пока проверка идёт, пользователь сам начинает исходящий звонок
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'my-outgoing',
+      },
+    });
+    mockSend.mockClear();
+
+    // Проверка чёрного списка завершается (пользователь не заблокирован)
+    resolveBlockedQuery([]);
+    await incomingPromise;
+
+    // Поскольку состояние уже outgoing, входящий вызов должен получить busy ответ
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'call_invite_response',
+      to: 'caller-a',
+      roomId: 'room-race',
+      accepted: false,
+      reason: 'busy',
+    });
+    // Исходящий звонок не сбит
+    expect(useCallStore.getState().fsm.state).toBe('outgoing');
+    expect(useCallStore.getState().fsm.roomId).toBe('my-outgoing');
+  });
+
+  it('отложенный RESET_TO_IDLE от отменённого исходящего не сбрасывает новый звонок', () => {
+    vi.useFakeTimers();
+
+    useCallStore.setState({
+      fsm: {
+        ...useCallStore.getState().fsm,
+        state: 'outgoing',
+        roomId: 'room-cancelled',
+      },
+      currentAttemptId: 5,
+    });
+
+    // Отменяем исходящий звонок (ставится таймаут 400мс на RESET_TO_IDLE)
+    useCallStore.getState().cancelCall();
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+
+    // Через 100мс начинается новый входящий звонок
+    vi.advanceTimersByTime(100);
+    useCallStore.getState().handleIncoming({
+      roomId: 'incoming-fresh',
+      from: 'caller-fresh',
+      kind: 'audio',
+    });
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(useCallStore.getState().fsm.roomId).toBe('incoming-fresh');
+
+    // Проходит 500мс (таймаут отмены первого вызова срабатывает)
+    vi.advanceTimersByTime(500);
+
+    // Свежий входящий звонок не сброшен!
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(useCallStore.getState().fsm.roomId).toBe('incoming-fresh');
+
+    vi.useRealTimers();
+  });
+
+  it('селектор outgoingCall равен null после завершения принятого звонка', () => {
+    useCallStore.getState().dispatch({
+      type: 'START_OUTGOING',
+      payload: {
+        roomId: 'room-accepted-test',
+        chatId: 'chat-1',
+        peerId: 'peer-1',
+        kind: 'audio',
+      },
+    });
+
+    expect(useCallStore.getState().outgoingCall).not.toBeNull();
+
+    // Собеседник принял вызов
+    useCallStore.getState().handleInviteResponse({
+      roomId: 'room-accepted-test',
+      accepted: true,
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('connecting');
+    expect(useCallStore.getState().fsm.outgoingPhase).toBeNull();
+    expect(useCallStore.getState().outgoingCall).toBeNull();
+
+    // Звонок завершается
+    useCallStore.getState().endCall();
+
+    expect(useCallStore.getState().fsm.state).toBe('ended');
+    // Карточка исходящего звонка не должна всплывать повторно!
+    expect(useCallStore.getState().outgoingCall).toBeNull();
+  });
+
+  it('initiateCall при ошибке сети выставляет фазу failed и завершает звонок с network_error', async () => {
+    vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce(new Error('Network error'));
+
+    await useCallStore
+      .getState()
+      .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+    const state = useCallStore.getState();
+    expect(state.fsm.state).toBe('ended');
+    expect(state.fsm.endReason).toBe('network_error');
+    expect(state.fsm.outgoingPhase).toBe('failed');
+    expect(state.outgoingCall?.phase).toBe('failed');
+  });
+
+  describe('восстановление связи и реконнект (PR 1 / #775)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('при переходе в reconnecting запускает таймер на 25 секунд и завершает звонок по таймауту', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      // Прошло 24.9 сек — всё ещё reconnecting
+      vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS - 100);
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+
+      // Прошло 25 сек — автозавершение с network_error
+      vi.advanceTimersByTime(100);
+      expect(useCallStore.getState().fsm.state).toBe('ended');
+      expect(useCallStore.getState().fsm.endReason).toBe('network_error');
+    });
+
+    it('при восстановлении связи (CONNECTION_RESTORED) сбрасывает reconnectTimeoutTimer', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      expect(useCallStore.getState().fsm.state).toBe('reconnecting');
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      // Связь восстановилась через 5 секунд
+      vi.advanceTimersByTime(5000);
+      useCallStore.getState().dispatch({ type: 'CONNECTION_RESTORED' });
+
+      expect(useCallStore.getState().fsm.state).toBe('active');
+      expect(useCallStore.getState().reconnectTimeoutTimer).toBeNull();
+
+      // Дальнейшее течение времени не завершает звонок
+      vi.advanceTimersByTime(30000);
+      expect(useCallStore.getState().fsm.state).toBe('active');
+    });
+
+    it('ручной endCall во время reconnecting сбрасывает таймер переподключения', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+      expect(useCallStore.getState().reconnectTimeoutTimer).not.toBeNull();
+
+      useCallStore.getState().endCall('completed');
+
+      expect(useCallStore.getState().fsm.state).toBe('ended');
+      expect(useCallStore.getState().reconnectTimeoutTimer).toBeNull();
+    });
+
+    it('rejoinActiveCall отправляет call_join в комнату при активном звонке', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'active-room',
+          peerId: 'peer-1',
+          callKind: 'video',
+          chatId: 'chat-1',
+        },
+      });
+
+      useCallStore.getState().rejoinActiveCall();
+
+      expect(mockSend).toHaveBeenCalledWith({
+        type: 'call_join',
+        roomId: 'active-room',
+        displayName: 'Иван Иванов',
+        avatarUrl: 'https://example.com/avatar.png',
+        callKind: 'video',
+        chatId: 'chat-1',
+        title: undefined,
+      });
+    });
+
+    it('rejoinActiveCall ничего не шлет, если звонок в idle', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'idle',
+          roomId: null,
+        },
+      });
+
+      useCallStore.getState().rejoinActiveCall();
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('attachSocket с подключенным сокетом вызывает rejoinActiveCall при активном звонке', () => {
+      mockSend.mockClear();
+      useCallStore.setState({
+        socket: null,
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'active',
+          roomId: 'room-reconnect',
+          peerId: 'peer-1',
+        },
+      });
+
+      useCallStore.getState().attachSocket(mockSocket);
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'call_join',
+          roomId: 'room-reconnect',
+        })
+      );
+    });
+
+    describe('персистентность сессии и восстановление после F5', () => {
+      const mockStorage = new Map<string, string>();
+      const fakeSessionStorage = {
+        getItem: vi.fn((k: string) => mockStorage.get(k) ?? null),
+        setItem: vi.fn((k: string, v: string) => mockStorage.set(k, String(v))),
+        removeItem: vi.fn((k: string) => mockStorage.delete(k)),
+        clear: vi.fn(() => mockStorage.clear()),
+      };
+
+      beforeEach(() => {
+        mockStorage.clear();
+        vi.stubGlobal('sessionStorage', fakeSessionStorage);
+      });
+
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      it('сохраняет сессию в sessionStorage при переходе звонка в active', () => {
+        useCallStore.setState({
+          fsm: {
+            ...useCallStore.getState().fsm,
+            state: 'connecting',
+            roomId: 'room-persist-1',
+            peerId: 'peer-alice',
+            peerName: 'Алиса',
+            callKind: 'audio',
+            roomType: 'p2p',
+            isCaller: true,
+          },
+        });
+
+        useCallStore.getState().dispatch({ type: 'PEER_JOINED' });
+
+        expect(useCallStore.getState().fsm.state).toBe('active');
+        expect(fakeSessionStorage.setItem).toHaveBeenCalledWith(
+          'crane_active_call_session',
+          expect.stringContaining('room-persist-1')
+        );
+      });
+
+      it('очищает сессию из sessionStorage при завершении звонка endCall', () => {
+        useCallStore.setState({
+          fsm: {
+            ...useCallStore.getState().fsm,
+            state: 'active',
+            roomId: 'room-persist-1',
+            peerId: 'peer-alice',
+          },
+        });
+
+        useCallStore.getState().endCall('completed');
+
+        expect(fakeSessionStorage.removeItem).toHaveBeenCalledWith('crane_active_call_session');
+      });
+
+      it('restoreActiveSession восстанавливает FSM в reconnecting и запускает таймаут 25с', () => {
+        mockStorage.set(
+          'crane_active_call_session',
+          JSON.stringify({
+            roomId: 'saved-room-1',
+            peerId: 'saved-peer-1',
+            peerName: 'Боб',
+            callKind: 'video',
+            roomType: 'p2p',
+            callStartedAt: 1234567,
+            isCaller: false,
+            savedAt: Date.now(),
+          })
+        );
+
+        mockSend.mockClear();
+        const restored = useCallStore.getState().restoreActiveSession();
+
+        expect(restored).toBe(true);
+        const state = useCallStore.getState();
+        expect(state.fsm.state).toBe('reconnecting');
+        expect(state.fsm.roomId).toBe('saved-room-1');
+        expect(state.fsm.peerId).toBe('saved-peer-1');
+        expect(state.activeCall?.roomId).toBe('saved-room-1');
+        expect(state.reconnectTimeoutTimer).not.toBeNull();
+
+        // По сокету отправлен call_join
+        expect(mockSend).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'call_join',
+            roomId: 'saved-room-1',
+          })
+        );
+      });
+
+      it('restoreActiveSession возвращает false, если хранилище пусто', () => {
+        const restored = useCallStore.getState().restoreActiveSession();
+        expect(restored).toBe(false);
+        expect(useCallStore.getState().fsm.state).toBe('idle');
+      });
+    });
   });
 });

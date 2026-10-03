@@ -9,12 +9,13 @@ import {
   ListStaticItem,
   showToast,
 } from '@/shared/ui';
-import { APP_VERSION } from '@/shared/config';
+import { AppUpdateSettingItem } from '@/features/app-update';
+import { APP_BUILT_AT, APP_VERSION } from '@/shared/config';
 import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
 
 export function AboutSection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [wipeAsked, setWipeAsked] = useState(false);
@@ -62,6 +63,16 @@ export function AboutSection() {
     <>
       <ListGroup>
         <ListStaticItem
+          hint={
+            APP_BUILT_AT
+              ? t('settings.about.builtAt', 'Сборка от {{date}}', {
+                  date: new Intl.DateTimeFormat(i18n.language, {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  }).format(new Date(APP_BUILT_AT)),
+                })
+              : undefined
+          }
           label={t('settings.about.description', 'CraneApp Messenger')}
           leading={
             <span
@@ -77,6 +88,8 @@ export function AboutSection() {
             </span>
           }
         />
+        {/* Новая версия без переустановки (#892). */}
+        <AppUpdateSettingItem />
       </ListGroup>
 
       {/* Названия «экспортировать мои данные» человек читает как «выгрузить

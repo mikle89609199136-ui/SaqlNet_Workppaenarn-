@@ -31,10 +31,16 @@ describe('callStateMachine', () => {
     expect(next.roomId).toBe('r1');
   });
 
-  it('переходит из outgoing в connecting по PEER_ACCEPTED', () => {
-    const outgoingCtx = { ...initialCallContext, state: 'outgoing' as const, roomId: 'r1' };
+  it('переходит из outgoing в connecting по PEER_ACCEPTED и сбрасывает outgoingPhase', () => {
+    const outgoingCtx = {
+      ...initialCallContext,
+      state: 'outgoing' as const,
+      roomId: 'r1',
+      outgoingPhase: 'ringing' as const,
+    };
     const next = callStateReducer(outgoingCtx, { type: 'PEER_ACCEPTED' });
     expect(next.state).toBe('connecting');
+    expect(next.outgoingPhase).toBeNull();
   });
 
   it('игнорирует PEER_ACCEPTED, если состояние не outgoing', () => {
@@ -81,6 +87,18 @@ describe('callStateMachine', () => {
   it('переходит из active в reconnecting при обрыве связи', () => {
     const activeCtx = { ...initialCallContext, state: 'active' as const, roomId: 'r1' };
     const next = callStateReducer(activeCtx, { type: 'CONNECTION_LOST' });
+    expect(next.state).toBe('reconnecting');
+  });
+
+  it('переходит из connecting в reconnecting при обрыве связи', () => {
+    const connectingCtx = { ...initialCallContext, state: 'connecting' as const, roomId: 'r1' };
+    const next = callStateReducer(connectingCtx, { type: 'CONNECTION_LOST' });
+    expect(next.state).toBe('reconnecting');
+  });
+
+  it('игнорирует PEER_JOINED в состоянии reconnecting (восстановление только по CONNECTION_RESTORED)', () => {
+    const reconCtx = { ...initialCallContext, state: 'reconnecting' as const, roomId: 'r1' };
+    const next = callStateReducer(reconCtx, { type: 'PEER_JOINED' });
     expect(next.state).toBe('reconnecting');
   });
 
@@ -134,15 +152,37 @@ describe('callStateMachine', () => {
       state: 'outgoing' as const,
       roomId: 'room-new',
     };
-    const next = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-old' });
-    expect(next.state).toBe('outgoing');
-    expect(next.roomId).toBe('room-new');
+    const next1 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-old' });
+    expect(next1.state).toBe('outgoing');
+    expect(next1.roomId).toBe('room-new');
+
+    const next2 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE', roomId: 'room-new' });
+    expect(next2.state).toBe('outgoing');
+    expect(next2.roomId).toBe('room-new');
+
+    const next3 = callStateReducer(outgoingCtx, { type: 'RESET_TO_IDLE' });
+    expect(next3.state).toBe('outgoing');
+
+    const incomingCtx = {
+      ...initialCallContext,
+      state: 'incoming' as const,
+      roomId: 'room-incoming',
+    };
+    const nextIncoming = callStateReducer(incomingCtx, { type: 'RESET_TO_IDLE' });
+    expect(nextIncoming.state).toBe('incoming');
+    expect(nextIncoming.roomId).toBe('room-incoming');
   });
 
-  it('переводит outgoing напрямую в active по PEER_JOINED', () => {
-    const outgoingCtx = { ...initialCallContext, state: 'outgoing' as const, roomId: 'r1' };
+  it('переводит outgoing напрямую в active по PEER_JOINED и сбрасывает outgoingPhase', () => {
+    const outgoingCtx = {
+      ...initialCallContext,
+      state: 'outgoing' as const,
+      roomId: 'r1',
+      outgoingPhase: 'ringing' as const,
+    };
     const next = callStateReducer(outgoingCtx, { type: 'PEER_JOINED' });
     expect(next.state).toBe('active');
     expect(next.callStartedAt).toBeGreaterThan(0);
+    expect(next.outgoingPhase).toBeNull();
   });
 });

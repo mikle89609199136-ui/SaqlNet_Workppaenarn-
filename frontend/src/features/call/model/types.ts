@@ -13,8 +13,38 @@ import type { TCallKind, TCallRoomType } from '@/services/types/callApi.types';
 export type TCallState =
   'idle' | 'outgoing' | 'incoming' | 'connecting' | 'active' | 'reconnecting' | 'ended';
 
+export type TCallConnectionState = RTCPeerConnectionState | 'reconnecting';
+
 export type TCallEndReason =
-  'completed' | 'peer_ended' | 'declined' | 'busy' | 'no_answer' | 'network_error' | 'media_denied';
+  | 'completed'
+  | 'peer_ended'
+  | 'declined'
+  | 'busy'
+  | 'no_answer'
+  | 'network_error'
+  | 'media_denied'
+  | 'cancelled';
+
+export type TOutgoingCallPhase =
+  'calling' | 'ringing' | 'declined' | 'busy' | 'no_answer' | 'cancelled' | 'failed';
+
+export interface IOutgoingCall {
+  roomId: string;
+  peerId: string;
+  peerName?: string | null;
+  peerAvatar?: string | null;
+  kind: TCallKind;
+  phase: TOutgoingCallPhase;
+  title?: string | null;
+}
+
+export interface IEndedCall {
+  roomId: string;
+  peerId?: string;
+  peerName?: string | null;
+  peerAvatar?: string | null;
+  reason: TCallEndReason;
+}
 
 export interface ICallPeer {
   userId: string;
@@ -189,6 +219,10 @@ export interface IActiveCall {
   kind: TCallKind;
   title?: string;
   chatId?: string;
+  peerId?: string;
+  peerName?: string;
+  peerAvatar?: string | null;
+  isCaller?: boolean;
 }
 
 export interface IRingtone {
@@ -217,4 +251,55 @@ export interface ICallSessionData {
   kind: TCallKind;
   title?: string;
   startedAt?: number;
+}
+
+// Медиа и устройства
+export type TMediaErrorType =
+  | 'NotAllowedError'
+  | 'NotFoundError'
+  | 'NotReadableError'
+  | 'OverconstrainedError'
+  | 'InsecureContextError'
+  | 'TimeoutError'
+  | 'UnknownMediaError';
+
+export interface IMediaError {
+  type: TMediaErrorType;
+  name: string;
+  message: string;
+  originalError?: unknown;
+}
+
+export type TFacingMode = 'user' | 'environment';
+
+export interface IMediaDeviceOption {
+  deviceId: string;
+  label: string;
+  kind: MediaDeviceKind;
+  groupId?: string;
+}
+
+export interface ILocalMediaState {
+  stream: MediaStream | null;
+  audioTrack: MediaStreamTrack | null;
+  videoTrack: MediaStreamTrack | null;
+  isAudioMuted: boolean;
+  isVideoMuted: boolean;
+  audioInputs: IMediaDeviceOption[];
+  videoInputs: IMediaDeviceOption[];
+  selectedAudioDeviceId: string | null;
+  selectedVideoDeviceId: string | null;
+  facingMode: TFacingMode;
+  error: IMediaError | null;
+  isLoading: boolean;
+}
+
+export interface IStartMediaOptions {
+  kind?: TCallKind;
+  audio?: boolean | MediaTrackConstraints;
+  video?: boolean | MediaTrackConstraints;
+  audioDeviceId?: string;
+  videoDeviceId?: string;
+  facingMode?: TFacingMode;
+  timeoutMs?: number;
 }
