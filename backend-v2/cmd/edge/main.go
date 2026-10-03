@@ -107,11 +107,19 @@ func (tb *tokenBucket) allowAt(ip string, now time.Time) bool {
 
 func (ls *limiterSet) AllowRequest(ip string, group routeGroup) (bool, time.Duration) {
 	if group == routeGroupNone {
-		if ls.global.Allow(ip) {
-			return true, 0
+		ls.global.mu.Lock()
+		defer ls.global.mu.Unlock()
+
+		globalBucket := ls.global.refillBucketLocked(ip, time.Now())
+		if globalBucket.tokens < 1 {
+			// остаток после пополнения может быть дробным, поэтому ждать нужно
+			// не целый токен, а только недостающую часть
+			return false, retryAfter(globalBucket.tokens, ls.global.rate)
 		}
 
-		return false, retryAfter(0, ls.global.rate)
+		globalBucket.tokens--
+
+		return true, 0
 	}
 
 	groupLimiter, exists := ls.groups[group]
