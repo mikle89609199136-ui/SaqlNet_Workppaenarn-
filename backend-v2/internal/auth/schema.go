@@ -8,9 +8,9 @@ import (
 
 var ErrSessionSchemaNotReady = errors.New("auth session schema is not ready")
 
-// CheckSessionSchema keeps a new auth replica out of service until migration
-// 0035 is present. Without it, token issuance would succeed in crypto and then
-// fail while recording the corresponding login session.
+// CheckSessionSchema keeps new auth and user replicas out of service until the
+// login-session schema and its device link are present. Without it, token
+// issuance or scoped device logout would fail after a mixed-version rollout.
 func CheckSessionSchema(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return ErrSessionSchemaNotReady
@@ -34,6 +34,11 @@ func CheckSessionSchema(ctx context.Context, db *sql.DB) error {
 				SELECT 1 FROM information_schema.columns
 				WHERE table_schema = 'auth' AND table_name = 'sessions'
 					AND column_name = 'refresh_token_hash' AND is_nullable = 'YES'
+			) AND
+			EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema = 'auth' AND table_name = 'sessions'
+					AND column_name = 'device_session_id' AND data_type = 'uuid'
 			)
 	`).Scan(&ready)
 	if err != nil {

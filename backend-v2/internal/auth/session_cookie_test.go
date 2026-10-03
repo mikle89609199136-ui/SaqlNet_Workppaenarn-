@@ -78,15 +78,12 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 	expiresAt := time.Unix(1_900_000_123, 0).UTC()
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
-		WithArgs(tokenHash("cookie-token"), "user-id", expiresAt).
+		WithArgs(authctx.TokenHash("cookie-token"), "user-id", expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE auth.sessions").
-		WithArgs("user-id", tokenHash("cookie-token")).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("UPDATE auth.sessions").
+		WithArgs("user-id", authctx.TokenHash("cookie-token")).
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
 	mock.ExpectCommit()
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs("user-id").
-		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{}))
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout", nil)

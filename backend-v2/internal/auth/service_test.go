@@ -139,7 +139,7 @@ func TestLogoutAllKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
 	}
 }
 
-func TestLogoutKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
+func TestLogoutOnlyUpdatesTheCredentialForTheCurrentToken(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -153,16 +153,45 @@ func TestLogoutKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
 		WithArgs(sqlmock.AnyArg(), userID, expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE auth.sessions").
+	deviceSessionID := "22222222-2222-4222-8222-222222222222"
+	mock.ExpectQuery("UPDATE auth.sessions").
 		WithArgs(userID, sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs(userID).
-		WillReturnError(errors.New("legacy table unavailable"))
+		WithArgs(deviceSessionID, userID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, token, expiresAt); err != nil {
-		t.Fatalf("credential revocation must survive legacy cleanup failure: %v", err)
+		t.Fatalf("logout current credential: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutKeepsRevocationCommittedWhenLinkedDeviceCleanupFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	userID := "11111111-1111-4111-8111-111111111111"
+	expiresAt := time.Unix(2_000_000_000, 0).UTC()
+	deviceSessionID := "22222222-2222-4222-8222-222222222222"
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("UPDATE auth.sessions").
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE public.user_sessions").
+		WithArgs(deviceSessionID, userID).
+		WillReturnError(errors.New("legacy table unavailable"))
+
+	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, "access-token", expiresAt); err != nil {
+		t.Fatalf("credential revocation must survive linked device cleanup failure: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
