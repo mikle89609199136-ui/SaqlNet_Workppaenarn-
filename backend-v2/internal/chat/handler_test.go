@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1568,6 +1569,73 @@ func TestHandler_UpdateGroup(t *testing.T) {
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("mock expectations not met: %v", err)
 			}
+		})
+	}
+}
+
+// TestHandler_Favorites_PaginationValidation проверяет, что эндпоинт GET /api/v2/messages/favorites
+// отклоняет невалидные значения limit и offset с ошибкой 400 validation_failed без обращений к БД.
+func TestHandler_Favorites_PaginationValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		query       string
+		wantMessage string
+	}{
+		{name: "limit below minimum", query: "?limit=0", wantMessage: "invalid limit"},
+		{name: "negative limit", query: "?limit=-1", wantMessage: "invalid limit"},
+		{name: "limit above maximum", query: "?limit=101", wantMessage: "invalid limit"},
+		{name: "non-numeric limit", query: "?limit=abc", wantMessage: "invalid limit"},
+		{name: "empty limit param", query: "?limit=", wantMessage: "invalid limit"},
+		{name: "negative offset", query: "?offset=-1", wantMessage: "invalid offset"},
+		{name: "non-numeric offset", query: "?offset=xyz", wantMessage: "invalid offset"},
+		{name: "empty offset param", query: "?offset=", wantMessage: "invalid offset"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/messages/favorites"+tt.query, nil, handlerActorID)
+			rr := httptest.NewRecorder()
+			handler.Messages(rr, req)
+			assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+			var errResp struct {
+				Message string `json:"message"`
+			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
+			assert.Equal(t, tt.wantMessage, errResp.Message)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestHandler_Search_PaginationValidation проверяет, что эндпоинт GET /api/v2/messages/search
+// отклоняет невалидные значения параметра limit с ошибкой 400 validation_failed без обращений к БД.
+func TestHandler_Search_PaginationValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		query       string
+		wantMessage string
+	}{
+		{name: "limit below minimum", query: "?q=test&limit=0", wantMessage: "invalid limit"},
+		{name: "negative limit", query: "?q=test&limit=-1", wantMessage: "invalid limit"},
+		{name: "limit above maximum", query: "?q=test&limit=101", wantMessage: "invalid limit"},
+		{name: "non-numeric limit", query: "?q=test&limit=abc", wantMessage: "invalid limit"},
+		{name: "empty limit param", query: "?q=test&limit=", wantMessage: "invalid limit"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/messages/search"+tt.query, nil, handlerActorID)
+			rr := httptest.NewRecorder()
+			handler.Messages(rr, req)
+			assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+			var errResp struct {
+				Message string `json:"message"`
+			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
+			assert.Equal(t, tt.wantMessage, errResp.Message)
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }

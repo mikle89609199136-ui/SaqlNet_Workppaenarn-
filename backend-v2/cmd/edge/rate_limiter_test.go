@@ -424,6 +424,112 @@ func TestAllowRequestNoGroupRejectsWhenGlobalEmpty(t *testing.T) {
 	}
 }
 
+func TestAllowRequestNoGroupRetryAfterUsesCurrentBalance(t *testing.T) {
+	ip := "192.0.2.10"
+
+	globalLimiter := &tokenBucket{
+		buckets: map[string]*bucket{
+			ip: {
+				tokens:    0.9,
+				lastRefil: time.Now(),
+			},
+		},
+		rate:     0.1,
+		capacity: 1,
+	}
+
+	limiters := &limiterSet{
+		groups: map[routeGroup]*tokenBucket{},
+		global: globalLimiter,
+	}
+
+	allow, wait := limiters.AllowRequest(ip, routeGroupNone)
+	if allow {
+		t.Fatalf("expected request to be rejected")
+	}
+
+	// до целого токена не хватает 0.1, при 0.1 токена/с это около секунды, а не десять
+	if wait < 900*time.Millisecond || wait > 1100*time.Millisecond {
+		t.Fatalf("expected retry-after about 1s for balance 0.9 at 0.1/s, got %v", wait)
+	}
+}
+
+func TestRateLimitMiddlewareNoGroupRetryAfterUsesCurrentBalance(t *testing.T) {
+	ip := "192.0.2.10"
+
+	limiters := &limiterSet{
+		groups: map[routeGroup]*tokenBucket{},
+		global: &tokenBucket{
+			buckets: map[string]*bucket{
+				ip: {
+					tokens:    0.9,
+					lastRefil: time.Now(),
+				},
+			},
+			rate:     0.1,
+			capacity: 1,
+		},
+	}
+
+	handler := rateLimitMiddleware(trustedProxySet{}, limiters, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/openapi.yml", nil)
+	req.RemoteAddr = ip + ":12345"
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status %d, got %d", http.StatusTooManyRequests, recorder.Code)
+	}
+
+	if got := recorder.Header().Get("Retry-After"); got != "1" {
+		t.Fatalf("expected Retry-After 1, got %q", got)
+	}
+}
+
+func TestRateLimitMiddlewareOverwritesClientIPHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "limited route", method: http.MethodGet, path: "/api/v2/users/me"},
+		{name: "exempt health check", method: http.MethodGet, path: "/health/live"},
+		{name: "exempt static route", method: http.MethodGet, path: "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			generousBucket := func() *tokenBucket {
+				return &tokenBucket{buckets: map[string]*bucket{}, rate: 100, capacity: 100}
+			}
+			limiters := &limiterSet{
+				groups: map[routeGroup]*tokenBucket{classifyRoute(tt.method, tt.path): generousBucket()},
+				global: generousBucket(),
+			}
+
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get(clientIPHeader); got != "192.0.2.44" {
+					t.Errorf("forwarded client IP = %q, want %q", got, "192.0.2.44")
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+			handler := rateLimitMiddleware(trustedProxySet{}, limiters, next)
+
+			request := httptest.NewRequest(tt.method, tt.path, nil)
+			request.RemoteAddr = "192.0.2.44:1234"
+			request.Header.Set(clientIPHeader, "203.0.113.99")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+			}
+		})
+	}
+}
+
 func TestRateLimitMiddlewareSkipsExemptPaths(t *testing.T) {
 	ip := "192.0.2.10"
 	now := time.Now()

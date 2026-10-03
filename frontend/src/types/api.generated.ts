@@ -2604,10 +2604,29 @@ export interface components {
             firstName: string;
             lastName?: string;
             language?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         AuthResponse: {
             user: components["schemas"]["User"];
             token: string;
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         LoginRequest: {
             username: string;
@@ -2615,6 +2634,9 @@ export interface components {
             password: string;
             /** Format: password */
             twoFAPassword?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         QrTokenRequest: {
             /** @description One-time ECDH P-256 public key (SPKI) */
@@ -3698,13 +3720,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sessions */
+            /** @description Active sessions with the current credential first, then by recent activity */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuthSessionsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
         };
     };
     changePassword: {

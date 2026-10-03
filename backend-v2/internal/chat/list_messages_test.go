@@ -2,12 +2,14 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -137,6 +139,58 @@ func TestHandler_ListMessages_ErrorMapping(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// TestHandler_ListMessages_PaginationValidation проверяет, что при невалидных limit или offset
+// эндпоинт ListMessages возвращает 400 validation_failed без обращения к базе данных.
+func TestHandler_ListMessages_PaginationValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		query       string
+		wantMessage string
+	}{
+		{name: "limit below minimum", query: "?limit=0", wantMessage: "invalid limit"},
+		{name: "negative limit", query: "?limit=-1", wantMessage: "invalid limit"},
+		{name: "limit above maximum", query: "?limit=101", wantMessage: "invalid limit"},
+		{name: "non-numeric limit", query: "?limit=abc", wantMessage: "invalid limit"},
+		{name: "empty limit param", query: "?limit=", wantMessage: "invalid limit"},
+		{name: "negative offset", query: "?offset=-1", wantMessage: "invalid offset"},
+		{name: "non-numeric offset", query: "?offset=xyz", wantMessage: "invalid offset"},
+		{name: "empty offset param", query: "?offset=", wantMessage: "invalid offset"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/messages/"+listMessagesChatID+tt.query, nil, listMessagesUserID)
+			req.SetPathValue("chatId", listMessagesChatID)
+			rr := httptest.NewRecorder()
+			handler.ListMessages(rr, req)
+			assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+			var errResp struct {
+				Message string `json:"message"`
+			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
+			assert.Equal(t, tt.wantMessage, errResp.Message)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestListMessages_EmptyChat проверяет, что при отсутствии сообщений в чате
+// эндпоинт возвращает пустой JSON-массив {"messages": []}, а не {"messages": null}.
+func TestListMessages_EmptyChat(t *testing.T) {
+	handler, mock := newTestHandler(t)
+	expectMembershipAndChat(mock, true, false)
+	mock.ExpectQuery(selectListMessagesSQL).WithArgs(listMessagesChatID, 50, 0, listMessagesUserID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}))
+	req := newAuthedRequest(http.MethodGet, "/api/v2/messages/"+listMessagesChatID, nil, listMessagesUserID)
+	req.SetPathValue("chatId", listMessagesChatID)
+	rr := httptest.NewRecorder()
+	handler.ListMessages(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.JSONEq(t, `{"messages":[]}`, rr.Body.String())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 // expectMembershipAndChat задаёт мок-ожидания проверки членства и (если не участник) существования чата.

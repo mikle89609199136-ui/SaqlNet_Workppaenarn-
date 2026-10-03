@@ -44,6 +44,8 @@ RegisterRequest:
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 LoginRequest:
   type: object
   required: [username, password]
@@ -51,12 +53,34 @@ LoginRequest:
     username: { type: string }
     password: { type: string, format: password }
     twoFAPassword: { type: string, format: password }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
   required: [user, token]
   properties:
     user: { $ref: '#/User' }
     token: { type: string }
+AuthSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  properties:
+    id: { type: string, format: uuid }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    lastActive: { type: string, format: date-time }
+    createdAt: { type: string, format: date-time }
+    isCurrent:
+      type: boolean
+      description: True when this row belongs to the token used for the request.
+AuthSessionsResponse:
+  type: object
+  required: [sessions]
+  properties:
+    sessions:
+      type: array
+      items: { $ref: '#/AuthSession' }
 Success:
   type: object
   required: [success]
