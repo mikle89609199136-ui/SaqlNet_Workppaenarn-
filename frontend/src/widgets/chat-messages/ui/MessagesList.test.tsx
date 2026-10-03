@@ -1,4 +1,5 @@
 import { useChatUiStore } from '@/entities/chat';
+import { formatMessageTime } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { mockThreadLayout } from '@/test/harness/threadLayout';
 import { makeMessage, makeUser } from '@/test/fixtures';
@@ -138,7 +139,9 @@ describe('MessagesList', () => {
     it('диктор слышит автора, текст и время сообщения', () => {
       renderComponent({ messages, trackUnread: false });
 
-      expect(article('msg-1')).toHaveAccessibleName(/^Тестовый, сообщение 1, \d\d:\d\d$/);
+      expect(article('msg-1')).toHaveAccessibleName(
+        `Тестовый, сообщение 1, ${formatMessageTime(messages[0].createdAt)}`
+      );
     });
 
     it('кнопка «⋯» открывает то же меню, на телефоне её нет', () => {
