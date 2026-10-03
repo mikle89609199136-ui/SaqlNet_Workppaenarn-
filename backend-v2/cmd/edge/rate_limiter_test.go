@@ -488,6 +488,48 @@ func TestRateLimitMiddlewareNoGroupRetryAfterUsesCurrentBalance(t *testing.T) {
 	}
 }
 
+func TestRateLimitMiddlewareOverwritesClientIPHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "limited route", method: http.MethodGet, path: "/api/v2/users/me"},
+		{name: "exempt health check", method: http.MethodGet, path: "/health/live"},
+		{name: "exempt static route", method: http.MethodGet, path: "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			generousBucket := func() *tokenBucket {
+				return &tokenBucket{buckets: map[string]*bucket{}, rate: 100, capacity: 100}
+			}
+			limiters := &limiterSet{
+				groups: map[routeGroup]*tokenBucket{classifyRoute(tt.method, tt.path): generousBucket()},
+				global: generousBucket(),
+			}
+
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get(clientIPHeader); got != "192.0.2.44" {
+					t.Errorf("forwarded client IP = %q, want %q", got, "192.0.2.44")
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+			handler := rateLimitMiddleware(trustedProxySet{}, limiters, next)
+
+			request := httptest.NewRequest(tt.method, tt.path, nil)
+			request.RemoteAddr = "192.0.2.44:1234"
+			request.Header.Set(clientIPHeader, "203.0.113.99")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+			}
+		})
+	}
+}
+
 func TestRateLimitMiddlewareSkipsExemptPaths(t *testing.T) {
 	ip := "192.0.2.10"
 	now := time.Now()

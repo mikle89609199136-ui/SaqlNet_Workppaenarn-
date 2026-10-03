@@ -13,7 +13,9 @@ import {
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { disconnectRealtimeSocket } from '@/shared/api';
-import type { ISessionDto } from '@/types';
+import type { components } from '@/types/api.generated';
+
+type AuthSession = components['schemas']['AuthSession'];
 
 export function SessionsManager() {
   const { t } = useTranslation();
@@ -54,10 +56,11 @@ export function SessionsManager() {
     }
   }
 
-  const sessionList = (sessions.data ?? []) as ISessionDto[];
+  const sessionList = sessions.data ?? [];
 
-  const [current, ...others] = sessionList;
-  const sessionItem = (session: ISessionDto) => (
+  const current = sessionList.find((session) => session.isCurrent);
+  const others = sessionList.filter((session) => !session.isCurrent);
+  const sessionItem = (session: AuthSession) => (
     <ListStaticItem
       hint={`${session.deviceType || 'неизвестно'} · ${formatDate(session.lastActive)}`}
       icon={session.deviceType === 'mobile' ? 'smartphone' : 'laptop'}
@@ -89,9 +92,15 @@ export function SessionsManager() {
 
       {!sessions.isPending && !sessions.isError && sessionList.length === 0 && (
         <Banner icon="shield" tone="warn">
-          Учёт устройств на сервере пока не ведётся, поэтому список всегда пуст. Это не значит, что
-          входов с других устройств не было. Завершить все сеансы кнопкой ниже при этом можно — она
-          отзывает выданные ранее ключи входа.
+          Активные сеансы не найдены. Это возможно для входа, выполненного до обновления учёта
+          устройств; при необходимости завершите все сеансы кнопкой ниже.
+        </Banner>
+      )}
+
+      {!sessions.isPending && !sessions.isError && sessionList.length > 0 && !current && (
+        <Banner icon="shield" tone="warn">
+          Текущее устройство было авторизовано до обновления учёта сеансов и пока не отображается в
+          списке.
         </Banner>
       )}
 
@@ -100,11 +109,13 @@ export function SessionsManager() {
           <ListStaticItem label={t('loading', 'Загрузка...')} />
         </ListGroup>
       ) : (
-        current && (
+        sessionList.length > 0 && (
           <>
-            <ListGroup title={t('settings.sessions.current', 'Это устройство')}>
-              {sessionItem(current)}
-            </ListGroup>
+            {current && (
+              <ListGroup title={t('settings.sessions.current', 'Это устройство')}>
+                {sessionItem(current)}
+              </ListGroup>
+            )}
             {others.length > 0 && (
               <ListGroup title={t('settings.sessions.others', 'Другие сеансы')}>
                 {others.map(sessionItem)}

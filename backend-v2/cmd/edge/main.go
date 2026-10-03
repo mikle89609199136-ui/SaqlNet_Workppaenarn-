@@ -24,6 +24,8 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
+const clientIPHeader = "X-Crane-Client-IP"
+
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 const (
@@ -213,11 +215,15 @@ func (tb *tokenBucket) removeStaleBuckets(now time.Time, ttl time.Duration) {
 
 func rateLimitMiddleware(trustedProxies trustedProxySet, limiters *limiterSet, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := trustedProxies.clientIP(r)
+		// Заменяем любое значение от клиента адресом, определённым по политике
+		// доверенных прокси, до передачи запроса внутренним сервисам. Делаем это
+		// и для маршрутов вне лимита: иначе заголовок можно подделать на них.
+		r.Header.Set(clientIPHeader, ip)
 		if isRateLimitExempt(r.Method, r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ip := trustedProxies.clientIP(r)
 		group := classifyRoute(r.Method, r.URL.Path)
 		allowed, wait := limiters.AllowRequest(ip, group)
 		if !allowed {

@@ -18,7 +18,7 @@ func TestDBTokenCheckerRejectsIndividuallyRevokedToken(t *testing.T) {
 
 	claims := cryptoclient.TokenClaims{Subject: "11111111-1111-4111-8111-111111111111", TokenGeneration: 3}
 	mock.ExpectQuery(`SELECT.*EXISTS`).
-		WithArgs(tokenHash("access-token"), claims.Subject).
+		WithArgs(TokenHash("access-token"), claims.Subject).
 		WillReturnRows(sqlmock.NewRows([]string{"individually_revoked", "token_generation"}).AddRow(true, 3))
 
 	revoked, err := NewDBTokenChecker(db).IsTokenRevoked(t.Context(), "access-token", claims)
