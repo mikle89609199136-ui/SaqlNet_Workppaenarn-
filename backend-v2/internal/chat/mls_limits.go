@@ -57,7 +57,7 @@ func newMLSLimitsFromEnv() *mlsLimits {
 			config.PositiveFloat64("CHAT_MLS_KEYPACKAGE_TARGET_RATE_PER_MIN", 10)/60,
 			config.PositiveInt("CHAT_MLS_KEYPACKAGE_TARGET_BURST", 10),
 		),
-		// 16 — начальное значение, нагрузочным тестом не подтверждено.
+		// 16 — около начала насыщения crypto на машине разработчика; см. docs/security/rate-limiting.md.
 		crypto: make(chan struct{}, config.PositiveInt("CHAT_MLS_CRYPTO_MAX_INFLIGHT", 16)),
 	}
 }
