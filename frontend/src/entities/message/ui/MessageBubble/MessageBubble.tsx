@@ -1,6 +1,8 @@
 import { Avatar, Icon, NotoEmoji } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
-import { useChatUiStore } from '@/entities/chat';
+import { getLastMessageText, useChatUiStore } from '@/entities/chat';
+import { menuPointNear } from '../../model/messageMenu';
+import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn, receiptState } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
@@ -63,6 +65,7 @@ interface Props {
   isFirstInGroup?: boolean;
   /** Последнее сообщение в серии: у него аватарка автора в группе. */
   isLastInGroup?: boolean;
+  tabIndex?: number;
 }
 
 /* Цвет имени автора — из его идентификатора: соседние реплики разных
@@ -167,6 +170,7 @@ export const MessageBubble = memo(
     isGroupChat = false,
     isFirstInGroup = true,
     isLastInGroup = true,
+    tabIndex,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -187,6 +191,12 @@ export const MessageBubble = memo(
       setActionMenu,
       message
     );
+    const handleMenuKeys = useMessageMenuKeys({
+      message,
+      selectionMode,
+      onSelection,
+      setActionMenu,
+    });
 
     const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
@@ -225,6 +235,15 @@ export const MessageBubble = memo(
       delivered: t('messageStatus.delivered', 'Доставлено'),
       read: t('messageStatus.read', 'Прочитано'),
     };
+
+    const announcement = [
+      mine ? t('you', 'Вы') : authorName,
+      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
+      formatMessageTime(message.createdAt),
+      delivery && deliveryLabel[delivery],
+    ]
+      .filter(Boolean)
+      .join(', ');
 
     /* Мета — булавка, «изменено», время, статус. Своё — чистым белым:
        полупрозрачный на части акцентов не держит контраст. */
@@ -273,10 +292,13 @@ export const MessageBubble = memo(
 
     return (
       <article
+        aria-label={announcement}
         id={message.id}
-        className="flex flex-col"
+        className="group/message flex flex-col outline-none"
         data-first-in-group={isFirstInGroup ? 'true' : undefined}
         data-last-in-group={isLastInGroup ? 'true' : undefined}
+        onKeyDown={handleMenuKeys}
+        tabIndex={tabIndex}
         {...longPressHandlers}
       >
         <div className="flex items-center gap-2.5">
@@ -347,6 +369,7 @@ export const MessageBubble = memo(
                  зазор цвета ленты, как в макете. */
               (isSelected || isActionTarget) &&
                 'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
+              'group-focus-visible/message:shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
               isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
               isSelected && 'is-selected',
               /* Переход к сообщению — вспышкой, как в макете. */
@@ -461,6 +484,28 @@ export const MessageBubble = memo(
 
             {!hasInlineMeta && !isCall && !isVoice && (
               <div className="mt-1 flex justify-end">{meta}</div>
+            )}
+
+            {!selectionMode && (
+              <button
+                aria-haspopup="menu"
+                aria-label={t('messageActions.title', 'Действия с сообщением')}
+                className={cn(
+                  'absolute top-1/2 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-pill bg-sheet-2 text-ink-2 shadow-[var(--elev-1)] max-md:hidden',
+                  'pointer-events-none opacity-0 transition-opacity duration-fast',
+                  'group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-visible/message:opacity-100',
+                  'hover:text-ink focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand',
+                  mine ? 'right-full mr-1.5' : 'left-full ml-1.5'
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActionMenu({ messageId: message.id, ...menuPointNear(event.currentTarget) });
+                }}
+                tabIndex={-1}
+                type="button"
+              >
+                <Icon className="size-4.5" name="more" />
+              </button>
             )}
           </div>
         </div>
