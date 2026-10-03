@@ -154,6 +154,22 @@ func TestLoginSessionsMigrationExists(t *testing.T) {
 	}
 }
 
+func TestDeviceSessionLinkMigrationExists(t *testing.T) {
+	sql, err := os.ReadFile("../../migrations/0036_auth_device_session_link.sql")
+	if err != nil {
+		t.Fatalf("read device session link migration: %v", err)
+	}
+	for _, fragment := range []string{
+		"ADD COLUMN IF NOT EXISTS device_session_id UUID",
+		"auth_sessions_device_session_id_fkey",
+		"auth_sessions_device_session_id_key",
+	} {
+		if !strings.Contains(string(sql), fragment) {
+			t.Fatalf("auth device session link migration is missing %q", fragment)
+		}
+	}
+}
+
 func TestRegisterMapsWeakPasswordToBadRequest(t *testing.T) {
 	handler, mock := newPasswordMappingTestHandler(t, false)
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/register", strings.NewReader(`{"username":"ivan","password":"short","firstName":"Ivan"}`))

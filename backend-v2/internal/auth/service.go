@@ -2,9 +2,7 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
@@ -320,11 +318,6 @@ func (s *Service) issueTokenWithStableGeneration(ctx context.Context, userID, us
 	return "", ErrTokenGenerationChanged
 }
 
-func tokenHash(token string) string {
-	h := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(h[:])
-}
-
 type sessionExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
@@ -360,7 +353,7 @@ func recordSession(ctx context.Context, executor sessionExecutor, userID string,
 			device_type = EXCLUDED.device_type,
 			ip_address = EXCLUDED.ip_address,
 			last_active = NOW()
-	`, userID, tokenHash(issuedToken.Token), tokenGeneration, issuedToken.ExpiresAt,
+	`, userID, authctx.TokenHash(issuedToken.Token), tokenGeneration, issuedToken.ExpiresAt,
 		metadata.DeviceName, metadata.DeviceType, metadata.IPAddress)
 	return err
 }
@@ -371,7 +364,9 @@ func (s *Service) IsTokenRevoked(ctx context.Context, token string, claims crypt
 	return authctx.NewDBTokenChecker(s.db).IsTokenRevoked(ctx, token, claims)
 }
 
-// Logout revokes the given token.
+// Logout revokes only the given credential. A linked legacy device record is
+// updated by its explicit ID; pre-rollout records without a reliable token
+// mapping are deliberately left untouched.
 func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -381,7 +376,7 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 		_ = tx.Rollback()
 	}()
 
-	hash := tokenHash(token)
+	hash := authctx.TokenHash(token)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO auth.revoked_tokens (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
@@ -389,26 +384,38 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 	`, hash, userID, expiresAt); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	var deviceSessionID sql.NullString
+	err = tx.QueryRowContext(ctx, `
 		UPDATE auth.sessions
 		SET revoked_at = COALESCE(revoked_at, NOW()), last_active = NOW()
 		WHERE user_id = $1 AND access_token_hash = $2
-	`, userID, hash); err != nil {
+		RETURNING device_session_id::text
+	`, userID, hash).Scan(&deviceSessionID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 
-	// public.user_sessions is legacy presence state, not credential state.
-	// Its failure must never roll back or report failure for a token that has
-	// already been securely revoked.
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE public.user_sessions
-		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
-		WHERE user_id = $1
-	`, userID); err != nil {
-		log.Printf("auth: legacy session cleanup failed after logout for user %s: %v", userID, err)
+	// Device state is not credential state: failure here cannot undo a token
+	// revocation that has already committed. The explicit link is the only safe
+	// selector; pre-rollout sessions without it leave legacy rows untouched.
+	if deviceSessionID.Valid {
+		if _, err := s.db.ExecContext(ctx, `
+			UPDATE public.user_sessions d
+			SET is_current = FALSE, last_active = NOW()
+			WHERE d.id = $1 AND d.user_id = $2
+				AND NOT EXISTS (
+					SELECT 1 FROM auth.sessions s
+					WHERE s.device_session_id = d.id
+						AND s.user_id = d.user_id
+						AND s.revoked_at IS NULL
+						AND s.expires_at > NOW()
+				)
+		`, deviceSessionID.String, userID); err != nil {
+			log.Printf("auth: linked device cleanup failed after logout for user %s: %v", userID, err)
+		}
 	}
 	return nil
 }
@@ -546,7 +553,7 @@ func (s *Service) TwoFAVerify(ctx context.Context, userID, password string) (req
 func (s *Service) Sessions(ctx context.Context, userID, currentToken string) ([]Session, error) {
 	currentTokenHash := ""
 	if currentToken != "" {
-		currentTokenHash = tokenHash(currentToken)
+		currentTokenHash = authctx.TokenHash(currentToken)
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id::text, s.device_name, s.device_type, s.ip_address, s.last_active, s.created_at,

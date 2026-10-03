@@ -36,6 +36,7 @@ var (
 	ErrUsernameCooldown      = errors.New("username change cooldown is active")
 	ErrWrongPasscode         = errors.New("wrong passcode")
 	ErrNoPasscodeSet         = errors.New("no passcode set")
+	ErrAuthSessionInactive   = errors.New("auth session is no longer active")
 )
 
 type UsernameCooldownError struct {
@@ -1009,23 +1010,86 @@ type Session struct {
 	IsCurrent  bool   `json:"isCurrent"`
 }
 
-func (s *Service) RegisterDevice(ctx context.Context, userID, deviceName, deviceType, ipAddress, location, userAgent string) (string, error) {
-	var sessionID string
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
-	if err == nil {
-		_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET last_active = NOW(), is_current = TRUE WHERE id = $1`, sessionID)
-		_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
-		return sessionID, nil
+func (s *Service) RegisterDevice(ctx context.Context, userID, accessTokenHash, deviceName, deviceType, ipAddress, location, userAgent string) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
 	}
-	err = s.db.QueryRowContext(ctx, `
+	defer func() { _ = tx.Rollback() }()
+
+	var sessionID string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
+	if err == nil {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE public.user_sessions
+			SET device_name = $2, device_type = $3, ip_address = $4,
+				location = $5, last_active = NOW(), is_current = TRUE
+			WHERE id = $1
+		`, sessionID, deviceName, deviceType, ipAddress, location); err != nil {
+			return "", err
+		}
+	} else if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `
 		INSERT INTO public.user_sessions (id, user_id, device_name, device_type, ip_address, location, user_agent, last_active, first_login, is_current)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW(), TRUE)
 		RETURNING id
 	`, userID, deviceName, deviceType, ipAddress, location, userAgent).Scan(&sessionID)
-	if err != nil {
+		if err != nil {
+			return "", err
+		}
+	} else {
 		return "", err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID)
+
+	if _, err := tx.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID); err != nil {
+		return "", err
+	}
+
+	if accessTokenHash != "" {
+		var authSessionID string
+		err := tx.QueryRowContext(ctx, `
+			SELECT id::text
+			FROM auth.sessions
+			WHERE user_id = $1 AND access_token_hash = $2
+				AND revoked_at IS NULL AND expires_at > NOW()
+			FOR UPDATE
+		`, userID, accessTokenHash).Scan(&authSessionID)
+		if errors.Is(err, sql.ErrNoRows) {
+			var knownCredential bool
+			if err := tx.QueryRowContext(ctx, `
+				SELECT EXISTS (
+					SELECT 1 FROM auth.sessions
+					WHERE user_id = $1 AND access_token_hash = $2
+				)
+			`, userID, accessTokenHash).Scan(&knownCredential); err != nil {
+				return "", err
+			}
+			if knownCredential {
+				return "", ErrAuthSessionInactive
+			}
+		} else if err != nil {
+			return "", err
+		} else {
+			// The most recent registration owns this legacy device record. Moving
+			// the optional link is safe; credential revocation remains per token.
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE auth.sessions
+				SET device_session_id = NULL
+				WHERE device_session_id = $1 AND id != $2
+			`, sessionID, authSessionID); err != nil {
+				return "", err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE auth.sessions SET device_session_id = $2 WHERE id = $1
+			`, authSessionID, sessionID); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
 	return sessionID, nil
 }
 
