@@ -262,17 +262,12 @@ export function ActiveCallView({
             <button
               type="button"
               onClick={() => setIsVerificationOpen((open) => !open)}
-              className="h-10 px-2.5 rounded-full flex items-center gap-1.5 bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer shrink-0 transition-colors"
+              className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
               aria-label={t('call.verification.buttonLabel', 'Сверка ключа сквозного шифрования')}
               aria-expanded={isVerificationOpen}
               aria-haspopup="dialog"
             >
-              <Icon name="lock" className="size-3.5 text-brand shrink-0" />
-              <span className="flex items-center gap-0.5">
-                {verificationEmojis.map((emoji, index) => (
-                  <NotoEmoji key={index} emoji={emoji} size={18} />
-                ))}
-              </span>
+              <Icon name="lock" className="size-5 text-brand" />
             </button>
 
             {isVerificationOpen && (
