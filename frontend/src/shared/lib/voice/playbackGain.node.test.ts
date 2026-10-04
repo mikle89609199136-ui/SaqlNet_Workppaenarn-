@@ -5,6 +5,7 @@ import {
   releasePlaybackGain,
   resetPlaybackGainContext,
   safePlaybackGainDb,
+  setVoicePlaybackLevel,
 } from './playbackGain';
 
 type FakeNode = {
@@ -54,6 +55,11 @@ class FakeContext {
 }
 
 const media = () => ({}) as HTMLMediaElement;
+
+const outputOf = (context: FakeContext) =>
+  context.nodes.find((node) =>
+    node.connect.mock.calls.some(([target]) => target === context.destination)
+  )! as FakeNode & { gain: { value: number } };
 
 beforeEach(() => {
   contexts = [];
@@ -122,7 +128,11 @@ describe('громкость голосового при воспроизвед�
     applyPlaybackGain(element, 6);
     releasePlaybackGain(element);
 
-    contexts[0].nodes.forEach((node) => expect(node.disconnect).toHaveBeenCalled());
+    const output = outputOf(contexts[0]);
+    contexts[0].nodes
+      .filter((node) => node !== output)
+      .forEach((node) => expect(node.disconnect).toHaveBeenCalled());
+    expect(output.disconnect).not.toHaveBeenCalled();
     releasePlaybackGain(element);
   });
 
@@ -144,5 +154,46 @@ describe('громкость голосового при воспроизвед�
   it('без Web Audio — ничего не делает', () => {
     vi.stubGlobal('AudioContext', undefined);
     expect(() => applyPlaybackGain(media(), 6)).not.toThrow();
+  });
+});
+
+describe('громкость голосовых, выбранная человеком (#874)', () => {
+  const output = outputOf;
+  const lastOfChain = (context: FakeContext) => context.nodes[context.nodes.length - 2];
+
+  it('уровень — после потолка и ограничителя, последним перед выходом', () => {
+    setVoicePlaybackLevel(0.4);
+    applyPlaybackGain(media(), 0);
+
+    const [context] = contexts;
+    expect(output(context).gain.value).toBe(0.4);
+    expect(lastOfChain(context).connect).toHaveBeenCalledWith(output(context));
+    expect(context.nodes.at(-1)!.connect).toHaveBeenCalledWith(context.destination);
+  });
+
+  it('один уровень на все голосовые и меняется у уже играющих', () => {
+    applyPlaybackGain(media(), 0);
+    applyPlaybackGain(media(), 3);
+    const [context] = contexts;
+    const outputs = context.nodes.filter((node) =>
+      node.connect.mock.calls.some(([target]) => target === context.destination)
+    );
+
+    setVoicePlaybackLevel(0.25);
+
+    expect(outputs).toHaveLength(1);
+    expect(output(context).gain.value).toBe(0.25);
+  });
+
+  it('громче потолка сделать нельзя: уровень не выше 100%, мусор — 100%', () => {
+    applyPlaybackGain(media(), 0);
+    const [context] = contexts;
+
+    setVoicePlaybackLevel(3);
+    expect(output(context).gain.value).toBe(1);
+    setVoicePlaybackLevel(-1);
+    expect(output(context).gain.value).toBe(0);
+    setVoicePlaybackLevel(Number.NaN);
+    expect(output(context).gain.value).toBe(1);
   });
 });

@@ -24,7 +24,23 @@ interface IPlaybackChain {
 }
 
 let context: AudioContext | null = null;
+let output: GainNode | null = null;
+let listenerLevel = 1;
 const chains = new WeakMap<HTMLMediaElement, IPlaybackChain>();
+
+function listenerOutput(audio: AudioContext): GainNode {
+  if (!output) {
+    output = audio.createGain();
+    output.gain.value = listenerLevel;
+    output.connect(audio.destination);
+  }
+  return output;
+}
+
+export function setVoicePlaybackLevel(level: number): void {
+  listenerLevel = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 1));
+  if (output) output.gain.value = listenerLevel;
+}
 
 /** Поправка, которой доверяем: только конечное число и только в наших пределах. */
 export function safePlaybackGainDb(gainDb: number | undefined): number {
@@ -59,7 +75,7 @@ export function applyPlaybackGain(media: HTMLMediaElement, gainDb: number | unde
       ...createDynamics(context, LIMITER),
     ];
     nodes.reduce((from, to) => from.connect(to));
-    nodes[nodes.length - 1].connect(context.destination);
+    nodes[nodes.length - 1].connect(listenerOutput(context));
     chains.set(media, { nodes, gain });
   } catch (error) {
     console.warn('Потолок громкости голосового недоступен', error);
@@ -79,4 +95,6 @@ export function releasePlaybackGain(media: HTMLMediaElement): void {
 /** Для тестов: забыть общий контекст. */
 export function resetPlaybackGainContext(): void {
   context = null;
+  output = null;
+  listenerLevel = 1;
 }

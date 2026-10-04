@@ -6,11 +6,15 @@ import {
   claimPlayback,
   cn,
   releasePlaybackGain,
+  setVoiceVolume,
+  toggleVoiceMute,
   useAudio,
   useIsMobile,
+  useVoiceVolume,
   VOICE_LEVEL_MAX,
 } from '@/shared/lib';
 import { useEffect, useState, type ReactNode } from 'react';
+import { VolumePopover } from './VolumePopover';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {
@@ -67,6 +71,7 @@ export const AudioPlayer = ({
 }: AudioPlayerProps) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const voiceVolume = useVoiceVolume();
   const {
     mediaRef,
     isPlaying,
@@ -195,6 +200,20 @@ export const AudioPlayer = ({
           </span>
           {trailing}
         </span>
+
+        {!isMobile && (
+          <VolumePopover
+            onChange={(event) => setVoiceVolume(Number(event.target.value))}
+            onToggle={toggleVoiceMute}
+            sliderLabel={t('voice.volume', 'Громкость голосовых')}
+            toggleLabel={
+              voiceVolume === 0
+                ? t('media.unmute', 'Включить звук')
+                : t('media.mute', 'Выключить звук')
+            }
+            value={voiceVolume}
+          />
+        )}
       </div>
     );
   }
@@ -240,38 +259,15 @@ export const AudioPlayer = ({
           value={currentTime}
         />
         {!isMobile && (
-          <div className="relative group/vol shrink-0">
-            <Button
-              aria-label={
-                isMuted ? t('media.unmute', 'Включить звук') : t('media.mute', 'Выключить звук')
-              }
-              className="shrink-0"
-              iconOnly
-              onClick={toggleMute}
-              size="sm"
-              variant="ghost"
-            >
-              {isMuted || volume === 0 ? (
-                <Icon name="volumeMute" className="w-5 h-5" />
-              ) : (
-                <Icon name="volume" className="w-5 h-5" />
-              )}
-            </Button>
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/vol:opacity-100 group-hover/vol:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity">
-              <div className="bg-sheet shadow-[var(--elev-3)] rounded-field border border-line flex items-center justify-center w-10 h-28 mb-1">
-                <div className="h-20 w-4 flex items-center justify-center">
-                  <Slider
-                    className="w-20 -rotate-90 origin-center shrink-0"
-                    max={1}
-                    min={0}
-                    onChange={handleVolumeChange}
-                    step={0.05}
-                    value={isMuted ? 0 : volume}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+          <VolumePopover
+            onChange={handleVolumeChange}
+            onToggle={toggleMute}
+            sliderLabel={t('media.volume', 'Громкость')}
+            toggleLabel={
+              isMuted ? t('media.unmute', 'Включить звук') : t('media.mute', 'Выключить звук')
+            }
+            value={isMuted ? 0 : volume}
+          />
         )}
       </div>
     </div>
