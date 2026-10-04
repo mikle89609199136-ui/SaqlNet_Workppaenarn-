@@ -825,5 +825,61 @@ describe('PeerConnectionManager', () => {
       expect(pc.createOffer).not.toHaveBeenCalled();
       expect(sentMessages).toHaveLength(0);
     });
+
+    it('вычисляет эмодзи сверки ключа при подключении и сбрасывает при отключении/закрытии', async () => {
+      const onVerificationEmojisChange = vi.fn();
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+        onVerificationEmojisChange,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.localDescription = {
+        type: 'offer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n',
+      };
+      pc.remoteDescription = {
+        type: 'answer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00:FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00\r\n',
+      };
+
+      expect(manager.getVerificationEmojis()).toBeNull();
+
+      // Переход в connected
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      // Ожидаем асинхронное вычисление sha256
+      await vi.waitFor(() => {
+        expect(onVerificationEmojisChange).toHaveBeenCalled();
+      });
+
+      const emojis = manager.getVerificationEmojis();
+      expect(emojis).toHaveLength(4);
+      expect(onVerificationEmojisChange).toHaveBeenLastCalledWith(emojis);
+
+      // Переход в disconnected
+      pc.connectionState = 'disconnected';
+      pc.onconnectionstatechange?.();
+
+      expect(manager.getVerificationEmojis()).toBeNull();
+      expect(onVerificationEmojisChange).toHaveBeenLastCalledWith(null);
+
+      // Восстановление в connected
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      await vi.waitFor(() => {
+        expect(manager.getVerificationEmojis()).toEqual(emojis);
+      });
+
+      // Закрытие менеджера сбрасывает эмодзи
+      manager.close();
+      expect(manager.getVerificationEmojis()).toBeNull();
+      expect(onVerificationEmojisChange).toHaveBeenLastCalledWith(null);
+    });
   });
 });
