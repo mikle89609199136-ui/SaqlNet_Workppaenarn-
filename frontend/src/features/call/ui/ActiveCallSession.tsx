@@ -195,7 +195,6 @@ export function ActiveCallSession({
           availableCamerasCount={localMedia.videoInputs.length}
           mediaError={localMedia.error}
           callStartedAt={fsm.callStartedAt}
-          verificationEmojis={peerConnection.verificationEmojis}
           onToggleAudio={handleToggleAudio}
           onToggleVideo={handleToggleVideo}
           onSwitchCamera={handleSwitchCamera}
