@@ -203,6 +203,7 @@ export const AudioPlayer = ({
 
         {!isMobile && (
           <VolumePopover
+            buttonClassName="text-ink-3 group-data-[mine]/bubble:text-on-brand"
             onChange={(event) => setVoiceVolume(Number(event.target.value))}
             onToggle={toggleVoiceMute}
             sliderLabel={t('voice.volume', 'Громкость голосовых')}

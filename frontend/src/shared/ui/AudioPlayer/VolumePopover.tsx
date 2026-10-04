@@ -1,7 +1,7 @@
 import { Button } from '@/shared/ui/Button';
 import { Icon } from '@/shared/ui/Icon';
 import { Slider } from '@/shared/ui/Slider';
-import { formatVolume } from '@/shared/lib';
+import { cn, formatVolume } from '@/shared/lib';
 import type { ChangeEventHandler, MouseEvent } from 'react';
 
 interface Props {
@@ -10,16 +10,24 @@ interface Props {
   sliderLabel: string;
   onToggle: () => void;
   onChange: ChangeEventHandler<HTMLInputElement>;
+  buttonClassName?: string;
 }
 
 const stopPropagation = (event: MouseEvent) => event.stopPropagation();
 
-export function VolumePopover({ value, toggleLabel, sliderLabel, onToggle, onChange }: Props) {
+export function VolumePopover({
+  value,
+  toggleLabel,
+  sliderLabel,
+  onToggle,
+  onChange,
+  buttonClassName,
+}: Props) {
   return (
     <div className="group/vol relative shrink-0">
       <Button
         aria-label={toggleLabel}
-        className="shrink-0"
+        className={cn('shrink-0', buttonClassName)}
         iconOnly
         onClick={(event) => {
           stopPropagation(event);
