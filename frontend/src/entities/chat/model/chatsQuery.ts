@@ -3,6 +3,7 @@ import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { chatKeys } from './chatKeys';
+import { decryptPreviewOnce } from './previewDecryptionCache';
 
 function lastActivityAt(chat: IChatDto): number {
   const value = chat.lastMessageAt ?? chat.updatedAt ?? chat.createdAt;
@@ -45,7 +46,7 @@ export function chatsQuery({ archived = false } = {}) {
         chats.map(async (chat) => ({
           ...chat,
           lastMessage: chat.lastMessage
-            ? await decryptChatLastMessagePreview(chat.id, chat.lastMessage)
+            ? await decryptPreviewOnce(chat.id, chat.lastMessage, decryptChatLastMessagePreview)
             : chat.lastMessage,
         }))
       );
