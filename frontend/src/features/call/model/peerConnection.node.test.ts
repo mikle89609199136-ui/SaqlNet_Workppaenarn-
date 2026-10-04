@@ -881,5 +881,85 @@ describe('PeerConnectionManager', () => {
       expect(manager.getVerificationEmojis()).toBeNull();
       expect(onVerificationEmojisChange).toHaveBeenLastCalledWith(null);
     });
+
+    it('обновляет эмодзи при renegotiation/handleRemoteAnswer во время активного соединения', async () => {
+      const onVerificationEmojisChange = vi.fn();
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+        onVerificationEmojisChange,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.localDescription = {
+        type: 'offer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n',
+      };
+      pc.remoteDescription = {
+        type: 'answer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 11:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n',
+      };
+
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      await vi.waitFor(() => {
+        expect(manager.getVerificationEmojis()).not.toBeNull();
+      });
+
+      const initialEmojis = manager.getVerificationEmojis();
+
+      // Renegotiation: новое предложение и новый answer
+      pc.signalingState = 'have-local-offer';
+      const newRemoteSdp =
+        'v=0\r\na=fingerprint:sha-256 99:99:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n';
+      await manager.handleRemoteAnswer({
+        type: 'answer',
+        sdp: newRemoteSdp,
+      });
+
+      await vi.waitFor(() => {
+        const current = manager.getVerificationEmojis();
+        expect(current).not.toBeNull();
+        expect(current).not.toEqual(initialEmojis);
+      });
+    });
+
+    it('не перезаписывает null, если соединение оборвалось во время вычисления эмодзи', async () => {
+      const onVerificationEmojisChange = vi.fn();
+      const manager = new PeerConnectionManager({
+        socket: mockSocket,
+        roomId: 'room-1',
+        peerId: 'user-callee',
+        isPolite: false,
+        onVerificationEmojisChange,
+      });
+
+      const pc = (await manager.initialize()) as unknown as MockRTCPeerConnection;
+      pc.localDescription = {
+        type: 'offer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\n',
+      };
+      pc.remoteDescription = {
+        type: 'answer',
+        sdp: 'v=0\r\na=fingerprint:sha-256 FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00:FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00\r\n',
+      };
+
+      // Переводим в connected и сразу в disconnected (симуляция обрыва во время await)
+      pc.connectionState = 'connected';
+      pc.onconnectionstatechange?.();
+
+      pc.connectionState = 'disconnected';
+      pc.onconnectionstatechange?.();
+
+      expect(manager.getVerificationEmojis()).toBeNull();
+
+      // Даём время возможному промису завершиться
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(manager.getVerificationEmojis()).toBeNull();
+    });
   });
 });

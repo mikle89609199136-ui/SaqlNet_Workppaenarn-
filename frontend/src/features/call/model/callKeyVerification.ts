@@ -60,6 +60,10 @@ export async function computeCallVerificationEmojis(
   localSdp: string | null | undefined,
   remoteSdp: string | null | undefined
 ): Promise<string[] | null> {
+  if (!globalThis.crypto?.subtle) {
+    return null;
+  }
+
   const localFp = parseDtlsFingerprint(localSdp);
   const remoteFp = parseDtlsFingerprint(remoteSdp);
 
@@ -72,13 +76,17 @@ export async function computeCallVerificationEmojis(
   const sorted = [localFp, remoteFp].sort();
   const combined = `${sorted[0]}\n${sorted[1]}`;
 
-  const digestBuffer = await crypto.subtle.digest('SHA-256', utf8ToBytes(combined));
-  const hashBytes = new Uint8Array(digestBuffer);
+  try {
+    const digestBuffer = await globalThis.crypto.subtle.digest('SHA-256', utf8ToBytes(combined));
+    const hashBytes = new Uint8Array(digestBuffer);
 
-  return [
-    CALL_VERIFICATION_EMOJIS[hashBytes[0] & 0x3f],
-    CALL_VERIFICATION_EMOJIS[hashBytes[1] & 0x3f],
-    CALL_VERIFICATION_EMOJIS[hashBytes[2] & 0x3f],
-    CALL_VERIFICATION_EMOJIS[hashBytes[3] & 0x3f],
-  ];
+    return [
+      CALL_VERIFICATION_EMOJIS[hashBytes[0] & 0x3f],
+      CALL_VERIFICATION_EMOJIS[hashBytes[1] & 0x3f],
+      CALL_VERIFICATION_EMOJIS[hashBytes[2] & 0x3f],
+      CALL_VERIFICATION_EMOJIS[hashBytes[3] & 0x3f],
+    ];
+  } catch {
+    return null;
+  }
 }

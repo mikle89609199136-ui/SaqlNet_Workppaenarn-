@@ -48,7 +48,8 @@ export function ActiveCallView({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
   const [isVerificationOpen, setIsVerificationOpen] = useState(false);
-  const verificationRef = useRef<HTMLDivElement>(null);
+  const verificationButtonRef = useRef<HTMLButtonElement>(null);
+  const verificationPopoverRef = useRef<HTMLDivElement>(null);
 
   // Сброс открытого поповера сверки при обрыве или отсутствии эмодзи
   useEffect(() => {
@@ -62,7 +63,12 @@ export function ActiveCallView({
     if (!isVerificationOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (verificationRef.current && !verificationRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        verificationPopoverRef.current &&
+        !verificationPopoverRef.current.contains(target) &&
+        !verificationButtonRef.current?.contains(target)
+      ) {
         setIsVerificationOpen(false);
       }
     };
@@ -258,8 +264,9 @@ export function ActiveCallView({
         </div>
 
         {verificationEmojis && verificationEmojis.length === 4 ? (
-          <div ref={verificationRef} className="relative">
+          <div className="relative">
             <button
+              ref={verificationButtonRef}
               type="button"
               onClick={() => setIsVerificationOpen((open) => !open)}
               className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
@@ -272,7 +279,9 @@ export function ActiveCallView({
 
             {isVerificationOpen && (
               <div
-                role="note"
+                ref={verificationPopoverRef}
+                role="dialog"
+                aria-modal="false"
                 aria-label={t('call.verification.title', 'Сверка ключа звонка')}
                 className="absolute top-12 right-0 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-window bg-sheet/95 backdrop-blur-md border border-line-soft shadow-[var(--elev-3)] p-4 flex flex-col gap-3"
               >
@@ -291,7 +300,12 @@ export function ActiveCallView({
                   </button>
                 </div>
 
-                <div className="flex items-center justify-center gap-2.5 py-2.5 bg-ground/50 rounded-control border border-line-soft/50">
+                <div
+                  role="group"
+                  aria-label={verificationEmojis.join(' ')}
+                  className="flex items-center justify-center gap-2.5 py-2.5 bg-ground/50 rounded-control border border-line-soft/50"
+                >
+                  <span className="sr-only">{verificationEmojis.join(' ')}</span>
                   {verificationEmojis.map((emoji, index) => (
                     <NotoEmoji key={index} emoji={emoji} size={32} />
                   ))}

@@ -102,14 +102,23 @@ export class PeerConnectionManager {
       return;
     }
 
-    const emojis = await computeCallVerificationEmojis(
-      this.pc.localDescription?.sdp,
-      this.pc.remoteDescription?.sdp
-    );
+    try {
+      const emojis = await computeCallVerificationEmojis(
+        this.pc.localDescription?.sdp,
+        this.pc.remoteDescription?.sdp
+      );
 
-    if (this.isClosed) return;
-    this.verificationEmojis = emojis;
-    this.options.onVerificationEmojisChange?.(emojis);
+      const isConnected = this.pc?.connectionState
+        ? this.pc.connectionState === 'connected'
+        : this.pc?.iceConnectionState === 'connected' || this.pc?.iceConnectionState === 'completed';
+
+      if (this.isClosed || !this.pc || !isConnected) return;
+
+      this.verificationEmojis = emojis;
+      this.options.onVerificationEmojisChange?.(emojis);
+    } catch {
+      // Игнорируем непредвиденные ошибки вычисления
+    }
   }
 
   updateOptions(newOptions: Partial<IPeerConnectionOptions>): void {

@@ -85,5 +85,22 @@ m=audio 9 UDP/TLS/RTP/SAVPF 111`;
       expect(await computeCallVerificationEmojis(sampleSdpA, undefined)).toBeNull();
       expect(await computeCallVerificationEmojis('no-fingerprint', sampleSdpB)).toBeNull();
     });
+
+    it('возвращает null, если crypto.subtle недоступен (небезопасный контекст)', async () => {
+      const originalSubtle = globalThis.crypto.subtle;
+      try {
+        Object.defineProperty(globalThis.crypto, 'subtle', {
+          value: undefined,
+          configurable: true,
+        });
+        const emojis = await computeCallVerificationEmojis(sampleSdpA, sampleSdpB);
+        expect(emojis).toBeNull();
+      } finally {
+        Object.defineProperty(globalThis.crypto, 'subtle', {
+          value: originalSubtle,
+          configurable: true,
+        });
+      }
+    });
   });
 });

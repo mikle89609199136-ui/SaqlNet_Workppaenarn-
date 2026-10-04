@@ -455,9 +455,10 @@ describe('ActiveCallView', () => {
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-expanded', 'true');
 
-    const popover = screen.getByRole('note', { name: 'Сверка ключа звонка' });
+    const popover = screen.getByRole('dialog', { name: 'Сверка ключа звонка' });
     expect(popover).toBeInTheDocument();
     expect(screen.getByText('Сверка ключа звонка')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: emojis.join(' ') })).toBeInTheDocument();
     expect(
       screen.getByText(
         'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
@@ -467,15 +468,15 @@ describe('ActiveCallView', () => {
     // Закрытие по кнопке-крестику
     const closeBtn = screen.getByRole('button', { name: 'Закрыть' });
     fireEvent.click(closeBtn);
-    expect(screen.queryByRole('note', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
     expect(button).toHaveAttribute('aria-expanded', 'false');
 
     // Снова открываем и закрываем по клавише Escape
     fireEvent.click(button);
-    expect(screen.getByRole('note', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByRole('note', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
   });
 
   it('закрывает поповер сверки ключа при клике снаружи', () => {
@@ -501,10 +502,10 @@ describe('ActiveCallView', () => {
       name: 'Сверка ключа сквозного шифрования',
     });
     fireEvent.click(button);
-    expect(screen.getByRole('note', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
 
     // Клик снаружи
     fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole('note', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
   });
 });
