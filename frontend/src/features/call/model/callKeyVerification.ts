@@ -33,10 +33,13 @@ export function parseDtlsFingerprint(sdp: string | null | undefined): string | n
     return null;
   }
 
-  const match = sdp.match(/(?:^|\r?\n)a=fingerprint:\s*([^\s]+)\s+([0-9a-fA-F: ]+)/i);
-  if (!match) {
+  const matches = [...sdp.matchAll(/(?:^|\r?\n)a=fingerprint:\s*([^\s]+)\s+([0-9a-fA-F: ]+)/gi)];
+  if (matches.length === 0) {
     return null;
   }
+
+  // При наличии нескольких a=fingerprint (RFC 8122 Section 5) предпочитаем sha-256
+  const match = matches.find((m) => m[1]?.trim().toLowerCase() === 'sha-256') ?? matches[0];
 
   const algorithm = match[1].trim().toLowerCase();
   const fingerprintHex = match[2].replace(/[:\s]/g, '').toUpperCase();

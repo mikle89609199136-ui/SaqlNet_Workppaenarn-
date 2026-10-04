@@ -470,6 +470,7 @@ describe('ActiveCallView', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
     expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(button);
 
     // Снова открываем и закрываем по клавише Escape
     fireEvent.click(button);
@@ -477,6 +478,7 @@ describe('ActiveCallView', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
   it('закрывает поповер сверки ключа при клике снаружи', () => {

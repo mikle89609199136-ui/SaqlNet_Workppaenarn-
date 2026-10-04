@@ -43,6 +43,15 @@ m=audio 9 UDP/TLS/RTP/SAVPF 111`;
       expect(parseDtlsFingerprint('')).toBeNull();
       expect(parseDtlsFingerprint(undefined as unknown as string)).toBeNull();
     });
+
+    it('при наличии нескольких a=fingerprint предпочитает sha-256 (RFC 8122)', () => {
+      const multiFpSdp = `v=0
+o=- 123 2 IN IP4 127.0.0.1
+a=fingerprint:sha-512 11:22:33:44:55:66
+a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF
+a=fingerprint:sha-1 00:11:22:33:44:55`;
+      expect(parseDtlsFingerprint(multiFpSdp)).toBe('sha-256 AABBCCDDEEFF');
+    });
   });
 
   describe('computeCallVerificationEmojis', () => {

@@ -58,6 +58,11 @@ export function ActiveCallView({
     }
   }, [verificationEmojis]);
 
+  const handleCloseVerification = () => {
+    setIsVerificationOpen(false);
+    verificationButtonRef.current?.focus();
+  };
+
   // Закрытие поповера по клику снаружи или Escape
   useEffect(() => {
     if (!isVerificationOpen) return;
@@ -77,6 +82,7 @@ export function ActiveCallView({
       if (e.key === 'Escape') {
         e.stopPropagation();
         setIsVerificationOpen(false);
+        verificationButtonRef.current?.focus();
       }
     };
 
@@ -292,7 +298,7 @@ export function ActiveCallView({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsVerificationOpen(false)}
+                    onClick={handleCloseVerification}
                     className="size-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-ground cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
                     aria-label={t('call.verification.close', 'Закрыть')}
                   >
