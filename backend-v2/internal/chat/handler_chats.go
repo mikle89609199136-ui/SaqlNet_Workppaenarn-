@@ -106,9 +106,9 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// All fields are optional, but the request body must be valid JSON.
-	// If no fields are provided (all nil), we could either proceed (no-op)
-	// or return a 400. Here we treat it as a no-op and return the chat unchanged.
+	// Reject requests where no fields were provided. An empty PATCH is
+	// almost always a client bug, so failing fast with 400 is more
+	// helpful than silently returning the unchanged chat.
 
 	// Call the service layer with the provided fields.
 	// Note: the service expects *string arguments; nil means "do not update".
