@@ -230,9 +230,7 @@ describe('ActiveCallView', () => {
     );
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(
-      screen.getByText('Доступ к микрофону или камере запрещён')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Доступ к микрофону или камере запрещён')).toBeInTheDocument();
   });
 
   it('отображает статус соединения при connecting', () => {
@@ -308,9 +306,7 @@ describe('ActiveCallView', () => {
       />
     );
 
-    expect(
-      screen.getAllByLabelText('Собеседник выключил микрофон').length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Собеседник выключил микрофон').length).toBeGreaterThan(0);
   });
 
   it('присваивает srcObject удалённому видео после unmute трека', async () => {

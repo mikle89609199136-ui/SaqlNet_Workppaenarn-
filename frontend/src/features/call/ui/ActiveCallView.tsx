@@ -97,15 +97,13 @@ export function ActiveCallView({
 
   const remoteVideoActive = Boolean(
     remoteStream &&
-      remoteStream
-        .getVideoTracks()
-        .some((t) => t.enabled && !t.muted && t.readyState === 'live')
+    remoteStream.getVideoTracks().some((t) => t.enabled && !t.muted && t.readyState === 'live')
   );
 
   const remoteAudioMuted = Boolean(
     remoteStream &&
-      remoteStream.getAudioTracks().length > 0 &&
-      remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
+    remoteStream.getAudioTracks().length > 0 &&
+    remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
   );
 
   // Удержание фокуса внутри диалога (WAI-ARIA modal)
@@ -261,10 +259,7 @@ export function ActiveCallView({
               </span>
             )}
           </div>
-          <span
-            aria-live="polite"
-            className="text-xs font-medium text-ink-2"
-          >
+          <span aria-live="polite" className="text-xs font-medium text-ink-2">
             {getStatusText()}
           </span>
         </div>
