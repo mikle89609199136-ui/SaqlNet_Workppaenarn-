@@ -35,6 +35,7 @@ export const WS_EVENTS = {
     // Блокировка и её снятие — приходят обоим (#760).
     BLOCKED: 'user_blocked',
     UNBLOCKED: 'user_unblocked',
+    PROFILE_UPDATED: 'user_profile_updated',
   },
   CALL: {
     ERROR: 'call_error',
