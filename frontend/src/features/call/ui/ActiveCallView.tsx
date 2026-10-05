@@ -47,25 +47,24 @@ export function ActiveCallView({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
-  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  const currentVerificationKey =
+    verificationEmojis && verificationEmojis.length === 4 ? verificationEmojis.join(' ') : null;
+  const [openedVerificationKey, setOpenedVerificationKey] = useState<string | null>(null);
   const verificationButtonRef = useRef<HTMLButtonElement>(null);
   const verificationPopoverRef = useRef<HTMLDivElement>(null);
 
-  // Сброс открытого поповера сверки при обрыве или отсутствии эмодзи
-  useEffect(() => {
-    if (!verificationEmojis || verificationEmojis.length !== 4) {
-      setIsVerificationOpen(false);
-    }
-  }, [verificationEmojis]);
+  const showVerification = Boolean(
+    currentVerificationKey && openedVerificationKey === currentVerificationKey
+  );
 
   const handleCloseVerification = () => {
-    setIsVerificationOpen(false);
+    setOpenedVerificationKey(null);
     verificationButtonRef.current?.focus();
   };
 
   // Закрытие поповера по клику снаружи или Escape
   useEffect(() => {
-    if (!isVerificationOpen) return;
+    if (!showVerification) return;
 
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -74,14 +73,14 @@ export function ActiveCallView({
         !verificationPopoverRef.current.contains(target) &&
         !verificationButtonRef.current?.contains(target)
       ) {
-        setIsVerificationOpen(false);
+        setOpenedVerificationKey(null);
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        setIsVerificationOpen(false);
+        setOpenedVerificationKey(null);
         verificationButtonRef.current?.focus();
       }
     };
@@ -93,7 +92,7 @@ export function ActiveCallView({
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isVerificationOpen]);
+  }, [showVerification]);
 
   const remoteVideoActive = Boolean(
     remoteStream &&
@@ -269,16 +268,20 @@ export function ActiveCallView({
             <button
               ref={verificationButtonRef}
               type="button"
-              onClick={() => setIsVerificationOpen((open) => !open)}
+              onClick={() =>
+                setOpenedVerificationKey((prev) =>
+                  prev === currentVerificationKey ? null : currentVerificationKey
+                )
+              }
               className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
-              aria-label={t('call.verification.buttonLabel', 'Сверка ключа сквозного шифрования')}
-              aria-expanded={isVerificationOpen}
+              aria-label={t('call.verification.buttonLabel', 'Сверка ключа звонка')}
+              aria-expanded={showVerification}
               aria-haspopup="dialog"
             >
               <Icon name="lock" className="size-5 text-brand" />
             </button>
 
-            {isVerificationOpen && (
+            {showVerification && (
               <div
                 ref={verificationPopoverRef}
                 role="dialog"
@@ -315,7 +318,7 @@ export function ActiveCallView({
                 <p className="text-xs text-ink-2 leading-relaxed">
                   {t(
                     'call.verification.hint',
-                    'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
+                    'Сравните эти 4 эмодзи с собеседником. Если у собеседника такие же — вас никто не слушает.'
                   )}
                 </p>
               </div>
