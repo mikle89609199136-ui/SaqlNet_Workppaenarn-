@@ -22,6 +22,18 @@ describe('объяснение ошибки сервера', () => {
     expect(результат).toBe('Неверный код');
   });
 
+  it('переводит код username_change_cooldown', () => {
+    const результат = describeApiError(
+      {
+        code: 'username_change_cooldown',
+        message: 'username can only be changed once every 24 hours',
+      },
+      t
+    );
+
+    expect(результат).toBe('Имя пользователя можно менять не чаще одного раза в 24 часа');
+  });
+
   it('никогда не показывает английский текст сервера', () => {
     /* Ради этого всё и затевалось: `message` написан для разработчика. */
     const результат = describeApiError(
