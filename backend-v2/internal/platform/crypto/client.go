@@ -25,6 +25,14 @@ type TokenClaims struct {
 	TokenGeneration int64  `json:"token_generation"`
 }
 
+// IssuedToken keeps the credential and its authoritative expiry together.
+// Consumers must not reconstruct the expiry from a local TTL because the
+// crypto service can be configured with a different token lifetime.
+type IssuedToken struct {
+	Token     string
+	ExpiresAt time.Time
+}
+
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
@@ -79,9 +87,10 @@ func (c *Client) VerifyPassword(ctx context.Context, password, hash string) (boo
 	return response.Valid, err
 }
 
-func (c *Client) IssueToken(ctx context.Context, subject, username string, tokenGeneration int64) (string, error) {
+func (c *Client) IssueToken(ctx context.Context, subject, username string, tokenGeneration int64) (IssuedToken, error) {
 	var response struct {
 		Token           string `json:"token"`
+		Expires         int64  `json:"expires_at"`
 		TokenGeneration *int64 `json:"token_generation"`
 	}
 	err := c.post(ctx, "/internal/v1/token/issue", map[string]any{
@@ -90,12 +99,18 @@ func (c *Client) IssueToken(ctx context.Context, subject, username string, token
 		"token_generation": tokenGeneration,
 	}, &response)
 	if err != nil {
-		return "", err
+		return IssuedToken{}, err
 	}
 	if response.TokenGeneration == nil || *response.TokenGeneration != tokenGeneration {
-		return "", fmt.Errorf("%w: issue response generation mismatch", ErrTokenGenerationProtocol)
+		return IssuedToken{}, fmt.Errorf("%w: issue response generation mismatch", ErrTokenGenerationProtocol)
 	}
-	return response.Token, nil
+	if response.Token == "" || response.Expires <= 0 {
+		return IssuedToken{}, errors.New("crypto service returned an incomplete token response")
+	}
+	return IssuedToken{
+		Token:     response.Token,
+		ExpiresAt: time.Unix(response.Expires, 0).UTC(),
+	}, nil
 }
 
 func (c *Client) VerifyToken(ctx context.Context, token string) (TokenClaims, error) {
