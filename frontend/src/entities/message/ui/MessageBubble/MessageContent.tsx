@@ -122,9 +122,7 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
   if (hasStrikethrough && hasUnderline) {
     node = (
       <u className="decoration-[1.5px] underline-offset-3">
-        <s className="[text-decoration-line:underline_line-through] decoration-[1.5px] underline-offset-3">
-          {node}
-        </s>
+        <s className="line-through decoration-[1.5px] underline-offset-3">{node}</s>
       </u>
     );
   } else if (hasStrikethrough) {

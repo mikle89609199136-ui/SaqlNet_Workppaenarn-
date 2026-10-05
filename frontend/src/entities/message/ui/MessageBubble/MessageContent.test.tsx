@@ -86,15 +86,17 @@ describe('текст сообщения с форматированием (#656)
   });
 
   it('комбинирует одновременное подчёркивание и зачёркивание без взаимного затирания (#915)', () => {
-    renderContent('подчёркнутый и зачёркнутый', [
+    const { container } = renderContent('подчёркнутый и зачёркнутый', [
       { type: 'underline', offset: 0, length: 26 },
       { type: 'strikethrough', offset: 0, length: 26 },
     ]);
 
-    const el = screen.getByText('подчёркнутый и зачёркнутый');
-    expect(el).toHaveClass('[text-decoration-line:underline_line-through]');
-    expect(el).not.toHaveClass('underline');
-    expect(el).not.toHaveClass('line-through');
+    const u = container.querySelector('u');
+    const s = container.querySelector('s');
+    expect(u).toBeInTheDocument();
+    expect(s).toBeInTheDocument();
+    expect(u).toContainElement(s);
+    expect(s).toHaveClass('line-through');
   });
 
   it('комбинирует все стили одновременно: жирный, курсив, подчёркнутый, зачёркнутый, спойлер (#915)', async () => {
@@ -113,7 +115,8 @@ describe('текст сообщения с форматированием (#656)
     const el = screen.getByText('комбо стиль');
     expect(el.closest('strong')).toHaveClass('font-semibold');
     expect(el.closest('em')).toHaveClass('italic');
-    expect(el).toHaveClass('[text-decoration-line:underline_line-through]');
+    expect(el.closest('u')).toBeInTheDocument();
+    expect(el.closest('s')).toHaveClass('line-through');
   });
 
   it('скрывает моноширинный код внутри спойлера и раскрывает по клику (#915)', async () => {
