@@ -47,14 +47,18 @@ export function ActiveCallView({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
-  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  const currentVerificationKey =
+    verificationEmojis && verificationEmojis.length === 4 ? verificationEmojis.join(' ') : null;
+  const [openedVerificationKey, setOpenedVerificationKey] = useState<string | null>(null);
   const verificationButtonRef = useRef<HTMLButtonElement>(null);
   const verificationPopoverRef = useRef<HTMLDivElement>(null);
 
-  const showVerification = isVerificationOpen && verificationEmojis?.length === 4;
+  const showVerification = Boolean(
+    currentVerificationKey && openedVerificationKey === currentVerificationKey
+  );
 
   const handleCloseVerification = () => {
-    setIsVerificationOpen(false);
+    setOpenedVerificationKey(null);
     verificationButtonRef.current?.focus();
   };
 
@@ -69,14 +73,14 @@ export function ActiveCallView({
         !verificationPopoverRef.current.contains(target) &&
         !verificationButtonRef.current?.contains(target)
       ) {
-        setIsVerificationOpen(false);
+        setOpenedVerificationKey(null);
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        setIsVerificationOpen(false);
+        setOpenedVerificationKey(null);
         verificationButtonRef.current?.focus();
       }
     };
@@ -269,7 +273,11 @@ export function ActiveCallView({
             <button
               ref={verificationButtonRef}
               type="button"
-              onClick={() => setIsVerificationOpen((open) => !open)}
+              onClick={() =>
+                setOpenedVerificationKey((prev) =>
+                  prev === currentVerificationKey ? null : currentVerificationKey
+                )
+              }
               className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
               aria-label={t('call.verification.buttonLabel', 'Сверка ключа звонка')}
               aria-expanded={showVerification}
