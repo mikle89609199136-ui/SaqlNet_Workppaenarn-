@@ -24,6 +24,7 @@ export interface ILastMessageDto {
 }
 
 export interface IChatDto {
+  hideNotificationPreview?: boolean;
   id: string;
   type: TChatType;
   title: string;

@@ -1,3 +1,4 @@
+import { services } from '@/services/serviceContainer';
 import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
@@ -17,6 +18,15 @@ const MAX_BODY_LENGTH = 120;
  * сюда не должен просочиться ни шифртекст, ни служебный плейсхолдер.
  */
 async function resolveNotificationBody(chatId: string, message: ILastMessageDto): Promise<string> {
+  // Read the server preference even if another device changed it.
+  // If the request fails, keep message text out of the system notification.
+  try {
+    const chat = await services.chatService.getChat(chatId);
+    if (chat.hideNotificationPreview) return FALLBACK_BODY;
+  } catch {
+    return FALLBACK_BODY;
+  }
+
   if (typeof message?.content !== 'string' || !message.content) return FALLBACK_BODY;
 
   try {
@@ -28,6 +38,12 @@ async function resolveNotificationBody(chatId: string, message: ILastMessageDto)
     // заглушку с причиной. В уведомлении не место ни тому, ни другому.
     if (decrypted?.undecryptable) return FALLBACK_BODY;
     if (text.startsWith('{')) return FALLBACK_BODY;
+
+    // Пока шла расшифровка (в том числе загрузка ключей), другое
+    // устройство могло включить скрытие. Проверяем перед выдачей текста;
+    // ошибка повторного запроса тоже приводит к безопасной заглушке.
+    const chat = await services.chatService.getChat(chatId);
+    if (chat.hideNotificationPreview) return FALLBACK_BODY;
 
     return text.slice(0, MAX_BODY_LENGTH);
   } catch {
@@ -82,13 +98,19 @@ export function NotificationManager() {
       // worker; второе из вкладки было бы дублем.
       if (pushOn) return;
 
-      const message = payload?.message ?? payload ?? {};
+      const message = (payload?.message ?? payload ?? {}) as ILastMessageDto & {
+        chatId?: string;
+      };
       const chatId = message.chatId ?? payload?.chatId;
+      if (typeof chatId !== 'string' || !chatId) return;
       const title = message.senderName || 'CraneApp';
 
+      const userId = useProfileStore.getState().user?.id ?? '';
       void resolveNotificationBody(chatId, message).then((body) => {
         // Пока шла расшифровка, пользователь мог вернуться во вкладку.
         if (!document.hidden) return;
+        const profile = useProfileStore.getState();
+        if (!profile.isAuth || (profile.user?.id ?? '') !== userId) return;
 
         try {
           new Notification(title, {

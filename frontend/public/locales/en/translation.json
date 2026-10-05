@@ -1,4 +1,6 @@
 {
+  "hideNotificationPreview": "Hide message text in notifications",
+  "showNotificationPreview": "Show message text in notifications",
   "action.translate": "Translate",
   "actionFailed": "Action failed",
   "addPhotoName": "Add a photo and enter your name",

@@ -59,6 +59,18 @@ export function useChatActions() {
     onError: reportFailure,
   });
 
+  const notificationMutation = useMutation({
+    mutationFn: (chat: IChatDto) =>
+      services.chatService.setNotificationPreview(chat.id, !chat.hideNotificationPreview),
+    onSuccess: async (_, chat) => {
+      await Promise.all([
+        refreshBothLists(),
+        queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) }),
+      ]);
+    },
+    onError: reportFailure,
+  });
+
   const archiveMutation = useMutation({
     mutationFn: ({ chatId, archived }: { chatId: string; archived: boolean }) =>
       archived
@@ -131,6 +143,8 @@ export function useChatActions() {
 
   return {
     togglePin,
+    toggleNotificationPreview: notificationMutation.mutate,
+    isNotificationPending: notificationMutation.isPending,
     toggleArchive,
     markRead,
     isPending: pinMutation.isPending || archiveMutation.isPending || readMutation.isPending,

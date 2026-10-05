@@ -189,6 +189,7 @@ Chat:
     role: { type: string }
     isPinned: { type: boolean }
     isArchived: { type: boolean }
+    hideNotificationPreview: { type: boolean, default: false, description: "Hide message text in notifications for the authenticated user in this chat." }
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }

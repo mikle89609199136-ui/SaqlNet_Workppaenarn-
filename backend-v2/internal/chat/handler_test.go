@@ -784,7 +784,7 @@ func TestHandler_List(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "hide_notification_preview",
 	}
 
 	tests := []struct {
@@ -1273,14 +1273,14 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "hide_notification_preview",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil,
+			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil, false,
 		)
 	}
 

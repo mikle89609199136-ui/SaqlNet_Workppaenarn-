@@ -1,4 +1,6 @@
 {
+  "hideNotificationPreview": "Скрывать текст в уведомлениях",
+  "showNotificationPreview": "Показывать текст в уведомлениях",
   "action.translate": "Перевести",
   "actionFailed": "Не получилось",
   "addPhotoName": "Добавьте фото и введите своё имя",
