@@ -328,33 +328,6 @@ x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
           '403': { $ref: '../components/responses.yaml#/Error' },
         },
     }
-/chats/{chatId}/leave:
-  post:
-    {
-      tags: [Chats],
-      summary: Leave a group chat,
-      description: 'Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".',
-      operationId: leaveChat,
-      security: *secure,
-      parameters: [*chatId],
-      responses:
-        {
-          '200': { description: Left },
-          '400': { $ref: '../components/responses.yaml#/Error' },
-          '403':
-            {
-              description: 'access_denied: the caller is not a member (including a repeated leave)',
-              content:
-                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
-            },
-          '409':
-            {
-              description: 'ownership_transfer_required: the caller owns the chat',
-              content:
-                { application/json: { schema: { $ref: '../components/responses.yaml#/Error' } } },
-            },
-        },
-    }
 /chats/{chatId}/transfer-ownership:
   post:
     {
