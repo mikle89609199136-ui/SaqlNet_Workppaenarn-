@@ -230,9 +230,7 @@ describe('ActiveCallView', () => {
     );
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(
-      screen.getByText('Доступ к микрофону или камере запрещён')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Доступ к микрофону или камере запрещён')).toBeInTheDocument();
   });
 
   it('отображает статус соединения при connecting', () => {
@@ -308,9 +306,7 @@ describe('ActiveCallView', () => {
       />
     );
 
-    expect(
-      screen.getAllByLabelText('Собеседник выключил микрофон').length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Собеседник выключил микрофон').length).toBeGreaterThan(0);
   });
 
   it('присваивает srcObject удалённому видео после unmute трека', async () => {
@@ -375,5 +371,139 @@ describe('ActiveCallView', () => {
     const remoteVideo = screen.getByLabelText('Видео собеседника') as HTMLVideoElement;
     expect(remoteVideo).toBeInTheDocument();
     expect(remoteVideo.srcObject).toBe(stream);
+  });
+
+  it('рендерит кнопку сверки ключа, если переданы 4 проверочных эмодзи', () => {
+    const emojis = ['🐶', '🐱', '🦊', '🐻'];
+    render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={emojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Сверка ключа сквозного шифрования',
+    });
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('не рендерит кнопку сверки ключа, если эмодзи отсутствуют', () => {
+    render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={null}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByRole('button', {
+        name: 'Сверка ключа сквозного шифрования',
+      })
+    ).toBeNull();
+  });
+
+  it('открывает поповер сверки ключа при клике, закрывает по крестику и Escape', () => {
+    const emojis = ['🐶', '🐱', '🦊', '🐻'];
+    render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={emojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Сверка ключа сквозного шифрования',
+    });
+
+    // Клик по кнопке открывает поповер
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+
+    const popover = screen.getByRole('dialog', { name: 'Сверка ключа звонка' });
+    expect(popover).toBeInTheDocument();
+    expect(screen.getByText('Сверка ключа звонка')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: emojis.join(' ') })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
+      )
+    ).toBeInTheDocument();
+
+    // Закрытие по кнопке-крестику
+    const closeBtn = screen.getByRole('button', { name: 'Закрыть' });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(button);
+
+    // Снова открываем и закрываем по клавише Escape
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('закрывает поповер сверки ключа при клике снаружи', () => {
+    const emojis = ['🐶', '🐱', '🦊', '🐻'];
+    render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={emojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Сверка ключа сквозного шифрования',
+    });
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+
+    // Клик снаружи
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
   });
 });

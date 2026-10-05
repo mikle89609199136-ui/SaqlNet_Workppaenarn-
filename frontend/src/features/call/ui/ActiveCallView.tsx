@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Banner, Icon } from '@/shared/ui';
+import { Avatar, Banner, Icon, NotoEmoji } from '@/shared/ui';
 import type { IActiveCall, IMediaError, TCallConnectionState, TFacingMode } from '../model/types';
 import { useCallDuration } from './useCallDuration';
 
@@ -15,6 +15,7 @@ export interface IActiveCallViewProps {
   availableCamerasCount?: number;
   mediaError?: IMediaError | null;
   callStartedAt: number | null;
+  verificationEmojis?: string[] | null;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onSwitchCamera?: () => void;
@@ -33,6 +34,7 @@ export function ActiveCallView({
   availableCamerasCount = 0,
   mediaError,
   callStartedAt,
+  verificationEmojis,
   onToggleAudio,
   onToggleVideo,
   onSwitchCamera,
@@ -45,18 +47,63 @@ export function ActiveCallView({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
+  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  const verificationButtonRef = useRef<HTMLButtonElement>(null);
+  const verificationPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Сброс открытого поповера сверки при обрыве или отсутствии эмодзи
+  useEffect(() => {
+    if (!verificationEmojis || verificationEmojis.length !== 4) {
+      setIsVerificationOpen(false);
+    }
+  }, [verificationEmojis]);
+
+  const handleCloseVerification = () => {
+    setIsVerificationOpen(false);
+    verificationButtonRef.current?.focus();
+  };
+
+  // Закрытие поповера по клику снаружи или Escape
+  useEffect(() => {
+    if (!isVerificationOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        verificationPopoverRef.current &&
+        !verificationPopoverRef.current.contains(target) &&
+        !verificationButtonRef.current?.contains(target)
+      ) {
+        setIsVerificationOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setIsVerificationOpen(false);
+        verificationButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isVerificationOpen]);
 
   const remoteVideoActive = Boolean(
     remoteStream &&
-      remoteStream
-        .getVideoTracks()
-        .some((t) => t.enabled && !t.muted && t.readyState === 'live')
+    remoteStream.getVideoTracks().some((t) => t.enabled && !t.muted && t.readyState === 'live')
   );
 
   const remoteAudioMuted = Boolean(
     remoteStream &&
-      remoteStream.getAudioTracks().length > 0 &&
-      remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
+    remoteStream.getAudioTracks().length > 0 &&
+    remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
   );
 
   // Удержание фокуса внутри диалога (WAI-ARIA modal)
@@ -212,15 +259,71 @@ export function ActiveCallView({
               </span>
             )}
           </div>
-          <span
-            aria-live="polite"
-            className="text-xs font-medium text-ink-2"
-          >
+          <span aria-live="polite" className="text-xs font-medium text-ink-2">
             {getStatusText()}
           </span>
         </div>
 
-        <div className="size-10" aria-hidden="true" />
+        {verificationEmojis && verificationEmojis.length === 4 ? (
+          <div className="relative">
+            <button
+              ref={verificationButtonRef}
+              type="button"
+              onClick={() => setIsVerificationOpen((open) => !open)}
+              className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
+              aria-label={t('call.verification.buttonLabel', 'Сверка ключа сквозного шифрования')}
+              aria-expanded={isVerificationOpen}
+              aria-haspopup="dialog"
+            >
+              <Icon name="lock" className="size-5 text-brand" />
+            </button>
+
+            {isVerificationOpen && (
+              <div
+                ref={verificationPopoverRef}
+                role="dialog"
+                aria-modal="false"
+                aria-label={t('call.verification.title', 'Сверка ключа звонка')}
+                className="absolute top-12 right-0 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-window bg-sheet/95 backdrop-blur-md border border-line-soft shadow-[var(--elev-3)] p-4 flex flex-col gap-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-sm text-ink">
+                    <Icon name="lock" className="size-4 text-brand" />
+                    <span>{t('call.verification.title', 'Сверка ключа звонка')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseVerification}
+                    className="size-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-ground cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
+                    aria-label={t('call.verification.close', 'Закрыть')}
+                  >
+                    <Icon name="cross" className="size-3.5" />
+                  </button>
+                </div>
+
+                <div
+                  role="group"
+                  aria-label={verificationEmojis.join(' ')}
+                  className="flex items-center justify-center gap-2.5 py-2.5 bg-ground/50 rounded-control border border-line-soft/50"
+                >
+                  <span className="sr-only">{verificationEmojis.join(' ')}</span>
+                  {verificationEmojis.map((emoji, index) => (
+                    <NotoEmoji key={index} emoji={emoji} size={32} />
+                  ))}
+                </div>
+
+                <p className="text-xs text-ink-2 leading-relaxed">
+                  {t(
+                    'call.verification.hint',
+                    'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="size-10" aria-hidden="true" />
+        )}
       </header>
 
       {/* Основная зона (Видео или Аудио) */}

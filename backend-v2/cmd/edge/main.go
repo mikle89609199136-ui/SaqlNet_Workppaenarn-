@@ -31,6 +31,8 @@ type rateLimitConfig struct {
 	globalBurst        int
 }
 
+const clientIPHeader = "X-Crane-Client-IP"
+
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func loadRateLimitConfig() rateLimitConfig {
@@ -111,6 +113,9 @@ func min(a, b float64) float64 {
 func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, usernameCheckLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := trustedProxies.clientIP(r)
+		// Replace any client-supplied value with the address resolved from the
+		// trusted-proxy policy before forwarding the request to internal services.
+		r.Header.Set(clientIPHeader, ip)
 		// Stricter limit for auth endpoints (login/register brute-force).
 		if strings.HasPrefix(r.URL.Path, "/api/v2/auth/") {
 			if !authLimiter.Allow(ip) {

@@ -565,7 +565,15 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	sessionID, err := h.service.RegisterDevice(r.Context(), current.ID, input.DeviceName, input.DeviceType, input.ClientIP, "Unknown", input.UserAgent)
+	token, _ := authctx.TokenFromRequest(r)
+	sessionID, err := h.service.RegisterDevice(
+		r.Context(), current.ID, authctx.TokenHash(token),
+		input.DeviceName, input.DeviceType, input.ClientIP, "Unknown", input.UserAgent,
+	)
+	if errors.Is(err, ErrAuthSessionInactive) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to register device")
 		return

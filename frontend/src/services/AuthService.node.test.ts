@@ -1,6 +1,38 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from './AuthService';
 
+describe('AuthService session metadata', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    {
+      call: (service: AuthService) => service.login({ username: 'anna', password: 'secret' }),
+      endpoint: '/auth/login',
+      input: { username: 'anna', password: 'secret' },
+    },
+    {
+      call: (service: AuthService) =>
+        service.register({ username: 'anna', password: 'secret', firstName: 'Anna' }),
+      endpoint: '/auth/register',
+      input: { username: 'anna', password: 'secret', firstName: 'Anna' },
+    },
+  ])('sends the device on $endpoint', async ({ call, endpoint, input }) => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0.0.0 Safari/537.36',
+    });
+    const post = vi.fn().mockResolvedValue({ data: { user: { id: 'user-id' } } });
+    const service = new AuthService({ post }, { setUser: vi.fn() });
+
+    await call(service);
+
+    expect(post).toHaveBeenCalledWith(endpoint, {
+      ...input,
+      deviceName: 'Chrome на Linux',
+      deviceType: 'desktop',
+    });
+  });
+});
+
 describe('AuthService.logoutAll', () => {
   it('clears the local profile only after the server confirms revocation', async () => {
     const post = vi.fn().mockResolvedValue({ data: { success: true } });

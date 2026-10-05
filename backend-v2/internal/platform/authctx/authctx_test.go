@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 )
@@ -95,15 +96,20 @@ func TestMiddlewareRejectsRevokedToken(t *testing.T) {
 }
 
 func TestMiddlewareStoresVerifiedTokenGenerationInContext(t *testing.T) {
+	expiresAt := time.Unix(1_900_000_123, 0).UTC()
 	verifier := middlewareTokenVerifier{claims: cryptoclient.TokenClaims{
 		Subject:         "user-id",
 		Username:        "ivan",
 		TokenGeneration: 9,
+		Expires:         expiresAt.Unix(),
 	}}
 	handler := Middleware(verifier, middlewareTokenChecker{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		current := MustUser(r)
 		if current.TokenGeneration != 9 {
 			t.Fatalf("expected token generation 9 in context, got %d", current.TokenGeneration)
+		}
+		if !current.ExpiresAt.Equal(expiresAt) {
+			t.Fatalf("expected expiry %s in context, got %s", expiresAt, current.ExpiresAt)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))

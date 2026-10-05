@@ -40,6 +40,7 @@ type QROfferData struct {
 	MAC         string
 	DeviceName  string
 	UserAgent   string
+	IPAddress   string
 	ClaimedAt   time.Time
 	Confirmed   bool
 	AuthToken   string
@@ -229,6 +230,7 @@ func (h *Handler) QROfferClaim(w http.ResponseWriter, r *http.Request) {
 	offer.MAC = input.MAC
 	offer.DeviceName = truncateRunes(input.DeviceName, maxQRDeviceNameRunes)
 	offer.UserAgent = truncateRunes(r.UserAgent(), maxQRUserAgentRunes)
+	offer.IPAddress = requestClientIP(r)
 	offer.ClaimedAt = now
 	offer.ExpiresAt = now.Add(qrScanTTL)
 
@@ -313,7 +315,11 @@ func (h *Handler) QROfferConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration)
+	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration, SessionMetadata{
+		DeviceName: offer.DeviceName,
+		DeviceType: deviceTypeFromUserAgent(offer.UserAgent),
+		IPAddress:  offer.IPAddress,
+	})
 	if errors.Is(err, ErrAuthorizationRevoked) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
 		return
