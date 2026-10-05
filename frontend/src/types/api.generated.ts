@@ -1020,7 +1020,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a device session */
+        /**
+         * Delete a device session
+         * @description Terminates the device session. The current session cannot be terminated through this endpoint: it returns 409 conflict_current_session — log out to end the current session.
+         */
         delete: operations["deleteDevice"];
         options?: never;
         head?: never;
@@ -2507,6 +2510,7 @@ export interface components {
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
@@ -2566,6 +2570,7 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
@@ -2611,22 +2616,6 @@ export interface components {
         AuthResponse: {
             user: components["schemas"]["User"];
             token: string;
-        };
-        AuthSession: {
-            /** Format: uuid */
-            id: string;
-            deviceName: string;
-            deviceType: string;
-            ipAddress: string;
-            /** Format: date-time */
-            lastActive: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** @description True when this row belongs to the token used for the request. */
-            isCurrent: boolean;
-        };
-        AuthSessionsResponse: {
-            sessions: components["schemas"]["AuthSession"][];
         };
         LoginRequest: {
             username: string;
@@ -2736,6 +2725,22 @@ export interface components {
         };
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         UpdateProfileRequest: {
             firstName?: string;
@@ -3036,6 +3041,7 @@ export interface components {
             lastReadAt: string;
         };
         MessageListResponse: {
+            /** @description Always an array; no messages are represented by [], never null. */
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
@@ -3075,6 +3081,7 @@ export interface components {
             messages: components["schemas"]["SendMessageRequest"][];
         };
         ReactionListResponse: {
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         ReactionToggleResponse: {
@@ -3082,6 +3089,7 @@ export interface components {
             action: "added" | "removed" | "replaced";
             /** @description Empty when the reaction was removed. */
             currentEmoji: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         FavoriteStateResponse: {
@@ -4774,9 +4782,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": {
+                        /** @example true */
+                        success: boolean;
+                    };
+                };
+            };
+            /** @description missing sessionId (invalid_request) or sessionId is not a UUID (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
             404: components["responses"]["Error"];
+            /** @description sessionId is the current session */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "conflict_current_session",
+                     *       "message": "cannot terminate current session"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getPushVapidKey: {
@@ -6393,6 +6428,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
