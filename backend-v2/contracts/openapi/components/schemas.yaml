@@ -286,7 +286,10 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
-    reactions: { type: array, items: { $ref: '#/Reaction' } }
+    reactions:
+      type: array
+      description: Always an array; empty reactions are [], never null.
+      items: { $ref: '#/Reaction' }
     deliveredAt:
       type: string
       description: >-
@@ -329,6 +332,7 @@ Message:
     replyToSenderName: { type: string }
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
     metadata:
       type: object
@@ -513,6 +517,7 @@ MessageListResponse:
   properties:
     messages:
       type: array
+      description: Always an array; no messages are represented by [], never null.
       items: { $ref: '#/Message' }
 DeleteMessagesRequest:
   type: object
@@ -565,6 +570,7 @@ ReactionListResponse:
   properties:
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 ReactionToggleResponse:
   type: object
@@ -576,6 +582,7 @@ ReactionToggleResponse:
       description: Empty when the reaction was removed.
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 FavoriteStateResponse:
   type: object
