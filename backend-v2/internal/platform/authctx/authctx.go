@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
@@ -13,6 +14,7 @@ type User struct {
 	ID              string
 	Username        string
 	TokenGeneration int64
+	ExpiresAt       time.Time
 }
 
 type contextKey struct{}
@@ -64,6 +66,7 @@ func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) h
 				ID:              claims.Subject,
 				Username:        claims.Username,
 				TokenGeneration: claims.TokenGeneration,
+				ExpiresAt:       time.Unix(claims.Expires, 0).UTC(),
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, user)))
 		})

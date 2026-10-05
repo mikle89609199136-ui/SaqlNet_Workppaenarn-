@@ -271,7 +271,13 @@
     summary: List authenticated sessions
     operationId: listAuthSessions
     security: [{ sessionCookie: [] }]
-    responses: { '200': { description: Sessions } }
+    responses:
+      '200':
+        description: Active sessions with the current credential first, then by recent activity
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/AuthSessionsResponse' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
 /auth/change-password:
   post:
     tags: [Auth]

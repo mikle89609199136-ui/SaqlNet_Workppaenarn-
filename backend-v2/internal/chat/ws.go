@@ -42,8 +42,14 @@ type Client struct {
 	done          chan struct{}
 	heartbeatDone chan struct{} // закрывается при завершении ws.heartbeat (барьер перед Disconnect)
 	closeOnce     sync.Once
-	CallRoomID    string // non-empty while in a call room
-	ConnectionID  string // уникальный ID WS-соединения для presence
+	// Комната звонка этого подключения; пусто — не в звонке. Пишет только
+	// своя горутина и только под ws.mu: доставка сигналов читает поле
+	// чужих подключений (#849).
+	CallRoomID string
+	// Окно частоты сигналов звонка (#849); только своя горутина.
+	signalWindow time.Time
+	signalCount  int
+	ConnectionID string // уникальный ID WS-соединения для presence
 
 	// Push (#717): подписка этого устройства и видно ли приложение. На
 	// устройство, где приложение на экране, push не отправляется. Пишет
@@ -69,7 +75,7 @@ type WSServer struct {
 	register       chan *Client
 	unreg          chan *Client
 	callRooms      *CallRoomManager
-	pendingInvites map[string]json.RawMessage
+	pendingInvites map[string]*pendingInvite // по получателю (#850)
 	inviteMu       sync.Mutex
 	presence       presence.Store
 	activity       presenceActivity // время активности и собеседники; nil — не ведётся
@@ -98,7 +104,7 @@ func NewWSServer(db *sql.DB, crypto tokenVerifier, store presence.Store) *WSServ
 		register:       make(chan *Client),
 		unreg:          make(chan *Client),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		presence:       store,
 		pingInterval:   wsPingInterval,
 		stop:           make(chan struct{}),
@@ -236,22 +242,8 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.register <- client
 
-	// Deliver pending call invite if any
-	ws.inviteMu.Lock()
-	if invite, ok := ws.pendingInvites[client.UserID]; ok {
-		// Check if the room is still alive
-		var roomID string
-		var tmp map[string]interface{}
-		if json.Unmarshal(invite, &tmp) == nil {
-			roomID, _ = tmp["roomId"].(string)
-		}
-		if roomID != "" && ws.callRooms.GetRoom(roomID) != nil {
-			client.Send <- invite
-		} else {
-			delete(ws.pendingInvites, client.UserID)
-		}
-	}
-	ws.inviteMu.Unlock()
+	// Входящий, пришедший, пока человек был не в сети (#850).
+	ws.deliverPendingInvite(client)
 
 	go ws.writePump(client)
 	go ws.readPump(client)
@@ -328,41 +320,13 @@ func (ws *WSServer) readPump(client *Client) {
 			ws.handleCallLeave(client, msg)
 
 		case "call_offer", "call_answer", "call_ice":
-			to, _ := msg["to"].(string)
-			if to == "" {
-				break
-			}
-			roomID, _ := msg["roomId"].(string)
-			if roomID == "" {
-				roomID = client.CallRoomID
-			}
-			out, _ := json.Marshal(map[string]interface{}{
-				"type":    msgType,
-				"roomId":  roomID,
-				"from":    client.UserID,
-				"payload": msg["payload"],
-			})
-			ws.sendToUser(to, out)
+			ws.relayCallSignal(client, msgType, msg)
 
 		case "call_invite":
 			ws.handleCallInvite(client, msg)
 
 		case "call_invite_response":
 			ws.handleCallInviteResponse(client, msg)
-
-		// Legacy WebRTC message types — forward as-is with from injected
-		case "webrtc_offer", "webrtc_answer", "webrtc_candidate", "crane_hangup":
-			to, _ := msg["to"].(string)
-			if to != "" {
-				msg["from"] = client.UserID
-				out, _ := json.Marshal(msg)
-				ws.sendToUser(to, out)
-			} else {
-				chatID, _ := msg["chatId"].(string)
-				if chatID != "" {
-					ws.BroadcastToChat(chatID, message, client.UserID)
-				}
-			}
 		}
 	}
 }
@@ -372,12 +336,14 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	if roomID == "" {
 		return
 	}
-	// Ensure room exists — create if caller is first to join
-	if ws.callRooms.GetRoom(roomID) == nil {
-		callKind, _ := msg["callKind"].(string)
-		chatID, _ := msg["chatId"].(string)
-		title, _ := msg["title"].(string)
-		ws.callRooms.CreateRoom(client.UserID, roomID, "group", callKind, chatID, title)
+	// Войти можно только в комнату, созданную через POST /calls/rooms, и
+	// только участнику её чата (#848). Комната входом не создаётся.
+	// «Нет комнаты» и «чужая» отвечаются одинаково: не раскрываем, что
+	// комната есть.
+	if !ws.mayJoinCallRoom(client.UserID, roomID) {
+		out, _ := json.Marshal(map[string]interface{}{"type": "call_error", "roomId": roomID, "reason": "room_not_found"})
+		client.Send <- out
+		return
 	}
 	displayName, _ := msg["displayName"].(string)
 	avatarURL, _ := msg["avatarUrl"].(string)
@@ -387,7 +353,7 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		client.Send <- out
 		return
 	}
-	client.CallRoomID = roomID
+	ws.setCallRoom(client, roomID)
 	// Send joined confirmation with current peers
 	joined, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_joined",
@@ -409,6 +375,89 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	ws.sendToCallRoom(roomID, peerJoined, client.UserID)
 }
 
+// mayJoinCallRoom — комната есть и пользователь участник её чата. Ошибка
+// базы — не пускать.
+func (ws *WSServer) mayJoinCallRoom(userID, roomID string) bool {
+	room := ws.callRooms.GetRoom(roomID)
+	if room == nil || room.chatID == "" || ws.db == nil {
+		return false
+	}
+	var member bool
+	err := ws.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
+		userID, room.chatID,
+	).Scan(&member)
+	if err != nil {
+		slog.Error("call room membership check", "err", err)
+		return false
+	}
+	return member
+}
+
+// Лимиты сигналов звонка с одного подключения (#849): SDP — единицы КБ,
+// кандидатов за раз — десятки.
+const (
+	maxCallSignalBytes      = 64 << 10
+	maxCallSignalsPerSecond = 50
+)
+
+// allowCallSignal — не превышена ли частота сигналов этого подключения.
+func (c *Client) allowCallSignal(now time.Time) bool {
+	if now.Sub(c.signalWindow) >= time.Second {
+		c.signalWindow = now
+		c.signalCount = 0
+	}
+	c.signalCount++
+	return c.signalCount <= maxCallSignalsPerSecond
+}
+
+func (ws *WSServer) setCallRoom(client *Client, roomID string) {
+	ws.mu.Lock()
+	client.CallRoomID = roomID
+	ws.mu.Unlock()
+}
+
+// relayCallSignal — предложение, ответ или кандидат соединения (#849):
+// только если отправитель вошёл в комнату этим подключением, получатель —
+// участник той же комнаты, а roomId сообщения — она же. Доставка — только
+// подключениям получателя в этой комнате. Всё прочее молча отбрасывается:
+// ответ подсказал бы, есть ли у человека звонок.
+func (ws *WSServer) relayCallSignal(client *Client, msgType string, msg map[string]interface{}) {
+	to, _ := msg["to"].(string)
+	roomID, _ := msg["roomId"].(string)
+	current := client.CallRoomID // пишет только своя горутина
+	if to == "" || to == client.UserID || roomID == "" || roomID != current {
+		return
+	}
+	if !client.allowCallSignal(time.Now()) {
+		return
+	}
+	if !ws.callRooms.IsParticipant(roomID, client.UserID) || !ws.callRooms.IsParticipant(roomID, to) {
+		return
+	}
+	payload, err := json.Marshal(msg["payload"])
+	if err != nil || len(payload) > maxCallSignalBytes {
+		return
+	}
+	out, _ := json.Marshal(map[string]interface{}{
+		"type":    msgType,
+		"roomId":  roomID,
+		"from":    client.UserID,
+		"payload": json.RawMessage(payload),
+	})
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	for conn := range ws.clients[to] {
+		if conn.CallRoomID != roomID {
+			continue
+		}
+		select {
+		case conn.Send <- out:
+		default:
+		}
+	}
+}
+
 func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) {
 	roomID, _ := msg["roomId"].(string)
 	if roomID == "" {
@@ -417,110 +466,38 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 	if roomID == "" {
 		return
 	}
-	ws.doLeaveRoom(client, roomID)
+	ws.doLeaveRoom(client, roomID, peerLeftByLeave)
 }
 
-func (ws *WSServer) doLeaveRoom(client *Client, roomID string) {
+// Почему собеседник вышел из звонка (#775): сам («Завершить») — звонок
+// закончен; оборвался сокет (перезагрузка, пропала сеть) — клиент ждёт
+// его возвращения и восстанавливает звонок.
+const (
+	peerLeftByLeave      = "left"
+	peerLeftByDisconnect = "disconnected"
+)
+
+func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
 	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
 	peerLeft, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_left",
 		"roomId": roomID,
 		"peer":   map[string]string{"userId": client.UserID},
+		"reason": reason,
 	})
 	ws.sendToCallRoom(roomID, peerLeft, client.UserID)
 	if lr.Closed && lr.Snapshot != nil {
-		go ws.saveCallMessage(lr.Snapshot)
-		ws.notifyMissedCall(roomID, lr.Snapshot)
-		ws.inviteMu.Lock()
-		for uid, inv := range ws.pendingInvites {
-			var tmp map[string]interface{}
-			if json.Unmarshal(inv, &tmp) == nil {
-				if rid, _ := tmp["roomId"].(string); rid == roomID {
-					cancelled, _ := json.Marshal(map[string]interface{}{"type": "call_cancelled", "roomId": roomID})
-					ws.sendToUser(uid, cancelled)
-					delete(ws.pendingInvites, uid)
-				}
-			}
-		}
-		ws.inviteMu.Unlock()
+		ws.callRoomClosed(roomID, lr.Snapshot)
 	}
-	client.CallRoomID = ""
-}
-
-func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{}) {
-	to, _ := msg["to"].(string)
-	roomID, _ := msg["roomId"].(string)
-	if to == "" || roomID == "" {
-		return
-	}
-	// Заблокировавший не получает звонков от заблокированного (#760).
-	if ws.isBlockedBy(to, client.UserID) {
-		refused, _ := json.Marshal(map[string]interface{}{
-			"type":     "call_invite_response",
-			"roomId":   roomID,
-			"from":     to,
-			"accepted": false,
-			"reason":   "blocked_by_user",
-		})
-		ws.sendToUser(client.UserID, refused)
-		return
-	}
-	if ws.callRooms.GetUserRoom(to) != nil {
-		busy, _ := json.Marshal(map[string]interface{}{
-			"type":     "call_invite_response",
-			"roomId":   roomID,
-			"from":     to,
-			"accepted": false,
-			"reason":   "busy",
-		})
-		ws.sendToUser(client.UserID, busy)
-		return
-	}
-	invite, _ := json.Marshal(map[string]interface{}{
-		"type":       "call_incoming",
-		"roomId":     roomID,
-		"kind":       strOrDefault(msg["kind"], "video"),
-		"callType":   strOrDefault(msg["callType"], "p2p"),
-		"from":       client.UserID,
-		"fromName":   msg["fromName"],
-		"fromAvatar": msg["fromAvatar"],
-		"title":      msg["title"],
-	})
-	ws.sendToUser(to, invite)
-	// Push — на устройства, где приложение не на экране (#717).
-	ws.notifyCallInvite(roomID, client.UserID, to, strOrDefault(msg["kind"], "video"))
-	// Store for offline delivery
-	ws.inviteMu.Lock()
-	ws.pendingInvites[to] = invite
-	ws.inviteMu.Unlock()
-}
-
-func (ws *WSServer) handleCallInviteResponse(client *Client, msg map[string]interface{}) {
-	to, _ := msg["to"].(string)
-	if to == "" {
-		return
-	}
-	roomID, _ := msg["roomId"].(string)
-	accepted, _ := msg["accepted"].(bool)
-	reason, _ := msg["reason"].(string)
-	out, _ := json.Marshal(map[string]interface{}{
-		"type":     "call_invite_response",
-		"roomId":   roomID,
-		"from":     client.UserID,
-		"accepted": accepted,
-		"reason":   reason,
-	})
-	ws.sendToUser(to, out)
-	ws.inviteMu.Lock()
-	delete(ws.pendingInvites, client.UserID)
-	ws.inviteMu.Unlock()
+	ws.setCallRoom(client, "")
 }
 
 func (ws *WSServer) handleCallDisconnect(client *Client) {
-	if client.CallRoomID == "" {
-		return
+	if client.CallRoomID != "" {
+		ws.doLeaveRoom(client, client.CallRoomID, peerLeftByDisconnect)
 	}
-	ws.doLeaveRoom(client, client.CallRoomID)
+	// Звал и не дождался ответа — приглашение больше не звонит (#850).
+	ws.cancelInvitesFrom(client)
 }
 
 func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {
@@ -700,13 +677,6 @@ func (ws *WSServer) sendToUserLocked(userID string, message []byte) {
 			}
 		}
 	}
-}
-
-func strOrDefault(v interface{}, def string) string {
-	if s, ok := v.(string); ok && s != "" {
-		return s
-	}
-	return def
 }
 
 // isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —

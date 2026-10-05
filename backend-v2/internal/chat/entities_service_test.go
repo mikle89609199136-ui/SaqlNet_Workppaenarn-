@@ -24,7 +24,7 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	handler := NewHandler(NewService(db, ws, nil))
 	content := `a & b <i>x</i> "q"`
 	entities := `[{"type":"bold","offset":0,"length":1},{"type":"link","offset":4,"length":1,"data":{"url":"https://example.com/docs"}}]`
-	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer"}).AddRow("member", false, false))
+	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO messages\.messages .*entities`).WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), 0, []byte(entities)).WillReturnRows(entityMessageRows(content, entities))
 	mock.ExpectCommit()

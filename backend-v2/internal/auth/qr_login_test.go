@@ -108,6 +108,9 @@ func expectIssueToken(mock sqlmock.Sqlmock, userID string) {
 		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 0))
 	mock.ExpectQuery(`SELECT token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs(userID, sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
 func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {

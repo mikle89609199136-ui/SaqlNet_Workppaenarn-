@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +31,7 @@ type QRTokenData struct {
 	PublicKey  string
 	DeviceName string
 	UserAgent  string
+	IPAddress  string
 	// ScannedBy is the account that scanned the code first. Nobody else can
 	// look at the request or confirm it.
 	ScannedBy string
@@ -75,11 +78,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Username  string `json:"username"`
-		Password  string `json:"password"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Language  string `json:"language"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		FirstName  string `json:"firstName"`
+		LastName   string `json:"lastName"`
+		Language   string `json:"language"`
+		DeviceName string `json:"deviceName"`
+		DeviceType string `json:"deviceType"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
@@ -90,7 +95,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username or firstName is invalid")
 		return
 	}
-	user, token, err := h.service.Register(r.Context(), input.Username, input.Password, input.FirstName, input.LastName, input.Language)
+	user, token, err := h.service.Register(
+		r.Context(), input.Username, input.Password, input.FirstName, input.LastName, input.Language,
+		sessionMetadataFromRequest(r, input.DeviceName, input.DeviceType),
+	)
 	if errors.Is(err, ErrInvalidPassword) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
 		return
@@ -121,12 +129,17 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Username      string `json:"username"`
 		Password      string `json:"password"`
 		TwoFAPassword string `json:"twoFAPassword"`
+		DeviceName    string `json:"deviceName"`
+		DeviceType    string `json:"deviceType"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	user, token, err := h.service.Login(r.Context(), input.Username, input.Password, input.TwoFAPassword)
+	user, token, err := h.service.Login(
+		r.Context(), input.Username, input.Password, input.TwoFAPassword,
+		sessionMetadataFromRequest(r, input.DeviceName, input.DeviceType),
+	)
 	if errors.Is(err, ErrTwoFARequired) {
 		httpx.JSON(w, http.StatusOK, map[string]any{"twoFARequired": true, "userId": user.ID})
 		return
@@ -182,8 +195,13 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	// Отзывается токен текущей cookie-сессии.
 	token, _ := authctx.TokenFromRequest(r)
-	// Token from Rust service expires in 30 days; store hash for that duration.
-	if err := h.service.Logout(r.Context(), current.ID, token, time.Now().Add(authctx.SessionTTL)); err != nil {
+	expiresAt := current.ExpiresAt
+	if expiresAt.IsZero() {
+		// Direct handler tests bypass middleware. Authenticated production
+		// requests always carry the verified claim expiry in authctx.User.
+		expiresAt = time.Now().Add(authctx.SessionTTL)
+	}
+	if err := h.service.Logout(r.Context(), current.ID, token, expiresAt); err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "logout failed")
 		return
 	}
@@ -215,7 +233,8 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	sessions, err := h.service.Sessions(r.Context(), current.ID)
+	token, _ := authctx.TokenFromRequest(r)
+	sessions, err := h.service.Sessions(r.Context(), current.ID, token)
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to get sessions")
 		return
@@ -378,12 +397,56 @@ const (
 	maxQRRequestBodyBytes = 16 << 10
 )
 
+const clientIPHeader = "X-Crane-Client-IP"
+
 func truncateRunes(value string, limit int) string {
 	runes := []rune(strings.TrimSpace(value))
 	if len(runes) > limit {
 		runes = runes[:limit]
 	}
 	return string(runes)
+}
+
+func sessionMetadataFromRequest(r *http.Request, deviceName, deviceType string) SessionMetadata {
+	deviceName = truncateRunes(deviceName, maxQRDeviceNameRunes)
+	deviceType = strings.ToLower(strings.TrimSpace(deviceType))
+	switch deviceType {
+	case "desktop", "mobile", "tablet":
+	default:
+		deviceType = deviceTypeFromUserAgent(r.UserAgent())
+	}
+	return SessionMetadata{
+		DeviceName: deviceName,
+		DeviceType: deviceType,
+		IPAddress:  requestClientIP(r),
+	}
+}
+
+func deviceTypeFromUserAgent(userAgent string) string {
+	switch {
+	case strings.Contains(userAgent, "iPad") || strings.Contains(userAgent, "Tablet"):
+		return "tablet"
+	case strings.Contains(userAgent, "Android") || strings.Contains(userAgent, "iPhone") || strings.Contains(userAgent, "Mobile"):
+		return "mobile"
+	case strings.TrimSpace(userAgent) != "":
+		return "desktop"
+	default:
+		return "unknown"
+	}
+}
+
+func requestClientIP(r *http.Request) string {
+	if address, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get(clientIPHeader))); err == nil {
+		return address.Unmap().String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if address, err := netip.ParseAddr(strings.TrimSpace(host)); err == nil {
+		return address.Unmap().String()
+	}
+	return ""
 }
 
 func decodeQRPublicKey(value string) ([]byte, bool) {
@@ -545,6 +608,7 @@ func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 		PublicKey:  input.PublicKey,
 		DeviceName: truncateRunes(input.DeviceName, maxQRDeviceNameRunes),
 		UserAgent:  truncateRunes(r.UserAgent(), maxQRUserAgentRunes),
+		IPAddress:  requestClientIP(r),
 	})
 
 	httpx.JSON(w, http.StatusOK, map[string]any{
@@ -752,7 +816,11 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration)
+	authToken, err := h.service.IssueQRToken(r.Context(), current.ID, current.TokenGeneration, SessionMetadata{
+		DeviceName: data.DeviceName,
+		DeviceType: deviceTypeFromUserAgent(data.UserAgent),
+		IPAddress:  data.IPAddress,
+	})
 	if errors.Is(err, ErrAuthorizationRevoked) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
 		return

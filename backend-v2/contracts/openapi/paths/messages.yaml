@@ -36,7 +36,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     security: *secure
     parameters:
       - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
     responses:
       '200':
         description: Matching messages
@@ -53,14 +53,15 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     operationId: listFavoriteMessages
     security: *secure
     parameters:
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
-      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
     responses:
       '200':
         description: Favorite messages
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '400': *error
       '500': *error
 
 /messages/{id}:
@@ -76,8 +77,8 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     operationId: listMessages
     security: *secure
     parameters:
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
-      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
     responses:
       '200':
         description: Chat messages

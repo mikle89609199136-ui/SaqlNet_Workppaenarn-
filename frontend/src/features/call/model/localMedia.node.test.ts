@@ -301,6 +301,30 @@ describe('LocalMediaManager', () => {
     expect(onTrackReplaced).toHaveBeenCalledWith('audio', oldATrack, newATrack);
   });
 
+  it('смена микрофона просит его с теми же настройками, что и при старте звонка (#947)', async () => {
+    const constraints = {
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: false,
+      autoGainControl: true,
+    };
+    mockGetUserMedia.mockResolvedValueOnce(
+      new FakeMediaStream([new FakeMediaStreamTrack('audio')])
+    );
+    const manager = new LocalMediaManager();
+    await manager.startMedia({ audio: constraints, video: false });
+
+    mockGetUserMedia.mockResolvedValueOnce(
+      new FakeMediaStream([new FakeMediaStreamTrack('audio', 'mic-new')])
+    );
+    await manager.switchMicrophone('mic-external');
+
+    expect(mockGetUserMedia).toHaveBeenLastCalledWith({
+      audio: { ...constraints, deviceId: { exact: 'mic-external' } },
+      video: false,
+    });
+  });
+
   it('полная уборка ресурсов при завершении: останавливает все треки и гасит индикаторы', async () => {
     const aTrack = new FakeMediaStreamTrack('audio');
     const vTrack = new FakeMediaStreamTrack('video');

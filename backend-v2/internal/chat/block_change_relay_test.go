@@ -69,7 +69,7 @@ func TestSendMessageAnswersBlockedByUser(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, true))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, true, "private"))
 
 	recorder := httptest.NewRecorder()
 	handler.SendMessage(recorder, messageValidationRequest(
@@ -83,6 +83,21 @@ func TestSendMessageAnswersBlockedByUser(t *testing.T) {
 
 // Звонок заблокированного не доходит; звонящему — отказ (#760).
 func TestCallInviteFromBlockedUserIsRefused(t *testing.T) {
+	// Звонящий — создатель комнаты, получатель — собеседник её чата (#850):
+	// до проверки блокировки сервер сверяет, что они собеседники.
+	expectPeers := func(mock sqlmock.Sqlmock) {
+		mock.ExpectQuery(`FROM chats\.chats c`).WithArgs("chat-1", blockedID, blockerID).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	}
+	newServer := func(db *sql.DB) *WSServer {
+		ws := presenceServer(nil)
+		ws.db = db
+		ws.callRooms = NewCallRoomManager()
+		ws.callRooms.CreateRoom(blockedID, "room-1", "p2p", "audio", "chat-1", "")
+		ws.pendingInvites = map[string]*pendingInvite{}
+		return ws
+	}
+
 	for name, tt := range map[string]struct {
 		blocked      bool
 		wantIncoming bool
@@ -94,12 +109,14 @@ func TestCallInviteFromBlockedUserIsRefused(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer db.Close()
+			expectPeers(mock)
 			mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM users\.blocked_users`).WithArgs(blockerID, blockedID).
 				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(tt.blocked))
-			ws := presenceServer(nil)
-			ws.db = db
-			ws.callRooms = NewCallRoomManager()
-			ws.pendingInvites = map[string]json.RawMessage{}
+			if tt.wantIncoming {
+				mock.ExpectQuery(`FROM auth\.users au`).WithArgs(blockedID).
+					WillReturnRows(sqlmock.NewRows([]string{"name", "avatar"}).AddRow("Игорь", ""))
+			}
+			ws := newServer(db)
 			caller := connectLocal(ws, blockedID)
 			callee := connectLocal(ws, blockerID)
 
@@ -108,6 +125,9 @@ func TestCallInviteFromBlockedUserIsRefused(t *testing.T) {
 			if tt.wantIncoming {
 				require.Equal(t, "call_incoming", receivedEvent(t, callee)["type"])
 				requireNoEvent(t, caller)
+				ws.inviteMu.Lock()
+				ws.pendingInvites[blockerID].timer.Stop()
+				ws.inviteMu.Unlock()
 			} else {
 				refused := receivedEvent(t, caller)
 				require.Equal(t, "call_invite_response", refused["type"])
@@ -120,21 +140,19 @@ func TestCallInviteFromBlockedUserIsRefused(t *testing.T) {
 		})
 	}
 
-	t.Run("сбой базы не ломает звонок", func(t *testing.T) {
+	t.Run("сбой базы — приглашение не уходит", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		defer db.Close()
-		mock.ExpectQuery(`SELECT EXISTS`).WillReturnError(sql.ErrConnDone)
-		ws := presenceServer(nil)
-		ws.db = db
-		ws.callRooms = NewCallRoomManager()
-		ws.pendingInvites = map[string]json.RawMessage{}
+		mock.ExpectQuery(`FROM chats\.chats c`).WillReturnError(sql.ErrConnDone)
+		ws := newServer(db)
 		caller := connectLocal(ws, blockedID)
 		callee := connectLocal(ws, blockerID)
 
 		ws.handleCallInvite(caller, map[string]interface{}{"to": blockerID, "roomId": "room-1"})
 
-		require.Equal(t, "call_incoming", receivedEvent(t, callee)["type"])
+		requireNoEvent(t, callee)
 		requireNoEvent(t, caller)
+		require.Empty(t, ws.pendingInvites)
 	})
 }

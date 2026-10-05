@@ -178,7 +178,7 @@ func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
 		register:       make(chan *Client, 1),
 		unreg:          make(chan *Client, 1),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		stop:           make(chan struct{}),
 		stopped:        make(chan struct{}),
 	}

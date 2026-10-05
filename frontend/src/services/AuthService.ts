@@ -1,5 +1,13 @@
 import { API_ENDPOINTS } from '@/shared/api';
-import { currentPushEndpoint, unsubscribePushOnDevice } from '@/shared/lib';
+import {
+  currentPushEndpoint,
+  describeDevice,
+  describeDeviceType,
+  unsubscribePushOnDevice,
+} from '@/shared/lib';
+import type { components } from '@/types/api.generated';
+
+type AuthSession = components['schemas']['AuthSession'];
 
 export class AuthService {
   constructor(apiClient, authStorage) {
@@ -24,7 +32,11 @@ export class AuthService {
   }
 
   async register(userData) {
-    const response = await this.apiClient.post(API_ENDPOINTS.AUTH_REGISTER, userData);
+    const response = await this.apiClient.post(API_ENDPOINTS.AUTH_REGISTER, {
+      ...userData,
+      deviceName: describeDevice(),
+      deviceType: describeDeviceType(),
+    });
 
     if (response.data?.user) {
       this.authStorage.setUser(response.data.user);
@@ -34,7 +46,12 @@ export class AuthService {
   }
 
   async login({ username, password }) {
-    const response = await this.apiClient.post(API_ENDPOINTS.AUTH_LOGIN, { username, password });
+    const response = await this.apiClient.post(API_ENDPOINTS.AUTH_LOGIN, {
+      username,
+      password,
+      deviceName: describeDevice(),
+      deviceType: describeDeviceType(),
+    });
 
     if (response.data?.user) {
       this.authStorage.setUser(response.data.user);
@@ -237,10 +254,10 @@ export class AuthService {
   }
 
   /** Устройства, на которых выполнен вход. */
-  getSessions() {
+  getSessions(): Promise<AuthSession[]> {
     return this.apiClient
       .get(API_ENDPOINTS.AUTH_SESSIONS)
-      .then((response) => response.data?.sessions ?? []);
+      .then((response): AuthSession[] => response.data?.sessions ?? []);
   }
 
   resendCode() {

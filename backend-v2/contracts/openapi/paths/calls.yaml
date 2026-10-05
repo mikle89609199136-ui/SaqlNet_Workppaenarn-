@@ -15,20 +15,10 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/IceConfiguration' }
 
 /calls/rooms:
-  get:
-    tags: [Calls]
-    summary: List active in-memory call rooms
-    operationId: listCallRooms
-    security: *secure
-    responses:
-      '200':
-        description: Active call rooms
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/CallRoomListResponse' }
   post:
     tags: [Calls]
     summary: Create a call room
+    description: "Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable."
     operationId: createCallRoom
     security: *secure
     requestBody:
@@ -42,6 +32,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/CallRoomResponse' }
+      '400': *error
       '403': *error
       '500': *error
 
@@ -49,6 +40,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   get:
     tags: [Calls]
     summary: Get an active call room
+    description: "Only members of the room's chat get the room. For anyone else, and for a room that does not exist, the answer is the same 404 room_not_found."
     operationId: getCallRoom
     security: *secure
     parameters:

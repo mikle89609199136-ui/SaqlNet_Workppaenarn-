@@ -1340,7 +1340,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create or get a private chat */
+        /**
+         * Create or get a private or Saved Messages chat
+         * @description Creates or returns the canonical chat with userId. When userId is the authenticated user's own ID, lazily creates or returns their one-member Saved Messages chat (type self, title «Избранное»). Concurrent calls and calls from multiple devices return the same chat.
+         */
         post: operations["createPrivateChat"];
         delete?: never;
         options?: never;
@@ -2034,10 +2037,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List active in-memory call rooms */
-        get: operations["listCallRooms"];
+        get?: never;
         put?: never;
-        /** Create a call room */
+        /**
+         * Create a call room
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
+         */
         post: operations["createCallRoom"];
         delete?: never;
         options?: never;
@@ -2052,7 +2057,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get an active call room */
+        /**
+         * Get an active call room
+         * @description Only members of the room's chat get the room. For anyone else, and for a room that does not exist, the answer is the same 404 room_not_found.
+         */
         get: operations["getCallRoom"];
         put?: never;
         post?: never;
@@ -2563,6 +2571,9 @@ export interface components {
             firstName: string;
             lastName?: string;
             language?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         AuthResponse: {
             user: components["schemas"]["User"];
@@ -2573,6 +2584,9 @@ export interface components {
             password: string;
             /** Format: password */
             twoFAPassword?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         QrTokenRequest: {
             /** @description One-time ECDH P-256 public key (SPKI) */
@@ -2670,6 +2684,22 @@ export interface components {
         };
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         UpdateProfileRequest: {
             firstName?: string;
@@ -2904,8 +2934,12 @@ export interface components {
         Chat: {
             /** Format: uuid */
             id: string;
-            /** @enum {string} */
-            type: "private" | "group" | "channel";
+            /**
+             * @description self is the caller's canonical one-member Saved Messages chat. It has no peer or presence fields.
+             * @enum {string}
+             */
+            type: "private" | "group" | "channel" | "self";
+            /** @description For a self chat, always «Избранное». */
             title?: string;
             description?: string;
             /** @description For a private chat, the peer's avatar. Empty when the peer's photoVisibility hides it (contacts and nobody both hide: there are no contacts). */
@@ -2921,7 +2955,7 @@ export interface components {
             lastMessage?: components["schemas"]["LastMessagePreview"];
             /**
              * Format: uuid
-             * @description Private chats only.
+             * @description Two-member private chats only; omitted for self chats.
              */
             peerId?: string;
             /** @description Private chats only. True while the peer has a live WebSocket connection (heartbeat within 75 seconds). Omitted when false or hidden, see peerLastSeenApprox. Changes arrive as the presence_changed WebSocket event. */
@@ -3028,6 +3062,21 @@ export interface components {
             meteredConfigured: boolean;
             meteredTest: unknown;
         };
+        CallRoomCreateRequest: {
+            /**
+             * @description Ignored — calls are one-to-one, the room type is always p2p.
+             * @enum {string}
+             */
+            type?: "p2p" | "group";
+            /** Format: uuid */
+            chatId: string;
+            title?: string;
+            /**
+             * @description Defaults to video when omitted.
+             * @enum {string}
+             */
+            callKind?: "audio" | "video";
+        };
         CallParticipant: {
             /** Format: uuid */
             userId: string;
@@ -3047,33 +3096,13 @@ export interface components {
             hostId: string;
             participants?: components["schemas"]["CallParticipant"][];
         };
-        CallRoomListResponse: {
-            /** @enum {boolean} */
-            success: true;
-            rooms: components["schemas"]["CallRoom"][];
-        };
-        CallRoomCreateRequest: {
-            /**
-             * @description Defaults to group when omitted.
-             * @enum {string}
-             */
-            type?: "p2p" | "group";
-            /** Format: uuid */
-            chatId: string;
-            title?: string;
-            /**
-             * @description Defaults to video when omitted.
-             * @enum {string}
-             */
-            callKind?: "audio" | "video";
-        };
         CallRoomResponse: {
             /** @enum {boolean} */
             success: true;
             room: components["schemas"]["CallRoom"];
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
-            maxParticipants: 5;
+            maxParticipants: 2;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -3600,13 +3629,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sessions */
+            /** @description Active sessions with the current credential first, then by recent activity */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuthSessionsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
         };
     };
     changePassword: {
@@ -5624,7 +5656,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description ownership_transfer_required: the caller owns the chat */
@@ -5633,7 +5665,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -6273,6 +6305,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
@@ -6696,26 +6729,6 @@ export interface operations {
             };
         };
     };
-    listCallRooms: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Active call rooms */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CallRoomListResponse"];
-                };
-            };
-        };
-    };
     createCallRoom: {
         parameters: {
             query?: never;
@@ -6738,6 +6751,7 @@ export interface operations {
                     "application/json": components["schemas"]["CallRoomResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             403: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
