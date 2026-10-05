@@ -81,7 +81,9 @@ function Spoiler({ children }: { children: ReactNode }) {
       role="button"
       tabIndex={0}
     >
-      {children}
+      <span className={revealed ? undefined : 'invisible'}>
+        <mark className="bg-transparent text-inherit">{children}</mark>
+      </span>
     </span>
   );
 }
@@ -112,15 +114,45 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
     );
   }
 
+  const hasUnderline = formats.includes('underline');
+  const hasStrikethrough = formats.includes('strikethrough');
+  const hasBold = formats.includes('bold');
+  const hasItalic = formats.includes('italic');
+
   const classes = cn(
-    formats.includes('bold') && 'font-semibold',
-    formats.includes('italic') && 'italic',
-    formats.includes('underline') && 'underline',
-    formats.includes('strikethrough') && 'line-through',
-    (formats.includes('underline') || formats.includes('strikethrough')) &&
+    hasBold && 'font-semibold',
+    hasItalic && 'italic',
+    hasUnderline && hasStrikethrough
+      ? '[text-decoration-line:underline_line-through]'
+      : cn(hasUnderline && 'underline', hasStrikethrough && 'line-through'),
+    (hasUnderline || hasStrikethrough) &&
       'decoration-[1.5px] underline-offset-3'
   );
-  if (classes) node = <span className={classes}>{node}</span>;
+
+  if (hasStrikethrough && hasUnderline) {
+    node = (
+      <u className="decoration-[1.5px] underline-offset-3">
+        <s className={classes}>{node}</s>
+      </u>
+    );
+  } else if (hasStrikethrough) {
+    node = <s className={classes}>{node}</s>;
+  } else if (hasUnderline) {
+    node = <u className={classes}>{node}</u>;
+  } else if (hasItalic && !hasBold) {
+    node = <em className={classes}>{node}</em>;
+  } else if (hasBold && !hasItalic) {
+    node = <strong className={classes}>{node}</strong>;
+  } else if (classes) {
+    node = <span className={classes}>{node}</span>;
+  }
+
+  if (hasItalic && (hasBold || hasUnderline || hasStrikethrough)) {
+    node = <em className="italic">{node}</em>;
+  }
+  if (hasBold && (hasItalic || hasUnderline || hasStrikethrough)) {
+    node = <strong className="font-semibold">{node}</strong>;
+  }
 
   if (url) {
     node = (

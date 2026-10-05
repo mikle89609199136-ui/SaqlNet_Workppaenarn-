@@ -84,6 +84,86 @@ describe('текст сообщения с форматированием (#656)
 
     expect(screen.getByText('#релиз')).toHaveClass('text-brand');
   });
+
+  it('комбинирует одновременное подчёркивание и зачёркивание без взаимного затирания (#915)', () => {
+    renderContent('подчёркнутый и зачёркнутый', [
+      { type: 'underline', offset: 0, length: 26 },
+      { type: 'strikethrough', offset: 0, length: 26 },
+    ]);
+
+    const el = screen.getByText('подчёркнутый и зачёркнутый');
+    expect(el).toHaveClass('[text-decoration-line:underline_line-through]');
+    expect(el).not.toHaveClass('underline');
+    expect(el).not.toHaveClass('line-through');
+  });
+
+  it('комбинирует все стили одновременно: жирный, курсив, подчёркнутый, зачёркнутый, спойлер (#915)', async () => {
+    renderContent('комбо стиль', [
+      { type: 'bold', offset: 0, length: 11 },
+      { type: 'italic', offset: 0, length: 11 },
+      { type: 'underline', offset: 0, length: 11 },
+      { type: 'strikethrough', offset: 0, length: 11 },
+      { type: 'spoiler', offset: 0, length: 11 },
+    ]);
+
+    const spoilerBtn = screen.getByRole('button', { name: /Скрытый текст/ });
+    expect(spoilerBtn).toBeInTheDocument();
+    await userEvent.click(spoilerBtn);
+
+    const el = screen.getByText('комбо стиль');
+    expect(el).toHaveClass('font-semibold');
+    expect(el).toHaveClass('italic');
+    expect(el).toHaveClass('[text-decoration-line:underline_line-through]');
+  });
+
+  it('скрывает моноширинный код внутри спойлера и раскрывает по клику (#915)', async () => {
+    const { container } = renderContent('пароль: 12345', [
+      { type: 'spoiler', offset: 8, length: 5 },
+      { type: 'monospace', offset: 8, length: 5 },
+    ]);
+
+    const spoilerBtn = screen.getByRole('button', { name: /Скрытый текст/ });
+    expect(spoilerBtn).toHaveClass('spoiler-dust');
+    expect(spoilerBtn.firstElementChild).toHaveClass('invisible');
+    const code = container.querySelector('code');
+    expect(code).toBeInTheDocument();
+    expect(code).toHaveTextContent('12345');
+
+    await userEvent.click(spoilerBtn);
+    expect(screen.getByRole('button', { name: 'Скрыть текст' })).toHaveClass('spoiler-open');
+    expect(spoilerBtn.firstElementChild).not.toHaveClass('invisible');
+  });
+
+  it('рендерит семантические HTML-теги для совместимости с буфером обмена (strong, em, u, s, mark) (#915)', () => {
+    const { container } = renderContent('жир кур под зач спойлер', [
+      { type: 'bold', offset: 0, length: 3 },
+      { type: 'italic', offset: 4, length: 3 },
+      { type: 'underline', offset: 8, length: 3 },
+      { type: 'strikethrough', offset: 12, length: 3 },
+      { type: 'spoiler', offset: 16, length: 7 },
+    ]);
+
+    expect(container.querySelector('strong')).toHaveTextContent('жир');
+    expect(container.querySelector('em')).toHaveTextContent('кур');
+    expect(container.querySelector('u')).toHaveTextContent('под');
+    expect(container.querySelector('s')).toHaveTextContent('зач');
+    expect(container.querySelector('mark')).toHaveTextContent('спойлер');
+  });
+
+  it('сочетание зачёркнутого скрытого текста и ссылки содержит оба тега s, mark и a (#915)', () => {
+    const { container } = renderContent('скрытый зачёркнутый и ссылка', [
+      { type: 'strikethrough', offset: 0, length: 19 },
+      { type: 'spoiler', offset: 0, length: 19 },
+      { type: 'link', offset: 22, length: 6, data: { url: 'https://example.com' } },
+    ]);
+
+    const mark = container.querySelector('mark');
+    expect(mark).toBeInTheDocument();
+    expect(mark?.querySelector('s')).toHaveTextContent('скрытый зачёркнутый');
+    const link = container.querySelector('a');
+    expect(link).toHaveTextContent('ссылка');
+    expect(link).toHaveAttribute('href', 'https://example.com');
+  });
 });
 
 describe('блок кода (#823)', () => {
