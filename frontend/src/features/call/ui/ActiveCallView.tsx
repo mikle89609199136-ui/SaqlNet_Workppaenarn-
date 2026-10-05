@@ -51,12 +51,7 @@ export function ActiveCallView({
   const verificationButtonRef = useRef<HTMLButtonElement>(null);
   const verificationPopoverRef = useRef<HTMLDivElement>(null);
 
-  // Сброс открытого поповера сверки при обрыве или отсутствии эмодзи
-  useEffect(() => {
-    if (!verificationEmojis || verificationEmojis.length !== 4) {
-      setIsVerificationOpen(false);
-    }
-  }, [verificationEmojis]);
+  const showVerification = isVerificationOpen && verificationEmojis?.length === 4;
 
   const handleCloseVerification = () => {
     setIsVerificationOpen(false);
@@ -65,7 +60,7 @@ export function ActiveCallView({
 
   // Закрытие поповера по клику снаружи или Escape
   useEffect(() => {
-    if (!isVerificationOpen) return;
+    if (!showVerification) return;
 
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -93,7 +88,7 @@ export function ActiveCallView({
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isVerificationOpen]);
+  }, [showVerification]);
 
   const remoteVideoActive = Boolean(
     remoteStream &&
@@ -276,14 +271,14 @@ export function ActiveCallView({
               type="button"
               onClick={() => setIsVerificationOpen((open) => !open)}
               className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
-              aria-label={t('call.verification.buttonLabel', 'Сверка ключа сквозного шифрования')}
-              aria-expanded={isVerificationOpen}
+              aria-label={t('call.verification.buttonLabel', 'Сверка ключа звонка')}
+              aria-expanded={showVerification}
               aria-haspopup="dialog"
             >
               <Icon name="lock" className="size-5 text-brand" />
             </button>
 
-            {isVerificationOpen && (
+            {showVerification && (
               <div
                 ref={verificationPopoverRef}
                 role="dialog"
@@ -320,7 +315,7 @@ export function ActiveCallView({
                 <p className="text-xs text-ink-2 leading-relaxed">
                   {t(
                     'call.verification.hint',
-                    'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
+                    'Сравните эти 4 эмодзи с собеседником. Если у собеседника такие же — вас никто не слушает.'
                   )}
                 </p>
               </div>
