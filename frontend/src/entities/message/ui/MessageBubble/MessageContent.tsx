@@ -119,40 +119,22 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
   const hasBold = formats.includes('bold');
   const hasItalic = formats.includes('italic');
 
-  const classes = cn(
-    hasBold && 'font-semibold',
-    hasItalic && 'italic',
-    hasUnderline && hasStrikethrough
-      ? '[text-decoration-line:underline_line-through]'
-      : cn(hasUnderline && 'underline', hasStrikethrough && 'line-through'),
-    (hasUnderline || hasStrikethrough) &&
-      'decoration-[1.5px] underline-offset-3'
-  );
-
   if (hasStrikethrough && hasUnderline) {
     node = (
       <u className="decoration-[1.5px] underline-offset-3">
-        <s className={classes}>{node}</s>
+        <s className="[text-decoration-line:underline_line-through] decoration-[1.5px] underline-offset-3">
+          {node}
+        </s>
       </u>
     );
   } else if (hasStrikethrough) {
-    node = <s className={classes}>{node}</s>;
+    node = <s className="line-through decoration-[1.5px] underline-offset-3">{node}</s>;
   } else if (hasUnderline) {
-    node = <u className={classes}>{node}</u>;
-  } else if (hasItalic && !hasBold) {
-    node = <em className={classes}>{node}</em>;
-  } else if (hasBold && !hasItalic) {
-    node = <strong className={classes}>{node}</strong>;
-  } else if (classes) {
-    node = <span className={classes}>{node}</span>;
+    node = <u className="underline decoration-[1.5px] underline-offset-3">{node}</u>;
   }
 
-  if (hasItalic && (hasBold || hasUnderline || hasStrikethrough)) {
-    node = <em className="italic">{node}</em>;
-  }
-  if (hasBold && (hasItalic || hasUnderline || hasStrikethrough)) {
-    node = <strong className="font-semibold">{node}</strong>;
-  }
+  if (hasItalic) node = <em className="italic">{node}</em>;
+  if (hasBold) node = <strong className="font-semibold">{node}</strong>;
 
   if (url) {
     node = (

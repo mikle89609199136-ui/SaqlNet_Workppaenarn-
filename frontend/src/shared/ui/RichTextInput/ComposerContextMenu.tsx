@@ -370,17 +370,21 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
                       }
                     }
 
-                    const hasText =
-                      (plainText && plainText.trim().length > 0) ||
-                      (htmlText && htmlText.trim().length > 0);
+                    const hasText = Boolean(plainText && plainText.trim().length > 0);
 
                     if (!hasText && onPasteFiles) {
                       const imageFiles: File[] = [];
+                      let index = 0;
                       for (const item of items) {
                         const imageType = item.types.find((type) => type.startsWith('image/'));
                         if (imageType) {
                           const blob = await item.getType(imageType);
-                          imageFiles.push(new File([blob], 'image.png', { type: blob.type }));
+                          const ext = imageType.split('/')[1] || 'png';
+                          imageFiles.push(
+                            new File([blob], `pasted-${Date.now()}-${index++}.${ext}`, {
+                              type: blob.type,
+                            })
+                          );
                         }
                       }
                       if (imageFiles.length > 0 && onPasteFiles(imageFiles)) {
@@ -459,6 +463,7 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
       </ContextMenu>
       {linkDialog && (
         <LinkDialog
+          key={linkDialog.url ?? ''}
           initialUrl={linkDialog.url}
           onApply={applyLink}
           onCancel={() => {

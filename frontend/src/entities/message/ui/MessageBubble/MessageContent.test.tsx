@@ -111,8 +111,8 @@ describe('текст сообщения с форматированием (#656)
     await userEvent.click(spoilerBtn);
 
     const el = screen.getByText('комбо стиль');
-    expect(el).toHaveClass('font-semibold');
-    expect(el).toHaveClass('italic');
+    expect(el.closest('strong')).toHaveClass('font-semibold');
+    expect(el.closest('em')).toHaveClass('italic');
     expect(el).toHaveClass('[text-decoration-line:underline_line-through]');
   });
 

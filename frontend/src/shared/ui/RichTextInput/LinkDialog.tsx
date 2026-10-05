@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from 'react';
+import { useEffect, useState, type SyntheticEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/Button';
 import { Input } from '@/shared/ui/Input';
@@ -19,6 +19,11 @@ export function LinkDialog({ open, initialUrl, onApply, onRemove, onCancel }: Pr
   const { t } = useTranslation();
   const [value, setValue] = useState(initialUrl ?? '');
   const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    setValue(initialUrl ?? '');
+    setInvalid(false);
+  }, [initialUrl, open]);
 
   const submit = (event?: SyntheticEvent) => {
     event?.preventDefault();

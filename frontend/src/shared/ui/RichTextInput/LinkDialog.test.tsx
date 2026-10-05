@@ -85,4 +85,22 @@ describe('диалог ссылки (#915, #656)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it('обновляет значение в поле при изменении initialUrl без размонтирования диалога', () => {
+    const { rerender } = renderDialog({ initialUrl: 'https://first.com' });
+    expect(screen.getByLabelText('Адрес ссылки')).toHaveValue('https://first.com');
+
+    rerender(
+      <I18nextProvider i18n={testI18n}>
+        <LinkDialog
+          initialUrl="https://second.com"
+          onApply={vi.fn()}
+          onCancel={vi.fn()}
+          onRemove={vi.fn()}
+          open
+        />
+      </I18nextProvider>
+    );
+    expect(screen.getByLabelText('Адрес ссылки')).toHaveValue('https://second.com');
+  });
 });

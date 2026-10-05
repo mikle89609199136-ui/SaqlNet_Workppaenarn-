@@ -276,6 +276,51 @@ describe('контекстное меню поля ввода (#656)', () => {
     }
   });
 
+  it('вставка скопированного изображения из браузера (image/png + text/html <img> без text/plain) передаёт файл в onPasteFiles (#915)', async () => {
+    const onPasteFiles = vi.fn().mockReturnValue(true);
+    const { field } = renderInput(onPasteFiles);
+
+    const imageBlob = new Blob(['image-bytes'], { type: 'image/png' });
+    const htmlBlob = new Blob(['<img src="https://example.com/pic.png">'], { type: 'text/html' });
+    const mockClipboardItem = {
+      types: ['image/png', 'text/html'],
+      getType: vi.fn().mockImplementation((type: string) =>
+        Promise.resolve(type === 'image/png' ? imageBlob : htmlBlob)
+      ),
+    };
+
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        read: vi.fn().mockResolvedValue([mockClipboardItem]),
+        readText: vi.fn().mockResolvedValue(''),
+        writeText: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      fireEvent.contextMenu(field, { clientX: 20, clientY: 20 });
+      const pasteItem = screen.getByRole('menuitem', { name: /Вставить/ });
+      expect(pasteItem).not.toBeDisabled();
+
+      await userEvent.click(pasteItem);
+
+      expect(onPasteFiles).toHaveBeenCalledTimes(1);
+      const files = onPasteFiles.mock.calls[0][0] as File[];
+      expect(files).toHaveLength(1);
+      expect(files[0].type).toBe('image/png');
+      expect(files[0].name).toMatch(/^pasted-\d+-0\.png$/);
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: originalClipboard,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
   it('вставка из контекстного меню с text/html сохраняет разметку (#915)', async () => {
     const { field, handle } = renderInput();
 
