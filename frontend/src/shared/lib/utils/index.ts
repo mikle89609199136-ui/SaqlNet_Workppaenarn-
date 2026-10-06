@@ -2,6 +2,7 @@ export * from './call';
 export * from './chatListTime';
 export * from './cn';
 export * from './dateGroup';
+export * from './device';
 export * from './downscaleImage';
 export * from './editorCanvas';
 export * from './fileDrop';

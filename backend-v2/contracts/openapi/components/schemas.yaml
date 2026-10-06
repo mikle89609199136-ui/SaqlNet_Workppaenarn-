@@ -44,6 +44,8 @@ RegisterRequest:
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 LoginRequest:
   type: object
   required: [username, password]
@@ -51,12 +53,34 @@ LoginRequest:
     username: { type: string }
     password: { type: string, format: password }
     twoFAPassword: { type: string, format: password }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
   required: [user, token]
   properties:
     user: { $ref: '#/User' }
     token: { type: string }
+AuthSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  properties:
+    id: { type: string, format: uuid }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    lastActive: { type: string, format: date-time }
+    createdAt: { type: string, format: date-time }
+    isCurrent:
+      type: boolean
+      description: True when this row belongs to the token used for the request.
+AuthSessionsResponse:
+  type: object
+  required: [sessions]
+  properties:
+    sessions:
+      type: array
+      items: { $ref: '#/AuthSession' }
 Success:
   type: object
   required: [success]
@@ -262,7 +286,10 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
-    reactions: { type: array, items: { $ref: '#/Reaction' } }
+    reactions:
+      type: array
+      description: Always an array; empty reactions are [], never null.
+      items: { $ref: '#/Reaction' }
     deliveredAt:
       type: string
       description: >-
@@ -305,6 +332,7 @@ Message:
     replyToSenderName: { type: string }
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
     metadata:
       type: object
@@ -489,6 +517,7 @@ MessageListResponse:
   properties:
     messages:
       type: array
+      description: Always an array; no messages are represented by [], never null.
       items: { $ref: '#/Message' }
 DeleteMessagesRequest:
   type: object
@@ -541,6 +570,7 @@ ReactionListResponse:
   properties:
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 ReactionToggleResponse:
   type: object
@@ -552,6 +582,7 @@ ReactionToggleResponse:
       description: Empty when the reaction was removed.
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 FavoriteStateResponse:
   type: object

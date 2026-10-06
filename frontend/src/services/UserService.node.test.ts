@@ -49,4 +49,22 @@ describe('UserService: новые эндпоинты (#598)', () => {
       expect(result).toEqual({ isOnline: true, lastSeen: '2026-09-23T15:00:00Z' });
     });
   });
+
+  describe('updateUsername', () => {
+    it('отправляет PUT /users/me/username с новым именем и возвращает обновлённого пользователя', async () => {
+      let requestBody: unknown;
+      server.use(
+        http.put(api('/users/me/username'), async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            user: { id: 'user-me', username: 'new_nick', firstName: 'Иван' },
+          });
+        })
+      );
+
+      const result = await services.userService.updateUsername('new_nick');
+      expect(requestBody).toEqual({ username: 'new_nick' });
+      expect(result).toEqual({ id: 'user-me', username: 'new_nick', firstName: 'Иван' });
+    });
+  });
 });
