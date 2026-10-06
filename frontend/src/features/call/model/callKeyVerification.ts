@@ -12,7 +12,7 @@ export const CALL_VERIFICATION_EMOJIS: readonly string[] = [
   // Смайлы (20)
   '😀',
   '😂',
-  '🙂',
+  '🤫',
   '🙃',
   '😉',
   '😇',
@@ -24,7 +24,7 @@ export const CALL_VERIFICATION_EMOJIS: readonly string[] = [
   '😐',
   '🙄',
   '😴',
-  '😭',
+  '😳',
   '😡',
   '🤯',
   '😱',
@@ -33,7 +33,7 @@ export const CALL_VERIFICATION_EMOJIS: readonly string[] = [
   // Жесты (12)
   '👍',
   '👎',
-  '👌',
+  '✊',
   '✌️',
   '🤝',
   '👏',
@@ -76,7 +76,7 @@ export const CALL_VERIFICATION_EMOJIS: readonly string[] = [
   '🔥',
   '⭐',
   '🚀',
-  '🎊',
+  '🕘',
 ];
 
 /**
