@@ -265,6 +265,11 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID, suffix := parseChatPath(r.URL.Path)
 
+	if chatID == "" {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+
 	// Данная проверка валидирует chatId для всех кейсов в функции Chat.
 	// Если вы будете выносить кейс в отдельную функцию, добавьте такую же проверку.
 	chatIDInput := UUIDInput{
@@ -276,8 +281,6 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case chatID == "":
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
 	case suffix == "" && r.Method == http.MethodGet:
 		chat, err := h.service.Get(r.Context(), current.ID, chatID)
 		respondChat(w, r, chat, err)

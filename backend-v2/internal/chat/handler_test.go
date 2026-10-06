@@ -1540,13 +1540,13 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		{
 			name:   "chat_not_found_404",
 			method: http.MethodPatch,
-			path:   `/api/v2/chats/{nonExistentChatID}`,
+			path:   "/api/v2/chats/" + nonExistentChatID,
 			requestBody: map[string]any{
 				"title": "New Title",
 			},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs("non-existent-id", actorID).
+					WithArgs(nonExistentChatID, actorID).
 					WillReturnError(sql.ErrNoRows)
 			},
 			wantStatus:    http.StatusNotFound,
@@ -1685,80 +1685,70 @@ func assertErrorCode(t *testing.T, rr *httptest.ResponseRecorder, want string) {
 
 func TestHandler_MalformedUUID(t *testing.T) {
 	tests := []struct {
-		name string
-		// chatID        string
+		name          string
 		wantStatus    int
 		wantErrorCode string
 		path          string
 		method        string
 	}{
 		{
-			name: "pins_malformed_chat_id_400",
-			// chatID:        "not-a-uuid",
+			name:          "pins_malformed_chat_id_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/pins",
 			method:        http.MethodGet,
 		},
 		{
-			name: "pin_malformed_chat_id_post_400",
-			// chatID:        "not-a-uuid",
+			name:          "pin_malformed_chat_id_post_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/pin",
 			method:        http.MethodPost,
 		},
 		{
-			name: "pin_malformed_chat_id_delete_400",
-			// chatID:        "not-a-uuid",
+			name:          "pin_malformed_chat_id_delete_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/pin",
 			method:        http.MethodDelete,
 		},
 		{
-			name: "role_malformed_chat_id_400",
-			// chatID:        "not-a-uuid",
+			name:          "role_malformed_chat_id_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/members/" + handlerActorID + "/role",
 			method:        http.MethodPost,
 		},
 		{
-			name: "role_malformed_user_id_400",
-			// chatID:        "not-a-uuid",
+			name:          "role_malformed_user_id_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/" + handlerChatID + "/members/not-a-uuid/role",
 			method:        http.MethodPost,
 		},
 		{
-			name: "mls_state_malformed_chat_id_400",
-			// chatID:        "not-a-uuid",
+			name:          "mls_state_malformed_chat_id_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/mls-state",
 			method:        http.MethodGet,
 		},
 		{
-			name: "archive_malformed_chat_id_post_400",
-			// chatID:        "not-a-uuid",
+			name:          "archive_malformed_chat_id_post_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/archive",
 			method:        http.MethodPost,
 		},
 		{
-			name: "archive_malformed_chat_id_delete_400",
-			// chatID:        "not-a-uuid",
+			name:          "archive_malformed_chat_id_delete_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/archive",
 			method:        http.MethodDelete,
 		},
 		{
-			name: "read_malformed_chat_id_400",
-			// chatID:        "not-a-uuid",
+			name:          "read_malformed_chat_id_400",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "validation_failed",
 			path:          "/api/v2/chats/not-a-uuid/read",
@@ -1770,8 +1760,13 @@ func TestHandler_MalformedUUID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := newAuthedRequest(tt.method, tt.path, nil, handlerActorID)
 			h, _ := newTestHandler(t)
+			authenticated := func(next http.Handler) http.Handler {
+				return next
+			}
 			rr := httptest.NewRecorder()
-			h.Chat(rr, req)
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, h, authenticated)
+			mux.ServeHTTP(rr, req)
 			assertErrorResponse(t, rr, tt.wantStatus, tt.wantErrorCode)
 		})
 	}
