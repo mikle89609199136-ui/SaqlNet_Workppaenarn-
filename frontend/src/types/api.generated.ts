@@ -4789,12 +4789,14 @@ export interface operations {
                     };
                 };
             };
-            /** @description missing sessionId (invalid_request) or sessionId is not a UUID (validation_failed) */
+            /** @description sessionId is not a valid UUID */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             404: components["responses"]["Error"];
             /** @description sessionId is the current session */
