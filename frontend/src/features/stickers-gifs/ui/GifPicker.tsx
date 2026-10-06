@@ -7,17 +7,31 @@ import {
   type IGif,
 } from '@/entities/media';
 import { cn } from '@/shared/lib';
-import { Button, Icon } from '@/shared/ui';
+import { Button, Icon, Input } from '@/shared/ui';
 
 interface Props {
   onPick: (gif: IGif) => void;
   className?: string;
 }
 
+type TGifSubTab = 'all' | 'favorites';
+
+interface IGifSubTabConfig {
+  id: TGifSubTab;
+  labelKey: string;
+  defaultLabel: string;
+  icon?: 'heart';
+}
+
+const GIF_SUB_TABS: readonly IGifSubTabConfig[] = [
+  { id: 'all', labelKey: 'gifs.all', defaultLabel: 'Все' },
+  { id: 'favorites', labelKey: 'gifs.favorites', defaultLabel: 'Избранные', icon: 'heart' },
+];
+
 export const GifPicker = ({ onPick, className }: Props) => {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const [subTab, setSubTab] = useState<'all' | 'favorites'>('all');
+  const [subTab, setSubTab] = useState<TGifSubTab>('all');
 
   const { data: allGifs = [], isLoading: isLoadingAll } = useGifsQuery();
   const { data: favoriteGifs = [], isLoading: isLoadingFavorites } = useFavoriteGifsQuery();
@@ -39,52 +53,46 @@ export const GifPicker = ({ onPick, className }: Props) => {
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col gap-2', className)}>
-      <label className="flex h-9.5 shrink-0 items-center gap-2 rounded-icon bg-sheet-2 px-3 text-ink-3">
-        <Icon aria-hidden="true" className="size-4" name="search" />
-        <input
-          aria-label={t('gifs.search', 'Поиск GIF')}
-          className="min-w-0 grow border-0 bg-transparent text-ui text-ink outline-none placeholder:text-ink-3"
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('gifs.search', 'Поиск GIF')}
-          type="search"
-          value={query}
-        />
-      </label>
+      <Input
+        aria-label={t('gifs.search', 'Поиск GIF')}
+        className="shrink-0"
+        icon="search"
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t('gifs.search', 'Поиск GIF')}
+        size="sm"
+        type="search"
+        value={query}
+      />
 
       <div
         aria-label={t('gifs.tabs', 'Вкладки GIF')}
         className="grid w-full shrink-0 grid-cols-2 gap-1.5"
         role="tablist"
       >
-        <Button
-          aria-selected={subTab === 'all'}
-          className="w-full"
-          onClick={() => setSubTab('all')}
-          role="tab"
-          size="sm"
-          type="button"
-          variant={subTab === 'all' ? 'primary' : 'secondary'}
-        >
-          {t('gifs.all', 'Все')}
-        </Button>
-        <Button
-          aria-selected={subTab === 'favorites'}
-          className="w-full gap-1.5"
-          onClick={() => setSubTab('favorites')}
-          role="tab"
-          size="sm"
-          type="button"
-          variant={subTab === 'favorites' ? 'primary' : 'secondary'}
-        >
-          <Icon className="size-4" name="heart" />
-          <span>{t('gifs.favorites', 'Избранные')}</span>
-          {favoriteGifs.length > 0 && (
-            <span className="text-micro opacity-75">({favoriteGifs.length})</span>
-          )}
-        </Button>
+        {GIF_SUB_TABS.map((tab) => {
+          const isActive = subTab === tab.id;
+          return (
+            <Button
+              aria-selected={isActive}
+              className={cn('w-full', tab.id === 'favorites' && 'gap-1.5')}
+              key={tab.id}
+              onClick={() => setSubTab(tab.id)}
+              role="tab"
+              size="sm"
+              type="button"
+              variant={isActive ? 'primary' : 'secondary'}
+            >
+              {tab.icon && <Icon className="size-4" name={tab.icon} />}
+              <span>{t(tab.labelKey, tab.defaultLabel)}</span>
+              {tab.id === 'favorites' && favoriteGifs.length > 0 && (
+                <span className="text-micro opacity-75">({favoriteGifs.length})</span>
+              )}
+            </Button>
+          );
+        })}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:thin]" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" role="tabpanel">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-meta text-ink-3">
             {t('gifs.loading', 'Загрузка GIF...')}

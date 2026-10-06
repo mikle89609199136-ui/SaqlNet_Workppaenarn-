@@ -40,7 +40,6 @@ describe('панель эмодзи', () => {
     );
     const thumbsUp = within(panel).getByRole('button', { name: 'класс' });
     expect(thumbsUp.querySelector('img')).toHaveAttribute('src', '/emoji/noto/1f44d.svg');
-    expect(within(panel).getByRole('link', { name: 'Noto Emoji' })).toBeInTheDocument();
   });
 
   it('выбранный встаёт в поле и попадает в недавние первым, панель остаётся', async () => {

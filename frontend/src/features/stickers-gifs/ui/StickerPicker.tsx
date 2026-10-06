@@ -54,7 +54,7 @@ export const StickerPicker = ({ onPick, className }: Props) => {
     <div className={cn('flex h-full min-h-0 flex-col gap-2', className)}>
       <div
         aria-label={t('stickers.packs', 'Наборы стикеров')}
-        className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 [scrollbar-width:none]"
+        className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-none"
         role="tablist"
       >
         {packs.map((pack) => {
@@ -85,7 +85,7 @@ export const StickerPicker = ({ onPick, className }: Props) => {
         })}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:thin]" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" role="tabpanel">
         {isLoadingStickers ? (
           <div className="flex h-full items-center justify-center text-meta text-ink-3">
             {t('stickers.loadingPack', 'Загрузка...')}

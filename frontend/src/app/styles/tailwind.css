@@ -58,6 +58,22 @@
   -webkit-text-fill-color: transparent;
 }
 
+/* Scrollbars */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Transitions */
+@utility duration-160 {
+  transition-duration: 160ms;
+}
+
 /* =========================================================
    @keyframes
    ========================================================= */
