@@ -1,20 +1,23 @@
-import { Button, EmojiPicker, Icon, type IRichTextInputHandle } from '@/shared/ui';
+import { Button, Icon, type IRichTextInputHandle } from '@/shared/ui';
+import { MediaComposerPicker } from '@/features/stickers-gifs';
+import type { IGif, ISticker } from '@/entities/media';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const PANEL_ID = 'emoji-panel';
+const PANEL_ID = 'media-composer-panel';
 
 interface Props {
   draftRef: RefObject<IRichTextInputHandle | null>;
   disabled?: boolean;
+  onPickSticker?: (sticker: ISticker) => void;
+  onPickGif?: (gif: IGif) => void;
 }
 
 /**
- * Эмодзи в поле ввода (#824): кнопка-смайлик справа от поля и панель над
- * карточкой, по её правому краю; на телефоне — во всю ширину карточки.
- * Выбранный эмодзи встаёт на место курсора, панель остаётся открытой.
+ * Эмодзи, стикеры и GIF в поле ввода (#593): кнопка-смайлик справа от поля
+ * и панель над карточкой с вкладками первого уровня.
  */
-export const EmojiControl = ({ draftRef, disabled }: Props) => {
+export const EmojiControl = ({ draftRef, disabled, onPickSticker, onPickGif }: Props) => {
   const { t } = useTranslation();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -40,7 +43,9 @@ export const EmojiControl = ({ draftRef, disabled }: Props) => {
         <EmojiPanel
           anchorRef={buttonRef}
           onClose={() => setOpen(false)}
-          onPick={(emoji) => draftRef.current?.insertText(emoji)}
+          onPickEmoji={(emoji) => draftRef.current?.insertText(emoji)}
+          onPickGif={onPickGif}
+          onPickSticker={onPickSticker}
         />
       )}
     </>
@@ -51,11 +56,15 @@ export const EmojiControl = ({ draftRef, disabled }: Props) => {
 function EmojiPanel({
   anchorRef,
   onClose,
-  onPick,
+  onPickEmoji,
+  onPickSticker,
+  onPickGif,
 }: {
   anchorRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
-  onPick: (emoji: string) => void;
+  onPickEmoji: (emoji: string) => void;
+  onPickSticker?: (sticker: ISticker) => void;
+  onPickGif?: (gif: IGif) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -81,7 +90,7 @@ function EmojiPanel({
   }, [anchorRef]);
 
   return (
-    <EmojiPicker
+    <MediaComposerPicker
       className="absolute right-0 bottom-full z-30 mb-2 w-89 origin-bottom-right transition-[opacity,translate,scale] duration-[220ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] outline-none max-md:w-full motion-reduce:transition-none starting:translate-y-2 starting:scale-96 starting:opacity-0"
       id={PANEL_ID}
       onKeyDown={(event) => {
@@ -90,7 +99,15 @@ function EmojiPanel({
         onCloseRef.current();
         anchorRef.current?.focus();
       }}
-      onPick={onPick}
+      onPickEmoji={onPickEmoji}
+      onPickGif={(gif) => {
+        onPickGif?.(gif);
+        onCloseRef.current();
+      }}
+      onPickSticker={(sticker) => {
+        onPickSticker?.(sticker);
+        onCloseRef.current();
+      }}
       ref={panelRef}
     />
   );

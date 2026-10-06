@@ -99,6 +99,8 @@ import {
   Ban,
   Laptop,
   Smartphone,
+  Heart,
+  Sticker,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -205,6 +207,8 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   ban: Ban,
   laptop: Laptop,
   smartphone: Smartphone,
+  heart: Heart,
+  sticker: Sticker,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

@@ -213,5 +213,109 @@ export function useComposerSendMessage({
     })();
   }
 
-  return { isSending, handleSubmit, handleRetryMessage };
+  const sendSticker = useCallback(
+    async (stickerUrl: string) => {
+      const tempId = `temp-${Date.now()}-0-${Math.random().toString(36).slice(2, 9)}`;
+      const replyToId = replyToMessage?.id ?? null;
+      const optimisticMessage: IMediaItem = {
+        id: tempId,
+        tempId,
+        chatId,
+        senderId: currentUser?.id ?? '',
+        content: '',
+        type: 'sticker',
+        mediaType: 'sticker',
+        mediaUrl: stickerUrl,
+        replyTo: replyToId,
+        replyToMessageId: replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+        reactions: [],
+      };
+      putThreadMessage(queryClient, chatId, optimisticMessage);
+
+      const outboxItem: IOutboxItem = {
+        tempId,
+        chatId,
+        content: '',
+        type: 'sticker',
+        mediaUrl: stickerUrl,
+        replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      addOutboxItem(outboxItem);
+      setReplyToMessage(null);
+      scrollToBottom();
+
+      await sendOutboxItem(queryClient, outboxItem, {
+        onError: (err) => showSendError(err),
+        onSuccess: () => setError(''),
+      });
+    },
+    [
+      chatId,
+      currentUser?.id,
+      queryClient,
+      replyToMessage?.id,
+      scrollToBottom,
+      setError,
+      setReplyToMessage,
+      showSendError,
+    ]
+  );
+
+  const sendGif = useCallback(
+    async (gifUrl: string) => {
+      const tempId = `temp-${Date.now()}-0-${Math.random().toString(36).slice(2, 9)}`;
+      const replyToId = replyToMessage?.id ?? null;
+      const optimisticMessage: IMediaItem = {
+        id: tempId,
+        tempId,
+        chatId,
+        senderId: currentUser?.id ?? '',
+        content: '',
+        type: 'gif',
+        mediaType: 'gif',
+        mediaUrl: gifUrl,
+        replyTo: replyToId,
+        replyToMessageId: replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+        reactions: [],
+      };
+      putThreadMessage(queryClient, chatId, optimisticMessage);
+
+      const outboxItem: IOutboxItem = {
+        tempId,
+        chatId,
+        content: '',
+        type: 'gif',
+        mediaUrl: gifUrl,
+        replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      addOutboxItem(outboxItem);
+      setReplyToMessage(null);
+      scrollToBottom();
+
+      await sendOutboxItem(queryClient, outboxItem, {
+        onError: (err) => showSendError(err),
+        onSuccess: () => setError(''),
+      });
+    },
+    [
+      chatId,
+      currentUser?.id,
+      queryClient,
+      replyToMessage?.id,
+      scrollToBottom,
+      setError,
+      setReplyToMessage,
+      showSendError,
+    ]
+  );
+
+  return { isSending, handleSubmit, handleRetryMessage, sendSticker, sendGif };
 }

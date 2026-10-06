@@ -11,6 +11,7 @@ export interface IOutboxItem {
   entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
+  mediaUrl?: string;
   /** Длительность и волна голосового (#843): уедут в шифрованном конверте. */
   voice?: IVoiceMeta;
   replyToId?: string | null;

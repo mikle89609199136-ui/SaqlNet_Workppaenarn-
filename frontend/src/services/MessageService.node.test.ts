@@ -469,3 +469,73 @@ describe('MessageService: пересылка голосового (#843)', () =>
     expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
   });
 });
+
+describe('MessageService: стикеры и GIF (#593)', () => {
+  it('sendSticker отправляет сообщение типа sticker с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendSticker(TARGET_CHAT, 'https://example.com/sticker1.png');
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'sticker',
+      mediaUrl: 'https://example.com/sticker1.png',
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'sticker',
+      mediaUrl: 'https://example.com/sticker1.png',
+      mediaUnavailable: false,
+    });
+  });
+
+  it('sendGif отправляет сообщение типа gif с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendGif(TARGET_CHAT, 'https://example.com/funny.gif');
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'gif',
+      mediaUrl: 'https://example.com/funny.gif',
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'gif',
+      mediaUrl: 'https://example.com/funny.gif',
+      mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay не блокирует URL для стикеров и GIF', async () => {
+    const service = createService();
+    const stickerMsg = {
+      ...message('m-sticker', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: 'https://example.com/sticker.png' } as never,
+    };
+    const gifMsg = {
+      ...message('m-gif', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: 'https://example.com/dance.gif',
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, stickerMsg);
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, gifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: 'https://example.com/sticker.png',
+      mediaOriginalUrl: 'https://example.com/sticker.png',
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: 'https://example.com/dance.gif',
+      mediaOriginalUrl: 'https://example.com/dance.gif',
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+  });
+});

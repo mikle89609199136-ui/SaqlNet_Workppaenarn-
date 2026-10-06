@@ -303,6 +303,64 @@ export class MessageService {
     return message as IMediaItem;
   }
 
+  async sendSticker(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    const prepared: IPreparedSend = {
+      item: {
+        content: '',
+        type: 'sticker',
+        replyTo,
+        mediaUrl,
+        mediaType: 'sticker',
+        mediaEncrypted: false,
+      },
+      toDisplay: (sent) =>
+        ({
+          ...sent,
+          content: '',
+          type: 'sticker',
+          mediaUrl,
+          mediaType: 'sticker',
+          mediaEncrypted: false,
+          mediaUnavailable: false,
+        }) as IMessageDto,
+    };
+    const [message] = await this.sendPrepared(chatId, [prepared]);
+    return message;
+  }
+
+  async sendGif(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    const prepared: IPreparedSend = {
+      item: {
+        content: '',
+        type: 'gif',
+        replyTo,
+        mediaUrl,
+        mediaType: 'gif',
+        mediaEncrypted: false,
+      },
+      toDisplay: (sent) =>
+        ({
+          ...sent,
+          content: '',
+          type: 'gif',
+          mediaUrl,
+          mediaType: 'gif',
+          mediaEncrypted: false,
+          mediaUnavailable: false,
+        }) as IMessageDto,
+    };
+    const [message] = await this.sendPrepared(chatId, [prepared]);
+    return message;
+  }
+
   async processMessageForDisplay(
     chatId: string,
     item: IMessageDto,
@@ -445,11 +503,25 @@ export class MessageService {
   async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
+    const mediaUrl =
+      (metadata && 'mediaUrl' in metadata ? metadata.mediaUrl : null) ||
+      ((item as unknown as { mediaUrl?: string }).mediaUrl ?? null);
+
+    if (!mediaUrl) return {};
+
+    // Стикеры и GIF не шифруются сквозным шифрованием файлов и могут ссылаться на внешний каталог или статику
+    if (item.type === 'sticker' || item.type === 'gif') {
+      return {
+        mediaUrl,
+        mediaOriginalUrl: mediaUrl,
+        mediaEncrypted: false,
+        mediaUnavailable: false,
+      };
+    }
+
     if (!metadata || !('mediaUrl' in metadata)) {
       return {};
     }
-    const mediaUrl = metadata.mediaUrl;
-    if (!mediaUrl) return {};
 
     /* Скачиваем только загрузки сервиса медиа (#871). Любой другой адрес —
        чужой сервер или другой маршрут API — не трогаем: запрос ушёл бы

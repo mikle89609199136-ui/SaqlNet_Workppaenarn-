@@ -12,6 +12,9 @@ import { makeChat, makeMessage } from '@/test/fixtures';
 import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useForwardStore } from '@/features/forward-messages';
 import { forgetEncryptionStates, setEncryptionState } from '@/shared/crypto';
+import { HttpResponse, http } from 'msw';
+import { api } from '@/test/msw/handlers';
+import { server } from '@/test/msw/server';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createRef, useState } from 'react';
@@ -482,6 +485,53 @@ describe('ChatThreadComposer', () => {
 
       expect(overlay()).not.toBeInTheDocument();
       expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('стикеры и GIF в панели медиа (#593)', () => {
+    it('клик по стикеру отправляет его и закрывает панель', async () => {
+      server.use(
+        http.get(api('/stickers/packs'), () =>
+          HttpResponse.json({
+            packs: [
+              {
+                id: 'p-1',
+                name: 'Пак 1',
+                description: 'Описание',
+                iconUrl: 'http://icon.png',
+                stickerCount: 1,
+                createdAt: '2026-01-01',
+              },
+            ],
+          })
+        ),
+        http.get(api('/stickers/packs/p-1'), () =>
+          HttpResponse.json({
+            stickers: [{ id: 's-1', imageUrl: 'http://sticker-1.png', createdAt: '2026-01-01' }],
+          })
+        )
+      );
+      const sendStickerSpy = vi
+        .spyOn(services.messageService, 'sendSticker')
+        .mockResolvedValue(makeMessage({ id: 'srv-stk', type: 'sticker' }));
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      // Открываем панель медиа
+      const openBtn = screen.getByRole('button', { name: /Эмодзи/i });
+      fireEvent.click(openBtn);
+
+      expect(screen.getByRole('dialog', { name: 'Медиа' })).toBeInTheDocument();
+
+      // Переключаем на вкладку «Стикеры»
+      fireEvent.click(screen.getByRole('tab', { name: /Стикеры/i }));
+
+      const stickerBtn = await screen.findByRole('button', { name: 'Стикер' });
+      fireEvent.click(stickerBtn);
+
+      expect(sendStickerSpy).toHaveBeenCalledWith('chat-test-1', 'http://sticker-1.png', null);
+      // Панель закрылась
+      expect(screen.queryByRole('dialog', { name: 'Медиа' })).not.toBeInTheDocument();
     });
   });
 });
