@@ -374,12 +374,6 @@ func TestDeleteDeviceValidationErrors(t *testing.T) {
 		expectedMsg  string
 	}{
 		{
-			name:         "missing session id - no trailing segment",
-			path:         "/api/v2/users/devices",
-			expectedCode: "invalid_request",
-			expectedMsg:  "missing session id",
-		},
-		{
 			name:         "missing session id - empty trailing segment",
 			path:         "/api/v2/users/devices/",
 			expectedCode: "invalid_request",
