@@ -158,7 +158,11 @@ export const GifPicker = ({ onPick, className }: Props) => {
               );
             })}
           </div>
-        ) : subTab === 'favorites' && !search ? (
+        ) : search ? (
+          <p className="m-0 px-3 py-12 text-center text-ui text-ink-3">
+            {t('gifs.nothingFound', 'Ничего не нашлось')}
+          </p>
+        ) : subTab === 'favorites' ? (
           <div className="flex h-full flex-col items-center justify-center px-4 py-8 text-center text-ink-3">
             <Icon className="mb-2 size-8 opacity-40" name="heart" />
             <span className="text-ui font-medium text-ink-2">
@@ -169,9 +173,12 @@ export const GifPicker = ({ onPick, className }: Props) => {
             </span>
           </div>
         ) : (
-          <p className="m-0 px-3 py-12 text-center text-ui text-ink-3">
-            {t('gifs.nothingFound', 'Ничего не нашлось')}
-          </p>
+          <div className="flex h-full flex-col items-center justify-center px-4 py-8 text-center text-ink-3">
+            <Icon className="mb-2 size-8 opacity-40" name="image" />
+            <span className="text-ui font-medium text-ink-2">
+              {t('gifs.emptyAllTitle', 'Пока нет GIF')}
+            </span>
+          </div>
         )}
       </div>
     </div>

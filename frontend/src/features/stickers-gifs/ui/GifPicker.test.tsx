@@ -111,4 +111,37 @@ describe('GifPicker', () => {
       expect(screen.getByLabelText('wave hello')).toBeInTheDocument();
     });
   });
+
+  it('показывает "Пока нет GIF", когда список пуст во вкладке Все', async () => {
+    server.use(
+      http.get(api('/gifs'), () => HttpResponse.json({ gifs: [] })),
+      http.get(api('/gifs/favorites'), () => HttpResponse.json({ gifs: [] }))
+    );
+
+    renderPicker();
+
+    expect(await screen.findByText('Пока нет GIF')).toBeInTheDocument();
+  });
+
+  it('показывает "Ничего не нашлось", если поиск не дал результатов', async () => {
+    server.use(
+      http.get(api('/gifs'), () =>
+        HttpResponse.json({
+          gifs: [
+            { id: 'g-1', name: 'wave hello', url: 'http://wave.gif', userName: 'alice', createdAt: '2026-01-01' },
+          ],
+        })
+      ),
+      http.get(api('/gifs/favorites'), () => HttpResponse.json({ gifs: [] }))
+    );
+
+    renderPicker();
+
+    expect(await screen.findByLabelText('wave hello')).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText('Поиск GIF');
+    fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
+
+    expect(await screen.findByText('Ничего не нашлось')).toBeInTheDocument();
+  });
 });
