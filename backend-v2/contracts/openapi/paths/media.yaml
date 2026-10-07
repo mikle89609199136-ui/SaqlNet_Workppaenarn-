@@ -52,7 +52,38 @@ x-secure: &secure [{ sessionCookie: [] }]
   get: { tags: [Media], summary: List emoji, operationId: listEmojis, responses: { '200': { description: Emoji assets } } }
 /gifs:
   get: { tags: [Media], summary: List GIFs, operationId: listGifs, security: *secure, responses: { '200': { description: GIFs } } }
-  post: { tags: [Media], summary: Create a GIF, operationId: createGif, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [url], properties: { name: { type: string }, url: { type: string } } } } } }, responses: { '201': { description: Created GIF } } }
+  post:
+    tags: [Media]
+    summary: Create a GIF
+    description: >-
+      Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB.
+      Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source;
+      404 upload_not_found (including uploads owned by another user);
+      413 request_too_large; 500 internal_error.
+    operationId: createGif
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [url]
+            properties:
+              name:
+                type: string
+                maxLength: 255
+                description: Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters.
+              url:
+                type: string
+                maxLength: 2048
+                pattern: '^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+    responses:
+      '201': { description: Created GIF }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '413': { $ref: '../components/responses.yaml#/RequestTooLarge' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
 /gifs/favorites:
   get: { tags: [Media], summary: List favorite GIFs, operationId: listFavoriteGifs, security: *secure, responses: { '200': { description: Favorite GIFs } } }
 /gifs/{gifId}/favorite:
