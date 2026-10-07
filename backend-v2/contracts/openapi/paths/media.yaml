@@ -1,4 +1,4 @@
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 /media:
   post:
     tags: [Media]

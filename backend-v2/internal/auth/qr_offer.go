@@ -268,9 +268,8 @@ func (h *Handler) QROfferStatus(w http.ResponseWriter, r *http.Request) {
 		// Новое устройство получает сессию в cookie (#705).
 		authctx.SetSessionCookie(w, offer.AuthToken)
 		httpx.JSON(w, http.StatusOK, map[string]any{
-			"status":    "confirmed",
-			"authToken": offer.AuthToken,
-			"payload":   offer.Payload,
+			"status":  "confirmed",
+			"payload": offer.Payload,
 		})
 		return
 	}

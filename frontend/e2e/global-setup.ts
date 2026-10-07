@@ -21,13 +21,17 @@ import {
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL = config.projects[0]?.use?.baseURL ?? 'http://127.0.0.1:3000';
 
-  const context = await request.newContext({ baseURL });
+  const [healthContext, accountAContext, accountBContext] = await Promise.all([
+    request.newContext({ baseURL }),
+    request.newContext({ baseURL }),
+    request.newContext({ baseURL }),
+  ]);
 
   try {
     // Проверка доступности отдельным шагом: без неё первый же сценарий
     // упал бы на таймауте ожидания элемента, и причину пришлось бы
     // искать в записи экрана вместо сообщения об ошибке.
-    const health = await context.get('/health/live');
+    const health = await healthContext.get('/health/live');
     if (!health.ok()) {
       throw new Error(
         `Стенд не отвечает (${baseURL}/health/live → ${health.status()}). ` +
@@ -36,15 +40,15 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     }
 
     const [A, B] = await Promise.all([
-      loginViaApi(context, ACCOUNT_A),
-      loginViaApi(context, ACCOUNT_B),
+      loginViaApi(accountAContext, ACCOUNT_A),
+      loginViaApi(accountBContext, ACCOUNT_B),
     ]);
 
     // Сервер возвращает существующий чат, если он уже заведён, поэтому
     // повторные прогоны новых чатов не плодят.
-    const chatResponse = await context.post('/api/v2/chats/private', {
+    const chatResponse = await accountAContext.post('/api/v2/chats/private', {
       data: { userId: B.user.id },
-      headers: { Authorization: `Bearer ${A.token}` },
+      headers: { Origin: baseURL },
     });
 
     if (!chatResponse.ok()) {
@@ -67,7 +71,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
     await warmUpDevServer(baseURL, A, chatId);
   } finally {
-    await context.dispose();
+    await Promise.all([
+      healthContext.dispose(),
+      accountAContext.dispose(),
+      accountBContext.dispose(),
+    ]);
   }
 }
 

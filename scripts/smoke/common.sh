@@ -30,7 +30,7 @@ check() {
 http_request() {
 	local response
 
-	response=$(curl -s -w "\n%{http_code}" "$@" 2>/dev/null || printf '\n000')
+	response=$(curl -s -H "Origin: $BASE_URL" -w "\n%{http_code}" "$@" 2>/dev/null || printf '\n000')
 
 	HTTP_CODE=$(printf '%s\n' "$response" | tail -n 1)
 	HTTP_BODY=$(printf '%s\n' "$response" | sed '$d')
@@ -44,15 +44,21 @@ json_check() {
 
 auth_check() {
 	check "$1" "$2" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
+		-H "Origin: $BASE_URL" \
 		"${@:3}"
 }
 
 auth_json() {
 	check "$1" "$2" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
+		-H "Origin: $BASE_URL" \
 		"${@:3}"
+}
+
+session_cookie_header() {
+	awk 'NF >= 7 && ($1 !~ /^#/ || $1 ~ /^#HttpOnly_/) { print $6 "=" $7; exit }' "$1"
 }
 http_request_with_headers() {
 	local response
@@ -62,6 +68,7 @@ http_request_with_headers() {
 
 	response=$(curl -s \
 		-D "$headers_file" \
+		-H "Origin: $BASE_URL" \
 		-w "\n%{http_code}" \
 		"$@" 2>/dev/null || printf '\n000')
 
