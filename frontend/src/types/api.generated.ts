@@ -1466,14 +1466,27 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                chatId: string;
+            };
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
          * Leave a group chat
-         * @description Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".
+         * @description Removes the authenticated user from a group chat they are a member of.
+         *
+         *     Leaving is only allowed for group chats. Private chats are rejected
+         *     with `invalid_chat_type` before any membership data is changed.
+         *
+         *     The chat owner cannot leave: ownership must be transferred first,
+         *     otherwise the request fails with `ownership_transfer_required`.
+         *
+         *     On success, the user's encryption keys and per-user chat settings
+         *     are deleted together with the membership row, and the remaining
+         *     members are notified over WebSocket with the `chat_member_removed`
+         *     event and `reason: "left"`.
          */
         post: operations["leaveChat"];
         delete?: never;
@@ -2474,6 +2487,7 @@ export interface components {
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
@@ -2533,6 +2547,7 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
@@ -3000,6 +3015,7 @@ export interface components {
             lastReadAt: string;
         };
         MessageListResponse: {
+            /** @description Always an array; no messages are represented by [], never null. */
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
@@ -3039,6 +3055,7 @@ export interface components {
             messages: components["schemas"]["SendMessageRequest"][];
         };
         ReactionListResponse: {
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         ReactionToggleResponse: {
@@ -3046,6 +3063,7 @@ export interface components {
             action: "added" | "removed" | "replaced";
             /** @description Empty when the reaction was removed. */
             currentEmoji: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         FavoriteStateResponse: {
@@ -5642,15 +5660,28 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Left */
+            /** @description Successfully left the chat. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        success: true;
+                    };
+                };
             };
-            400: components["responses"]["Error"];
-            /** @description access_denied: the caller is not a member (including a repeated leave) */
+            /** @description Invalid request (validation_failed, invalid_chat_type). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied — the authenticated user is not a member of the chat. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5659,8 +5690,26 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description ownership_transfer_required: the caller owns the chat */
+            /** @description Chat not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The owner must transfer ownership before leaving. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

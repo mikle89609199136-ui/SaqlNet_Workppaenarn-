@@ -75,9 +75,9 @@ const theme: EditorThemeClasses = {
     italic: 'italic',
     underline: 'underline',
     strikethrough: 'line-through',
-    underlineStrikethrough: 'underline line-through',
+    underlineStrikethrough: '[text-decoration-line:underline_line-through]',
     code: 'font-mono text-[0.92em] bg-sheet-2 rounded px-1',
-    highlight: 'rounded bg-sheet-2 text-ink-2 underline decoration-dotted',
+    highlight: 'rounded bg-sheet-2 text-ink-2 border-b border-dotted border-current',
   },
 };
 

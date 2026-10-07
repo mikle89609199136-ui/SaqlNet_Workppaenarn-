@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
   AUTH_QR_OFFER_CONFIRM: (token: string) => `/auth/qr-offer/${token}/confirm`,
 
   USERS_ME: '/users/me',
+  USERS_ME_USERNAME: '/users/me/username',
   USERS_AVATAR: '/users/avatar',
   CHATS: '/chats',
   CHAT_PRIVATE: '/chats/private',

@@ -495,7 +495,7 @@ func TestHandler_SendMessage_Errors(t *testing.T) {
 // валидация + respondSuccess). Закрывает критерий «некорректные UUID не приводят к 500».
 func TestHandler_MuteMember_InvalidUUID(t *testing.T) {
 	h, mock := newTestHandler(t)
-	req := newAuthedRequest(http.MethodPost, "/api/v2/chats/not-a-uuid/members/"+handlerTargetID+"/mute", nil, handlerActorID)
+	req := newAuthedRequest(http.MethodPost, "/api/v2/chats/not-a-uuid/members/"+handlerTargetID+"/mute", []byte("{}"), handlerActorID)
 	rr := httptest.NewRecorder()
 	h.Chat(rr, req)
 	assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
@@ -772,6 +772,268 @@ func newTestHandlerQueryMatcher(t *testing.T) (*Handler, sqlmock.Sqlmock) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	return NewHandler(NewService(db, nil, nil)), mock
+}
+
+// bodyKind enumerates the ways a well-formed JSON body is corrupted in
+// negative tests.
+type bodyKind int
+
+const (
+	secondJSON      bodyKind = iota + 1 // {"..."} {"second":true}
+	trailingGarbage                     // {"..."} garbage
+	oversized                           // body above the decoder's size limit
+	emptyBody                           // whitespace only
+	invalidSyntax                       // missing closing brace
+)
+
+// kindName returns a human-readable name for k. It is used as a subtest name.
+func kindName(k bodyKind) string {
+	switch k {
+	case secondJSON:
+		return "secondJSON"
+	case trailingGarbage:
+		return "trailingGarbage"
+	case oversized:
+		return "oversized"
+	case emptyBody:
+		return "emptyBody"
+	case invalidSyntax:
+		return "invalidSyntax"
+	default:
+		return "unknown"
+	}
+}
+
+// allKinds is the set of negative scenarios exercised by TestDecodeNegativeScenarios.
+var allKinds = []bodyKind{secondJSON, trailingGarbage, oversized, emptyBody, invalidSyntax}
+
+// oversizedPadSize must exceed every decode limit used by handlers: 256 KiB
+// for decode and decodeStrict, 2 MiB for SendMessage's decodeLimited.
+const oversizedPadSize = 3 << 20 // 3 MiB
+
+// buildBody returns valid corrupted according to kind.
+//
+// For oversized, the padding is placed in a field named padField when padField
+// is non-empty. This is required for strict decoders (UpdateGroup uses
+// decodeStrict), which reject unknown fields before the size limit can trigger.
+// When padField is empty, an "extra" field is appended instead.
+func buildBody(kind bodyKind, valid, padField string) []byte {
+	switch kind {
+	case secondJSON:
+		return []byte(valid + ` {"second":true}`)
+	case trailingGarbage:
+		return []byte(valid + ` garbage`)
+	case oversized:
+		pad := strings.Repeat("a", oversizedPadSize)
+		if padField != "" {
+			return []byte(`{"` + padField + `":"` + pad + `"}`)
+		}
+		inner := strings.TrimSuffix(valid, "}")
+		if inner == "{" { // empty object "{}"
+			return []byte(`{"extra":"` + pad + `"}`)
+		}
+		return []byte(inner + `,"extra":"` + pad + `"}`)
+	case emptyBody:
+		return []byte("   ")
+	case invalidSyntax:
+		return []byte(strings.TrimSuffix(valid, "}"))
+	default:
+		return nil
+	}
+}
+
+// assertInvalidJSON asserts that rr carries a 400 response with code
+// "invalid_json" and a non-empty message.
+func assertInvalidJSON(t *testing.T, rr *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s",
+			rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+
+	var resp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not JSON: %v, body: %s", err, rr.Body.String())
+	}
+	if resp.Code != "invalid_json" {
+		t.Errorf("code = %q, want %q", resp.Code, "invalid_json")
+	}
+	if resp.Message == "" {
+		t.Errorf("message is empty")
+	}
+}
+
+// TestDecodeNegativeScenarios verifies that every handler (or mini-router
+// branch) that calls decode, decodeLimited, or decodeStrict rejects malformed
+// request bodies with 400 Bad Request and code "invalid_json".
+//
+// The handler is built with a nil-backed service on purpose: decode runs before
+// any service call, so a correct short-circuit avoids the nil pointer
+// dereference. If validation were skipped, the handler would panic and the test
+// would fail loudly.
+func TestDecodeNegativeScenarios(t *testing.T) {
+	const (
+		userID    = "550e8400-e29b-41d4-a716-446655440000"
+		chatID    = "550e8400-e29b-41d4-a716-446655440001"
+		memberID  = "550e8400-e29b-41d4-a716-446655440002"
+		messageID = "550e8400-e29b-41d4-a716-446655440003"
+	)
+
+	h := NewHandler(NewService(nil, nil, nil))
+
+	type testCase struct {
+		name     string
+		handler  func(*Handler, http.ResponseWriter, *http.Request)
+		method   string
+		path     string
+		valid    string // well-formed body, corrupted per scenario by buildBody
+		padField string // non-empty only for strict decoders
+	}
+
+	cases := []testCase{
+		// Direct leaf handlers.
+
+		{
+			name:    "CreatePrivate",
+			handler: (*Handler).CreatePrivate,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/private",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "CreateGroup",
+			handler: (*Handler).CreateGroup,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/groups",
+			valid:   `{"title":"G","members":["` + memberID + `"]}`,
+		},
+		{
+			name:     "UpdateGroup",
+			handler:  (*Handler).UpdateGroup,
+			method:   http.MethodPatch,
+			path:     "/api/v2/chats/" + chatID,
+			valid:    `{"title":"New"}`,
+			padField: "title",
+		},
+		{
+			name:    "SendMessage",
+			handler: (*Handler).SendMessage,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/messages",
+			valid:   `{"messages":[{"content":"hi","type":"text"}]}`,
+		},
+		{
+			name:    "EditMessage",
+			handler: (*Handler).EditMessage,
+			method:  http.MethodPut,
+			path:    "/api/v2/messages/" + messageID,
+			valid:   `{"content":"edited"}`,
+		},
+		{
+			name:    "MarkMessagesRead",
+			handler: (*Handler).MarkMessagesRead,
+			method:  http.MethodPost,
+			path:    "/api/v2/messages/read",
+			valid:   `{"chatId":"` + chatID + `"}`,
+		},
+		{
+			name:    "CallRoom",
+			handler: (*Handler).CallRoom,
+			method:  http.MethodPost,
+			path:    "/api/v2/calls/rooms",
+			valid:   `{"type":"private","chatId":"` + chatID + `"}`,
+		},
+
+		// Chat mini-router branches.
+
+		{
+			name:    "Chat_AddMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "Chat_TransferOwnership",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/transfer-ownership",
+			valid:   `{"userId":"` + memberID + `"}`,
+		},
+		{
+			name:    "Chat_SetMemberRole",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/role",
+			valid:   `{"role":"admin"}`,
+		},
+		{
+			name:    "Chat_BanMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/ban",
+			valid:   `{"reason":"spam"}`,
+		},
+		{
+			name:    "Chat_MuteMember",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/members/" + memberID + "/mute",
+			valid:   `{}`,
+		},
+		{
+			name:    "Chat_DeleteMessages",
+			handler: (*Handler).Chat,
+			method:  http.MethodPost,
+			path:    "/api/v2/chats/" + chatID + "/messages/delete",
+			valid:   `{"messageIds":["` + messageID + `"],"forEveryone":true}`,
+		},
+
+		// Messages mini-router branch.
+
+		{
+			name:    "Messages_ToggleReaction",
+			handler: (*Handler).Messages,
+			method:  http.MethodPost,
+			path:    "/api/v2/messages/" + messageID + "/reactions",
+			valid:   `{"emoji":"👍"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, kind := range allKinds {
+				t.Run(kindName(kind), func(t *testing.T) {
+					body := buildBody(kind, tc.valid, tc.padField)
+
+					req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+
+					// Handlers read path parameters via r.PathValue. Set every
+					// known name; unused ones are ignored.
+					req.SetPathValue("chatID", chatID)
+					req.SetPathValue("chatId", chatID)
+					req.SetPathValue("messageId", messageID)
+
+					// authctx.MustUser runs before decode in every handler,
+					// so the user must be present in the context.
+					req = req.WithContext(authctx.WithUser(
+						req.Context(),
+						authctx.User{ID: userID, Username: "testuser"},
+					))
+
+					rr := httptest.NewRecorder()
+					tc.handler(h, rr, req)
+
+					assertInvalidJSON(t, rr)
+				})
+			}
+		})
+	}
 }
 
 func TestHandler_List(t *testing.T) {
@@ -1162,17 +1424,6 @@ func TestHandler_CreateGroup(t *testing.T) {
 			requestBody: map[string]any{
 				"title":   "Group",
 				"members": []string{},
-			},
-			setupMock:     func(sqlmock.Sqlmock) {},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "validation_failed",
-		},
-		{
-			name:   "misspelled_title_is_missing_400",
-			method: http.MethodPost,
-			requestBody: map[string]any{
-				"titel":   "Group",
-				"members": []string{memberID1},
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
