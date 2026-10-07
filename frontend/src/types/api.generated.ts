@@ -3218,17 +3218,14 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "error": {
-                 *         "code": "file_too_large",
-                 *         "message": "file exceeds 100 MB limit"
-                 *       }
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260926T120000.000000000"
                  *     }
                  */
-                "application/json": {
-                    error: components["schemas"]["Error"] & {
-                        /** @enum {string} */
-                        code?: "file_too_large";
-                    };
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "file_too_large";
                 };
             };
         };
