@@ -1266,5 +1266,55 @@ describe('useCallStore', () => {
 
         expect(useCallStore.getState().fsm.state).toBe('idle');
       });
+
+      it('ограничивает историю отмененных комнат (FIFO вытеснение сверх лимита 50)', async () => {
+        queryClient.setQueryData(chatKeys.list(), [
+          {
+            id: 'chat-alice',
+            type: 'private',
+            peerId: 'caller-alice',
+            title: 'Алиса',
+            avatarUrl: null,
+          },
+        ]);
+        vi.spyOn(services.callService, 'getRoom').mockResolvedValue({
+          success: true,
+          room: {
+            id: 'room-test',
+            type: 'p2p',
+            callKind: 'audio',
+            chatId: 'chat-alice',
+            title: '',
+            hostId: 'caller-alice',
+            participants: [{ userId: 'caller-alice' }],
+          },
+          iceServers: [],
+          maxParticipants: 2,
+        });
+
+        for (let i = 0; i < 60; i++) {
+          useCallStore.getState().handleCancelled({
+            type: 'call_cancelled',
+            roomId: `cancelled-room-${i}`,
+          });
+        }
+
+        // Room 59 всё ещё в списке отменённых — вызов должен отсекаться
+        await useCallStore.getState().handleIncoming({
+          roomId: 'cancelled-room-59',
+          from: 'caller-alice',
+          kind: 'audio',
+        });
+        expect(useCallStore.getState().fsm.state).toBe('idle');
+
+        // Room 0 была вытеснена из-за лимита 50 — вызов не отсекается по отмене
+        await useCallStore.getState().handleIncoming({
+          roomId: 'cancelled-room-0',
+          from: 'caller-alice',
+          kind: 'audio',
+        });
+        expect(useCallStore.getState().fsm.state).toBe('incoming');
+      });
     });
   });
+

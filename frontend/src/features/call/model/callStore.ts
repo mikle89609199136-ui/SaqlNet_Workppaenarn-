@@ -91,7 +91,18 @@ function formatCallerName(
   return fullName || user.username || undefined;
 }
 
+const MAX_CANCELLED_ROOMS = 50;
 const cancelledRoomIds = new Set<string>();
+
+function recordCancelledRoom(roomId: string) {
+  cancelledRoomIds.add(roomId);
+  if (cancelledRoomIds.size > MAX_CANCELLED_ROOMS) {
+    const oldest = cancelledRoomIds.values().next().value;
+    if (oldest !== undefined) {
+      cancelledRoomIds.delete(oldest);
+    }
+  }
+}
 
 export function _resetCancelledRoomsForTest() {
   cancelledRoomIds.clear();
@@ -359,7 +370,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         return;
       }
 
-      cancelledRoomIds.delete(payload.roomId);
+      if (cancelledRoomIds.has(payload.roomId)) {
+        cancelledRoomIds.delete(payload.roomId);
+        return;
+      }
 
       // Повторный incoming для той же комнаты игнорируем (уже звенит)
       if (fsm.state === 'incoming' && fsm.roomId === payload.roomId) {
@@ -450,7 +464,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     handleCancelled: (payload) => {
       const roomId = typeof payload === 'string' ? payload : payload.roomId;
       if (roomId) {
-        cancelledRoomIds.add(roomId);
+        recordCancelledRoom(roomId);
       }
       const { fsm } = get();
       if (fsm.roomId === roomId) {
