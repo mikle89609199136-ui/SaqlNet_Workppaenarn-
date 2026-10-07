@@ -110,8 +110,7 @@ export class PeerConnectionManager {
 
       const isConnected = this.pc?.connectionState
         ? this.pc.connectionState === 'connected'
-        : this.pc?.iceConnectionState === 'connected' ||
-          this.pc?.iceConnectionState === 'completed';
+        : this.pc?.iceConnectionState === 'connected' || this.pc?.iceConnectionState === 'completed';
 
       if (this.isClosed || !this.pc || !isConnected) return;
 

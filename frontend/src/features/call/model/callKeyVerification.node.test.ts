@@ -25,7 +25,9 @@ c=IN IP4 0.0.0.0`;
   describe('parseDtlsFingerprint', () => {
     it('извлекает и нормализует sha-256 отпечаток с двоеточиями', () => {
       const fp = parseDtlsFingerprint(sampleSdpA);
-      expect(fp).toBe('sha-256 4AADB9B13F82183B540212DF3E5D496B19E57CAB29A7F7619410975419D453C2');
+      expect(fp).toBe(
+        'sha-256 4AADB9B13F82183B540212DF3E5D496B19E57CAB29A7F7619410975419D453C2'
+      );
     });
 
     it('корректно нормализует строчные буквы и алгоритм', () => {

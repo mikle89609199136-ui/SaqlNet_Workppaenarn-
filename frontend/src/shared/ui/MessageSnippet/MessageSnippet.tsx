@@ -1,5 +1,9 @@
 import { memo, type ReactNode } from 'react';
-import { buildInlineSegments, type IMessageEntity, type IRichSegment } from '@/shared/lib/richText';
+import {
+  buildInlineSegments,
+  type IMessageEntity,
+  type IRichSegment,
+} from '@/shared/lib/richText';
 import { cn } from '@/shared/lib';
 
 export interface IMessageSnippetProps {
