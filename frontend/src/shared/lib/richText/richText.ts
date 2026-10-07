@@ -323,6 +323,50 @@ export function buildRichBlocks(text: string, entities: IMessageEntity[]): IRich
   });
 }
 
+/**
+ * Нарезка текста на однострочные инлайн-сегменты без блочных элементов (blockquote, pre).
+ * Используется в превью списка чатов (#971) и других компактных сниппетах.
+ *
+ * Переводы строк \r и \n заменяются пробелом 1:1, сохраняя позиции смещений entities.
+ */
+export function buildInlineSegments(text: string, entities?: IMessageEntity[]): IRichSegment[] {
+  if (!text) return [];
+
+  const normalizedText = text.replace(/[\r\n]/g, ' ');
+  const clean = entities?.length ? normalizeEntities(text, entities) : [];
+  const inline = clean.filter((entity) => entity.type !== 'blockquote');
+
+  if (inline.length === 0) {
+    return [{ text: normalizedText, formats: [] }];
+  }
+
+  const cuts = new Set<number>([0, normalizedText.length]);
+  for (const entity of inline) {
+    cuts.add(entity.offset);
+    cuts.add(entity.offset + entity.length);
+  }
+  const points = [...cuts].sort((a, b) => a - b);
+
+  const segments: IRichSegment[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i];
+    const to = points[i + 1];
+    if (from >= to) continue;
+
+    const covering = inline.filter(
+      (entity) => entity.offset <= from && entity.offset + entity.length >= to
+    );
+    const link = covering.find((entity) => entity.type === 'link');
+    segments.push({
+      text: normalizedText.slice(from, to),
+      formats: [...new Set(covering.map((entity) => entity.type as TInlineEntityType))],
+      ...(link?.data ? { url: link.data.url } : {}),
+    });
+  }
+
+  return segments;
+}
+
 /** Экранирование специальных символов HTML. */
 export function escapeHtml(text: string): string {
   return text
