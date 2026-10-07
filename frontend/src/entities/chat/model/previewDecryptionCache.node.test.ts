@@ -34,6 +34,21 @@ describe('расшифрованные превью списка чатов (#89
     expect(again.content).toBe('открытый: шифртекст-1');
   });
 
+  it('форматирование превью тоже берётся из памяти', async () => {
+    const entities = [{ type: 'bold', offset: 0, length: 4 }] as ILastMessageDto['entities'];
+    const decrypt = vi.fn(async (_chatId: string, preview: ILastMessageDto) => ({
+      ...preview,
+      content: 'жирно',
+      entities,
+    }));
+
+    await decryptPreviewOnce('c-1', message(), decrypt);
+    const again = await decryptPreviewOnce('c-1', message(), decrypt);
+
+    expect(decrypt).toHaveBeenCalledTimes(1);
+    expect(again).toMatchObject({ content: 'жирно', entities });
+  });
+
   it('изменённое сообщение — новый шифртекст — расшифровывается заново', async () => {
     const decrypt = decryptor();
 

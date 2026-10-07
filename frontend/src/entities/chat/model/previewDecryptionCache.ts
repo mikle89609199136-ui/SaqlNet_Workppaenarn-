@@ -1,7 +1,7 @@
 import type { ILastMessageDto } from './types';
 
 type TDecryptPreview = (chatId: string, lastMessage: ILastMessageDto) => Promise<ILastMessageDto>;
-type TDecryptedPart = Pick<ILastMessageDto, 'content'>;
+type TDecryptedPart = Pick<ILastMessageDto, 'content' | 'entities'>;
 
 const MAX_PREVIEWS = 500;
 const decrypted = new Map<string, TDecryptedPart>();
@@ -25,7 +25,7 @@ export async function decryptPreviewOnce(
 
   const preview = await decrypt(chatId, lastMessage);
   if (preview !== lastMessage && !preview.undecryptable) {
-    remember(key, { content: preview.content });
+    remember(key, { content: preview.content, entities: preview.entities });
   }
   return preview;
 }

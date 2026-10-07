@@ -1,4 +1,4 @@
-/* global self, caches, fetch, URL, BUILD_ID, PRECACHE_URLS */
+/* global self, caches, fetch, URL, setTimeout, BUILD_ID, PRECACHE_URLS */
 /*
  * Service worker CraneApp (#880): установка на экран «Домой» и запуск без
  * сети. Данные не кешируются никогда.
