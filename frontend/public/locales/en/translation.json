@@ -1,6 +1,4 @@
 {
-  "hideNotificationPreview": "Hide message text in notifications",
-  "showNotificationPreview": "Show message text in notifications",
   "action.translate": "Translate",
   "actionFailed": "Action failed",
   "addPhotoName": "Add a photo and enter your name",
@@ -292,6 +290,7 @@
   "groupMembersRequired": "Choose at least one member",
   "groupTitlePlaceholder": "Group name",
   "groupTitleRequired": "Enter a group name",
+  "hideNotificationPreview": "Hide message text in notifications",
   "hidePassword": "Hide password",
   "hideProfile": "hide",
   "imageMessage": "Photo",
@@ -760,6 +759,7 @@
   "settings.sessions.terminateNote": "You’ll be signed out on all devices, including this one.",
   "settingsSaved": "Settings saved",
   "sharedMedia": "Shared media",
+  "showNotificationPreview": "Show message text in notifications",
   "showPassword": "Show password",
   "tapAddPhoto": "Tap to add a photo",
   "toast.actionFailed": "The action failed",
