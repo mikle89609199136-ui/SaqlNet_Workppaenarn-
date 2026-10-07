@@ -66,6 +66,7 @@ services:
       args:
         SERVICE: auth
     environment:
+      CRANE_ENV: ${CRANE_ENV:-development}
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
       AUTH_LOGOUT_ALL_GENERATION_ENABLED: ${AUTH_LOGOUT_ALL_GENERATION_ENABLED:-false}
@@ -81,6 +82,7 @@ services:
       args:
         SERVICE: user
     environment:
+      CRANE_ENV: ${CRANE_ENV:-development}
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
       # Web Push (#717): пусто — push выключен. Ключи: go run ./cmd/vapidkeys.
@@ -97,6 +99,7 @@ services:
       args:
         SERVICE: chat
     environment:
+      CRANE_ENV: ${CRANE_ENV:-development}
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
       NATS_URL: nats://nats:4222
@@ -121,6 +124,7 @@ services:
       args:
         SERVICE: media
     environment:
+      CRANE_ENV: ${CRANE_ENV:-development}
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
       MINIO_ENDPOINT: http://minio:9000
@@ -143,6 +147,7 @@ services:
       args:
         SERVICE: admin
     environment:
+      CRANE_ENV: ${CRANE_ENV:-development}
       DATABASE_URL: postgres://craneapp:craneapp-local@postgres:5432/craneapp?sslmode=disable
       CRYPTO_URL: http://crypto:5005
     depends_on:
@@ -163,7 +168,7 @@ services:
       MEDIA_URL: http://media:8084
       ADMIN_URL: http://admin:8085
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
-      CRANE_ENV: production
+      CRANE_ENV: ${CRANE_ENV:-development}
     ports:
       - '8080:8080'
     depends_on:
