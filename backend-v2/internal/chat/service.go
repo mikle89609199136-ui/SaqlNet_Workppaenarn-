@@ -70,13 +70,13 @@ type Chat struct {
 }
 
 type LastMessagePreview struct {
-	ID         string          `json:"id"`
-	Content    string          `json:"content"`
-	Entities   MessageEntities `json:"entities"`
-	Type       string          `json:"type"`
-	SenderID   string          `json:"senderId,omitempty"`
-	SenderName string          `json:"senderName"`
-	Reactions  []Reaction      `json:"reactions"`
+	ID         string           `json:"id"`
+	Content    string           `json:"content"`
+	Entities   MessageEntities  `json:"entities"`
+	Type       string           `json:"type"`
+	SenderID   string           `json:"senderId,omitempty"`
+	SenderName string           `json:"senderName"`
+	Reactions  MessageReactions `json:"reactions"`
 	// DeliveredAt, ReadAt — у своего последнего сообщения (#657).
 	DeliveredAt string `json:"deliveredAt,omitempty"`
 	ReadAt      string `json:"readAt,omitempty"`
@@ -110,7 +110,7 @@ type Message struct {
 	ReplyToMessageID    *string             `json:"replyToMessageId,omitempty"`
 	ReplySenderName     string              `json:"replySenderName,omitempty"`
 	ReplyToSenderName   string              `json:"replyToSenderName,omitempty"`
-	Reactions           []Reaction          `json:"reactions"`
+	Reactions           MessageReactions    `json:"reactions"`
 	Metadata            map[string]any      `json:"metadata,omitempty"`
 	IsForwarded         bool                `json:"isForwarded"`
 	ForwardedSenderName string              `json:"forwardedSenderName,omitempty"`

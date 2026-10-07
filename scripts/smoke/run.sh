@@ -12,6 +12,9 @@ source "$SCRIPT_DIR/media.sh"
 source "$SCRIPT_DIR/websocket.sh"
 
 BASE_URL="${1:-http://127.0.0.1:3000}"
+COOKIE_JAR=$(mktemp)
+COOKIE_JAR_B=$(mktemp)
+trap 'rm -f "$COOKIE_JAR" "$COOKIE_JAR_B"' EXIT
 
 # source "$(dirname "$0")/websocket.sh"
 
@@ -40,7 +43,7 @@ check_health
 # 2. Критические сценарии
 run_auth_tests
 run_chat_tests
-if python3 "$SCRIPT_DIR/entities.py" "$BASE_URL" "$TOKEN" "$CHAT_ID"; then
+if python3 "$SCRIPT_DIR/entities.py" "$BASE_URL" "$SESSION_COOKIE" "$CHAT_ID"; then
 	PASS=$((PASS + 1))
 else
 	FAIL=$((FAIL + 1))

@@ -1,4 +1,4 @@
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 x-user: &user { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
 x-report: &report { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
 x-request: &request { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }

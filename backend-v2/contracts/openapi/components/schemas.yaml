@@ -57,10 +57,9 @@ LoginRequest:
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user, token]
+  required: [user]
   properties:
     user: { $ref: '#/User' }
-    token: { type: string }
 AuthSession:
   type: object
   required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
@@ -286,7 +285,10 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
-    reactions: { type: array, items: { $ref: '#/Reaction' } }
+    reactions:
+      type: array
+      description: Always an array; empty reactions are [], never null.
+      items: { $ref: '#/Reaction' }
     deliveredAt:
       type: string
       description: >-
@@ -329,6 +331,7 @@ Message:
     replyToSenderName: { type: string }
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
     metadata:
       type: object
@@ -513,6 +516,7 @@ MessageListResponse:
   properties:
     messages:
       type: array
+      description: Always an array; no messages are represented by [], never null.
       items: { $ref: '#/Message' }
 DeleteMessagesRequest:
   type: object
@@ -565,6 +569,7 @@ ReactionListResponse:
   properties:
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 ReactionToggleResponse:
   type: object
@@ -576,6 +581,7 @@ ReactionToggleResponse:
       description: Empty when the reaction was removed.
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 FavoriteStateResponse:
   type: object
@@ -968,7 +974,6 @@ QrOfferStatusResponse:
   properties:
     status: { type: string, enum: [pending, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
 QrOfferConfirmRequest:
   type: object
@@ -981,5 +986,4 @@ QrStatusResponse:
   properties:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }

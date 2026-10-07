@@ -81,7 +81,9 @@ function Spoiler({ children }: { children: ReactNode }) {
       role="button"
       tabIndex={0}
     >
-      {children}
+      <span className={revealed ? undefined : 'invisible'}>
+        <mark className="bg-transparent text-inherit">{children}</mark>
+      </span>
     </span>
   );
 }
@@ -112,15 +114,25 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
     );
   }
 
-  const classes = cn(
-    formats.includes('bold') && 'font-semibold',
-    formats.includes('italic') && 'italic',
-    formats.includes('underline') && 'underline',
-    formats.includes('strikethrough') && 'line-through',
-    (formats.includes('underline') || formats.includes('strikethrough')) &&
-      'decoration-[1.5px] underline-offset-3'
-  );
-  if (classes) node = <span className={classes}>{node}</span>;
+  const hasUnderline = formats.includes('underline');
+  const hasStrikethrough = formats.includes('strikethrough');
+  const hasBold = formats.includes('bold');
+  const hasItalic = formats.includes('italic');
+
+  if (hasStrikethrough && hasUnderline) {
+    node = (
+      <u className="decoration-[1.5px] underline-offset-3">
+        <s className="line-through decoration-[1.5px] underline-offset-3">{node}</s>
+      </u>
+    );
+  } else if (hasStrikethrough) {
+    node = <s className="line-through decoration-[1.5px] underline-offset-3">{node}</s>;
+  } else if (hasUnderline) {
+    node = <u className="underline decoration-[1.5px] underline-offset-3">{node}</u>;
+  }
+
+  if (hasItalic) node = <em className="italic">{node}</em>;
+  if (hasBold) node = <strong className="font-semibold">{node}</strong>;
 
   if (url) {
     node = (

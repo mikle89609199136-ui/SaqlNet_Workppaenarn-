@@ -314,13 +314,14 @@ func randomUUID(t *testing.T) string {
 // WebSocket helpers
 // -----------------------------------------------------------------------------
 
-// dialWS opens a WebSocket connection to srv, passing userID as a Bearer
-// token. ServeWS accepts tokens from the Authorization header.
+// dialWS opens a WebSocket connection to srv using the browser session cookie.
+// ServeWS also requires the exact same Origin for cookie-authenticated sockets.
 func dialWS(t *testing.T, srv *httptest.Server, userID string) *websocket.Conn {
 	t.Helper()
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{
-		"Authorization": {"Bearer " + userID},
+		"Cookie": {"craneapp_session=" + userID},
+		"Origin": {srv.URL},
 	})
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)

@@ -127,8 +127,9 @@ func TestWSServerRejectsMissingToken(t *testing.T) {
 func TestWSServerRejectsInvalidToken(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{err: errors.New("invalid")}, nil)
 	t.Cleanup(ws.Close)
-	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
-	request.Header.Set("Authorization", "Bearer bad")
+	request := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
+	request.Header.Set("Origin", "https://craneapp.example")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "bad"})
 	response := httptest.NewRecorder()
 
 	ws.ServeWS(response, request)
@@ -142,8 +143,9 @@ func TestWSServerReportsIncompatibleCryptoAsUnavailable(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{err: cryptoclient.ErrTokenGenerationProtocol}, nil)
 	t.Cleanup(ws.Close)
 	ws.tokenChecker = fakeTokenChecker{}
-	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
-	request.Header.Set("Authorization", "Bearer legacy")
+	request := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
+	request.Header.Set("Origin", "https://craneapp.example")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "legacy"})
 	response := httptest.NewRecorder()
 
 	ws.ServeWS(response, request)
@@ -157,8 +159,9 @@ func TestWSServerRejectsHandshakeWhenRevocationCheckFails(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
 	t.Cleanup(ws.Close)
 	ws.tokenChecker = fakeTokenChecker{err: errors.New("database unavailable")}
-	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
-	request.Header.Set("Authorization", "Bearer valid")
+	request := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
+	request.Header.Set("Origin", "https://craneapp.example")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "valid"})
 	response := httptest.NewRecorder()
 
 	ws.ServeWS(response, request)
@@ -172,8 +175,9 @@ func TestWSServerRejectsRevokedToken(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
 	t.Cleanup(ws.Close)
 	ws.tokenChecker = fakeTokenChecker{revoked: true}
-	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
-	request.Header.Set("Authorization", "Bearer revoked")
+	request := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
+	request.Header.Set("Origin", "https://craneapp.example")
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "revoked"})
 	response := httptest.NewRecorder()
 
 	ws.ServeWS(response, request)
@@ -187,6 +191,7 @@ func TestWSServerRejectsRevokedToken(t *testing.T) {
 // подключиться с ней можно только со своего или точно разрешённого адреса.
 func TestWSServerCookieSessionRequiresOwnOrigin(t *testing.T) {
 	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("CRANE_ENV", "production")
 	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
 	t.Cleanup(ws.Close)
 	// «Отозван» — чтобы проверка дошла до конца без настоящего апгрейда.
@@ -204,6 +209,9 @@ func TestWSServerCookieSessionRequiresOwnOrigin(t *testing.T) {
 	if code := handshake("https://evil.example"); code != http.StatusForbidden {
 		t.Fatalf("foreign origin: %d, want 403", code)
 	}
+	if code := handshake(""); code != http.StatusForbidden {
+		t.Fatalf("missing origin: %d, want 403", code)
+	}
 	// Свой адрес: токен из cookie принят и дошёл до проверки отзыва.
 	if code := handshake("https://craneapp.example"); code != http.StatusUnauthorized {
 		t.Fatalf("own origin: %d, want the revocation check (401)", code)
@@ -211,7 +219,7 @@ func TestWSServerCookieSessionRequiresOwnOrigin(t *testing.T) {
 }
 
 // Токен в адресе сокета больше не принимается (#705): адреса попадают в
-// журналы. Только cookie сессии или заголовок.
+// журналы. Единственный способ аутентификации — cookie сессии.
 func TestWSServerRejectsTokenInURL(t *testing.T) {
 	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
 	t.Cleanup(ws.Close)
@@ -223,5 +231,20 @@ func TestWSServerRejectsTokenInURL(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("token in URL: %d, want 401", response.Code)
+	}
+}
+
+func TestWSServerRejectsBearerToken(t *testing.T) {
+	ws := NewWSServer(nil, fakeTokenVerifier{claims: cryptoclient.TokenClaims{Subject: "user1"}}, nil)
+	t.Cleanup(ws.Close)
+	ws.tokenChecker = fakeTokenChecker{}
+	request := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	request.Header.Set("Authorization", "Bearer valid")
+	response := httptest.NewRecorder()
+
+	ws.ServeWS(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("bearer token: %d, want 401", response.Code)
 	}
 }
