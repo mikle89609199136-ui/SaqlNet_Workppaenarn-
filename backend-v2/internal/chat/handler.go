@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -404,14 +405,31 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/ban" && r.Method == http.MethodPost {
 			var input struct {
-				BannedUntil *time.Time `json:"bannedUntil"`
-				Reason      string     `json:"reason"`
+				BannedUntil *string `json:"bannedUntil"`
+				Reason      string  `json:"reason"`
 			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid ban body")
+			if !decode(w, r, &input) {
 				return
 			}
-			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.BannedUntil, input.Reason))
+
+			var bannedUntil *time.Time
+			if input.BannedUntil != nil {
+				t, err := time.Parse(time.RFC3339, *input.BannedUntil)
+				if err != nil {
+					slog.WarnContext(r.Context(), "invalid bannedUntil",
+						"layer", "handler",
+						"method", "Chat",
+						"user_id", current.ID,
+						"chat_id", chatID,
+						"member_id", memberID,
+						"err", err,
+					)
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid bannedUntil")
+					return
+				}
+				bannedUntil = &t
+			}
+			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, bannedUntil, input.Reason))
 			return
 		}
 		if action == "/unban" && r.Method == http.MethodPost {
@@ -420,13 +438,31 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/mute" && r.Method == http.MethodPost {
 			var input struct {
-				MutedUntil *time.Time `json:"mutedUntil"`
+				MutedUntil *string `json:"mutedUntil"`
 			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mute body")
+			if !decode(w, r, &input) {
 				return
 			}
-			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, input.MutedUntil)
+
+			var mutedUntil *time.Time
+			if input.MutedUntil != nil {
+				t, err := time.Parse(time.RFC3339, *input.MutedUntil)
+				if err != nil {
+					slog.WarnContext(r.Context(), "invalid mutedUntil",
+						"layer", "handler",
+						"method", "Chat",
+						"user_id", current.ID,
+						"chat_id", chatID,
+						"member_id", memberID,
+						"err", err,
+					)
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mutedUntil")
+					return
+				}
+				mutedUntil = &t
+			}
+
+			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, mutedUntil)
 			if errors.Is(err, ErrNotFound) {
 				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
 				return
@@ -926,16 +962,43 @@ func parseMemberAction(suffix string) (string, string) {
 	return parts[0], "/" + parts[1]
 }
 
+// decode decodes a JSON request body into value using the default 256 KiB limit.
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	return decodeLimited(w, r, value, 256<<10)
 }
 
-// decodeLimited — decode со своим пределом тела: отправке пачкой общего не хватает.
+// decodeLimited decodes a JSON request body into value with a custom size limit.
+// It returns true on success; on failure it writes an error response and returns false.
+// The body must contain exactly one JSON value with no trailing data.
 func decodeLimited(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(value); err != nil {
+	const helper = "decodeLimited"
+
+	body := http.MaxBytesReader(w, r.Body, limit)
+	dec := json.NewDecoder(body)
+
+	if err := dec.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "invalid JSON body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
+
+	// Reject trailing data after the first JSON value.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		slog.WarnContext(r.Context(), "trailing data in request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+		return false
+	}
+
 	return true
 }
 

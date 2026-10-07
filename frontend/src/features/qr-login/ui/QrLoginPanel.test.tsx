@@ -108,6 +108,22 @@ describe('код входа на новом устройстве меняетс�
     expect(codes.created).toHaveLength(1);
   });
 
+  it('завершает вход по cookie без токена в ответе', async () => {
+    const codes = codeServer();
+    const onConfirmed = vi.fn(async () => {});
+    render(
+      <I18nextProvider i18n={testI18n}>
+        <QrLoginPanel onConfirmed={onConfirmed} />
+      </I18nextProvider>
+    );
+    await screen.findByRole('img', { name: 'QR-код для входа' });
+
+    codes.setStatus('confirmed');
+    await advance(2000);
+
+    await vi.waitFor(() => expect(onConfirmed).toHaveBeenCalledWith({ masterKey: null }));
+  });
+
   it('уходя со страницы, гасит показанный код', async () => {
     const codes = codeServer();
     const view = renderPanel();

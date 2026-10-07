@@ -8,6 +8,8 @@ set -euo pipefail
 BASE_URL="${1:-http://127.0.0.1:3000}"
 TEST_USER="loadtest_lt$$"
 TEST_PASS="securepassword_lt1"
+COOKIE_JAR=$(mktemp)
+trap 'rm -f "$COOKIE_JAR"' EXIT
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓${NC} $*"; }
@@ -28,22 +30,26 @@ ok "Gateway up"
 # ── Register + Login ─────────────────────────────────────────────────────────
 info "Registering test user: $TEST_USER"
 REG=$(curl -sf -X POST "$BASE_URL/api/v2/auth/register" \
+	-c "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"firstName\":\"LoadTest\"}" \
   2>/dev/null || true)
 
-if echo "$REG" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if 'token' in d else 1)" 2>/dev/null; then
-  TOKEN=$(echo "$REG" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-  ok "Registered and obtained token"
+if echo "$REG" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('user',{}).get('id') and 'token' not in d else 1)" 2>/dev/null; then
+  ok "Registered and obtained session cookie"
 else
   # Пользователь уже есть — логинимся
   LOGIN=$(curl -sf -X POST "$BASE_URL/api/v2/auth/login" \
+	-c "$COOKIE_JAR" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\"}" 2>/dev/null || true)
-  TOKEN=$(echo "$LOGIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null || true)
-  [[ -n "$TOKEN" ]] || fail "Registration and login both failed. Response: $REG"
+  echo "$LOGIN" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('user',{}).get('id') and 'token' not in d else 1)" 2>/dev/null || \
+		fail "Registration and login both failed. Response: $REG"
   ok "Logged in (user already existed)"
 fi
+
+COOKIE_HEADER=$(awk 'NF >= 7 && ($1 !~ /^#/ || $1 ~ /^#HttpOnly_/) { print $6 "=" $7; exit }' "$COOKIE_JAR")
+[[ -n "$COOKIE_HEADER" ]] || fail "Login did not set a session cookie"
 
 # ── Вспомогательная функция: тест с уникальными IP ───────────────────────────
 # $1=label $2=N $3=concurrency $4=method $5=endpoint $6=extra_curl_args...
@@ -52,17 +58,18 @@ multi_ip_test() {
   shift 5
   local EXTRA_ARGS=("$@")
 
-  /usr/bin/python3 - "$LABEL" "$N" "$CONC" "$METHOD" "$BASE_URL$ENDPOINT" "$TOKEN" "${EXTRA_ARGS[@]}" <<'PYEOF'
+  /usr/bin/python3 - "$LABEL" "$N" "$CONC" "$METHOD" "$BASE_URL$ENDPOINT" "$COOKIE_HEADER" "${EXTRA_ARGS[@]}" <<'PYEOF'
 import subprocess, concurrent.futures, sys
 
-label, n, conc, method, url, token = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5], sys.argv[6]
+label, n, conc, method, url, cookie = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5], sys.argv[6]
 extra = sys.argv[7:]
 
 def req(i):
     ip = f"10.{(i>>16)&255}.{(i>>8)&255}.{i&255}" if i else "10.0.0.1"
     cmd = ["curl","-s","-o","/dev/null","-w","%{http_code} %{time_total}",
            "-X", method,
-           "-H", f"Authorization: Bearer {token}",
+           "-H", f"Cookie: {cookie}",
+           "-H", f"Origin: {url.split('/api/', 1)[0]}",
            "-H", f"X-Forwarded-For: {ip}"] + extra + [url]
     r = subprocess.run(cmd, capture_output=True, text=True)
     parts = r.stdout.strip().split()
@@ -92,7 +99,7 @@ PYEOF
 ab_test() {
   local LABEL="$1" N="$2" CONC="$3" URL="$4"
   local OUT
-  OUT=$(ab -n "$N" -c "$CONC" -H "Authorization: Bearer $TOKEN" -q "$URL" 2>&1)
+  OUT=$(ab -n "$N" -c "$CONC" -q "$URL" 2>&1)
   local RPS P50 P99 FAILED
   RPS=$(echo "$OUT" | grep "Requests per second" | awk '{print $4}')
   P50=$(echo "$OUT" | grep "^ *50%" | awk '{print $2}')
@@ -178,15 +185,15 @@ multi_ip_test "GET /api/v2/emojis" 200 25 GET /api/v2/emojis
 # ── 6. Rate limiter ───────────────────────────────────────────────────────────
 echo ""
 info "6. Rate limiter (single IP burst — expect 429s)"
-/usr/bin/python3 - "$BASE_URL" "$TOKEN" <<'PYEOF'
+/usr/bin/python3 - "$BASE_URL" "$COOKIE_HEADER" <<'PYEOF'
 import subprocess, concurrent.futures, sys
 
-base, token = sys.argv[1], sys.argv[2]
+base, cookie = sys.argv[1], sys.argv[2]
 
 def req(i):
     r = subprocess.run([
         "curl","-s","-o","/dev/null","-w","%{http_code}",
-        "-H",f"Authorization: Bearer {token}",
+        "-H",f"Cookie: {cookie}",
         f"{base}/api/v2/users/me"
     ], capture_output=True, text=True)
     return int(r.stdout.strip())

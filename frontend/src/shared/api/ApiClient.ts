@@ -27,6 +27,7 @@ export interface IApiError extends Error {
    * лежит английская строка для разработчика — «member is muted».
    */
   code?: string;
+  headers?: Headers;
 }
 
 export class ApiClient {
@@ -164,6 +165,7 @@ export class ApiClient {
       error.status = response.status;
       error.data = payload;
       error.code = payloadObj?.code;
+      error.headers = response.headers;
 
       if (response.status === 401) {
         this.onUnauthorized?.(error);

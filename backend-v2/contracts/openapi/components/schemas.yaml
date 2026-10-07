@@ -57,10 +57,9 @@ LoginRequest:
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user, token]
+  required: [user]
   properties:
     user: { $ref: '#/User' }
-    token: { type: string }
 AuthSession:
   type: object
   required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
@@ -976,7 +975,6 @@ QrOfferStatusResponse:
   properties:
     status: { type: string, enum: [pending, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
 QrOfferConfirmRequest:
   type: object
@@ -989,5 +987,4 @@ QrStatusResponse:
   properties:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }

@@ -33,13 +33,23 @@ function cancelPending(chatId: string): void {
   pending.delete(chatId);
 }
 
+const EMPTY_RICH_DRAFT: IRichText = { text: '', entities: [] };
+
 export function readDraft(chatId: string): string {
   return drafts.get(chatId)?.text ?? '';
 }
 
+/**
+ * Черновик с форматированием для списка чатов (#971) или хука подписки.
+ * Возвращает точную ссылку из хранилища или null, безопасно для useSyncExternalStore.
+ */
+export function readDraftRich(chatId: string): IRichText | null {
+  return drafts.get(chatId) ?? null;
+}
+
 /** Черновик с форматированием — для поля ввода. */
 export function readRichDraft(chatId: string): IRichText {
-  return drafts.get(chatId) ?? { text: '', entities: [] };
+  return drafts.get(chatId) ?? EMPTY_RICH_DRAFT;
 }
 
 /**

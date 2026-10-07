@@ -286,6 +286,7 @@ export const EMOJI_KEYWORDS: Readonly<Record<string, readonly [ru: string, en: s
   '🔥': ['огонь, жара', 'fire, lit'],
   '⭐': ['звезда, избранное', 'star'],
   '🚀': ['ракета, релиз, запуск', 'rocket, launch'],
+  '🕘': ['часы, время', 'clock, time'],
 };
 
 /** Имя файла Noto: кодовые точки без селектора вида FE0F — «❤️» → `2764`. */

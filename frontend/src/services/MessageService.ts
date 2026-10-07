@@ -378,14 +378,16 @@ export class MessageService {
 
     let content = message.content;
     let undecryptable: TUndecryptableReason | undefined;
+    let entities = message.entities;
 
     if (content) {
       const decrypted = await this.decryptContent(chatId, content, context, message.senderId);
       content = decrypted.text;
       undecryptable = decrypted.undecryptable;
+      if (decrypted.entities) entities = decrypted.entities;
     }
 
-    return { ...message, content, undecryptable };
+    return { ...message, content, undecryptable, ...(entities ? { entities } : {}) };
   }
 
   /**

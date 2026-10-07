@@ -1,7 +1,9 @@
 package media
 
 import (
-	"encoding/json"
+	"database/sql"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -59,27 +61,66 @@ func (h *Handler) CreateGif(w http.ResponseWriter, r *http.Request) {
 
 	user := authctx.MustUser(r)
 
+	r.Body = http.MaxBytesReader(w, r.Body, gifCreateBodyLimitBytes)
 	var req struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", "request body exceeds 64 KiB limit")
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
-	if req.URL == "" {
+	if strings.TrimSpace(req.URL) == "" {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "missing_url", "url is required")
 		return
 	}
 
-	var gif Gif
+	uploadID, ok := parseGifMediaPath(req.URL)
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_url", "url must be a media upload path")
+		return
+	}
+	name, ok := validateGifName(req.Name)
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "name must contain at most 255 characters and no control characters")
+		return
+	}
+
+	var contentType string
+	var encrypted bool
 	err := h.service.db.QueryRowContext(r.Context(), `
+		SELECT content_type, is_encrypted
+		FROM media.uploads
+		WHERE id = $1 AND uploader_id = $2
+	`, uploadID, user.ID).Scan(&contentType, &encrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "upload_not_found", "upload not found")
+		return
+	}
+	if err != nil {
+		slog.Error("find GIF source upload", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	mediaType, valid := normalizeMediaType(contentType)
+	if !valid || mediaType != "image/gif" || encrypted {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_gif_source", "source must be an unencrypted GIF upload")
+		return
+	}
+
+	var gif Gif
+	err = h.service.db.QueryRowContext(r.Context(), `
 		INSERT INTO media.gifs (user_id, name, url)
 		VALUES ($1, $2, $3)
 		RETURNING id::text, name, url, created_at::text
-	`, user.ID, req.Name, req.URL).Scan(&gif.ID, &gif.Name, &gif.URL, &gif.CreatedAt)
+	`, user.ID, name, req.URL).Scan(&gif.ID, &gif.Name, &gif.URL, &gif.CreatedAt)
 	if err != nil {
-		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
+		slog.Error("create GIF", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 
