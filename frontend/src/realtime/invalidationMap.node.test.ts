@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WS_EVENTS } from '@/shared/config';
 import { chatKeys } from '@/entities/chat';
+import { userKeys } from '@/entities/user';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 
 /** Все объявленные типы событий — плоским списком. */
@@ -82,5 +83,33 @@ describe('что устаревает при событии', () => {
 
   it('should invalidate nothing for an unknown event', () => {
     expect(resolveInvalidations('событие-которого-нет', { chatId })).toEqual([]);
+  });
+
+  it('should refresh user profile, chat list, and me on profile update', () => {
+    const peerId = 'user-peer';
+    const currentUserId = 'user-me';
+
+    // Чужой профиль: инвалидируем его карточку и список чатов
+    expect(
+      resolveInvalidations(WS_EVENTS.USER.PROFILE_UPDATED, {
+        userId: peerId,
+        currentUserId,
+      })
+    ).toEqual([userKeys.profile(peerId), chatKeys.list()]);
+
+    // Свой профиль: инвалидируем карточку, список чатов и userKeys.me()
+    expect(
+      resolveInvalidations(WS_EVENTS.USER.PROFILE_UPDATED, {
+        userId: currentUserId,
+        currentUserId,
+      })
+    ).toEqual([userKeys.profile(currentUserId), chatKeys.list(), userKeys.me()]);
+
+    // Без указания currentUserId (по умолчанию считается своим)
+    expect(
+      resolveInvalidations(WS_EVENTS.USER.PROFILE_UPDATED, {
+        userId: currentUserId,
+      })
+    ).toEqual([userKeys.profile(currentUserId), chatKeys.list(), userKeys.me()]);
   });
 });

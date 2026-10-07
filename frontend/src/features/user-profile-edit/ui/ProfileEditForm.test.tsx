@@ -176,3 +176,140 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     expect(avatarImg).toHaveAttribute('src', INITIAL_USER.avatarUrl);
   });
 });
+
+describe('ProfileEditForm: редактирование username (#724)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('отображает поле username с текущим значением пользователя', () => {
+    renderForm();
+
+    const usernameInput = screen.getByLabelText(/Имя пользователя/i);
+    expect(usernameInput).toHaveValue(INITIAL_USER.username);
+  });
+
+  it('если username не менялся, updateUsername не вызывается, а вызывается только updateMe', async () => {
+    const updateUsernameSpy = vi.spyOn(services.userService, 'updateUsername');
+    const updateMeSpy = vi
+      .spyOn(services.userService, 'updateMe')
+      .mockResolvedValue({ ...INITIAL_USER, firstName: 'Пётр' });
+    const onBack = vi.fn();
+
+    renderForm(INITIAL_USER, onBack);
+
+    const firstNameInput = screen.getByLabelText(/^Имя$/i);
+    await userEvent.clear(firstNameInput);
+    await userEvent.type(firstNameInput, 'Пётр');
+
+    const saveButton = screen.getByRole('button', { name: /Сохранить/i });
+    await userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(updateMeSpy).toHaveBeenCalledWith({
+        firstName: 'Пётр',
+        lastName: INITIAL_USER.lastName,
+        bio: '',
+      });
+    });
+    expect(updateUsernameSpy).not.toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('при изменении username отправляет updateUsername первым и синхронизирует кеш и стор', async () => {
+    const updatedUser: IUserDto = {
+      ...INITIAL_USER,
+      username: 'new_unique_name',
+    };
+    const updateUsernameSpy = vi
+      .spyOn(services.userService, 'updateUsername')
+      .mockResolvedValue(updatedUser);
+    const updateMeSpy = vi.spyOn(services.userService, 'updateMe');
+    const onBack = vi.fn();
+
+    const { queryClient } = renderForm(INITIAL_USER, onBack);
+
+    const usernameInput = screen.getByLabelText(/Имя пользователя/i);
+    await userEvent.clear(usernameInput);
+    await userEvent.type(usernameInput, 'new_unique_name');
+
+    const saveButton = screen.getByRole('button', { name: /Сохранить/i });
+    await userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(updateUsernameSpy).toHaveBeenCalledWith('new_unique_name');
+    });
+    expect(updateMeSpy).not.toHaveBeenCalled();
+
+    const cachedUser = queryClient.getQueryData<IUserDto>(userKeys.me());
+    expect(cachedUser?.username).toBe('new_unique_name');
+    expect(useProfileStore.getState().user?.username).toBe('new_unique_name');
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('при ошибке 409 (занято) показывает ошибку под полем, не вызывает updateMe и оставляет форму открытой', async () => {
+    const conflictError = Object.assign(new Error('username already taken'), {
+      status: 409,
+      code: 'username_taken',
+    });
+    vi.spyOn(services.userService, 'updateUsername').mockRejectedValue(conflictError);
+    const updateMeSpy = vi.spyOn(services.userService, 'updateMe');
+    const onBack = vi.fn();
+
+    renderForm(INITIAL_USER, onBack);
+
+    const usernameInput = screen.getByLabelText(/Имя пользователя/i);
+    await userEvent.clear(usernameInput);
+    await userEvent.type(usernameInput, 'occupied_nick');
+
+    const saveButton = screen.getByRole('button', { name: /Сохранить/i });
+    await userEvent.click(saveButton);
+
+    expect(await screen.findByText('Это имя уже занято')).toBeInTheDocument();
+    expect(updateMeSpy).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('при ошибке 429 (кулдаун) выводит сообщение с временем кулдауна, не вызывает updateMe и оставляет форму открытой', async () => {
+    const cooldownError = Object.assign(new Error('cooldown active'), {
+      status: 429,
+      code: 'username_change_cooldown',
+      headers: new Headers({ 'Retry-After': '7200' }),
+    });
+    vi.spyOn(services.userService, 'updateUsername').mockRejectedValue(cooldownError);
+    const updateMeSpy = vi.spyOn(services.userService, 'updateMe');
+    const onBack = vi.fn();
+
+    renderForm(INITIAL_USER, onBack);
+
+    const usernameInput = screen.getByLabelText(/Имя пользователя/i);
+    await userEvent.clear(usernameInput);
+    await userEvent.type(usernameInput, 'cooldown_nick');
+
+    const saveButton = screen.getByRole('button', { name: /Сохранить/i });
+    await userEvent.click(saveButton);
+
+    expect(
+      await screen.findByText(/Имя пользователя можно менять не чаще одного раза в 24 часа/i)
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Осталось подождать 2 ч\./i)).toBeInTheDocument();
+    expect(updateMeSpy).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('не отправляет запрос проверки доступности, если введен текущий username', async () => {
+    const checkUsernameSpy = vi.spyOn(services.userService, 'checkUsername');
+
+    renderForm(INITIAL_USER);
+
+    const usernameInput = screen.getByLabelText(/Имя пользователя/i);
+    // Вводим то же самое имя в другом регистре
+    await userEvent.clear(usernameInput);
+    await userEvent.type(usernameInput, INITIAL_USER.username.toUpperCase());
+
+    // Ждём дебаунс
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(checkUsernameSpy).not.toHaveBeenCalled();
+  });
+});

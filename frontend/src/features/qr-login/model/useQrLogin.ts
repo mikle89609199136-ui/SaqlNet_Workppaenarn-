@@ -12,7 +12,6 @@ export const QR_ROTATE_MS = 30_000;
 export type TQrLoginStatus = 'starting' | 'pending' | 'scanned' | 'error';
 
 export interface IQrLoginResult {
-  authToken: string;
   /** Мастер-ключ копии; `null` — вошедшее устройство прислало не то. */
   masterKey: Uint8Array<ArrayBuffer> | null;
 }
@@ -122,12 +121,12 @@ export function useQrLogin(onConfirmed: (result: IQrLoginResult) => Promise<void
               setStatus('scanned');
             }
 
-            if (state.status === 'confirmed' && state.authToken) {
+            if (state.status === 'confirmed') {
               current = null;
               const masterKey = state.payload
                 ? await code.receiver.open(state.payload, code.token).catch(() => null)
                 : null;
-              await confirmedRef.current({ authToken: state.authToken, masterKey }).catch(restart);
+              await confirmedRef.current({ masterKey }).catch(restart);
               return;
             }
           }

@@ -123,12 +123,7 @@ describe('CallLobbyView', () => {
   it('вызывает switchMicrophone и switchCamera при изменении селекторов', () => {
     const localMedia = createMockLocalMedia();
     render(
-      <CallLobbyView
-        kind="video"
-        localMedia={localMedia}
-        onJoin={vi.fn()}
-        onCancel={vi.fn()}
-      />
+      <CallLobbyView kind="video" localMedia={localMedia} onJoin={vi.fn()} onCancel={vi.fn()} />
     );
 
     const micSelect = screen.getByRole('combobox', { name: /Микрофон/ });
@@ -165,12 +160,7 @@ describe('CallLobbyView', () => {
   it('скрывает селектор камеры при аудиозвонке', () => {
     const localMedia = createMockLocalMedia();
     render(
-      <CallLobbyView
-        kind="audio"
-        localMedia={localMedia}
-        onJoin={vi.fn()}
-        onCancel={vi.fn()}
-      />
+      <CallLobbyView kind="audio" localMedia={localMedia} onJoin={vi.fn()} onCancel={vi.fn()} />
     );
 
     expect(screen.getByRole('combobox', { name: /Микрофон/ })).toBeInTheDocument();
@@ -180,12 +170,7 @@ describe('CallLobbyView', () => {
   it('показывает аватар заглушки при выключенной камере', () => {
     const localMedia = createMockLocalMedia({ isVideoMuted: true });
     render(
-      <CallLobbyView
-        peerName="Анна"
-        localMedia={localMedia}
-        onJoin={vi.fn()}
-        onCancel={vi.fn()}
-      />
+      <CallLobbyView peerName="Анна" localMedia={localMedia} onJoin={vi.fn()} onCancel={vi.fn()} />
     );
 
     expect(screen.queryByLabelText('Ваша камера')).not.toBeInTheDocument();

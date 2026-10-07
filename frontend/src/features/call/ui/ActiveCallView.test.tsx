@@ -230,9 +230,7 @@ describe('ActiveCallView', () => {
     );
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(
-      screen.getByText('Доступ к микрофону или камере запрещён')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Доступ к микрофону или камере запрещён')).toBeInTheDocument();
   });
 
   it('отображает статус соединения при connecting', () => {
@@ -308,9 +306,7 @@ describe('ActiveCallView', () => {
       />
     );
 
-    expect(
-      screen.getAllByLabelText('Собеседник выключил микрофон').length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Собеседник выключил микрофон').length).toBeGreaterThan(0);
   });
 
   it('присваивает srcObject удалённому видео после unmute трека', async () => {
@@ -397,7 +393,7 @@ describe('ActiveCallView', () => {
     );
 
     const button = screen.getByRole('button', {
-      name: 'Сверка ключа сквозного шифрования',
+      name: 'Сверка ключа звонка',
     });
     expect(button).toBeInTheDocument();
     expect(button).toHaveAttribute('aria-expanded', 'false');
@@ -423,7 +419,7 @@ describe('ActiveCallView', () => {
 
     expect(
       screen.queryByRole('button', {
-        name: 'Сверка ключа сквозного шифрования',
+        name: 'Сверка ключа звонка',
       })
     ).toBeNull();
   });
@@ -448,7 +444,7 @@ describe('ActiveCallView', () => {
     );
 
     const button = screen.getByRole('button', {
-      name: 'Сверка ключа сквозного шифрования',
+      name: 'Сверка ключа звонка',
     });
 
     // Клик по кнопке открывает поповер
@@ -461,7 +457,7 @@ describe('ActiveCallView', () => {
     expect(screen.getByRole('group', { name: emojis.join(' ') })).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Сравните эти 4 эмодзи с собеседником. Если они совпадают, звонок защищён сквозным шифрованием и никто не может его перехватить.'
+        'Сравните эти 4 эмодзи с собеседником. Если у собеседника такие же — вас никто не слушает.'
       )
     ).toBeInTheDocument();
 
@@ -501,7 +497,7 @@ describe('ActiveCallView', () => {
     );
 
     const button = screen.getByRole('button', {
-      name: 'Сверка ключа сквозного шифрования',
+      name: 'Сверка ключа звонка',
     });
     fireEvent.click(button);
     expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
@@ -509,5 +505,124 @@ describe('ActiveCallView', () => {
     // Клик снаружи
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+  });
+
+  it('скрывает поповер сверки ключа, если эмодзи перестали быть доступны', () => {
+    const emojis = ['🐶', '🐱', '🦊', '🐻'];
+    const { rerender } = render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={emojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Сверка ключа звонка',
+    });
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+
+    // При потере эмодзи поповер сразу скрывается без побочных эффектов в стейте
+    rerender(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={null}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+  });
+
+  it('не открывает поповер сверки ключа автоматически после переподключения и смены эмодзи', () => {
+    const initialEmojis = ['🐶', '🐱', '🦊', '🐻'];
+    const reconnectedEmojis = ['🍎', '🍌', '🍇', '🍓'];
+    const { rerender } = render(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={initialEmojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Сверка ключа звонка',
+    });
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+
+    // Разрыв соединения — эмодзи временно пропадают
+    rerender(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="reconnecting"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={null}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+
+    // Соединение восстановилось, появились новые эмодзи — поповер остаётся закрытым
+    rerender(
+      <ActiveCallView
+        activeCall={audioCall}
+        localStream={null}
+        remoteStream={null}
+        connectionState="connected"
+        isAudioEnabled={true}
+        isVideoEnabled={false}
+        callStartedAt={Date.now()}
+        verificationEmojis={reconnectedEmojis}
+        onToggleAudio={vi.fn()}
+        onToggleVideo={vi.fn()}
+        onMinimize={vi.fn()}
+        onEndCall={vi.fn()}
+      />
+    );
+    expect(screen.queryByRole('dialog', { name: 'Сверка ключа звонка' })).toBeNull();
+
+    // Пользователь может открыть поповер заново для новых эмодзи
+    const newButton = screen.getByRole('button', {
+      name: 'Сверка ключа звонка',
+    });
+    fireEvent.click(newButton);
+    expect(screen.getByRole('dialog', { name: 'Сверка ключа звонка' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: reconnectedEmojis.join(' ') })).toBeInTheDocument();
   });
 });
