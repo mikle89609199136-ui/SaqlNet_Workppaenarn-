@@ -3,11 +3,14 @@ package auth_test
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"craneapp/backend-v2/internal/auth"
+	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -69,6 +72,7 @@ func TestLogoutAllIncrementsGenerationAndRevokesSessionsAtomically(t *testing.T)
 	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs(userID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, generation: 1}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(userID).
@@ -123,6 +127,7 @@ func TestLogoutAllKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
 	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs(userID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, generation: 1}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(userID).
@@ -157,6 +162,7 @@ func TestLogoutOnlyUpdatesTheCredentialForTheCurrentToken(t *testing.T) {
 	mock.ExpectQuery("UPDATE auth.sessions").
 		WithArgs(userID, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, token: "access-token"}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(deviceSessionID, userID).
@@ -185,6 +191,7 @@ func TestLogoutKeepsRevocationCommittedWhenLinkedDeviceCleanupFails(t *testing.T
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("UPDATE auth.sessions").
 		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, token: "access-token"}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(deviceSessionID, userID).
@@ -890,5 +897,67 @@ func assertPasswordValidationError(t *testing.T, err error) {
 	var validationErr *auth.PasswordValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected *PasswordValidationError, got %T", err)
+	}
+}
+
+// Validate the notification scope as well as transaction ordering: no bearer
+// token may be exposed in a notification, and logout-all carries its generation.
+type revocationPayload struct {
+	userID     string
+	token      string
+	generation int64
+}
+
+func (want revocationPayload) Match(value driver.Value) bool {
+	raw, ok := value.(string)
+	if !ok {
+		return false
+	}
+	var event authctx.RevocationEvent
+	if json.Unmarshal([]byte(raw), &event) != nil || event.UserID != want.userID {
+		return false
+	}
+	if want.token != "" {
+		return event.TokenHash == authctx.TokenHash(want.token) && event.Generation == nil
+	}
+	return event.TokenHash == "" && event.Generation != nil && *event.Generation == want.generation
+}
+
+func TestLogoutRollsBackIfRevocationNotificationFails(t *testing.T) {
+	for _, all := range []bool{false, true} {
+		name := "token"
+		if all {
+			name = "all"
+		}
+		t.Run(name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			mock.ExpectBegin()
+			if all {
+				mock.ExpectQuery("UPDATE auth.users").WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(1))
+				mock.ExpectExec("UPDATE auth.sessions").WillReturnResult(sqlmock.NewResult(0, 2))
+			} else {
+				mock.ExpectExec("INSERT INTO auth.revoked_tokens").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectQuery("UPDATE auth.sessions").WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
+			}
+			failure := errors.New("notification failed")
+			mock.ExpectExec("SELECT pg_notify").WillReturnError(failure)
+			mock.ExpectRollback()
+			svc := auth.NewService(db, nil)
+			if all {
+				err = svc.LogoutAll(t.Context(), "user")
+			} else {
+				err = svc.Logout(t.Context(), "user", "token", time.Now().Add(time.Hour))
+			}
+			if !errors.Is(err, failure) {
+				t.Fatalf("expected notification failure, got %v", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
