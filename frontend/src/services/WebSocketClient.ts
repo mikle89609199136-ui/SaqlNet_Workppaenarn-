@@ -162,7 +162,7 @@ export class WebSocketClient {
         if (message.payload && typeof message.payload === 'object') {
           eventData = {
             ...message.payload,
-            from: message.from ?? message.payload.from,
+            from: message.from,
             roomId: message.roomId ?? message.payload.roomId,
           };
         } else {

@@ -2,7 +2,14 @@ import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
 import { WebSocketClient } from '@/services/WebSocketClient';
-import { useProfileStore, blockedUsersQuery, type IBlockedUserDto } from '@/entities/user';
+import {
+  useProfileStore,
+  blockedUsersQuery,
+  userProfileQuery,
+  userKeys,
+  type IBlockedUserDto,
+} from '@/entities/user';
+import { chatsQuery, chatKeys, type IChatDto } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import { broadcastCallEvent, type TCallBroadcastEvent } from './callBroadcast';
 import {
@@ -82,6 +89,76 @@ function formatCallerName(
   if (!user) return undefined;
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
   return fullName || user.username || undefined;
+}
+
+const cancelledRoomIds = new Set<string>();
+
+export function _resetCancelledRoomsForTest() {
+  cancelledRoomIds.clear();
+}
+
+async function isCallRoomActiveWithCaller(roomId: string, callerId: string): Promise<boolean> {
+  try {
+    const response = await services.callService.getRoom(roomId);
+    if (!response?.room) return false;
+    return Boolean(response.room.participants?.some((p) => p.userId === callerId));
+  } catch {
+    return false;
+  }
+}
+
+async function findDirectChat(peerId: string): Promise<IChatDto | null> {
+  let chats = queryClient.getQueryData<IChatDto[]>(chatKeys.list());
+  let direct = chats?.find((c) => c.type === 'private' && c.peerId === peerId);
+  if (direct) return direct;
+
+  let archived = queryClient.getQueryData<IChatDto[]>(chatKeys.archived());
+  direct = archived?.find((c) => c.type === 'private' && c.peerId === peerId);
+  if (direct) return direct;
+
+  try {
+    chats = await queryClient.ensureQueryData(chatsQuery());
+    direct = chats?.find((c) => c.type === 'private' && c.peerId === peerId);
+    if (direct) return direct;
+  } catch {
+    // Игнорируем ошибку сети при получении чатов
+  }
+
+  try {
+    archived = await queryClient.ensureQueryData(chatsQuery({ archived: true }));
+    direct = archived?.find((c) => c.type === 'private' && c.peerId === peerId);
+    if (direct) return direct;
+  } catch {
+    // Игнорируем ошибку сети при получении архива
+  }
+
+  return null;
+}
+
+async function resolveCallerInfo(
+  callerId: string,
+  directChat: IChatDto | null
+): Promise<{ name?: string; avatar?: string | null }> {
+  let profile = queryClient.getQueryData<{
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    avatarUrl?: string | null;
+  }>(userKeys.profile(callerId));
+
+  if (!profile) {
+    try {
+      profile = await queryClient.ensureQueryData(userProfileQuery(callerId));
+    } catch {
+      // Игнорируем сетевую ошибку профиля — fallback на directChat
+    }
+  }
+
+  const profileName = formatCallerName(profile);
+  const name = profileName || directChat?.title || undefined;
+  const avatar = profile?.avatarUrl ?? directChat?.avatarUrl ?? null;
+
+  return { name, avatar };
 }
 
 export const useCallStore = create<CallStoreState>((set, get) => {
@@ -278,6 +355,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     handleIncoming: async (payload) => {
       const { fsm, socket } = get();
 
+      if (!payload.roomId || !payload.from) {
+        return;
+      }
+
+      cancelledRoomIds.delete(payload.roomId);
+
       // Повторный incoming для той же комнаты игнорируем (уже звенит)
       if (fsm.state === 'incoming' && fsm.roomId === payload.roomId) {
         return;
@@ -296,7 +379,22 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         return;
       }
 
-      // Проверка чёрного списка (#727, #773)
+      // 1. Проверяем комнату через GET /calls/rooms/{id} (#854)
+      const isRoomActive = await isCallRoomActiveWithCaller(payload.roomId, payload.from);
+      if (!isRoomActive) {
+        return;
+      }
+
+      // 2. Входящий показывать только если есть личный чат с from (#854)
+      const directChat = await findDirectChat(payload.from);
+      if (!directChat) {
+        return;
+      }
+
+      // 3. Проверка чёрного списка (#727, #773, #854)
+      if (directChat.isPeerBlocked) {
+        return;
+      }
       try {
         const query = blockedUsersQuery();
         const cachedBlocked = queryClient.getQueryData<IBlockedUserDto[]>(query.queryKey);
@@ -308,7 +406,13 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         // При сетевой ошибке не блокируем вызов ложно
       }
 
-      // Проверяем актуальное состояние FSM после асинхронного вызова
+      // 4. Проверяем, не была ли комната отменена за время асинхронных проверок (#854)
+      if (cancelledRoomIds.has(payload.roomId)) {
+        cancelledRoomIds.delete(payload.roomId);
+        return;
+      }
+
+      // Проверяем актуальное состояние FSM после асинхронных вызовов
       if (get().fsm.state !== 'idle' && get().fsm.state !== 'ended') {
         const currentSocket = get().socket;
         if (currentSocket?.isConnected && payload.from) {
@@ -322,15 +426,18 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         return;
       }
 
+      // 5. Имя и аватар звонящего — из профиля / личного чата, но не из приглашения (#854)
+      const callerInfo = await resolveCallerInfo(payload.from, directChat);
+
       get().dispatch({
         type: 'RECEIVE_INCOMING',
         payload: {
           roomId: payload.roomId,
+          chatId: directChat.id,
           from: payload.from,
-          fromName: payload.fromName,
-          fromAvatar: payload.fromAvatar,
+          fromName: callerInfo.name,
+          fromAvatar: callerInfo.avatar,
           kind: payload.kind,
-          title: payload.title,
         },
       });
 
@@ -342,6 +449,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
     handleCancelled: (payload) => {
       const roomId = typeof payload === 'string' ? payload : payload.roomId;
+      if (roomId) {
+        cancelledRoomIds.add(roomId);
+      }
       const { fsm } = get();
       if (fsm.roomId === roomId) {
         stopRingtone();
@@ -369,6 +479,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     handleInviteResponse: (payload) => {
       const { fsm } = get();
       if (fsm.roomId !== payload.roomId) return;
+      if (fsm.state !== 'outgoing') return;
+      if (!payload.from || payload.from !== fsm.peerId) return;
 
       clearTimer();
 
