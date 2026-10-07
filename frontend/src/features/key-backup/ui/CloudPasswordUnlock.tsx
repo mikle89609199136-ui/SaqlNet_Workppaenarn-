@@ -1,6 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { QrLoginPanel } from '@/features/qr-login';
 import { services } from '@/services/serviceContainer';
 import {
   evaluatePasskeySlots,
@@ -10,13 +9,19 @@ import {
   PasskeyPrfUnsupportedError,
   WrongCloudPasswordError,
 } from '@/shared/crypto';
-import { AuthLayout, Banner, Button, ConfirmDialog } from '@/shared/ui';
+import { AuthLayout, Banner, Button, ConfirmDialog, Icon } from '@/shared/ui';
 import { CloudPasswordInput } from './CloudPasswordInput';
 
 interface Props {
   hasPasskey: boolean;
   onDone: () => void;
   footer?: ReactNode;
+  /**
+   * Вход по коду с уже вошедшего устройства. Панель QR — чужая фича, её
+   * подставляет тот, кто собирает экран (#863); принятый ключ она отдаёт
+   * в onKey.
+   */
+  renderQrLogin: (onKey: (masterKey: Uint8Array<ArrayBuffer> | null) => Promise<void>) => ReactNode;
 }
 
 type TView = 'password' | 'qr' | 'forgot';
@@ -28,7 +33,7 @@ type TView = 'password' | 'qr' | 'forgot';
  * облачный пароль, passkey и подтверждение с уже вошедшего устройства.
  * Сброс — последнее средство, и экран говорит о его цене прямо.
  */
-export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
+export function CloudPasswordUnlock({ hasPasskey, onDone, footer, renderQrLogin }: Props) {
   const { t } = useTranslation();
   const [view, setView] = useState<TView>('password');
   const [password, setPassword] = useState('');
@@ -97,6 +102,7 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
   return (
     <AuthLayout
       footer={footer}
+      icon={view === 'forgot' ? 'warning' : 'lock'}
       subtitle={
         view === 'password'
           ? t(
@@ -106,17 +112,16 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
           : undefined
       }
       title={title}
+      wide={view === 'qr'}
     >
       {view === 'qr' && (
         <div className="grid gap-4">
-          <QrLoginPanel
-            onConfirmed={async ({ masterKey }) => {
-              if (!masterKey) throw new Error(t('qrLogin.noKey', 'Устройство не передало ключ'));
-              await services.cryptoService.acceptMasterKey(masterKey);
-              onDone();
-            }}
-          />
-          <Button className="w-full" onClick={() => setView('password')} variant="ghost">
+          {renderQrLogin(async (masterKey) => {
+            if (!masterKey) throw new Error(t('qrLogin.noKey', 'Устройство не передало ключ'));
+            await services.cryptoService.acceptMasterKey(masterKey);
+            onDone();
+          })}
+          <Button className="w-full text-brand" onClick={() => setView('password')} variant="ghost">
             {t('back', 'Назад')}
           </Button>
         </div>
@@ -135,7 +140,12 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
               {t('keyBackup.forgot.passkey', 'Если вы добавляли passkey — откройте копию им.')}
             </p>
           )}
-          <Banner icon="warning" tone="danger">
+          <Banner
+            className="bg-danger-soft text-caption font-semibold text-ink"
+            icon="warning"
+            role="status"
+            tone="danger"
+          >
             {t(
               'keyBackup.forgot.resetWarning',
               'Если ничего из этого нет, копию можно только сбросить. Переписка, сохранённая в ней, пропадёт на всех устройствах: восстановить её не сможем ни мы, ни кто-либо ещё.'
@@ -147,7 +157,7 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
           <Button className="w-full" onClick={() => setAskReset(true)} variant="danger">
             {t('keyBackup.forgot.reset', 'Сбросить копию')}
           </Button>
-          <Button className="w-full" onClick={() => setView('password')} variant="ghost">
+          <Button className="w-full text-brand" onClick={() => setView('password')} variant="ghost">
             {t('back', 'Назад')}
           </Button>
         </div>
@@ -183,6 +193,7 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
               }
               variant="secondary"
             >
+              <Icon className="stroke-[1.8px]" name="fingerprint" size="md" />
               {t('keyBackup.unlock.passkey', 'Открыть с passkey')}
             </Button>
           )}
@@ -193,11 +204,12 @@ export function CloudPasswordUnlock({ hasPasskey, onDone, footer }: Props) {
             onClick={() => setView('qr')}
             variant="secondary"
           >
+            <Icon className="stroke-[1.8px]" name="qrCode" size="md" />
             {t('keyBackup.unlock.viaQr', 'Войти через другое устройство')}
           </Button>
 
           <Button
-            className="w-full"
+            className="w-full text-brand"
             disabled={busy}
             onClick={() => setView('forgot')}
             variant="ghost"

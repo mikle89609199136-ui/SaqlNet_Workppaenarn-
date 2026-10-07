@@ -113,7 +113,7 @@ func TestSendMessageRejectsUnavailableReplyWithoutInsert(t *testing.T) {
 			handler, mock := messageValidationHandler(t)
 			mock.ExpectQuery(`SELECT cm\.role`).
 				WithArgs(messageValidationChatID, messageValidationUserID).
-				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
+				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 			mock.ExpectBegin()
 			mock.ExpectQuery(`SELECT id::text`).
 				WithArgs(messageValidationMessageID, messageValidationChatID).
@@ -141,7 +141,7 @@ func TestSendMessageValidateReply(t *testing.T) {
 	handler, mock := messageValidationHandler(t)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(

@@ -163,6 +163,57 @@ describe('конверт с форматированием, v3 (#656)', () => {
   });
 });
 
+describe('метаданные голосового в конверте (#843)', () => {
+  const voice = { durationMs: 12_345, waveform: [0, 5, 31, 12] };
+
+  it('едут в v3 даже без подписи и возвращаются как были', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, '', undefined, [], voice);
+    const envelope = parseEnvelope(payload)!;
+
+    expect(envelope.v).toBe(3);
+    expect(await decryptMessage(key, CHAT, SENDER, envelope)).toEqual({
+      text: '',
+      entities: [],
+      voice,
+    });
+  });
+
+  it('сервер не видит ни длительности, ни волны', async () => {
+    const payload = await encryptMessage(chatKey(), CHAT, EPOCH, SENDER, '', undefined, [], voice);
+
+    expect(payload).not.toContain('12345');
+    expect(payload).not.toMatch(/"voice"|"d"|"w"/);
+  });
+
+  it.each([
+    ['длительность не число', { durationMs: Number.NaN, waveform: [1] }],
+    ['длительность нулевая', { durationMs: 0, waveform: [1] }],
+    ['длиннее 15 минут', { durationMs: 60 * 60 * 1000, waveform: [1] }],
+    ['миллион точек волны', { durationMs: 5000, waveform: new Array(1_000_000).fill(1) }],
+  ])('отбрасывает негодные метаданные: %s — сообщение остаётся', async (_title, bad) => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, 'подпись', undefined, [], bad);
+    const decrypted = await decryptMessage(key, CHAT, SENDER, parseEnvelope(payload)!);
+
+    expect(decrypted.text).toBe('подпись');
+    expect(decrypted.voice).toBeUndefined();
+  });
+
+  it('уровни вне 0…31 обрезаются, нечисла становятся нулём', async () => {
+    const key = chatKey();
+    const payload = await encryptMessage(key, CHAT, EPOCH, SENDER, '', undefined, [], {
+      durationMs: 3000,
+      waveform: [-5, 999, 7.6, 'x' as unknown as number],
+    });
+
+    expect((await decryptMessage(key, CHAT, SENDER, parseEnvelope(payload)!)).voice).toEqual({
+      durationMs: 3000,
+      waveform: [0, 31, 8, 0],
+    });
+  });
+});
+
 describe('конверт файла', () => {
   it('should return the same bytes it was given', async () => {
     const key = chatKey();

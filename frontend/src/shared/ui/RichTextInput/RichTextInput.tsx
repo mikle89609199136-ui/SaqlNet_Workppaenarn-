@@ -2,11 +2,15 @@ import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import {
   $createParagraphNode,
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
+  PASTE_COMMAND,
   type EditorThemeClasses,
 } from 'lexical';
 import { LinkNode } from '@lexical/link';
@@ -38,6 +42,8 @@ export interface IRichTextInputHandle {
   setValue(value: IRichText | string): void;
   focus(): void;
   clear(): void;
+  /** Вставить текст на место курсора (эмодзи из панели, #824). */
+  insertText(text: string): void;
 }
 
 interface Props {
@@ -45,6 +51,10 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * Вставка файлов из буфера обмена (#891). Возвращает true, если файлы приняты.
+   */
+  onPasteFiles?: (files: File[]) => boolean;
   /**
    * Изменилось содержимое. `external` — записано программой (черновик,
    * правка, очистка), а не набрано человеком.
@@ -65,9 +75,9 @@ const theme: EditorThemeClasses = {
     italic: 'italic',
     underline: 'underline',
     strikethrough: 'line-through',
-    underlineStrikethrough: 'underline line-through',
+    underlineStrikethrough: '[text-decoration-line:underline_line-through]',
     code: 'font-mono text-[0.92em] bg-sheet-2 rounded px-1',
-    highlight: 'rounded bg-sheet-2 text-ink-2 underline decoration-dotted',
+    highlight: 'rounded bg-sheet-2 text-ink-2 border-b border-dotted border-current',
   },
 };
 
@@ -93,6 +103,16 @@ function HandlePlugin({ handleRef }: { handleRef: React.Ref<IRichTextInputHandle
           { discrete: true, tag: EXTERNAL }
         ),
       focus: () => editor.focus(),
+      insertText: (text) =>
+        // Курсор редактор помнит и без фокуса; если его не было — в конец.
+        editor.update(() => {
+          let selection = $getSelection();
+          if (!$isRangeSelection(selection)) {
+            $getRoot().selectEnd();
+            selection = $getSelection();
+          }
+          if ($isRangeSelection(selection)) selection.insertText(text);
+        }),
       clear: () =>
         editor.update(
           () => {
@@ -168,8 +188,50 @@ function ShortcutsPlugin() {
   return null;
 }
 
+/**
+ * Вставка файлов (скриншоты, картинки) из буфера обмена (#891).
+ * Если в буфере есть осмысленный текст (text/plain) — приоритет у текста,
+ * чтобы не перехватывать копирование фрагментов страниц с картинками.
+ */
+function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (!onPasteFiles) return;
+
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData =
+          event && typeof event === 'object' && 'clipboardData' in event
+            ? (event as { clipboardData: DataTransfer | null }).clipboardData
+            : null;
+        if (!clipboardData) return false;
+
+        const files = Array.from(clipboardData.files ?? []);
+        if (files.length === 0) return false;
+
+        const plainText = clipboardData.getData('text/plain');
+        if (plainText && plainText.trim().length > 0) {
+          return false;
+        }
+
+        const handled = onPasteFiles(files);
+        if (handled) {
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW
+    );
+  }, [editor, onPasteFiles]);
+
+  return null;
+}
+
 export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function RichTextInput(
-  { ariaLabel, placeholder, disabled = false, className, onChange, onSubmit },
+  { ariaLabel, placeholder, disabled = false, className, onPasteFiles, onChange, onSubmit },
   ref
 ) {
   return (
@@ -209,6 +271,7 @@ export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function Ri
       <EditablePlugin disabled={disabled} />
       <EnterPlugin onSubmit={onSubmit} />
       <ShortcutsPlugin />
+      <PasteFilesPlugin onPasteFiles={onPasteFiles} />
       {onChange && (
         <OnChangePlugin
           ignoreSelectionChange
@@ -217,7 +280,7 @@ export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function Ri
           }
         />
       )}
-      <ComposerContextMenu />
+      <ComposerContextMenu onPasteFiles={onPasteFiles} />
     </LexicalComposer>
   );
 });

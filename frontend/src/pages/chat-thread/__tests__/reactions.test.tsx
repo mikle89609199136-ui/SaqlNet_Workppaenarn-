@@ -60,7 +60,7 @@ describe('реакции на чужое сообщение', () => {
     // с мышью: долгое нажатие обработчик принимает только от touch и pen.
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: 'Нравится' });
     await userEvent.click(thumbsUp);
 
     await waitFor(() => expect(requests).toHaveLength(1));
@@ -72,6 +72,35 @@ describe('реакции на чужое сообщение', () => {
     // которая в ответе осталась чужой.
     expect(await screen.findByRole('button', { name: '👍 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '❤️ 2' })).toBeInTheDocument();
+  });
+
+  it('реакция в меню ставится с первого нажатия: фокус мышью не гасит анимацию', async () => {
+    const chat = makeChat({ id: 'chat-reaction-press' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'нажми реакцию',
+    });
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] }))
+    );
+    renderChatThread({ chat, messages: [message], currentUser: makeUser({ id: 'user-1' }) });
+
+    fireEvent.contextMenu(await screen.findByText('нажми реакцию'), { clientX: 40, clientY: 40 });
+    const like = await screen.findByRole('menuitem', { name: 'Нравится' });
+    const animation = () => like.querySelector('img[src$=".webp"]');
+
+    // Наведение включает анимацию. Нажатие мышью фокусирует кнопку — и если
+    // бы фокус гасил анимацию, картинка под курсором пропала бы между
+    // нажатием и отпусканием, и браузер не засчитал бы клик (#824).
+    fireEvent.pointerEnter(like);
+    expect(animation()).not.toBeNull();
+    fireEvent.focus(like);
+    expect(animation()).not.toBeNull();
+    // И сами картинки курсор не ловят — нажатие всегда на кнопке.
+    expect(like.firstElementChild).toHaveClass('pointer-events-none');
   });
 
   it('заменяет прежнюю реакцию выбранной', async () => {
@@ -105,7 +134,7 @@ describe('реакции на чужое сообщение', () => {
     const bubbleText = await screen.findByText('сообщение с моей реакцией');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
 
-    const thumbsUp = await screen.findByRole('menuitem', { name: '👍' });
+    const thumbsUp = await screen.findByRole('menuitem', { name: 'Нравится' });
     await userEvent.click(thumbsUp);
 
     /* Без подписки реакция одна, поэтому прежняя снимается и ставится
@@ -155,10 +184,10 @@ describe('реакции на чужое сообщение', () => {
 
     const bubbleText = await screen.findByText('сообщение для гонки');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '👍' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Нравится' }));
 
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Сердце' }));
 
     // Ждём дольше задержки первого ответа: если бы он применялся, эмодзи
     // сменился бы обратно.
@@ -207,7 +236,7 @@ describe('реакции на чужое сообщение', () => {
 
     const bubbleText = await screen.findByText('сообщение с эхом');
     fireEvent.contextMenu(bubbleText, { clientX: 40, clientY: 40 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: '❤️' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Сердце' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: '❤️ 1' })).toBeInTheDocument());
     expect(await screen.findByRole('button', { name: '❤️ 2' })).toBeInTheDocument();

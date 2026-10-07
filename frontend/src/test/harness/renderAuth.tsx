@@ -28,7 +28,7 @@ interface IRenderAuthOptions {
  * последующее.
  */
 export function renderAuth({ page = 'login', path }: IRenderAuthOptions = {}): RenderResult {
-  useProfileStore.setState({ user: null, isAuth: false, token: null });
+  useProfileStore.setState({ user: null, isAuth: false });
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

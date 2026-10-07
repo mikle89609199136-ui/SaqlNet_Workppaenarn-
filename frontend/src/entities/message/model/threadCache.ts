@@ -1,7 +1,12 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMediaMessageType, TMessagesList } from './types';
 import { getOutboxItem } from './outboxStore';
-import { sortMessagesChronologically } from '@/shared/lib';
+import {
+  isCoveredBy,
+  receiptPatch,
+  sortMessagesChronologically,
+  type IReceiptEvent,
+} from '@/shared/lib';
 
 /**
  * Форма кеша истории: страницы в том порядке, в каком их загрузили.
@@ -64,6 +69,8 @@ export function patchMessage(
         type: outboxItem.type,
         mediaType: outboxItem.type !== 'text' ? (outboxItem.type as TMediaMessageType) : undefined,
         mediaUrl: outboxItem.blobUrl,
+        // Голосовое из очереди — со своими длительностью и волной (#843).
+        ...(outboxItem.voice ? { voice: outboxItem.voice } : {}),
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,
         senderId: '',
@@ -92,6 +99,30 @@ export function patchMessage(
       page.map((message) => (message.id === messageId ? { ...message, ...patch } : message))
     ),
   };
+}
+
+/**
+ * Сдвиг границы собеседника (#657): его сообщения не трогаются, свои до
+ * `upTo` включительно получают время доставки или прочтения. Сообщения из
+ * очереди отправки ещё не на сервере — граница их не переходит. Ничего не
+ * изменилось — возвращается тот же объект, и лента не перерисовывается.
+ */
+export function applyReceipt(data: IThreadPages, event: IReceiptEvent): IThreadPages {
+  let changed = false;
+  const pages = data.pages.map((page) =>
+    page.map((message) => {
+      if (message.senderId === event.userId || message.tempId) return message;
+      if (message.status === 'pending' || message.status === 'uploading') return message;
+      if (message.status === 'failed' || !isCoveredBy(message.createdAt, event.upTo)) {
+        return message;
+      }
+      const patch = receiptPatch(message, event.kind, event.at);
+      if (!patch) return message;
+      changed = true;
+      return { ...message, ...patch };
+    })
+  );
+  return changed ? { ...data, pages } : data;
 }
 
 export function removeMessage(data: IThreadPages, messageId: string): IThreadPages {

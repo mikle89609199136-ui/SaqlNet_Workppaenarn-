@@ -1,12 +1,13 @@
 import { ROUTES } from '@/shared/config';
-import { cn, formatChatListTime, useLongPress } from '@/shared/lib';
-import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
-import { useTypingStore } from '../../model/typingStore';
+import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
+import type { TReceiptState } from '@/shared/lib';
+import { readDraftRich, subscribeToDraft } from '../../model/chatDraftsStore';
+import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useMatch } from 'react-router-dom';
-import { Avatar, Badge } from '@/shared/ui';
+import { Avatar, Badge, MessageSnippet } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
 import { chatRowStyles, onCurrentRow } from './chatRowStyles';
@@ -37,7 +38,7 @@ interface Props {
 export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
   const title = chat.title || t('untitledChat', 'Без названия');
-  const typingUserId = useTypingStore((state) => state.typingByChat[chat.id] ?? null);
+  const typingLabel = useTypingLabel(chat);
   const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
 
   /* Долгое нажатие — тот же вызов меню, что правой кнопкой. Хук принимает
@@ -60,29 +61,35 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
   // иначе строка мигала бы всё время набора.
   const draft = useSyncExternalStore(
     useCallback((onChange) => subscribeToDraft(chat.id, onChange), [chat.id]),
-    useCallback(() => readDraft(chat.id), [chat.id])
+    useCallback(() => readDraftRich(chat.id), [chat.id])
   );
 
-  const lastMessage = typingUserId
-    ? t('typing', 'печатает...')
-    : getLastMessageText(chat.lastMessage, t);
+  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
 
   const peerId = chat.peerId;
-  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingUserId));
+  const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingLabel));
 
   /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
      чате чужое без подписи: собеседник там один. */
   const last = chat.lastMessage;
   const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
   const prefix =
-    !typingUserId && last
+    !typingLabel && last
       ? isOwnLast
         ? `${t('chatList.you', 'Вы')}: `
         : chat.type === 'group' && last.senderName
           ? `${last.senderName}: `
           : ''
       : '';
-  const status = isOwnLast ? last?.status : undefined;
+  /* Галочки своего последнего (#657): в личном чате — отправлено,
+     доставлено или прочитано; в группе, как и в ленте, — «отправлено». */
+  const status: TReceiptState | undefined =
+    isOwnLast && last ? (chat.type === 'private' ? receiptState(last) : 'sent') : undefined;
+  const statusLabel = {
+    sent: t('messageStatus.sent', 'Отправлено'),
+    delivered: t('messageStatus.delivered', 'Доставлено'),
+    read: t('messageStatus.read', 'Прочитано'),
+  };
 
   /* Открытый чат прочитан — счётчик на нём не нужен, а на заливке он и
      не виден. Булавка — только у закреплённого без непрочитанных: иначе
@@ -137,21 +144,21 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
             >
               {status && (
                 <span
-                  aria-label={
-                    status === 'read'
-                      ? t('messageStatus.read', 'Прочитано')
-                      : t('messageStatus.sent', 'Отправлено')
-                  }
+                  aria-label={statusLabel[status]}
                   className={cn(
                     'flex',
-                    status === 'read' ? 'text-brand' : 'text-ink-3',
-                    onCurrentRow
+                    /* На открытом чате строка залита акцентом — там цвета
+                       те же, что у галочек своего пузыря (#657). */
+                    status === 'read'
+                      ? 'text-brand group-aria-[current=page]:text-out-read'
+                      : 'text-ink-3 group-aria-[current=page]:text-out-tick'
                   )}
+                  data-receipt={status}
                   role="img"
                 >
                   <Icon
                     className="size-4 stroke-2"
-                    name={status === 'read' ? 'checkCheck' : 'check'}
+                    name={status === 'sent' ? 'check' : 'checkCheck'}
                   />
                 </span>
               )}
@@ -169,17 +176,28 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
           <div className="flex items-center gap-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
             <span className={cn('min-w-0 flex-1 truncate text-ui text-ink-2', onCurrentRow)}>
-              {draft && !typingUserId ? (
+              {draft?.text && !typingLabel ? (
                 <>
                   <span className={cn('text-danger', onCurrentRow)}>
                     {t('draft', 'Черновик')}:{' '}
                   </span>
-                  {draft}
+                  {draft.entities?.length ? (
+                    <MessageSnippet entities={draft.entities} text={draft.text} />
+                  ) : (
+                    draft.text.replace(/[\r\n]/g, ' ')
+                  )}
                 </>
+              ) : typingLabel ? (
+                // Кто печатает — цветом акцента, как живое событие (#837).
+                <span className={cn('text-brand', onCurrentRow)}>{typingLabel}</span>
               ) : (
                 <>
                   {prefix}
-                  {lastMessage}
+                  {last?.content && last.entities?.length && !last.undecryptable ? (
+                    <MessageSnippet entities={last.entities} text={last.content} />
+                  ) : (
+                    lastMessage
+                  )}
                 </>
               )}
             </span>

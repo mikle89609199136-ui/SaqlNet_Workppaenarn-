@@ -47,6 +47,17 @@ func registerChatRoutes(
 		authenticated(http.HandlerFunc(handler.Pins)),
 	)
 
+	// Общее в переписке для панели профиля и позиция сообщения в ленте (#842).
+	mux.Handle(
+		"GET /api/v2/chats/{chatID}/shared",
+		authenticated(http.HandlerFunc(handler.ListShared)),
+	)
+
+	mux.Handle(
+		"GET /api/v2/chats/{chatID}/messages/{messageID}/position",
+		authenticated(http.HandlerFunc(handler.MessagePosition)),
+	)
+
 	// Старые операции пока в общем обработчике.
 	mux.Handle(
 		"/api/v2/chats/",

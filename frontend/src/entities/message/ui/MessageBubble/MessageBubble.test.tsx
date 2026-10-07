@@ -397,6 +397,29 @@ describe('закреплённое сообщение (#170)', () => {
       translations: {},
     };
 
+    it('время и статус у текста — в правом нижнем углу, у звонка — строкой', () => {
+      const text = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'текст', status: 'read' })}
+        />
+      );
+      // Прижаты вправо в конце текста: на последней строке, если влезают,
+      // иначе строкой ниже — но всегда справа.
+      expect(text.container.querySelector('.message-meta')).toHaveClass('float-right');
+      text.unmount();
+
+      const call = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', type: 'call', content: '{}' })}
+        />
+      );
+      expect(call.container.querySelector('.message-meta')).not.toHaveClass('float-right');
+    });
+
     it('своё — на заливке акцента, белым; чужое — на bubble-in', () => {
       const { container, unmount } = renderBubble(
         <MessageBubble
@@ -530,8 +553,42 @@ describe('закреплённое сообщение (#170)', () => {
       expect(screen.getByRole('img', { name: 'Отправлено' })).toBeInTheDocument();
     });
 
+    it('доставлено — две приглушённые галочки, прочитано — две яркие (#657)', () => {
+      const at = '2026-09-29T12:00:00.000Z';
+      const { unmount } = renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Доставлено' })).toHaveAttribute(
+        'data-delivery',
+        'delivered'
+      );
+      unmount();
+
+      renderBubble(
+        <MessageBubble
+          {...base}
+          currentUserId="me"
+          message={makeMessage({ senderId: 'me', content: 'моё', deliveredAt: at, readAt: at })}
+          showDeliveryStatus
+        />
+      );
+      expect(screen.getByRole('img', { name: 'Прочитано' })).toHaveAttribute(
+        'data-delivery',
+        'read'
+      );
+    });
+
     it('«Прочитано» — только в личном чате и только когда известно', () => {
-      const read = makeMessage({ senderId: 'me', content: 'моё', status: 'read' });
+      const read = makeMessage({
+        senderId: 'me',
+        content: 'моё',
+        readAt: '2026-09-29T12:00:00.000Z',
+      });
 
       const { unmount } = renderBubble(
         <MessageBubble {...base} currentUserId="me" message={read} showDeliveryStatus />
@@ -557,6 +614,15 @@ describe('закреплённое сообщение (#170)', () => {
     });
 
     it('реакция — картинка Noto, при появлении своей играет анимация', () => {
+      // Без изоляции тестов matchMedia может остаться чужим — движение явно
+      // не уменьшено; прежний matchMedia возвращаем как есть.
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
       const message = makeMessage({
         senderId: 'u-2',
         content: 'привет',
@@ -566,8 +632,12 @@ describe('закреплённое сообщение (#170)', () => {
         <MessageBubble {...base} currentUserId="me" message={message} />
       );
 
-      const img = container.querySelector('.message-reactions img')!;
-      expect(img.getAttribute('src')).toContain('/notoemoji/latest/1f44d/emoji.svg');
+      // Картинки — из статики приложения, без запросов к Google (#824).
+      const srcs = () =>
+        [...container.querySelectorAll('.message-reactions img')].map((img) =>
+          img.getAttribute('src')
+        );
+      expect(srcs()).toEqual(['/emoji/noto/1f44d.svg']);
 
       rerender(
         <I18nextProvider i18n={testI18n}>
@@ -582,9 +652,44 @@ describe('закреплённое сообщение (#170)', () => {
         </I18nextProvider>
       );
 
-      expect(container.querySelector('.message-reactions img')!.getAttribute('src')).toContain(
-        '/notoemoji/latest/1f44d/512.webp'
-      );
+      // Анимация ложится поверх статичной, статичная остаётся до загрузки.
+      expect(srcs()).toEqual(['/emoji/noto/1f44d.svg', '/emoji/noto/1f44d.webp']);
+      window.matchMedia = originalMatchMedia;
     });
+  });
+});
+
+/* Ширина пузыря (#843): голосовое — по содержимому, аудиофайл — во всю
+   доступную ширину под ползунок; максимум у обоих общий. */
+describe('ширина пузыря с аудио', () => {
+  const bubbleOf = (type: 'voice' | 'audio') => {
+    const message = {
+      ...makeMessage({ id: `m-${type}`, content: '' }),
+      type,
+      mediaUrl: 'blob:audio',
+      voice: type === 'voice' ? { durationMs: 3000, waveform: [1, 2] } : undefined,
+    } as never;
+    const { container } = renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={message}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+    return container.querySelector('.message-bubble')!;
+  };
+
+  it('голосовое не растягивается, но ограничено максимумом', () => {
+    const bubble = bubbleOf('voice');
+    expect(bubble).toHaveClass('w-fit');
+    expect(bubble).not.toHaveClass('w-full');
+    expect(bubble.className).toMatch(/max-w-/);
+  });
+
+  it('аудиофайл — во всю ширину под ползунок', () => {
+    expect(bubbleOf('audio')).toHaveClass('w-full');
   });
 });

@@ -44,6 +44,8 @@ RegisterRequest:
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 LoginRequest:
   type: object
   required: [username, password]
@@ -51,12 +53,33 @@ LoginRequest:
     username: { type: string }
     password: { type: string, format: password }
     twoFAPassword: { type: string, format: password }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user, token]
+  required: [user]
   properties:
     user: { $ref: '#/User' }
-    token: { type: string }
+AuthSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  properties:
+    id: { type: string, format: uuid }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    lastActive: { type: string, format: date-time }
+    createdAt: { type: string, format: date-time }
+    isCurrent:
+      type: boolean
+      description: True when this row belongs to the token used for the request.
+AuthSessionsResponse:
+  type: object
+  required: [sessions]
+  properties:
+    sessions:
+      type: array
+      items: { $ref: '#/AuthSession' }
 Success:
   type: object
   required: [success]
@@ -145,8 +168,15 @@ Chat:
   required: [id, type]
   properties:
     id: { type: string, format: uuid }
-    type: { type: string, enum: [private, group, channel] }
-    title: { type: string }
+    type:
+      type: string
+      enum: [private, group, channel, self]
+      description: >-
+        self is the caller's canonical one-member Saved Messages chat. It has
+        no peer or presence fields.
+    title:
+      type: string
+      description: For a self chat, always «Избранное».
     description: { type: string }
     avatarUrl:
       type: string
@@ -162,7 +192,7 @@ Chat:
     createdAt: { type: string }
     updatedAt: { type: string }
     lastMessage: { $ref: '#/LastMessagePreview' }
-    peerId: { type: string, format: uuid, description: Private chats only. }
+    peerId: { type: string, format: uuid, description: Two-member private chats only; omitted for self chats. }
     peerIsOnline:
       type: boolean
       description: >-
@@ -255,7 +285,22 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
-    reactions: { type: array, items: { $ref: '#/Reaction' } }
+    reactions:
+      type: array
+      description: Always an array; empty reactions are [], never null.
+      items: { $ref: '#/Reaction' }
+    deliveredAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's
+        delivered boundary first passed the message (UTC, ISO 8601 with
+        milliseconds). Absent — not delivered yet.
+    readAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's read
+        boundary first passed the message. Absent — not read yet. In group chats
+        — the first member.
 Message:
   type: object
   required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
@@ -286,6 +331,7 @@ Message:
     replyToSenderName: { type: string }
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
     metadata:
       type: object
@@ -311,6 +357,47 @@ Message:
     createdAt: { type: string }
     updatedAt: { type: string }
     deletedAt: { type: string, nullable: true }
+    deliveredAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's
+        delivered boundary first passed the message (UTC, ISO 8601 with
+        milliseconds). Absent — not delivered yet.
+    readAt:
+      type: string
+      description: >-
+        Only on the caller's own messages (#657): when another member's read
+        boundary first passed the message. Absent — not read yet. In group chats
+        — the first member.
+ReceiptEvent:
+  type: object
+  description: >-
+    WebSocket event {"type":"receipts"} (#657), sent to the other members of a
+    private chat when a member's boundary moves: the member's messages up to
+    upTo inclusive are delivered or read, first at "at". Boundaries only move
+    forward; delivered — the message went to the member's open socket or the
+    member loaded the chat list or the thread; read implies delivered. After
+    a reconnect the same state comes from Message.deliveredAt and readAt.
+  required: [type, chatId, userId, kind, upTo, at]
+  properties:
+    type: { type: string, enum: [receipts] }
+    chatId: { type: string, format: uuid }
+    userId: { type: string, format: uuid, description: The member whose boundary moved. }
+    kind: { type: string, enum: [delivered, read] }
+    upTo: { type: string, description: 'The boundary, UTC ISO 8601 with milliseconds, rounded down.' }
+    at: { type: string, description: 'When the boundary moved, UTC ISO 8601 with milliseconds.' }
+SharedPage:
+  type: object
+  required: [messages]
+  properties:
+    messages:
+      type: array
+      description: Newest first.
+      items: { $ref: '#/Message' }
+    nextCursor:
+      type: string
+      format: uuid
+      description: Pass as before for the next page; absent — nothing older.
 SendMessagesRequest:
   type: object
   required: [messages]
@@ -384,6 +471,9 @@ EncryptedMediaUploadRequest:
     invalid_ciphertext. Other invalid envelope fields return validation_failed.
   properties:
     purpose: { type: string, enum: [message] }
+    type:
+      type: string
+      description: Attachment kind (image, voice, file…). A voice upload over 8 MB of ciphertext returns 413 file_too_large (#843).
     fileName: { type: string, maxLength: 255, description: Fallback filename; at most 255 UTF-8 bytes. }
     file:
       type: object
@@ -426,7 +516,18 @@ MessageListResponse:
   properties:
     messages:
       type: array
+      description: Always an array; no messages are represented by [], never null.
       items: { $ref: '#/Message' }
+DeleteMessagesRequest:
+  type: object
+  required: [messageIds, forEveryone]
+  properties:
+    messageIds:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items: { type: string, format: uuid }
+    forEveryone: { type: boolean }
 DeleteMessageResponse:
   type: object
   required: [success, lastMessage]
@@ -437,19 +538,38 @@ DeleteMessageResponse:
       allOf: [{ $ref: '#/Message' }]
 MarkMessagesReadRequest:
   type: object
-  required: [chatId]
+  required: [chatId, messageIds]
   properties:
     chatId: { type: string, format: uuid }
     messageIds:
       type: array
-      description: Accepted for client compatibility; the current backend marks the whole chat as read.
+      description: >-
+        Messages of this chat seen by the reader (duplicates are ignored). All
+        must belong to the chat, otherwise 400 invalid_message_ids. Own and
+        deleted messages are skipped.
+      minItems: 1
+      maxItems: 500
       items: { type: string, format: uuid }
+ReadMark:
+  type: object
+  required: [readIds, lastReadAt]
+  properties:
+    readIds:
+      type: array
+      description: Incoming, not deleted messages that were taken into account.
+      items: { type: string, format: uuid }
+    lastReadAt:
+      type: string
+      description: >-
+        The chat's read boundary after the call: the newest of the counted
+        messages, never moved back. Empty when the chat was never read.
 ReactionListResponse:
   type: object
   required: [reactions]
   properties:
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 ReactionToggleResponse:
   type: object
@@ -461,6 +581,7 @@ ReactionToggleResponse:
       description: Empty when the reaction was removed.
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 FavoriteStateResponse:
   type: object
@@ -611,7 +732,7 @@ CallRoomCreateRequest:
     type:
       type: string
       enum: [p2p, group]
-      description: Defaults to group when omitted.
+      description: Ignored — calls are one-to-one, the room type is always p2p.
     chatId: { type: string, format: uuid }
     title: { type: string }
     callKind:
@@ -627,15 +748,7 @@ CallRoomResponse:
     iceServers:
       type: array
       items: { $ref: '#/IceServer' }
-    maxParticipants: { type: integer, enum: [5] }
-CallRoomListResponse:
-  type: object
-  required: [success, rooms]
-  properties:
-    success: { type: boolean, enum: [true] }
-    rooms:
-      type: array
-      items: { $ref: '#/CallRoom' }
+    maxParticipants: { type: integer, enum: [2] }
 UploadResponse:
   type: object
   required: [success, url]
@@ -861,7 +974,6 @@ QrOfferStatusResponse:
   properties:
     status: { type: string, enum: [pending, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
 QrOfferConfirmRequest:
   type: object
@@ -874,5 +986,4 @@ QrStatusResponse:
   properties:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }

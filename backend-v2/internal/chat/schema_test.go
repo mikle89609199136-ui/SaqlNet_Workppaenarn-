@@ -58,6 +58,24 @@ func TestUserMuteCompatMigrationBackfillsSendMessageDependencies(t *testing.T) {
 	}
 }
 
+func TestSelfChatMigrationDefinesTypeAndCanonicalOwner(t *testing.T) {
+	sql, err := os.ReadFile("../../migrations/0034_self_chats.sql")
+	if err != nil {
+		t.Fatalf("read self chat migration: %v", err)
+	}
+	source := string(sql)
+	for _, clause := range []string{
+		"'self'",
+		"CREATE UNIQUE INDEX IF NOT EXISTS chats_self_owner_unique",
+		"ON chats.chats(owner_id)",
+		"WHERE type = 'self'",
+	} {
+		if !strings.Contains(source, clause) {
+			t.Fatalf("self chat migration is missing %q", clause)
+		}
+	}
+}
+
 func TestListMessagesReturnsChronologicalPage(t *testing.T) {
 	source, err := os.ReadFile("service.go")
 	if err != nil {

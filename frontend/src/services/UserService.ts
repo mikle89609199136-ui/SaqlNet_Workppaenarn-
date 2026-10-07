@@ -17,6 +17,12 @@ export class UserService {
       .then((response) => response.data?.user ?? response.data);
   }
 
+  updateUsername(username) {
+    return this.apiClient
+      .put(API_ENDPOINTS.USERS_ME_USERNAME, { username })
+      .then((response) => response.data?.user ?? response.data);
+  }
+
   updateAvatar(avatar) {
     return this.apiClient
       .put(API_ENDPOINTS.USERS_AVATAR, { avatar })
@@ -36,9 +42,7 @@ export class UserService {
   }
 
   getStatus(userId) {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_STATUS(userId))
-      .then((response) => response.data);
+    return this.apiClient.get(API_ENDPOINTS.USER_STATUS(userId)).then((response) => response.data);
   }
 
   getSettings() {

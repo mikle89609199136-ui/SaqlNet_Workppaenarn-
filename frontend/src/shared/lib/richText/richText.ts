@@ -322,3 +322,140 @@ export function buildRichBlocks(text: string, entities: IMessageEntity[]): IRich
     return { kind, segments };
   });
 }
+
+/**
+ * Нарезка текста на однострочные инлайн-сегменты без блочных элементов (blockquote, pre).
+ * Используется в превью списка чатов (#971) и других компактных сниппетах.
+ *
+ * Переводы строк \r и \n заменяются пробелом 1:1, сохраняя позиции смещений entities.
+ */
+export function buildInlineSegments(text: string, entities?: IMessageEntity[]): IRichSegment[] {
+  if (!text) return [];
+
+  const normalizedText = text.replace(/[\r\n]/g, ' ');
+  const clean = entities?.length ? normalizeEntities(text, entities) : [];
+  const inline = clean.filter((entity) => entity.type !== 'blockquote');
+
+  if (inline.length === 0) {
+    return [{ text: normalizedText, formats: [] }];
+  }
+
+  const cuts = new Set<number>([0, normalizedText.length]);
+  for (const entity of inline) {
+    cuts.add(entity.offset);
+    cuts.add(entity.offset + entity.length);
+  }
+  const points = [...cuts].sort((a, b) => a - b);
+
+  const segments: IRichSegment[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = points[i];
+    const to = points[i + 1];
+    if (from >= to) continue;
+
+    const covering = inline.filter(
+      (entity) => entity.offset <= from && entity.offset + entity.length >= to
+    );
+    const link = covering.find((entity) => entity.type === 'link');
+    segments.push({
+      text: normalizedText.slice(from, to),
+      formats: [...new Set(covering.map((entity) => entity.type as TInlineEntityType))],
+      ...(link?.data ? { url: link.data.url } : {}),
+    });
+  }
+
+  return segments;
+}
+
+/** Экранирование специальных символов HTML. */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Преобразование форматированного текста сообщения в HTML для буфера обмена (#891).
+ * Сохраняет жирный, курсив, подчёркивание, зачёркивание, моноширинный,
+ * скрытый текст (спойлер), ссылки, цитаты и блоки кода.
+ */
+export function richTextToHtml({ text, entities }: IRichText): string {
+  if (!text) return '';
+
+  const clean = entities?.length ? normalizeEntities(text, entities) : [];
+  const blocks = buildRichBlocks(text, clean);
+
+  const renderSegment = (segment: IRichSegment): string => {
+    let content = escapeHtml(segment.text).replace(/\n/g, '<br>');
+
+    if (segment.formats.includes('monospace')) {
+      content = `<code>${content}</code>`;
+    }
+    if (segment.formats.includes('bold')) {
+      content = `<b>${content}</b>`;
+    }
+    if (segment.formats.includes('italic')) {
+      content = `<i>${content}</i>`;
+    }
+    if (segment.formats.includes('underline')) {
+      content = `<u>${content}</u>`;
+    }
+    if (segment.formats.includes('strikethrough')) {
+      content = `<s>${content}</s>`;
+    }
+    if (segment.formats.includes('spoiler')) {
+      content = `<mark class="tg-spoiler">${content}</mark>`;
+    }
+    if (segment.url && isSafeLinkUrl(segment.url)) {
+      content = `<a href="${escapeHtml(segment.url)}">${content}</a>`;
+    }
+
+    return content;
+  };
+
+  const htmlBlocks = blocks.map((block) => {
+    if (block.kind === 'code') {
+      return `<pre><code>${escapeHtml(block.code ?? '')}</code></pre>`;
+    }
+    const inner = block.segments.map(renderSegment).join('');
+    if (block.kind === 'quote') {
+      return `<blockquote>${inner}</blockquote>`;
+    }
+    return inner;
+  });
+
+  return htmlBlocks.join('');
+}
+
+/**
+ * Запись форматированного текста в буфер обмена (text/plain и text/html, #891).
+ * Если ClipboardItem или navigator.clipboard.write недоступны — фоллбэк на writeText.
+ */
+export async function copyRichTextToClipboard(plainText: string, htmlText: string): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    throw new Error('Clipboard API unavailable');
+  }
+
+  if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard.write === 'function') {
+    try {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([plainText], { type: 'text/plain' }),
+        'text/html': new Blob([htmlText], { type: 'text/html' }),
+      });
+      await navigator.clipboard.write([item]);
+      return;
+    } catch {
+      // Некоторые браузеры могут блокировать запись HTML без расширенных разрешений
+    }
+  }
+
+  if (typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(plainText);
+    return;
+  }
+
+  throw new Error('Clipboard write failed');
+}

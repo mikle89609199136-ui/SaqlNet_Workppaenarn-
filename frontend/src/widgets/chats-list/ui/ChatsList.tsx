@@ -6,17 +6,21 @@ import {
 } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
+import { AppUpdateBanner } from '@/features/app-update';
+import { useStartPrivateChat } from '@/features/chat-actions';
+import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
 import { Avatar, buttonStyles, Icon, SegmentedControl, Spinner } from '@/shared/ui';
 import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ChatRowMenuWithActions } from './ChatRowMenuWithActions';
 import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
+import { VirtualChatList } from './VirtualChatList';
 
 /* Разделы списка — вкладками, как в макете (#818). Каналы и встречи
    спрятаны, пока нет самих функций (#815): вкладка без содержимого — та
@@ -50,6 +54,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   const tabsId = useId();
   const me = useProfileStore((state) => state.user);
   const [tab, setTab] = useState<TListTab>('chats');
+  const panelRef = useRef<HTMLDivElement>(null);
   const connection = useConnectionStatus();
 
   const {
@@ -74,20 +79,29 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
     [visibleChats]
   );
   const search = useChatsSearch(visibleChats);
+  // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
+  const startChat = useStartPrivateChat();
 
   /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
 
-  const renderRows = (list: IChatDto[]) =>
-    list.map((chat) => (
-      <ChatListItem
-        chat={chat}
-        key={chat.id}
-        currentUserId={me?.id}
-        pinnedCount={pinnedCount}
-        renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
-      />
-    ));
+  const renderRow = (chat: IChatDto) => (
+    <ChatListItem
+      chat={chat}
+      currentUserId={me?.id}
+      pinnedCount={pinnedCount}
+      renderMenu={(props) => <ChatRowMenuWithActions {...props} />}
+    />
+  );
+
+  const renderRows = (list: IChatDto[]) => (
+    <VirtualChatList chats={list} renderRow={renderRow} scrollRef={panelRef} />
+  );
+
+  const selectTab = (value: TListTab) => {
+    setTab(value);
+    if (panelRef.current) panelRef.current.scrollTop = 0;
+  };
 
   let content: ReactNode;
   if (isLoading) {
@@ -103,6 +117,8 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         chats={search.chats}
         isEmpty={search.isEmpty}
         isLoadingPeople={search.isLoadingPeople}
+        isStartingChat={startChat.isPending}
+        onStartChat={(userId) => startChat.mutate(userId)}
         people={search.people}
       />
     );
@@ -198,7 +214,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       <nav aria-label={t('chatList.sections', 'Разделы')} className="mx-4 mb-3">
         <SegmentedControl
           className="w-full"
-          onChange={(value) => setTab(value as TListTab)}
+          onChange={(value) => selectTab(value as TListTab)}
           options={VISIBLE_TABS.map(({ key, fallback }) => ({
             value: key,
             label: t(`chatList.tab.${key}`, fallback),
@@ -212,11 +228,18 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         <ChatsSearchField onChange={search.setQuery} onReset={search.reset} value={search.query} />
       </div>
 
+      {/* Новая версия приложения (#892) — важнее просьбы включить уведомления. */}
+      <AppUpdateBanner />
+
+      {/* «Включить уведомления» — пока не включили и не закрыли (#882). */}
+      <PushPrompt />
+
       <div
         aria-busy={isLoading}
         aria-labelledby={`${tabsId}-${tab}`}
-        className="styled-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
+        className="styled-scrollbar relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
         id={`${tabsId}-panel`}
+        ref={panelRef}
         role="tabpanel"
       >
         {content}

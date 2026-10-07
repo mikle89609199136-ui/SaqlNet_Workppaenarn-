@@ -162,13 +162,13 @@ export function RegisterWizard() {
         username: values.username.trim(),
       });
 
-      if (!data.token) {
+      if (!data.user) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
       // Следующий шаг — облачный пароль, и он не должен совпасть с этим.
       await rememberLoginPassword(values.password);
-      saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
+      saveAuthSession({ settings: undefined, user: data.user });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
          неудачная загрузка значит лишь аватарку по умолчанию. */
       if (avatarFile) {
@@ -214,7 +214,7 @@ export function RegisterWizard() {
   const loginLink = (
     <>
       {t('alreadyHaveAccount', 'Уже есть аккаунт?')}{' '}
-      <Link className="text-brand hover:underline" to={ROUTES.LOGIN}>
+      <Link className="font-semibold text-brand hover:underline" to={ROUTES.LOGIN}>
         {t('login', 'Войти')}
       </Link>
     </>
@@ -222,7 +222,14 @@ export function RegisterWizard() {
 
   if (step === 'welcome') {
     return (
-      <AuthLayout footer={loginLink} title={t('welcomeRegisterTitle', 'Добро пожаловать')}>
+      <AuthLayout
+        footer={loginLink}
+        subtitle={t(
+          'welcomeRegisterSubtitle',
+          'Мессенджер, где переписку читаете только вы и собеседник'
+        )}
+        title={t('welcomeRegisterTitle', 'Добро пожаловать')}
+      >
         <WelcomeStep
           language={language}
           onLanguageChange={(value) => void i18n.changeLanguage(value)}
@@ -234,8 +241,23 @@ export function RegisterWizard() {
 
   return (
     <AuthLayout
-      footer={step === 'credentials' ? loginLink : undefined}
-      header={<StepHeader activeIndex={step === 'about' ? 0 : 1} onBack={goBack} />}
+      header={
+        step === 'about' ? (
+          <StepHeader
+            activeIndex={0}
+            onBack={goBack}
+            subtitle={t('addPhotoName', 'Добавьте фото и введите своё имя')}
+            title={t('whatIsYourName', 'Как вас зовут?')}
+          />
+        ) : (
+          <StepHeader
+            activeIndex={1}
+            onBack={goBack}
+            subtitle={t('chooseLoginSub', 'Имя пользователя и пароль для входа')}
+            title={t('chooseLoginTitle', 'Придумайте логин')}
+          />
+        )
+      }
       title=""
     >
       <form className="grid gap-4 text-left" noValidate onSubmit={handleStepSubmit}>

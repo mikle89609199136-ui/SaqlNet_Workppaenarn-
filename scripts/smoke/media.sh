@@ -21,7 +21,7 @@ run_encrypted_media_tests() {
 	local payload media_url
 	payload='{"purpose":"message","file":{"encrypted":true,"version":2,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":5,"sizeBytes":999,"ciphertext":"Y2lwaGVy","mimeType":"text/html"}}'
 	http_request -X POST "$BASE_URL/api/v2/media" \
-		-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+		-H "Content-Type: application/json" -b "$COOKIE_JAR" -d "$payload"
 	if [[ "$HTTP_CODE" == "201" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 body = json.load(sys.stdin)
@@ -64,7 +64,7 @@ assert body["iv"] == "AAECAwQFBgcICQoL" and body["ciphertext"] == "Y2lwaGVy"
 		fi
 		printf -v payload '{"purpose":"message","file":{"encrypted":true,"version":%s,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":5,"sizeBytes":999,"ciphertext":"%s"}}' "$version" "$ciphertext"
 		http_request -X POST "$BASE_URL/api/v2/media" \
-			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+			-H "Content-Type: application/json" -b "$COOKIE_JAR" -d "$payload"
 		if [[ "$HTTP_CODE" == "400" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 assert json.load(sys.stdin)["code"] == sys.argv[1]
@@ -137,13 +137,13 @@ run_media_tests() {
 		http_request \
 			-X POST "$BASE_URL/api/v2/media" \
 			-H "Content-Type: application/json" \
-			-H "Authorization: Bearer $TOKEN" \
+			-b "$COOKIE_JAR" \
 			-d "{\"file\":\"data:$mime_type;base64,$file_base64\",\"fileName\":\"$file_name\"}"
 		assert_media_unsupported_type "POST /api/v2/media JSON $mime_type"
 
 		http_request \
 			-X POST "$BASE_URL/api/v2/media" \
-			-H "Authorization: Bearer $TOKEN" \
+			-b "$COOKIE_JAR" \
 			-F "file=@-;filename=$file_name;type=$mime_type" <<< "$file_content"
 		assert_media_unsupported_type "POST /api/v2/media multipart $mime_type"
 	done
@@ -167,7 +167,7 @@ run_media_tests() {
 	http_request \
 		-X POST "$BASE_URL/api/v2/media" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d "{\"file\":\"data:text/plain;base64,$file_base64\",\"fileName\":\"$file_name\"}"
 
 	MEDIA_URL=$(printf '%s' "$HTTP_BODY" | python3 -c \

@@ -1,6 +1,7 @@
 import { base64ToBytes, bytesToBase64, bytesToUtf8, utf8ToBytes } from './encoding';
 import type { ISignedParts } from './signing';
 import { normalizeEntities, type IMessageEntity, type IRichText } from '@/shared/lib/richText';
+import { normalizeVoiceMeta, toVoiceWire, type IVoiceMeta } from '@/shared/lib/voice';
 
 /**
  * Конверт сообщения: то, что уходит на сервер вместо текста.
@@ -25,11 +26,15 @@ import { normalizeEntities, type IMessageEntity, type IRichText } from '@/shared
  * ссылок и прочего — такая же часть сообщения, как сам текст, и сервер не
  * должен видеть даже их. `v3` пишется, только когда форматирование есть:
  * обычное сообщение остаётся `v2`.
+ *
+ * В `v3` же едут метаданные голосового — `voice: { d, w }`, длительность
+ * и волна (#843): для сервера это такая же тайна, как текст. Старые
+ * клиенты незнакомое поле просто не читают.
  */
 
 export const ENVELOPE_VERSION = 2;
 
-/** Конверт с форматированием: внутри шифровки `{ text, entities }`. */
+/** Конверт с форматированием: внутри шифровки `{ text, entities, voice? }`. */
 export const RICH_ENVELOPE_VERSION = 3;
 
 const IV_LENGTH = 12;
@@ -197,12 +202,16 @@ export async function encryptMessage(
   senderId: string,
   text: string,
   signer?: IEnvelopeSigner,
-  entities: IMessageEntity[] = []
+  entities: IMessageEntity[] = [],
+  voice?: IVoiceMeta
 ): Promise<string> {
   const key = await derivePurposeKey(chatKey, chatId, 'msg', epoch);
   const iv = randomIv();
-  const version = entities.length > 0 ? RICH_ENVELOPE_VERSION : ENVELOPE_VERSION;
-  const plaintext = version === RICH_ENVELOPE_VERSION ? JSON.stringify({ text, entities }) : text;
+  const version = entities.length > 0 || voice ? RICH_ENVELOPE_VERSION : ENVELOPE_VERSION;
+  const plaintext =
+    version === RICH_ENVELOPE_VERSION
+      ? JSON.stringify({ text, entities, ...(voice ? { voice: toVoiceWire(voice) } : {}) })
+      : text;
 
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv, additionalData: messageAad(chatId, epoch, senderId, version) },
@@ -232,16 +241,22 @@ export async function encryptMessage(
   return JSON.stringify(envelope);
 }
 
+/** Содержимое конверта: текст, форматирование и, у голосового, его метаданные. */
+export interface IEnvelopeContent extends IRichText {
+  voice?: IVoiceMeta;
+}
+
 /**
  * Текст и форматирование из конверта. У `v2` форматирования нет; у `v3`
  * диапазоны проверяются заново: их не видел никто, кроме отправителя.
+ * Метаданные голосового — тоже: негодные отбрасываются, сообщение остаётся.
  */
 export async function decryptMessage(
   chatKey: Uint8Array,
   chatId: string,
   senderId: string,
   envelope: IEnvelopeV2
-): Promise<IRichText> {
+): Promise<IEnvelopeContent> {
   const key = await derivePurposeKey(chatKey, chatId, 'msg', envelope.epoch);
 
   const plaintext = await crypto.subtle.decrypt(
@@ -257,11 +272,16 @@ export async function decryptMessage(
   const decoded = bytesToUtf8(plaintext);
   if (envelope.v !== RICH_ENVELOPE_VERSION) return { text: decoded, entities: [] };
 
-  const payload = JSON.parse(decoded) as { text?: unknown; entities?: unknown };
+  const payload = JSON.parse(decoded) as { text?: unknown; entities?: unknown; voice?: unknown };
   if (typeof payload.text !== 'string') {
     throw new Error('Конверт v3 без текста');
   }
-  return { text: payload.text, entities: normalizeEntities(payload.text, payload.entities) };
+  const voice = normalizeVoiceMeta(payload.voice);
+  return {
+    text: payload.text,
+    entities: normalizeEntities(payload.text, payload.entities),
+    ...(voice ? { voice } : {}),
+  };
 }
 
 export async function encryptMediaBytes(

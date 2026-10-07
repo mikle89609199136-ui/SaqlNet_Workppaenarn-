@@ -2,10 +2,13 @@ package auth_test
 
 import (
 	"context"
-	"craneapp/backend-v2/internal/auth"
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
+
+	"craneapp/backend-v2/internal/auth"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
@@ -15,6 +18,7 @@ type mockCrypto struct {
 	hashFunc       func(ctx context.Context, password string) (string, error)
 	verifyFunc     func(ctx context.Context, password, hash string) (bool, error)
 	issueTokenFunc func(ctx context.Context, userID, username string, tokenGeneration int64) (string, error)
+	expiresAt      time.Time
 }
 
 func (m *mockCrypto) HashPassword(ctx context.Context, password string) (string, error) {
@@ -25,14 +29,28 @@ func (m *mockCrypto) VerifyPassword(ctx context.Context, password, hash string) 
 	return m.verifyFunc(ctx, password, hash)
 }
 
-func (m *mockCrypto) IssueToken(ctx context.Context, userID, username string, tokenGeneration int64) (string, error) {
-	return m.issueTokenFunc(ctx, userID, username, tokenGeneration)
+func (m *mockCrypto) IssueToken(ctx context.Context, userID, username string, tokenGeneration int64) (cryptoclient.IssuedToken, error) {
+	token, err := m.issueTokenFunc(ctx, userID, username, tokenGeneration)
+	if err != nil {
+		return cryptoclient.IssuedToken{}, err
+	}
+	expiresAt := m.expiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Unix(2_000_000_000, 0).UTC()
+	}
+	return cryptoclient.IssuedToken{Token: token, ExpiresAt: expiresAt}, nil
 }
 
 func expectTokenGeneration(mock sqlmock.Sqlmock, userID string, generation int64) {
 	mock.ExpectQuery("SELECT token_generation").
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(generation))
+}
+
+func expectSessionRecord(mock sqlmock.Sqlmock, userID string, generation int64) {
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs(userID, sqlmock.AnyArg(), generation, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
 func TestLogoutAllIncrementsGenerationAndRevokesSessionsAtomically(t *testing.T) {
@@ -51,10 +69,14 @@ func TestLogoutAllIncrementsGenerationAndRevokesSessionsAtomically(t *testing.T)
 	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs(userID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs(userID).
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectCommit()
+	// Отозванные устройства больше не получают push (#717).
+	mock.ExpectExec("DELETE FROM users.push_subscriptions").
+		WithArgs(userID).
+		WillReturnResult(sqlmock.NewResult(0, 3))
 
 	if err := svc.LogoutAll(t.Context(), userID); err != nil {
 		t.Fatalf("logout all: %v", err)
@@ -80,6 +102,96 @@ func TestLogoutAllRollsBackWhenSessionUpdateFails(t *testing.T) {
 
 	if err := svc.LogoutAll(t.Context(), userID); err == nil {
 		t.Fatal("expected logout all to fail")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutAllKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	userID := "11111111-1111-4111-8111-111111111111"
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE auth.users").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(1))
+	mock.ExpectExec("UPDATE auth.sessions").
+		WithArgs(userID).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE public.user_sessions").
+		WithArgs(userID).
+		WillReturnError(errors.New("legacy table unavailable"))
+	mock.ExpectExec("DELETE FROM users.push_subscriptions").
+		WithArgs(userID).
+		WillReturnResult(sqlmock.NewResult(0, 3))
+
+	if err := auth.NewService(db, &mockCrypto{}).LogoutAll(t.Context(), userID); err != nil {
+		t.Fatalf("credential revocation must survive legacy cleanup failure: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutOnlyUpdatesTheCredentialForTheCurrentToken(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	userID := "11111111-1111-4111-8111-111111111111"
+	token := "access-token"
+	expiresAt := time.Unix(2_000_000_000, 0).UTC()
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
+		WithArgs(sqlmock.AnyArg(), userID, expiresAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	deviceSessionID := "22222222-2222-4222-8222-222222222222"
+	mock.ExpectQuery("UPDATE auth.sessions").
+		WithArgs(userID, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE public.user_sessions").
+		WithArgs(deviceSessionID, userID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, token, expiresAt); err != nil {
+		t.Fatalf("logout current credential: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutKeepsRevocationCommittedWhenLinkedDeviceCleanupFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	userID := "11111111-1111-4111-8111-111111111111"
+	expiresAt := time.Unix(2_000_000_000, 0).UTC()
+	deviceSessionID := "22222222-2222-4222-8222-222222222222"
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("UPDATE auth.sessions").
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE public.user_sessions").
+		WithArgs(deviceSessionID, userID).
+		WillReturnError(errors.New("legacy table unavailable"))
+
+	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, "access-token", expiresAt); err != nil {
+		t.Fatalf("credential revocation must survive linked device cleanup failure: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -116,6 +228,7 @@ func TestRegister_CreatesUserWithExactUsername(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO auth.users").WithArgs("ivan", "hash", "Ivan", "").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "token_generation"}).AddRow("user_id", "ivan", "Ivan", "", 0))
 	mock.ExpectExec("INSERT INTO users.profiles").WithArgs("user_id", "Ivan", "").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO users.settings").WithArgs("user_id", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	expectSessionRecord(mock, "user_id", 0)
 	mock.ExpectCommit()
 
 	user, token, err := svc.Register(context.Background(), "ivan", "Password1!", "Ivan", "", "")
@@ -229,6 +342,7 @@ func TestRegister_StoresUsernameLowercase(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO auth.users").WithArgs("ivan", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "token_generation"}).AddRow("user_id", "ivan", "Ivan", "", 0))
 	mock.ExpectExec("INSERT INTO users.profiles").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO users.settings").WillReturnResult(sqlmock.NewResult(1, 1))
+	expectSessionRecord(mock, "user_id", 0)
 	mock.ExpectCommit()
 
 	user, _, err := svc.Register(context.Background(), "Ivan", "Password1!", "Ivan", "", "")
@@ -251,7 +365,9 @@ func TestLogin_FindsUserByExactUsername(t *testing.T) {
 		_ = db.Close()
 	}()
 
+	expectedExpiry := time.Unix(1_900_000_123, 0).UTC()
 	crypto := &mockCrypto{
+		expiresAt:  expectedExpiry,
 		verifyFunc: func(ctx context.Context, password, hash string) (bool, error) { return true, nil },
 		issueTokenFunc: func(ctx context.Context, userID, username string, tokenGeneration int64) (string, error) {
 			if tokenGeneration != 4 {
@@ -271,13 +387,50 @@ func TestLogin_FindsUserByExactUsername(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"two_fa_enabled", "two_fa_hash", "token_generation"}).
 			AddRow(false, nil, 4))
 	expectTokenGeneration(mock, "user-id", 4)
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs("user-id", sqlmock.AnyArg(), int64(4), expectedExpiry, "Firefox on Linux", "desktop", "203.0.113.7").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	user, _, err := svc.Login(context.Background(), "ivan", "password", "")
+	user, _, err := svc.Login(context.Background(), "ivan", "password", "", auth.SessionMetadata{
+		DeviceName: " Firefox on Linux ",
+		DeviceType: "DESKTOP",
+		IPAddress:  "203.0.113.7",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if user.Username != "ivan" {
 		t.Fatalf("expected username ivan, got %s", user.Username)
+	}
+}
+
+func TestSessionsFiltersRevokedAndOldGenerationRowsAndPutsCurrentFirst(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Now().UTC()
+	mock.ExpectQuery(`FROM auth\.sessions s.*JOIN auth\.users.*s\.token_generation = u\.token_generation.*NOT EXISTS.*ORDER BY COALESCE\(s\.access_token_hash = \$2, FALSE\) DESC`).
+		WithArgs("user-id", sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "device_name", "device_type", "ip_address", "last_active", "created_at", "is_current"}).
+			AddRow("current-session", "Firefox on Linux", "desktop", "203.0.113.7", now, now.Add(-time.Hour), true).
+			AddRow("other-session", "Safari on iPhone", "mobile", "198.51.100.8", now.Add(-time.Minute), now.Add(-2*time.Hour), false))
+
+	svc := auth.NewService(db, &mockCrypto{})
+	sessions, err := svc.Sessions(t.Context(), "user-id", "current-token")
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+	if len(sessions) != 2 || sessions[0].ID != "current-session" || sessions[1].ID != "other-session" {
+		t.Fatalf("unexpected sessions: %+v", sessions)
+	}
+	if !sessions[0].IsCurrent || sessions[1].IsCurrent {
+		t.Fatalf("unexpected current-session flags: %+v", sessions)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -309,6 +462,7 @@ func TestLogin_ReturnsCurrentProfileNames(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"two_fa_enabled", "two_fa_hash", "token_generation"}).
 			AddRow(false, nil, 0))
 	expectTokenGeneration(mock, "user-id", 0)
+	expectSessionRecord(mock, "user-id", 0)
 
 	user, _, err := svc.Login(context.Background(), "ivan", "password", "")
 	if err != nil {
@@ -351,6 +505,7 @@ func TestLogin_DoesNotParseDiscriminator(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"two_fa_enabled", "two_fa_hash", "token_generation"}).
 			AddRow(false, nil, 0))
 	expectTokenGeneration(mock, "user-id", 0)
+	expectSessionRecord(mock, "user-id", 0)
 
 	user, _, err := svc.Login(context.Background(), "ivan.123", "password", "")
 	if err != nil {
@@ -391,6 +546,7 @@ func TestLogin_ReissuesTokenWhenGenerationChangesDuringIssuance(t *testing.T) {
 			AddRow(false, nil, 4))
 	expectTokenGeneration(mock, "user-id", 5)
 	expectTokenGeneration(mock, "user-id", 5)
+	expectSessionRecord(mock, "user-id", 5)
 
 	_, token, err := svc.Login(t.Context(), "ivan", "password", "")
 	if err != nil {

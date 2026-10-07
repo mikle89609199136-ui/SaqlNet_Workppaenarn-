@@ -63,7 +63,8 @@ export async function sendOutboxItem(
         item.type as TMediaMessageType,
         item.content,
         item.replyToId ?? null,
-        item.entities ?? []
+        item.entities ?? [],
+        item.voice
       );
 
       /* `sent` — это «сервер принял», и ничего больше: ответ на отправку и

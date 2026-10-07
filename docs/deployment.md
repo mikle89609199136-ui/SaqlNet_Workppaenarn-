@@ -3,6 +3,8 @@
 - Production image: `Dockerfile.prod` — multi-stage build (Vite frontend → Go
   services → `crypto-rust` → NATS/MinIO binaries) into a single
   `debian:bookworm-slim` container supervised by `supervisord.conf`;
+  the final image also runs a local Redis instance for ephemeral presence data;
+  `REDIS_URL` may point the chat service at an external Redis instead;
   `docker-entrypoint.sh` runs migrations and, on first start, the full
   legacy→v2 data migration (marker file `/data/.legacy-v2-migration-complete`;
   disable with `RUN_LEGACY_MIGRATION=false`).

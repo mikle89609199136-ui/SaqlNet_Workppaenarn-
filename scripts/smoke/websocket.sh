@@ -14,7 +14,7 @@ run_websocket_tests() {
 	ws_base="${BASE_URL/http:/ws:}"
 	ws_base="${ws_base/https:/wss:}"
 
-	local ws_url="$ws_base/ws?token=$TOKEN_B"
+	local ws_url="$ws_base/ws"
 	local ws_output
 	local ws_output_file
 	local ws_pid
@@ -25,6 +25,7 @@ run_websocket_tests() {
 		cd "$PROJECT_ROOT/backend-v2"
 		go run ./cmd/smoke-ws \
 			"$ws_url" \
+			"$SESSION_COOKIE_B" \
 			"new_message" \
 			"$CHAT_ID"
 	) >"$ws_output_file" 2>&1 &
@@ -53,7 +54,7 @@ run_websocket_tests() {
 	http_request \
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d "{\"messages\":[{\"content\":\"$smoke_ws_message\",\"type\":\"text\",\"entities\":[{\"type\":\"bold\",\"offset\":0,\"length\":5},{\"type\":\"link\",\"offset\":6,\"length\":2,\"data\":{\"url\":\"https://example.com/docs\"}}]}]}"
 
 	if [[ "$HTTP_CODE" != "201" ]]; then

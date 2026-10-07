@@ -70,6 +70,29 @@ describe('редактирование своего сообщения', () => {
     stubCrypto();
   });
 
+  it('меню своего сообщения — по макету, «Удалить» последним (#825)', async () => {
+    const user = userEvent.setup();
+    setupChat();
+
+    await user.pointer({ keys: '[MouseRight]', target: await screen.findByText(ORIGINAL_TEXT) });
+    await screen.findByRole('menu', { name: 'Действия с сообщением' });
+
+    const items = screen
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+      // Реакции — отдельный ряд над пунктами.
+      .filter(Boolean);
+    expect(items).toEqual([
+      'Ответить',
+      'Копировать',
+      'Изменить',
+      'Закрепить',
+      'Переслать',
+      'Выбрать',
+      'Удалить',
+    ]);
+  });
+
   it('should open the composer with the original text after choosing edit', async () => {
     const user = userEvent.setup();
     setupChat();

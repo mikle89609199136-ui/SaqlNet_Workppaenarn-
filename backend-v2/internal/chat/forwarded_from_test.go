@@ -254,11 +254,13 @@ func TestForwardOriginRejectsUnavailableMessage(t *testing.T) {
 func sendForwarded(t *testing.T, rule func(sqlmock.Sqlmock), stored forwardMetadataArg, storedJSON string) string {
 	t.Helper()
 	handler, mock := messageValidationHandler(t)
+	ws := &recordingRealtime{}
+	handler.service.ws = ws
 	expectForwardSource(mock, `{}`)
 	rule(mock)
 	mock.ExpectQuery(`SELECT cm\.role`).
 		WithArgs(messageValidationChatID, messageValidationUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer"}).AddRow("member", false, false))
+		WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`WITH inserted AS`).
 		WithArgs(messageValidationChatID, messageValidationUserID, "forwarded text", "text", sql.NullString{}, stored, 0, []byte("[]")).
@@ -284,6 +286,20 @@ func sendForwarded(t *testing.T, rule func(sqlmock.Sqlmock), stored forwardMetad
 	handler.SendMessage(recorder, req)
 
 	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
+	var response struct {
+		Messages []Message `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Messages, 1)
+	require.NotNil(t, response.Messages[0].Reactions)
+	require.Empty(t, response.Messages[0].Reactions)
+	require.Len(t, ws.broadcasts, 1)
+	var event struct {
+		Message Message `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(ws.broadcasts[0].payload, &event))
+	require.NotNil(t, event.Message.Reactions)
+	require.Empty(t, event.Message.Reactions)
 	require.NoError(t, mock.ExpectationsWereMet())
 	return recorder.Body.String()
 }

@@ -5,7 +5,7 @@
     operationId: register
     requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/RegisterRequest' } } } }
     responses:
-      '201': { description: Registered, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/AuthResponse' } } } }
+      '201': { description: Registered, headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/AuthResponse' } } } }
       '400': { $ref: '../components/responses.yaml#/Error' }
       '409': { $ref: '../components/responses.yaml#/Error' }
 /auth/login:
@@ -16,7 +16,8 @@
     requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/LoginRequest' } } } }
     responses:
       '200':
-        description: Authenticated or 2FA challenge
+        description: Authenticated (session cookie is set) or 2FA challenge
+        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
         content:
           application/json:
             schema:
@@ -33,7 +34,7 @@
     tags: [Auth]
     summary: Save the authenticated user's public key
     operationId: saveAuthPublicKey
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string } } } } }
@@ -84,7 +85,7 @@
       404 qr_rotated means the code was replaced by a newer one, invalid_token
       that it expired or was used. Not cacheable.
     operationId: getQrRequest
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '200':
@@ -97,7 +98,7 @@
     summary: Decline a scanned QR login
     description: Drops a code this account captured; the device showing it draws a new one.
     operationId: declineQrRequest
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '204': { description: Declined }
@@ -109,15 +110,16 @@
     description: >-
       Polled by the new device with the secret from creation in X-QR-Secret.
       scanned means another device captured the code and the person is deciding.
-      A confirmed status carries the session token and the encrypted payload and
-      is returned once; later polls report expired. Not cacheable.
+      A confirmed status sets the session cookie and carries the encrypted
+      payload once; later polls report expired. Not cacheable.
     operationId: getQrStatus
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
       - { name: X-QR-Secret, in: header, required: true, schema: { type: string } }
     responses:
       '200':
-        description: Pending, scanned, confirmed, or expired QR login status
+        description: Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie
+        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
         content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrStatusResponse' } } }
       '403': { $ref: '../components/responses.yaml#/Error' }
 /auth/qr-confirm:
@@ -129,7 +131,7 @@
       confirm it (403 not_scanned). A code can be confirmed only once; a second
       confirmation gets 409 already_confirmed.
     operationId: confirmQrLogin
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrConfirmRequest' } } }
@@ -150,7 +152,7 @@
       every 30 by passing the previous token; a claimed code is not replaced
       (409 qr_scanned).
     operationId: createQrOffer
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferRequest' } } }
@@ -171,7 +173,7 @@
       and the HMAC over it, which the owner checks with the MAC key from the QR
       code before confirming. Somebody else's code reports expired. Not cacheable.
     operationId: getQrOffer
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '200':
@@ -183,7 +185,7 @@
     summary: Withdraw the code
     description: The page showing it went away, or the person declined the claim.
     operationId: withdrawQrOffer
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     responses:
       '204': { description: Withdrawn }
@@ -213,15 +215,16 @@
     summary: Get the result of a claimed code
     description: >-
       Polled by the new device with the claim secret in X-QR-Secret. A confirmed
-      status carries the session token and the encrypted payload and is returned
-      once; later polls, a declined or an expired code report expired. Not cacheable.
+      status sets the session cookie and carries the encrypted payload once;
+      later polls, a declined or an expired code report expired. Not cacheable.
     operationId: getQrOfferStatus
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
       - { name: X-QR-Secret, in: header, required: true, schema: { type: string } }
     responses:
       '200':
-        description: Pending, confirmed, or expired
+        description: Pending, confirmed, or expired; confirmed sets the session cookie
+        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
         content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferStatusResponse' } } }
       '403': { $ref: '../components/responses.yaml#/Error' }
 /auth/qr-offer/{token}/confirm:
@@ -233,7 +236,7 @@
       once (409 already_confirmed). payload is the master key encrypted to the
       claimed public key.
     operationId: confirmQrOffer
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     requestBody:
       required: true
@@ -249,17 +252,17 @@
     tags: [Auth]
     summary: Revoke the current token
     operationId: logout
-    security: [{ bearerAuth: [] }]
-    responses: { '200': { description: Logged out } }
+    security: [{ sessionCookie: [] }]
+    responses: { '200': { description: Logged out; the session cookie is cleared } }
 /auth/logout-all:
   post:
     tags: [Auth]
     summary: Revoke all user tokens
     description: May return 503 while generation revocation is disabled during a compatibility rollout.
     operationId: logoutAll
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses:
-      '200': { description: All sessions revoked }
+      '200': { description: All sessions revoked; the session cookie is cleared }
       '401': { $ref: '../components/responses.yaml#/Error' }
       '503': { $ref: '../components/responses.yaml#/Error' }
 /auth/sessions:
@@ -267,14 +270,20 @@
     tags: [Auth]
     summary: List authenticated sessions
     operationId: listAuthSessions
-    security: [{ bearerAuth: [] }]
-    responses: { '200': { description: Sessions } }
+    security: [{ sessionCookie: [] }]
+    responses:
+      '200':
+        description: Active sessions with the current credential first, then by recent activity
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/AuthSessionsResponse' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
 /auth/change-password:
   post:
     tags: [Auth]
     summary: Change password
     operationId: changePassword
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { $ref: '../components/schemas.yaml#/Password' } } } } }
@@ -284,14 +293,14 @@
     tags: [Auth]
     summary: Get 2FA status
     operationId: getTwoFactorStatus
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     responses: { '200': { description: 2FA status } }
 /auth/2fa/enable:
   post:
     tags: [Auth]
     summary: Enable 2FA
     operationId: enableTwoFactor
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { $ref: '../components/schemas.yaml#/Password' } } } } } }
     responses: { '200': { description: 2FA enabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/disable:
@@ -299,7 +308,7 @@
     tags: [Auth]
     summary: Disable 2FA
     operationId: disableTwoFactor
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
     responses: { '200': { description: 2FA disabled }, '400': { $ref: '../components/responses.yaml#/Error' } }
 /auth/2fa/verify:
@@ -307,6 +316,6 @@
     tags: [Auth]
     summary: Verify 2FA password
     operationId: verifyTwoFactor
-    security: [{ bearerAuth: [] }]
+    security: [{ sessionCookie: [] }]
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
     responses: { '200': { description: Verification result }, '401': { $ref: '../components/responses.yaml#/Error' } }

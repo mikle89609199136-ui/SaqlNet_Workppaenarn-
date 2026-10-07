@@ -248,6 +248,15 @@ describe('токены: контраст во всех палитрах, тем�
     expect(result).toEqual([]);
   });
 
+  it('галочки своего сообщения видны на заливке любого акцента (#657)', () => {
+    const result = failures((color, scope) => [
+      ...need(scope, 'out-tick на brand-fill', ratio(color('out-tick'), color('brand-fill')), 3),
+      ...need(scope, 'out-read на brand-fill', ratio(color('out-read'), color('brand-fill')), 3),
+    ]);
+
+    expect(result).toEqual([]);
+  });
+
   it('ошибка читается на своей подложке', () => {
     const result = failures((color, scope) => {
       const soft = over(color('danger-soft'), color('menu'));
@@ -320,6 +329,7 @@ describe('токены: палитра и акцент меняют только
     'sheet-2',
     'chat-bg',
     'composer',
+    'card',
     'menu',
     'line',
     'line-soft',
