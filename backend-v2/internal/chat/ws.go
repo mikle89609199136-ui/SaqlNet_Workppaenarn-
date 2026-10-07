@@ -82,7 +82,8 @@ type WSServer struct {
 	unreg          chan *Client
 	callRooms      *CallRoomManager
 	pendingInvites map[string]*pendingInvite // по получателю (#850)
-	inviteMu       sync.Mutex
+	heldAccepts    map[string]*heldAccept    // по принявшему (#939); создаётся при первой записи
+	inviteMu       sync.Mutex                // и pendingInvites, и heldAccepts
 	presence       presence.Store
 	activity       presenceActivity // время активности и собеседники; nil — не ведётся
 	pingInterval   time.Duration    // интервал heartbeat; 0 → wsPingInterval
@@ -368,6 +369,8 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		"self":   map[string]string{"userId": client.UserID},
 	})
 	client.Send <- joined
+	// Принял звонок — звонящему «принял» только теперь (#939).
+	ws.releaseAccept(client.UserID, roomID)
 	// Notify existing peers
 	peerJoined, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_joined",
