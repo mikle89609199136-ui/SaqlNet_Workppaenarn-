@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   RECENT_EMOJI: 'craneapp_recent_emoji',
   /** Палитра фона и акцент — только в браузере, пока нет #728. */
   APPEARANCE: 'craneapp_appearance',
+  VOICE_VOLUME: 'craneapp_voice_volume',
 };
 
 export type TStorageKeyTypes = keyof typeof STORAGE_KEYS;
