@@ -67,6 +67,9 @@ type Chat struct {
 	LastMessageAt string              `json:"lastMessageAt,omitempty"`
 	UnreadCount   int                 `json:"unreadCount"`
 	LastMessage   *LastMessagePreview `json:"lastMessage,omitempty"`
+
+	// Personal preference of the authenticated member (#560).
+	HideNotificationPreview bool `json:"hideNotificationPreview"`
 }
 
 type LastMessagePreview struct {
@@ -432,7 +435,8 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
-		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
+		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
+		       COALESCE(cs.hide_notification_preview, FALSE)
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -478,7 +482,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE COALESCE(cs.is_archived, FALSE) = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -526,7 +530,8 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		       )::int,
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
-		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions
+		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
+		       COALESCE(cs.hide_notification_preview, FALSE)
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -572,7 +577,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE c.id = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -2020,7 +2025,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmEntities, &lmType, &lmSender,
 			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
-			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions,
+			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions, &chat.HideNotificationPreview,
 		); err != nil {
 			return nil, err
 		}

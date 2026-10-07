@@ -109,6 +109,7 @@ paths:
   /chats/{chatId}/members/{userId}/unmute: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1unmute' }
   /chats/{chatId}/mls-state: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1mls-state' }
   /chats/{chatId}/pin: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pin' }
+  /chats/{chatId}/notification-settings: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1notification-settings' }
   /chats/{chatId}/archive: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1archive' }
   /chats/{chatId}/read: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1read' }
   /chats/{chatId}/messages/delete:

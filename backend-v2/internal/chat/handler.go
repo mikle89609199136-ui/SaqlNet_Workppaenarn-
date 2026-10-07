@@ -499,6 +499,18 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"state": map[string]any{"chatId": chatID, "epoch": epoch, "groupState": treeState}})
+	case suffix == "/notification-settings" && r.Method == http.MethodPut:
+		var input struct {
+			HideNotificationPreview *bool `json:"hideNotificationPreview"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if input.HideNotificationPreview == nil {
+			respondSuccess(w, r, ErrInvalidInput)
+			return
+		}
+		respondSuccess(w, r, h.service.SetNotificationPreview(r.Context(), current.ID, chatID, *input.HideNotificationPreview))
 	case suffix == "/pin" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "pin", r.Method == http.MethodPost))
 	case suffix == "/archive" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
