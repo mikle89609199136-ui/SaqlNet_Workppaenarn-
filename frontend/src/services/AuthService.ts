@@ -157,7 +157,6 @@ export class AuthService {
           response.data as {
             status: 'pending' | 'scanned' | 'confirmed' | 'expired';
             expiresAt?: number;
-            authToken?: string;
             payload?: { senderPublicKey: string; iv: string; ct: string };
           }
       );
@@ -249,7 +248,6 @@ export class AuthService {
         (response) =>
           response.data as {
             status: 'pending' | 'confirmed' | 'expired';
-            authToken?: string;
             payload?: { senderPublicKey: string; iv: string; ct: string };
           }
       );

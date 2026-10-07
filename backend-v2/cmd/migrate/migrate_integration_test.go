@@ -135,6 +135,127 @@ func TestEveryMigrationIsSafeToReRun(t *testing.T) {
 	}
 }
 
+func TestGifConstraintsMigrationCleansLegacyRows(t *testing.T) {
+	db := startPostgres(t)
+	ctx := context.Background()
+
+	files, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".sql") {
+			continue
+		}
+		if file.Name() == "0030_gifs_url_constraints.sql" {
+			break
+		}
+		content, err := os.ReadFile(filepath.Join(migrationsDir, file.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, string(content)); err != nil {
+			t.Fatalf("apply prerequisite %s: %v", file.Name(), err)
+		}
+	}
+
+	const (
+		ownerID     = "11111111-1111-4111-8111-111111111111"
+		otherID     = "22222222-2222-4222-8222-222222222222"
+		validID     = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		otherGIFID  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		pngID       = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		encryptedID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		missingID   = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO auth.users (id, username, password_hash, first_name) VALUES
+			($1, 'gif_owner', 'hash', 'Owner'),
+			($2, 'gif_other', 'hash', 'Other')
+	`, ownerID, otherID); err != nil {
+		t.Fatalf("seed users: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO media.uploads (id, uploader_id, object_key, content_type, is_encrypted) VALUES
+			($3, $1, 'valid', 'image/gif; charset=binary', FALSE),
+			($4, $2, 'other', 'image/gif', FALSE),
+			($5, $1, 'png', 'image/png', FALSE),
+			($6, $1, 'encrypted', 'image/gif', TRUE)
+	`, ownerID, otherID, validID, otherGIFID, pngID, encryptedID); err != nil {
+		t.Fatalf("seed uploads: %v", err)
+	}
+
+	mediaURL := func(id string) string { return "/api/v2/media/" + id }
+	rows := []struct {
+		name   string
+		userID any
+		url    string
+	}{
+		{name: "valid", userID: ownerID, url: mediaURL(validID)},
+		{name: strings.Repeat("я", 256), userID: ownerID, url: mediaURL(validID)},
+		{name: "has\tcontrol", userID: ownerID, url: mediaURL(validID)},
+		{name: "missing upload", userID: ownerID, url: mediaURL(missingID)},
+		{name: "another owner", userID: ownerID, url: mediaURL(otherGIFID)},
+		{name: "PNG", userID: ownerID, url: mediaURL(pngID)},
+		{name: "encrypted", userID: ownerID, url: mediaURL(encryptedID)},
+		{name: "legacy global", userID: nil, url: mediaURL(validID)},
+		{name: "external", userID: ownerID, url: "https://example.com/tracker.gif"},
+	}
+	for _, row := range rows {
+		if _, err := db.ExecContext(ctx, `INSERT INTO media.gifs (user_id, name, url) VALUES ($1, $2, $3)`, row.userID, row.name, row.url); err != nil {
+			t.Fatalf("seed GIF %q: %v", row.name, err)
+		}
+	}
+
+	migration, err := os.ReadFile(filepath.Join(migrationsDir, "0030_gifs_url_constraints.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(migration)); err != nil {
+		t.Fatalf("apply GIF constraints migration: %v", err)
+	}
+
+	var keptNames []string
+	result, err := db.QueryContext(ctx, `SELECT name FROM media.gifs ORDER BY created_at, id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer result.Close()
+	for result.Next() {
+		var name string
+		if err := result.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		keptNames = append(keptNames, name)
+	}
+	if err := result.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(keptNames) != 3 {
+		t.Fatalf("kept GIF names %q, want one valid and two cleared rows", keptNames)
+	}
+	emptyNames := 0
+	for _, name := range keptNames {
+		switch name {
+		case "":
+			emptyNames++
+		case "valid":
+		default:
+			t.Fatalf("unexpected name after cleanup: %q", name)
+		}
+	}
+	if emptyNames != 2 {
+		t.Fatalf("cleared %d invalid names, want 2", emptyNames)
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO media.gifs (user_id, name, url) VALUES ($1, $2, $3)`, ownerID, "bad\tname", mediaURL(validID)); err == nil {
+		t.Fatal("control-containing name passed the database constraint")
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO media.gifs (user_id, name, url) VALUES ($1, '', $2)`, ownerID, "/API/V2/MEDIA/"+validID); err == nil {
+		t.Fatal("uppercase media prefix passed the database constraint")
+	}
+}
+
 // Сломанная миграция не записывается как применённая и не оставляет
 // половину изменений: следующий запуск попробует её снова.
 func TestFailedMigrationIsNotRecorded(t *testing.T) {

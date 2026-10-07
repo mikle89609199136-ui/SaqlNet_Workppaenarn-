@@ -136,18 +136,18 @@ describe('ApiClient: заголовки', () => {
     fetchSpy.mockRestore();
   });
 
-  it('заголовки вызова передаются как есть (обмен старого токена на cookie)', async () => {
-    let authorization: string | null = null;
+  it('явные несекретные заголовки вызова передаются как есть', async () => {
+    let language: string | null = null;
     server.use(
-      http.post(api('/auth/session'), ({ request }) => {
-        authorization = request.headers.get('Authorization');
+      http.get(api('/users/me'), ({ request }) => {
+        language = request.headers.get('X-Crane-Language');
         return new HttpResponse(null, { status: 204 });
       })
     );
 
-    await createClient().post('/auth/session', undefined, { Authorization: 'Bearer legacy' });
+    await createClient().get('/users/me', {}, { 'X-Crane-Language': 'ru' });
 
-    expect(authorization).toBe('Bearer legacy');
+    expect(language).toBe('ru');
   });
 
   it('should drop content-type when there is no body', async () => {

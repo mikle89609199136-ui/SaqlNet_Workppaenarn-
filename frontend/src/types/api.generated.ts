@@ -128,7 +128,7 @@ export interface paths {
         };
         /**
          * Get QR login status
-         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status sets the session cookie and carries the encrypted payload once; later polls report expired. Not cacheable.
          */
         get: operations["getQrStatus"];
         put?: never;
@@ -232,7 +232,7 @@ export interface paths {
         };
         /**
          * Get the result of a claimed code
-         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status sets the session cookie and carries the encrypted payload once; later polls, a declined or an expired code report expired. Not cacheable.
          */
         get: operations["getQrOfferStatus"];
         put?: never;
@@ -294,26 +294,6 @@ export interface paths {
          * @description May return 503 while generation revocation is disabled during a compatibility rollout.
          */
         post: operations["logoutAll"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Exchange a bearer token for the session cookie
-         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
-         */
-        post: operations["exchangeSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2167,7 +2147,10 @@ export interface paths {
         /** List GIFs */
         get: operations["listGifs"];
         put?: never;
-        /** Create a GIF */
+        /**
+         * Create a GIF
+         * @description Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB. Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source; 404 upload_not_found (including uploads owned by another user); 413 request_too_large; 500 internal_error.
+         */
         post: operations["createGif"];
         delete?: never;
         options?: never;
@@ -2507,6 +2490,7 @@ export interface components {
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
@@ -2566,6 +2550,7 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
@@ -2610,23 +2595,6 @@ export interface components {
         };
         AuthResponse: {
             user: components["schemas"]["User"];
-            token: string;
-        };
-        AuthSession: {
-            /** Format: uuid */
-            id: string;
-            deviceName: string;
-            deviceType: string;
-            ipAddress: string;
-            /** Format: date-time */
-            lastActive: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** @description True when this row belongs to the token used for the request. */
-            isCurrent: boolean;
-        };
-        AuthSessionsResponse: {
-            sessions: components["schemas"]["AuthSession"][];
         };
         LoginRequest: {
             username: string;
@@ -2680,7 +2648,6 @@ export interface components {
             status: "pending" | "scanned" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrConfirmRequest: {
@@ -2731,11 +2698,26 @@ export interface components {
             status: "pending" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         UpdateProfileRequest: {
             firstName?: string;
@@ -3036,6 +3018,7 @@ export interface components {
             lastReadAt: string;
         };
         MessageListResponse: {
+            /** @description Always an array; no messages are represented by [], never null. */
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
@@ -3075,6 +3058,7 @@ export interface components {
             messages: components["schemas"]["SendMessageRequest"][];
         };
         ReactionListResponse: {
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         ReactionToggleResponse: {
@@ -3082,6 +3066,7 @@ export interface components {
             action: "added" | "removed" | "replaced";
             /** @description Empty when the reaction was removed. */
             currentEmoji: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         FavoriteStateResponse: {
@@ -3216,6 +3201,25 @@ export interface components {
                         /** @enum {string} */
                         code?: "file_too_large";
                     };
+                };
+            };
+        };
+        /** @description Request body exceeds the configured size limit (request_too_large) */
+        RequestTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "request_too_large",
+                 *       "message": "request body exceeds 64 KiB limit",
+                 *       "requestId": "20260926T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large";
                 };
             };
         };
@@ -3654,27 +3658,6 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
-        };
-    };
-    exchangeSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session cookie set */
-            204: {
-                headers: {
-                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -6393,6 +6376,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
@@ -7026,6 +7010,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
                     name?: string;
                     url: string;
                 };
@@ -7039,6 +7024,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["RequestTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {

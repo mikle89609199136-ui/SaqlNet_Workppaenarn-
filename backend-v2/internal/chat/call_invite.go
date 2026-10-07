@@ -16,11 +16,16 @@ import (
 // Приглашать можно только собеседника личного чата и только в свою
 // комнату; иначе приглашение молча отбрасывается, и звонящий не узнаёт,
 // занят ли посторонний ему человек. Приглашение живёт callInviteTTL и
-// отменяется, если звонящий отключился, не дождавшись ответа.
+// отменяется, если звонящий отключился, не дождавшись ответа. «Принял»
+// звонящий получает, когда принявший уже вошёл в комнату (#939).
 
 // callInviteTTL — столько звонит входящий, как таймаут дозвона на клиенте.
 // Переменная, а не константа, — для тестов.
 var callInviteTTL = 60 * time.Second
+
+// callAcceptHold — сколько «принял» ждёт входа принявшего в комнату (#939),
+// прежде чем уйти звонящему всё равно. Переменная — для тестов.
+var callAcceptHold = 5 * time.Second
 
 // pendingInvite — приглашение, ждущее ответа, по получателю.
 type pendingInvite struct {
@@ -28,6 +33,19 @@ type pendingInvite struct {
 	callerID string
 	caller   *Client // подключение, с которого звали: его отключение отменяет приглашение
 	payload  json.RawMessage
+	timer    *time.Timer
+}
+
+// heldAccept — «принял», придержанный до входа принявшего в комнату, по
+// принявшему (#939). Звонящий начинает согласование, как только узнал о
+// «принял», а сигнал адресату вне комнаты сервер отбрасывает
+// (relayCallSignal): уйди «принял» сразу — предложение звонящего обогнало
+// бы вход принявшего и пропало, и звонок завис бы.
+type heldAccept struct {
+	roomID   string
+	callerID string
+	caller   *Client
+	response []byte
 	timer    *time.Timer
 }
 
@@ -104,7 +122,71 @@ func (ws *WSServer) handleCallInviteResponse(client *Client, msg map[string]inte
 		"accepted": accepted,
 		"reason":   reason,
 	})
+	if accepted {
+		ws.holdAccept(client.UserID, invite, out)
+		return
+	}
 	ws.sendToUser(invite.callerID, out)
+}
+
+// holdAccept — «принял» уходит звонящему из handleCallJoin принявшего
+// (releaseAccept), а если вход так и не пришёл — через callAcceptHold, как
+// раньше, чтобы звонящий не остался без ответа.
+func (ws *WSServer) holdAccept(to string, invite *pendingInvite, response []byte) {
+	held := &heldAccept{roomID: invite.roomID, callerID: invite.callerID, caller: invite.caller, response: response}
+	ws.inviteMu.Lock()
+	// Вошёл раньше, чем ответил, — ждать нечего. Проверка под inviteMu:
+	// вход снимает придержанный «принял» тоже под ним, после JoinRoom.
+	if ws.callRooms.IsParticipant(invite.roomID, to) {
+		ws.inviteMu.Unlock()
+		ws.sendToUser(invite.callerID, response)
+		return
+	}
+	prev := ws.heldAccepts[to]
+	if prev != nil {
+		prev.timer.Stop()
+	}
+	if ws.heldAccepts == nil {
+		ws.heldAccepts = make(map[string]*heldAccept)
+	}
+	held.timer = time.AfterFunc(callAcceptHold, func() {
+		ws.sendHeldAccept(to, func(h *heldAccept) bool { return h == held })
+	})
+	ws.heldAccepts[to] = held
+	ws.inviteMu.Unlock()
+	if prev != nil {
+		ws.sendToUser(prev.callerID, prev.response)
+	}
+}
+
+// releaseAccept — принявший вошёл в комнату: теперь сигналы звонящего до
+// него дойдут, «принял» можно отправить.
+func (ws *WSServer) releaseAccept(to, roomID string) {
+	ws.sendHeldAccept(to, func(h *heldAccept) bool { return h.roomID == roomID })
+}
+
+func (ws *WSServer) sendHeldAccept(to string, match func(*heldAccept) bool) {
+	ws.inviteMu.Lock()
+	held := ws.heldAccepts[to]
+	if held == nil || !match(held) {
+		ws.inviteMu.Unlock()
+		return
+	}
+	held.timer.Stop()
+	delete(ws.heldAccepts, to)
+	ws.inviteMu.Unlock()
+	ws.sendToUser(held.callerID, held.response)
+}
+
+// dropHeldAcceptsLocked — звонящий отключился или комната закрылась:
+// «принял» больше не нужен. Вызывать под inviteMu.
+func (ws *WSServer) dropHeldAcceptsLocked(match func(*heldAccept) bool) {
+	for to, held := range ws.heldAccepts {
+		if match(held) {
+			held.timer.Stop()
+			delete(ws.heldAccepts, to)
+		}
+	}
 }
 
 // deliverPendingInvite — входящий, пришедший, пока получатель был не в
@@ -151,6 +233,7 @@ func (ws *WSServer) cancelInvitesFrom(client *Client) {
 			gone = append(gone, cancelled{to, invite.roomID})
 		}
 	}
+	ws.dropHeldAcceptsLocked(func(h *heldAccept) bool { return h.caller == client })
 	ws.inviteMu.Unlock()
 	for _, c := range gone {
 		ws.sendCallCancelled(c.to, c.roomID)
@@ -169,6 +252,7 @@ func (ws *WSServer) cancelInvitesForRoom(roomID string) {
 			gone = append(gone, to)
 		}
 	}
+	ws.dropHeldAcceptsLocked(func(h *heldAccept) bool { return h.roomID == roomID })
 	ws.inviteMu.Unlock()
 	for _, to := range gone {
 		ws.sendCallCancelled(to, roomID)
