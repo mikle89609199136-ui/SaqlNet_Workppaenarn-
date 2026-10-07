@@ -90,6 +90,7 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 	mock.ExpectQuery("UPDATE auth.sessions").
 		WithArgs("user-id", authctx.TokenHash("cookie-token")).
 		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{}))

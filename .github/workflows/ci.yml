@@ -150,7 +150,9 @@ jobs:
         run: go test -v ./...
 
       - name: Run auth revocation integration tests
-        run: go test -count=1 -tags=integration -v ./internal/platform/authctx
+        run: |
+          go test -count=1 -tags=integration -v ./internal/platform/authctx
+          go test -race -count=1 -tags=integration -v -run '^TestActiveWSLogoutAcrossReplicas$' ./internal/chat
 
       # Все миграции на настоящем Postgres: по одному разу на чистой базе и
       # повторный прогон с данными — так приходят базы, созданные до
