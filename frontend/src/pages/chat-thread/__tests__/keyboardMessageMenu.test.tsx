@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChatUiStore } from '@/entities/chat';
+import { clearAllDrafts, useChatUiStore } from '@/entities/chat';
 import { makeChat, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { mockThreadLayout } from '@/test/harness/threadLayout';
@@ -13,13 +13,13 @@ import type { IMessageDto } from '@/types';
 const ME = 'user-1';
 const PEER = 'user-2';
 
-function open() {
+function open({ lastIsMine = false } = {}) {
   const chat = makeChat({ id: 'chat-keys', type: 'private', peerId: PEER });
   const messages: IMessageDto[] = ['первое', 'второе', 'третье'].map((content, index) =>
     makeMessage({
       id: `msg-${index + 1}`,
       chatId: chat.id,
-      senderId: PEER,
+      senderId: lastIsMine && index === 2 ? ME : PEER,
       content,
       createdAt: `2026-10-01T12:0${index}:00Z`,
     })
@@ -67,6 +67,7 @@ async function focusMenuItem(user: ReturnType<typeof userEvent.setup>, name: str
 
 beforeEach(() => {
   resetFixtures();
+  clearAllDrafts();
   useChatUiStore.setState({ actionMenu: null, selectionMode: false, replyToMessage: null });
   mockThreadLayout({ viewport: 20_000 });
 });
@@ -133,5 +134,27 @@ describe('меню сообщения с клавиатуры (#910)', () => {
 
     expect(await screen.findByRole('menu')).toBeInTheDocument();
     expect(useChatUiStore.getState().actionMenu?.messageId).toBe('msg-2');
+  });
+
+  it('своё последнее сообщение и пустое поле: ↑ в ленте ведёт к предыдущему, а не в правку', async () => {
+    const user = userEvent.setup();
+    open({ lastIsMine: true });
+
+    expect(await tabIntoFeed(user)).toBe(article('msg-3'));
+    await user.keyboard('{ArrowUp}');
+
+    expect(article('msg-2')).toHaveFocus();
+    expect(useChatUiStore.getState().editingMessage).toBeNull();
+  });
+
+  it('↑ в пустом поле ввода по-прежнему начинает правку своего последнего сообщения', async () => {
+    const user = userEvent.setup();
+    open({ lastIsMine: true });
+    await screen.findByText('третье');
+
+    await user.click(screen.getByRole('textbox', { name: 'Сообщение' }));
+    await user.keyboard('{ArrowUp}');
+
+    expect(useChatUiStore.getState().editingMessage?.id).toBe('msg-3');
   });
 });

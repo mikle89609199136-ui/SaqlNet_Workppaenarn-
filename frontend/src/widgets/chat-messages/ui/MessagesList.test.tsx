@@ -1,6 +1,7 @@
 import { useChatUiStore } from '@/entities/chat';
 import { formatMessageTime } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
+import { formatCallDuration } from '@/shared/lib';
 import { mockThreadLayout } from '@/test/harness/threadLayout';
 import { makeMessage, makeUser } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
@@ -141,6 +142,21 @@ describe('MessagesList', () => {
 
       expect(article('msg-1')).toHaveAccessibleName(
         `Тестовый, сообщение 1, ${formatMessageTime(messages[0].createdAt)}`
+      );
+    });
+
+    it('у звонка диктор слышит подпись звонка, а не его данные', () => {
+      const call = makeMessage({
+        id: 'call-1',
+        senderId: 'u-2',
+        type: 'call',
+        content: JSON.stringify({ callKind: 'video', duration: 28, initiatorId: 'u-2' }),
+        createdAt: '2026-05-11T12:09:00Z',
+      });
+      renderComponent({ messages: [call], trackUnread: false });
+
+      expect(article('call-1')).toHaveAccessibleName(
+        `Тестовый, Звонок завершен, ${formatCallDuration(28)}, ${formatMessageTime(call.createdAt)}`
       );
     });
 
