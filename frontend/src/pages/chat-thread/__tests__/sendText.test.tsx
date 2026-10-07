@@ -10,6 +10,8 @@ import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import { stubCrypto } from '@/test/harness/stubCrypto';
+import { typeIntoComposer } from '@/test/harness/composer';
+import type { IRichText } from '@/shared/lib/richText';
 
 // ── Наблюдение за отправкой ──────────────────────────────────────────────────
 
@@ -17,6 +19,7 @@ interface ISendRequestBody {
   content: string;
   type: string;
   replyTo: string | null;
+  entities?: unknown[];
 }
 
 /**
@@ -33,12 +36,15 @@ function setupChat(overrides: Partial<IChatDto> = {}) {
     http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
     http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [] })),
     http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+    // Отправка — всегда пачкой (#808): каждое сообщение пачки — отдельное тело.
     http.post(api(`/messages/${chat.id}`), async ({ request }) => {
-      const body = (await request.json()) as ISendRequestBody;
-      sentBodies.push(body);
+      const { messages } = (await request.json()) as { messages: ISendRequestBody[] };
+      sentBodies.push(...messages);
 
       return HttpResponse.json({
-        message: makeMessage({ chatId: chat.id, senderId: me.id, content: body.content }),
+        messages: messages.map((item) =>
+          makeMessage({ chatId: chat.id, senderId: me.id, content: item.content })
+        ),
       });
     })
   );
@@ -46,11 +52,12 @@ function setupChat(overrides: Partial<IChatDto> = {}) {
   return { me, chat, sentBodies };
 }
 
-async function typeAndPressEnter(text: string) {
+async function typeAndPressEnter(text: string | IRichText) {
   const user = userEvent.setup();
-  const input = await screen.findByPlaceholderText('Сообщение...');
+  const input = await screen.findByRole('textbox', { name: 'Сообщение' });
 
-  await user.type(input, text);
+  await user.click(input);
+  await typeIntoComposer(input, text);
   await user.keyboard('{Enter}');
 
   return input;
@@ -86,20 +93,20 @@ describe('отправка текста', () => {
     await waitFor(() => expect(sentBodies).toHaveLength(1));
     await waitFor(() => expect(screen.getAllByText(text)).toHaveLength(1));
 
-    expect(input).toHaveValue('');
+    expect(input.textContent).toBe('');
   });
 
-  it('should not let the message be typed while the chat key is not ready', async () => {
-    // Пока ключа чата нет, шифровать нечем. Отправить открытым текстом
-    // хуже, чем не отправить, поэтому поле ввода закрыто, и человек видит
-    // почему.
+  it('форматирование уходит внутри шифртекста и видно в ленте (#656)', async () => {
     const { me, chat, sentBodies } = setupChat();
+    const text = secretText('важное');
 
-    renderChatThread({ chat, messages: [], currentUser: me, keyUnavailable: true });
+    renderChatThread({ chat, messages: [], currentUser: me });
+    await typeAndPressEnter({ text, entities: [{ type: 'bold', offset: 0, length: text.length }] });
 
-    const input = await screen.findByPlaceholderText('Шифрование недоступно');
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    expect(sentBodies[0]).not.toHaveProperty('entities');
+    expect(sentBodies[0].content).not.toContain(text);
 
-    expect(input).toBeDisabled();
-    expect(sentBodies).toHaveLength(0);
+    await waitFor(() => expect(screen.getByText(text)).toHaveClass('font-semibold'));
   });
 });

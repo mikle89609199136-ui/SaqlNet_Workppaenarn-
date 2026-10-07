@@ -3,6 +3,11 @@ export const WS_EVENTS = {
     NEW: 'new_message',
     EDITED: 'message_edited',
     DELETED: 'message_deleted',
+    // Пачка удалена у всех / скрыта у себя (#840).
+    BATCH_DELETED: 'messages_deleted',
+    HIDDEN: 'messages_hidden',
+    // Собеседник получил или прочитал сообщения до upTo (#657).
+    RECEIPTS: 'receipts',
     PINNED: 'message_pinned',
     UNPINNED: 'message_unpinned',
   },
@@ -27,6 +32,10 @@ export const WS_EVENTS = {
     TYPING: 'typing',
     // Собеседник вошёл в сеть или вышел из неё (#780).
     PRESENCE: 'presence_changed',
+    // Блокировка и её снятие — приходят обоим (#760).
+    BLOCKED: 'user_blocked',
+    UNBLOCKED: 'user_unblocked',
+    PROFILE_UPDATED: 'user_profile_updated',
   },
   CALL: {
     ERROR: 'call_error',

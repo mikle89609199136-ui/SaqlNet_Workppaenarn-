@@ -7,6 +7,7 @@ import { renderChatThread } from '@/test/harness/renderChatThread';
 import { stubCrypto } from '@/test/harness/stubCrypto';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
+import { typeIntoComposer } from '@/test/harness/composer';
 
 describe('отказ при отправке сообщения', () => {
   function setup(code: string, message: string) {
@@ -34,8 +35,8 @@ describe('отказ при отправке сообщения', () => {
   }
 
   async function отправить(текст: string) {
-    const поле = await screen.findByPlaceholderText(/Сообщение/i);
-    await userEvent.type(поле, текст);
+    const поле = await screen.findByRole('textbox', { name: 'Сообщение' });
+    await typeIntoComposer(поле, текст);
     await userEvent.click(screen.getByRole('button', { name: /Отправить/i }));
   }
 

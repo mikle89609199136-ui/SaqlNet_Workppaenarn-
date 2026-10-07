@@ -1,78 +1,68 @@
+//go:build integration
+
 package integration
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"os"
-	"strings"
 	"testing"
 
 	"craneapp/backend-v2/internal/chat"
 
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
+// TestSendMessageRejectsReplyFromAnotherChat covers the contract that a
+// reply_to reference must point to a message inside the same chat. Attempting
+// to send a message in chat B with ReplyTo pointing to a message in chat A
+// must be rejected with ErrNotFound (mapped to 404 at the HTTP layer), and
+// must not persist anything in chat B.
+//
+// Uses the shared TestDB from TestMain. The two chats and three users are
+// seeded here so the test can run in any order relative to the rest of the
+// package; t.Cleanup wipes all mutable state afterwards.
 func TestSendMessageRejectsReplyFromAnotherChat(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is not configured")
-	}
-
 	ctx := context.Background()
-	db, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-	defer db.Close()
-	require.NoError(t, db.PingContext(ctx))
-
-	senderID := randomUUID(t)
-	memberID := randomUUID(t)
-	outsiderID := randomUUID(t)
-	chatAID := randomUUID(t)
-	chatBID := randomUUID(t)
-	replyID := randomUUID(t)
-	prefix := strings.ReplaceAll(senderID, "-", "")
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO auth.users (id, username, password_hash, first_name, last_name)
-		VALUES
-			($1, $4, 'hashed_password', 'Sender', 'User'),
-			($2, $5, 'hashed_password', 'Member', 'User'),
-			($3, $6, 'hashed_password', 'Outsider', 'User')
-	`, senderID, memberID, outsiderID, "reply_sender_"+prefix, "reply_member_"+prefix, "reply_outsider_"+prefix)
-	require.NoError(t, err)
+	db := TestDB
+	service := chat.NewService(db, nil, nil)
 
 	t.Cleanup(func() {
-		_, _ = db.ExecContext(context.Background(), `DELETE FROM chats.chats WHERE id IN ($1, $2)`, chatAID, chatBID)
-		_, _ = db.ExecContext(context.Background(), `DELETE FROM auth.users WHERE id IN ($1, $2, $3)`, senderID, memberID, outsiderID)
+		truncateTables(t, db, context.Background())
 	})
 
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO chats.chats (id, type, title, owner_id)
-		VALUES ($1, 'group', 'Chat A', $3), ($2, 'group', 'Chat B', $3)
-	`, chatAID, chatBID, senderID)
-	require.NoError(t, err)
+	senderID := seedUser(t, db, ctx)
+	memberID := seedUser(t, db, ctx)
+	outsiderID := seedUser(t, db, ctx)
 
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO chats.members (user_id, chat_id)
-		VALUES ($1, $3), ($2, $3), ($1, $4), ($5, $4)
-	`, senderID, memberID, chatAID, chatBID, outsiderID)
-	require.NoError(t, err)
+	chatAID := seedChat(t, db, ctx, "group", senderID, map[string]string{
+		senderID: "owner",
+		memberID: "member",
+	})
+	chatBID := seedChat(t, db, ctx, "group", senderID, map[string]string{
+		senderID:   "owner",
+		outsiderID: "member",
+	})
 
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO messages.messages (id, chat_id, sender_id, content, type)
-		VALUES ($1, $2, $3, 'private message in Chat A', 'text')
-	`, replyID, chatAID, memberID)
-	require.NoError(t, err)
+	// The message being replied to lives in chat A, but the reply will be
+	// sent into chat B — cross-chat reference must be refused.
+	replyID := seedMessage(t, db, ctx, chatAID, memberID, "private message in Chat A")
 
 	var before int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1`, chatBID).Scan(&before))
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1`, chatBID).Scan(&before))
 
-	_, err = chat.NewService(db, nil, nil).SendMessage(ctx, senderID, chatBID, "cross-chat reply", "text", &replyID, nil)
-	require.True(t, errors.Is(err, chat.ErrNotFound), "expected ErrNotFound, got %v", err)
+	_, err := service.SendMessages(ctx, senderID, chatBID, []chat.OutgoingMessage{
+		{
+			Content: "cross-chat reply",
+			Type:    "text",
+			ReplyTo: &replyID,
+		},
+	})
+	require.ErrorIs(t, err, chat.ErrNotFound,
+		"expected ErrNotFound, got %v", err)
 
 	var after int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1`, chatBID).Scan(&after))
-	require.Equal(t, before, after, "invalid reply must not create a message in Chat B")
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1`, chatBID).Scan(&after))
+	require.Equal(t, before, after,
+		"invalid reply must not create a message in chat B")
 }

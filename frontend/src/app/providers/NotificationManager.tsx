@@ -1,6 +1,8 @@
+import { services } from '@/services/serviceContainer';
 import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
+import { usePushNotifications, usePushStore } from '@/features/push-notifications';
 import type { ILastMessageDto } from '@/types';
 import { useEffect } from 'react';
 
@@ -16,6 +18,15 @@ const MAX_BODY_LENGTH = 120;
  * сюда не должен просочиться ни шифртекст, ни служебный плейсхолдер.
  */
 async function resolveNotificationBody(chatId: string, message: ILastMessageDto): Promise<string> {
+  // Read the server preference even if another device changed it.
+  // If the request fails, keep message text out of the system notification.
+  try {
+    const chat = await services.chatService.getChat(chatId);
+    if (chat.hideNotificationPreview) return FALLBACK_BODY;
+  } catch {
+    return FALLBACK_BODY;
+  }
+
   if (typeof message?.content !== 'string' || !message.content) return FALLBACK_BODY;
 
   try {
@@ -28,46 +39,89 @@ async function resolveNotificationBody(chatId: string, message: ILastMessageDto)
     if (decrypted?.undecryptable) return FALLBACK_BODY;
     if (text.startsWith('{')) return FALLBACK_BODY;
 
+    // Пока шла расшифровка (в том числе загрузка ключей), другое
+    // устройство могло включить скрытие. Проверяем перед выдачей текста;
+    // ошибка повторного запроса тоже приводит к безопасной заглушке.
+    const chat = await services.chatService.getChat(chatId);
+    if (chat.hideNotificationPreview) return FALLBACK_BODY;
+
     return text.slice(0, MAX_BODY_LENGTH);
   } catch {
     return FALLBACK_BODY;
   }
 }
 
+/** Нажали на push-уведомление при открытом приложении — перейти без перезагрузки. */
+function isNavigateRequest(data: unknown): data is { type: 'craneapp:navigate'; url: string } {
+  const message = data as { type?: unknown; url?: unknown } | null;
+  return (
+    message?.type === 'craneapp:navigate' &&
+    typeof message.url === 'string' &&
+    // Только свои пути: «//evil.example» — уже чужой адрес.
+    message.url.startsWith('/') &&
+    !message.url.startsWith('//')
+  );
+}
+
+/*
+ * Разрешение на уведомления здесь больше не спрашивается при загрузке
+ * (#882): iPhone разрешает спросить только по нажатию, а в браузере
+ * запрос без повода раздражает. Спрашивает плашка в списке чатов и
+ * переключатель в настройках.
+ */
 export function NotificationManager() {
-  const token = useProfileStore((state) => state.token);
-  const { eventBus } = useRealtimeSocket(!!token);
+  const signedIn = useProfileStore((state) => state.isAuth);
+  const { eventBus } = useRealtimeSocket(signedIn);
+  // Push (#882): подписка устройства и «на экране ли приложение» — серверу.
+  usePushNotifications(signedIn);
+  const pushOn = usePushStore((state) => state.status === 'on');
 
   useEffect(() => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    const container = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker;
+    if (!container) return undefined;
+    const onMessage = (event: MessageEvent) => {
+      if (!isNavigateRequest(event.data)) return;
+      // Роутер слушает popstate: новый адрес в истории + событие — переход
+      // внутри приложения, без перезагрузки и без ссылки на сам роутер.
+      window.history.pushState(null, '', event.data.url);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    };
+    container.addEventListener('message', onMessage);
+    return () => container.removeEventListener('message', onMessage);
   }, []);
 
   useEffect(() => {
     return eventBus.on('new_message', (payload) => {
       if (!document.hidden) return;
-      if (Notification.permission !== 'granted') return;
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      // Push на этом устройстве включён — уведомление покажет service
+      // worker; второе из вкладки было бы дублем.
+      if (pushOn) return;
 
-      const message = payload?.message ?? payload ?? {};
+      const message = (payload?.message ?? payload ?? {}) as ILastMessageDto & {
+        chatId?: string;
+      };
       const chatId = message.chatId ?? payload?.chatId;
+      if (typeof chatId !== 'string' || !chatId) return;
       const title = message.senderName || 'CraneApp';
 
+      const userId = useProfileStore.getState().user?.id ?? '';
       void resolveNotificationBody(chatId, message).then((body) => {
         // Пока шла расшифровка, пользователь мог вернуться во вкладку.
         if (!document.hidden) return;
+        const profile = useProfileStore.getState();
+        if (!profile.isAuth || (profile.user?.id ?? '') !== userId) return;
 
         try {
           new Notification(title, {
             body,
-            icon: '/favicon.ico',
+            icon: '/icons/icon-192.png',
             tag: chatId,
           });
         } catch (_) {}
       });
     });
-  }, [eventBus]);
+  }, [eventBus, pushOn]);
 
   return null;
 }

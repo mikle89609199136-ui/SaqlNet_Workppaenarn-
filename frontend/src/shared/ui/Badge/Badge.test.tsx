@@ -34,7 +34,21 @@ describe('метка', () => {
     /* Без tabular-nums счётчик дёргается при смене 9 на 10. */
     const { container } = render(<Badge>{9}</Badge>);
 
-    expect(container.firstChild).toHaveClass('tabular-nums', 'font-mono');
+    expect(container.firstChild).toHaveClass('tabular-nums');
+  });
+
+  it('should draw an empty dot for a chat marked unread by hand', () => {
+    const { container } = render(<Badge label="Отмечен непрочитанным" />);
+
+    expect(container.firstChild).toHaveClass('h-5', 'min-w-5', 'rounded-pill');
+    expect(container.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+    expect(screen.getByText('Отмечен непрочитанным')).toHaveClass('sr-only');
+  });
+
+  it('should keep a white number on the muted counter', () => {
+    const { container } = render(<Badge tone="quiet">{3}</Badge>);
+
+    expect(container.firstChild).toHaveClass('bg-muted-badge', 'text-on-brand');
   });
 
   it('should also carry plain text', () => {

@@ -3,25 +3,23 @@ import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import type { ReactNode } from 'react';
 
-/* Подложка и рамка — прозрачность от статусного токена, а не свой оттенок:
-   так плашка следует за темой и за сменой акцента. */
+/* Плашка дизайн-системы (Notice, #817): без рамки, на приподнятой
+   поверхности. Вид несёт только значок, текст остаётся нейтральным:
+   полужирное начало говорит, что случилось, продолжение — почему. */
 const tones = {
   info: {
-    box: 'border-brand-fill/35 bg-brand-soft',
     icon: 'text-brand',
     defaultIcon: 'info',
   },
   warn: {
-    box: 'border-warn/40 bg-warn/10',
     icon: 'text-warn',
     defaultIcon: 'warning',
   },
   danger: {
-    box: 'border-danger/40 bg-danger/10',
     icon: 'text-danger',
     defaultIcon: 'warning',
   },
-} as const satisfies Record<string, { box: string; icon: string; defaultIcon: TIconTypes }>;
+} as const satisfies Record<string, { icon: string; defaultIcon: TIconTypes }>;
 
 interface Props {
   children: ReactNode;
@@ -31,30 +29,33 @@ interface Props {
   icon?: TIconTypes;
   /* Кнопка рядом с текстом: «Понятно», «Подтвердить код». */
   action?: ReactNode;
+  /* Как объявлять: по умолчанию опасное — сразу (alert), остальное —
+     в паузе речи (status). Постоянная плашка на месте поля ввода —
+     состояние, а не тревога, даже если она красная. */
+  role?: 'status' | 'alert';
   className?: string;
 }
 
-export function Banner({ action, children, className, icon, tone = 'info' }: Props) {
+export function Banner({ action, children, className, icon, role, tone = 'info' }: Props) {
   const style = tones[tone];
 
   return (
     <div
       className={cn(
-        'text-body flex items-center gap-3 rounded-field border px-4 py-3.5 leading-normal text-ink',
-        style.box,
+        'flex min-h-13.5 items-center gap-3 rounded-dialog bg-sheet-2 py-2.5 pr-3 pl-4 text-ui leading-[1.4] text-ink-2',
+        '[&_b]:font-semibold [&_b]:text-ink [&_strong]:font-semibold [&_strong]:text-ink',
         className
       )}
       /* Опасное объявляется сразу, остальное ждёт паузы в речи диктора:
          предупреждение о подписи перебивать человека вправе, сообщение о
          включённом шифровании — нет. */
-      role={tone === 'danger' ? 'alert' : 'status'}
+      role={role ?? (tone === 'danger' ? 'alert' : 'status')}
     >
       {/* Значок повторяет то, что уже сказано текстом и цветом. */}
       <Icon
         aria-hidden="true"
-        className={cn('shrink-0', style.icon)}
+        className={cn('size-4.5 shrink-0', style.icon)}
         name={icon ?? style.defaultIcon}
-        size="sm"
       />
 
       <div className="min-w-0 flex-1">{children}</div>

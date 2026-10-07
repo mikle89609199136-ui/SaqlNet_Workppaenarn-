@@ -1,4 +1,4 @@
-import { Button } from '@/shared/ui/Button';
+import { Icon } from '@/shared/ui/Icon';
 import { cn } from '@/shared/lib';
 import {
   forwardRef,
@@ -17,6 +17,13 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+
+/* Пункты, по которым ходят стрелками. Отмечаемый пункт — тоже пункт:
+   у него своя роль, menuitemcheckbox, и без неё в селекторе он выпадал
+   бы из обхода. */
+const ITEM_SELECTOR =
+  'button[role="menuitem"]:not([disabled]), button[role="menuitemcheckbox"]:not([disabled])';
 
 /* --- Разделитель --- */
 export interface ContextMenuSeparatorProps extends HTMLAttributes<HTMLDivElement> {
@@ -25,50 +32,109 @@ export interface ContextMenuSeparatorProps extends HTMLAttributes<HTMLDivElement
 
 export const ContextMenuSeparator = ({ className, ...props }: ContextMenuSeparatorProps) => {
   return (
-    <div role="separator" className={cn('h-px bg-divider my-1.5 mx-1', className)} {...props} />
+    <div role="separator" className={cn('mx-1.5 my-1 h-px bg-divider', className)} {...props} />
   );
 };
 
 /* --- Пункт меню --- */
 export interface ContextMenuItemProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
+  /** Опасное действие ставят последним, после разделителя, и подтверждают. */
   variant?: 'default' | 'danger';
+  /** Сочетание клавиш — подсказкой справа, как в меню настольных программ. */
+  shortcut?: string;
+  /**
+   * Пункт-отметка: включённое форматирование, выбранный звук. Задан —
+   * пункт получает роль menuitemcheckbox и подложку акцента, когда включён.
+   */
+  checked?: boolean;
+  /** Пункт открывает подменю: стрелка справа. */
+  submenu?: boolean;
   className?: string;
 }
 
+/* Пункт меню по дизайн-системе (#817): 38px, иконка 18px слева, клавиша
+   справа. Наведение и нажатие — слоем поверх фона, а не его заменой:
+   иначе отмеченный пункт при наведении терял бы подложку и казался
+   выключенным. Недоступный остаётся на месте, приглушённый: человек
+   видит, что действие есть. */
 export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProps>(
   function ContextMenuItem(
-    { icon, variant = 'default', disabled, className, children, onClick, ...props },
+    {
+      icon,
+      variant = 'default',
+      shortcut,
+      checked,
+      submenu = false,
+      disabled,
+      className,
+      children,
+      onClick,
+      ...props
+    },
     ref
   ) {
+    const checkable = checked !== undefined;
+
     return (
-      <Button
+      <button
         ref={ref}
-        role="menuitem"
+        role={checkable ? 'menuitemcheckbox' : 'menuitem'}
         type="button"
-        variant={variant === 'danger' ? 'danger' : 'ghost'}
-        size="sm"
         disabled={disabled}
+        aria-checked={checkable ? checked : undefined}
         aria-disabled={disabled || undefined}
+        aria-haspopup={submenu ? 'menu' : undefined}
+        aria-keyshortcuts={shortcut}
         onClick={onClick}
         className={cn(
-          'w-full justify-start font-normal text-sm border-0 rounded-control gap-2.5 px-2.5 py-2 text-left',
-          variant === 'default' && 'text-ink hover:text-ink hover:bg-sheet-2',
-          variant === 'danger' && 'text-danger hover:bg-sheet-2 border-transparent',
+          'flex min-h-9.5 w-full shrink-0 cursor-pointer items-center gap-3 rounded-field px-2.5 py-2 text-left text-ui',
+          'transition-colors duration-fast',
+          'enabled:hover:layer-hover enabled:active:layer-press',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2',
+          'disabled:cursor-default disabled:opacity-40',
+          variant === 'danger' ? 'text-danger' : 'text-ink',
+          checked && 'bg-brand-soft text-brand',
           className
         )}
         {...props}
       >
         {icon && (
-          <span className="size-4 shrink-0 flex items-center justify-center [&>svg]:size-4">
+          <span className="flex size-4.5 shrink-0 items-center justify-center [&>svg]:size-4.5">
             {icon}
           </span>
         )}
-        <span className="flex-1 truncate text-left">{children}</span>
-      </Button>
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+        {shortcut && (
+          <span className="ml-3 shrink-0 text-meta text-ink-3 tabular-nums">{shortcut}</span>
+        )}
+        {submenu && (
+          <Icon aria-hidden="true" className="size-4 shrink-0 text-ink-3" name="chevronRight" />
+        )}
+      </button>
     );
   }
 );
+
+/* --- Возврат из подменю --- */
+/* Подменю заменяет содержимое меню, а не раскрывается сбоку: на телефоне
+   второй колонке негде встать. Путь назад — первой строкой. */
+export const ContextMenuBack = forwardRef<
+  HTMLButtonElement,
+  Omit<ContextMenuItemProps, 'icon' | 'children' | 'checked' | 'submenu'>
+>(function ContextMenuBack(props, ref) {
+  const { t } = useTranslation();
+
+  return (
+    <ContextMenuItem
+      ref={ref}
+      icon={<Icon aria-hidden="true" className="rotate-180" name="chevronRight" />}
+      {...props}
+    >
+      {t('back', 'Назад')}
+    </ContextMenuItem>
+  );
+});
 
 /* --- Контекстное меню --- */
 interface Props {
@@ -192,9 +258,7 @@ const ContextMenuRoot = ({
 
     const timer = requestAnimationFrame(() => {
       if (!menuRef.current) return;
-      const items = menuRef.current.querySelectorAll<HTMLButtonElement>(
-        'button[role="menuitem"]:not([disabled])'
-      );
+      const items = menuRef.current.querySelectorAll<HTMLButtonElement>(ITEM_SELECTOR);
       if (items.length > 0) {
         items[0].focus();
       } else {
@@ -218,9 +282,7 @@ const ContextMenuRoot = ({
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!menuRef.current) return;
 
-    const items = Array.from(
-      menuRef.current.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])')
-    );
+    const items = Array.from(menuRef.current.querySelectorAll<HTMLButtonElement>(ITEM_SELECTOR));
     const activeIndex = items.findIndex((item) => item === document.activeElement);
 
     switch (e.key) {
@@ -272,10 +334,10 @@ const ContextMenuRoot = ({
       className={cn(
         /* Высота ограничена: пятнадцать пунктов иначе уходят за нижний
            край, потому что позиция зажимается, а содержимое — нет. */
-        'fixed z-50 p-1.5 min-w-[216px] max-h-[min(60vh,420px)] overflow-y-auto outline-none',
+        'fixed z-50 p-1.5 min-w-63 max-h-[min(60vh,420px)] overflow-y-auto outline-none',
         'styled-scrollbar',
-        'bg-sheet border border-line rounded-field shadow-[var(--elev-3)]',
-        'flex flex-col gap-0.5',
+        'bg-menu border border-divider rounded-bubble shadow-[var(--shadow-menu)]',
+        'flex flex-col gap-px',
         className
       )}
       style={{
@@ -294,6 +356,7 @@ export const ContextMenu = Object.assign(ContextMenuRoot, {
   ContextMenuSeparator,
   Item: ContextMenuItem,
   Separator: ContextMenuSeparator,
+  Back: ContextMenuBack,
 });
 
 export function useContextMenu() {

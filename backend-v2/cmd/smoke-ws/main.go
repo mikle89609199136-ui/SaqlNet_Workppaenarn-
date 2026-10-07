@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -16,19 +18,33 @@ type event struct {
 }
 
 func main() {
-	if len(os.Args) != 4 {
-		log.Fatal("usage: ws_client <ws-url> <expected-type> <expected-chat-id>")
+	if len(os.Args) != 5 {
+		log.Fatal("usage: ws_client <ws-url> <cookie> <expected-type> <expected-chat-id>")
 	}
 
 	wsURL := os.Args[1]
-	expectedType := os.Args[2]
-	expectedChatID := os.Args[3]
+	cookie := os.Args[2]
+	expectedType := os.Args[3]
+	expectedChatID := os.Args[4]
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	parsed, err := url.Parse(wsURL)
+	if err != nil {
+		log.Fatalf("invalid ws URL: %v", err)
+	}
+	originScheme := "http"
+	if parsed.Scheme == "wss" {
+		originScheme = "https"
+	}
+	header := http.Header{
+		"Cookie": {cookie},
+		"Origin": {originScheme + "://" + parsed.Host},
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}
 	defer conn.Close()
+	fmt.Println("READY")
 
 	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		log.Fatal(err)

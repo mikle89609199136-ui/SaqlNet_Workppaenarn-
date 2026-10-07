@@ -1,12 +1,25 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
-import { formatDateDivider, isDifferentDay } from '@/shared/lib';
+import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
 import { estimateMessageItemSize } from '@/entities/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  countUnreadBelow,
+  findFirstUnreadId,
+  hasUnreadAbove,
+  needsOlderForUnread,
+  openingScrollTarget,
+  selectReadUpTo,
+  takeUnreadSnapshot,
+  type IReadMark,
+  type IUnreadSnapshot,
+} from './unread';
 
 export type TFeedItem =
   | { id: string; type: 'date'; label: string }
+  /** «Новые сообщения» — перед первым непрочитанным на момент открытия (#820). */
+  | { id: string; type: 'unread' }
   | {
       id: string;
       type: 'message';
@@ -22,6 +35,22 @@ export type TFeedItem =
 interface IUseVirtualMessagesFeedOptions {
   messages: TMessagesList;
   messagesRef?: RefObject<HTMLElement | null>;
+  /** Кто читает: свои сообщения непрочитанными не бывают. */
+  currentUserId?: string;
+  /**
+   * Отмечать ли новые: разделитель «Новые сообщения» и их число на кнопке
+   * «вниз». В подборке закреплённых это не нужно.
+   */
+  trackUnread?: boolean;
+  /**
+   * Отметка прочтения открытого чата (#839): по ней при открытии ставится
+   * «Новые сообщения» и лента встаёт на них. Пока её нет — лента ждёт.
+   */
+  readMark?: IReadMark;
+  /** Догрузка истории — при открытии до первого непрочитанного. */
+  loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
+  hasOlder?: boolean;
+  onMessagesSeen?: (messages: IMessageDto[]) => void;
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -29,8 +58,54 @@ const NEAR_BOTTOM_THRESHOLD_PX = 150;
 const DATE_HIDE_DELAY_MS = 1500;
 const STICKY_COLLISION_HEIGHT_PX = 44;
 
-export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMessagesFeedOptions) {
+export function useVirtualMessagesFeed({
+  messages,
+  messagesRef,
+  currentUserId,
+  trackUnread = true,
+  readMark,
+  loadOlder,
+  hasOlder = false,
+  onMessagesSeen,
+}: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
+
+  const chatId = messages[0]?.chatId;
+  const [unread, setUnread] = useState<IUnreadSnapshot | null>(null);
+  // Снимок делается при отрисовке, а не эффектом: иначе первый кадр
+  // ленты вышел бы без разделителя и дёрнулся бы следующим.
+  if (trackUnread && chatId && unread?.chatId !== chatId && readMark?.chatId === chatId) {
+    setUnread(takeUnreadSnapshot(messages, readMark, currentUserId, hasOlder, Boolean(loadOlder)));
+  }
+  const snapshot = unread?.chatId === chatId ? unread : null;
+  const firstUnreadId = useMemo(
+    () => (snapshot ? findFirstUnreadId(messages, snapshot, currentUserId, hasOlder) : null),
+    [messages, snapshot, currentUserId, hasOlder]
+  );
+
+  /* Первое непрочитанное старше загруженного — догрузить до него, как при
+     переходе к сообщению, но не больше потолка. */
+  const loadingOlderRef = useRef(false);
+  useEffect(() => {
+    if (!snapshot || snapshot.settled || loadingOlderRef.current) return;
+    if (!loadOlder || !needsOlderForUnread(messages, snapshot, currentUserId, hasOlder)) {
+      setUnread((current) =>
+        current?.chatId === snapshot.chatId ? { ...current, settled: true } : current
+      );
+      return;
+    }
+    loadingOlderRef.current = true;
+    void Promise.resolve(loadOlder({ isJump: true }))
+      .catch(() => {})
+      .finally(() => {
+        loadingOlderRef.current = false;
+        setUnread((current) =>
+          current?.chatId === snapshot.chatId
+            ? { ...current, pagesLoaded: current.pagesLoaded + 1 }
+            : current
+        );
+      });
+  }, [snapshot, messages, currentUserId, hasOlder, loadOlder]);
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [isScrollingState, setIsScrollingState] = useState(false);
@@ -38,9 +113,10 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
   const dateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottomRef = useRef(true);
 
+  /** Чат, в котором лента уже встала на место при открытии. */
+  const openedChatRef = useRef<string | null>(null);
   const prevFirstIdRef = useRef<string | null>(null);
   const prevLastIdRef = useRef<string | null>(null);
-  const prevCountRef = useRef(0);
 
   const setContainerRef = useCallback(
     (node: HTMLElement | null) => {
@@ -86,6 +162,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     /* 1. Сообщения + разделители дат */
     const raw: Array<
       | { type: 'date'; id: string; label: string }
+      | { type: 'unread'; id: string }
       | { type: 'message'; id: string; message: IMessageDto }
     > = [];
 
@@ -104,6 +181,8 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
         }
       }
 
+      if (message.id === firstUnreadId) raw.push({ id: 'unread-divider', type: 'unread' });
+
       raw.push({ id: message.id, type: 'message', message });
     }
 
@@ -111,7 +190,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     const items: TFeedItem[] = [];
     for (let i = 0; i < raw.length; i++) {
       const entry = raw[i];
-      if (entry.type === 'date') {
+      if (entry.type !== 'message') {
         items.push(entry);
       } else {
         const prev = i > 0 ? raw[i - 1] : null;
@@ -133,7 +212,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     }
 
     return items;
-  }, [messages, t]);
+  }, [messages, t, firstUnreadId]);
 
   const virtualizer = useVirtualizer({
     count: feedItems.length,
@@ -188,7 +267,8 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     };
   }, [triggerDateVisibility]);
 
-  // Умный скролл: вниз при открытии чата и новых сообщениях, сохранение позиции при подгрузке старых сверху
+  /* Умный скролл: при открытии — на «Новые сообщения» или вниз, вниз при
+     новых сообщениях, позиция сохраняется при подгрузке старых сверху. */
   useEffect(() => {
     if (feedItems.length === 0) return;
 
@@ -197,19 +277,19 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
     const prevFirstId = prevFirstIdRef.current;
     const prevLastId = prevLastIdRef.current;
-    const prevCount = prevCountRef.current;
 
     prevFirstIdRef.current = firstItem.id;
     prevLastIdRef.current = lastItem.id;
-    prevCountRef.current = feedItems.length;
 
-    // 1. Первый вход в чат / монтирование
-    if (prevCount === 0 || !prevLastId) {
+    // 1. Открытие чата — и первое, и смена чата без перемонтирования (#839).
+    //    Встаём один раз, когда снимок снят и история догружена.
+    if (openedChatRef.current !== chatId) {
+      if (trackUnread && !snapshot?.settled) return;
+      openedChatRef.current = chatId ?? null;
+      const capped = snapshot ? hasUnreadAbove(messages, snapshot, currentUserId, hasOlder) : false;
+      const target = openingScrollTarget(feedItems, capped);
       requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(feedItems.length - 1, {
-          align: 'end',
-          behavior: 'auto',
-        });
+        virtualizer.scrollToIndex(target.index, { align: target.align, behavior: 'auto' });
       });
       return;
     }
@@ -230,7 +310,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
         });
       });
     }
-  }, [feedItems, virtualizer]);
+  }, [feedItems, virtualizer, chatId, trackUnread, snapshot, hasOlder, messages, currentUserId]);
 
   const scrollToBottom = useCallback(() => {
     if (feedItems.length === 0) return;
@@ -238,6 +318,23 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
   }, [feedItems.length, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  const isPageActive = usePageActive();
+  const lastSeenIndex = virtualizer.range?.endIndex ?? -1;
+  const seenReadMark = readMark?.chatId === chatId ? readMark?.lastReadAt : undefined;
+  const canReportSeen = isPageActive && (!trackUnread || Boolean(snapshot?.settled));
+  useEffect(() => {
+    if (!onMessagesSeen || !canReportSeen || lastSeenIndex < 0) return;
+    const seen = selectReadUpTo(feedItems, lastSeenIndex, seenReadMark, currentUserId);
+    if (seen.length > 0) onMessagesSeen(seen);
+  }, [canReportSeen, currentUserId, feedItems, lastSeenIndex, onMessagesSeen, seenReadMark]);
+
+  /* Сколько новых ниже экрана — число на кнопке «вниз». */
+  const lastVisibleIndex = virtualizer.range?.endIndex ?? feedItems.length - 1;
+  const unreadBelow = useMemo(
+    () => countUnreadBelow(feedItems, lastVisibleIndex, snapshot, currentUserId),
+    [feedItems, lastVisibleIndex, snapshot, currentUserId]
+  );
 
   // Расчёт стики-поведения в стиле Telegram: выталкивание следующим дивайдером и активная дата
   const { activeDate, stickyPushOffset, isInlineAtTop } = useMemo(() => {
@@ -247,14 +344,18 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
 
     const scrollOffset = virtualizer.scrollOffset ?? 0;
     const firstRow = virtualItems[0];
-    const firstItem = feedItems[firstRow.index];
+    /* Разделитель «Новые сообщения» даты не несёт — берётся следующий
+       за ним элемент. */
+    const firstItem =
+      feedItems[firstRow.index]?.type === 'unread'
+        ? feedItems[firstRow.index + 1]
+        : feedItems[firstRow.index];
 
     let dateText = '';
-    if (firstItem) {
-      dateText =
-        firstItem.type === 'date'
-          ? firstItem.label
-          : formatDateDivider(firstItem.message.createdAt, t);
+    if (firstItem?.type === 'date') {
+      dateText = firstItem.label;
+    } else if (firstItem?.type === 'message') {
+      dateText = formatDateDivider(firstItem.message.createdAt, t);
     }
 
     let pushOffset = 0;
@@ -313,6 +414,7 @@ export function useVirtualMessagesFeed({ messages, messagesRef }: IUseVirtualMes
     virtualItems,
     setContainerRef,
     showScrollBottom,
+    unreadBelow,
     scrollToBottom,
     jumpToMessage,
   };

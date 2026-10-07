@@ -84,7 +84,7 @@ export function renderSettings({
   searchQuery = '',
   queryClient = createTestQueryClient(),
 }: IRenderSettingsOptions = {}): RenderResult {
-  useProfileStore.setState({ user: currentUser, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: currentUser, isAuth: true });
 
   queryClient.setQueryData(userKeys.me(), currentUser);
 

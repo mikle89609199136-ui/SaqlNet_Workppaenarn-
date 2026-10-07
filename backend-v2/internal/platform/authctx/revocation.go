@@ -21,7 +21,9 @@ func NewDBTokenChecker(db *sql.DB) *DBTokenChecker {
 	return &DBTokenChecker{db: db}
 }
 
-func tokenHash(value string) string {
+// TokenHash returns the stable, non-reversible token fingerprint used to join
+// credential lifecycle records without storing bearer tokens in PostgreSQL.
+func TokenHash(value string) string {
 	h := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(h[:])
 }
@@ -42,7 +44,7 @@ func (c *DBTokenChecker) IsTokenRevoked(ctx context.Context, token string, claim
 			token_generation
 		FROM auth.users
 		WHERE id = $2`,
-		tokenHash(token),
+		TokenHash(token),
 		claims.Subject,
 	).Scan(&individuallyRevoked, &currentGeneration)
 	if errors.Is(err, sql.ErrNoRows) {

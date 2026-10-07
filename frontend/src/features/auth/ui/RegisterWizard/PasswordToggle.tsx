@@ -11,11 +11,11 @@ export function PasswordToggle({ onToggle, shown }: Props) {
   return (
     <button
       aria-label={shown ? t('hidePassword', 'Скрыть пароль') : t('showPassword', 'Показать пароль')}
-      className="text-ink-2 transition-colors hover:text-ink"
+      className="flex size-10 cursor-pointer items-center justify-center rounded-field text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
       onClick={onToggle}
       type="button"
     >
-      <Icon name={shown ? 'eyeOff' : 'eye'} size="md" />
+      <Icon className="stroke-[1.8px]" name={shown ? 'eyeOff' : 'eye'} size="md" />
     </button>
   );
 }

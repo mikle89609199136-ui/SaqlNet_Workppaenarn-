@@ -33,6 +33,13 @@ interface IChatState {
   translations: TTranslations;
   actionMenu: IActionMenu | null;
   highlightedMessageId: string | null;
+  /**
+   * Перейти к сообщению из другой части экрана — например, из общего в
+   * профиле (#842). Выполняет лента открытого чата и сбрасывает запрос.
+   */
+  jumpRequest: { chatId: string; messageId: string } | null;
+  /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
+  deleteTargets: TMessagesList | null;
 }
 
 type Updater<T> = (updater: T | ((prev: T) => T)) => void;
@@ -46,6 +53,8 @@ interface IChatActions {
   setTranslations: Updater<TTranslations>;
   setActionMenu: (menu: IActionMenu | null) => void;
   setHighlightedMessageId: (id: string | null) => void;
+  setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
+  setDeleteTargets: (targets: TMessagesList | null) => void;
   resetChatState: () => void;
 }
 
@@ -58,6 +67,8 @@ const initialChatState: IChatState = {
   translations: {},
   actionMenu: null,
   highlightedMessageId: null,
+  jumpRequest: null,
+  deleteTargets: null,
 };
 
 type InitialState = IChatState & IChatActions;
@@ -86,6 +97,8 @@ export const useChatUiStore = create<InitialState>((set) => {
     setTranslations: withUpdater('translations'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
+    setJumpRequest: (jumpRequest) => set({ jumpRequest }),
+    setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
     resetChatState: () => set(initialChatState),
   };
 });

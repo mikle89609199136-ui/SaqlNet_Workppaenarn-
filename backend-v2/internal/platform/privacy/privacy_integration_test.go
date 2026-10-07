@@ -317,8 +317,7 @@ func TestPhotoHiddenEverywhere(t *testing.T) {
 	chats := chat.NewService(db, events, nil)
 	groupID, err := chats.CreateGroup(ctx, owner, "group", "", "", []string{viewer})
 	require.NoError(t, err)
-	sent, err := chats.SendMessage(ctx, owner, groupID, "фото-проверка", "text", nil, nil)
-	require.NoError(t, err)
+	sent := sendOne(t, chats, owner, groupID, "фото-проверка")
 	require.Equal(t, avatar, sent.SenderAvatar, "себе — свой аватар")
 	require.NoError(t, chats.PinMessage(ctx, owner, groupID, sent.ID))
 
@@ -410,6 +409,29 @@ func TestPhotoHiddenEverywhere(t *testing.T) {
 	}
 }
 
+// sendOne — отправка пачкой из одного (#808).
+func sendOne(t *testing.T, chats *chat.Service, from, chatID, content string) chat.Message {
+	t.Helper()
+	sent, err := chats.SendMessages(context.Background(), from, chatID, []chat.OutgoingMessage{{Content: content, Type: "text"}})
+	require.NoError(t, err)
+	return sent[0]
+}
+
+// forwardAs пересылает так, как это делает клиент (#808): содержимое уже
+// перешифровано ключом целевого чата, а автора по forwardedFrom находит
+// сервер — тем же путём, что обработчик отправки.
+func forwardAs(t *testing.T, chats *chat.Service, from, messageID, toChat string) chat.Message {
+	t.Helper()
+	ctx := context.Background()
+	source, err := chats.ForwardOrigin(ctx, from, messageID)
+	require.NoError(t, err)
+	metadata := map[string]any{}
+	source.Apply(metadata)
+	sent, err := chats.SendMessages(ctx, from, toChat, []chat.OutgoingMessage{{Content: "переслано", Type: "text", Metadata: metadata}})
+	require.NoError(t, err)
+	return sent[0]
+}
+
 // Правило «Пересылка» на настоящей схеме (#785): решение фиксируется в
 // сообщении при пересылке; при запрете в ответах и событиях нет ни
 // исходного сообщения, ни автора — только имя.
@@ -423,8 +445,7 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 
 	sourceChat, err := chats.CreateGroup(ctx, owner, "source", "", "", []string{viewer})
 	require.NoError(t, err)
-	original, err := chats.SendMessage(ctx, owner, sourceChat, "оригинал", "text", nil, nil)
-	require.NoError(t, err)
+	original := sendOne(t, chats, owner, sourceChat, "оригинал")
 	targetChat, _, err := chats.CreatePrivate(ctx, viewer, other)
 	require.NoError(t, err)
 
@@ -432,8 +453,7 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 	forward := func() chat.Message {
 		t.Helper()
 		events.payloads = nil
-		sent, err := chats.ForwardMessage(ctx, viewer, original.ID, targetChat)
-		require.NoError(t, err)
+		sent := forwardAs(t, chats, viewer, original.ID, targetChat)
 		history, err := chats.ListMessages(ctx, other, targetChat, 50, 0)
 		require.NoError(t, err)
 		for _, m := range history {
@@ -480,8 +500,7 @@ func TestForwardsRuleOnRealSchema(t *testing.T) {
 	backChat, err := chats.CreateGroup(ctx, other, "back", "", "", []string{viewer})
 	require.NoError(t, err)
 	events.payloads = nil
-	chain, err := chats.ForwardMessage(ctx, other, hidden.ID, backChat)
-	require.NoError(t, err)
+	chain := forwardAs(t, chats, other, hidden.ID, backChat)
 	requireNameOnly(chain)
 	require.NotContains(t, chain.Metadata, "forwardedFrom")
 

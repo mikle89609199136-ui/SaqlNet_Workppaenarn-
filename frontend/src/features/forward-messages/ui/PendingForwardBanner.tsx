@@ -113,16 +113,18 @@ export function PendingForwardBanner({ forward, onCancel }: Props) {
   }
 
   return (
-    <div className="thread-composer-context">
-      <Icon className="shrink-0 text-brand" name="forward" size="sm" />
+    /* Та же полоска над полем, что у ответа и правки (#821): иконка
+       акцентом, под полосой 2px — заголовок и строка, справа отмена. */
+    <div className="flex items-center gap-2.5 pt-2.5 pr-2 pb-0.5 pl-3.5">
+      <Icon aria-hidden="true" className="size-4.5 shrink-0 text-brand" name="forward" />
       {withMedia.slice(0, MAX_THUMBS).map((message) => (
         <Thumb key={message.id} message={message} />
       ))}
       {withMedia.length > MAX_THUMBS && (
         <span className="shrink-0 text-caption text-ink-2">+{withMedia.length - MAX_THUMBS}</span>
       )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <strong className="truncate font-semibold">
+      <span className="flex min-w-0 flex-1 flex-col gap-px border-l-2 border-brand pl-2.5 text-caption">
+        <strong className="truncate font-semibold text-brand">
           {messages.length === 1
             ? t('forward.bannerOne', 'Переслать сообщение')
             : t('forward.bannerMany', {
@@ -135,11 +137,11 @@ export function PendingForwardBanner({ forward, onCancel }: Props) {
 
       <button
         aria-label={t('forward.cancel', 'Отменить пересылку')}
-        className="thread-composer-close-btn"
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-field text-ink-3 hover:layer-hover hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
         onClick={onCancel}
         type="button"
       >
-        <Icon name="cross" size="sm" />
+        <Icon className="size-4.25 stroke-2" name="cross" />
       </button>
     </div>
   );

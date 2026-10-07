@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatUiStore } from '@/entities/chat';
+import { MAX_MESSAGES_PER_SEND } from '@/shared/config';
 import { services } from '@/services';
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
@@ -25,22 +26,21 @@ function wrapper({ children }: { children: ReactNode }) {
 const at = (iso: string, content: string) =>
   makeMessage({ chatId: 'chat-source', content, createdAt: new Date(iso) });
 
-/** Что ушло на сервер и в каком порядке. */
-function recordSends(failOn?: string) {
-  const sent: string[] = [];
-  vi.spyOn(services.messageService, 'sendMessage').mockImplementation(async (chatId, content) => {
-    if (failOn === 'comment') throw Object.assign(new Error('offline'), { status: 0 });
-    sent.push(`комментарий: ${content}`);
-    return makeMessage({ chatId, content });
-  });
-  vi.spyOn(services.messageService, 'forwardMessage').mockImplementation(
-    async (message: IMessageDto, chatId: string) => {
-      if (message.content === failOn) throw new Error('сбой сети');
-      sent.push(`пересылка: ${message.content}`);
-      return makeMessage({ chatId, content: message.content });
+/** Какими пачками ушла пересылка: комментарий и содержимое пересланных. */
+function recordBatches(failOn?: string) {
+  const batches: Array<{ comment: string; messages: string[] }> = [];
+  vi.spyOn(services.messageService, 'forwardMessages').mockImplementation(
+    async (chatId: string, originals: IMessageDto[], comment = '') => {
+      // Пачка — всё или ничего: сбой одного сообщения не пропускает и остальные.
+      if (originals.some((message) => message.content === failOn)) throw new Error('сбой сети');
+      batches.push({ comment, messages: originals.map((message) => message.content) });
+      return [
+        ...(comment ? [makeMessage({ chatId, content: comment })] : []),
+        ...originals.map((message) => makeMessage({ chatId, content: message.content })),
+      ];
     }
   );
-  return sent;
+  return batches;
 }
 
 describe('отложенная пересылка (#93)', () => {
@@ -79,8 +79,8 @@ describe('отложенная пересылка (#93)', () => {
     expect(target.result.current.pending?.messages).toHaveLength(1);
   });
 
-  it('отправляет комментарий первым, затем пересланные по порядку, и снимает плашку', async () => {
-    const sent = recordSends();
+  it('отправляет комментарий и пересланные одной пачкой, по порядку, и снимает плашку', async () => {
+    const batches = recordBatches();
     useForwardStore
       .getState()
       .start(TARGET, [at('2026-09-25T10:02:00Z', 'второе'), at('2026-09-25T10:01:00Z', 'первое')]);
@@ -91,13 +91,13 @@ describe('отложенная пересылка (#93)', () => {
       outcome = await result.current.send('посмотри');
     });
 
-    expect(sent).toEqual(['комментарий: посмотри', 'пересылка: первое', 'пересылка: второе']);
+    expect(batches).toEqual([{ comment: 'посмотри', messages: ['первое', 'второе'] }]);
     expect(outcome).toEqual({ done: true, commentSent: true });
     expect(useForwardStore.getState().pending).toBeNull();
   });
 
   it('без комментария пересылает только сообщения', async () => {
-    const sent = recordSends();
+    const batches = recordBatches();
     useForwardStore.getState().start(TARGET, [at('2026-09-25T10:01:00Z', 'первое')]);
     const { result } = renderHook(() => useForwardSend(TARGET), { wrapper });
 
@@ -105,11 +105,11 @@ describe('отложенная пересылка (#93)', () => {
       await result.current.send('');
     });
 
-    expect(sent).toEqual(['пересылка: первое']);
+    expect(batches).toEqual([{ comment: '', messages: ['первое'] }]);
   });
 
-  it('при сбое на середине оставляет в плашке только неотправленное и говорит, сколько ушло', async () => {
-    const sent = recordSends('второе');
+  it('при сбое не уходит ничего: всё остаётся в плашке для повтора, комментарий — в поле', async () => {
+    const batches = recordBatches('второе');
     useForwardStore
       .getState()
       .start(TARGET, [
@@ -124,19 +124,20 @@ describe('отложенная пересылка (#93)', () => {
       outcome = await result.current.send('посмотри');
     });
 
-    expect(sent).toEqual(['комментарий: посмотри', 'пересылка: первое']);
-    // Комментарий уже в чате — повтор его не продублирует.
-    expect(outcome).toEqual({ done: false, commentSent: true });
-    expect(useForwardStore.getState().pending?.messages.map((m) => m.content)).toEqual([
-      'второе',
-      'третье',
-    ]);
-    expect(useChatUiStore.getState().error).toMatch(/Переслано 1 из 3/);
+    expect(batches).toEqual([]);
+    // Комментарий не ушёл — его вернут в поле, и повтор отправит всё заново.
+    expect(outcome).toEqual({ done: false, commentSent: false });
+    expect(useForwardStore.getState().pending?.messages).toHaveLength(3);
+    expect(useChatUiStore.getState().error).not.toMatch(/Переслано/);
   });
 
-  it('если не ушёл даже комментарий, ничего не пересылает и сохраняет всё для повтора', async () => {
-    const sent = recordSends('comment');
-    useForwardStore.getState().start(TARGET, [at('2026-09-25T10:01:00Z', 'первое')]);
+  it('полная сотня с комментарием уходит двумя пачками, и сбой второй оставляет только её', async () => {
+    const messages = Array.from({ length: MAX_MESSAGES_PER_SEND }, (_, index) =>
+      at(new Date(Date.UTC(2026, 8, 25, 10, 0, index)).toISOString(), `m${index}`)
+    );
+    const last = `m${MAX_MESSAGES_PER_SEND - 1}`;
+    const batches = recordBatches(last);
+    useForwardStore.getState().start(TARGET, messages);
     const { result } = renderHook(() => useForwardSend(TARGET), { wrapper });
 
     let outcome: Awaited<ReturnType<typeof result.current.send>> | undefined;
@@ -144,8 +145,15 @@ describe('отложенная пересылка (#93)', () => {
       outcome = await result.current.send('посмотри');
     });
 
-    expect(sent).toEqual([]);
-    expect(outcome).toEqual({ done: false, commentSent: false });
-    expect(useForwardStore.getState().pending?.messages).toHaveLength(1);
+    // Комментарий занял место в первой пачке: в неё вошли 99 пересланных.
+    expect(batches).toHaveLength(1);
+    expect(batches[0].comment).toBe('посмотри');
+    expect(batches[0].messages).toHaveLength(MAX_MESSAGES_PER_SEND - 1);
+    // Комментарий уже в чате — повтор его не продублирует.
+    expect(outcome).toEqual({ done: false, commentSent: true });
+    expect(useForwardStore.getState().pending?.messages.map((m) => m.content)).toEqual([last]);
+    expect(useChatUiStore.getState().error).toMatch(
+      new RegExp(`Переслано ${MAX_MESSAGES_PER_SEND - 1} из ${MAX_MESSAGES_PER_SEND}`)
+    );
   });
 });

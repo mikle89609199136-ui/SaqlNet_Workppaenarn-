@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { getVoiceVolume, setVoiceVolume } from '@/shared/lib';
 import { testI18n } from '@/test/harness/i18n';
 import { AudioPlayer } from './AudioPlayer';
 
@@ -122,5 +123,144 @@ describe('AudioPlayer', () => {
 
     fireEvent.change(volumeSlider, { target: { value: '0.3' } });
     expect(audio.volume).toBeCloseTo(0.3);
+  });
+
+  /* Голосовое (#843): длительность и волна из шифрованных метаданных. */
+  describe('голосовое', () => {
+    it('показывает длительность из метаданных, даже если файл её не знает', () => {
+      renderPlayer({ src: 'voice.ogg', variant: 'voice', durationMs: 83_000, waveform: [0, 31] });
+      const audio = document.querySelector('audio')!;
+      // У записи Ogg/Opus браузер часто отдаёт Infinity.
+      Object.defineProperty(audio, 'duration', { value: Infinity, configurable: true });
+      fireEvent.loadedMetadata(audio);
+
+      expect(screen.getByText('1:23')).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: 'Перемотка' })).toHaveAttribute('max', '83');
+    });
+
+    it('волна из метаданных: тихое — низкий столбик, громкое — высокий', () => {
+      const { container } = renderPlayer({
+        src: 'voice.ogg',
+        variant: 'voice',
+        durationMs: 5000,
+        waveform: [0, 0, 31, 31],
+      });
+      const heights = Array.from(
+        container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]')
+      )
+        .map((bar) => parseInt(bar.style.height, 10))
+        .filter(Number.isFinite);
+
+      expect(Math.min(...heights)).toBe(6);
+      expect(Math.max(...heights)).toBe(25);
+    });
+
+    it('без метаданных и с Infinity у файла — не «NaN:NaN», а 0:00', () => {
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+      const audio = document.querySelector('audio')!;
+      Object.defineProperty(audio, 'duration', { value: Infinity, configurable: true });
+      fireEvent.loadedMetadata(audio);
+
+      expect(screen.getByText('0:00')).toBeInTheDocument();
+    });
+
+    it('браузер не может проиграть — подпись и «Скачать», а не молчание', () => {
+      renderPlayer({ src: 'blob:voice', variant: 'voice', durationMs: 3000 });
+      fireEvent.error(document.querySelector('audio')!);
+
+      expect(screen.getByText('Этот браузер не проигрывает голосовое')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Скачать' })).toHaveAttribute('href', 'blob:voice');
+    });
+
+    it('запуск второго голосового ставит первое на паузу', async () => {
+      const user = userEvent.setup();
+      render(
+        <I18nextProvider i18n={testI18n}>
+          <AudioPlayer seed="a" src="a.ogg" variant="voice" />
+          <AudioPlayer seed="b" src="b.ogg" variant="voice" />
+        </I18nextProvider>
+      );
+      const [first, second] = Array.from(document.querySelectorAll('audio'));
+      const [playFirst, playSecond] = screen.getAllByRole('button', {
+        name: 'Прослушать голосовое',
+      });
+
+      await user.click(playFirst);
+      expect(first.paused).toBe(false);
+      await user.click(playSecond);
+
+      expect(first.paused).toBe(true);
+      expect(second.paused).toBe(false);
+    });
+  });
+
+  describe('громкость голосовых (#874)', () => {
+    const asPhone = () =>
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query.includes('max-width'),
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList
+      );
+
+    it('у голосового на ПК — регулятор громкости голосовых, с процентами для диктора', () => {
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      const slider = screen.getByRole('slider', { name: 'Громкость голосовых' });
+      expect(slider).toHaveAttribute('aria-valuetext', '100%');
+
+      fireEvent.change(slider, { target: { value: '0.4' } });
+
+      expect(getVoiceVolume()).toBe(0.4);
+      expect(slider).toHaveAttribute('aria-valuetext', '40%');
+    });
+
+    it('регулятор доступен с клавиатуры: нативный ползунок в обходе Tab, шаг 5%', async () => {
+      const user = userEvent.setup();
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+      const slider = screen.getByRole('slider', { name: 'Громкость голосовых' });
+
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.tab();
+
+      expect(slider).toHaveFocus();
+      expect(slider).toHaveAttribute('type', 'range');
+      expect(slider).toHaveAttribute('step', '0.05');
+    });
+
+    it('кнопка выключает звук голосовых и возвращает прежний уровень', () => {
+      setVoiceVolume(0.7);
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Выключить звук' }));
+      expect(getVoiceVolume()).toBe(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Включить звук' }));
+      expect(getVoiceVolume()).toBe(0.7);
+    });
+
+    it('на телефоне регулятора в пузыре нет', () => {
+      asPhone();
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      expect(screen.queryByRole('slider', { name: 'Громкость голосовых' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('img', { name: 'Звук голосовых выключен' })
+      ).not.toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it('на телефоне при выключенном в настройках звуке пузырь это показывает', () => {
+      asPhone();
+      setVoiceVolume(0);
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      expect(screen.getByRole('img', { name: 'Звук голосовых выключен' })).toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
   });
 });

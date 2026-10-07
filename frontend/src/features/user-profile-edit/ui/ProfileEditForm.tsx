@@ -1,10 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Button, Icon, Input, Textarea, showToast } from '@/shared/ui';
-import { useProfileStore, userKeys, validateAvatarFile } from '@/entities/user';
+import type { TFunction } from 'i18next';
+import { Avatar, Button, Icon, Input, Spinner, Textarea, showToast } from '@/shared/ui';
+import {
+  checkUsernameQuery,
+  MIN_USERNAME_LENGTH,
+  USERNAME_PATTERN,
+  useProfileStore,
+  userKeys,
+  validateAvatarFile,
+} from '@/entities/user';
+import { describeApiError } from '@/shared/api';
 import { services } from '@/services/serviceContainer';
 import type { IUserDto } from '@/types';
 import { profileFormSchema, type TProfileForm } from '../model/profileSchema';
@@ -13,6 +22,23 @@ interface Props {
   user: Partial<IUserDto>;
   onBack: () => void;
   onUserChange?: (user: IUserDto) => void;
+}
+
+function getUsernameErrorMessage(err: unknown, t: TFunction): string {
+  const apiErr = err as { code?: string; headers?: Headers };
+  if (apiErr?.code === 'username_taken') {
+    return t('errors.usernameTaken', 'Это имя уже занято');
+  }
+  if (apiErr?.code === 'username_change_cooldown') {
+    const retryAfter = apiErr.headers?.get?.('Retry-After') ?? apiErr.headers?.get?.('retry-after');
+    const seconds = retryAfter ? parseInt(retryAfter, 10) : NaN;
+    if (!Number.isNaN(seconds) && seconds > 0) {
+      const hours = Math.ceil(seconds / 3600);
+      return `${describeApiError(apiErr, t)} (${t('errors.cooldownHours', 'Осталось подождать {{hours}} ч.', { hours })})`;
+    }
+    return describeApiError(apiErr, t);
+  }
+  return describeApiError(apiErr, t, t('profileSaveError', 'Не удалось сохранить профиль'));
 }
 
 export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
@@ -41,30 +67,123 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<TProfileForm>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
       firstName: user.firstName || '',
       lastName: user.lastName || '',
+      username: user.username || '',
       bio: user.bio || '',
     },
     mode: 'onTouched',
   });
 
   const bio = watch('bio') ?? '';
+  const currentUsername = (user.username || '').toLowerCase();
+  const username = watch('username') ?? '';
+  const [debouncedUsername, setDebouncedUsername] = useState(user.username || '');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedUsername(username);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [username]);
+
+  const isCurrentUsername = username.trim().toLowerCase() === currentUsername;
+  const isDebouncedCurrent = debouncedUsername.trim().toLowerCase() === currentUsername;
+
+  const isFormatValid = USERNAME_PATTERN.test(username.trim());
+  const isMinLength = username.trim().length >= MIN_USERNAME_LENGTH;
+
+  const shouldCheck = !isCurrentUsername && !isDebouncedCurrent && isFormatValid && isMinLength;
+
+  const { data: usernameCheck, isFetching: isCheckingUsername } = useQuery({
+    ...checkUsernameQuery(debouncedUsername),
+    enabled: shouldCheck,
+  });
+
+  const isTyping = username !== debouncedUsername && isMinLength;
+  const isChecking = Boolean((isTyping || isCheckingUsername) && shouldCheck);
+  const isTaken = Boolean(shouldCheck && !isTyping && usernameCheck && !usernameCheck.available);
+  const isAvailable = Boolean(shouldCheck && !isTyping && usernameCheck && usernameCheck.available);
+
+  let usernameHelperHint: string | undefined;
+  let usernameHelperError: string | undefined = errors.username?.message;
+  let usernameAddon: ReactNode = null;
+
+  if (usernameHelperError) {
+    usernameAddon = <Icon className="text-danger" name="warning" size="sm" />;
+  } else if (isFormatValid && isMinLength && !isCurrentUsername) {
+    if (isChecking) {
+      usernameHelperHint = t('register.usernameChecking', 'Проверка доступности имени...');
+      usernameAddon = <Spinner size="sm" />;
+    } else if (isTaken) {
+      usernameHelperError = t('register.usernameTaken', 'Это имя пользователя занято');
+      usernameAddon = <Icon className="text-danger" name="warning" size="sm" />;
+    } else if (isAvailable) {
+      usernameHelperHint = t('register.usernameAvailable', 'Имя пользователя свободно');
+      usernameAddon = <Icon className="text-brand" name="check" size="sm" />;
+    }
+  }
 
   async function submit(values: TProfileForm) {
-    try {
-      const updated = await services.userService.updateMe(values);
-      queryClient.setQueryData(userKeys.me(), updated);
-      setUser(updated);
-      onUserChange?.(updated);
-      showToast('success', t('toast.profileUpdated', 'Профиль обновлён'));
+    const trimmedUsername = values.username.trim();
+    const isUsernameChanged = trimmedUsername.toLowerCase() !== currentUsername;
+    const isProfileChanged =
+      values.firstName.trim() !== (user.firstName || '') ||
+      values.lastName.trim() !== (user.lastName || '') ||
+      values.bio.trim() !== (user.bio || '');
+
+    if (!isUsernameChanged && !isProfileChanged) {
       onBack();
-    } catch (_) {
-      showToast('error', t('profileSaveError', 'Не удалось сохранить профиль'));
+      return;
     }
+
+    let updatedUser: IUserDto | undefined;
+
+    if (isUsernameChanged) {
+      try {
+        updatedUser = await services.userService.updateUsername(trimmedUsername);
+        queryClient.setQueryData(userKeys.me(), updatedUser);
+        setUser(updatedUser);
+      } catch (err) {
+        setError('username', {
+          message: getUsernameErrorMessage(err, t),
+        });
+        return;
+      }
+    }
+
+    if (isProfileChanged) {
+      try {
+        updatedUser = await services.userService.updateMe({
+          firstName: values.firstName.trim(),
+          lastName: values.lastName.trim(),
+          bio: values.bio.trim(),
+        });
+        queryClient.setQueryData(userKeys.me(), updatedUser);
+        setUser(updatedUser);
+      } catch (err) {
+        showToast(
+          'error',
+          describeApiError(
+            err as { code?: string },
+            t,
+            t('profileSaveError', 'Не удалось сохранить профиль')
+          )
+        );
+        return;
+      }
+    }
+
+    if (updatedUser) {
+      onUserChange?.(updatedUser);
+    }
+    showToast('success', t('toast.profileUpdated', 'Профиль обновлён'));
+    onBack();
   }
 
   async function handleAvatarSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -116,44 +235,17 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
     }
   }
 
+  /* Заголовок и «назад» — в шапке раздела настроек (#828); здесь только
+     карточка формы, как в макете. */
   return (
-    <section>
-      <button
-        className="text-caption -ml-2 mb-3 flex items-center gap-1 rounded-control px-2 py-1 text-ink-2 transition-colors duration-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
-        onClick={onBack}
-        type="button"
-      >
-        <Icon className="rotate-180" name="chevronRight" size="sm" />
-        {t('back', 'Назад')}
-      </button>
-
-      <header className="mb-4">
-        <h1 className="mb-1 text-[21px] leading-tight font-semibold text-ink">
-          {t('settings.profile.title', 'Изменить профиль')}
-        </h1>
-        <p className="text-caption text-ink-2">
-          {t(
-            'settings.profile.description',
-            'Обновите имя и информацию, которую видят другие пользователи.'
-          )}
-        </p>
-      </header>
-
-      <div className="mb-6 flex items-center gap-4 rounded-bubble border border-line bg-sheet p-4">
+    <section className="flex flex-col gap-4 rounded-dialog bg-card p-5">
+      <div className="flex items-center gap-4">
         <Avatar
           id={user.id}
           name={user.firstName || user.username}
-          size="xl"
+          size="card"
           src={previewUrl ?? avatarUrl ?? user.avatarUrl}
         />
-        <div className="min-w-0">
-          <strong className="text-body block truncate text-ink">
-            {[user.firstName, user.lastName].filter(Boolean).join(' ') ||
-              user.username ||
-              'Пользователь'}
-          </strong>
-          <span className="text-caption text-ink-2">@{user.username || 'user'}</span>
-        </div>
         <input
           accept="image/jpeg,image/png,image/webp,image/gif"
           className="hidden"
@@ -163,7 +255,6 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
           type="file"
         />
         <Button
-          className="ml-auto"
           loading={isUploadingAvatar}
           onClick={() => fileInputRef.current?.click()}
           type="button"
@@ -184,6 +275,23 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
           label={t('settings.profile.lastName', 'Фамилия')}
           {...register('lastName')}
         />
+        <Input
+          addon={usernameAddon}
+          autoCapitalize="none"
+          autoComplete="username"
+          autoCorrect="off"
+          error={usernameHelperError}
+          hint={
+            usernameHelperHint ??
+            t('register.usernameRules', 'Латинские буквы, цифры и _, от 3 до 32 символов')
+          }
+          inputClassName="pl-8.5"
+          label={t('username', 'Имя пользователя')}
+          maxLength={32}
+          placeholder="username"
+          prefix="@"
+          {...register('username')}
+        />
         <Textarea
           error={errors.bio?.message}
           hint={`${bio.length} / 160`}
@@ -192,7 +300,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
           {...register('bio')}
         />
 
-        <div className="mt-2 flex justify-end gap-2">
+        <div className="flex justify-end gap-2">
           <Button onClick={onBack} type="button" variant="ghost">
             {t('cancel', 'Отмена')}
           </Button>

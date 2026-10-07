@@ -129,9 +129,9 @@ func TestClientIssueTokenSendsGeneration(t *testing.T) {
 		}),
 	}
 
-	token, err := client.IssueToken(t.Context(), contract.IssueRequest.Subject, contract.IssueRequest.Username, contract.IssueRequest.TokenGeneration)
-	if err != nil || token != "contract-issued-token" {
-		t.Fatalf("unexpected issue response: token=%q err=%v", token, err)
+	issuedToken, err := client.IssueToken(t.Context(), contract.IssueRequest.Subject, contract.IssueRequest.Username, contract.IssueRequest.TokenGeneration)
+	if err != nil || issuedToken.Token != "contract-issued-token" || issuedToken.ExpiresAt.Unix() != 1_700_003_600 {
+		t.Fatalf("unexpected issue response: token=%#v err=%v", issuedToken, err)
 	}
 }
 
@@ -142,6 +142,20 @@ func TestClientIssueTokenRejectsCryptoWithoutGenerationSupport(t *testing.T) {
 	_, err := client.IssueToken(t.Context(), "user-id", "user", 7)
 	if !errors.Is(err, ErrTokenGenerationProtocol) {
 		t.Fatalf("expected generation protocol error, got %v", err)
+	}
+}
+
+func TestClientIssueTokenRejectsResponseWithoutExpiry(t *testing.T) {
+	generation := int64(7)
+	client := NewClient("http://crypto.test")
+	client.http = staticJSONClient(map[string]any{
+		"token":            "token-without-expiry",
+		"token_generation": generation,
+	})
+
+	issuedToken, err := client.IssueToken(t.Context(), "user-id", "user", generation)
+	if err == nil {
+		t.Fatalf("expected incomplete-response error, got %#v", issuedToken)
 	}
 }
 

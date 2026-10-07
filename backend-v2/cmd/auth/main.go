@@ -47,6 +47,10 @@ func main() {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
 			return
 		}
+		if err := auth.CheckSessionSchema(ctx, db); err != nil {
+			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "schema_not_ready", "required database migration is not applied")
+			return
+		}
 		if err := crypto.CheckTokenGenerationSupport(ctx); err != nil {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
 			return

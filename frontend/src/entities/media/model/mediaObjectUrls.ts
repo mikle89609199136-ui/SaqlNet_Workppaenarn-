@@ -26,6 +26,13 @@ const MEMORY_BUDGET_BYTES = 300 * 1024 * 1024;
 interface IEntry {
   url: string;
   bytes: number;
+  /**
+   * Сам файл — для «Сохранить как…» (#655): записать его через окно
+   * выбора места можно только из Blob, а прочитать blob:-адрес через
+   * fetch запрещает CSP. Память это не удваивает: адрес и Blob — одни
+   * и те же данные.
+   */
+  blob: Blob;
 }
 
 /**
@@ -84,7 +91,7 @@ export async function resolveMediaObjectUrl(
   const request = decrypt()
     .then((blob) => {
       const url = URL.createObjectURL(blob);
-      entries.set(key, { url, bytes: blob.size });
+      entries.set(key, { url, bytes: blob.size, blob });
       heldBytes += blob.size;
       evictUntilFits();
 
@@ -112,6 +119,14 @@ export function clearMediaObjectUrls(): void {
 
   pending.clear();
   heldBytes = 0;
+}
+
+/** Расшифрованный файл по его адресу; нет — уже отпущен или адрес чужой. */
+export function mediaBlobByUrl(url: string): Blob | undefined {
+  for (const entry of entries.values()) {
+    if (entry.url === url) return entry.blob;
+  }
+  return undefined;
 }
 
 /** Сколько сейчас удерживается. Для тестов и отладки. */

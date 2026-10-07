@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -115,6 +114,7 @@ func (s *recordingStore) OnlineUsers(_ context.Context, _ []string) ([]string, e
 // регистрирует httptest.Server и возвращает оба.
 func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server, *WSServer) {
 	t.Helper()
+	t.Setenv("ALLOWED_ORIGINS", "*")
 	db, _, _ := sqlmock.New()
 	ws := &WSServer{
 		db:             db,
@@ -126,7 +126,7 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 		register:       make(chan *Client, 1),
 		unreg:          make(chan *Client, 1),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		stop:           make(chan struct{}),
 		stopped:        make(chan struct{}),
 	}
@@ -140,8 +140,9 @@ func newPresenceTestServer(t *testing.T, store presence.Store) (*httptest.Server
 // dialWS подключается к тестовому WS-серверу; регистрирует закрытие.
 func dialWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
 	t.Helper()
-	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?token=tok"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	u := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	header := http.Header{"Cookie": {"craneapp_session=tok"}, "Origin": {srv.URL}}
+	conn, _, err := websocket.DefaultDialer.Dial(u, header)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn

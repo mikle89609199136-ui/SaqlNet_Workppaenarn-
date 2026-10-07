@@ -108,6 +108,9 @@ func expectIssueToken(mock sqlmock.Sqlmock, userID string) {
 		WillReturnRows(sqlmock.NewRows([]string{"username", "token_generation"}).AddRow("anna", 0))
 	mock.ExpectQuery(`SELECT token_generation.*FROM auth\.users.*WHERE id = \$1`).WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs(userID, sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
 func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {
@@ -136,7 +139,9 @@ func TestQRLoginHandsOverSessionAndPayloadOnce(t *testing.T) {
 	require.Equal(t, "no-store", status.Header().Get("Cache-Control"))
 	confirmed := decodeJSON(t, status)
 	require.Equal(t, "confirmed", confirmed["status"])
-	require.Equal(t, "token", confirmed["authToken"])
+	require.NotContains(t, confirmed, "authToken")
+	// Новое устройство получает сессию в cookie (#705).
+	require.Equal(t, "token", sessionCookieValue(t, status))
 	payload, err := json.Marshal(confirmed["payload"])
 	require.NoError(t, err)
 	require.JSONEq(t, qrPayload, string(payload))

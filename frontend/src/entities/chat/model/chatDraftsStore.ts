@@ -1,3 +1,4 @@
+import type { IRichText } from '@/shared/lib/richText';
 /**
  * Недописанные сообщения.
  *
@@ -14,7 +15,9 @@
 /** Через сколько после остановки набора сообщать списку чатов. */
 const SETTLE_DELAY_MS = 500;
 
-const drafts = new Map<string, string>();
+/* Черновик хранится с форматированием (#656): вернулся в чат — и жирный на
+   месте. Списку чатов нужен только текст. */
+const drafts = new Map<string, IRichText>();
 const listeners = new Map<string, Set<() => void>>();
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -30,8 +33,23 @@ function cancelPending(chatId: string): void {
   pending.delete(chatId);
 }
 
+const EMPTY_RICH_DRAFT: IRichText = { text: '', entities: [] };
+
 export function readDraft(chatId: string): string {
-  return drafts.get(chatId) ?? '';
+  return drafts.get(chatId)?.text ?? '';
+}
+
+/**
+ * Черновик с форматированием для списка чатов (#971) или хука подписки.
+ * Возвращает точную ссылку из хранилища или null, безопасно для useSyncExternalStore.
+ */
+export function readDraftRich(chatId: string): IRichText | null {
+  return drafts.get(chatId) ?? null;
+}
+
+/** Черновик с форматированием — для поля ввода. */
+export function readRichDraft(chatId: string): IRichText {
+  return drafts.get(chatId) ?? EMPTY_RICH_DRAFT;
 }
 
 /**
@@ -40,8 +58,8 @@ export function readDraft(chatId: string): string {
  * Список чатов узнает об этом, когда человек перестанет печатать: обновлять
  * строку на каждый символ значит заставлять её мигать всё время набора.
  */
-export function writeDraft(chatId: string, text: string): void {
-  drafts.set(chatId, text);
+export function writeDraft(chatId: string, value: IRichText | string): void {
+  drafts.set(chatId, typeof value === 'string' ? { text: value, entities: [] } : value);
 
   cancelPending(chatId);
   pending.set(
@@ -74,6 +92,17 @@ export function subscribeToDraft(chatId: string, listener: () => void): () => vo
     forChat.delete(listener);
     if (forChat.size === 0) listeners.delete(chatId);
   };
+}
+
+/**
+ * Есть ли недописанное хоть в одном чате. Черновики живут только в памяти:
+ * перед перезагрузкой (обновление приложения, #892) человека предупреждают.
+ */
+export function hasAnyDraft(): boolean {
+  for (const draft of drafts.values()) {
+    if (draft.text.trim()) return true;
+  }
+  return false;
 }
 
 /** Выход из аккаунта: недописанное не должно достаться следующему. */

@@ -107,7 +107,29 @@ func uploadLimitMessage(maxBytes int64) string {
 }
 
 func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
-	httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
+	writeTooLarge(w, r, h.service.maxUploadBytes)
+}
+
+func writeTooLarge(w http.ResponseWriter, r *http.Request, limit int64) {
+	httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(limit))
+}
+
+// maxVoiceBytes — предел голосового (#843). 15 минут Opus 32 кбит/с —
+// около 3,6 МБ; запас на контейнер и шифрование. Сервер не видит ни
+// длительности, ни содержимого — только размер, его и ограничивает.
+const maxVoiceBytes = 8 << 20
+
+// decodedBase64Size — точный размер после декодирования, с учётом `=` в
+// конце: DecodedLen даёт верхнюю оценку и отклонил бы файл ровно на пределе.
+func decodedBase64Size(encoded string) int64 {
+	size := int64(len(encoded) / 4 * 3)
+	switch {
+	case strings.HasSuffix(encoded, "=="):
+		size -= 2
+	case strings.HasSuffix(encoded, "="):
+		size--
+	}
+	return size
 }
 
 func (h *Handler) writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
@@ -138,6 +160,8 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			Purpose  string          `json:"purpose"`
 			File     json.RawMessage `json:"file"`
 			FileName string          `json:"fileName"`
+			// Type — вид вложения; у голосового свой предел размера (#843).
+			Type string `json:"type"`
 		}
 		if err := decodeSingleJSON(r.Body, &req); err != nil {
 			if isMaxBytesError(err) {
@@ -156,6 +180,10 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			envelope, validationErr := validateEncryptedEnvelope(req.File, req.FileName)
 			if validationErr != nil {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, validationErr.code, validationErr.message)
+				return
+			}
+			if req.Type == "voice" && decodedBase64Size(envelope.Ciphertext) > maxVoiceBytes {
+				writeTooLarge(w, r, maxVoiceBytes)
 				return
 			}
 

@@ -4,14 +4,17 @@ import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 
 
 interface Params {
   attachmentInputRef: RefObject<HTMLInputElement | null>;
+  /** Файл, открытый в редакторе, — одно из вложений композера. */
+  photoEditorFile: File | null;
   setPhotoEditorFile: Dispatch<SetStateAction<File | null>>;
-  setPendingAttachment: Dispatch<SetStateAction<IPendingAttachment | null>>;
+  setPendingAttachments: Dispatch<SetStateAction<IPendingAttachment[]>>;
 }
 
 export function usePhotoEditor({
   attachmentInputRef,
+  photoEditorFile,
   setPhotoEditorFile,
-  setPendingAttachment,
+  setPendingAttachments,
 }: Params) {
   const setEditingMessage = useChatUiStore((state) => state.setEditingMessage);
   const setError = useChatUiStore((state) => state.setError);
@@ -25,15 +28,28 @@ export function usePhotoEditor({
     resetAttachmentInput();
   }, [setPhotoEditorFile, resetAttachmentInput]);
 
+  // Сохранённый снимок встаёт на место того вложения, которое открыли, —
+  // остальные остаются как были.
   const savePhotoEditor = useCallback(
     (file: File) => {
-      setPendingAttachment({ file, type: 'image' });
+      setPendingAttachments((current) =>
+        current.map((attachment) =>
+          attachment.file === photoEditorFile ? { ...attachment, file, type: 'image' } : attachment
+        )
+      );
       setPhotoEditorFile(null);
       setEditingMessage(null);
       setError('');
       resetAttachmentInput();
     },
-    [setPendingAttachment, setPhotoEditorFile, setEditingMessage, setError, resetAttachmentInput]
+    [
+      photoEditorFile,
+      setPendingAttachments,
+      setPhotoEditorFile,
+      setEditingMessage,
+      setError,
+      resetAttachmentInput,
+    ]
   );
 
   return { closePhotoEditor, savePhotoEditor };

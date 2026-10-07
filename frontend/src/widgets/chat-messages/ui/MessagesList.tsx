@@ -1,15 +1,17 @@
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
+import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
-import { memo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { memo, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
 import { cn } from '@/shared/lib';
 import { DateDivider } from './DateDivider';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThreadState } from './ThreadState';
+import { UnreadDivider } from './UnreadDivider';
 
 interface Props {
   messages: TMessagesList;
@@ -35,6 +37,21 @@ interface Props {
    * участник или все.
    */
   showDeliveryStatus?: boolean;
+  /** Группа: у чужих сообщений имя и аватарка автора (#820). */
+  isGroupChat?: boolean;
+  /** «Новые сообщения» и счётчик на кнопке «вниз» — только в самом чате. */
+  trackUnread?: boolean;
+  /**
+   * Выполнять запросы «перейти к сообщению» из других частей экрана
+   * (#842). Только у ленты открытого чата, не у списка закреплённых.
+   */
+  handleJumpRequests?: boolean;
+  /**
+   * Отметка прочтения чата (#839): лента открывается на «Новые сообщения».
+   * Нужна, когда `trackUnread`: без неё лента ждёт и не прокручивается.
+   */
+  readMark?: IReadMark;
+  onMessagesSeen?: (messages: IMessageDto[]) => void;
 }
 
 export const MessagesList = memo(
@@ -53,6 +70,11 @@ export const MessagesList = memo(
     onOpenProfile,
     onCancelMessage,
     showDeliveryStatus = false,
+    isGroupChat = false,
+    trackUnread = true,
+    handleJumpRequests = false,
+    readMark,
+    onMessagesSeen,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -69,15 +91,38 @@ export const MessagesList = memo(
       virtualItems,
       setContainerRef,
       showScrollBottom,
+      unreadBelow,
       scrollToBottom,
       jumpToMessage,
-    } = useVirtualMessagesFeed({ messages, messagesRef });
+    } = useVirtualMessagesFeed({
+      messages,
+      messagesRef,
+      currentUserId: user?.id,
+      trackUnread,
+      readMark,
+      loadOlder,
+      hasOlder,
+      onMessagesSeen,
+    });
 
+    // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.
+    const threadChatId = messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,
       hasMoreOlder: hasOlder,
+      chatId: threadChatId,
     });
+
+    /* Переход, запрошенный из другой части экрана — из общего в профиле
+       (#842). Запрос чужого чата не трогаем: его выполнит своя лента. */
+    const jumpRequest = useChatUiStore((state) => state.jumpRequest);
+    const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
+    useEffect(() => {
+      if (!handleJumpRequests || !jumpRequest || jumpRequest.chatId !== threadChatId) return;
+      setJumpRequest(null);
+      void handleJumpToMessage(jumpRequest.messageId);
+    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, threadChatId]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -93,7 +138,9 @@ export const MessagesList = memo(
         )}
         <section
           aria-busy={isLoading}
-          className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto"
+          /* Поля ленты — по макету: 12 / 18 / 22 / 28 по бокам, 8 сверху
+             и 12 снизу. */
+          className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto px-3 pt-2 pb-3 md:px-4.5 lg:px-5.5 xl:px-7"
           ref={setContainerRef}
         >
           {isLoading && <MessageBubbleSkeleton />}
@@ -138,10 +185,13 @@ export const MessagesList = memo(
                   >
                     {item.type === 'date' ? (
                       <DateDivider label={item.label} variant="inline" />
+                    ) : item.type === 'unread' ? (
+                      <UnreadDivider />
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
                         isFirstInGroup={item.isFirstInGroup}
+                        isGroupChat={isGroupChat}
                         isLastInGroup={item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
@@ -165,7 +215,11 @@ export const MessagesList = memo(
           <div ref={bottomRef} />
         </section>
 
-        <ScrollToBottomButton onClick={scrollToBottom} visible={showScrollBottom} />
+        <ScrollToBottomButton
+          onClick={scrollToBottom}
+          unread={unreadBelow}
+          visible={showScrollBottom}
+        />
       </div>
     );
   }

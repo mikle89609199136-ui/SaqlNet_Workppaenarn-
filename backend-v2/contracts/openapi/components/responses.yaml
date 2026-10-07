@@ -4,6 +4,20 @@ Error:
     application/json:
       schema:
         $ref: './schemas.yaml#/Error'
+RequestTooLarge:
+  description: Request body exceeds the configured size limit (request_too_large)
+  content:
+    application/json:
+      schema:
+        allOf:
+          - { $ref: './schemas.yaml#/Error' }
+          - type: object
+            properties:
+              code: { type: string, enum: [request_too_large] }
+      example:
+        code: request_too_large
+        message: request body exceeds 64 KiB limit
+        requestId: 20260926T120000.000000000
 FileTooLarge:
   description: Media payload exceeds the configured upload limit
   content:

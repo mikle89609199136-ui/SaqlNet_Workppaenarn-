@@ -1,14 +1,4 @@
 export type {
-  IActiveCall,
-  ICall,
-  ICallCancelledPayload,
-  ICallInviteResponsePayload,
-  IIncomingCall,
-  IRingtone,
-  TCallKind,
-  TCallRoomType,
-} from './call.types';
-export type {
   IChatContext,
   IChatDto,
   ILastMessageDto,
@@ -33,6 +23,7 @@ export type {
   IReaction,
   TEmojisList,
   TMediaMessageType,
+  TSharedKind,
   TMessageDeliveryStatus,
   TMessagesList,
   TMessageType,
@@ -58,11 +49,13 @@ export type {
   IUploadResponse,
 } from './response.types';
 export type {
+  ICheckUsernameResponse,
   IPrivacyDto,
   ISearchUserDto,
   ISettingsDto,
   ISettingsPayloadDto,
   IUserDto,
+  IUserStatusDto,
   TLastSeenVisibility,
   TPrivacyVisibility,
   TSearchUsersList,
@@ -71,7 +64,7 @@ export type {
 } from '@/entities/user';
 export type {
   ICallAnswerEvent,
-  ICallCenceledEvent,
+  ICallCancelledEvent,
   ICallErrorEvent,
   ICallIceEvent,
   ICallIncomingEvent,
@@ -93,6 +86,7 @@ export type {
   IPongEvent,
   IReactionUpdatedEvent,
   IPresenceChangedEvent,
+  IUserBlockEvent,
   ITypingEvent,
   IWsEventMap,
   TWsEventType,

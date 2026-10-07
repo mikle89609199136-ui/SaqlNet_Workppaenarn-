@@ -163,6 +163,7 @@ func TestPresenceWithoutActivityIsSilent(t *testing.T) {
 // Через настоящий ServeWS: вход сообщается один раз на первое соединение,
 // выход — когда закрыто последнее.
 func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "*")
 	activity := &fakeActivity{}
 	db, _, err := sqlmock.New()
 	require.NoError(t, err)
@@ -177,7 +178,7 @@ func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
 		register:       make(chan *Client, 1),
 		unreg:          make(chan *Client, 1),
 		callRooms:      NewCallRoomManager(),
-		pendingInvites: make(map[string]json.RawMessage),
+		pendingInvites: make(map[string]*pendingInvite),
 		stop:           make(chan struct{}),
 		stopped:        make(chan struct{}),
 	}
@@ -186,7 +187,8 @@ func TestServeWSAnnouncesFirstConnectionAndLastDisconnect(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
 	t.Cleanup(srv.Close)
 	dial := func() *websocket.Conn {
-		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?token=tok", nil)
+		header := http.Header{"Cookie": {"craneapp_session=tok"}, "Origin": {srv.URL}}
+		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", header)
 		require.NoError(t, err)
 		return conn
 	}
