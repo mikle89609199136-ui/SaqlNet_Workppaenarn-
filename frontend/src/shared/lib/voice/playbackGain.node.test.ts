@@ -196,4 +196,40 @@ describe('громкость голосовых, выбранная челове
     setVoicePlaybackLevel(Number.NaN);
     expect(output(context).gain.value).toBe(1);
   });
+
+  it('без Web Audio уровень ставится на сам элемент и меняется вместе с ползунком', () => {
+    vi.stubGlobal('AudioContext', undefined);
+    const element = { volume: 1 } as HTMLMediaElement;
+    setVoicePlaybackLevel(0.3);
+
+    applyPlaybackGain(element, 0);
+    expect(element.volume).toBe(0.3);
+
+    setVoicePlaybackLevel(0.8);
+    expect(element.volume).toBe(0.8);
+
+    releasePlaybackGain(element);
+    setVoicePlaybackLevel(0.1);
+    expect(element.volume).toBe(0.8);
+  });
+
+  it('элемент уже занят другим графом — уровень тоже на самом элементе', () => {
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        createMediaElementSource() {
+          throw new Error('InvalidStateError');
+        }
+        createGain() {
+          return {};
+        }
+      }
+    );
+    const element = { volume: 1 } as HTMLMediaElement;
+    setVoicePlaybackLevel(0.5);
+
+    applyPlaybackGain(element, 0);
+
+    expect(element.volume).toBe(0.5);
+  });
 });

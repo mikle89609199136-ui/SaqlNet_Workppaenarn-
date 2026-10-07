@@ -16,6 +16,7 @@ import { useCallStore } from '@/features/call';
 import { registerChatResolver, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
+import { setVoiceVolume } from '@/shared/lib/voice/voiceVolume';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
@@ -255,6 +256,7 @@ afterEach(() => {
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   clearToasts();
   clearOutbox();
+  setVoiceVolume(1);
 
   localStorage.clear();
 });

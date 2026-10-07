@@ -201,7 +201,17 @@ export const AudioPlayer = ({
           {trailing}
         </span>
 
-        {!isMobile && (
+        {isMobile ? (
+          voiceVolume === 0 && (
+            <span
+              aria-label={t('voice.muted', 'Звук голосовых выключен')}
+              className="flex shrink-0 text-ink-3 group-data-[mine]/bubble:text-on-brand"
+              role="img"
+            >
+              <Icon className="size-4.5" name="volumeMute" />
+            </span>
+          )
+        ) : (
           <VolumePopover
             buttonClassName="text-ink-3 group-data-[mine]/bubble:text-on-brand"
             onChange={(event) => setVoiceVolume(Number(event.target.value))}

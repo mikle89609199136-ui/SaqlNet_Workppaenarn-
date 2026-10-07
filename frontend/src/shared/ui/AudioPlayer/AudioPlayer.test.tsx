@@ -195,9 +195,16 @@ describe('AudioPlayer', () => {
   });
 
   describe('громкость голосовых (#874)', () => {
-    beforeEach(() => {
-      setVoiceVolume(1);
-    });
+    const asPhone = () =>
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query.includes('max-width'),
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList
+      );
 
     it('у голосового на ПК — регулятор громкости голосовых, с процентами для диктора', () => {
       renderPlayer({ src: 'voice.ogg', variant: 'voice' });
@@ -237,18 +244,22 @@ describe('AudioPlayer', () => {
     });
 
     it('на телефоне регулятора в пузыре нет', () => {
-      vi.spyOn(window, 'matchMedia').mockImplementation(
-        (query: string) =>
-          ({
-            matches: query.includes('max-width'),
-            media: query,
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-          }) as unknown as MediaQueryList
-      );
+      asPhone();
       renderPlayer({ src: 'voice.ogg', variant: 'voice' });
 
       expect(screen.queryByRole('slider', { name: 'Громкость голосовых' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('img', { name: 'Звук голосовых выключен' })
+      ).not.toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it('на телефоне при выключенном в настройках звуке пузырь это показывает', () => {
+      asPhone();
+      setVoiceVolume(0);
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      expect(screen.getByRole('img', { name: 'Звук голосовых выключен' })).toBeInTheDocument();
       vi.restoreAllMocks();
     });
   });

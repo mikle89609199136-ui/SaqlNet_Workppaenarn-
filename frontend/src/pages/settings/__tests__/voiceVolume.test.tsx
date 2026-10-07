@@ -1,13 +1,9 @@
 import { fireEvent, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { getVoiceVolume, setVoiceVolume } from '@/shared/lib';
+import { describe, expect, it } from 'vitest';
+import { getVoiceVolume } from '@/shared/lib';
 import { renderSettings } from '@/test/harness/renderSettings';
 
 describe('громкость голосовых в настройках (#874)', () => {
-  beforeEach(() => {
-    setVoiceVolume(1);
-  });
-
   it('в «Уведомлениях» — ползунок громкости голосовых этого устройства', async () => {
     renderSettings({ section: 'notifications', settings: { notifications: true, sounds: true } });
 

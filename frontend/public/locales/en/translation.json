@@ -817,6 +817,7 @@
   "voice.error.unknown": "Couldn’t record the voice message",
   "voice.error.unsupported": "This browser can’t record voice messages",
   "voice.hint": "Hold to record, or click",
+  "voice.muted": "Voice messages are muted",
   "voice.record": "Record voice message",
   "voice.recording": "Recording a voice message",
   "voice.send": "Send voice message",

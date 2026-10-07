@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/shared/config';
 import {
   formatVolume,
@@ -10,10 +10,6 @@ import {
 } from './voiceVolume';
 
 describe('громкость голосовых на устройстве (#874)', () => {
-  beforeEach(() => {
-    setVoiceVolume(1);
-  });
-
   it('уровень сохраняется на устройстве', () => {
     setVoiceVolume(0.35);
 

@@ -27,6 +27,7 @@ let context: AudioContext | null = null;
 let output: GainNode | null = null;
 let listenerLevel = 1;
 const chains = new WeakMap<HTMLMediaElement, IPlaybackChain>();
+const withoutGraph = new Set<HTMLMediaElement>();
 
 function listenerOutput(audio: AudioContext): GainNode {
   if (!output) {
@@ -37,9 +38,15 @@ function listenerOutput(audio: AudioContext): GainNode {
   return output;
 }
 
+function playWithoutGraph(media: HTMLMediaElement) {
+  withoutGraph.add(media);
+  media.volume = listenerLevel;
+}
+
 export function setVoicePlaybackLevel(level: number): void {
   listenerLevel = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 1));
   if (output) output.gain.value = listenerLevel;
+  withoutGraph.forEach((media) => (media.volume = listenerLevel));
 }
 
 /** Поправка, которой доверяем: только конечное число и только в наших пределах. */
@@ -61,7 +68,10 @@ export function applyPlaybackGain(media: HTMLMediaElement, gainDb: number | unde
     void context?.resume().catch(() => undefined);
     return;
   }
-  if (typeof AudioContext === 'undefined') return;
+  if (typeof AudioContext === 'undefined') {
+    playWithoutGraph(media);
+    return;
+  }
 
   try {
     context ??= new AudioContext();
@@ -79,6 +89,7 @@ export function applyPlaybackGain(media: HTMLMediaElement, gainDb: number | unde
     chains.set(media, { nodes, gain });
   } catch (error) {
     console.warn('Потолок громкости голосового недоступен', error);
+    playWithoutGraph(media);
     return;
   }
   void context.resume().catch(() => undefined);
@@ -86,6 +97,7 @@ export function applyPlaybackGain(media: HTMLMediaElement, gainDb: number | unde
 
 /** Отцепить элемент от графа — при размонтировании плеера, чтобы узлы не копились. */
 export function releasePlaybackGain(media: HTMLMediaElement): void {
+  withoutGraph.delete(media);
   const chain = chains.get(media);
   if (!chain) return;
   chains.delete(media);
@@ -97,4 +109,5 @@ export function resetPlaybackGainContext(): void {
   context = null;
   output = null;
   listenerLevel = 1;
+  withoutGraph.clear();
 }
