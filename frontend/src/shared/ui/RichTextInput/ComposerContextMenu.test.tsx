@@ -284,9 +284,11 @@ describe('контекстное меню поля ввода (#656)', () => {
     const htmlBlob = new Blob(['<img src="https://example.com/pic.png">'], { type: 'text/html' });
     const mockClipboardItem = {
       types: ['image/png', 'text/html'],
-      getType: vi.fn().mockImplementation((type: string) =>
-        Promise.resolve(type === 'image/png' ? imageBlob : htmlBlob)
-      ),
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'image/png' ? imageBlob : htmlBlob)
+        ),
     };
 
     const originalClipboard = navigator.clipboard;
@@ -324,16 +326,17 @@ describe('контекстное меню поля ввода (#656)', () => {
   it('вставка из контекстного меню с text/html сохраняет разметку (#915)', async () => {
     const { field, handle } = renderInput();
 
-    const htmlBlob = new Blob(
-      ['<p><b>жирный</b> и <a href="https://example.com">ссылка</a></p>'],
-      { type: 'text/html' }
-    );
+    const htmlBlob = new Blob(['<p><b>жирный</b> и <a href="https://example.com">ссылка</a></p>'], {
+      type: 'text/html',
+    });
     const textBlob = new Blob(['жирный и ссылка'], { type: 'text/plain' });
     const mockClipboardItem = {
       types: ['text/html', 'text/plain'],
-      getType: vi.fn().mockImplementation((type: string) =>
-        Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
-      ),
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
+        ),
     };
 
     const originalClipboard = navigator.clipboard;
@@ -384,9 +387,11 @@ describe('контекстное меню поля ввода (#656)', () => {
     const textBlob = new Blob(['секрет и ссылка'], { type: 'text/plain' });
     const mockClipboardItem = {
       types: ['text/html', 'text/plain'],
-      getType: vi.fn().mockImplementation((type: string) =>
-        Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
-      ),
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
+        ),
     };
 
     const originalClipboard = navigator.clipboard;

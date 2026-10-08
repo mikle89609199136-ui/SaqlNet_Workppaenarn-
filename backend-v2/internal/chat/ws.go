@@ -36,6 +36,8 @@ type tokenVerifier interface {
 }
 
 type Client struct {
+	token         string
+	claims        cryptoclient.TokenClaims
 	UserID        string
 	Conn          *websocket.Conn
 	Send          chan []byte // не закрывается; завершение сигнализируется через done
@@ -232,7 +234,7 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connID := newConnectionID()
-	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	client := &Client{token: token, claims: claims, UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
 	// Второе окно или вкладка — не новость: о входе сообщаем только тогда,
 	// когда до этого соединений не было вовсе.
 	firstConnection := !ws.isOnlineElsewhere(r.Context(), client.UserID, client)
@@ -288,6 +290,10 @@ func (ws *WSServer) readPump(client *Client) {
 		ws.unreg <- client
 		_ = client.Conn.Close()
 	}()
+	// Recheck after registration: logout may commit between handshake and registration.
+	if !ws.authorizeClient(client) {
+		return
+	}
 	for {
 		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
@@ -295,6 +301,10 @@ func (ws *WSServer) readPump(client *Client) {
 		}
 		if err := client.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline)); err != nil {
 			break
+		}
+
+		if !ws.authorizeClient(client) {
+			return
 		}
 
 		var msg map[string]interface{}
@@ -563,6 +573,9 @@ func (ws *WSServer) heartbeat(client *Client) {
 			case <-client.done:
 				return
 			default:
+			}
+			if !ws.authorizeClient(client) {
+				return
 			}
 			ws.sendPresenceHeartbeat(client)
 			ws.touchPresence(client.UserID)

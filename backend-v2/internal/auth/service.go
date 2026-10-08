@@ -394,6 +394,9 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
+	if err := authctx.NotifyRevocation(ctx, tx, authctx.RevocationEvent{UserID: userID, TokenHash: hash}); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -443,6 +446,9 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 		UPDATE auth.sessions SET revoked_at = NOW()
 		WHERE user_id = $1 AND revoked_at IS NULL
 	`, userID); err != nil {
+		return err
+	}
+	if err := authctx.NotifyRevocation(ctx, tx, authctx.RevocationEvent{UserID: userID, Generation: &tokenGeneration}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

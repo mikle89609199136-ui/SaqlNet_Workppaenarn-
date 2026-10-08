@@ -1652,6 +1652,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set personal notification preferences for a chat
+         * @description Persists the authenticated member's preference across devices.
+         *     Idempotent; does not affect other members, message history, or unread counts.
+         *     Read hideNotificationPreview in chat details and chat lists (including archived).
+         *     Web push payloads already omit message content regardless of this preference.
+         */
+        put: operations["setChatNotificationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/archive": {
         parameters: {
             query?: never;
@@ -2147,7 +2170,10 @@ export interface paths {
         /** List GIFs */
         get: operations["listGifs"];
         put?: never;
-        /** Create a GIF */
+        /**
+         * Create a GIF
+         * @description Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB. Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source; 404 upload_not_found (including uploads owned by another user); 413 request_too_large; 500 internal_error.
+         */
         post: operations["createGif"];
         delete?: never;
         options?: never;
@@ -2964,6 +2990,11 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /**
+             * @description Hide message text in notifications for the authenticated user in this chat.
+             * @default false
+             */
+            hideNotificationPreview: boolean;
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
@@ -3187,17 +3218,33 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "error": {
-                 *         "code": "file_too_large",
-                 *         "message": "file exceeds 100 MB limit"
-                 *       }
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260926T120000.000000000"
                  *     }
                  */
-                "application/json": {
-                    error: components["schemas"]["Error"] & {
-                        /** @enum {string} */
-                        code?: "file_too_large";
-                    };
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "file_too_large";
+                };
+            };
+        };
+        /** @description Request body exceeds the configured size limit (request_too_large) */
+        RequestTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "request_too_large",
+                 *       "message": "request body exceeds 64 KiB limit",
+                 *       "requestId": "20260926T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large";
                 };
             };
         };
@@ -6007,6 +6054,67 @@ export interface operations {
             };
         };
     };
+    setChatNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hideNotificationPreview: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Preference saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid UUID or missing/non-boolean preference */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member of this chat or chat does not exist */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     archiveChat: {
         parameters: {
             query?: never;
@@ -6988,6 +7096,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
                     name?: string;
                     url: string;
                 };
@@ -7001,6 +7110,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["RequestTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {
