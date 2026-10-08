@@ -1,4 +1,4 @@
-import type { TLastSeenApprox } from '@/shared/lib';
+import type { IMessageEntity, TLastSeenApprox } from '@/shared/lib';
 import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
 export type TChatType = 'private' | 'group' | 'channel';
@@ -12,6 +12,8 @@ export interface ILastMessageDto {
   senderId: string;
   senderName: string;
   reactions: TReactionsList;
+  /** Форматирование текста сообщения (#971). */
+  entities?: IMessageEntity[];
   /**
    * Почему сообщение не прочиталось: ключа нет, оно старше нашего
    * появления в чате или в устаревшем формате. Подпись по этой причине
@@ -24,6 +26,7 @@ export interface ILastMessageDto {
 }
 
 export interface IChatDto {
+  hideNotificationPreview?: boolean;
   id: string;
   type: TChatType;
   title: string;

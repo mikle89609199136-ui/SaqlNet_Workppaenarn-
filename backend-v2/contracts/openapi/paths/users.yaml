@@ -1,6 +1,5 @@
 x-secure: &secure
   - sessionCookie: []
-  - bearerAuth: []
 x-error: &error
   $ref: '../components/responses.yaml#/Error'
 /users/me:

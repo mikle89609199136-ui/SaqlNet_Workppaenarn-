@@ -113,7 +113,7 @@ describe('регистрация', () => {
     server.use(
       http.post(api('/auth/register'), async ({ request }) => {
         body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1' } });
+        return HttpResponse.json({ user: { id: 'user-1' } });
       })
     );
 
@@ -130,6 +130,7 @@ describe('регистрация', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }));
 
     await expectSuccessfulRegistration();
+    expect(localStorage.getItem('craneapp_auth_token')).toBeNull();
     expect(body.lastName).toBe('Донской');
     // Язык — тот, на котором человек сейчас видит мастер.
     expect(body.language).toBe('ru');
@@ -140,7 +141,7 @@ describe('регистрация', () => {
     server.use(
       http.post(api('/auth/register'), async ({ request }) => {
         body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1' } });
+        return HttpResponse.json({ user: { id: 'user-1' } });
       })
     );
 
@@ -227,7 +228,7 @@ describe('регистрация', () => {
   it('после успеха уводит в чаты', async () => {
     server.use(
       http.post(api('/auth/register'), () =>
-        HttpResponse.json({ token: 'token-1', user: { id: 'user-1', username: 'maximdon' } })
+        HttpResponse.json({ user: { id: 'user-1', username: 'maximdon' } })
       )
     );
 
@@ -247,7 +248,7 @@ describe('регистрация', () => {
     server.use(
       http.post(api('/auth/register'), async ({ request }) => {
         body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ token: 'token-1', user: { id: 'user-1' } });
+        return HttpResponse.json({ user: { id: 'user-1' } });
       })
     );
 

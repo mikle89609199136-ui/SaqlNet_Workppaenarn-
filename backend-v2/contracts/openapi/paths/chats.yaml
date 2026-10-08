@@ -2,7 +2,7 @@ x-chat-id:
   &chatId { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
 x-user-id:
   &userId { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 /chats:
   get:
     {
@@ -780,3 +780,32 @@ x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
             examples:
               internalError:
                 value: { code: internal_error, message: 'failed to leave chat' }
+
+/chats/{chatId}/notification-settings:
+  put:
+    tags: [Chats]
+    summary: Set personal notification preferences for a chat
+    description: |
+      Persists the authenticated member's preference across devices.
+      Idempotent; does not affect other members, message history, or unread counts.
+      Read hideNotificationPreview in chat details and chat lists (including archived).
+      Web push payloads already omit message content regardless of this preference.
+    operationId: setChatNotificationSettings
+    security: *secure
+    parameters: [*chatId]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [hideNotificationPreview]
+            properties:
+              hideNotificationPreview: { type: boolean }
+    responses:
+      '200': { description: Preference saved }
+      '400': { description: Invalid UUID or missing/non-boolean preference }
+      '401': { description: Authentication required }
+      '403': { description: Not a member of this chat or chat does not exist }
+      '405': { description: Method not allowed }
+      '500': { description: Internal server error }
