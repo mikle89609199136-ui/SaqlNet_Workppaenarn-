@@ -37,7 +37,7 @@ describe('MediaService: upload', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should preserve the root error code and localize error when an upload is too large', async () => {
+  it('слишком большой файл — код file_too_large и понятное сообщение', async () => {
     server.use(
       http.post(api('/media'), () =>
         HttpResponse.json(
