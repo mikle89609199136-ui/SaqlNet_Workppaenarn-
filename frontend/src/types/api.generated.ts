@@ -2106,6 +2106,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/calls/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List finished calls of the current user
+         * @description Newest first. Outgoing calls are listed always; incoming ones only when the invitation reached the user. Status is from the viewer's side: an unanswered outgoing call is cancelled (rejected when the peer declined or was busy), an unanswered incoming call is missed (rejected when the viewer declined). The peer's avatar follows the peer's photo privacy rule. Calls in progress are not listed.
+         */
+        get: operations["getCallHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/media": {
         parameters: {
             query?: never;
@@ -3153,6 +3173,45 @@ export interface components {
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
             maxParticipants: 2;
+        };
+        CallHistoryItem: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Same as id.
+             */
+            roomId: string;
+            /**
+             * Format: uuid
+             * @description Null when the chat was deleted.
+             */
+            chatId: string | null;
+            /** Format: uuid */
+            peerId: string;
+            /** @description First and last name, else username; empty for a deleted user. */
+            peerName: string;
+            /** @description Null when there is none or the photo rule hides it. */
+            peerAvatar: string | null;
+            /** @enum {string} */
+            direction: "incoming" | "outgoing";
+            /** @enum {string} */
+            kind: "audio" | "video";
+            /** @enum {string} */
+            status: "answered" | "missed" | "rejected" | "cancelled";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            answeredAt: string | null;
+            /** Format: date-time */
+            endedAt: string;
+            /** @description From answer to end; 0 for unanswered calls. */
+            durationSeconds: number;
+        };
+        CallHistoryResponse: {
+            calls: components["schemas"]["CallHistoryItem"][];
+            nextCursor: string | null;
+            hasMore: boolean;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -6935,6 +6994,34 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    getCallHistory: {
+        parameters: {
+            query?: {
+                /** @description nextCursor of the previous page, opaque. */
+                cursor?: string;
+                limit?: number;
+                kind?: "audio" | "video";
+                status?: "answered" | "missed" | "rejected" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of finished calls */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallHistoryResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
         };
     };
     uploadMedia: {
