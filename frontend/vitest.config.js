@@ -31,11 +31,14 @@ export default defineConfig({
        только те, что их импортируют. Файлы, которые тесты читают мимо
        импортов (словари и CSS-токены — через fs), общая обвязка тестов,
        зависимости и настройки сборки затрагивают всех — их правка
-       запускает весь набор. package.json и конфиги vite/vitest — в
-       умолчаниях, setupFiles vitest добавляет сам. */
+       запускает весь набор, как и правка самого CI. Умолчания vitest
+       для package.json и конфигов записаны с хвостом «/» и «**» и
+       совпадают только с папкой, не с файлом, — здесь шаблоны без хвоста.
+       setupFiles vitest добавляет сам. */
     forceRerunTriggers: [
-      '**/package.json/**',
-      '**/{vitest,vite}.config.*/**',
+      '**/package.json',
+      '**/{vitest,vite}.config.*',
+      '**/.github/workflows/ci.yml',
       '**/package-lock.json',
       '**/tsconfig*.json',
       '**/public/locales/**',
