@@ -487,7 +487,9 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 	if roomID == "" {
 		roomID = client.CallRoomID
 	}
-	if roomID == "" {
+	// Выходит подключение, которое входило, — как и сигналы (#849): другая
+	// вкладка того же человека чужой звонок не завершает.
+	if roomID == "" || roomID != client.CallRoomID {
 		return
 	}
 	ws.doLeaveRoom(client, roomID, peerLeftByLeave)
@@ -503,9 +505,14 @@ const (
 
 func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
 	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
-	if lr.OK {
-		ws.recordCallLeft(roomID, client.UserID)
+	// Не участник (не входил, уже вышел, комната закрыта) — сообщать
+	// некому и не о чем: иначе любой, кто знает id комнаты, «выходил» бы
+	// из чужого звонка, и собеседники его завершали бы.
+	if !lr.OK {
+		ws.setCallRoom(client, "")
+		return
 	}
+	ws.recordCallLeft(roomID, client.UserID)
 	peerLeft, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_left",
 		"roomId": roomID,

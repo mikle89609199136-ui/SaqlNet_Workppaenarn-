@@ -257,6 +257,10 @@ func (m *CallRoomManager) leaveRoomLocked(roomID, userID string) LeaveResult {
 	if !ok {
 		return LeaveResult{OK: false}
 	}
+	// Выйти можно только из комнаты, в которой состоишь.
+	if _, in := r.participants[userID]; !in {
+		return LeaveResult{OK: false}
+	}
 	delete(r.participants, userID)
 	if m.userToRoom[userID] == roomID {
 		delete(m.userToRoom, userID)
