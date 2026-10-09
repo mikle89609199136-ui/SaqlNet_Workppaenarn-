@@ -27,6 +27,21 @@ export default defineConfig({
     /* Ограничение придумано под рабочую машину на двадцать ядер и в CI
        только мешает: там ядер два, половина от них — один воркер. */
     maxWorkers: process.env.CI ? undefined : '50%',
+    /* В PR тесты запускаются по изменённым файлам (--changed в ci.yml):
+       только те, что их импортируют. Файлы, которые тесты читают мимо
+       импортов (словари и CSS-токены — через fs), общая обвязка тестов,
+       зависимости и настройки сборки затрагивают всех — их правка
+       запускает весь набор. package.json и конфиги vite/vitest — в
+       умолчаниях, setupFiles vitest добавляет сам. */
+    forceRerunTriggers: [
+      '**/package.json/**',
+      '**/{vitest,vite}.config.*/**',
+      '**/package-lock.json',
+      '**/tsconfig*.json',
+      '**/public/locales/**',
+      '**/src/app/styles/**',
+      '**/src/test/**',
+    ],
     projects: [
       {
         plugins: [react()],
