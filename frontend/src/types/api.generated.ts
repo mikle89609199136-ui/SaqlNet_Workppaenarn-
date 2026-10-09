@@ -1652,6 +1652,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set personal notification preferences for a chat
+         * @description Persists the authenticated member's preference across devices.
+         *     Idempotent; does not affect other members, message history, or unread counts.
+         *     Read hideNotificationPreview in chat details and chat lists (including archived).
+         *     Web push payloads already omit message content regardless of this preference.
+         */
+        put: operations["setChatNotificationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/archive": {
         parameters: {
             query?: never;
@@ -2916,7 +2939,8 @@ export interface components {
             /**
              * @description User IDs to add as members. The owner is added automatically
              *     and does not need to be listed. Unknown or disabled users are
-             *     silently skipped.
+             *     silently skipped. May be empty: the group is then created with
+             *     the owner as its only member.
              * @example [
              *       "550e8400-e29b-41d4-a716-446655440002"
              *     ]
@@ -2967,6 +2991,11 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /**
+             * @description Hide message text in notifications for the authenticated user in this chat.
+             * @default false
+             */
+            hideNotificationPreview: boolean;
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
@@ -3190,17 +3219,14 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "error": {
-                 *         "code": "file_too_large",
-                 *         "message": "file exceeds 100 MB limit"
-                 *       }
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260926T120000.000000000"
                  *     }
                  */
-                "application/json": {
-                    error: components["schemas"]["Error"] & {
-                        /** @enum {string} */
-                        code?: "file_too_large";
-                    };
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "file_too_large";
                 };
             };
         };
@@ -6022,6 +6048,67 @@ export interface operations {
         responses: {
             /** @description Unpinned */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setChatNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hideNotificationPreview: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Preference saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid UUID or missing/non-boolean preference */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member of this chat or chat does not exist */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal server error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

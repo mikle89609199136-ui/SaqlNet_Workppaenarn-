@@ -27,7 +27,7 @@ describe('AuthService session metadata', () => {
 
     expect(post).toHaveBeenCalledWith(endpoint, {
       ...input,
-      deviceName: 'Chrome на Linux',
+      deviceName: 'Chrome · Linux',
       deviceType: 'desktop',
     });
   });

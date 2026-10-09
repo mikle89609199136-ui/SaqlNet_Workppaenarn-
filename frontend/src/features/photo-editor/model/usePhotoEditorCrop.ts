@@ -1,5 +1,5 @@
-import { DEFAULT_CROP } from '@/shared/config';
-import type { IEditorCrop, TCropRatioValue } from '@/types';
+import { DEFAULT_CROP } from './config';
+import type { IEditorCrop, TCropRatioValue } from './types';
 import { clamp } from '@/shared/lib';
 import { useCallback, useRef, type RefObject } from 'react';
 

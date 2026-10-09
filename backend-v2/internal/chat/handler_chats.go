@@ -39,13 +39,11 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 
 	chatID := r.PathValue("chatID")
-	if chatID == "" {
-		slog.WarnContext(r.Context(), "missing chat ID in path",
-			"layer", "handler",
-			"method", method,
-			"path", r.URL.Path,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
+
+	var inputParams ChatID
+	inputParams.ChatID = chatID
+
+	if !validateAndLogInput(w, r, inputParams, method, current.ID, "invalid chat ID") {
 		return
 	}
 
@@ -194,6 +192,14 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
 func (h *Handler) GetOnlineMembers(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID := r.PathValue("chatID")
+
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
 
 	members, err := h.service.GetOnlineMembers(r.Context(), chatID, current.ID)
 	switch {

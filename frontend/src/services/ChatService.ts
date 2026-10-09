@@ -157,6 +157,12 @@ export class ChatService {
     return response.data;
   }
 
+  async setNotificationPreview(chatId: string, hideNotificationPreview: boolean) {
+    return this.apiClient.put(API_ENDPOINTS.CHAT_NOTIFICATION_SETTINGS(chatId), {
+      hideNotificationPreview,
+    });
+  }
+
   async pinChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
     return response.data;

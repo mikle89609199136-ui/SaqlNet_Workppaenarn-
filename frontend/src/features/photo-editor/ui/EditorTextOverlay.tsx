@@ -1,7 +1,6 @@
-import { Button, Icon } from '@/shared/ui';
-import { EDITOR_FONTS } from '@/shared/config';
-import type { IEditorTextObject } from '@/types';
-import type { RefObject } from 'react';
+import { EDITOR_FONTS } from '../model/config';
+import type { IEditorTextObject } from '../model/types';
+import type { ReactNode, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -10,16 +9,20 @@ interface Props {
   inlineTextRef: RefObject<HTMLTextAreaElement | null>;
   onBlur: () => void;
   onChange: (value: string) => void;
-  onDelete: () => void;
+  /** Ручки над полем (поворот, удаление) — крепятся к нему, а не к расчёту. */
+  handles?: ReactNode;
 }
 
+/* Поле ввода поверх текста на фото. Ширина — по тексту (field-sizing):
+   без неё у textarea ширина в 20 знаков, и «Привет» сидел в длинной
+   рамке. Ручки — над полем и поворачиваются вместе с ним. */
 export function EditorTextOverlay({
   selectedTextObject,
   canvasDisplayWidth,
   inlineTextRef,
   onBlur,
   onChange,
-  onDelete,
+  handles,
 }: Props) {
   const { t } = useTranslation();
   const font = EDITOR_FONTS.find((item) => item.id === selectedTextObject.font) || EDITOR_FONTS[0];
@@ -27,7 +30,7 @@ export function EditorTextOverlay({
 
   return (
     <div
-      className="absolute z-20 flex items-start gap-1.5 max-w-[85%] pointer-events-auto"
+      className="absolute z-20 max-w-[85%] pointer-events-auto"
       onPointerDown={(event) => event.stopPropagation()}
       style={{
         left: `${selectedTextObject.x * 100}%`,
@@ -35,9 +38,12 @@ export function EditorTextOverlay({
         transform: `translate(-50%, -50%) rotate(${selectedTextObject.rotation || 0}deg)`,
       }}
     >
+      {handles && (
+        <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2">{handles}</div>
+      )}
       <textarea
-        aria-label="Текст на изображении"
-        className="min-w-[120px] max-w-[min(70vw,720px)] w-max resize-none overflow-hidden border border-dashed border-white/90 rounded-field px-2 py-0.5 bg-black/20 text-center caret-white outline-none"
+        aria-label={t('photoEditor.textOnImage', 'Текст на изображении')}
+        className="block min-w-[120px] max-w-[min(70vw,720px)] w-max [field-sizing:content] resize-none overflow-hidden border border-dashed border-white/90 rounded-field px-2 py-0.5 bg-black/20 text-center caret-white outline-none"
         onBlur={onBlur}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -57,16 +63,6 @@ export function EditorTextOverlay({
         }}
         value={selectedTextObject.text}
       />
-      <Button
-        aria-label="Удалить текст"
-        className="w-6 h-6 p-0 rounded-full"
-        onClick={onDelete}
-        onPointerDown={(event) => event.preventDefault()}
-        size="sm"
-        variant="danger"
-      >
-        <Icon name="cross" size="sm" />
-      </Button>
     </div>
   );
 }

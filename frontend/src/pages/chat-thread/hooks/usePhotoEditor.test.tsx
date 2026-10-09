@@ -35,7 +35,8 @@ describe('сохранение из фоторедактора', () => {
 
     expect(result.current.pendingAttachments).toEqual([
       { id: 'a1', file: first, type: 'image' },
-      { id: 'a2', file: edited, type: 'image' },
+      // Снимок из редактора уже сжат — при отправке не пересжимается.
+      { id: 'a2', file: edited, type: 'image', optimizeImage: false },
     ]);
     expect(result.current.photoEditorFile).toBeNull();
   });

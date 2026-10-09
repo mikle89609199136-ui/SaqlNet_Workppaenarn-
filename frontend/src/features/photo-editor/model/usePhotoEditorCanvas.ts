@@ -1,5 +1,5 @@
-import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from '@/types';
-import { drawObject, drawSelection } from '@/shared/lib';
+import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from './types';
+import { drawObject, drawSelection } from './editorCanvas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface Params {
@@ -12,7 +12,8 @@ interface Params {
   objects: TEditorObject[];
   selectedObject: TEditorObject | null;
   editingTextId: string | null;
-  tool: TEditorTool;
+  /** null — инструмент не выбран: редактор только показывает фото. */
+  tool: TEditorTool | null;
   onCancel: () => void;
   onSave: (file: File) => void;
 }
@@ -42,11 +43,12 @@ export function usePhotoEditorCanvas({
   const [isSaving, setIsSaving] = useState(false);
   const [canvasDisplayWidth, setCanvasDisplayWidth] = useState(1000);
 
-  const filterString = useMemo(
+  const toneFilter = useMemo(
     () =>
-      `brightness(${filters.brightness}%) contrast(${filters.contrast}%) saturate(${filters.saturate}%) sepia(${filters.sepia}%) blur(${filters.blur}px)`,
-    [filters]
+      `brightness(${filters.brightness}%) contrast(${filters.contrast}%) saturate(${filters.saturate}%) sepia(${filters.sepia}%)`,
+    [filters.brightness, filters.contrast, filters.saturate, filters.sepia]
   );
+  const blurRadius = filters.blur;
 
   useEffect(() => {
     if (!file) return undefined;
@@ -108,19 +110,27 @@ export function usePhotoEditorCanvas({
     const context = canvas.getContext('2d');
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.save();
-    context.filter = filterString;
-    context.translate(canvas.width / 2, canvas.height / 2);
-    context.rotate((rotation * Math.PI) / 180);
-    context.scale(flipX, flipY);
-    context.drawImage(
-      image,
-      (-sourceWidth * scale) / 2,
-      (-sourceHeight * scale) / 2,
-      sourceWidth * scale,
-      sourceHeight * scale
-    );
-    context.restore();
+    const drawPhoto = (filter: string) => {
+      context.save();
+      context.filter = filter;
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate((rotation * Math.PI) / 180);
+      context.scale(flipX, flipY);
+      context.drawImage(
+        image,
+        (-sourceWidth * scale) / 2,
+        (-sourceHeight * scale) / 2,
+        sourceWidth * scale,
+        sourceHeight * scale
+      );
+      context.restore();
+    };
+    // Размытие на холсте затягивает края в прозрачность, а при сохранении в
+    // JPEG прозрачное становится чёрным — у снимка появлялась тёмная рамка.
+    // Поэтому под размытым слоем — тот же снимок без размытия: полупрозрачные
+    // края ложатся на фото, а не на пустоту.
+    if (blurRadius > 0) drawPhoto(toneFilter);
+    drawPhoto(blurRadius > 0 ? `${toneFilter} blur(${blurRadius}px)` : toneFilter);
 
     objects.forEach((object) => {
       const isEditingSelectedText =
@@ -131,7 +141,18 @@ export function usePhotoEditorCanvas({
     if (selectedObject && tool === 'text' && editingTextId !== selectedObject.id) {
       drawSelection(context, selectedObject, canvas.width, canvas.height);
     }
-  }, [editingTextId, filterString, flipX, flipY, isReady, objects, rotation, selectedObject, tool]);
+  }, [
+    blurRadius,
+    editingTextId,
+    flipX,
+    flipY,
+    isReady,
+    objects,
+    rotation,
+    selectedObject,
+    toneFilter,
+    tool,
+  ]);
 
   useEffect(() => {
     renderCanvas();
@@ -153,18 +174,19 @@ export function usePhotoEditorCanvas({
       if (ctx) {
         ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
       }
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        output.toBlob(
-          (result) =>
-            result ? resolve(result) : reject(new Error('Не удалось подготовить изображение')),
-          'image/jpeg',
-          0.94
-        );
-      });
+      const encode = (type: string, quality: number) =>
+        new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
+      // WebP, как и прочие фото в чате (encodeImage): при отправке снимок из
+      // редактора второй раз не пересжимается. Safari до 17 вместо WebP
+      // отдаёт PNG — тогда JPEG.
+      let blob = await encode('image/webp', 0.92);
+      if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg', 0.94);
+      if (!blob) throw new Error('Не удалось подготовить изображение');
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
+      const extension = blob.type === 'image/webp' ? 'webp' : 'jpg';
       onSave(
-        new File([blob], `${baseName}-edited.jpg`, {
-          type: 'image/jpeg',
+        new File([blob], `${baseName}-edited.${extension}`, {
+          type: blob.type,
           lastModified: Date.now(),
         })
       );

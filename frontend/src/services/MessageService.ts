@@ -33,8 +33,6 @@ interface IPreparedSend {
   toDisplay: (sent: IMessageDto) => IMessageDto | Promise<IMessageDto>;
 }
 
-const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
-
 /** Загрузка в сервисе медиа — единственный адрес вложения, который скачиваем (#871). */
 const OWN_MEDIA_URL =
   /^\/api\/v2\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,8 +40,6 @@ const OWN_MEDIA_URL =
 export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
-
-const FOREIGN_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не из этого приложения';
 
 export class MessageService {
   private apiClient: ApiClient;
@@ -461,7 +457,7 @@ export class MessageService {
         mediaUrl: null,
         mediaEncrypted: Boolean(metadata.mediaEncrypted),
         mediaUnavailable: true,
-        mediaUnavailableReason: FOREIGN_MEDIA_UNAVAILABLE,
+        mediaUnavailableReason: 'foreign',
       };
     }
 
@@ -472,7 +468,7 @@ export class MessageService {
         mediaUrl: null,
         mediaEncrypted: false,
         mediaUnavailable: true,
-        mediaUnavailableReason: LEGACY_MEDIA_UNAVAILABLE,
+        mediaUnavailableReason: 'unencrypted',
       };
     }
 
@@ -505,7 +501,7 @@ export class MessageService {
         mediaEncrypted: true,
         mediaEncryption: metadata.mediaEncryption ?? null,
         mediaUnavailable: true,
-        mediaUnavailableReason: 'Медиа недоступно: ошибка расшифровки',
+        mediaUnavailableReason: 'decryptFailed',
       };
     }
   }

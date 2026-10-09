@@ -26,6 +26,7 @@ export interface ILastMessageDto {
 }
 
 export interface IChatDto {
+  hideNotificationPreview?: boolean;
   id: string;
   type: TChatType;
   title: string;
@@ -105,4 +106,9 @@ export interface IPendingAttachment {
   id: string;
   file: File;
   type: TMediaMessageType;
+  /**
+   * Пересжать фото перед отправкой (encodeChatPhoto). Нет — у «Файла»: им
+   * отправляют оригинал без потерь, и у снимка из редактора — он уже сжат.
+   */
+  optimizeImage?: boolean;
 }

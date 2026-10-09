@@ -21,9 +21,10 @@ import (
 
 // Тестовые UUID — валидные, чтобы не срабатывала валидация входных данных.
 const (
-	handlerActorID  = "550e8400-e29b-41d4-a716-446655440001"
-	handlerChatID   = "550e8400-e29b-41d4-a716-446655440002"
-	handlerTargetID = "550e8400-e29b-41d4-a716-446655440003"
+	handlerActorID    = "550e8400-e29b-41d4-a716-446655440001"
+	handlerChatID     = "550e8400-e29b-41d4-a716-446655440002"
+	handlerTargetID   = "550e8400-e29b-41d4-a716-446655440003"
+	nonExistentChatID = "550e8400-e29b-41d4-a716-446655440099"
 )
 
 // SQL-ожидания, повторяющиеся в нескольких тестах.
@@ -169,12 +170,15 @@ func TestHandler_AddMember(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		chatID     string
 		setupMock  func()
 		wantStatus int
 		wantCode   string
+		method     string
 	}{
 		{
 			"Success",
+			handlerChatID,
 			func() {
 				// Все проверки проходят, вставка успешна
 				expectAddMemberPrechecks(mock)
@@ -187,9 +191,11 @@ func TestHandler_AddMember(t *testing.T) {
 			},
 			http.StatusCreated, // 201
 			"",
+			http.MethodPost,
 		},
 		{
 			"AlreadyMember",
+			handlerChatID,
 			func() {
 				expectAddMemberPrechecks(mock)
 				mock.ExpectBegin()
@@ -202,9 +208,11 @@ func TestHandler_AddMember(t *testing.T) {
 			},
 			http.StatusConflict, // 409
 			"already_member",
+			http.MethodPost,
 		},
 		{
 			"UserBanned",
+			handlerChatID,
 			func() {
 				expectAddMemberPrechecks(mock)
 				mock.ExpectBegin()
@@ -216,6 +224,15 @@ func TestHandler_AddMember(t *testing.T) {
 			},
 			http.StatusConflict, // 409
 			"user_banned",
+			http.MethodPost,
+		},
+		{
+			"InvalidInput",
+			"not-a-uuid",
+			func() {},
+			http.StatusBadRequest, // 400
+			"validation_failed",
+			http.MethodPost,
 		},
 	}
 
@@ -224,7 +241,7 @@ func TestHandler_AddMember(t *testing.T) {
 			tt.setupMock()
 
 			body, _ := json.Marshal(map[string]string{"userId": handlerTargetID})
-			req := newAuthedRequest(http.MethodPost, "/api/v2/chats/"+handlerChatID+"/members", body, handlerActorID)
+			req := newAuthedRequest(http.MethodPost, "/api/v2/chats/"+tt.chatID+"/members", body, handlerActorID)
 
 			rr := httptest.NewRecorder()
 			h.Chat(rr, req)
@@ -627,22 +644,92 @@ func TestHandler_BanMember_Body(t *testing.T) {
 	}
 }
 
+// Валидация UUID для эндпоинта: DELETE /api/v2/chats/{chatId}/members/{userId}
+func TestHandler_RemoveMember_MalformedUUID(t *testing.T) {
+	h := NewHandler(nil)
+
+	tests := []struct {
+		name   string
+		chatID string
+		userID string
+	}{
+		{
+			name:   "InvalidChatID",
+			chatID: "not-a-uuid",
+			userID: handlerTargetID,
+		},
+		{
+			name:   "InvalidUserID",
+			chatID: handlerChatID,
+			userID: "not-a-uuid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newAuthedRequest(
+				http.MethodDelete,
+				"/api/v2/chats/"+tt.chatID+"/members/"+tt.userID,
+				nil,
+				handlerActorID,
+			)
+
+			rr := httptest.NewRecorder()
+			h.Chat(rr, req)
+
+			assertErrorResponse(
+				t,
+				rr,
+				http.StatusBadRequest,
+				"validation_failed",
+			)
+		})
+	}
+}
+
 // TestHandler_ListBans_PrivateChatRejected проверяет HTTP-маппинг запрета
 // moderation-операций в private chat: ErrInvalidChatType из Service.ListBans
 // должен стать 400 invalid_chat_type, а не общим 500 internal_error.
 func TestHandler_ListBans_PrivateChatRejected(t *testing.T) {
-	h, mock := newTestHandler(t)
+	tests := []struct {
+		name          string
+		chatID        string
+		chatType      string
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{
+			name:          "private_chat_rejected",
+			chatID:        handlerChatID,
+			chatType:      "private",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_chat_type",
+		},
+		{
+			name:          "malformed_chat_id_400",
+			chatID:        "not-a-uuid",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+		},
+	}
 
-	mock.ExpectQuery(actorChatInfoQuery).
-		WithArgs(handlerActorID, handlerChatID).
-		WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("private", "member"))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, mock := newTestHandler(t)
 
-	req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+handlerChatID+"/bans", nil, handlerActorID)
-	rr := httptest.NewRecorder()
-	h.Chat(rr, req)
+			if tt.chatID == handlerChatID {
+				mock.ExpectQuery(actorChatInfoQuery).
+					WithArgs(handlerActorID, handlerChatID).
+					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("private", "member"))
+			}
 
-	assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_chat_type")
-	require.NoError(t, mock.ExpectationsWereMet())
+			req := newAuthedRequest(http.MethodGet, "/api/v2/chats/"+tt.chatID+"/bans", nil, handlerActorID)
+			rr := httptest.NewRecorder()
+			h.Chat(rr, req)
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantErrorCode)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 // TestHandler_GetOnlineMembers проверяет маппинг ошибок GetOnlineMembers
@@ -1046,7 +1133,7 @@ func TestHandler_List(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "hide_notification_preview",
 	}
 
 	tests := []struct {
@@ -1298,8 +1385,9 @@ func TestParseArchived(t *testing.T) {
 }
 
 // TestHandler_CreateGroup covers CreateGroup: successful creation,
-// field trimming, validation failures (title too long, empty title,
-// empty members), service errors, and method rejection.
+// field trimming, an empty members list (group of one), validation
+// failures (title too long, empty title, missing members), service errors,
+// and method rejection.
 func TestHandler_CreateGroup(t *testing.T) {
 	const (
 		actorID   = "550e8400-e29b-41d4-a716-446655440001"
@@ -1419,11 +1507,34 @@ func TestHandler_CreateGroup(t *testing.T) {
 			wantErrorCode: "validation_failed",
 		},
 		{
-			name:   "empty_members_400",
+			// Группа из одного: участников можно не выбирать — владелец
+			// добавляется всегда, остальных позовут потом.
+			name:   "empty_members_creates_group_of_one",
 			method: http.MethodPost,
 			requestBody: map[string]any{
 				"title":   "Group",
 				"members": []string{},
+			},
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(`INSERT INTO chats\.chats`).
+					WithArgs("Group", "", "", actorID).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("chat-123"))
+				mock.ExpectExec(`INSERT INTO chats\.members`).
+					WithArgs("chat-123", actorID, "owner").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			wantStatus: http.StatusCreated,
+			wantChatID: true,
+			wantTitle:  "Group",
+		},
+		{
+			// Пустой список — можно, отсутствующий — нет: это ошибка клиента.
+			name:   "missing_members_400",
+			method: http.MethodPost,
+			requestBody: map[string]any{
+				"title": "Group",
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,
@@ -1524,14 +1635,14 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		"is_pinned", "is_archived", "last_read_at", "created_at", "updated_at",
 		"member_count", "last_message_at", "peer_id", "peer_is_online", "peer_last_seen",
 		"unread_count", "lm_id", "lm_sender_id", "lm_content", "lm_entities", "lm_type", "lm_sender",
-		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions",
+		"peer_privacy", "peer_blocks_viewer", "peer_exceptions", "viewer_privacy", "viewer_blocks", "viewer_exceptions", "hide_notification_preview",
 	}
 
 	newChatRow := func(title, description, avatarURL string) *sqlmock.Rows {
 		return sqlmock.NewRows(chatCols).AddRow(
 			chatID, "group", title, description, avatarURL, actorID, "owner",
 			false, false, "", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
-			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil,
+			3, "", "", false, "", 0, "", "", "", []byte("[]"), "", "", nil, false, nil, nil, false, nil, false,
 		)
 	}
 
@@ -1694,13 +1805,13 @@ func TestHandler_UpdateGroup(t *testing.T) {
 		{
 			name:   "chat_not_found_404",
 			method: http.MethodPatch,
-			path:   "/api/v2/chats/non-existent-id",
+			path:   "/api/v2/chats/" + nonExistentChatID,
 			requestBody: map[string]any{
 				"title": "New Title",
 			},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(`SELECT c\.type, m\.role FROM chats\.chats c JOIN chats\.members m`).
-					WithArgs("non-existent-id", actorID).
+					WithArgs(nonExistentChatID, actorID).
 					WillReturnError(sql.ErrNoRows)
 			},
 			wantStatus:    http.StatusNotFound,
@@ -1901,5 +2012,94 @@ func assertErrorCode(t *testing.T, rr *httptest.ResponseRecorder, want string) {
 	}
 	if got, _ := resp["code"].(string); got != want {
 		t.Errorf("error code = %q, want %q", got, want)
+	}
+}
+
+func TestHandler_MalformedUUID(t *testing.T) {
+	tests := []struct {
+		name          string
+		wantStatus    int
+		wantErrorCode string
+		path          string
+		method        string
+	}{
+		{
+			name:          "pins_malformed_chat_id_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/pins",
+			method:        http.MethodGet,
+		},
+		{
+			name:          "pin_malformed_chat_id_post_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/pin",
+			method:        http.MethodPost,
+		},
+		{
+			name:          "pin_malformed_chat_id_delete_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/pin",
+			method:        http.MethodDelete,
+		},
+		{
+			name:          "role_malformed_chat_id_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/members/" + handlerActorID + "/role",
+			method:        http.MethodPost,
+		},
+		{
+			name:          "role_malformed_user_id_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/" + handlerChatID + "/members/not-a-uuid/role",
+			method:        http.MethodPost,
+		},
+		{
+			name:          "mls_state_malformed_chat_id_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/mls-state",
+			method:        http.MethodGet,
+		},
+		{
+			name:          "archive_malformed_chat_id_post_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/archive",
+			method:        http.MethodPost,
+		},
+		{
+			name:          "archive_malformed_chat_id_delete_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/archive",
+			method:        http.MethodDelete,
+		},
+		{
+			name:          "read_malformed_chat_id_400",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "validation_failed",
+			path:          "/api/v2/chats/not-a-uuid/read",
+			method:        http.MethodPost,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newAuthedRequest(tt.method, tt.path, nil, handlerActorID)
+			h, _ := newTestHandler(t)
+			authenticated := func(next http.Handler) http.Handler {
+				return next
+			}
+			rr := httptest.NewRecorder()
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, h, authenticated)
+			mux.ServeHTTP(rr, req)
+			assertErrorResponse(t, rr, tt.wantStatus, tt.wantErrorCode)
+		})
 	}
 }
