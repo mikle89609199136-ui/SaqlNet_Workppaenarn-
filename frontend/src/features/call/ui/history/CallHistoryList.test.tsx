@@ -8,15 +8,6 @@ import { testI18n } from '@/test/harness/i18n';
 import { callKeys } from '../../model/callKeys';
 import { CallHistoryList } from './CallHistoryList';
 
-vi.mock('../../model/useCall', () => ({
-  useCall: () => ({
-    activeCall: null,
-    outgoingCall: null,
-    incomingCall: null,
-    initiateCall: vi.fn(),
-  }),
-}));
-
 describe('CallHistoryList', () => {
   let queryClient: QueryClient;
 
