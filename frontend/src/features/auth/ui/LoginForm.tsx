@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,21 +9,24 @@ import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
 import type { IAuthResponse } from '@/types';
-import { loginFormSchema, type TLoginForm } from '../model/loginSchema';
+import { createLoginFormSchema, type TLoginForm } from '../model/loginSchema';
 
 export function LoginForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
+  /* Сообщения схемы — на языке интерфейса: сменился язык — новая схема. */
+  const schema = useMemo(() => createLoginFormSchema(t), [t]);
 
   const {
     register,
     handleSubmit,
     setError,
+    setValue,
     formState: { errors, isSubmitting, isSubmitted, touchedFields },
   } = useForm<TLoginForm>({
-    resolver: zodResolver(loginFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: { username: '', password: '' },
     /* Ругаться на пустое поле, которого человек ещё не касался, значит
        встретить его формой в ошибках. */
@@ -35,6 +38,37 @@ export function LoginForm() {
      человек уже побывал, либо после попытки войти. */
   const errorOf = (field: keyof TLoginForm) =>
     isSubmitted || touchedFields[field] ? errors[field]?.message : undefined;
+
+  const usernameRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+  const usernameField = register('username');
+  const passwordField = register('password');
+
+  /* Курсор сразу в форме — иначе Enter некуда отправить: браузер
+     отправляет форму по Enter, только когда фокус в её поле. Это ровно
+     случай автозаполнения: логин и пароль подставлены, человек ничего не
+     нажимал и жмёт Enter — фокус на странице, и ничего не происходит.
+     Логин уже подставлен — курсор в пароль, следующий шаг там.
+
+     Только с мышью (pointer: fine): на телефоне фокус открыл бы клавиатуру
+     поверх половины экрана входа, а в поле там человек встаёт сам. */
+  useEffect(() => {
+    if (!window.matchMedia?.('(pointer: fine)').matches) return;
+    const target = usernameRef.current?.value ? passwordRef.current : usernameRef.current;
+    target?.focus();
+  }, []);
+
+  /* Значения — из самих полей. Автозаполнение не всегда присылает событие
+     ввода, и форма считала бы поля пустыми, хотя в них логин и пароль. */
+  const submitForm = (event: FormEvent<HTMLFormElement>) => {
+    for (const [name, input] of [
+      ['username', usernameRef.current],
+      ['password', passwordRef.current],
+    ] as const) {
+      if (input) setValue(name, input.value);
+    }
+    return handleSubmit(submit)(event);
+  };
 
   async function submit(values: TLoginForm) {
     try {
@@ -88,7 +122,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="grid gap-4 text-left" noValidate onSubmit={handleSubmit(submit)}>
+    <form className="grid gap-4 text-left" noValidate onSubmit={submitForm}>
       <Input
         autoCapitalize="none"
         autoComplete="username"
@@ -99,7 +133,11 @@ export function LoginForm() {
         inputClassName="pl-8.5"
         placeholder="username"
         prefix="@"
-        {...register('username')}
+        {...usernameField}
+        ref={(element) => {
+          usernameField.ref(element);
+          usernameRef.current = element;
+        }}
       />
 
       <Input
@@ -122,7 +160,11 @@ export function LoginForm() {
         label={t('password', 'Пароль')}
         placeholder="••••••••"
         type={showPassword ? 'text' : 'password'}
-        {...register('password')}
+        {...passwordField}
+        ref={(element) => {
+          passwordField.ref(element);
+          passwordRef.current = element;
+        }}
       />
 
       <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">

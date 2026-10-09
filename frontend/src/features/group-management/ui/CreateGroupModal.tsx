@@ -107,10 +107,8 @@ export function CreateGroupModal({ onClose }: Props) {
       showToast('error', t('groupTitleRequired', 'Введите название группы'));
       return;
     }
-    if (selected.length === 0) {
-      showToast('error', t('groupMembersRequired', 'Выберите хотя бы одного участника'));
-      return;
-    }
+    /* Участники необязательны: группа из одного — свои заметки или
+       заготовка, куда людей позовут потом. Владелец в ней всегда. */
 
     setCreating(true);
 
@@ -145,7 +143,7 @@ export function CreateGroupModal({ onClose }: Props) {
          неё. Ограничение сверху оставлено — список людей прокручивается
          внутри, а не растит окно за край экрана. */
       className="flex w-[min(92vw,620px)] max-w-none flex-col gap-y-4 bg-sheet py-4 md:max-h-[min(720px,88vh)]"
-      label="Новая группа"
+      label={t('newGroup', 'Новая группа')}
       onClose={onClose}
     >
       <header className="flex justify-between px-6">
@@ -252,7 +250,10 @@ export function CreateGroupModal({ onClose }: Props) {
             <li className="mx-auto py-2 opacity-70">
               {isSearching
                 ? t('usersNotFound', 'Никого не нашлось')
-                : t('noChatsYet', 'Пока не с кем начинать группу — найдите людей поиском')}
+                : t(
+                    'noChatsYet',
+                    'Участников можно найти поиском — или создать группу только для себя'
+                  )}
             </li>
           ) : (
             people.map((user) => {

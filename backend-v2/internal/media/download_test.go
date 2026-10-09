@@ -698,3 +698,21 @@ func TestEncryptedHeadReturnsGetContentLength(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Файл по /media/{id} неизменен — браузер должен держать его в кеше, а не
+// качать заново: иначе аватарки в PWA грузились на каждом запуске.
+func TestDownloadIsCachedAsImmutable(t *testing.T) {
+	store := &downloadStore{get: func(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+		return objectResponse(http.StatusOK, "stored bytes"), nil
+	}}
+	handler, mock := newDownloadHandler(t, store, "image/webp", 12, false, nil)
+
+	w := serveDownload(t, handler, http.MethodGet, nil)
+
+	if got := w.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+		t.Fatalf("Cache-Control=%q", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

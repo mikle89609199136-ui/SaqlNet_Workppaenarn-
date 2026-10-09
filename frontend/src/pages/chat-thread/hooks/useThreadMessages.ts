@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { EMPTY_THREAD, messagesQuery } from '@/entities/message';
 
@@ -20,6 +21,7 @@ interface IUseThreadMessagesOptions {
  * старого экземпляра (#258).
  */
 export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOptions) {
+  const { t } = useTranslation();
   const query = useInfiniteQuery(messagesQuery(chatId));
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
@@ -130,7 +132,10 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
     isLoading: query.isPending,
     isLoadingOlder: isFetchingNextPage,
     hasOlder: Boolean(hasNextPage),
-    error: query.error ? ((query.error as Error).message ?? 'Не удалось загрузить сообщения') : '',
+    error: query.error
+      ? ((query.error as Error).message ??
+        t('errors.messagesLoad', 'Не удалось загрузить сообщения'))
+      : '',
     loadOlder,
   };
 }

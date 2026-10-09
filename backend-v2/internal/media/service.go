@@ -338,6 +338,10 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		w.Header().Set("Content-Disposition", "attachment")
 	}
 	w.Header().Set("Content-Type", mediaType)
+	// Файл по /media/{id} не меняется никогда: новое фото — новая загрузка и
+	// новый адрес. Без заголовка браузер не кешировал ничего, и аватарки на
+	// каждом запуске PWA качались заново. private — не для общих кешей.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
 	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
 	if w.Header().Get("Accept-Ranges") == "" {

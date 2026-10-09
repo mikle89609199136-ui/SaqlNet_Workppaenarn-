@@ -18,8 +18,10 @@ type PinsData struct {
 }
 
 type CreateGroupRequest struct {
-	Title       string   `json:"title" validate:"required,max=128"`
-	Description string   `json:"description"`
-	AvatarURL   string   `json:"avatarUrl"`
-	Members     []string `json:"members" validate:"required,min=1,dive,uuid"`
+	Title       string `json:"title" validate:"required,max=128"`
+	Description string `json:"description"`
+	AvatarURL   string `json:"avatarUrl"`
+	// Может быть пустым: группа из одного владельца — свои заметки, черновики
+	// для будущих участников. Сам список обязателен (null — ошибка запроса).
+	Members []string `json:"members" validate:"required,dive,uuid"`
 }

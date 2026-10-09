@@ -1,6 +1,7 @@
 import { Button } from '@/shared/ui/Button';
 import { FieldCaption, FieldLabel, useField } from '@/shared/ui/Field';
 import { Icon } from '@/shared/ui/Icon';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib';
 import {
   forwardRef,
@@ -53,7 +54,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
     options,
     value,
     onChange,
-    placeholder = 'Выбрать',
+    placeholder,
     label,
     hint,
     error,
@@ -73,6 +74,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
     controlProps,
   } = useField({ id, hint, error });
   const listboxId = `${ownId}-listbox`;
+  const { t } = useTranslation();
   const labelId = `${ownId}-label`;
 
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -248,7 +250,7 @@ export const Select = forwardRef<HTMLButtonElement, Props>(function Select(
             !selected && 'text-ink-3'
           )}
         >
-          {selected ? selected.label : placeholder}
+          {selected ? selected.label : (placeholder ?? t('select.placeholder', 'Выбрать'))}
         </span>
         <Icon
           aria-hidden="true"

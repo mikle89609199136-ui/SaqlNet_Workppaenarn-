@@ -1,7 +1,7 @@
 import type { IRichTextInputHandle } from '@/shared/ui';
 import { describeApiError, useRealtimeSocket } from '@/shared/api';
 import { useChatEncryption } from '@/features/chat-encryption';
-import { usePhotoEditor } from '@/entities/media';
+import { usePhotoEditor } from './usePhotoEditor';
 import { useChatModals } from '@/features/chat-actions';
 import { useMessageActions, useMessageSelection } from '@/features/message-actions';
 import { useProfilePanel } from '@/features/user-profile';
