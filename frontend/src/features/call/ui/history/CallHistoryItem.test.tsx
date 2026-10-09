@@ -26,14 +26,10 @@ describe('CallHistoryItem', () => {
     useCallStore.setState(useCallStore.getInitialState(), true);
   });
 
-  const renderItem = (
-    item: ICallHistoryItemDto = baseItem,
-    onOpenChat = vi.fn(),
-    onRepeatCall = vi.fn()
-  ) =>
+  const renderItem = (item: ICallHistoryItemDto = baseItem, onOpenChat = vi.fn()) =>
     render(
       <I18nextProvider i18n={testI18n}>
-        <CallHistoryItem item={item} onOpenChat={onOpenChat} onRepeatCall={onRepeatCall} />
+        <CallHistoryItem item={item} onOpenChat={onOpenChat} />
       </I18nextProvider>
     );
 
@@ -42,7 +38,16 @@ describe('CallHistoryItem', () => {
 
     expect(screen.getByText('Анна Смирнова')).toBeInTheDocument();
     expect(screen.getByText('Входящий')).toBeInTheDocument();
-    expect(screen.getByText('02:05')).toBeInTheDocument();
+    expect(screen.getByText('2:05')).toBeInTheDocument();
+  });
+
+  it('рендерит длительность менее минуты в формате «28 сек»', () => {
+    const shortCall: ICallHistoryItemDto = {
+      ...baseItem,
+      durationSeconds: 28,
+    };
+    renderItem(shortCall);
+    expect(screen.getByText('28 сек')).toBeInTheDocument();
   });
 
   it('рендерит пропущенный вызов с соответствующим статусом', () => {
@@ -115,14 +120,23 @@ describe('CallHistoryItem', () => {
   });
 
   it('клик по кнопке повторного звонка инициирует вызов и не переходит в чат', () => {
+    const initiateCallSpy = vi.fn();
+    useCallStore.setState({ initiateCall: initiateCallSpy });
     const onOpenChat = vi.fn();
-    const onRepeatCall = vi.fn();
-    renderItem(baseItem, onOpenChat, onRepeatCall);
+    renderItem(baseItem, onOpenChat);
 
     const callButton = screen.getByRole('button', { name: 'Аудиозвонок' });
     fireEvent.click(callButton);
 
-    expect(onRepeatCall).toHaveBeenCalledWith(baseItem);
+    expect(initiateCallSpy).toHaveBeenCalledWith(
+      'chat-42',
+      'private',
+      'Анна Смирнова',
+      'audio',
+      'user-2',
+      'https://example.com/avatar.jpg',
+      'Анна Смирнова'
+    );
     expect(onOpenChat).not.toHaveBeenCalled();
   });
 

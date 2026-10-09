@@ -1,19 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { chatRowStyles } from '@/entities/chat';
 import type { ICallHistoryItemDto } from '@/services/types/callApi.types';
-import { cn, formatChatListTime } from '@/shared/lib';
+import { cn, formatCallDuration, formatChatListTime } from '@/shared/lib';
 import { Avatar, buttonStyles, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
 import { useCallStore } from '../../model/callStore';
-import { formatCallDurationSeconds } from '../useCallDuration';
 
 export interface ICallHistoryItemProps {
   item: ICallHistoryItemDto;
   onOpenChat: (chatId: string) => void;
-  onRepeatCall?: (item: ICallHistoryItemDto) => void;
 }
 
-export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistoryItemProps) {
+export function CallHistoryItem({ item, onOpenChat }: ICallHistoryItemProps) {
   const { t, i18n } = useTranslation();
   const initiateCall = useCallStore((s) => s.initiateCall);
   const isCallInProgress = useCallStore((s) =>
@@ -57,7 +55,7 @@ export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistory
     item.status === 'answered' &&
     typeof item.durationSeconds === 'number' &&
     item.durationSeconds > 0;
-  const formattedDuration = hasDuration ? formatCallDurationSeconds(item.durationSeconds!) : null;
+  const formattedDuration = hasDuration ? formatCallDuration(item.durationSeconds!, t) : null;
   const timeFormatted = formatChatListTime(item.startedAt, i18n.language);
 
   const handleRowClick = () => {
@@ -69,11 +67,6 @@ export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistory
   const handleRepeatCall = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isCallInProgress || !item.chatId) return;
-
-    if (onRepeatCall) {
-      onRepeatCall(item);
-      return;
-    }
 
     void initiateCall(
       item.chatId,

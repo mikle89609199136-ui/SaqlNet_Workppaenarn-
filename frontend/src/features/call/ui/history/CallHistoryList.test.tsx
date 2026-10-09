@@ -36,11 +36,11 @@ describe('CallHistoryList', () => {
     vi.restoreAllMocks();
   });
 
-  const renderComponent = (onOpenChat = vi.fn(), onRepeatCall = vi.fn()) =>
+  const renderComponent = (onOpenChat = vi.fn()) =>
     render(
       <QueryClientProvider client={queryClient}>
         <I18nextProvider i18n={testI18n}>
-          <CallHistoryList onOpenChat={onOpenChat} onRepeatCall={onRepeatCall} />
+          <CallHistoryList onOpenChat={onOpenChat} />
         </I18nextProvider>
       </QueryClientProvider>
     );
@@ -70,8 +70,16 @@ describe('CallHistoryList', () => {
 
     renderComponent();
 
-    expect(await screen.findByText('Сетевой сбой')).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось загрузить историю звонков')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+  });
+
+  it('рендерит локализованную ошибку по коду ответа сервера', async () => {
+    vi.spyOn(services.callService, 'getCallHistory').mockRejectedValue({ code: 'access_denied' });
+
+    renderComponent();
+
+    expect(await screen.findByText('Нет доступа')).toBeInTheDocument();
   });
 
   it('рендерит список звонков', async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export function formatCallDurationSeconds(seconds: number): string {
+function formatCallDurationSeconds(seconds: number): string {
   if (!seconds || seconds <= 0) return '00:00';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -12,7 +12,7 @@ export function formatCallDurationSeconds(seconds: number): string {
   return `${pad(minutes)}:${pad(sec)}`;
 }
 
-export function formatCallDuration(startedAt: number | null): string {
+function formatCallDuration(startedAt: number | null): string {
   if (!startedAt) return '00:00';
   const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
   return formatCallDurationSeconds(elapsedSec);

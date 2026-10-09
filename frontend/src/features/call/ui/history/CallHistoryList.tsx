@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ICallHistoryItemDto } from '@/services/types/callApi.types';
+import { describeApiError } from '@/shared/api';
 import { buttonStyles, Spinner } from '@/shared/ui';
 import { callHistoryInfiniteQuery, flattenCallHistory } from '../../model/callHistoryQuery';
 import { CallHistoryItem } from './CallHistoryItem';
@@ -9,10 +9,9 @@ import { CallHistorySkeleton } from './CallHistorySkeleton';
 
 export interface ICallHistoryListProps {
   onOpenChat: (chatId: string) => void;
-  onRepeatCall?: (item: ICallHistoryItemDto) => void;
 }
 
-export function CallHistoryList({ onOpenChat, onRepeatCall }: ICallHistoryListProps) {
+export function CallHistoryList({ onOpenChat }: ICallHistoryListProps) {
   const { t } = useTranslation();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -48,10 +47,11 @@ export function CallHistoryList({ onOpenChat, onRepeatCall }: ICallHistoryListPr
   }
 
   if (isError) {
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : t('call.history.error', 'Не удалось загрузить историю звонков');
+    const errorMessage = describeApiError(
+      error,
+      t,
+      t('call.history.error', 'Не удалось загрузить историю звонков')
+    );
 
     return (
       <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
@@ -82,7 +82,6 @@ export function CallHistoryList({ onOpenChat, onRepeatCall }: ICallHistoryListPr
           item={call}
           key={call.id || call.roomId}
           onOpenChat={onOpenChat}
-          onRepeatCall={onRepeatCall}
         />
       ))}
 
