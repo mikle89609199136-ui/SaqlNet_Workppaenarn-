@@ -454,6 +454,32 @@ describe('переподключение', () => {
       },
     ]);
   });
+
+  it('игнорирует payload.from и берёт from только с верхнего уровня для call_* (#854)', () => {
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    const received: unknown[] = [];
+    const unsub = eventBus.on('call_offer', (data) => received.push(data));
+
+    socket.deliver({
+      type: 'call_offer',
+      roomId: 'room-123',
+      payload: { sdp: 'test-sdp', type: 'offer', from: 'user-mallory' },
+    });
+
+    unsub();
+
+    expect(received).toEqual([
+      {
+        sdp: 'test-sdp',
+        type: 'offer',
+        from: undefined,
+        roomId: 'room-123',
+      },
+    ]);
+  });
 });
 
 /* Сессия — в cookie (#705): браузер отправит её при подключении сам. */

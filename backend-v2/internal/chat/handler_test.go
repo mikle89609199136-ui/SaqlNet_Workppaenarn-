@@ -2103,3 +2103,36 @@ func TestHandler_MalformedUUID(t *testing.T) {
 		})
 	}
 }
+
+// История звонков (#713): неверные параметры — 400 validation_failed, до
+// базы запрос не доходит.
+func TestHandler_CallHistory_Validation(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{name: "limit ноль", query: "?limit=0"},
+		{name: "limit больше 100", query: "?limit=101"},
+		{name: "limit не число", query: "?limit=abc"},
+		{name: "чужой курсор", query: "?cursor=garbage"},
+		{name: "неизвестный вид звонка", query: "?kind=group"},
+		{name: "неизвестный статус", query: "?status=busy"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mock := newTestHandler(t)
+			req := newAuthedRequest(http.MethodGet, "/api/v2/calls/history"+tt.query, nil, handlerActorID)
+			rr := httptest.NewRecorder()
+			handler.CallHistory(rr, req)
+			assertErrorResponse(t, rr, http.StatusBadRequest, "validation_failed")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
+	t.Run("не GET — 405", func(t *testing.T) {
+		handler, _ := newTestHandler(t)
+		rr := httptest.NewRecorder()
+		handler.CallHistory(rr, newAuthedRequest(http.MethodPost, "/api/v2/calls/history", nil, handlerActorID))
+		require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	})
+}

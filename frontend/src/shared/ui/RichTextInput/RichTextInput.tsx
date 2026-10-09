@@ -44,6 +44,7 @@ export interface IRichTextInputHandle {
   clear(): void;
   /** Вставить текст на место курсора (эмодзи из панели, #824). */
   insertText(text: string): void;
+  contains(node: Node | null): boolean;
 }
 
 interface Props {
@@ -93,6 +94,7 @@ function HandlePlugin({ handleRef }: { handleRef: React.Ref<IRichTextInputHandle
     handleRef,
     () => ({
       getValue: () => editor.getEditorState().read($readRichText),
+      contains: (node) => Boolean(node && editor.getRootElement()?.contains(node)),
       setValue: (value) =>
         // discrete — чтобы сразу после записи чтение видело новое значение.
         editor.update(

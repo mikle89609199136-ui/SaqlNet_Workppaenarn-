@@ -242,3 +242,39 @@ describe('звонки включены', () => {
     expect(mockStopMedia).toHaveBeenCalled();
   });
 });
+
+describe('возврат в звонок после перезагрузки (#775)', () => {
+  const resumable = {
+    roomId: 'room-resume-1',
+    peerId: 'peer-bob',
+    peerName: 'Боб',
+    peerAvatar: null,
+    callKind: 'video' as const,
+    expiresAt: Date.now() + 20_000,
+  };
+
+  it('показывает плашку с собеседником: «Вернуться» входит в звонок, крестик — нет', () => {
+    const resumeCall = vi.fn();
+    const dismissResumableCall = vi.fn();
+    useCallStore.setState({ resumableCall: resumable, resumeCall, dismissResumableCall });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('region', { name: 'Звонок продолжается' })).toBeInTheDocument();
+    expect(screen.getByText('Боб')).toBeInTheDocument();
+    expect(screen.getByText('Звонок ещё идёт')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуться' }));
+    expect(resumeCall).toHaveBeenCalledTimes(1);
+    expect(dismissResumableCall).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Не возвращаться' }));
+    expect(dismissResumableCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('плашки нет, пока идёт другой звонок', () => {
+    useCallStore.setState({ resumableCall: resumable, incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    expect(screen.queryByRole('region', { name: 'Звонок продолжается' })).not.toBeInTheDocument();
+  });
+});
