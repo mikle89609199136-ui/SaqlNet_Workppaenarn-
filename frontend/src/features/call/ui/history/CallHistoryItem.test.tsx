@@ -93,16 +93,25 @@ describe('CallHistoryItem', () => {
     const onOpenChat = vi.fn();
     renderItem(baseItem, onOpenChat);
 
-    fireEvent.click(screen.getByTestId('call-history-item'));
+    fireEvent.click(screen.getByRole('button', { name: /Анна Смирнова/ }));
     expect(onOpenChat).toHaveBeenCalledWith('chat-42');
   });
 
-  it('нажатие клавиши Enter на строке вызывает переход в чат', () => {
+  it('дизаблит действия при отсутствии chatId', () => {
     const onOpenChat = vi.fn();
-    renderItem(baseItem, onOpenChat);
+    const itemWithoutChat: ICallHistoryItemDto = {
+      ...baseItem,
+      chatId: undefined,
+    };
+    renderItem(itemWithoutChat, onOpenChat);
 
-    fireEvent.keyDown(screen.getByTestId('call-history-item'), { key: 'Enter' });
-    expect(onOpenChat).toHaveBeenCalledWith('chat-42');
+    const rowButton = screen.getByRole('button', { name: /Анна Смирнова/ });
+    expect(rowButton).toBeDisabled();
+    fireEvent.click(rowButton);
+    expect(onOpenChat).not.toHaveBeenCalled();
+
+    const callButton = screen.getByRole('button', { name: 'Аудиозвонок' });
+    expect(callButton).toBeDisabled();
   });
 
   it('клик по кнопке повторного звонка инициирует вызов и не переходит в чат', () => {

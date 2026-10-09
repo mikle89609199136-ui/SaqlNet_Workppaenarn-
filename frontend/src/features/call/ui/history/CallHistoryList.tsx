@@ -80,7 +80,7 @@ export function CallHistoryList({ onOpenChat, onRepeatCall }: ICallHistoryListPr
       {calls.map((call) => (
         <CallHistoryItem
           item={call}
-          key={call.id}
+          key={call.id || call.roomId}
           onOpenChat={onOpenChat}
           onRepeatCall={onRepeatCall}
         />

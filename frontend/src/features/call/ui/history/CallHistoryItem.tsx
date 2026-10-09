@@ -4,7 +4,7 @@ import type { ICallHistoryItemDto } from '@/services/types/callApi.types';
 import { cn, formatChatListTime } from '@/shared/lib';
 import { Avatar, buttonStyles, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
-import { useCall } from '../../model/useCall';
+import { useCallStore } from '../../model/callStore';
 import { formatCallDurationSeconds } from '../useCallDuration';
 
 export interface ICallHistoryItemProps {
@@ -15,9 +15,12 @@ export interface ICallHistoryItemProps {
 
 export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistoryItemProps) {
   const { t, i18n } = useTranslation();
-  const { initiateCall, activeCall, outgoingCall, incomingCall } = useCall();
-  const isCallInProgress = Boolean(activeCall || outgoingCall || incomingCall);
+  const initiateCall = useCallStore((s) => s.initiateCall);
+  const isCallInProgress = useCallStore((s) =>
+    Boolean(s.activeCall || s.outgoingCall || s.incomingCall)
+  );
 
+  const canOpenChat = Boolean(item.chatId);
   const peerName = item.peerName || t('call.history.unknown', 'Собеседник');
 
   let statusIcon: TIconTypes;
@@ -58,19 +61,14 @@ export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistory
   const timeFormatted = formatChatListTime(item.startedAt, i18n.language);
 
   const handleRowClick = () => {
-    onOpenChat(item.chatId);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
+    if (item.chatId) {
       onOpenChat(item.chatId);
     }
   };
 
-  const handleRepeatCall = (e: React.MouseEvent | React.KeyboardEvent) => {
+  const handleRepeatCall = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isCallInProgress) return;
+    if (isCallInProgress || !item.chatId) return;
 
     if (onRepeatCall) {
       onRepeatCall(item);
@@ -94,58 +92,57 @@ export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistory
       : t('call.history.audioCall', 'Аудиозвонок');
 
   return (
-    <div
-      aria-label={`${peerName}, ${statusLabel}`}
-      className={cn(chatRowStyles, 'cursor-pointer select-none')}
-      data-testid="call-history-item"
-      onClick={handleRowClick}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
-    >
-      <Avatar id={item.peerId} name={peerName} size="lg" src={item.peerAvatar} />
+    <div className={cn(chatRowStyles, 'select-none')} data-testid="call-history-item">
+      <button
+        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none disabled:cursor-default"
+        disabled={!canOpenChat}
+        onClick={handleRowClick}
+        type="button"
+      >
+        <Avatar id={item.peerId} name={peerName} size="lg" src={item.peerAvatar} />
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.75">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-body font-semibold text-ink">{peerName}</span>
-          {timeFormatted && (
-            <time
-              className="shrink-0 text-meta text-ink-3 tabular-nums"
-              dateTime={new Date(item.startedAt).toISOString()}
-            >
-              {timeFormatted}
-            </time>
-          )}
-        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.75">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-body font-semibold text-ink">{peerName}</span>
+            {timeFormatted && (
+              <time
+                className="shrink-0 text-meta text-ink-3 tabular-nums"
+                dateTime={item.startedAt}
+              >
+                {timeFormatted}
+              </time>
+            )}
+          </div>
 
-        <div className="flex items-center gap-1.5 text-ui">
-          <span className={cn('flex shrink-0 items-center', statusIconColor)} role="img">
-            <Icon name={statusIcon} size="xs" />
-          </span>
-          <span className={cn('truncate', statusLabelColor)}>{statusLabel}</span>
-
-          {item.kind === 'video' && (
-            <span
-              aria-label={t('call.history.videoCall', 'Видеозвонок')}
-              className="flex shrink-0 items-center text-ink-3"
-              role="img"
-            >
-              <Icon name="video" size="xs" />
+          <div className="flex items-center gap-1.5 text-ui">
+            <span aria-hidden="true" className={cn('flex shrink-0 items-center', statusIconColor)}>
+              <Icon name={statusIcon} size="xs" />
             </span>
-          )}
+            <span className={cn('truncate', statusLabelColor)}>{statusLabel}</span>
 
-          {formattedDuration && (
-            <>
-              <span aria-hidden="true" className="text-ink-3">
-                ·
+            {item.kind === 'video' && (
+              <span
+                aria-label={t('call.history.videoCall', 'Видеозвонок')}
+                className="flex shrink-0 items-center text-ink-3"
+                role="img"
+              >
+                <Icon name="video" size="xs" />
               </span>
-              <span className="shrink-0 text-meta text-ink-3 tabular-nums">
-                {formattedDuration}
-              </span>
-            </>
-          )}
+            )}
+
+            {formattedDuration && (
+              <>
+                <span aria-hidden="true" className="text-ink-3">
+                  ·
+                </span>
+                <span className="shrink-0 text-meta text-ink-3 tabular-nums">
+                  {formattedDuration}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      </button>
 
       <button
         aria-label={callActionLabel}
@@ -156,15 +153,8 @@ export function CallHistoryItem({ item, onOpenChat, onRepeatCall }: ICallHistory
           shape: 'round',
           className: 'shrink-0 text-ink-2 hover:text-brand disabled:opacity-40',
         })}
-        disabled={isCallInProgress}
+        disabled={isCallInProgress || !item.chatId}
         onClick={handleRepeatCall}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleRepeatCall(e);
-          }
-        }}
         title={callActionLabel}
         type="button"
       >
