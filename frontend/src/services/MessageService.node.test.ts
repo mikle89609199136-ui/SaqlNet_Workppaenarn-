@@ -551,6 +551,11 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
       type: 'sticker' as const,
       metadata: { mediaUrl: 'https://evil.com/leak.png' } as never,
     };
+    const traversalStickerMsg = {
+      ...message('m-sticker-traversal', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: '/api/v2/stickers/../leak.png' } as never,
+    };
     const evilBypassStickerMsg = {
       ...message('m-sticker-evil', TARGET_CHAT, ''),
       type: 'sticker' as const,
@@ -566,10 +571,20 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
     } as unknown as IMessageDto;
 
     const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
-    const patchEvilSticker = await service.resolveMediaForDisplay(TARGET_CHAT, evilBypassStickerMsg);
+    const patchTraversal = await service.resolveMediaForDisplay(TARGET_CHAT, traversalStickerMsg);
+    const patchEvilSticker = await service.resolveMediaForDisplay(
+      TARGET_CHAT,
+      evilBypassStickerMsg
+    );
     const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, foreignGifMsg);
 
     expect(patchSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchTraversal).toEqual({
       mediaUrl: null,
       mediaEncrypted: false,
       mediaUnavailable: true,

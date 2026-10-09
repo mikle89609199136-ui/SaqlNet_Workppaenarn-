@@ -104,12 +104,16 @@ describe('MediaService: стикеры и гифки (#593)', () => {
     server.use(
       http.get(api('/gifs'), () =>
         HttpResponse.json({
-          gifs: [{ id: 'g-1', name: 'wave', url: 'http://g1.gif', userName: 'u1', createdAt: '2026' }],
+          gifs: [
+            { id: 'g-1', name: 'wave', url: 'http://g1.gif', userName: 'u1', createdAt: '2026' },
+          ],
         })
       ),
       http.get(api('/gifs/favorites'), () =>
         HttpResponse.json({
-          gifs: [{ id: 'g-fav', name: 'dance', url: 'http://g2.gif', userName: 'u1', createdAt: '2026' }],
+          gifs: [
+            { id: 'g-fav', name: 'dance', url: 'http://g2.gif', userName: 'u1', createdAt: '2026' },
+          ],
         })
       )
     );

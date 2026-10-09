@@ -37,10 +37,7 @@ export const GifPicker = ({ onPick, className }: Props) => {
   const { data: favoriteGifs = [], isLoading: isLoadingFavorites } = useFavoriteGifsQuery();
   const toggleFavorite = useToggleFavoriteGifMutation();
 
-  const favoriteIds = useMemo(
-    () => new Set(favoriteGifs.map((gif) => gif.id)),
-    [favoriteGifs]
-  );
+  const favoriteIds = useMemo(() => new Set(favoriteGifs.map((gif) => gif.id)), [favoriteGifs]);
 
   const search = query.trim().toLowerCase();
   const currentList = subTab === 'favorites' ? favoriteGifs : allGifs;
@@ -149,10 +146,7 @@ export const GifPicker = ({ onPick, className }: Props) => {
                     type="button"
                     variant="ghost"
                   >
-                    <Icon
-                      className={cn('size-3.5', isFav && 'fill-current')}
-                      name="heart"
-                    />
+                    <Icon className={cn('size-3.5', isFav && 'fill-current')} name="heart" />
                   </Button>
                 </div>
               );
@@ -169,7 +163,10 @@ export const GifPicker = ({ onPick, className }: Props) => {
               {t('gifs.emptyFavoritesTitle', 'Нет избранных GIF')}
             </span>
             <span className="mt-1 text-meta text-ink-3">
-              {t('gifs.emptyFavoritesDesc', 'Нажмите на сердечко у любого GIF, чтобы сохранить сюда')}
+              {t(
+                'gifs.emptyFavoritesDesc',
+                'Нажмите на сердечко у любого GIF, чтобы сохранить сюда'
+              )}
             </span>
           </div>
         ) : (

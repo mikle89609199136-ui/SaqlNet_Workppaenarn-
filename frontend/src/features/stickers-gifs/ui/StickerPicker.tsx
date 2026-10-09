@@ -74,7 +74,11 @@ export const StickerPicker = ({ onPick, className }: Props) => {
               variant={isSelected ? 'primary' : 'secondary'}
             >
               {pack.iconUrl ? (
-                <img alt={pack.name} className="size-6 rounded-xs object-cover" src={pack.iconUrl} />
+                <img
+                  alt={pack.name}
+                  className="size-6 rounded-xs object-cover"
+                  src={pack.iconUrl}
+                />
               ) : (
                 <span className="text-micro font-semibold">
                   {pack.name.slice(0, 2).toUpperCase()}

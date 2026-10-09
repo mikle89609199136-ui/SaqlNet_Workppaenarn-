@@ -28,16 +28,12 @@ describe('StickerPicker', () => {
   }
 
   it('показывает пустое состояние, когда у пользователя нет наборов', async () => {
-    server.use(
-      http.get(api('/stickers/packs'), () => HttpResponse.json({ packs: [] }))
-    );
+    server.use(http.get(api('/stickers/packs'), () => HttpResponse.json({ packs: [] })));
 
     renderPicker();
 
     expect(await screen.findByText('Нет наборов стикеров')).toBeInTheDocument();
-    expect(
-      screen.getByText('У вас пока нет добавленных наборов стикеров')
-    ).toBeInTheDocument();
+    expect(screen.getByText('У вас пока нет добавленных наборов стикеров')).toBeInTheDocument();
   });
 
   it('отображает наборы и стикеры активного набора, и вызывает onPick при клике', async () => {
