@@ -41,15 +41,42 @@ export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
 
-/** Адрес стикера из каталога хранилища медиа (#593, #871, #973). */
-const STICKER_STORAGE_URL =
-  /(?:^https?:\/\/[^/]+)?(?:\/[^/]+)?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/stickers\/\d+/i;
-
 const STICKER_API_URL = /^\/api\/v2\/stickers\//i;
+const STICKER_STORAGE_PATH =
+  /^(?:\/[^/]+)?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/stickers\/\d+$/i;
+const TRUSTED_STORAGE_HOSTS = /^(?:localhost|127\.0\.0\.1|minio)(?::\d+)?$/i;
 
 /** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973). */
 export function isCatalogMediaUrl(url: string): boolean {
-  return isOwnMediaUrl(url) || STICKER_STORAGE_URL.test(url) || STICKER_API_URL.test(url);
+  if (!url || typeof url !== 'string') return false;
+  if (isOwnMediaUrl(url)) return true;
+  if (STICKER_API_URL.test(url)) return true;
+
+  try {
+    const base =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'http://localhost';
+    const parsed = new URL(url, base);
+    const path = parsed.pathname;
+
+    const isSameOrigin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? parsed.origin === window.location.origin
+        : parsed.origin === 'http://localhost';
+
+    const isTrustedHost = isSameOrigin || TRUSTED_STORAGE_HOSTS.test(parsed.host);
+
+    if (isTrustedHost) {
+      if (isOwnMediaUrl(path)) return true;
+      if (STICKER_API_URL.test(path)) return true;
+      if (STICKER_STORAGE_PATH.test(path)) return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
 }
 
 export class MessageService {
@@ -315,28 +342,7 @@ export class MessageService {
     mediaUrl: string,
     replyTo: string | null = null
   ): Promise<IMessageDto> {
-    const prepared: IPreparedSend = {
-      item: {
-        content: '',
-        type: 'sticker',
-        replyTo,
-        mediaUrl,
-        mediaType: 'sticker',
-        mediaEncrypted: false,
-      },
-      toDisplay: (sent) =>
-        ({
-          ...sent,
-          content: '',
-          type: 'sticker',
-          mediaUrl,
-          mediaType: 'sticker',
-          mediaEncrypted: false,
-          mediaUnavailable: false,
-        }) as IMessageDto,
-    };
-    const [message] = await this.sendPrepared(chatId, [prepared]);
-    return message;
+    return this.sendCatalogMedia(chatId, mediaUrl, 'sticker', replyTo);
   }
 
   async sendGif(
@@ -344,22 +350,31 @@ export class MessageService {
     mediaUrl: string,
     replyTo: string | null = null
   ): Promise<IMessageDto> {
+    return this.sendCatalogMedia(chatId, mediaUrl, 'gif', replyTo);
+  }
+
+  async sendCatalogMedia(
+    chatId: string,
+    mediaUrl: string,
+    type: 'sticker' | 'gif',
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
     const prepared: IPreparedSend = {
       item: {
         content: '',
-        type: 'gif',
+        type,
         replyTo,
         mediaUrl,
-        mediaType: 'gif',
+        mediaType: type,
         mediaEncrypted: false,
       },
       toDisplay: (sent) =>
         ({
           ...sent,
           content: '',
-          type: 'gif',
+          type,
           mediaUrl,
-          mediaType: 'gif',
+          mediaType: type,
           mediaEncrypted: false,
           mediaUnavailable: false,
         }) as IMessageDto,

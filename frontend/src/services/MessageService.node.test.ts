@@ -551,6 +551,14 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
       type: 'sticker' as const,
       metadata: { mediaUrl: 'https://evil.com/leak.png' } as never,
     };
+    const evilBypassStickerMsg = {
+      ...message('m-sticker-evil', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'https://evil.com/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
+    };
     const foreignGifMsg = {
       ...message('m-gif-foreign', TARGET_CHAT, ''),
       type: 'gif' as const,
@@ -558,9 +566,16 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
     } as unknown as IMessageDto;
 
     const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
+    const patchEvilSticker = await service.resolveMediaForDisplay(TARGET_CHAT, evilBypassStickerMsg);
     const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, foreignGifMsg);
 
     expect(patchSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchEvilSticker).toEqual({
       mediaUrl: null,
       mediaEncrypted: false,
       mediaUnavailable: true,

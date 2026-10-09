@@ -533,5 +533,49 @@ describe('ChatThreadComposer', () => {
       // Панель закрылась
       expect(screen.queryByRole('dialog', { name: 'Медиа' })).not.toBeInTheDocument();
     });
+
+    it('клик по GIF отправляет его и закрывает панель', async () => {
+      server.use(
+        http.get(api('/gifs'), () =>
+          HttpResponse.json({
+            gifs: [
+              {
+                id: 'g-1',
+                name: 'Dance',
+                url: '/api/v2/media/11111111-2222-3333-4444-555555555555',
+                userName: 'user1',
+                createdAt: '2026-01-01',
+              },
+            ],
+          })
+        ),
+        http.get(api('/gifs/favorites'), () => HttpResponse.json({ gifs: [] }))
+      );
+      const sendGifSpy = vi
+        .spyOn(services.messageService, 'sendGif')
+        .mockResolvedValue(makeMessage({ id: 'srv-gif', type: 'gif' }));
+
+      renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
+
+      // Открываем панель медиа
+      const openBtn = screen.getByRole('button', { name: /Эмодзи/i });
+      fireEvent.click(openBtn);
+
+      expect(screen.getByRole('dialog', { name: 'Медиа' })).toBeInTheDocument();
+
+      // Переключаем на вкладку «GIF»
+      fireEvent.click(screen.getByRole('tab', { name: /GIF/i }));
+
+      const gifItem = await screen.findByRole('button', { name: 'Dance' });
+      fireEvent.click(gifItem);
+
+      expect(sendGifSpy).toHaveBeenCalledWith(
+        'chat-test-1',
+        '/api/v2/media/11111111-2222-3333-4444-555555555555',
+        null
+      );
+      // Панель закрылась
+      expect(screen.queryByRole('dialog', { name: 'Медиа' })).not.toBeInTheDocument();
+    });
   });
 });
