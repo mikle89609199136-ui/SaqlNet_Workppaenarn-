@@ -35,6 +35,10 @@ type RoomSnapshot struct {
 	AnsweredAt int64
 	CreatedAt  int64
 	HostID     string
+	// EndedAt — когда звонок кончился, если не сейчас: комнату, не
+	// восстановленную после рестарта, закрывают позже, а оборвался звонок
+	// в момент рестарта (#713). 0 — сейчас.
+	EndedAt int64
 }
 
 type RoomPublic struct {
@@ -67,12 +71,21 @@ type CallRoomManager struct {
 	mu         sync.Mutex
 	rooms      map[string]*callRoom
 	userToRoom map[string]string
+	// restorable — отвеченные звонки, оборванные рестартом сервера: ждут,
+	// пока участник войдёт снова (#713).
+	restorable map[string]*restorableRoom
+}
+
+type restorableRoom struct {
+	room    *callRoom
+	parties [2]string // звонящий и собеседник — только они поднимают комнату
 }
 
 func NewCallRoomManager() *CallRoomManager {
 	return &CallRoomManager{
 		rooms:      make(map[string]*callRoom),
 		userToRoom: make(map[string]string),
+		restorable: make(map[string]*restorableRoom),
 	}
 }
 
@@ -284,4 +297,60 @@ func randStr(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+// RestorableRoom — звонок, оборванный рестартом сервера, из базы (#713).
+type RestorableRoom struct {
+	ID, ChatID, CallKind, Title, HostID, CalleeID string
+	CreatedAt, AnsweredAt                         int64
+}
+
+// AddRestorable — ждать возвращения участников этого звонка.
+func (m *CallRoomManager) AddRestorable(r RestorableRoom) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.restorable == nil {
+		m.restorable = make(map[string]*restorableRoom)
+	}
+	m.restorable[r.ID] = &restorableRoom{
+		room: &callRoom{
+			id: r.ID, hostID: r.HostID, roomType: "p2p", callKind: r.CallKind,
+			chatID: r.ChatID, title: r.Title, createdAt: r.CreatedAt, answeredAt: r.AnsweredAt,
+			participants: make(map[string]*Participant),
+		},
+		parties: [2]string{r.HostID, r.CalleeID},
+	}
+}
+
+// Restore — участник оборванного звонка вернулся: комната снова живая, со
+// временем начала и ответа из базы. Посторонний её не поднимает.
+func (m *CallRoomManager) Restore(roomID, userID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pending, ok := m.restorable[roomID]
+	if !ok || userID == "" || (pending.parties[0] != userID && pending.parties[1] != userID) {
+		return false
+	}
+	delete(m.restorable, roomID)
+	if _, live := m.rooms[roomID]; !live {
+		m.rooms[roomID] = pending.room
+	}
+	return true
+}
+
+// TakeRestorable — никто так и не вернулся: забрать оставшиеся, чтобы
+// закрыть.
+func (m *CallRoomManager) TakeRestorable() map[string]*RoomSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]*RoomSnapshot, len(m.restorable))
+	for id, pending := range m.restorable {
+		r := pending.room
+		out[id] = &RoomSnapshot{
+			ChatID: r.chatID, CallKind: r.callKind,
+			AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+		}
+		delete(m.restorable, id)
+	}
+	return out
 }

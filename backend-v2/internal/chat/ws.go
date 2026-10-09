@@ -347,6 +347,9 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	if roomID == "" {
 		return
 	}
+	// Звонок, оборванный рестартом сервера, поднимается входом его
+	// участника (#713) — клиент после переподключения входит снова сам.
+	ws.callRooms.Restore(roomID, client.UserID)
 	// Войти можно только в комнату, созданную через POST /calls/rooms, и
 	// только участнику её чата (#848). Комната входом не создаётся.
 	// «Нет комнаты» и «чужая» отвечаются одинаково: не раскрываем, что
@@ -532,7 +535,11 @@ func (ws *WSServer) saveCallMessage(snap *RoomSnapshot) {
 	var duration int64
 	if snap.AnsweredAt > 0 {
 		status = "answered"
-		duration = (time.Now().UnixMilli() - snap.AnsweredAt) / 1000
+		endedAt := time.Now().UnixMilli()
+		if snap.EndedAt > 0 {
+			endedAt = snap.EndedAt
+		}
+		duration = max(0, endedAt-snap.AnsweredAt) / 1000
 	}
 	content, _ := json.Marshal(map[string]interface{}{
 		"callKind":    snap.CallKind,
