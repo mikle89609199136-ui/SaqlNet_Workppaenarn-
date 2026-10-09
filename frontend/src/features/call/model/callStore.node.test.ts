@@ -31,7 +31,8 @@ describe('useCallStore', () => {
         id: roomId,
         type: 'p2p',
         callKind: 'audio',
-        chatId: 'chat-default',
+        // Общая комната на всех звонящих: чат не задан — личный чат ищется по звонящему.
+        chatId: '',
         title: '',
         hostId: 'caller-1',
         participants: [
@@ -1367,6 +1368,41 @@ describe('useCallStore', () => {
 
       expect(useCallStore.getState().fsm.state).toBe('incoming');
       expect(useCallStore.getState().fsm.roomId).toBe('room-new-direct');
+    });
+
+    it('комната ссылается на другой чат — личный чат со звонящим из списка её не подменяет', async () => {
+      queryClient.setQueryData(chatKeys.list(), [
+        { id: 'chat-bob', type: 'private', peerId: 'peer-bob', title: 'Боб', avatarUrl: null },
+      ]);
+      queryClient.setQueryData(chatKeys.archived(), []);
+
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-group-x',
+          type: 'group',
+          callKind: 'audio',
+          chatId: 'chat-group-x',
+          title: '',
+          hostId: 'peer-bob',
+          participants: [{ userId: 'peer-bob' }],
+        },
+        iceServers: [],
+        maxParticipants: 8,
+      } as never);
+      vi.spyOn(services.chatService, 'getChat').mockResolvedValueOnce({
+        id: 'chat-group-x',
+        type: 'group',
+        title: 'Чужая группа',
+        avatarUrl: null,
+        unreadCount: 0,
+      } as IChatDto);
+
+      await useCallStore
+        .getState()
+        .handleIncoming({ roomId: 'room-group-x', from: 'peer-bob', kind: 'audio' });
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
     });
 
     it('отмена вызова во время запроса профиля отменяет звонок и не переводит в incoming', async () => {

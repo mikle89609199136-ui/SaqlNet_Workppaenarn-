@@ -143,6 +143,11 @@ async function findDirectChat(peerId: string, chatId?: string): Promise<IChatDto
     } catch {
       // Игнорируем сетевую ошибку при получении чата
     }
+
+    // Чат комнаты известен, но это не личный чат со звонящим (или он нам
+    // недоступен) — дальше по списку не ищем: иначе любой личный чат с from
+    // подменил бы чат комнаты, и её проверка ничего бы не ограничивала.
+    return null;
   }
 
   let chats = queryClient.getQueryData<IChatDto[]>(chatKeys.list());
