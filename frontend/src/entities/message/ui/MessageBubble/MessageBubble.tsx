@@ -3,7 +3,6 @@ import { useMessageLongPress } from '../../model/useMessageLongPress';
 import { getLastMessageText, useChatUiStore } from '@/entities/chat';
 import { menuPointNear } from '../../model/messageMenu';
 import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
-import { callSummary } from '../../model/callSummary';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn, receiptState } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
@@ -239,9 +238,9 @@ export const MessageBubble = memo(
 
     const announcement = [
       mine ? t('you', 'Вы') : authorName,
-      isCall
-        ? callSummary(message.content, t)
-        : getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
+      // Звонок getLastMessageText подписывает сам («Звонок завершен · 28 сек»),
+      // а не читает служебный JSON из content.
+      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
       formatMessageTime(message.createdAt),
       delivery && deliveryLabel[delivery],
     ]
