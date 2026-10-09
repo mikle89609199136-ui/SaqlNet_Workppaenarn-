@@ -750,6 +750,32 @@ CallRoomResponse:
       type: array
       items: { $ref: '#/IceServer' }
     maxParticipants: { type: integer, enum: [2] }
+CallHistoryItem:
+  type: object
+  required: [id, roomId, chatId, peerId, peerName, peerAvatar, direction, kind, status, startedAt, answeredAt, endedAt, durationSeconds]
+  properties:
+    id: { type: string, format: uuid }
+    roomId: { type: string, format: uuid, description: "Same as id." }
+    chatId: { type: string, format: uuid, nullable: true, description: "Null when the chat was deleted." }
+    peerId: { type: string, format: uuid }
+    peerName: { type: string, description: "First and last name, else username; empty for a deleted user." }
+    peerAvatar: { type: string, nullable: true, description: "Null when there is none or the photo rule hides it." }
+    direction: { type: string, enum: [incoming, outgoing] }
+    kind: { type: string, enum: [audio, video] }
+    status: { type: string, enum: [answered, missed, rejected, cancelled] }
+    startedAt: { type: string, format: date-time }
+    answeredAt: { type: string, format: date-time, nullable: true }
+    endedAt: { type: string, format: date-time }
+    durationSeconds: { type: integer, minimum: 0, description: "From answer to end; 0 for unanswered calls." }
+CallHistoryResponse:
+  type: object
+  required: [calls, nextCursor, hasMore]
+  properties:
+    calls:
+      type: array
+      items: { $ref: '#/CallHistoryItem' }
+    nextCursor: { type: string, nullable: true }
+    hasMore: { type: boolean }
 UploadResponse:
   type: object
   required: [success, url]

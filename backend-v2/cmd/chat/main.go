@@ -125,6 +125,7 @@ func main() {
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
 	mux.Handle("POST /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.CallRoom)))
 	mux.Handle("GET /api/v2/calls/rooms/{id}", authenticated(http.HandlerFunc(handler.GetRoom)))
+	mux.Handle("GET /api/v2/calls/history", authenticated(http.HandlerFunc(handler.CallHistory)))
 
 	mux.Handle("/api/v2/mls/keypackages", authenticated(http.HandlerFunc(handler.MLSRoutes)))
 	mux.Handle("/api/v2/mls/keypackages/", authenticated(http.HandlerFunc(handler.MLSRoutes)))

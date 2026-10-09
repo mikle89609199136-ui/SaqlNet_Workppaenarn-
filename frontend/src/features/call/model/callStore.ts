@@ -24,7 +24,12 @@ import {
   sendCallJoin,
   sendCallLeave,
 } from './callSignaling';
-import { clearCallSession, loadCallSession, saveCallSession } from './callSessionStorage';
+import {
+  clearCallSession,
+  loadCallSession,
+  saveCallSession,
+  type IStoredCallSession,
+} from './callSessionStorage';
 import type {
   IActiveCall,
   ICallCancelledPayload,
@@ -32,6 +37,7 @@ import type {
   IEndedCall,
   IIncomingCall,
   IOutgoingCall,
+  IResumableCall,
   TCallEndReason,
   TCallKind,
   TCallRoomType,
@@ -53,12 +59,18 @@ interface CallStoreState {
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
   endedCall: IEndedCall | null;
+  /** Звонок, из которого ушли перезагрузкой страницы: вернуться — кнопкой. */
+  resumableCall: IResumableCall | null;
+  resumableSession: IStoredCallSession | null;
+  resumeExpiryTimer: ReturnType<typeof setTimeout> | null;
 
   // Действия
   attachSocket: (socket: WebSocketClient | null) => void;
   dispatch: (action: TCallFsmAction) => void;
   rejoinActiveCall: () => void;
   restoreActiveSession: () => boolean;
+  resumeCall: () => void;
+  dismissResumableCall: () => void;
 
   handleIncoming: (payload: IIncomingCall) => Promise<void>;
   handleCancelled: (payload: ICallCancelledPayload | string) => void;
@@ -305,6 +317,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     outgoingCall: null,
     activeCall: null,
     endedCall: null,
+    resumableCall: null,
+    resumableSession: null,
+    resumeExpiryTimer: null,
 
     attachSocket: (socket) => {
       set({ socket });
@@ -329,10 +344,46 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       });
     },
 
+    /* После перезагрузки страницы в звонок не входим сами (#775): показываем
+       «Вернуться в звонок». Вход по нажатию — ещё и жест пользователя, без
+       которого браузер не даст проиграть звук собеседника. Собеседник ждёт
+       RECONNECT_TIMEOUT_MS с момента ухода со страницы — столько и живёт
+       предложение вернуться. */
     restoreActiveSession: () => {
       const session = loadCallSession();
       if (!session) return false;
       if (get().fsm.state !== 'idle') return false;
+
+      const expiresAt = (session.leftAt ?? Date.now()) + RECONNECT_TIMEOUT_MS;
+      const left = expiresAt - Date.now();
+      if (left <= 0) {
+        clearCallSession();
+        return false;
+      }
+
+      const previous = get().resumeExpiryTimer;
+      if (previous) clearTimeout(previous);
+      set({
+        resumableSession: session,
+        resumableCall: {
+          roomId: session.roomId,
+          peerId: session.peerId,
+          peerName: session.peerName,
+          peerAvatar: session.peerAvatar,
+          callKind: session.callKind,
+          expiresAt,
+        },
+        resumeExpiryTimer: setTimeout(() => get().dismissResumableCall(), left),
+      });
+      return true;
+    },
+
+    resumeCall: () => {
+      const session = get().resumableSession;
+      const timer = get().resumeExpiryTimer;
+      if (timer) clearTimeout(timer);
+      set({ resumableCall: null, resumableSession: null, resumeExpiryTimer: null });
+      if (!session || get().fsm.state !== 'idle') return;
 
       const restoredFsm: ICallFsmContext = {
         state: 'reconnecting',
@@ -356,14 +407,28 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       if (get().socket?.isConnected) {
         get().rejoinActiveCall();
       }
+    },
 
-      return true;
+    /* Не возвращаться: собеседник перестанет ждать по своему таймауту. */
+    dismissResumableCall: () => {
+      const timer = get().resumeExpiryTimer;
+      if (timer) clearTimeout(timer);
+      set({ resumableCall: null, resumableSession: null, resumeExpiryTimer: null });
+      clearCallSession();
     },
 
     dispatch: (action) => {
       const currentFsm = get().fsm;
       const nextFsm = callStateReducer(currentFsm, action);
       if (nextFsm === currentFsm) return;
+
+      /* Начался другой звонок — в прежний уже не вернуться. Сессию не
+         трогаем: её перезапишет новый звонок. */
+      const resumeTimer = get().resumeExpiryTimer;
+      if (nextFsm.state !== 'idle' && get().resumableCall) {
+        if (resumeTimer) clearTimeout(resumeTimer);
+        set({ resumableCall: null, resumableSession: null, resumeExpiryTimer: null });
+      }
 
       if (nextFsm.state === 'reconnecting' && currentFsm.state !== 'reconnecting') {
         startReconnectTimer();

@@ -62,14 +62,20 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 	}
 	// Заблокировавший не получает звонков от заблокированного (#760).
 	if ws.isBlockedBy(to, client.UserID) {
+		ws.recordCallRefused(roomID, to, callEndBusy)
 		ws.refuseInvite(client.UserID, roomID, to, "blocked_by_user")
+		ws.endUnansweredCall(roomID, client.UserID, false)
 		return
 	}
 	if ws.callRooms.GetUserRoom(to) != nil {
+		ws.recordCallRefused(roomID, to, callEndBusy)
 		ws.refuseInvite(client.UserID, roomID, to, "busy")
+		ws.endUnansweredCall(roomID, client.UserID, false)
 		return
 	}
 
+	// До отправки: ответ на приглашение пишется в ту же запись (#713).
+	ws.recordCallInvited(roomID, to)
 	name, avatar := ws.callerCard(client.UserID, to)
 	payload, _ := json.Marshal(map[string]interface{}{
 		"type":       "call_incoming",
@@ -126,7 +132,14 @@ func (ws *WSServer) handleCallInviteResponse(client *Client, msg map[string]inte
 		ws.holdAccept(client.UserID, invite, out)
 		return
 	}
+	// Итог — раньше, чем звонящий узнает об отказе и положит трубку (#713).
+	refusal := callEndDeclined
+	if reason == "busy" {
+		refusal = callEndBusy
+	}
+	ws.recordCallRefused(roomID, client.UserID, refusal)
 	ws.sendToUser(invite.callerID, out)
+	ws.endUnansweredCall(roomID, invite.callerID, false)
 }
 
 // holdAccept — «принял» уходит звонящему из handleCallJoin принявшего
@@ -217,8 +230,9 @@ func (ws *WSServer) expireInvite(to string, invite *pendingInvite) {
 	}
 	delete(ws.pendingInvites, to)
 	ws.inviteMu.Unlock()
+	ws.recordCallNoAnswer(invite.roomID)
 	ws.sendCallCancelled(to, invite.roomID)
-	ws.closeCallRoomIfEmpty(invite.roomID)
+	ws.endUnansweredCall(invite.roomID, invite.callerID, true)
 }
 
 // cancelInvitesFrom — звонящий отключился, не дождавшись ответа.
@@ -259,6 +273,22 @@ func (ws *WSServer) cancelInvitesForRoom(roomID string) {
 	}
 }
 
+// endUnansweredCall — звонок кончился без ответа (отказ, занят, не
+// ответил): звонящий выводится из комнаты, если он там один, и комната
+// закрывается с итогом (#713). Клиент звонящего на отказ call_leave не
+// шлёт; его подключение со старой комнатой безвредно — сигналы в
+// закрытую комнату отбрасываются, следующий вход её заменит.
+//
+// missed — звонок пропущен (не ответил): тогда push «пропущенный». Тому,
+// кто сам отклонил, и тому, до кого приглашение не дошло (занят,
+// заблокировал), — не нужно.
+func (ws *WSServer) endUnansweredCall(roomID, callerID string, missed bool) {
+	if snap, ok := ws.callRooms.LeaveIfAlone(roomID, callerID); ok {
+		ws.recordCallLeft(roomID, callerID)
+		ws.closeCallRoom(roomID, snap, missed)
+	}
+}
+
 // closeCallRoomIfEmpty — в комнату так никто и не вошёл: закрыть её, как
 // закрывается комната после ухода последнего участника.
 func (ws *WSServer) closeCallRoomIfEmpty(roomID string) {
@@ -267,10 +297,18 @@ func (ws *WSServer) closeCallRoomIfEmpty(roomID string) {
 	}
 }
 
-// callRoomClosed — запись о звонке, «пропущенный» push, отмена приглашений.
+// callRoomClosed — итог в истории (#713), запись о звонке в чате,
+// «пропущенный» push, если не ответили, отмена приглашений.
 func (ws *WSServer) callRoomClosed(roomID string, snap *RoomSnapshot) {
+	ws.closeCallRoom(roomID, snap, true)
+}
+
+func (ws *WSServer) closeCallRoom(roomID string, snap *RoomSnapshot, missedPush bool) {
+	ws.recordCallEnded(roomID, snap)
 	go ws.saveCallMessage(snap)
-	ws.notifyMissedCall(roomID, snap)
+	if missedPush {
+		ws.notifyMissedCall(roomID, snap)
+	}
 	ws.cancelInvitesForRoom(roomID)
 }
 

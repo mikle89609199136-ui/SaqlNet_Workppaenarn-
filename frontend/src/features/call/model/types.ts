@@ -46,6 +46,17 @@ export interface IEndedCall {
   reason: TCallEndReason;
 }
 
+/** Звонок, из которого ушли перезагрузкой: в него можно вернуться кнопкой. */
+export interface IResumableCall {
+  roomId: string;
+  peerId: string;
+  peerName: string | null;
+  peerAvatar: string | null;
+  callKind: TCallKind;
+  /** До какого момента собеседник ждёт возвращения. */
+  expiresAt: number;
+}
+
 export interface ICallPeer {
   userId: string;
   displayName?: string;

@@ -137,6 +137,7 @@ paths:
   /calls/ice-servers: { $ref: './paths/calls.yaml#/~1calls~1ice-servers' }
   /calls/rooms: { $ref: './paths/calls.yaml#/~1calls~1rooms' }
   /calls/rooms/{id}: { $ref: './paths/calls.yaml#/~1calls~1rooms~1{id}' }
+  /calls/history: { $ref: './paths/calls.yaml#/~1calls~1history' }
 
   /media: { $ref: './paths/media.yaml#/~1media' }
   /media/{uploadId}: { $ref: './paths/media.yaml#/~1media~1{uploadId}' }

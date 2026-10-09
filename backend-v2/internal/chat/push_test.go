@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
@@ -129,5 +130,48 @@ func TestMissedCallNotifiesOnlyWhenUnanswered(t *testing.T) {
 	ws.notifyMissedCall("room-1", &RoomSnapshot{ChatID: "chat-1", HostID: "igor", CallKind: "video"})
 	require.Equal(t, []push.Event{{
 		Kind: push.KindMissedCall, ChatID: "chat-1", ActorID: "igor", RoomID: "room-1", CallKind: "video",
+	}}, pushed.events)
+}
+
+// Звонок без ответа закрывается сервером (#713). «Пропущенный» push — только
+// тому, кто не ответил; отклонивший сам о своём отказе push не получает.
+func TestUnansweredCallClosesRoomAndPushesOnlyMissed(t *testing.T) {
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	ws := &WSServer{
+		db:             db,
+		clients:        make(map[string]map[*Client]bool),
+		callRooms:      NewCallRoomManager(),
+		pendingInvites: map[string]*pendingInvite{},
+	}
+	pushed := &recordingPush{}
+	ws.SetPush(pushed)
+	igor := &Client{UserID: "igor", Send: make(chan []byte, 8)}
+	masha := &Client{UserID: "masha", Send: make(chan []byte, 8)}
+	ws.clients["igor"] = map[*Client]bool{igor: true}
+	ws.clients["masha"] = map[*Client]bool{masha: true}
+
+	ring := func(roomID string) *pendingInvite {
+		ws.callRooms.CreateRoom("igor", roomID, "p2p", "audio", "chat-1", "")
+		require.True(t, ws.callRooms.JoinRoom(roomID, "igor", "", "").OK)
+		invite := &pendingInvite{roomID: roomID, callerID: "igor", caller: igor, timer: time.AfterFunc(time.Hour, func() {})}
+		ws.inviteMu.Lock()
+		ws.pendingInvites["masha"] = invite
+		ws.inviteMu.Unlock()
+		return invite
+	}
+
+	ring("room-declined")
+	ws.handleCallInviteResponse(masha, map[string]interface{}{"roomId": "room-declined", "accepted": false})
+	require.Nil(t, ws.callRooms.GetRoom("room-declined"), "звонящий на отказ call_leave не шлёт — комнату закрывает сервер")
+	require.Nil(t, ws.callRooms.GetUserRoom("igor"))
+	require.Empty(t, pushed.events)
+
+	invite := ring("room-missed")
+	ws.expireInvite("masha", invite)
+	require.Nil(t, ws.callRooms.GetRoom("room-missed"))
+	require.Equal(t, []push.Event{{
+		Kind: push.KindMissedCall, ChatID: "chat-1", ActorID: "igor", RoomID: "room-missed", CallKind: "audio",
 	}}, pushed.events)
 }

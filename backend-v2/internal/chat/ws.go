@@ -365,6 +365,14 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		return
 	}
 	ws.setCallRoom(client, roomID)
+	// Прежняя комната, опустевшая от этого входа, закрывается как обычно:
+	// с итогом и записью о звонке в чате (#713).
+	if r.Closed != nil {
+		ws.recordCallLeft(r.ClosedRoomID, client.UserID)
+		ws.callRoomClosed(r.ClosedRoomID, r.Closed)
+	}
+	// Звонок один на один: вошёл к собеседнику — значит, ответили (#713).
+	ws.recordCallJoined(roomID, client.UserID, len(r.Peers) > 0)
 	// Send joined confirmation with current peers
 	joined, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_joined",
@@ -492,6 +500,9 @@ const (
 
 func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
 	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
+	if lr.OK {
+		ws.recordCallLeft(roomID, client.UserID)
+	}
 	peerLeft, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_left",
 		"roomId": roomID,

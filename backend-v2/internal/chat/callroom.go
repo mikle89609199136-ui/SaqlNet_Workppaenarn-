@@ -51,6 +51,10 @@ type JoinResult struct {
 	OK    bool
 	Error string
 	Peers []*Participant
+	// Вход в новую комнату выводит из прежней; если она от этого
+	// опустела — закрыта, и её итог нужно записать (#713).
+	ClosedRoomID string
+	Closed       *RoomSnapshot
 }
 
 type LeaveResult struct {
@@ -150,8 +154,12 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 	if len(r.participants) >= maxCallParticipants && !alreadyIn {
 		return JoinResult{OK: false, Error: "room_full"}
 	}
+	var closedID string
+	var closed *RoomSnapshot
 	if prev, ok := m.userToRoom[userID]; ok && prev != roomID {
-		m.leaveRoomLocked(prev, userID)
+		if lr := m.leaveRoomLocked(prev, userID); lr.Closed {
+			closedID, closed = prev, lr.Snapshot
+		}
 	}
 	r.participants[userID] = &Participant{
 		UserID: userID, DisplayName: displayName, AvatarURL: avatarURL,
@@ -167,7 +175,7 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 			peers = append(peers, p)
 		}
 	}
-	return JoinResult{OK: true, Peers: peers}
+	return JoinResult{OK: true, Peers: peers, ClosedRoomID: closedID, Closed: closed}
 }
 
 // CloseIfEmpty — закрыть комнату, в которую никто не вошёл (#850).
@@ -183,6 +191,33 @@ func (m *CallRoomManager) CloseIfEmpty(roomID string) (*RoomSnapshot, bool) {
 		ChatID: r.chatID, CallKind: r.callKind,
 		AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
 	}, true
+}
+
+// LeaveIfAlone — вывести звонящего из комнаты, где больше никого нет, и
+// закрыть её. Нужно, когда звонок кончился без ответа (#713): клиент
+// звонящего на отказ не шлёт call_leave, и комната с ним одним иначе
+// висела бы до его следующего звонка или отключения.
+func (m *CallRoomManager) LeaveIfAlone(roomID, userID string) (*RoomSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[roomID]
+	if !ok {
+		return nil, false
+	}
+	for id := range r.participants {
+		if id != userID {
+			return nil, false
+		}
+	}
+	if _, in := r.participants[userID]; !in {
+		delete(m.rooms, roomID)
+		return &RoomSnapshot{
+			ChatID: r.chatID, CallKind: r.callKind,
+			AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+		}, true
+	}
+	lr := m.leaveRoomLocked(roomID, userID)
+	return lr.Snapshot, lr.Closed
 }
 
 func (m *CallRoomManager) LeaveRoom(roomID, userID string) LeaveResult {
