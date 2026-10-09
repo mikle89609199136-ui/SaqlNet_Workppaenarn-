@@ -6,6 +6,7 @@ import { useCall } from '../model/useCall';
 import { useLocalMedia } from '../model/useLocalMedia';
 import { ActiveCallSession } from './ActiveCallSession';
 import { CallLobbyView } from './CallLobbyView';
+import { ResumeCallBar } from './ResumeCallBar';
 
 export interface ICallOverlayProps {
   enabled?: boolean;
@@ -34,6 +35,9 @@ export function CallOverlay({
     rejectCall,
     cancelCall,
     endCall,
+    resumableCall,
+    resumeCall,
+    dismissResumableCall,
   } = useCall();
 
   const { stopMedia, stream } = localMedia;
@@ -241,6 +245,12 @@ export function CallOverlay({
           <p className="text-sm text-ink-2">{getEndedSubtitle()}</p>
         </div>
       </div>
+    );
+  }
+
+  if (resumableCall) {
+    return (
+      <ResumeCallBar call={resumableCall} onDismiss={dismissResumableCall} onResume={resumeCall} />
     );
   }
 

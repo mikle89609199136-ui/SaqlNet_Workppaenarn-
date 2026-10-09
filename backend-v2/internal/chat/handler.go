@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -732,6 +733,40 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		"iceServers":      getIceServers(),
 		"maxParticipants": maxCallParticipants,
 	})
+}
+
+// CallHistory — завершённые звонки текущего пользователя (#713).
+func (h *Handler) CallHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, r)
+		return
+	}
+	query := r.URL.Query()
+	params := CallHistoryParams{
+		Cursor: query.Get("cursor"),
+		Kind:   query.Get("kind"),
+		Status: query.Get("status"),
+	}
+	if raw := query.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > callHistoryMaxLimit {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid limit")
+			return
+		}
+		params.Limit = limit
+	}
+	current := authctx.MustUser(r)
+	page, err := h.service.CallHistory(r.Context(), current.ID, params)
+	if errors.Is(err, ErrInvalidCallCursor) || errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "call history", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "call history failed")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 func respondChat(w http.ResponseWriter, r *http.Request, chat Chat, err error) {
