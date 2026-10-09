@@ -616,7 +616,7 @@ export class MessageService {
   }
 
   mediaMetadataFromPayload(payload: IEncryptedMedia): Omit<IEncryptedMedia, 'ciphertext'> {
-    const { ciphertext, ...metadata } = payload;
+    const { ciphertext: _ciphertext, ...metadata } = payload;
     return metadata;
   }
 

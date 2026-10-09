@@ -338,7 +338,9 @@ describe('useComposerSendMessage', () => {
     it('sendSticker добавляет оптимистичное сообщение и вызывает messageService.sendSticker', async () => {
       const sendSpy = vi
         .spyOn(services.messageService, 'sendSticker')
-        .mockResolvedValue(makeMessage({ id: 'srv-sticker-1', chatId: 'chat-test-1', type: 'sticker' }));
+        .mockResolvedValue(
+          makeMessage({ id: 'srv-sticker-1', chatId: 'chat-test-1', type: 'sticker' })
+        );
 
       const refs = setupRefs('');
       queryClient.setQueryData(chatKeys.messages('chat-test-1'), { pages: [[]], pageParams: [0] });
