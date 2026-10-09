@@ -41,6 +41,17 @@ export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
 
+/** Адрес стикера из каталога хранилища медиа (#593, #871, #973). */
+const STICKER_STORAGE_URL =
+  /(?:^https?:\/\/[^/]+)?(?:\/[^/]+)?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/stickers\/\d+/i;
+
+const STICKER_API_URL = /^\/api\/v2\/stickers\//i;
+
+/** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973). */
+export function isCatalogMediaUrl(url: string): boolean {
+  return isOwnMediaUrl(url) || STICKER_STORAGE_URL.test(url) || STICKER_API_URL.test(url);
+}
+
 export class MessageService {
   private apiClient: ApiClient;
   private cryptoService: CryptoService;
@@ -507,8 +518,16 @@ export class MessageService {
 
     if (!mediaUrl) return {};
 
-    // Стикеры и GIF не шифруются сквозным шифрованием файлов и могут ссылаться на внешний каталог или статику
+    // Стикеры и GIF не шифруются сквозным шифрованием файлов и берутся из каталога приложения (#593, #871, #973)
     if (item.type === 'sticker' || item.type === 'gif') {
+      if (!isCatalogMediaUrl(mediaUrl)) {
+        return {
+          mediaUrl: null,
+          mediaEncrypted: false,
+          mediaUnavailable: true,
+          mediaUnavailableReason: 'foreign',
+        };
+      }
       return {
         mediaUrl,
         mediaOriginalUrl: mediaUrl,

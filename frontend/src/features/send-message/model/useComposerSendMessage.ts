@@ -70,9 +70,9 @@ export function useComposerSendMessage({
     [chatId, queryClient, setError, t]
   );
 
-  function scrollToBottom() {
+  const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
-  }
+  }, [bottomRef]);
 
   const handleRetryMessage = useCallback(
     (message: IMessageDto) => {
@@ -214,8 +214,8 @@ export function useComposerSendMessage({
     })();
   }
 
-  const sendSticker = useCallback(
-    async (stickerUrl: string) => {
+  const sendCatalogMedia = useCallback(
+    async (mediaUrl: string, type: 'sticker' | 'gif') => {
       const tempId = `temp-${Date.now()}-0-${Math.random().toString(36).slice(2, 9)}`;
       const replyToId = replyToMessage?.id ?? null;
       const optimisticMessage: IMediaItem = {
@@ -224,9 +224,9 @@ export function useComposerSendMessage({
         chatId,
         senderId: currentUser?.id ?? '',
         content: '',
-        type: 'sticker',
-        mediaType: 'sticker',
-        mediaUrl: stickerUrl,
+        type,
+        mediaType: type,
+        mediaUrl,
         replyTo: replyToId,
         replyToMessageId: replyToId,
         status: 'pending',
@@ -239,8 +239,8 @@ export function useComposerSendMessage({
         tempId,
         chatId,
         content: '',
-        type: 'sticker',
-        mediaUrl: stickerUrl,
+        type,
+        mediaUrl,
         replyToId,
         status: 'pending',
         createdAt: new Date(),
@@ -266,56 +266,14 @@ export function useComposerSendMessage({
     ]
   );
 
+  const sendSticker = useCallback(
+    (stickerUrl: string) => sendCatalogMedia(stickerUrl, 'sticker'),
+    [sendCatalogMedia]
+  );
+
   const sendGif = useCallback(
-    async (gifUrl: string) => {
-      const tempId = `temp-${Date.now()}-0-${Math.random().toString(36).slice(2, 9)}`;
-      const replyToId = replyToMessage?.id ?? null;
-      const optimisticMessage: IMediaItem = {
-        id: tempId,
-        tempId,
-        chatId,
-        senderId: currentUser?.id ?? '',
-        content: '',
-        type: 'gif',
-        mediaType: 'gif',
-        mediaUrl: gifUrl,
-        replyTo: replyToId,
-        replyToMessageId: replyToId,
-        status: 'pending',
-        createdAt: new Date(),
-        reactions: [],
-      };
-      putThreadMessage(queryClient, chatId, optimisticMessage);
-
-      const outboxItem: IOutboxItem = {
-        tempId,
-        chatId,
-        content: '',
-        type: 'gif',
-        mediaUrl: gifUrl,
-        replyToId,
-        status: 'pending',
-        createdAt: new Date(),
-      };
-      addOutboxItem(outboxItem);
-      setReplyToMessage(null);
-      scrollToBottom();
-
-      await sendOutboxItem(queryClient, outboxItem, {
-        onError: (err) => showSendError(err),
-        onSuccess: () => setError(''),
-      });
-    },
-    [
-      chatId,
-      currentUser?.id,
-      queryClient,
-      replyToMessage?.id,
-      scrollToBottom,
-      setError,
-      setReplyToMessage,
-      showSendError,
-    ]
+    (gifUrl: string) => sendCatalogMedia(gifUrl, 'gif'),
+    [sendCatalogMedia]
   );
 
   return { isSending, handleSubmit, handleRetryMessage, sendSticker, sendGif };

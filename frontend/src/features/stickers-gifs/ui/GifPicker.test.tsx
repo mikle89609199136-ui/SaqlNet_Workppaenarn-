@@ -32,14 +32,24 @@ describe('GifPicker', () => {
       http.get(api('/gifs'), () =>
         HttpResponse.json({
           gifs: [
-            { id: 'g-1', name: 'wave hello', url: 'http://wave.gif', userName: 'alice', createdAt: '2026-01-01' },
-            { id: 'g-2', name: 'dance party', url: 'http://dance.gif', userName: 'bob', createdAt: '2026-01-01' },
+            {
+              id: 'g-1',
+              name: 'wave hello',
+              url: 'http://wave.gif',
+              userName: 'alice',
+              createdAt: '2026-01-01',
+            },
+            {
+              id: 'g-2',
+              name: 'dance party',
+              url: 'http://dance.gif',
+              userName: 'bob',
+              createdAt: '2026-01-01',
+            },
           ],
         })
       ),
-      http.get(api('/gifs/favorites'), () =>
-        HttpResponse.json({ gifs: [] })
-      )
+      http.get(api('/gifs/favorites'), () => HttpResponse.json({ gifs: [] }))
     );
 
     const onPick = vi.fn();
@@ -64,20 +74,34 @@ describe('GifPicker', () => {
   });
 
   it('переключает вкладку "Избранные" и позволяет добавлять/удалять из избранного', async () => {
-    let favoriteIds = new Set<string>();
+    const favoriteIds = new Set<string>();
 
     server.use(
       http.get(api('/gifs'), () =>
         HttpResponse.json({
           gifs: [
-            { id: 'g-1', name: 'wave hello', url: 'http://wave.gif', userName: 'alice', createdAt: '2026-01-01' },
+            {
+              id: 'g-1',
+              name: 'wave hello',
+              url: 'http://wave.gif',
+              userName: 'alice',
+              createdAt: '2026-01-01',
+            },
           ],
         })
       ),
       http.get(api('/gifs/favorites'), () =>
         HttpResponse.json({
           gifs: favoriteIds.has('g-1')
-            ? [{ id: 'g-1', name: 'wave hello', url: 'http://wave.gif', userName: 'alice', createdAt: '2026-01-01' }]
+            ? [
+                {
+                  id: 'g-1',
+                  name: 'wave hello',
+                  url: 'http://wave.gif',
+                  userName: 'alice',
+                  createdAt: '2026-01-01',
+                },
+              ]
             : [],
         })
       ),
@@ -128,7 +152,13 @@ describe('GifPicker', () => {
       http.get(api('/gifs'), () =>
         HttpResponse.json({
           gifs: [
-            { id: 'g-1', name: 'wave hello', url: 'http://wave.gif', userName: 'alice', createdAt: '2026-01-01' },
+            {
+              id: 'g-1',
+              name: 'wave hello',
+              url: 'http://wave.gif',
+              userName: 'alice',
+              createdAt: '2026-01-01',
+            },
           ],
         })
       ),

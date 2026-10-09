@@ -471,22 +471,26 @@ describe('MessageService: пересылка голосового (#843)', () =>
   });
 });
 
-describe('MessageService: стикеры и GIF (#593)', () => {
+describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
+  const validStickerUrl =
+    'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678';
+  const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
   it('sendSticker отправляет сообщение типа sticker с mediaUrl', async () => {
     const requests = serveSend();
     const service = createService();
 
-    const sent = await service.sendSticker(TARGET_CHAT, 'https://example.com/sticker1.png');
+    const sent = await service.sendSticker(TARGET_CHAT, validStickerUrl);
 
     expect(requests).toHaveLength(1);
     expect(requests[0].messages[0]).toMatchObject({
       type: 'sticker',
-      mediaUrl: 'https://example.com/sticker1.png',
+      mediaUrl: validStickerUrl,
       content: '',
     });
     expect(sent).toMatchObject({
       type: 'sticker',
-      mediaUrl: 'https://example.com/sticker1.png',
+      mediaUrl: validStickerUrl,
       mediaUnavailable: false,
     });
   });
@@ -495,48 +499,78 @@ describe('MessageService: стикеры и GIF (#593)', () => {
     const requests = serveSend();
     const service = createService();
 
-    const sent = await service.sendGif(TARGET_CHAT, 'https://example.com/funny.gif');
+    const sent = await service.sendGif(TARGET_CHAT, validGifUrl);
 
     expect(requests).toHaveLength(1);
     expect(requests[0].messages[0]).toMatchObject({
       type: 'gif',
-      mediaUrl: 'https://example.com/funny.gif',
+      mediaUrl: validGifUrl,
       content: '',
     });
     expect(sent).toMatchObject({
       type: 'gif',
-      mediaUrl: 'https://example.com/funny.gif',
+      mediaUrl: validGifUrl,
       mediaUnavailable: false,
     });
   });
 
-  it('resolveMediaForDisplay не блокирует URL для стикеров и GIF', async () => {
+  it('resolveMediaForDisplay не блокирует URL каталога для стикеров и GIF', async () => {
     const service = createService();
     const stickerMsg = {
       ...message('m-sticker', TARGET_CHAT, ''),
       type: 'sticker' as const,
-      metadata: { mediaUrl: 'https://example.com/sticker.png' } as never,
+      metadata: { mediaUrl: validStickerUrl } as never,
     };
     const gifMsg = {
       ...message('m-gif', TARGET_CHAT, ''),
       type: 'gif' as const,
-      mediaUrl: 'https://example.com/dance.gif',
+      mediaUrl: validGifUrl,
     } as unknown as IMessageDto;
 
     const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, stickerMsg);
     const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, gifMsg);
 
     expect(patchSticker).toEqual({
-      mediaUrl: 'https://example.com/sticker.png',
-      mediaOriginalUrl: 'https://example.com/sticker.png',
+      mediaUrl: validStickerUrl,
+      mediaOriginalUrl: validStickerUrl,
       mediaEncrypted: false,
       mediaUnavailable: false,
     });
     expect(patchGif).toEqual({
-      mediaUrl: 'https://example.com/dance.gif',
-      mediaOriginalUrl: 'https://example.com/dance.gif',
+      mediaUrl: validGifUrl,
+      mediaOriginalUrl: validGifUrl,
       mediaEncrypted: false,
       mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay блокирует сторонние (не из каталога) URL для стикеров и GIF (#871)', async () => {
+    const service = createService();
+    const foreignStickerMsg = {
+      ...message('m-sticker-foreign', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: 'https://evil.com/leak.png' } as never,
+    };
+    const foreignGifMsg = {
+      ...message('m-gif-foreign', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: 'https://example.com/dance.gif',
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, foreignGifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
     });
   });
 });
