@@ -101,26 +101,30 @@ func (ws *WSServer) recordCallLeft(roomID, userID string) {
 		WHERE room_id = $1 AND user_id = $2 AND left_at IS NULL`, userID)
 }
 
-// recordCallEnded — комната закрылась. Время ответа берётся и из памяти:
+// recordCallEnded — комната закрылась (или звонок оборвался в snap.EndedAt).
+// Время ответа берётся и из памяти:
 // если запись при входе не удалась, длительность всё равно будет. Без
 // ответа и без отказа — звонящий положил трубку.
 func (ws *WSServer) recordCallEnded(roomID string, snap *RoomSnapshot) {
-	var answeredAt sql.NullTime
+	var answeredAt, endedAt sql.NullTime
 	if snap != nil && snap.AnsweredAt > 0 {
 		answeredAt = sql.NullTime{Time: time.UnixMilli(snap.AnsweredAt), Valid: true}
 	}
+	if snap != nil && snap.EndedAt > 0 {
+		endedAt = sql.NullTime{Time: time.UnixMilli(snap.EndedAt), Valid: true}
+	}
 	ws.recordCall(roomID, "ended", `
 		UPDATE calls.rooms
-		SET ended_at = NOW(),
+		SET ended_at = COALESCE($5::timestamptz, NOW()),
 		    answered_at = COALESCE(answered_at, $2),
 		    end_reason = CASE
 		        WHEN COALESCE(answered_at, $2) IS NOT NULL THEN $3
 		        ELSE COALESCE(end_reason, $4)
 		    END
-		WHERE id = $1 AND ended_at IS NULL`, answeredAt, callEndAnswered, callEndCancelled)
+		WHERE id = $1 AND ended_at IS NULL`, answeredAt, callEndAnswered, callEndCancelled, endedAt)
 	ws.recordCall(roomID, "ended_participants", `
-		UPDATE calls.participants SET left_at = NOW()
-		WHERE room_id = $1 AND left_at IS NULL`)
+		UPDATE calls.participants SET left_at = COALESCE($2::timestamptz, NOW())
+		WHERE room_id = $1 AND left_at IS NULL`, endedAt)
 }
 
 // Запись истории для зрителя.

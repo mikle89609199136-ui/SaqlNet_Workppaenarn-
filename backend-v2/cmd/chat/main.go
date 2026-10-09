@@ -43,6 +43,10 @@ func main() {
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
 	defer wsServer.Close()
+	// Звонки, оборванные рестартом, поднимаются входом участников (#713).
+	if err := wsServer.RecoverCallRooms(context.Background()); err != nil {
+		log.Printf("call rooms recovery failed: %v", err)
+	}
 	svc := chat.NewService(pool, wsServer, presenceStore)
 	handler := chat.NewHandler(svc)
 
