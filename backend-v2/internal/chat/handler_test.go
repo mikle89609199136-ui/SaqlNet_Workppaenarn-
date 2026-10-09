@@ -1385,8 +1385,9 @@ func TestParseArchived(t *testing.T) {
 }
 
 // TestHandler_CreateGroup covers CreateGroup: successful creation,
-// field trimming, validation failures (title too long, empty title,
-// empty members), service errors, and method rejection.
+// field trimming, an empty members list (group of one), validation
+// failures (title too long, empty title, missing members), service errors,
+// and method rejection.
 func TestHandler_CreateGroup(t *testing.T) {
 	const (
 		actorID   = "550e8400-e29b-41d4-a716-446655440001"
@@ -1506,11 +1507,34 @@ func TestHandler_CreateGroup(t *testing.T) {
 			wantErrorCode: "validation_failed",
 		},
 		{
-			name:   "empty_members_400",
+			// Группа из одного: участников можно не выбирать — владелец
+			// добавляется всегда, остальных позовут потом.
+			name:   "empty_members_creates_group_of_one",
 			method: http.MethodPost,
 			requestBody: map[string]any{
 				"title":   "Group",
 				"members": []string{},
+			},
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(`INSERT INTO chats\.chats`).
+					WithArgs("Group", "", "", actorID).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("chat-123"))
+				mock.ExpectExec(`INSERT INTO chats\.members`).
+					WithArgs("chat-123", actorID, "owner").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			wantStatus: http.StatusCreated,
+			wantChatID: true,
+			wantTitle:  "Group",
+		},
+		{
+			// Пустой список — можно, отсутствующий — нет: это ошибка клиента.
+			name:   "missing_members_400",
+			method: http.MethodPost,
+			requestBody: map[string]any{
+				"title": "Group",
 			},
 			setupMock:     func(sqlmock.Sqlmock) {},
 			wantStatus:    http.StatusBadRequest,

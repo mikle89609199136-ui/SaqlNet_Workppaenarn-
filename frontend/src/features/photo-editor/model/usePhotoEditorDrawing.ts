@@ -7,14 +7,15 @@ import type {
   TEditorObject,
   TEditorTool,
   TTextFontId,
-} from '@/types';
+} from './types';
+import { clamp } from '@/shared/lib';
 import {
-  clamp,
   createEditorId,
   drawObject,
   findTextAtPoint,
+  snapAngle,
   splitPathByEraser,
-} from '@/shared/lib';
+} from './editorCanvas';
 import { useCallback, useRef, type RefObject } from 'react';
 
 interface PointerDrawState {
@@ -38,11 +39,14 @@ type PointerState = PointerDrawState | PointerEraseState | PointerMoveTextState;
 
 interface Params {
   canvasRef: RefObject<HTMLCanvasElement | null>;
-  tool: TEditorTool;
+  /** null — инструмент не выбран: редактор только показывает фото. */
+  tool: TEditorTool | null;
   brushType: TBrushType;
   brushColor: string;
   brushSize: number;
   textFont: TTextFontId;
+  /** Размер, с которым появится новый текст. */
+  textSize: number;
   objects: TEditorObject[];
   setObjects: (objects: TEditorObject[] | ((prev: TEditorObject[]) => TEditorObject[])) => void;
   selectedId: string | null;
@@ -59,6 +63,7 @@ export function usePhotoEditorDrawing({
   brushColor,
   brushSize,
   textFont,
+  textSize,
   objects,
   setObjects,
   selectedId,
@@ -76,12 +81,12 @@ export function usePhotoEditorDrawing({
       text: value,
       x: point.x,
       y: point.y,
-      size: 64,
+      size: textSize,
       color: brushColor,
       font: textFont,
       rotation: 0,
     }),
-    [brushColor, textFont]
+    [brushColor, textFont, textSize]
   );
 
   const eraseAtPoint = useCallback(
@@ -268,6 +273,45 @@ export function usePhotoEditorDrawing({
     [objects, onCommit, selectedId, setObjects]
   );
 
+  // Поворот текста ручкой над рамкой: угол — направление от центра текста
+  // к пальцу, отсчитанное от того, где палец начал.
+  const handleTextRotateStart = useCallback(
+    (event: React.PointerEvent) => {
+      const canvas = canvasRef.current;
+      const target = objects.find((item) => item.id === selectedId);
+      if (!canvas || !target || target.type !== 'text') return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = canvas.getBoundingClientRect();
+      const centerX = rect.left + target.x * rect.width;
+      const centerY = rect.top + target.y * rect.height;
+      const angleAt = (x: number, y: number) =>
+        (Math.atan2(y - centerY, x - centerX) * 180) / Math.PI;
+      const startAngle = angleAt(event.clientX, event.clientY);
+      const initialRotation = target.rotation || 0;
+
+      const move = (moveEvent: PointerEvent) => {
+        const rotation = snapAngle(
+          initialRotation + angleAt(moveEvent.clientX, moveEvent.clientY) - startAngle
+        );
+        setObjects((items) =>
+          items.map((item) => (item.id === target.id ? { ...item, rotation } : item))
+        );
+      };
+      const finish = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', finish);
+        window.removeEventListener('pointercancel', finish);
+        window.requestAnimationFrame(() => onCommit());
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
+    },
+    [canvasRef, objects, onCommit, selectedId, setObjects]
+  );
+
   const deleteSelectedText = useCallback(() => {
     if (!selectedId) return;
     const next = objects.filter((item) => item.id !== selectedId);
@@ -284,5 +328,6 @@ export function usePhotoEditorDrawing({
     addText,
     updateSelectedText,
     deleteSelectedText,
+    handleTextRotateStart,
   };
 }

@@ -1,12 +1,16 @@
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
 import { useRealtimeSocket } from '@/shared/api';
 import { decryptChatLastMessagePreview } from '@/services/decryptChatPreview';
 import { useProfileStore } from '@/entities/user';
 import { usePushNotifications, usePushStore } from '@/features/push-notifications';
 import type { ILastMessageDto } from '@/types';
+import { formatCallPreview } from '@/shared/lib';
 import { useEffect } from 'react';
 
-const FALLBACK_BODY = 'Новое сообщение';
+/* На языке интерфейса в момент уведомления, а не при загрузке модуля. */
+const fallbackBody = (t: TFunction) => t('notification.newMessage', 'Новое сообщение');
 const MAX_BODY_LENGTH = 120;
 
 /**
@@ -17,37 +21,44 @@ const MAX_BODY_LENGTH = 120;
  * единственное место, где текст покидает вкладку и попадает в систему:
  * сюда не должен просочиться ни шифртекст, ни служебный плейсхолдер.
  */
-async function resolveNotificationBody(chatId: string, message: ILastMessageDto): Promise<string> {
+async function resolveNotificationBody(
+  chatId: string,
+  message: ILastMessageDto,
+  t: TFunction
+): Promise<string> {
   // Read the server preference even if another device changed it.
   // If the request fails, keep message text out of the system notification.
   try {
     const chat = await services.chatService.getChat(chatId);
-    if (chat.hideNotificationPreview) return FALLBACK_BODY;
+    if (chat.hideNotificationPreview) return fallbackBody(t);
   } catch {
-    return FALLBACK_BODY;
+    return fallbackBody(t);
   }
 
-  if (typeof message?.content !== 'string' || !message.content) return FALLBACK_BODY;
+  if (typeof message?.content !== 'string' || !message.content) return fallbackBody(t);
+
+  // Звонок не зашифрован; подпись — на языке интерфейса.
+  if (message.type === 'call') return formatCallPreview(message.content, t);
 
   try {
     const decrypted = await decryptChatLastMessagePreview(chatId, message);
     const text = decrypted?.content;
 
-    if (typeof text !== 'string' || !text) return FALLBACK_BODY;
+    if (typeof text !== 'string' || !text) return fallbackBody(t);
     // Расшифровать не удалось: сервис возвращает исходный payload либо
     // заглушку с причиной. В уведомлении не место ни тому, ни другому.
-    if (decrypted?.undecryptable) return FALLBACK_BODY;
-    if (text.startsWith('{')) return FALLBACK_BODY;
+    if (decrypted?.undecryptable) return fallbackBody(t);
+    if (text.startsWith('{')) return fallbackBody(t);
 
     // Пока шла расшифровка (в том числе загрузка ключей), другое
     // устройство могло включить скрытие. Проверяем перед выдачей текста;
     // ошибка повторного запроса тоже приводит к безопасной заглушке.
     const chat = await services.chatService.getChat(chatId);
-    if (chat.hideNotificationPreview) return FALLBACK_BODY;
+    if (chat.hideNotificationPreview) return fallbackBody(t);
 
     return text.slice(0, MAX_BODY_LENGTH);
   } catch {
-    return FALLBACK_BODY;
+    return fallbackBody(t);
   }
 }
 
@@ -70,6 +81,7 @@ function isNavigateRequest(data: unknown): data is { type: 'craneapp:navigate'; 
  * переключатель в настройках.
  */
 export function NotificationManager() {
+  const { t } = useTranslation();
   const signedIn = useProfileStore((state) => state.isAuth);
   const { eventBus } = useRealtimeSocket(signedIn);
   // Push (#882): подписка устройства и «на экране ли приложение» — серверу.
@@ -106,7 +118,7 @@ export function NotificationManager() {
       const title = message.senderName || 'CraneApp';
 
       const userId = useProfileStore.getState().user?.id ?? '';
-      void resolveNotificationBody(chatId, message).then((body) => {
+      void resolveNotificationBody(chatId, message, t).then((body) => {
         // Пока шла расшифровка, пользователь мог вернуться во вкладку.
         if (!document.hidden) return;
         const profile = useProfileStore.getState();
@@ -121,7 +133,7 @@ export function NotificationManager() {
         } catch (_) {}
       });
     });
-  }, [eventBus, pushOn]);
+  }, [eventBus, pushOn, t]);
 
   return null;
 }

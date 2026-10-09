@@ -1,2 +1,2 @@
 export { ProfileEditForm } from './ui/ProfileEditForm';
-export { profileFormSchema, type TProfileForm } from './model/profileSchema';
+export { createProfileFormSchema, type TProfileForm } from './model/profileSchema';

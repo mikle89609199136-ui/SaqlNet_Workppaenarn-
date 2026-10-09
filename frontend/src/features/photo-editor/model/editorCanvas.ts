@@ -1,5 +1,5 @@
-import { EDITOR_FONTS } from '@/shared/config';
-import type { IEditorPathObject, IEditorPoint, IEditorTextObject, TEditorObject } from '@/types';
+import { EDITOR_FONTS } from './config';
+import type { IEditorPathObject, IEditorPoint, IEditorTextObject, TEditorObject } from './types';
 
 export function createEditorId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -9,8 +9,20 @@ export function cloneEditorState<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+/** Угол в промежутке (-180, 180]: поворот на 270° — это −90°. */
+export function normalizeAngle(degrees: number): number {
+  const angle = ((((degrees + 180) % 360) + 360) % 360) - 180;
+  return angle === -180 ? 180 : angle;
+}
+
+/**
+ * Поворот текста пальцем: рядом с прямыми углами текст «прилипает» к ним —
+ * попасть ровно в 0° вручную почти невозможно, а нужно чаще всего.
+ */
+export function snapAngle(degrees: number, threshold = 4): number {
+  const angle = normalizeAngle(degrees);
+  const nearest = Math.round(angle / 90) * 90;
+  return Math.abs(angle - nearest) <= threshold ? normalizeAngle(nearest) : Math.round(angle);
 }
 
 export function drawObject(

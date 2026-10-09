@@ -179,6 +179,7 @@ export function useComposerSendMessage({
         entities: itemEntities,
         type,
         file: attachment?.file,
+        optimizeImage: attachment?.optimizeImage,
         replyToId: replyToId ?? null,
         status,
         blobUrl,

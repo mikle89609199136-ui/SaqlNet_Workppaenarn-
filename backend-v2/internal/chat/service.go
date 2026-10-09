@@ -742,8 +742,9 @@ func (s *Service) createSelfChat(ctx context.Context, userID string) (string, bo
 //
 // All text fields (title, description, avatarURL) are trimmed of
 // surrounding whitespace before validation and storage. An
-// all-whitespace title, a title longer than maxTitleLen runes, or an
-// empty members list results in ErrInvalidInput.
+// all-whitespace title or a title longer than maxTitleLen runes results
+// in ErrInvalidInput. members may be empty: the group then has only its
+// owner.
 //
 // All inserts run in a single transaction. On success it returns the ID
 // of the newly created chat.
@@ -756,8 +757,10 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 
 	// Duplicated in the handler, but kept here because the service is a
 	// public boundary: callers other than the HTTP handler must not be
-	// able to create a group with an invalid title or no members.
-	if title == "" || len(members) == 0 {
+	// able to create a group with an invalid title. An empty members list
+	// is fine: the owner is always added below, so the group starts with
+	// one member and others can be added later.
+	if title == "" {
 		return "", ErrInvalidInput
 	}
 	if utf8.RuneCountInString(title) > maxTitleLen {

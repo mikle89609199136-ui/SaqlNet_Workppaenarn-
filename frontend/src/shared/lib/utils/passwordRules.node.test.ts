@@ -1,15 +1,32 @@
-import i18n from 'i18next';
-import { describe, expect, it } from 'vitest';
+import i18n, { type TFunction } from 'i18next';
+import { beforeAll, describe, expect, it } from 'vitest';
 import enTranslations from '../../../../public/locales/en/translation.json';
 import ruTranslations from '../../../../public/locales/ru/translation.json';
 import {
   checkPassword,
+  createPasswordSchema,
   getPasswordScore,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   PASSWORD_RULES,
-  passwordSchema,
 } from './passwordRules';
+
+// Настоящие словари: тексты правил и ошибок проверяются на обоих языках.
+let ru: TFunction;
+let en: TFunction;
+let passwordSchema: ReturnType<typeof createPasswordSchema>;
+beforeAll(async () => {
+  const instance = i18n.createInstance();
+  await instance.init({
+    lng: 'ru',
+    keySeparator: false,
+    interpolation: { escapeValue: false },
+    resources: { ru: { translation: ruTranslations }, en: { translation: enTranslations } },
+  });
+  ru = instance.getFixedT('ru');
+  en = instance.getFixedT('en');
+  passwordSchema = createPasswordSchema(ru);
+});
 
 /**
  * Требования к паролю.
@@ -79,6 +96,29 @@ describe('требования к паролю', () => {
     expect(getPasswordScore('parol12345!')).toBe(PASSWORD_RULES.length);
     expect(getPasswordScore('')).toBe(0);
     expect(getPasswordScore('parol')).toBe(0);
+  });
+
+  it('правила и ошибки — на языке интерфейса, с числами из политики', () => {
+    expect(PASSWORD_RULES.map((rule) => rule.label(ru))).toEqual([
+      'Не менее 10 символов',
+      'Цифра',
+      'Знак из !@#$%^&* и подобных',
+    ]);
+    expect(PASSWORD_RULES.map((rule) => rule.label(en))).toEqual([
+      'At least 10 characters',
+      'A digit',
+      'A symbol such as !@#$%^&*',
+    ]);
+
+    const issues = (t: TFunction, value: string) => {
+      const result = createPasswordSchema(t).safeParse(value);
+      return result.success ? null : result.error.issues[0].message;
+    };
+    expect(issues(en, 'parol')).toBe('At least 10 characters');
+    expect(issues(en, `${'a1!'.repeat(22)}xyz`)).toBe('At most 64 characters');
+    expect(issues(en, 'parol 12345!')).toBe('No spaces');
+    expect(issues(en, 'parolparol!')).toBe('Add a digit');
+    expect(issues(en, 'parol123456')).toBe('Add a symbol: ! @ # $ % or similar');
   });
 
   it('в подсказках нет запретов', () => {

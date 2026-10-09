@@ -2939,7 +2939,8 @@ export interface components {
             /**
              * @description User IDs to add as members. The owner is added automatically
              *     and does not need to be listed. Unknown or disabled users are
-             *     silently skipped.
+             *     silently skipped. May be empty: the group is then created with
+             *     the owner as its only member.
              * @example [
              *       "550e8400-e29b-41d4-a716-446655440002"
              *     ]

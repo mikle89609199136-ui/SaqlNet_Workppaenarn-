@@ -34,7 +34,10 @@ export function usePhotoEditor({
     (file: File) => {
       setPendingAttachments((current) =>
         current.map((attachment) =>
-          attachment.file === photoEditorFile ? { ...attachment, file, type: 'image' } : attachment
+          // Снимок из редактора уже сжат (WebP) — второй раз не пересжимаем.
+          attachment.file === photoEditorFile
+            ? { ...attachment, file, type: 'image', optimizeImage: false }
+            : attachment
         )
       );
       setPhotoEditorFile(null);

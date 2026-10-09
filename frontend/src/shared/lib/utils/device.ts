@@ -1,14 +1,21 @@
-/** A short, human-readable label for the browser receiving a session. */
+/**
+ * A short, human-readable label for the browser receiving a session.
+ *
+ * Без языка: название уходит на сервер при входе и хранится как данные —
+ * его видно в списке сеансов и на другом устройстве при входе по QR, на
+ * каком бы языке ни был их интерфейс. «Chrome на Windows» читался по-русски
+ * и в английском интерфейсе.
+ */
 export function describeDevice(userAgent: string = globalThis.navigator?.userAgent ?? ''): string {
   const browser =
     [
       ['Edge', /Edg\//],
       ['Opera', /OPR\//],
-      ['Яндекс Браузер', /YaBrowser\//],
+      ['Yandex Browser', /YaBrowser\//],
       ['Firefox', /Firefox\//],
       ['Chrome', /Chrome\//],
       ['Safari', /Safari\//],
-    ].find(([, pattern]) => (pattern as RegExp).test(userAgent))?.[0] ?? 'Браузер';
+    ].find(([, pattern]) => (pattern as RegExp).test(userAgent))?.[0] ?? 'Browser';
 
   const system =
     [
@@ -20,7 +27,7 @@ export function describeDevice(userAgent: string = globalThis.navigator?.userAge
       ['Linux', /Linux/],
     ].find(([, pattern]) => (pattern as RegExp).test(userAgent))?.[0] ?? '';
 
-  return system ? `${browser} на ${system}` : (browser as string);
+  return system ? `${browser} · ${system}` : (browser as string);
 }
 
 export function describeDeviceType(

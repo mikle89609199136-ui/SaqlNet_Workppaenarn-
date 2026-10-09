@@ -206,8 +206,8 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 //
 // The title is trimmed of leading and trailing whitespace before
 // validation and storage; an all-whitespace title is rejected. The
-// maxTitleLen limit applies to the trimmed value, and the members list
-// must not be empty.
+// maxTitleLen limit applies to the trimmed value. The members list may be
+// empty (a group of one: just the owner), but must be present.
 //
 // On success it returns 201 with the new chat ID and the stored title.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
