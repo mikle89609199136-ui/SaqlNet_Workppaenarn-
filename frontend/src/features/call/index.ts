@@ -9,4 +9,7 @@ export { CallProvider } from './ui/CallProvider';
 export { ActiveCallView } from './ui/ActiveCallView';
 export { MinimizedCallBar } from './ui/MinimizedCallBar';
 export { CallLobbyView } from './ui/CallLobbyView';
+export { CallHistoryList, CallHistoryItem, CallHistorySkeleton } from './ui/history';
+export { callHistoryInfiniteQuery, flattenCallHistory } from './model/callHistoryQuery';
+export { callKeys } from './model/callKeys';
 export * from './model/types';

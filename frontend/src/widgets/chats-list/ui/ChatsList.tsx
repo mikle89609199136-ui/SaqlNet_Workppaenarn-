@@ -15,8 +15,9 @@ import { Avatar, buttonStyles, Icon, SegmentedControl, Spinner } from '@/shared/
 import type { IChatDto } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { CallHistoryList } from '@/features/call';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChatRowMenuWithActions } from './ChatRowMenuWithActions';
 import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
@@ -32,7 +33,7 @@ const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
   { key: 'chats', fallback: 'Чаты' },
   { key: 'channels', fallback: 'Каналы', hidden: true },
   { key: 'groups', fallback: 'Группы' },
-  { key: 'meetings', fallback: 'Встречи', hidden: true },
+  { key: 'meetings', fallback: 'Встречи' },
   { key: 'archive', fallback: 'Архив' },
 ];
 
@@ -51,6 +52,7 @@ interface Props {
  */
 export function ChatsList({ onOpenCreateGroup }: Props) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const tabsId = useId();
   const me = useProfileStore((state) => state.user);
   const [tab, setTab] = useState<TListTab>('chats');
@@ -104,11 +106,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   };
 
   let content: ReactNode;
-  if (isLoading) {
-    content = <ChatListItemSkeleton />;
-  } else if (error) {
-    content = <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />;
-  } else if (search.isSearching) {
+  if (search.isSearching) {
     /* Пока идёт поиск, список подменяется найденным — в любой вкладке:
        ищут человека или чат, а не раздел. Открытая переписка справа при
        этом остаётся на месте. */
@@ -122,6 +120,12 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
         people={search.people}
       />
     );
+  } else if (tab === 'meetings') {
+    content = <CallHistoryList onOpenChat={(chatId) => navigate(ROUTES.CHAT_BY_ID(chatId))} />;
+  } else if (isLoading) {
+    content = <ChatListItemSkeleton />;
+  } else if (error) {
+    content = <ErrorChatListPlaceholder message={error} onRetry={() => void refetchChats()} />;
   } else if (tab === 'groups') {
     content = (
       <>
@@ -235,7 +239,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       <PushPrompt />
 
       <div
-        aria-busy={isLoading}
+        aria-busy={tab === 'meetings' ? false : isLoading}
         aria-labelledby={`${tabsId}-${tab}`}
         className="styled-scrollbar relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
         id={`${tabsId}-panel`}

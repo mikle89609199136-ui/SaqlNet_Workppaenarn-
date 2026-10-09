@@ -123,12 +123,21 @@ describe('ChatsList widget', () => {
       queryClient.setQueryData(chatKeys.archived(), [archived]);
     });
 
-    it('показывает Чаты, Группы и Архив; каналов и встреч пока нет', () => {
+    it('показывает Чаты, Группы, Встречи и Архив; каналов пока нет', () => {
       renderChatsList(vi.fn(), queryClient);
 
       const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
-      expect(tabs).toEqual(['Чаты', 'Группы', 'Архив']);
+      expect(tabs).toEqual(['Чаты', 'Группы', 'Встречи', 'Архив']);
       expect(screen.getByRole('tab', { name: 'Чаты' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('переключается на вкладку «Встречи» и отображает экран звонков', async () => {
+      renderChatsList(vi.fn(), queryClient);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Встречи' }));
+
+      expect(screen.getByRole('tabpanel', { name: 'Встречи' })).toBeInTheDocument();
+      expect(await screen.findByText('Звонков пока нет')).toBeInTheDocument();
     });
 
     it('панель вкладки названа выбранной вкладкой', () => {
