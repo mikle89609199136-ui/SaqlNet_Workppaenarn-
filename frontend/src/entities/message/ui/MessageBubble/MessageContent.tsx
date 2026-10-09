@@ -1,4 +1,5 @@
 import { memo, useState, type ReactNode } from 'react';
+import i18n from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
   buildRichBlocks,
@@ -37,7 +38,7 @@ function withHashtags(text: string, keyPrefix: string): ReactNode[] {
           if (typeof searchFn === 'function') {
             searchFn(hashtag);
           } else {
-            alert(`Поиск по хэштегу: ${hashtag}`);
+            alert(`${i18n.t('hashtagSearch', 'Поиск по хэштегу')}: ${hashtag}`);
           }
         }}
       >

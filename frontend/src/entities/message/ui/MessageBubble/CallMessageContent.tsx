@@ -14,7 +14,7 @@ interface Props {
    подложке акцента, заголовок и длительность, время справа внизу. */
 export const CallMessageContent = ({ message, trailing }: Props) => {
   const { t } = useTranslation();
-  const duration = formatCallDuration(parseCallContent(message.content).duration);
+  const duration = formatCallDuration(parseCallContent(message.content).duration, t);
   return (
     <div className="message-call-content flex items-center gap-3">
       <span

@@ -1,7 +1,8 @@
 import { registerChatResolver } from '@/entities/chat';
 import { registerAuthInterceptor } from '@/features/auth';
 import { startCryptoAutoInit } from '@/services/serviceContainer';
-import { exchangeLegacySession } from '@/shared/api';
+import { clearLegacySessionToken } from '@/shared/api';
+import { App } from './App';
 import {
   preventStrayFileDrop,
   registerServiceWorker,
@@ -36,20 +37,15 @@ reloadOnStaleBuild();
 // Ключи шифрования — в хранилище, которое браузер не чистит без спроса.
 void requestPersistentStorage();
 
-/* Сессия — в cookie (#705). Вошедший до перехода хранит токен в
-   localStorage: он меняется на cookie до первого запроса, иначе запросы
-   ушли бы без сессии, вернули 401 — и человека выкинуло бы из аккаунта.
-   Поэтому всё, что ходит в API, стартует после обмена: подготовка ключей
-   шифрования и само приложение — роутер загружает данные уже при импорте.
-   Без старого токена обмена нет — сразу. */
-void exchangeLegacySession().finally(async () => {
-  // Ключи шифрования готовятся здесь, а не при импорте контейнера сервисов:
-  // импорт не должен ничего запускать.
-  startCryptoAutoInit();
-  const { App } = await import('./App');
-  createRoot(document.getElementById('appRoot')!).render(
-    <StrictMode>
-      <App />
-    </StrictMode>
-  );
-});
+// У старых клиентов токен мог остаться в localStorage. Сервер больше не
+// принимает Bearer, поэтому не читаем его и сразу удаляем при запуске.
+clearLegacySessionToken();
+
+// Ключи шифрования готовятся здесь, а не при импорте контейнера сервисов:
+// импорт не должен ничего запускать.
+startCryptoAutoInit();
+createRoot(document.getElementById('appRoot')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);

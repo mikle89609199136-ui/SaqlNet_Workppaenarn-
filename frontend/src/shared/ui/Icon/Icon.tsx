@@ -99,6 +99,7 @@ import {
   Ban,
   Laptop,
   Smartphone,
+  MoreHorizontal,
   Heart,
   Sticker,
 } from 'lucide-react';
@@ -207,6 +208,7 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   ban: Ban,
   laptop: Laptop,
   smartphone: Smartphone,
+  more: MoreHorizontal,
   heart: Heart,
   sticker: Sticker,
 };

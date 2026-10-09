@@ -91,6 +91,7 @@ func TestLogoutAllCanBeActivatedAfterCompatibleRollout(t *testing.T) {
 	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs("user-id").

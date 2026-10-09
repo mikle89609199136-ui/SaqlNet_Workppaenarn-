@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test';
+import type { APIRequestContext, Browser, BrowserContext, Cookie, Page } from '@playwright/test';
 import type { IAccount } from './accounts';
 
 /**
@@ -10,13 +10,11 @@ import type { IAccount } from './accounts';
  * IndexedDB — а ключи шифрования лежат именно там. Восстановленная из
  * `storageState` сессия выглядит рабочей ровно до первой расшифровки.
  *
- * Поэтому здесь только токен: он кладётся до загрузки страницы, а ключи
- * приложение создаёт само — теми же путями, что у настоящего
- * пользователя.
+ * Поэтому здесь только cookie сессии и профиль: они ставятся до загрузки
+ * страницы, а ключи приложение создаёт само — теми же путями, что у
+ * настоящего пользователя.
  */
 
-/** Ключи, под которыми приложение хранит сессию. */
-const TOKEN_KEY = 'craneapp_auth_token';
 const USER_KEY = 'craneapp_user_data';
 
 export interface IUser {
@@ -26,7 +24,7 @@ export interface IUser {
 }
 
 export interface ISignedInAccount {
-  token: string;
+  sessionCookie: Cookie;
   user: IUser;
 }
 
@@ -76,19 +74,22 @@ export async function loginViaApi(
     );
   }
 
-  const body = (await response.json()) as { token?: string; user?: IUser; twoFARequired?: boolean };
+  const body = (await response.json()) as { user?: IUser; twoFARequired?: boolean };
+  const sessionCookie = (await request.storageState()).cookies.find(({ name }) =>
+    name.endsWith('craneapp_session')
+  );
 
-  // При включённой двухфакторной сервер отвечает 200, но без токена:
-  // проверять только код ответа недостаточно.
-  if (!body.token || !body.user) {
+  // При включённой двухфакторной сервер отвечает 200, но без пользователя и
+  // cookie: проверять только код ответа недостаточно.
+  if (!sessionCookie || !body.user) {
     throw new Error(
       body.twoFARequired
         ? `У ${account.username} включена двухфакторная аутентификация — такая учётная запись для прогона не годится.`
-        : `Ответ на вход ${account.username} не содержит токена: ${JSON.stringify(body)}`
+        : `Ответ на вход ${account.username} не содержит cookie сессии: ${JSON.stringify(body)}`
     );
   }
 
-  return { token: body.token, user: body.user };
+  return { sessionCookie, user: body.user };
 }
 
 /**
@@ -113,20 +114,19 @@ export async function openContextFor(
  *
  * Именно addInitScript: приложение читает localStorage на верхнем уровне
  * модуля, до первого рендера. Запись после goto опоздала бы — стор уже
- * создан с пустым токеном.
+ * создан без профиля и посчитал бы сессию отсутствующей. Cookie добавляется
+ * отдельно до первого запроса.
  */
 export async function applySession(
   context: BrowserContext,
   account: ISignedInAccount
 ): Promise<void> {
+  await context.addCookies([account.sessionCookie]);
   await context.addInitScript(
-    ([tokenKey, userKey, token, user]) => {
-      // Токен хранится сырой строкой: JSON.stringify превратил бы его в
-      // строку в кавычках, и сервер отвечал бы 401.
-      localStorage.setItem(tokenKey as string, token as string);
+    ([userKey, user]) => {
       localStorage.setItem(userKey as string, user as string);
     },
-    [TOKEN_KEY, USER_KEY, account.token, JSON.stringify(account.user)] as const
+    [USER_KEY, JSON.stringify(account.user)] as const
   );
 }
 

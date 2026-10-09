@@ -7,6 +7,7 @@ import { fakeSocket } from '@/test/harness/fakeSocket';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { usePushStore } from '@/features/push-notifications';
+import { services } from '@/services/serviceContainer';
 import { NotificationManager } from './NotificationManager';
 
 const chat = makeChat();
@@ -67,6 +68,89 @@ describe('системные уведомления', () => {
 
     expect(notificationCalls()[0][0]).toBe('Алиса');
     expect(String(notificationCalls()[0][1]?.body)).toBe('привет');
+  });
+
+  it('скрывает текст только выбранного чата и позволяет включить его обратно', async () => {
+    let hidden = true;
+    server.use(
+      http.get(api('/chats/:chatId'), ({ params }) =>
+        HttpResponse.json({
+          chat: { ...chat, hideNotificationPreview: params.chatId === chat.id && hidden },
+        })
+      )
+    );
+    render(<NotificationManager />);
+
+    const emit = (chatId: string) =>
+      fakeSocket.emit('new_message', {
+        message: makeMessage({ chatId, content: 'секрет', senderName: 'Алиса' }),
+        chatId,
+      });
+    emit(chat.id);
+    await waitFor(() => expect(notificationCalls()).toHaveLength(1));
+    expect(notificationCalls()[0][0]).toBe('Алиса');
+    expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
+
+    emit('another-chat');
+    await waitFor(() => expect(notificationCalls()).toHaveLength(2));
+    expect(notificationCalls()[1][1].body).toBe('секрет');
+
+    hidden = false;
+    emit(chat.id);
+    await waitFor(() => expect(notificationCalls()).toHaveLength(3));
+    expect(notificationCalls()[2][1].body).toBe('секрет');
+  });
+
+  it.each(['hidden', 'unavailable'] as const)(
+    'после расшифровки скрывает текст, если настройка стала %s',
+    async (outcome) => {
+      let finishDecryption!: () => void;
+      const decryption = new Promise<void>((resolve) => {
+        finishDecryption = resolve;
+      });
+      const decrypt = vi
+        .spyOn(services.messageService, 'processLastMessageForDisplay')
+        .mockImplementation(async (_chatId, message) => {
+          await decryption;
+          return { ...message, content: 'секрет' };
+        });
+      let changed = false;
+      let reads = 0;
+      server.use(
+        http.get(api('/chats/:chatId'), () => {
+          reads++;
+          if (changed && outcome === 'unavailable') return new HttpResponse(null, { status: 500 });
+          return HttpResponse.json({ chat: { ...chat, hideNotificationPreview: changed } });
+        })
+      );
+      render(<NotificationManager />);
+      fakeSocket.emit('new_message', {
+        message: makeMessage({ chatId: chat.id, content: CIPHERTEXT }),
+        chatId: chat.id,
+      });
+
+      await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+      expect(reads).toBe(1);
+      expect(notificationCalls()).toHaveLength(0);
+      // Другое устройство сохраняет настройку, пока первое расшифровывает сообщение.
+      changed = true;
+      await act(async () => finishDecryption());
+
+      await waitFor(() => expect(notificationCalls()).toHaveLength(1));
+      expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
+      expect(reads).toBe(2);
+    }
+  );
+
+  it('не раскрывает текст, если настройку не удалось получить', async () => {
+    server.use(http.get(api('/chats/:chatId'), () => new HttpResponse(null, { status: 500 })));
+    render(<NotificationManager />);
+    fakeSocket.emit('new_message', {
+      message: makeMessage({ chatId: chat.id, content: 'секрет' }),
+      chatId: chat.id,
+    });
+    await waitFor(() => expect(notificationCalls()).toHaveLength(1));
+    expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
   });
 
   it('should stay silent while the tab is visible', async () => {

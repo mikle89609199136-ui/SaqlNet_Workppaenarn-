@@ -36,18 +36,26 @@ describe('MediaService: upload', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should throw error when server returns failure status', async () => {
+  it('should preserve the root error code when an upload is too large', async () => {
     server.use(
       http.post(api('/media'), () =>
         HttpResponse.json(
-          { error: 'file_too_large', message: 'Файл слишком большой' },
+          {
+            code: 'file_too_large',
+            message: 'file exceeds 100 MB limit',
+            requestId: 'media-upload-test',
+          },
           { status: 413 }
         )
       )
     );
 
     const file = new File(['large content'], 'large.png', { type: 'image/png' });
-    await expect(services.mediaService.upload(file)).rejects.toThrow('file_too_large');
+    const failure = await services.mediaService.upload(file).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('file exceeds 100 MB limit');
+    expect((failure as Error & { code?: string }).code).toBe('file_too_large');
   });
 });
 

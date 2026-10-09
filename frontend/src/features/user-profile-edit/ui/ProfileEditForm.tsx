@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -14,9 +14,10 @@ import {
   validateAvatarFile,
 } from '@/entities/user';
 import { describeApiError } from '@/shared/api';
+import { encodeAvatar } from '@/shared/lib';
 import { services } from '@/services/serviceContainer';
 import type { IUserDto } from '@/types';
-import { profileFormSchema, type TProfileForm } from '../model/profileSchema';
+import { createProfileFormSchema, type TProfileForm } from '../model/profileSchema';
 
 interface Props {
   user: Partial<IUserDto>;
@@ -43,6 +44,8 @@ function getUsernameErrorMessage(err: unknown, t: TFunction): string {
 
 export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
   const { t } = useTranslation();
+  /* Сообщения схемы — на языке интерфейса: сменился язык — новая схема. */
+  const schema = useMemo(() => createProfileFormSchema(t), [t]);
   const queryClient = useQueryClient();
   const setUser = useProfileStore((state) => state.setUser);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -70,7 +73,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
     setError,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<TProfileForm>({
-    resolver: zodResolver(profileFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       firstName: user.firstName || '',
       lastName: user.lastName || '',
@@ -187,11 +190,16 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
   }
 
   async function handleAvatarSelect(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const picked = event.target.files?.[0];
     event.target.value = '';
 
-    if (!file) return;
+    if (!picked) return;
 
+    /* Сперва пересжать, потом проверять: снимок с телефона весит 5–10 МБ и
+       не проходил ограничение в 5 МБ, хотя после пересжатия в нём десятки
+       килобайт (см. encodeImage). GIF не пересжимается — для него
+       ограничение действует как раньше. */
+    const file = await encodeAvatar(picked);
     const validation = validateAvatarFile(file);
     if (!validation.valid) {
       const errorMessage =

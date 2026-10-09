@@ -57,10 +57,9 @@ LoginRequest:
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user, token]
+  required: [user]
   properties:
     user: { $ref: '#/User' }
-    token: { type: string }
 AuthSession:
   type: object
   required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
@@ -189,6 +188,7 @@ Chat:
     role: { type: string }
     isPinned: { type: boolean }
     isArchived: { type: boolean }
+    hideNotificationPreview: { type: boolean, default: false, description: "Hide message text in notifications for the authenticated user in this chat." }
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
@@ -797,11 +797,11 @@ CreateGroupRequest:
       example: 'https://cdn.example.com/avatars/team.png'
     members:
       type: array
-      minItems: 1
       description: |
         User IDs to add as members. The owner is added automatically
         and does not need to be listed. Unknown or disabled users are
-        silently skipped.
+        silently skipped. May be empty: the group is then created with
+        the owner as its only member.
       items: { type: string, format: uuid }
       example: ['550e8400-e29b-41d4-a716-446655440002']
 UpdateGroupRequest:
@@ -975,7 +975,6 @@ QrOfferStatusResponse:
   properties:
     status: { type: string, enum: [pending, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
 QrOfferConfirmRequest:
   type: object
@@ -988,5 +987,4 @@ QrStatusResponse:
   properties:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }

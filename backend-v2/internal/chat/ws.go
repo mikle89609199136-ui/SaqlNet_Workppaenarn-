@@ -9,12 +9,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
-	"craneapp/backend-v2/internal/platform/config"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/presence"
 
@@ -29,11 +27,7 @@ const (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		return allowedWSOrigin(origin)
+		return authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin"))
 	},
 }
 
@@ -42,6 +36,8 @@ type tokenVerifier interface {
 }
 
 type Client struct {
+	token         string
+	claims        cryptoclient.TokenClaims
 	UserID        string
 	Conn          *websocket.Conn
 	Send          chan []byte // не закрывается; завершение сигнализируется через done
@@ -82,7 +78,8 @@ type WSServer struct {
 	unreg          chan *Client
 	callRooms      *CallRoomManager
 	pendingInvites map[string]*pendingInvite // по получателю (#850)
-	inviteMu       sync.Mutex
+	heldAccepts    map[string]*heldAccept    // по принявшему (#939); создаётся при первой записи
+	inviteMu       sync.Mutex                // и pendingInvites, и heldAccepts
 	presence       presence.Store
 	activity       presenceActivity // время активности и собеседники; nil — не ведётся
 	pingInterval   time.Duration    // интервал heartbeat; 0 → wsPingInterval
@@ -187,8 +184,8 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Токен: cookie сессии браузера (#705) или заголовок Bearer. В адресе
-	// (?token=) — больше нет: адреса попадают в журналы.
+	// Токен доступен только в HttpOnly-cookie (#705): ни заголовок, ни URL
+	// больше не являются способом аутентификации сокета.
 	token, source := authctx.TokenFromRequest(r)
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
@@ -196,7 +193,7 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	// Cookie браузер подставляет сам, и в сокет с ней мог бы подключиться
 	// чужой сайт — только свой или точно разрешённый адрес, без "*".
-	if source == authctx.TokenCookie && !authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin")) {
+	if source != authctx.TokenCookie || !authctx.OwnOrAllowedOrigin(r, r.Header.Get("Origin")) {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
 	}
@@ -237,7 +234,7 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connID := newConnectionID()
-	client := &Client{UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
+	client := &Client{token: token, claims: claims, UserID: claims.Subject, Conn: conn, Send: make(chan []byte, 256), done: make(chan struct{}), heartbeatDone: make(chan struct{}), ConnectionID: connID}
 	// Второе окно или вкладка — не новость: о входе сообщаем только тогда,
 	// когда до этого соединений не было вовсе.
 	firstConnection := !ws.isOnlineElsewhere(r.Context(), client.UserID, client)
@@ -293,6 +290,10 @@ func (ws *WSServer) readPump(client *Client) {
 		ws.unreg <- client
 		_ = client.Conn.Close()
 	}()
+	// Recheck after registration: logout may commit between handshake and registration.
+	if !ws.authorizeClient(client) {
+		return
+	}
 	for {
 		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
@@ -300,6 +301,10 @@ func (ws *WSServer) readPump(client *Client) {
 		}
 		if err := client.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline)); err != nil {
 			break
+		}
+
+		if !ws.authorizeClient(client) {
+			return
 		}
 
 		var msg map[string]interface{}
@@ -368,6 +373,8 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 		"self":   map[string]string{"userId": client.UserID},
 	})
 	client.Send <- joined
+	// Принял звонок — звонящему «принял» только теперь (#939).
+	ws.releaseAccept(client.UserID, roomID)
 	// Notify existing peers
 	peerJoined, _ := json.Marshal(map[string]interface{}{
 		"type":   "call_peer_joined",
@@ -567,6 +574,9 @@ func (ws *WSServer) heartbeat(client *Client) {
 				return
 			default:
 			}
+			if !ws.authorizeClient(client) {
+				return
+			}
 			ws.sendPresenceHeartbeat(client)
 			ws.touchPresence(client.UserID)
 			select {
@@ -683,19 +693,6 @@ func (ws *WSServer) sendToUserLocked(userID string, message []byte) {
 			}
 		}
 	}
-}
-
-func allowedWSOrigin(origin string) bool {
-	if origin == "" {
-		return true
-	}
-	for _, allowed := range strings.Split(config.Required("ALLOWED_ORIGINS"), ",") {
-		allowed = strings.TrimSpace(allowed)
-		if allowed == "*" || allowed == origin {
-			return true
-		}
-	}
-	return false
 }
 
 // isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —

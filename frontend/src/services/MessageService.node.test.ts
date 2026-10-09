@@ -9,6 +9,7 @@ import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
 import { MessageService } from './MessageService';
 import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import type { ILastMessageDto } from '@/entities/chat/model/types';
 import type { IMessageEntity } from '@/shared/lib/richText';
 
 const TARGET_CHAT = 'chat-target';
@@ -537,5 +538,32 @@ describe('MessageService: стикеры и GIF (#593)', () => {
       mediaEncrypted: false,
       mediaUnavailable: false,
     });
+  });
+});
+
+describe('MessageService: обработка последнего сообщения для превью (#971)', () => {
+  it('сохраняет форматирование (entities) из расшифровки или открытого сообщения', async () => {
+    const cryptoWithEntities = {
+      decryptMessage: vi.fn(async (_chatId: string, content: string) => ({
+        text: content,
+        entities: [{ type: 'bold' as const, offset: 0, length: 6 }],
+      })),
+    } as unknown as CryptoService;
+
+    const service = new MessageService(createApiClient(), cryptoWithEntities);
+    const lastMsg: ILastMessageDto = {
+      id: 'msg-1',
+      content: 'Привет мир',
+      type: 'text',
+      senderId: 'user-1',
+      senderName: 'User',
+      reactions: [],
+    };
+
+    const processed = await service.processLastMessageForDisplay('chat-1', lastMsg, {
+      type: 'private',
+    });
+    expect(processed.content).toBe('Привет мир');
+    expect(processed.entities).toEqual([{ type: 'bold', offset: 0, length: 6 }]);
   });
 });

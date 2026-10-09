@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clearAllDrafts, writeDraft } from '../../model/chatDraftsStore';
 import { useTypingStore } from '../../model/typingStore';
 import { ChatListItem } from './ChatListItem';
 
@@ -28,6 +29,7 @@ function renderRow(chat = makeChat({ id: CHAT_ID, title: 'Максим' }), open
 afterEach(() => {
   // Стор общий для всех тестов (isolate: false).
   act(() => useTypingStore.getState().clearTyping(CHAT_ID));
+  clearAllDrafts();
 });
 
 const last = (overrides: Record<string, unknown>) =>
@@ -228,6 +230,46 @@ describe('строка списка чатов', () => {
       act(() => useTypingStore.getState().setTyping(CHAT_ID, 'u-2', 'Игорь'));
 
       expect(screen.getByText('печатает...')).toBeInTheDocument();
+    });
+  });
+
+  describe('форматирование в превью (#971)', () => {
+    it('рендерит форматирование (strong) в последнем сообщении', () => {
+      const { container } = renderRow(
+        makeChat({
+          id: CHAT_ID,
+          title: 'Команда',
+          lastMessage: last({
+            content: 'важное сообщение',
+            entities: [{ type: 'bold', offset: 0, length: 6 }],
+          }),
+        })
+      );
+
+      const strong = container.querySelector('strong');
+      expect(strong).toBeInTheDocument();
+      expect(strong).toHaveTextContent('важное');
+    });
+
+    it('рендерит форматирование (em) в черновике после задержки набора', () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = renderRow(makeChat({ id: CHAT_ID, title: 'Команда' }));
+
+        act(() => {
+          writeDraft(CHAT_ID, {
+            text: 'мой черновик',
+            entities: [{ type: 'italic', offset: 4, length: 8 }],
+          });
+          vi.advanceTimersByTime(500);
+        });
+
+        const em = container.querySelector('em');
+        expect(em).toBeInTheDocument();
+        expect(em).toHaveTextContent('черновик');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

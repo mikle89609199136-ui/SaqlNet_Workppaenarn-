@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -18,16 +19,27 @@ type event struct {
 
 func main() {
 	if len(os.Args) != 5 {
-		log.Fatal("usage: ws_client <ws-url> <token> <expected-type> <expected-chat-id>")
+		log.Fatal("usage: ws_client <ws-url> <cookie> <expected-type> <expected-chat-id>")
 	}
 
 	wsURL := os.Args[1]
-	token := os.Args[2]
+	cookie := os.Args[2]
 	expectedType := os.Args[3]
 	expectedChatID := os.Args[4]
 
-	// Токен — в заголовке: в адресе (?token=) сервер его больше не принимает (#705).
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + token}})
+	parsed, err := url.Parse(wsURL)
+	if err != nil {
+		log.Fatalf("invalid ws URL: %v", err)
+	}
+	originScheme := "http"
+	if parsed.Scheme == "wss" {
+		originScheme = "https"
+	}
+	header := http.Header{
+		"Cookie": {cookie},
+		"Origin": {originScheme + "://" + parsed.Host},
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}

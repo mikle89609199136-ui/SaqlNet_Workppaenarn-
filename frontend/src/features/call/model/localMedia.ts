@@ -1,3 +1,4 @@
+import i18n from 'i18next';
 import type {
   ILocalMediaState,
   IMediaDeviceOption,
@@ -731,14 +732,16 @@ export class LocalMediaManager {
         if (d.kind === 'audioinput') {
           audioInputs.push({
             deviceId: d.deviceId,
-            label: d.label || `Микрофон ${audioInputs.length + 1}`,
+            // Браузер не назвал устройство (нет разрешения) — номер на языке интерфейса.
+            label:
+              d.label || `${i18n.t('call.lobby.microphone', 'Микрофон')} ${audioInputs.length + 1}`,
             kind: d.kind,
             groupId: d.groupId,
           });
         } else if (d.kind === 'videoinput') {
           videoInputs.push({
             deviceId: d.deviceId,
-            label: d.label || `Камера ${videoInputs.length + 1}`,
+            label: d.label || `${i18n.t('call.lobby.video', 'Камера')} ${videoInputs.length + 1}`,
             kind: d.kind,
             groupId: d.groupId,
           });
