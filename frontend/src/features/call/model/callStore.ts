@@ -9,7 +9,7 @@ import {
   userKeys,
   type IBlockedUserDto,
 } from '@/entities/user';
-import { chatsQuery, chatKeys, type IChatDto } from '@/entities/chat';
+import { chatsQuery, chatQuery, chatKeys, type IChatDto } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import { broadcastCallEvent, type TCallBroadcastEvent } from './callBroadcast';
 import {
@@ -108,17 +108,43 @@ export function _resetCancelledRoomsForTest() {
   cancelledRoomIds.clear();
 }
 
-async function isCallRoomActiveWithCaller(roomId: string, callerId: string): Promise<boolean> {
+async function getActiveCallRoomWithCaller(
+  roomId: string,
+  callerId: string
+): Promise<{ id: string; chatId: string; participants?: Array<{ userId: string }> } | null> {
   try {
     const response = await services.callService.getRoom(roomId);
-    if (!response?.room) return false;
-    return Boolean(response.room.participants?.some((p) => p.userId === callerId));
+    if (!response?.room) return null;
+    const isParticipant = Boolean(response.room.participants?.some((p) => p.userId === callerId));
+    return isParticipant ? response.room : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function findDirectChat(peerId: string): Promise<IChatDto | null> {
+async function findDirectChat(peerId: string, chatId?: string): Promise<IChatDto | null> {
+  if (chatId) {
+    const cachedDetail = queryClient.getQueryData<IChatDto>(chatKeys.detail(chatId));
+    if (cachedDetail && cachedDetail.type === 'private' && cachedDetail.peerId === peerId) {
+      return cachedDetail;
+    }
+
+    const cachedList = queryClient.getQueryData<IChatDto[]>(chatKeys.list());
+    const fromList = cachedList?.find(
+      (c) => c.id === chatId && c.type === 'private' && c.peerId === peerId
+    );
+    if (fromList) return fromList;
+
+    try {
+      const chat = await queryClient.ensureQueryData(chatQuery(chatId));
+      if (chat && chat.type === 'private' && chat.peerId === peerId) {
+        return chat;
+      }
+    } catch {
+      // Игнорируем сетевую ошибку при получении чата
+    }
+  }
+
   let chats = queryClient.getQueryData<IChatDto[]>(chatKeys.list());
   let direct = chats?.find((c) => c.type === 'private' && c.peerId === peerId);
   if (direct) return direct;
@@ -394,13 +420,13 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       }
 
       // 1. Проверяем комнату через GET /calls/rooms/{id} (#854)
-      const isRoomActive = await isCallRoomActiveWithCaller(payload.roomId, payload.from);
-      if (!isRoomActive) {
+      const room = await getActiveCallRoomWithCaller(payload.roomId, payload.from);
+      if (!room) {
         return;
       }
 
       // 2. Входящий показывать только если есть личный чат с from (#854)
-      const directChat = await findDirectChat(payload.from);
+      const directChat = await findDirectChat(payload.from, room.chatId);
       if (!directChat) {
         return;
       }
@@ -420,14 +446,23 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         // При сетевой ошибке не блокируем вызов ложно
       }
 
-      // 4. Проверяем, не была ли комната отменена за время асинхронных проверок (#854)
+      // 4. Имя и аватар звонящего — из профиля / личного чата, но не из приглашения (#854)
+      // Запрашиваем профиль ДО проверок отмены и FSM, чтобы все ожидания шли раньше финальных проверок
+      const callerInfo = await resolveCallerInfo(payload.from, directChat);
+
+      // 5. Проверяем, не была ли комната отменена за время асинхронных проверок (#854)
       if (cancelledRoomIds.has(payload.roomId)) {
         cancelledRoomIds.delete(payload.roomId);
         return;
       }
 
-      // Проверяем актуальное состояние FSM после асинхронных вызовов
-      if (get().fsm.state !== 'idle' && get().fsm.state !== 'ended') {
+      // 6. Проверяем актуальное состояние FSM после асинхронных вызовов
+      const currentFsm = get().fsm;
+      if (currentFsm.state !== 'idle' && currentFsm.state !== 'ended') {
+        // Если звенит та же комната (дубль при реконнекте сокета) — просто выходим без ложного busy
+        if (currentFsm.roomId === payload.roomId) {
+          return;
+        }
         const currentSocket = get().socket;
         if (currentSocket?.isConnected && payload.from) {
           sendCallInviteResponse(currentSocket, {
@@ -439,9 +474,6 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         }
         return;
       }
-
-      // 5. Имя и аватар звонящего — из профиля / личного чата, но не из приглашения (#854)
-      const callerInfo = await resolveCallerInfo(payload.from, directChat);
 
       get().dispatch({
         type: 'RECEIVE_INCOMING',
