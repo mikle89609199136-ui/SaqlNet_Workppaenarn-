@@ -1,10 +1,18 @@
+import { useFeedKeyboardNavigation } from '../model/useFeedKeyboardNavigation';
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
-import { memo, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageBubble, MessageBubbleSkeleton } from '@/entities/message';
 import { cn } from '@/shared/lib';
@@ -105,6 +113,22 @@ export const MessagesList = memo(
       onMessagesSeen,
     });
 
+    const scrollToFeedIndex = useCallback(
+      (index: number) => virtualizer.scrollToIndex(index, { align: 'auto' }),
+      [virtualizer]
+    );
+    const { activeMessageId, handleFocus, handleKeyDown } = useFeedKeyboardNavigation({
+      feedItems,
+      scrollToIndex: scrollToFeedIndex,
+    });
+    const renderedMessageIds = virtualItems.flatMap(({ index }) =>
+      feedItems[index]?.type === 'message' ? [feedItems[index].id] : []
+    );
+    const tabStopId =
+      activeMessageId && renderedMessageIds.includes(activeMessageId)
+        ? activeMessageId
+        : renderedMessageIds.at(-1);
+
     // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.
     const threadChatId = messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
@@ -141,6 +165,8 @@ export const MessagesList = memo(
           /* Поля ленты — по макету: 12 / 18 / 22 / 28 по бокам, 8 сверху
              и 12 снизу. */
           className="thread-messages styled-scrollbar relative flex-1 min-h-0 overflow-y-auto px-3 pt-2 pb-3 md:px-4.5 lg:px-5.5 xl:px-7"
+          onFocus={handleFocus}
+          onKeyDown={handleKeyDown}
           ref={setContainerRef}
         >
           {isLoading && <MessageBubbleSkeleton />}
@@ -203,6 +229,7 @@ export const MessagesList = memo(
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         showDeliveryStatus={showDeliveryStatus}
+                        tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
                       />
                     )}

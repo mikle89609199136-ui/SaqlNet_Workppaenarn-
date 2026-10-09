@@ -94,4 +94,5 @@ export type TIconTypes =
   | 'devices'
   | 'ban'
   | 'laptop'
-  | 'smartphone';
+  | 'smartphone'
+  | 'more';
