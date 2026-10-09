@@ -1107,39 +1107,110 @@ describe('useCallStore', () => {
         expect(fakeSessionStorage.removeItem).toHaveBeenCalledWith('crane_active_call_session');
       });
 
-      it('restoreActiveSession восстанавливает FSM в reconnecting и запускает таймаут 25с', () => {
+      const savedSession = (extra: Record<string, unknown> = {}) =>
         mockStorage.set(
           'crane_active_call_session',
           JSON.stringify({
             roomId: 'saved-room-1',
             peerId: 'saved-peer-1',
             peerName: 'Боб',
+            peerAvatar: null,
             callKind: 'video',
             roomType: 'p2p',
             callStartedAt: 1234567,
             isCaller: false,
+            chatId: 'saved-chat-1',
+            title: null,
             savedAt: Date.now(),
+            ...extra,
           })
         );
 
+      afterEach(() => {
+        useCallStore.getState().dismissResumableCall();
+        vi.useRealTimers();
+      });
+
+      it('после перезагрузки в звонок не входит сам — предлагает вернуться, пока собеседник ждёт', () => {
+        vi.useFakeTimers();
+        savedSession({ leftAt: Date.now() - 5_000 });
         mockSend.mockClear();
+
         const restored = useCallStore.getState().restoreActiveSession();
 
         expect(restored).toBe(true);
         const state = useCallStore.getState();
+        expect(state.fsm.state).toBe('idle');
+        expect(state.activeCall).toBeNull();
+        expect(state.resumableCall).toMatchObject({
+          roomId: 'saved-room-1',
+          peerId: 'saved-peer-1',
+          peerName: 'Боб',
+          callKind: 'video',
+        });
+        expect(state.resumableCall?.expiresAt).toBe(Date.now() - 5_000 + RECONNECT_TIMEOUT_MS);
+        expect(mockSend).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'call_join' }));
+
+        // Собеседник перестал ждать — предложение исчезает, сессия стёрта.
+        vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS - 5_000);
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+      });
+
+      it('ушли со страницы давно — собеседник уже не ждёт, предлагать нечего', () => {
+        savedSession({ leftAt: Date.now() - RECONNECT_TIMEOUT_MS - 1 });
+
+        expect(useCallStore.getState().restoreActiveSession()).toBe(false);
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+      });
+
+      it('«Вернуться» — звонок восстанавливается: reconnecting, таймаут 25 с и call_join', () => {
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+        mockSend.mockClear();
+
+        useCallStore.getState().resumeCall();
+
+        const state = useCallStore.getState();
+        expect(state.resumableCall).toBeNull();
         expect(state.fsm.state).toBe('reconnecting');
         expect(state.fsm.roomId).toBe('saved-room-1');
         expect(state.fsm.peerId).toBe('saved-peer-1');
         expect(state.activeCall?.roomId).toBe('saved-room-1');
         expect(state.reconnectTimeoutTimer).not.toBeNull();
-
-        // По сокету отправлен call_join
         expect(mockSend).toHaveBeenCalledWith(
-          expect.objectContaining({
-            type: 'call_join',
-            roomId: 'saved-room-1',
-          })
+          expect.objectContaining({ type: 'call_join', roomId: 'saved-room-1' })
         );
+      });
+
+      it('«Не возвращаться» — предложение и сессия убраны, в звонок не входит', () => {
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+        mockSend.mockClear();
+
+        useCallStore.getState().dismissResumableCall();
+
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(useCallStore.getState().fsm.state).toBe('idle');
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+        expect(mockSend).not.toHaveBeenCalled();
+      });
+
+      it('начался другой звонок — предложение вернуться снимается, а сессию нового его таймер не стирает', () => {
+        vi.useFakeTimers();
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+
+        useCallStore.getState().dispatch({
+          type: 'RECEIVE_INCOMING',
+          payload: { roomId: 'new-room', from: 'peer-new', fromName: 'Новый', kind: 'audio' },
+        });
+        expect(useCallStore.getState().resumableCall).toBeNull();
+
+        savedSession({ roomId: 'new-room' });
+        vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS + 1_000);
+        expect(mockStorage.has('crane_active_call_session')).toBe(true);
       });
 
       it('restoreActiveSession возвращает false, если хранилище пусто', () => {
