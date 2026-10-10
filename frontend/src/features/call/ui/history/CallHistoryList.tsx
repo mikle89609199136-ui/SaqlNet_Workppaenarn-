@@ -78,11 +78,7 @@ export function CallHistoryList({ onOpenChat }: ICallHistoryListProps) {
   return (
     <div className="flex flex-col gap-0.5" data-testid="call-history-list">
       {calls.map((call) => (
-        <CallHistoryItem
-          item={call}
-          key={call.id || call.roomId}
-          onOpenChat={onOpenChat}
-        />
+        <CallHistoryItem item={call} key={call.id || call.roomId} onOpenChat={onOpenChat} />
       ))}
 
       {hasNextPage && (
