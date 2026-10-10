@@ -30,6 +30,7 @@ import {
   saveCallSession,
   type IStoredCallSession,
 } from './callSessionStorage';
+import { callKeys } from './callKeys';
 import type {
   IActiveCall,
   ICallCancelledPayload,
@@ -454,6 +455,9 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         }
       } else if (nextFsm.state === 'ended' || nextFsm.state === 'idle') {
         clearCallSession();
+        if (nextFsm.state === 'ended') {
+          void queryClient.invalidateQueries({ queryKey: callKeys.historyAll() });
+        }
       }
 
       set(syncDerivedState(nextFsm));

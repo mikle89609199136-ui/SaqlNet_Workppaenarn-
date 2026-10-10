@@ -105,5 +105,6 @@ export const API_ENDPOINTS = {
   CALL_ROOMS: '/calls/rooms',
   CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
   CALL_ICE_SERVERS: '/calls/ice-servers',
+  CALL_HISTORY: '/calls/history',
   EMOJIS: '/emojis',
 };
