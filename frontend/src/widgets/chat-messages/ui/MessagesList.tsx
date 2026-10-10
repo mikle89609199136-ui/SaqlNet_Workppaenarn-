@@ -60,6 +60,8 @@ interface Props {
    */
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  searchQuery?: string;
+  searchCurrentId?: string | null;
 }
 
 export const MessagesList = memo(
@@ -83,6 +85,8 @@ export const MessagesList = memo(
     handleJumpRequests = false,
     readMark,
     onMessagesSeen,
+    searchQuery,
+    searchCurrentId,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -229,6 +233,8 @@ export const MessagesList = memo(
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         showDeliveryStatus={showDeliveryStatus}
+                        isSearchCurrent={item.id === searchCurrentId}
+                        searchQuery={searchQuery}
                         tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
                       />

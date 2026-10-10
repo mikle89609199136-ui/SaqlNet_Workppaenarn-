@@ -59,6 +59,8 @@ export function ChatThreadPage() {
     loadOlder,
     readMark,
     markMessagesAsRead,
+    searchQuery,
+    searchCurrentId,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -154,6 +156,8 @@ export function ChatThreadPage() {
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
             onMessagesSeen={markMessagesAsRead}
+            searchCurrentId={searchCurrentId}
+            searchQuery={searchQuery}
             onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}

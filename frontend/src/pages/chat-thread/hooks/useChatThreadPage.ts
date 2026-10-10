@@ -22,6 +22,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useMarkAsRead } from './useMarkAsRead';
+import {
+  selectCurrentMatch,
+  useMessageSearchEngine,
+  useMessageSearchStore,
+} from '@/features/message-search';
 import { useThreadMessages } from './useThreadMessages';
 
 interface Params {
@@ -76,6 +81,14 @@ export function useChatThreadPage({
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
   const markMessagesAsRead = useMarkAsRead(chatId, currentUser?.id);
+
+  useMessageSearchEngine({ chatId, loadedMessages: messages, hasOlder });
+  const searchQuery = useMessageSearchStore((state) =>
+    state.chatId === chatId ? state.query.trim() : ''
+  );
+  const searchCurrentId = useMessageSearchStore((state) =>
+    state.chatId === chatId ? (selectCurrentMatch(state)?.id ?? null) : null
+  );
 
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
@@ -172,6 +185,8 @@ export function useChatThreadPage({
     loadOlder,
     readMark,
     markMessagesAsRead,
+    searchQuery,
+    searchCurrentId,
     threadError,
     setError,
     setEditingMessage,

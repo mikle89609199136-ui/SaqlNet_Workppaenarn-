@@ -6,6 +6,7 @@ export { Button, buttonStyles } from './Button';
 export { Checkbox } from './Checkbox';
 export { Chip } from './Chip';
 export { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from './ContextMenu';
+export { Highlight, highlightMatches } from './Highlight';
 export { Icon } from './Icon';
 export { Input } from './Input';
 export { ConfirmDialog, Modal } from './Modal';

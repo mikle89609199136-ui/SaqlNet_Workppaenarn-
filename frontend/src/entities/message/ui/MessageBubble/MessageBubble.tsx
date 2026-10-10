@@ -66,6 +66,8 @@ interface Props {
   /** Последнее сообщение в серии: у него аватарка автора в группе. */
   isLastInGroup?: boolean;
   tabIndex?: number;
+  searchQuery?: string;
+  isSearchCurrent?: boolean;
 }
 
 /* Цвет имени автора — из его идентификатора: соседние реплики разных
@@ -171,6 +173,8 @@ export const MessageBubble = memo(
     isFirstInGroup = true,
     isLastInGroup = true,
     tabIndex,
+    searchQuery,
+    isSearchCurrent = false,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -480,6 +484,9 @@ export const MessageBubble = memo(
                 // У перевода свой текст и свои смещения: форматирование оригинала
                 // к нему не приложить.
                 entities={translations[message.id] ? undefined : message.entities}
+                highlight={
+                  searchQuery ? { query: searchQuery, current: isSearchCurrent } : undefined
+                }
                 trailing={hasInlineMeta ? cornerMeta : undefined}
               />
             )}
