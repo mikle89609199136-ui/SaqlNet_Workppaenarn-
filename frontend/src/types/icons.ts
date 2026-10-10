@@ -47,6 +47,7 @@ export type TIconTypes =
   | 'volume'
   | 'volumeMute'
   | 'maximize'
+  | 'minimize'
   | 'fastForward'
   | 'rewind'
   | 'undo'

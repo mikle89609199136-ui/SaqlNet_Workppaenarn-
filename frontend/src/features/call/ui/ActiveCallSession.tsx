@@ -31,6 +31,7 @@ export function ActiveCallSession({
   const localMedia = customLocalMedia ?? defaultLocalMedia;
   const socket = useCallStore((s) => s.socket);
   const fsm = useCallStore((s) => s.fsm);
+  const startsWithoutVideo = useCallStore((s) => s.startsWithoutVideo);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
   const { startMedia, manager: localMediaManager } = localMedia;
@@ -55,6 +56,13 @@ export function ActiveCallSession({
     });
     // При размонтировании stopMedia вызовется автоматически внутри useLocalMedia
   }, [activeCall.kind, startMedia, localMedia.stream, audioConstraints]);
+
+  const cameraTurnedOffRef = useRef(false);
+  useEffect(() => {
+    if (!startsWithoutVideo || cameraTurnedOffRef.current || !localMedia.stream) return;
+    cameraTurnedOffRef.current = true;
+    localMedia.toggleVideo(false);
+  }, [localMedia, startsWithoutVideo]);
 
   // Callee — polite (true), Caller — impolite (false)
   const isPolite = !activeCall.isCaller;
@@ -181,6 +189,7 @@ export function ActiveCallSession({
           isAudioEnabled={!localMedia.isAudioMuted}
           isVideoEnabled={!localMedia.isVideoMuted}
           onMaximize={handleMaximize}
+          onToggleAudio={handleToggleAudio}
           onEndCall={handleEndCall}
         />
       ) : (

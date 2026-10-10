@@ -1,5 +1,6 @@
 export { useCallStore } from './model/callStore';
 export { useCall } from './model/useCall';
+export { setCallStage } from './model/callStage';
 export { LocalMediaManager, parseMediaError } from './model/localMedia';
 export { useLocalMedia } from './model/useLocalMedia';
 export { PeerConnectionManager } from './model/peerConnection';

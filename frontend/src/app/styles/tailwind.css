@@ -128,6 +128,8 @@
   .spoiler-dust, .spoiler-open { animation: none; }
 }
 
+@keyframes call-ring { from { transform: scale(1); opacity: 0.55; } to { transform: scale(1.65); opacity: 0; } }
+
 @keyframes cardIn  { from { opacity: 0; transform: translateY(32px) scale(0.92); } to { opacity: 1; transform: none; } }
 /* =========================================================
    Base layer — global resets + CSS var aliases

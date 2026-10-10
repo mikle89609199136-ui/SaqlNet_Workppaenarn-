@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Banner, Icon, NotoEmoji } from '@/shared/ui';
+import { Banner, Icon, NotoEmoji } from '@/shared/ui';
+import { cn } from '@/shared/lib';
 import type { IActiveCall, IMediaError, TCallConnectionState, TFacingMode } from '../model/types';
+import { CallButton } from './CallButton';
+import { CallSurface } from './CallSurface';
+import { RingingAvatar } from './RingingAvatar';
 import { useCallDuration } from './useCallDuration';
 
 export interface IActiveCallViewProps {
@@ -222,100 +226,109 @@ export function ActiveCallView({
     activeCall.peerName || activeCall.title || t('call.defaultUser', 'Пользователь');
 
   const isVideo = activeCall.kind === 'video';
+  const showRemoteVideo = isVideo && remoteVideoActive;
   const showSwitchCamera = isVideo && isVideoEnabled && availableCamerasCount > 1 && onSwitchCamera;
+  const glowSeed = showRemoteVideo ? undefined : activeCall.peerId || peerDisplayName;
+  const peerMicMutedLabel = t('call.peerMicMuted', 'Собеседник выключил микрофон');
 
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
+    <CallSurface
       aria-label={t('call.activeDialog', 'Активный звонок')}
       aria-modal="true"
-      className="fixed inset-0 z-[9999] flex flex-col justify-between bg-ground select-none overflow-hidden"
+      className="justify-between"
+      glowSeed={glowSeed}
+      ref={dialogRef}
+      role="dialog"
     >
-      {/* Шапка звонка */}
-      <header className="relative z-30 flex items-center justify-between p-4 bg-gradient-to-b from-ground/80 to-transparent">
-        <button
-          type="button"
-          onClick={onMinimize}
-          className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer"
-          aria-label={t('call.minimize', 'Свернуть звонок')}
-        >
-          <Icon name="chevronDown" className="size-6" />
-        </button>
+      {showRemoteVideo && (
+        <>
+          <video
+            aria-label={t('call.remoteVideo', 'Видео собеседника')}
+            autoPlay
+            className="absolute inset-0 size-full object-cover"
+            muted
+            playsInline
+            ref={remoteVideoRef}
+          />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-35 bg-gradient-to-b from-call-ground/80 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-50 bg-gradient-to-t from-call-ground/90 to-transparent" />
+        </>
+      )}
 
-        <div className="flex flex-col items-center text-center max-w-[60%]">
-          <div className="flex items-center gap-1.5 max-w-full">
-            <h2 className="text-base font-semibold text-ink truncate max-w-full">
-              {peerDisplayName}
-            </h2>
-            {remoteAudioMuted && (
-              <span
-                className="text-danger flex items-center shrink-0"
-                title={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
-                aria-label={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
-              >
-                <Icon name="micOff" className="size-4" />
+      <header className="relative z-10 flex items-start justify-between gap-3 p-4 pt-[calc(16px+env(safe-area-inset-top,0px))]">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            aria-label={t('call.minimize', 'Свернуть звонок')}
+            className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-pill bg-scrim-control text-on-scrim hover:bg-scrim-control-hover focus-visible:outline-2 focus-visible:outline-on-scrim"
+            onClick={onMinimize}
+            type="button"
+          >
+            <Icon className="size-4.5" name="minimize" />
+          </button>
+          {showRemoteVideo && (
+            <div className="flex min-w-0 flex-col">
+              <h2 className="truncate text-[15px] font-semibold">{peerDisplayName}</h2>
+              <span aria-live="polite" className="text-[12px] text-on-scrim/75 tabular-nums">
+                {getStatusText()}
               </span>
-            )}
-          </div>
-          <span aria-live="polite" className="text-xs font-medium text-ink-2">
-            {getStatusText()}
-          </span>
+            </div>
+          )}
         </div>
 
-        {verificationEmojis && verificationEmojis.length === 4 ? (
+        {currentVerificationKey && verificationEmojis && (
           <div className="relative">
             <button
-              ref={verificationButtonRef}
-              type="button"
+              aria-expanded={showVerification}
+              aria-haspopup="dialog"
+              aria-label={t('call.verification.buttonLabel', 'Сверка ключа звонка')}
+              className="flex h-8 cursor-pointer items-center gap-1.5 rounded-pill bg-scrim-control px-2.5 text-on-scrim hover:bg-scrim-control-hover focus-visible:outline-2 focus-visible:outline-on-scrim"
               onClick={() =>
                 setOpenedVerificationKey((prev) =>
                   prev === currentVerificationKey ? null : currentVerificationKey
                 )
               }
-              className="size-10 rounded-full flex items-center justify-center text-ink bg-sheet/80 backdrop-blur-sm border border-line-soft shadow-[var(--elev-2)] hover:bg-sheet focus-visible:outline-2 focus-visible:outline-brand cursor-pointer transition-colors"
-              aria-label={t('call.verification.buttonLabel', 'Сверка ключа звонка')}
-              aria-expanded={showVerification}
-              aria-haspopup="dialog"
+              ref={verificationButtonRef}
+              type="button"
             >
-              <Icon name="lock" className="size-5 text-brand" />
+              <Icon className="size-3.5" name="lock" />
+              {verificationEmojis.map((emoji, index) => (
+                <NotoEmoji emoji={emoji} key={index} size={16} />
+              ))}
             </button>
 
             {showVerification && (
               <div
+                aria-label={t('call.verification.title', 'Сверка ключа звонка')}
+                aria-modal="false"
+                className="absolute top-10 right-0 z-40 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-dialog bg-menu p-4 text-ink shadow-[var(--shadow-menu)]"
                 ref={verificationPopoverRef}
                 role="dialog"
-                aria-modal="false"
-                aria-label={t('call.verification.title', 'Сверка ключа звонка')}
-                className="absolute top-12 right-0 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-window bg-sheet/95 backdrop-blur-md border border-line-soft shadow-[var(--elev-3)] p-4 flex flex-col gap-3"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-sm text-ink">
-                    <Icon name="lock" className="size-4 text-brand" />
+                  <div className="flex items-center gap-1.5 text-ui font-semibold">
+                    <Icon className="size-4 text-brand" name="lock" />
                     <span>{t('call.verification.title', 'Сверка ключа звонка')}</span>
                   </div>
                   <button
-                    type="button"
-                    onClick={handleCloseVerification}
-                    className="size-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-ground cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
                     aria-label={t('call.verification.close', 'Закрыть')}
+                    className="flex size-7 cursor-pointer items-center justify-center rounded-pill text-ink-2 hover:layer-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
+                    onClick={handleCloseVerification}
+                    type="button"
                   >
-                    <Icon name="cross" className="size-3.5" />
+                    <Icon className="size-3.5" name="cross" />
                   </button>
                 </div>
-
                 <div
-                  role="group"
                   aria-label={verificationEmojis.join(' ')}
-                  className="flex items-center justify-center gap-2.5 py-2.5 bg-ground/50 rounded-control border border-line-soft/50"
+                  className="flex items-center justify-center gap-2.5 rounded-field bg-sheet-2 py-2.5"
+                  role="group"
                 >
                   <span className="sr-only">{verificationEmojis.join(' ')}</span>
                   {verificationEmojis.map((emoji, index) => (
-                    <NotoEmoji key={index} emoji={emoji} size={32} />
+                    <NotoEmoji emoji={emoji} key={index} size={32} />
                   ))}
                 </div>
-
-                <p className="text-xs text-ink-2 leading-relaxed">
+                <p className="text-caption leading-relaxed text-ink-2">
                   {t(
                     'call.verification.hint',
                     'Сравните эти 4 эмодзи с собеседником. Если у собеседника такие же — вас никто не слушает.'
@@ -324,155 +337,118 @@ export function ActiveCallView({
               </div>
             )}
           </div>
-        ) : (
-          <div className="size-10" aria-hidden="true" />
         )}
       </header>
 
-      {/* Основная зона (Видео или Аудио) */}
-      <main className="relative flex-1 flex items-center justify-center overflow-hidden">
-        {isVideo ? (
-          <div className="relative w-full h-full flex items-center justify-center bg-ground">
-            {/* Удалённый видеопоток */}
-            {remoteVideoActive ? (
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                aria-label={t('call.remoteVideo', 'Видео собеседника')}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-4 text-center p-4">
-                <Avatar
-                  id={activeCall.peerId ?? 'peer'}
-                  name={activeCall.peerName}
-                  size="2xl"
-                  src={activeCall.peerAvatar}
-                />
-                <p className="text-sm text-ink-2 font-medium">
-                  {connectionState === 'connecting'
-                    ? t('call.status.connecting', 'Соединение…')
-                    : t('call.remoteVideoOff', 'Камера выключена')}
-                </p>
-              </div>
-            )}
-
-            {/* Локальное превью PiP */}
-            {isVideoEnabled && localStream && (
-              <div className="absolute top-4 right-4 z-20 w-28 h-40 sm:w-36 sm:h-52 rounded-window overflow-hidden border border-line-soft shadow-[var(--elev-2)] bg-sheet">
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`w-full h-full object-cover ${facingMode !== 'environment' ? 'scale-x-[-1]' : ''}`}
-                  aria-label={t('call.localVideo', 'Ваша камера')}
-                />
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-6 p-6 text-center animate-fade-in">
-            <div className="relative">
-              <Avatar
-                id={activeCall.peerId ?? 'peer'}
-                name={activeCall.peerName}
-                size="2xl"
-                src={activeCall.peerAvatar}
-                className="shadow-[var(--elev-2)]"
-              />
-              {connectionState === 'connected' && (
-                <div className="absolute -inset-2 rounded-full border-2 border-brand/40 animate-ping motion-reduce:animate-none pointer-events-none" />
-              )}
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="flex items-center gap-2 max-w-xs sm:max-w-md">
-                <h1 className="text-xl sm:text-2xl font-bold text-ink truncate">
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+        {!showRemoteVideo && (
+          <>
+            <RingingAvatar
+              id={activeCall.peerId || peerDisplayName}
+              name={activeCall.peerName}
+              ringing={false}
+              src={activeCall.peerAvatar}
+            />
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex max-w-full items-center gap-2">
+                <h1 className="truncate text-[26px] leading-tight font-semibold">
                   {peerDisplayName}
                 </h1>
                 {remoteAudioMuted && (
                   <span
-                    className="size-7 rounded-full bg-danger/15 text-danger flex items-center justify-center shrink-0"
-                    title={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
-                    aria-label={t('call.peerMicMuted', 'Собеседник выключил микрофон')}
+                    aria-label={peerMicMutedLabel}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-pill bg-scrim-control"
+                    role="img"
+                    title={peerMicMutedLabel}
                   >
-                    <Icon name="micOff" className="size-4" />
+                    <Icon className="size-4" name="micOff" />
                   </span>
                 )}
               </div>
-              <p className="text-sm font-medium text-ink-2">{getStatusText()}</p>
+              <p aria-live="polite" className="text-[15px] text-on-scrim/75 tabular-nums">
+                {isVideo && connectionState === 'connected'
+                  ? t('call.remoteVideoOff', 'Камера выключена')
+                  : getStatusText()}
+              </p>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Баннер ошибки медиаустройств */}
         {mediaError && (
-          <div className="absolute top-4 left-4 right-4 z-30 shadow-[var(--elev-2)]">
-            <Banner tone="danger" role="alert">
+          <div className="absolute inset-x-4 top-0">
+            <Banner role="alert" tone="danger">
               {getErrorMessage()}
             </Banner>
           </div>
         )}
       </main>
 
-      {/* Панель управления звонком */}
-      <footer className="relative z-30 p-6 flex flex-col items-center bg-gradient-to-t from-ground/90 via-ground/60 to-transparent">
-        <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap">
-          {/* Микрофон */}
-          <button
-            type="button"
-            onClick={onToggleAudio}
-            data-muted={!isAudioEnabled}
-            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:bg-danger data-[muted=true]:text-on-brand data-[muted=true]:border-danger"
+      {isVideoEnabled && localStream && (
+        <div className="absolute right-4 bottom-32 z-20 h-37.5 w-27 overflow-hidden rounded-[16px] bg-call-ground shadow-[0_8px_24px_rgba(0,0,0,0.4)] md:h-35 md:w-55">
+          <video
+            aria-label={t('call.localVideo', 'Ваша камера')}
+            autoPlay
+            className={cn('size-full object-cover', facingMode !== 'environment' && 'scale-x-[-1]')}
+            muted
+            playsInline
+            ref={localVideoRef}
+          />
+          <span className="absolute bottom-2 left-2.5 text-[12px] font-semibold text-on-scrim">
+            {t('call.you', 'Вы')}
+          </span>
+        </div>
+      )}
+
+      <footer className="relative z-10 flex flex-col items-center gap-3 px-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
+        {!isAudioEnabled && (
+          <div className="flex h-7.5 items-center gap-1.5 rounded-pill bg-scrim-subtle px-3 text-[13px]">
+            <Icon className="size-3.5" name="micOff" />
+            {t('call.micMutedNotice', 'Ваш микрофон выключен')}
+          </div>
+        )}
+        <div className="flex items-start justify-center gap-5">
+          <CallButton
             aria-label={
               isAudioEnabled
                 ? t('call.controls.muteMic', 'Выключить микрофон')
                 : t('call.controls.unmuteMic', 'Включить микрофон')
             }
-          >
-            <Icon name={isAudioEnabled ? 'mic' : 'micOff'} className="size-6" />
-          </button>
-
-          {/* Камера */}
-          <button
-            type="button"
-            onClick={onToggleVideo}
-            data-muted={!isVideoEnabled}
-            className="flex flex-col items-center gap-1.5 p-3 rounded-full cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] data-[muted=true]:text-ink-2 data-[muted=true]:opacity-70"
+            aria-pressed={!isAudioEnabled}
+            caption={t('call.caption.mic', 'Микрофон')}
+            icon={isAudioEnabled ? 'mic' : 'micOff'}
+            onClick={onToggleAudio}
+            tone={isAudioEnabled ? 'control' : 'active'}
+          />
+          <CallButton
             aria-label={
               isVideoEnabled
                 ? t('call.controls.stopVideo', 'Выключить камеру')
                 : t('call.controls.startVideo', 'Включить камеру')
             }
-          >
-            <Icon name={isVideoEnabled ? 'video' : 'videoOff'} className="size-6" />
-          </button>
-
-          {/* Смена камеры */}
+            aria-pressed={isVideoEnabled}
+            caption={t('call.caption.camera', 'Камера')}
+            icon={isVideoEnabled ? 'video' : 'videoOff'}
+            onClick={onToggleVideo}
+            tone={isVideoEnabled ? 'active' : 'control'}
+          />
           {showSwitchCamera && (
-            <button
-              type="button"
-              onClick={onSwitchCamera}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-full bg-sheet text-ink border border-line-soft shadow-[var(--elev-2)] cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand"
+            <CallButton
               aria-label={t('call.controls.switchCamera', 'Переключить камеру')}
-            >
-              <Icon name="rotateCw" className="size-6" />
-            </button>
+              caption={t('call.caption.flip', 'Перевернуть')}
+              icon="rotateCw"
+              onClick={onSwitchCamera}
+            />
           )}
-
-          {/* Завершить звонок */}
-          <button
-            type="button"
-            onClick={onEndCall}
-            className="flex flex-col items-center gap-1.5 p-3.5 rounded-full bg-danger text-on-brand shadow-[var(--elev-2)] cursor-pointer transition-transform hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-danger"
+          <CallButton
             aria-label={t('call.controls.end', 'Завершить')}
-          >
-            <Icon name="phone" className="size-6 rotate-[135deg]" />
-          </button>
+            caption={t('call.controls.end', 'Завершить')}
+            icon="phone"
+            iconClassName="rotate-[135deg]"
+            onClick={onEndCall}
+            tone="reject"
+          />
         </div>
       </footer>
-    </div>
+    </CallSurface>
   );
 }

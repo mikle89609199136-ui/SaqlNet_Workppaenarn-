@@ -335,6 +335,51 @@ describe('ActiveCallSession', () => {
 
     expect(mockResetConnection).not.toHaveBeenCalled();
   });
+
+  describe('ответ на видеозвонок без видео (#954)', () => {
+    const videoCall: IActiveCall = { ...calleeActiveCall, kind: 'video' };
+
+    afterEach(() => {
+      useCallStore.setState({ startsWithoutVideo: false });
+    });
+
+    it('камера выключается один раз, как только появился поток', () => {
+      useCallStore.setState({ startsWithoutVideo: true });
+
+      const { rerender } = render(
+        <ActiveCallSession
+          activeCall={videoCall}
+          isMinimized={false}
+          localMedia={mockLocalMedia}
+          peerConnection={makePeerConn('connected')}
+        />
+      );
+      rerender(
+        <ActiveCallSession
+          activeCall={videoCall}
+          isMinimized={false}
+          localMedia={{ ...mockLocalMedia }}
+          peerConnection={makePeerConn('connected')}
+        />
+      );
+
+      expect(mockToggleVideo).toHaveBeenCalledTimes(1);
+      expect(mockToggleVideo).toHaveBeenCalledWith(false);
+    });
+
+    it('обычный ответ камеру не трогает', () => {
+      render(
+        <ActiveCallSession
+          activeCall={videoCall}
+          isMinimized={false}
+          localMedia={mockLocalMedia}
+          peerConnection={makePeerConn('connected')}
+        />
+      );
+
+      expect(mockToggleVideo).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('ActiveCallSession: обработка микрофона (#947)', () => {
