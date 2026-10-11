@@ -165,8 +165,7 @@ func sanitizeMediaFilename(filename string) string {
 	return filename
 }
 
-// mediaURLPrefix — единственный допустимый адрес вложения: загрузка в
-// сервисе медиа (#871).
+// mediaURLPrefix — относительный путь вложения в сервисе медиа (#871, #973).
 const mediaURLPrefix = "/api/v2/media/"
 
 // MediaAttachment — вложение сообщения, каким его подтвердил сервер (#871).
@@ -235,6 +234,40 @@ func (s *Service) ValidateMediaMetadata(ctx context.Context, userID, mediaURL, f
 		}
 	}
 	return attachment, nil
+}
+
+// ValidateCatalogMedia разрешает только доступные объекты каталога по
+// относительному пути API (#973). Владение загрузкой здесь не требуется.
+func (s *Service) ValidateCatalogMedia(ctx context.Context, mediaType, mediaURL string, encrypted bool) error {
+	id, ok := strings.CutPrefix(mediaURL, mediaURLPrefix)
+	if !ok || validate.Var(id, "required,uuid") != nil || encrypted {
+		return ErrInvalidInput
+	}
+	var query string
+	switch mediaType {
+	case "sticker":
+		query = `SELECT EXISTS (
+			SELECT 1 FROM media.stickers
+			WHERE id = $1 AND bucket <> '' AND object_key <> ''
+		)`
+	case "gif":
+		query = `SELECT EXISTS (
+			SELECT 1 FROM media.gifs g
+			JOIN media.uploads u ON split_part(g.url, '/', 5)::uuid = u.id
+			WHERE u.id = $1 AND NOT u.is_encrypted
+			  AND lower(btrim(split_part(u.content_type, ';', 1))) = 'image/gif'
+		)`
+	default:
+		return ErrInvalidInput
+	}
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, query, id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrInvalidInput
+	}
+	return nil
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
