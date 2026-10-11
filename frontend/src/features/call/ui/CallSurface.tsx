@@ -19,8 +19,10 @@ export const CallSurface = forwardRef<HTMLDivElement, Props>(function CallSurfac
       ? `radial-gradient(120% 90% at 50% 32%, color-mix(in srgb, ${avatarColor(glowSeed)} 73%, ${ground}) 0%, ${ground} 68%)`
       : ground;
 
+  // В колонке переписки звонок не модальный: список чатов рядом доступен.
   return (
     <CallLayer
+      aria-modal={!inStage}
       className={cn('flex flex-col overflow-hidden text-on-scrim select-none', className)}
       ref={ref}
       screenClassName="fixed inset-0 z-[9999]"

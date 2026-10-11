@@ -47,7 +47,6 @@ export function IncomingCallView({
     return (
       <CallSurface
         aria-label={kindLabel}
-        aria-modal="true"
         className="items-center justify-between px-6 pt-[calc(96px+env(safe-area-inset-top,0px))] pb-[calc(48px+env(safe-area-inset-bottom,0px))] text-center"
         glowSeed={call.from || call.fromName || ''}
         role="alertdialog"

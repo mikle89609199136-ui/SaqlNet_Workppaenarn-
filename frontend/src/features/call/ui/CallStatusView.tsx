@@ -27,7 +27,6 @@ export function CallStatusView({
   return (
     <CallSurface
       aria-label={t('call.activeDialog', 'Активный звонок')}
-      aria-modal="true"
       className="items-center justify-between px-6 pt-[calc(120px+env(safe-area-inset-top,0px))] pb-[calc(48px+env(safe-area-inset-bottom,0px))] text-center"
       glowSeed={peerId || peerName}
       role="dialog"

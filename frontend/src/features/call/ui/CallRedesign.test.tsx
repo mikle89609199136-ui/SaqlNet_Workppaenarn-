@@ -226,6 +226,35 @@ describe('экран разговора (#954)', () => {
 
     expect(stage).toContainElement(screen.getByRole('dialog', { name: 'Активный звонок' }));
   });
+
+  it('в колонке переписки звонок не модальный и не держит Tab', () => {
+    emulatePhone(false);
+    act(() => setCallStage(stage));
+    render(<ActiveCallView {...viewProps()} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Активный звонок' });
+    const last = screen.getByRole('button', { name: 'Завершить' });
+    last.focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+    window.dispatchEvent(tab);
+
+    expect(dialog).toHaveAttribute('aria-modal', 'false');
+    expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('на весь экран звонок модальный и держит Tab внутри', () => {
+    emulatePhone(true);
+    render(<ActiveCallView {...viewProps()} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Активный звонок' });
+    screen.getByRole('button', { name: 'Завершить' }).focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+    window.dispatchEvent(tab);
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(tab.defaultPrevented).toBe(true);
+    expect(screen.getByRole('button', { name: 'Свернуть звонок' })).toHaveFocus();
+  });
 });
 
 describe('свёрнутый звонок (#954)', () => {

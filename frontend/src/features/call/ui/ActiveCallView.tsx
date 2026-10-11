@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Banner, Icon, NotoEmoji } from '@/shared/ui';
 import { cn } from '@/shared/lib';
 import type { IActiveCall, IMediaError, TCallConnectionState, TFacingMode } from '../model/types';
+import { useInCallStage } from '../model/callStage';
 import { CallButton } from './CallButton';
 import { CallSurface } from './CallSurface';
 import { RingingAvatar } from './RingingAvatar';
@@ -48,6 +49,7 @@ export function ActiveCallView({
   const { t } = useTranslation();
   const duration = useCallDuration(callStartedAt);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const inStage = useInCallStage();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const isCameraOn = isVideoEnabled && !!localStream?.getVideoTracks().length;
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -110,7 +112,8 @@ export function ActiveCallView({
     remoteStream.getAudioTracks().every((t) => t.muted || !t.enabled)
   );
 
-  // Удержание фокуса внутри диалога (WAI-ARIA modal)
+  // Удержание фокуса внутри диалога (WAI-ARIA modal); в колонке переписки
+  // звонок не модальный, и Tab уходит в остальное приложение.
   useEffect(() => {
     const el = dialogRef.current;
     if (!el) return;
@@ -121,6 +124,7 @@ export function ActiveCallView({
     if (focusable.length > 0) {
       focusable[0].focus();
     }
+    if (inStage) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
@@ -147,7 +151,7 @@ export function ActiveCallView({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [inStage]);
 
   // Привязка локального видео
   useEffect(() => {
@@ -235,7 +239,6 @@ export function ActiveCallView({
   return (
     <CallSurface
       aria-label={t('call.activeDialog', 'Активный звонок')}
-      aria-modal="true"
       className="justify-between"
       glowSeed={glowSeed}
       ref={dialogRef}
