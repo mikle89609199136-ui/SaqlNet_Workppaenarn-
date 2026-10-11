@@ -248,7 +248,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		up, err := h.service.UploadRaw(r.Context(), current.ID, req.FileName, mimeType, data, false, "")
+		up, err := h.service.UploadRaw(r.Context(), current.ID, req.FileName, mimeType, data, false, "", req.Purpose)
 		if err != nil {
 			h.writeUploadError(w, r, err)
 			return
@@ -310,6 +310,19 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if !uploadIDPattern.MatchString(uploadID) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload not found")
+		return
+	}
+	current := authctx.MustUser(r)
+	if err := h.service.CanDownload(r.Context(), current.ID, uploadID); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "upload not found")
+		case errors.Is(err, ErrForbidden):
+			httpx.ErrorJSON(w, r, http.StatusForbidden, "forbidden", "no access to this upload")
+		default:
+			slog.Error("check media access", "err", err)
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+		}
 		return
 	}
 	if err := httpx.DisableWriteDeadline(w); err != nil {

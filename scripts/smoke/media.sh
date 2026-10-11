@@ -39,7 +39,7 @@ assert body["contentType"] == "text/html"
 		return
 	fi
 	media_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')
-	http_request "$BASE_URL$media_url"
+	http_request -b "$COOKIE_JAR" "$BASE_URL$media_url"
 	if [[ "$HTTP_CODE" == "200" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 body = json.load(sys.stdin)
@@ -82,7 +82,7 @@ run_gif_tests() {
 	local text_url="$1"
 	local gif_url payload
 	http_request -X POST "$BASE_URL/api/v2/media" \
-		-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+		-H "Content-Type: application/json" -b "$COOKIE_JAR" \
 		-d '{"file":"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7","fileName":"smoke.gif"}'
 	gif_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url", ""))' 2>/dev/null || true)
 	if [[ "$HTTP_CODE" == "201" && -n "$gif_url" ]]; then
@@ -106,7 +106,7 @@ run_gif_tests() {
 		fi
 		printf -v payload '{"url":"%s"}' "$source_url"
 		http_request -X POST "$BASE_URL/api/v2/gifs" \
-			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+			-H "Content-Type: application/json" -b "$COOKIE_JAR" -d "$payload"
 		if [[ "$HTTP_CODE" == "400" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 assert json.load(sys.stdin)["code"] == sys.argv[1]
@@ -150,7 +150,7 @@ run_media_tests() {
 
 	# Optional existing unsafe fixture: no DB changes are needed to check its download.
 	if [[ -n "${MEDIA_LEGACY_UNSAFE_URL:-}" && "${MEDIA_LEGACY_UNSAFE_BODY+x}" == "x" ]]; then
-		http_request_with_headers "$BASE_URL$MEDIA_LEGACY_UNSAFE_URL"
+		http_request_with_headers -b "$COOKIE_JAR" "$BASE_URL$MEDIA_LEGACY_UNSAFE_URL"
 		local legacy_type legacy_disposition
 		legacy_type=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//p' | tr -d '\r')
 		legacy_disposition=$(printf '%s\n' "$HTTP_HEADERS" | sed -n 's/^[Cc]ontent-[Dd]isposition:[[:space:]]*//p' | tr -d '\r')
@@ -190,7 +190,7 @@ run_media_tests() {
 	fi
 
 	# Получаем файл обратно
-	http_request_with_headers \
+	http_request_with_headers -b "$COOKIE_JAR" \
 		"$BASE_URL$MEDIA_URL"
 
 	LOCATION=$(printf '%s\n' "$HTTP_HEADERS" |
@@ -211,5 +211,6 @@ run_media_tests() {
 		FAIL=$((FAIL + 1))
 	fi
 
+	check "GET media without session" 401 "$BASE_URL$MEDIA_URL"
 	run_gif_tests "$MEDIA_URL"
 }

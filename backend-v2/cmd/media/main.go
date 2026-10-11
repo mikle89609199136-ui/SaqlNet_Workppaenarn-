@@ -97,7 +97,7 @@ func main() {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/api/v2/media", authenticated(http.HandlerFunc(handler.Upload)))
-	mux.Handle("/api/v2/media/", http.HandlerFunc(handler.Serve))
+	mux.Handle("/api/v2/media/", authenticated(http.HandlerFunc(handler.Serve)))
 
 	mux.Handle("/api/v2/emojis", http.HandlerFunc(media.ServeEmojis))
 	mux.Handle("/api/v2/gifs", authenticated(http.HandlerFunc(handler.HandleGifsRoutes)))

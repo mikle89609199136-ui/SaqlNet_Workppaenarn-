@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"craneapp/backend-v2/internal/platform/mediarefs"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/presence"
 	"database/sql"
@@ -781,6 +782,10 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 	// not useful here.
 	defer func() { _ = tx.Rollback() }()
 
+	uploadID, err := groupAvatarUpload(ctx, tx, ownerID, avatarURL)
+	if err != nil {
+		return "", err
+	}
 	var chatID string
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO chats.chats (type, title, description, avatar_url, owner_id)
@@ -794,6 +799,12 @@ func (s *Service) CreateGroup(ctx context.Context, ownerID, title, description, 
 			"owner_id", ownerID,
 		)
 		return "", err
+	}
+
+	if uploadID != "" {
+		if err := mediarefs.ReplaceOwner(ctx, tx, mediarefs.ChatAvatar, chatID, uploadID); err != nil {
+			return "", err
+		}
 	}
 
 	// The owner is always a member; tracking seen IDs here prevents
@@ -924,10 +935,26 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 		return Chat{}, ErrForbidden
 	}
 
+	var q mediarefs.Execer = s.db
+	var tx *sql.Tx
+	uploadID := ""
+	if avatarURL != nil {
+		tx, err = s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return Chat{}, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		uploadID, err = groupAvatarUpload(ctx, tx, actorID, *avatarURL)
+		if err != nil {
+			return Chat{}, err
+		}
+		q = tx
+	}
+
 	// COALESCE keeps the update idempotent for absent fields without
 	// building dynamic SQL: a nil pointer becomes SQL NULL, which makes
 	// COALESCE fall back to the existing column value.
-	_, err = s.db.ExecContext(ctx, `
+	_, err = q.ExecContext(ctx, `
 		UPDATE chats.chats
 		SET title = COALESCE($1::text, title),
 			description = COALESCE($2::text, description),
@@ -945,6 +972,15 @@ func (s *Service) UpdateGroup(ctx context.Context, actorID, chatID string, title
 			"actor_id", actorID,
 		)
 		return Chat{}, err
+	}
+
+	if tx != nil {
+		if err := mediarefs.ReplaceOwner(ctx, tx, mediarefs.ChatAvatar, chatID, uploadID); err != nil {
+			return Chat{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return Chat{}, err
+		}
 	}
 
 	updatedChat, err := s.Get(ctx, actorID, chatID)
@@ -2321,6 +2357,16 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 
 		if err != nil {
 			return nil, err
+		}
+
+		if mediaURL, ok := out.Metadata["mediaUrl"].(string); ok {
+			uploadID, valid := mediarefs.UploadIDFromURL(mediaURL)
+			if !valid {
+				return nil, ErrInvalidInput
+			}
+			if err := mediarefs.Add(ctx, tx, mediarefs.Ref{Kind: mediarefs.Message, UploadID: uploadID, MessageID: msg.ID, ChatID: chatID}); err != nil {
+				return nil, err
+			}
 		}
 
 		if replyToStr.Valid {
