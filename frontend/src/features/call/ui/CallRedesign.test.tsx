@@ -38,6 +38,10 @@ function emulatePhone(isPhone: boolean) {
   );
 }
 
+function cameraStream(hasVideo: boolean) {
+  return { getVideoTracks: () => (hasVideo ? [{}] : []) } as unknown as MediaStream;
+}
+
 function viewProps(overrides: Partial<IActiveCallViewProps> = {}): IActiveCallViewProps {
   return {
     activeCall,
@@ -139,7 +143,7 @@ describe('исходящий вызов (#954)', () => {
 describe('экран разговора (#954)', () => {
   it('под кнопками Dock — подписи', () => {
     emulatePhone(false);
-    render(<ActiveCallView {...viewProps()} />);
+    render(<ActiveCallView {...viewProps({ activeCall: { ...activeCall, kind: 'video' } })} />);
 
     const dock = screen.getByRole('button', { name: 'Завершить' }).closest('footer');
     expect(dock).toHaveTextContent('Микрофон');
@@ -165,7 +169,7 @@ describe('экран разговора (#954)', () => {
         {...viewProps({
           activeCall: { ...activeCall, kind: 'video' },
           isVideoEnabled: true,
-          localStream: {} as MediaStream,
+          localStream: cameraStream(true),
         })}
       />
     );
@@ -173,6 +177,35 @@ describe('экран разговора (#954)', () => {
     const pip = screen.getByLabelText('Ваша камера').parentElement;
     expect(pip).toHaveClass('w-27', 'h-37.5', 'md:w-55', 'md:h-35', 'rounded-[16px]');
     expect(pip).toHaveTextContent('Вы');
+  });
+
+  it('в аудиозвонке нет ни окна «Вы», ни кнопки камеры', () => {
+    emulatePhone(false);
+    render(
+      <ActiveCallView {...viewProps({ isVideoEnabled: true, localStream: cameraStream(false) })} />
+    );
+
+    expect(screen.queryByLabelText('Ваша камера')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /камеру/ })).not.toBeInTheDocument();
+  });
+
+  it('видеозвонок без видеодорожки — камера показана выключенной', () => {
+    emulatePhone(false);
+    render(
+      <ActiveCallView
+        {...viewProps({
+          activeCall: { ...activeCall, kind: 'video' },
+          isVideoEnabled: true,
+          localStream: cameraStream(false),
+        })}
+      />
+    );
+
+    expect(screen.queryByLabelText('Ваша камера')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Включить камеру' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
   });
 
   it('«Свернуть звонок» сворачивает', () => {

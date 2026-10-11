@@ -53,9 +53,10 @@ export function ActiveCallSession({
     void startMedia({
       audio: audioConstraints,
       video: activeCall.kind === 'video',
+      videoOptional: startsWithoutVideo,
     });
     // При размонтировании stopMedia вызовется автоматически внутри useLocalMedia
-  }, [activeCall.kind, startMedia, localMedia.stream, audioConstraints]);
+  }, [activeCall.kind, startMedia, localMedia.stream, audioConstraints, startsWithoutVideo]);
 
   const cameraTurnedOffRef = useRef(false);
   useEffect(() => {

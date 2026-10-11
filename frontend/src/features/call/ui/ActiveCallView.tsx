@@ -49,6 +49,7 @@ export function ActiveCallView({
   const duration = useCallDuration(callStartedAt);
   const dialogRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const isCameraOn = isVideoEnabled && !!localStream?.getVideoTracks().length;
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [, setTrackUpdate] = useState(0);
   const currentVerificationKey =
@@ -151,12 +152,12 @@ export function ActiveCallView({
   // Привязка локального видео
   useEffect(() => {
     if (localVideoRef.current) {
-      localVideoRef.current.srcObject = isVideoEnabled ? localStream : null;
-      if (isVideoEnabled && localStream) {
+      localVideoRef.current.srcObject = isCameraOn ? localStream : null;
+      if (isCameraOn) {
         localVideoRef.current.play()?.catch(() => {});
       }
     }
-  }, [localStream, isVideoEnabled]);
+  }, [localStream, isCameraOn]);
 
   // Привязка удаленного видео при появлении потока и размучивании трека
   useEffect(() => {
@@ -227,7 +228,7 @@ export function ActiveCallView({
 
   const isVideo = activeCall.kind === 'video';
   const showRemoteVideo = isVideo && remoteVideoActive;
-  const showSwitchCamera = isVideo && isVideoEnabled && availableCamerasCount > 1 && onSwitchCamera;
+  const showSwitchCamera = isVideo && isCameraOn && availableCamerasCount > 1 && onSwitchCamera;
   const glowSeed = showRemoteVideo ? undefined : activeCall.peerId || peerDisplayName;
   const peerMicMutedLabel = t('call.peerMicMuted', 'Собеседник выключил микрофон');
 
@@ -383,7 +384,7 @@ export function ActiveCallView({
         )}
       </main>
 
-      {isVideoEnabled && localStream && (
+      {isCameraOn && (
         <div className="absolute right-4 bottom-32 z-20 h-37.5 w-27 overflow-hidden rounded-[16px] bg-call-ground shadow-[0_8px_24px_rgba(0,0,0,0.4)] md:h-35 md:w-55">
           <video
             aria-label={t('call.localVideo', 'Ваша камера')}
@@ -419,18 +420,20 @@ export function ActiveCallView({
             onClick={onToggleAudio}
             tone={isAudioEnabled ? 'control' : 'active'}
           />
-          <CallButton
-            aria-label={
-              isVideoEnabled
-                ? t('call.controls.stopVideo', 'Выключить камеру')
-                : t('call.controls.startVideo', 'Включить камеру')
-            }
-            aria-pressed={isVideoEnabled}
-            caption={t('call.caption.camera', 'Камера')}
-            icon={isVideoEnabled ? 'video' : 'videoOff'}
-            onClick={onToggleVideo}
-            tone={isVideoEnabled ? 'active' : 'control'}
-          />
+          {isVideo && (
+            <CallButton
+              aria-label={
+                isCameraOn
+                  ? t('call.controls.stopVideo', 'Выключить камеру')
+                  : t('call.controls.startVideo', 'Включить камеру')
+              }
+              aria-pressed={isCameraOn}
+              caption={t('call.caption.camera', 'Камера')}
+              icon={isCameraOn ? 'video' : 'videoOff'}
+              onClick={onToggleVideo}
+              tone={isCameraOn ? 'active' : 'control'}
+            />
+          )}
           {showSwitchCamera && (
             <CallButton
               aria-label={t('call.controls.switchCamera', 'Переключить камеру')}

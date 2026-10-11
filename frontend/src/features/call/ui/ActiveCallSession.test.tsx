@@ -517,6 +517,7 @@ describe('ActiveCallSession: обработка микрофона (#947)', () =
         autoGainControl: true,
       },
       video: true,
+      videoOptional: false,
     });
   });
 
