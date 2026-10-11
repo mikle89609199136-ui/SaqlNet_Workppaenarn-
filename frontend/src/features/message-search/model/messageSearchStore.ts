@@ -7,6 +7,7 @@ export type THistoryStatus = 'loading' | 'complete' | 'partial' | 'failed';
 interface IMessageSearchState {
   chatId: string | null;
   query: string;
+  searchedQuery: string;
   results: IMessageDto[];
   currentIndex: number;
   historyStatus: THistoryStatus;
@@ -17,7 +18,12 @@ interface IMessageSearchStore extends IMessageSearchState {
   open: (chatId: string) => void;
   close: () => void;
   setQuery: (query: string) => void;
-  setResults: (results: IMessageDto[], historyStatus: THistoryStatus, scannedCount: number) => void;
+  setResults: (
+    searchedQuery: string,
+    results: IMessageDto[],
+    historyStatus: THistoryStatus,
+    scannedCount: number
+  ) => void;
   select: (index: number) => void;
   older: () => void;
   newer: () => void;
@@ -26,6 +32,7 @@ interface IMessageSearchStore extends IMessageSearchState {
 const CLOSED: IMessageSearchState = {
   chatId: null,
   query: '',
+  searchedQuery: '',
   results: [],
   currentIndex: 0,
   historyStatus: 'complete',
@@ -39,11 +46,17 @@ export const useMessageSearchStore = create<IMessageSearchStore>((set) => ({
   open: (chatId) => set({ ...CLOSED, chatId }),
   close: () => set(CLOSED),
   setQuery: (query) => set({ query, results: [], currentIndex: 0 }),
-  setResults: (results, historyStatus, scannedCount) =>
+  setResults: (searchedQuery, results, historyStatus, scannedCount) =>
     set((state) => {
       const currentId = state.results[state.currentIndex]?.id;
       const kept = results.findIndex((message) => message.id === currentId);
-      return { results, historyStatus, scannedCount, currentIndex: kept === -1 ? 0 : kept };
+      return {
+        searchedQuery,
+        results,
+        historyStatus,
+        scannedCount,
+        currentIndex: kept === -1 ? 0 : kept,
+      };
     }),
   select: (index) =>
     set((state) =>

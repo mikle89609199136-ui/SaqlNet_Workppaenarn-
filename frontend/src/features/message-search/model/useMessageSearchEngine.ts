@@ -32,7 +32,6 @@ export function useMessageSearchEngine({ chatId, loadedMessages, hasOlder }: Par
   const query = useDebounce(typed.trim(), TYPING_PAUSE_MS);
   const current = useMessageSearchStore(selectCurrentMatch);
   const setResults = useMessageSearchStore((state) => state.setResults);
-  const close = useMessageSearchStore((state) => state.close);
   const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
   const [scan, setScan] = useState<IHistoryScan | null>(null);
 
@@ -93,14 +92,15 @@ export function useMessageSearchEngine({ chatId, loadedMessages, hasOlder }: Par
     return collectMatches([...loadedMessages, ...(history?.messages ?? [])], query);
   }, [history, isOpen, loadedMessages, query]);
 
+  // Пока набранное не устоялось, прежние результаты не возвращаем: поле
+  // покажет «Ищем…», а не устаревшее «Не найдено».
+  const isSettled = typed.trim() === query;
   useEffect(() => {
-    if (isOpen) setResults(results, historyStatus, scannedCount);
-  }, [historyStatus, isOpen, results, scannedCount, setResults]);
+    if (isOpen && isSettled) setResults(query, results, historyStatus, scannedCount);
+  }, [historyStatus, isOpen, isSettled, query, results, scannedCount, setResults]);
 
   const currentId = current?.id;
   useEffect(() => {
     if (isOpen && currentId) setJumpRequest({ chatId, messageId: currentId });
   }, [chatId, currentId, isOpen, setJumpRequest]);
-
-  useEffect(() => close, [chatId, close]);
 }

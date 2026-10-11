@@ -5,6 +5,7 @@ import { useMessageSearchStore } from '../model/messageSearchStore';
 export function MessageSearchBar() {
   const { t } = useTranslation();
   const query = useMessageSearchStore((state) => state.query);
+  const searchedQuery = useMessageSearchStore((state) => state.searchedQuery);
   const total = useMessageSearchStore((state) => state.results.length);
   const currentIndex = useMessageSearchStore((state) => state.currentIndex);
   const historyStatus = useMessageSearchStore((state) => state.historyStatus);
@@ -24,7 +25,7 @@ export function MessageSearchBar() {
   const counter = total
     ? t('messageSearch.counter', '{{current}} из {{total}}', { current: currentIndex + 1, total })
     : query.trim()
-      ? nothingFound[historyStatus]
+      ? nothingFound[query.trim() === searchedQuery ? historyStatus : 'loading']
       : '';
 
   return (

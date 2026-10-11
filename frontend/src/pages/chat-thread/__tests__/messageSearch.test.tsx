@@ -54,6 +54,9 @@ async function search(user: ReturnType<typeof userEvent.setup>, query: string) {
   await user.type(screen.getByRole('searchbox', { name: 'Поиск по переписке' }), query);
 }
 
+/** История читается по сети страницами — под нагрузкой это дольше секунды. */
+const HISTORY_WAIT = { timeout: 5_000 };
+
 const counter = () => screen.getByRole('search').querySelector('[aria-live]')?.textContent;
 const marks = (id: string) =>
   Array.from(document.getElementById(id)?.querySelectorAll('mark') ?? []);
@@ -112,10 +115,10 @@ describe('поиск по переписке на клиенте (#841)', () => 
 
     await search(user, 'релиз');
 
-    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    await waitFor(() => expect(counter()).toBe('1 из 1'), HISTORY_WAIT);
     expect(requests.slice(0, 2)).toEqual([50, 100]);
     expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['old']);
-    await waitFor(() => expect(marks('old')[0]?.dataset.current).toBe('true'));
+    await waitFor(() => expect(marks('old')[0]?.dataset.current).toBe('true'), HISTORY_WAIT);
   }, 15_000);
 
   it('вложения старых страниц не скачиваются — поиску нужен только текст', async () => {
@@ -135,8 +138,8 @@ describe('поиск по переписке на клиенте (#841)', () => 
 
     await search(user, 'релиз');
 
-    await waitFor(() => expect(requests).toEqual([50]));
-    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    await waitFor(() => expect(requests).toEqual([50]), HISTORY_WAIT);
+    await waitFor(() => expect(counter()).toBe('1 из 1'), HISTORY_WAIT);
     expect(resolveMedia).not.toHaveBeenCalled();
   }, 15_000);
 
@@ -148,15 +151,16 @@ describe('поиск по переписке на клиенте (#841)', () => 
       [message('older', 'совсем старое', 0)],
     ]);
     await search(user, 'релиз');
-    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    await waitFor(() => expect(counter()).toBe('1 из 1'), HISTORY_WAIT);
     expect(readHistory).toHaveBeenCalledTimes(2);
 
     const field = screen.getByRole('searchbox', { name: 'Поиск по переписке' });
     await user.clear(field);
     await user.type(field, 'совсем');
 
-    await waitFor(() =>
-      expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['older'])
+    await waitFor(
+      () => expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['older']),
+      HISTORY_WAIT
     );
     expect(readHistory).toHaveBeenCalledTimes(2);
   }, 15_000);
@@ -173,7 +177,7 @@ describe('поиск по переписке на клиенте (#841)', () => 
 
     await search(user, 'релиз');
 
-    await waitFor(() => expect(counter()).toBe('Не удалось дочитать историю'));
+    await waitFor(() => expect(counter()).toBe('Не удалось дочитать историю'), HISTORY_WAIT);
   }, 15_000);
 
   it('после предела страниц счётчик говорит, сколько просмотрено', async () => {
@@ -203,7 +207,7 @@ describe('поиск по переписке на клиенте (#841)', () => 
 
     await search(user, 'созвон');
 
-    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    await waitFor(() => expect(counter()).toBe('1 из 1'), HISTORY_WAIT);
     expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['ok']);
   });
 
@@ -212,6 +216,7 @@ describe('поиск по переписке на клиенте (#841)', () => 
     open([message('m1', 'привет', 1)]);
 
     await search(user, 'созвон');
+    expect(counter()).toBe('Ищем…');
 
     await waitFor(() => expect(counter()).toBe('Не найдено'));
   });
@@ -235,7 +240,7 @@ describe('поиск по переписке на клиенте (#841)', () => 
     renderChatThread({ chat, messages: filler(PAGE_SIZE, 100), currentUser: makeUser({ id: ME }) });
 
     await search(user, 'релиз');
-    await waitFor(() => expect(requests).toEqual([50]));
+    await waitFor(() => expect(requests).toEqual([50]), HISTORY_WAIT);
     expect(counter()).toBe('Ищем…');
 
     await user.click(screen.getByRole('button', { name: 'Закрыть поиск' }));

@@ -84,6 +84,11 @@ export function ChatsPage() {
 
   const shownProfile = profileOpen ? profileState : leavingProfile;
   const searchOpen = useMessageSearchStore((state) => Boolean(chatId) && state.chatId === chatId);
+  const closeSearch = useMessageSearchStore((state) => state.close);
+
+  // Поиск живёт, пока открыт тот же чат: смена ширины окна пересоздаёт
+  // страницу переписки, но не должна сбрасывать запрос.
+  useEffect(() => closeSearch, [chatId, closeSearch]);
   const slotOpen = profileOpen || searchOpen;
 
   const closeProfile = () => {
