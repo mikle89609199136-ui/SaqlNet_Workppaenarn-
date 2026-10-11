@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMessageSearchStore } from '@/features/message-search';
+import { services } from '@/services/serviceContainer';
 import { makeChat, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { renderChatThread } from '@/test/harness/renderChatThread';
 import { mockThreadLayout } from '@/test/harness/threadLayout';
@@ -116,6 +117,82 @@ describe('поиск по переписке на клиенте (#841)', () => 
     expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['old']);
     await waitFor(() => expect(marks('old')[0]?.dataset.current).toBe('true'));
   }, 15_000);
+
+  it('вложения старых страниц не скачиваются — поиску нужен только текст', async () => {
+    const user = userEvent.setup();
+    const resolveMedia = vi.spyOn(services.messageService, 'resolveMediaForDisplay');
+    const requests = open(
+      [...filler(PAGE_SIZE - 1, 100), message('fresh', 'релиз вышел', 200)],
+      [
+        [
+          message('photo', 'фото с отпуска', 1, {
+            type: 'image',
+            metadata: { mediaUrl: '/api/v2/media/00000000-0000-4000-8000-000000000000' },
+          } as never),
+        ],
+      ]
+    );
+
+    await search(user, 'релиз');
+
+    await waitFor(() => expect(requests).toEqual([50]));
+    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    expect(resolveMedia).not.toHaveBeenCalled();
+  }, 15_000);
+
+  it('история читается один раз: новый запрос ищет в уже собранном', async () => {
+    const user = userEvent.setup();
+    const readHistory = vi.spyOn(services.messageService, 'fetchMessageTextsPage');
+    open(filler(PAGE_SIZE, 100), [
+      [...filler(PAGE_SIZE - 1, 40), message('old', 'старый релиз 2.0', 1)],
+      [message('older', 'совсем старое', 0)],
+    ]);
+    await search(user, 'релиз');
+    await waitFor(() => expect(counter()).toBe('1 из 1'));
+    expect(readHistory).toHaveBeenCalledTimes(2);
+
+    const field = screen.getByRole('searchbox', { name: 'Поиск по переписке' });
+    await user.clear(field);
+    await user.type(field, 'совсем');
+
+    await waitFor(() =>
+      expect(useMessageSearchStore.getState().results.map(({ id }) => id)).toEqual(['older'])
+    );
+    expect(readHistory).toHaveBeenCalledTimes(2);
+  }, 15_000);
+
+  it('история не дочиталась — счётчик не выдаёт это за «Не найдено»', async () => {
+    const user = userEvent.setup();
+    const chat = makeChat({ id: 'chat-search', type: 'private', peerId: PEER });
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.get(api(`/messages/${chat.id}`), () => new HttpResponse(null, { status: 500 }))
+    );
+    renderChatThread({ chat, messages: filler(PAGE_SIZE, 100), currentUser: makeUser({ id: ME }) });
+
+    await search(user, 'релиз');
+
+    await waitFor(() => expect(counter()).toBe('Не удалось дочитать историю'));
+  }, 15_000);
+
+  it('после предела страниц счётчик говорит, сколько просмотрено', async () => {
+    const user = userEvent.setup();
+    const chat = makeChat({ id: 'chat-search', type: 'private', peerId: PEER });
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.get(api(`/messages/${chat.id}`), ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset'));
+        return HttpResponse.json({ messages: filler(PAGE_SIZE, -offset - PAGE_SIZE) });
+      })
+    );
+    renderChatThread({ chat, messages: filler(PAGE_SIZE, 100), currentUser: makeUser({ id: ME }) });
+
+    await search(user, 'релиз');
+
+    await waitFor(() => expect(counter()).toBe('Нет в последних 2050'), { timeout: 20_000 });
+  }, 30_000);
 
   it('нечитаемые сообщения пропускаются без ошибок', async () => {
     const user = userEvent.setup();

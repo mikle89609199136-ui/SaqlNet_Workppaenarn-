@@ -7,18 +7,24 @@ export function MessageSearchBar() {
   const query = useMessageSearchStore((state) => state.query);
   const total = useMessageSearchStore((state) => state.results.length);
   const currentIndex = useMessageSearchStore((state) => state.currentIndex);
-  const isSearchingHistory = useMessageSearchStore((state) => state.isSearchingHistory);
+  const historyStatus = useMessageSearchStore((state) => state.historyStatus);
+  const scannedCount = useMessageSearchStore((state) => state.scannedCount);
   const setQuery = useMessageSearchStore((state) => state.setQuery);
   const older = useMessageSearchStore((state) => state.older);
   const newer = useMessageSearchStore((state) => state.newer);
   const close = useMessageSearchStore((state) => state.close);
 
+  const nothingFound = {
+    loading: t('messageSearch.searching', 'Ищем…'),
+    complete: t('messageSearch.nothing', 'Не найдено'),
+    partial: t('messageSearch.nothingRecent', 'Нет в последних {{count}}', { count: scannedCount }),
+    failed: t('messageSearch.historyFailed', 'Не удалось дочитать историю'),
+  };
+
   const counter = total
     ? t('messageSearch.counter', '{{current}} из {{total}}', { current: currentIndex + 1, total })
     : query.trim()
-      ? isSearchingHistory
-        ? t('messageSearch.searching', 'Ищем…')
-        : t('messageSearch.nothing', 'Не найдено')
+      ? nothingFound[historyStatus]
       : '';
 
   return (

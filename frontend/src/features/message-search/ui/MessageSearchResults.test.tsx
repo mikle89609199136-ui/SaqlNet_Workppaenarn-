@@ -27,7 +27,7 @@ describe('панель «Найдено в чате» (#841)', () => {
     const store = useMessageSearchStore.getState();
     store.open('chat-1');
     store.setQuery('созвон');
-    store.setResults(results, false);
+    store.setResults(results, 'complete', results.length);
   });
 
   it('число найденного, заметка о приватности и авторы — свои как «Вы»', () => {
