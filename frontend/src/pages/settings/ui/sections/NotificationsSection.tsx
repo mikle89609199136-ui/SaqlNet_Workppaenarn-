@@ -29,6 +29,16 @@ export function NotificationsSection() {
         label={t('settings.notifications.sounds', 'Звуки сообщений')}
         onChange={(checked) => saveSettings({ sounds: checked })}
       />
+      <ListSwitchItem
+        checked={settings.callSounds ?? true}
+        hint={t(
+          'settings.notifications.callSoundsHint',
+          'Рингтон при входящем аудио- или видеозвонке'
+        )}
+        icon="phone"
+        label={t('settings.notifications.callSounds', 'Звуки звонков')}
+        onChange={(checked) => saveSettings({ callSounds: checked })}
+      />
       <ListStaticItem
         hint={t('settings.notifications.voiceVolumeHint', 'Только на этом устройстве')}
         icon="mic"

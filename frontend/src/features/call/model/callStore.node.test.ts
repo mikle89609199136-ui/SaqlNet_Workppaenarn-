@@ -505,6 +505,24 @@ describe('useCallStore', () => {
     expect(startRingtone).not.toHaveBeenCalled();
   });
 
+  it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
+    useProfileStore.setState({
+      settings: {
+        sounds: true,
+        callSounds: false,
+      } as any,
+    });
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-mute-2',
+      from: 'caller-mute',
+      kind: 'audio',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(startRingtone).not.toHaveBeenCalled();
+  });
+
   it('тихо игнорирует входящий вызов от пользователя из чёрного списка', async () => {
     queryClient.setQueryData(blockedUsersQuery().queryKey, [
       { id: 'blocked-user', username: 'badguy' } as any,
