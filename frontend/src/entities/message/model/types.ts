@@ -1,4 +1,5 @@
 import type { IMessageEntity } from '@/shared/lib/richText';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IEncryptedMedia } from '@/types/encryption.types';
 
 export type TMessageType =
@@ -74,6 +75,14 @@ export interface IMessageDto {
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
+  /** Длительность и волна голосового (#843): из шифрованного конверта. */
+  voice?: IVoiceMeta;
+  /**
+   * Своё сообщение (#657): когда собеседник его получил и прочитал — время
+   * сервера. Нет поля — ещё нет.
+   */
+  deliveredAt?: string;
+  readAt?: string;
   /** Проставляются после подтверждения отметки о прочтении сервером. */
   isRead?: boolean;
   /** Статус доставки/отправки сообщения (#552 Outbox) */
@@ -83,6 +92,9 @@ export interface IMessageDto {
 }
 
 export type TMessagesList = IMessageDto[];
+
+/** Вид общего в переписке (#842): фото и видео, файлы и аудио, текст (для ссылок). */
+export type TSharedKind = 'media' | 'files' | 'text';
 
 export interface IPinnedMessageDto {
   id: string;
@@ -113,12 +125,18 @@ export interface IMediaPayload {
   sizeBytes?: number;
   [key: string]: unknown;
 }
+/**
+ * Почему вложение не показать. Код, а не фраза: сервис языка не знает,
+ * подпись подставляет интерфейс (MessageMedia).
+ */
+export type TMediaUnavailableReason = 'unencrypted' | 'foreign' | 'decryptFailed';
+
 export interface IMediaItem extends IMessageDto {
   mediaUrl?: string | null;
   mediaEncrypted?: boolean;
   mediaEncryption?: IEncryptedMedia | null;
   mediaUnavailable?: boolean;
-  mediaUnavailableReason?: string;
+  mediaUnavailableReason?: TMediaUnavailableReason;
   mediaType?: TMediaMessageType;
 }
 export interface IMediaDisplayPatch {
@@ -127,7 +145,7 @@ export interface IMediaDisplayPatch {
   mediaEncrypted?: boolean;
   mediaEncryption?: IEncryptedMedia | null;
   mediaUnavailable?: boolean;
-  mediaUnavailableReason?: string;
+  mediaUnavailableReason?: TMediaUnavailableReason;
 }
 
 export interface IPinMessagePayload {

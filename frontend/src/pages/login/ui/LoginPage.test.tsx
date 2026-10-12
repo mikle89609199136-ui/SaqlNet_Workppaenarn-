@@ -55,7 +55,7 @@ describe('вход в аккаунт', () => {
     server.use(
       http.post(api('/auth/login'), () => {
         requested = true;
-        return HttpResponse.json({ token: 'token' });
+        return HttpResponse.json({});
       })
     );
 
@@ -66,10 +66,28 @@ describe('вход в аккаунт', () => {
     expect(requested).toBe(false);
   });
 
+  it('«@» в начале имени не мешает: оно уже стоит перед полем (#827)', async () => {
+    let sentUsername: unknown;
+    server.use(
+      http.post(api('/auth/login'), async ({ request }) => {
+        sentUsername = ((await request.json()) as { username: string }).username;
+        return HttpResponse.json({ user: { id: 'user-1', username: 'tester' } });
+      })
+    );
+
+    renderAuth();
+
+    await userEvent.type(screen.getByLabelText('Имя пользователя'), '@tester');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'right-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
+
+    await waitFor(() => expect(sentUsername).toBe('tester'));
+  });
+
   it('после успешного входа уводит в чаты', async () => {
     server.use(
       http.post(api('/auth/login'), () =>
-        HttpResponse.json({ token: 'token-1', user: { id: 'user-1', username: 'tester' } })
+        HttpResponse.json({ user: { id: 'user-1', username: 'tester' } })
       )
     );
 
@@ -80,12 +98,13 @@ describe('вход в аккаунт', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
     expect(await screen.findByText('Список чатов')).toBeInTheDocument();
+    expect(localStorage.getItem('craneapp_auth_token')).toBeNull();
   });
 
   it('возвращает туда, откуда выкинуло', async () => {
     server.use(
       http.post(api('/auth/login'), () =>
-        HttpResponse.json({ token: 'token-1', user: { id: 'user-1', username: 'tester' } })
+        HttpResponse.json({ user: { id: 'user-1', username: 'tester' } })
       )
     );
 
@@ -102,7 +121,7 @@ describe('вход в аккаунт', () => {
   it('не уходит по чужой ссылке из адресной строки', async () => {
     server.use(
       http.post(api('/auth/login'), () =>
-        HttpResponse.json({ token: 'token-1', user: { id: 'user-1', username: 'tester' } })
+        HttpResponse.json({ user: { id: 'user-1', username: 'tester' } })
       )
     );
 
@@ -132,6 +151,57 @@ describe('вход в аккаунт', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
     expect(await screen.findByText(/дополнительный пароль/i)).toBeInTheDocument();
+  });
+
+  it('с мышью курсор сразу в поле логина — Enter есть куда отправить', () => {
+    // matchMedia в окружении тестов — уже мок, spyOn поверх него не откатывается:
+    // подменяем и возвращаем руками, иначе «мышь» протекла бы в следующие тесты.
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === '(pointer: fine)',
+        media: query,
+      }) as MediaQueryList) as typeof window.matchMedia;
+    try {
+      renderAuth();
+      expect(screen.getByLabelText('Имя пользователя')).toHaveFocus();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('на телефоне фокус не ставит: клавиатура закрыла бы полэкрана', () => {
+    renderAuth();
+
+    expect(screen.getByLabelText('Имя пользователя')).not.toHaveFocus();
+  });
+
+  it('Enter отправляет то, что подставило автозаполнение без событий ввода', async () => {
+    let sent: unknown;
+    server.use(
+      http.post(api('/auth/login'), async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ code: 'invalid_credentials' }, { status: 401 });
+      })
+    );
+
+    renderAuth();
+
+    // Так подставляет браузер: значение в поле есть, события input не было.
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )!.set!;
+    setNativeValue.call(screen.getByLabelText('Имя пользователя'), 'tester');
+    const password = screen.getByLabelText('Пароль');
+    setNativeValue.call(password, 'saved-password');
+
+    password.focus();
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(sent).toMatchObject({ username: 'tester', password: 'saved-password' })
+    );
   });
 
   it('показывает пароль по кнопке', async () => {

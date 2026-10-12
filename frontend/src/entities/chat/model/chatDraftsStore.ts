@@ -33,13 +33,23 @@ function cancelPending(chatId: string): void {
   pending.delete(chatId);
 }
 
+const EMPTY_RICH_DRAFT: IRichText = { text: '', entities: [] };
+
 export function readDraft(chatId: string): string {
   return drafts.get(chatId)?.text ?? '';
 }
 
+/**
+ * Черновик с форматированием для списка чатов (#971) или хука подписки.
+ * Возвращает точную ссылку из хранилища или null, безопасно для useSyncExternalStore.
+ */
+export function readDraftRich(chatId: string): IRichText | null {
+  return drafts.get(chatId) ?? null;
+}
+
 /** Черновик с форматированием — для поля ввода. */
 export function readRichDraft(chatId: string): IRichText {
-  return drafts.get(chatId) ?? { text: '', entities: [] };
+  return drafts.get(chatId) ?? EMPTY_RICH_DRAFT;
 }
 
 /**
@@ -82,6 +92,17 @@ export function subscribeToDraft(chatId: string, listener: () => void): () => vo
     forChat.delete(listener);
     if (forChat.size === 0) listeners.delete(chatId);
   };
+}
+
+/**
+ * Есть ли недописанное хоть в одном чате. Черновики живут только в памяти:
+ * перед перезагрузкой (обновление приложения, #892) человека предупреждают.
+ */
+export function hasAnyDraft(): boolean {
+  for (const draft of drafts.values()) {
+    if (draft.text.trim()) return true;
+  }
+  return false;
 }
 
 /** Выход из аккаунта: недописанное не должно достаться следующему. */

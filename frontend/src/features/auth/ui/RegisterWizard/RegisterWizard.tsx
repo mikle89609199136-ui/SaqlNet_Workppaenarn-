@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { type ChangeEvent, type FormEvent, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
@@ -10,9 +10,10 @@ import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
 import { validateAvatarFile } from '@/entities/user';
+import { encodeAvatar } from '@/shared/lib';
 import type { IAuthResponse } from '@/types';
 import {
-  registerFormSchema,
+  createRegisterFormSchema,
   REGISTER_STEPS,
   STEP_FIELDS,
   type TRegisterForm,
@@ -27,6 +28,8 @@ export function RegisterWizard() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
 
+  /* Сообщения схемы — на языке интерфейса: язык меняют прямо на первом шаге. */
+  const schema = useMemo(() => createRegisterFormSchema(t), [t]);
   const [step, setStep] = useState<TRegisterStep>('welcome');
   /* Язык уже определён по браузеру при запуске (shared/i18n) — здесь
      его только показывают и дают поправить. Выбранный тут же меняет
@@ -53,7 +56,7 @@ export function RegisterWizard() {
     watch,
     formState: { errors, isSubmitting, touchedFields },
   } = useForm<TRegisterForm>({
-    resolver: zodResolver(registerFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: { firstName: '', lastName: '', username: '', password: '', passwordRepeat: '' },
     mode: 'onTouched',
   });
@@ -118,11 +121,15 @@ export function RegisterWizard() {
     setStep(next);
   }
 
-  function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const picked = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    if (!picked) return;
 
+    /* Сперва пересжать, потом проверять: снимок с телефона весит 5–10 МБ и
+       не проходил ограничение в 5 МБ, хотя после пересжатия в нём десятки
+       килобайт (см. encodeImage). */
+    const file = await encodeAvatar(picked);
     const validation = validateAvatarFile(file);
     if (!validation.valid) {
       const errorMessage =
@@ -162,13 +169,13 @@ export function RegisterWizard() {
         username: values.username.trim(),
       });
 
-      if (!data.token) {
+      if (!data.user) {
         throw new Error(t('invalidResponse', 'Неверный формат ответа'));
       }
 
       // Следующий шаг — облачный пароль, и он не должен совпасть с этим.
       await rememberLoginPassword(values.password);
-      saveAuthSession({ settings: undefined, token: data.token, user: data.user! });
+      saveAuthSession({ settings: undefined, user: data.user });
       /* Фотография не должна ронять регистрацию: аккаунт уже создан, и
          неудачная загрузка значит лишь аватарку по умолчанию. */
       if (avatarFile) {
@@ -214,7 +221,7 @@ export function RegisterWizard() {
   const loginLink = (
     <>
       {t('alreadyHaveAccount', 'Уже есть аккаунт?')}{' '}
-      <Link className="text-brand hover:underline" to={ROUTES.LOGIN}>
+      <Link className="font-semibold text-brand hover:underline" to={ROUTES.LOGIN}>
         {t('login', 'Войти')}
       </Link>
     </>
@@ -222,7 +229,14 @@ export function RegisterWizard() {
 
   if (step === 'welcome') {
     return (
-      <AuthLayout footer={loginLink} title={t('welcomeRegisterTitle', 'Добро пожаловать')}>
+      <AuthLayout
+        footer={loginLink}
+        subtitle={t(
+          'welcomeRegisterSubtitle',
+          'Мессенджер, где переписку читаете только вы и собеседник'
+        )}
+        title={t('welcomeRegisterTitle', 'Добро пожаловать')}
+      >
         <WelcomeStep
           language={language}
           onLanguageChange={(value) => void i18n.changeLanguage(value)}
@@ -234,8 +248,23 @@ export function RegisterWizard() {
 
   return (
     <AuthLayout
-      footer={step === 'credentials' ? loginLink : undefined}
-      header={<StepHeader activeIndex={step === 'about' ? 0 : 1} onBack={goBack} />}
+      header={
+        step === 'about' ? (
+          <StepHeader
+            activeIndex={0}
+            onBack={goBack}
+            subtitle={t('addPhotoName', 'Добавьте фото и введите своё имя')}
+            title={t('whatIsYourName', 'Как вас зовут?')}
+          />
+        ) : (
+          <StepHeader
+            activeIndex={1}
+            onBack={goBack}
+            subtitle={t('chooseLoginSub', 'Имя пользователя и пароль для входа')}
+            title={t('chooseLoginTitle', 'Придумайте логин')}
+          />
+        )
+      }
       title=""
     >
       <form className="grid gap-4 text-left" noValidate onSubmit={handleStepSubmit}>

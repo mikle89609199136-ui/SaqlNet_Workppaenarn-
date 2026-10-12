@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { IMessageDto, IPinnedDto } from './types';
 import { chatKeys } from '@/entities/chat';
+import type { IReceiptEvent } from '@/shared/lib';
 import {
   appendMessage,
+  applyReceipt,
   canAppendToThread,
   patchMessage,
   removeMessage,
@@ -88,6 +90,16 @@ export function patchThreadMessage(
   markChatListStale(queryClient);
 }
 
+/**
+ * Событие `receipts` (#657): галочки своих сообщений в ленте — на месте.
+ * Список чатов обновляется отдельно и тоже без перезапроса.
+ */
+export function putThreadReceipt(queryClient: QueryClient, event: IReceiptEvent): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(event.chatId), (current) =>
+    current ? applyReceipt(current, event) : current
+  );
+}
+
 export function replaceThreadMessage(
   queryClient: QueryClient,
   chatId: string,
@@ -139,6 +151,20 @@ export function dropThreadMessage(
   // Удалённое сообщение могло быть закреплено — панель обязана это заметить.
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   // ...и быть последним в чате: тогда в списке показывается предыдущее.
+  markChatListStale(queryClient);
+}
+
+/** То же для пачки (#840): одна перерисовка ленты и одно обновление списка. */
+export function dropThreadMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  messageIds: string[]
+): void {
+  if (messageIds.length === 0) return;
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? messageIds.reduce((thread, id) => removeMessage(thread, id), current) : current
+  );
+  void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   markChatListStale(queryClient);
 }
 

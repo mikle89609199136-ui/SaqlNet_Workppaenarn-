@@ -8,8 +8,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -26,8 +28,8 @@ func (s handlerCryptoStub) VerifyPassword(context.Context, string, string) (bool
 	return s.verifyResult, nil
 }
 
-func (handlerCryptoStub) IssueToken(context.Context, string, string, int64) (string, error) {
-	return "token", nil
+func (handlerCryptoStub) IssueToken(context.Context, string, string, int64) (cryptoclient.IssuedToken, error) {
+	return cryptoclient.IssuedToken{Token: "token", ExpiresAt: time.Unix(2_000_000_000, 0).UTC()}, nil
 }
 
 func TestRegisterRejectsInvalidInputBeforeCallingService(t *testing.T) {
@@ -89,10 +91,14 @@ func TestLogoutAllCanBeActivatedAfterCompatibleRollout(t *testing.T) {
 	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE public.user_sessions").
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
+	mock.ExpectExec("DELETE FROM users.push_subscriptions").
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	handler := NewHandler(
 		NewService(db, handlerCryptoStub{}),
@@ -129,6 +135,39 @@ func TestTokenGenerationMigrationExists(t *testing.T) {
 	}
 	if !strings.Contains(string(sql), "ADD COLUMN IF NOT EXISTS token_generation BIGINT NOT NULL DEFAULT 0") {
 		t.Fatal("auth token generation migration is missing")
+	}
+}
+
+func TestLoginSessionsMigrationExists(t *testing.T) {
+	sql, err := os.ReadFile("../../migrations/0035_auth_login_sessions.sql")
+	if err != nil {
+		t.Fatalf("read login sessions migration: %v", err)
+	}
+	for _, fragment := range []string{
+		"ALTER COLUMN refresh_token_hash DROP NOT NULL",
+		"ADD COLUMN IF NOT EXISTS access_token_hash TEXT",
+		"ADD COLUMN IF NOT EXISTS token_generation BIGINT NOT NULL DEFAULT 0",
+		"auth_sessions_access_token_hash_key",
+	} {
+		if !strings.Contains(string(sql), fragment) {
+			t.Fatalf("auth login sessions migration is missing %q", fragment)
+		}
+	}
+}
+
+func TestDeviceSessionLinkMigrationExists(t *testing.T) {
+	sql, err := os.ReadFile("../../migrations/0036_auth_device_session_link.sql")
+	if err != nil {
+		t.Fatalf("read device session link migration: %v", err)
+	}
+	for _, fragment := range []string{
+		"ADD COLUMN IF NOT EXISTS device_session_id UUID",
+		"auth_sessions_device_session_id_fkey",
+		"auth_sessions_device_session_id_key",
+	} {
+		if !strings.Contains(string(sql), fragment) {
+			t.Fatalf("auth device session link migration is missing %q", fragment)
+		}
 	}
 }
 

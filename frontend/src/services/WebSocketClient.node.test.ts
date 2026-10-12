@@ -76,7 +76,7 @@ let visibility: 'visible' | 'hidden';
 
 function makeClient(options: Record<string, unknown> = {}) {
   return new WebSocketClient('ws://localhost/ws', {
-    getToken: () => 'токен',
+    hasSession: () => true,
     reconnectDelay: 0,
     ...options,
   });
@@ -426,5 +426,73 @@ describe('переподключение', () => {
     wake('online');
 
     expect(FakeSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it('сохраняет контекст from и roomId для событий звонков call_*', () => {
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    const received: unknown[] = [];
+    const unsub = eventBus.on('call_offer', (data) => received.push(data));
+
+    socket.deliver({
+      type: 'call_offer',
+      from: 'user-alice',
+      roomId: 'room-123',
+      payload: { sdp: 'test-sdp', type: 'offer' },
+    });
+
+    unsub();
+
+    expect(received).toEqual([
+      {
+        sdp: 'test-sdp',
+        type: 'offer',
+        from: 'user-alice',
+        roomId: 'room-123',
+      },
+    ]);
+  });
+
+  it('игнорирует payload.from и берёт from только с верхнего уровня для call_* (#854)', () => {
+    const client = makeClient();
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+
+    const received: unknown[] = [];
+    const unsub = eventBus.on('call_offer', (data) => received.push(data));
+
+    socket.deliver({
+      type: 'call_offer',
+      roomId: 'room-123',
+      payload: { sdp: 'test-sdp', type: 'offer', from: 'user-mallory' },
+    });
+
+    unsub();
+
+    expect(received).toEqual([
+      {
+        sdp: 'test-sdp',
+        type: 'offer',
+        from: undefined,
+        roomId: 'room-123',
+      },
+    ]);
+  });
+});
+
+/* Сессия — в cookie (#705): браузер отправит её при подключении сам. */
+describe('подключение по cookie сессии', () => {
+  it('в адресе нет токена', () => {
+    makeClient().connect();
+
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(FakeSocket.instances[0].url).toBe('ws://localhost/ws');
+  });
+
+  it('человек не вошёл — не подключается', () => {
+    expect(makeClient({ hasSession: () => false }).connect()).toBeNull();
+    expect(FakeSocket.instances).toHaveLength(0);
   });
 });

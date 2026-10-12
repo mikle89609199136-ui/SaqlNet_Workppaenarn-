@@ -1,9 +1,18 @@
 export const STORAGE_KEYS = {
-  TOKEN: 'craneapp_auth_token',
+  /**
+   * Токен версии до #705. Новый клиент его не читает и не использует для
+   * входа — ключ нужен временно только для удаления остатка при запуске.
+   */
+  LEGACY_TOKEN: 'craneapp_auth_token',
+  /** Сохранённый профиль. Есть — человек вошёл (сама сессия — в cookie). */
   USER: 'craneapp_user_data',
   SETTINGS: 'craneapp_settings',
   LANGUAGE: 'craneapp_language',
   PANE_WIDTHS: 'craneapp_pane_widths',
+  RECENT_EMOJI: 'craneapp_recent_emoji',
+  /** Палитра фона и акцент — только в браузере, пока нет #728. */
+  APPEARANCE: 'craneapp_appearance',
+  VOICE_VOLUME: 'craneapp_voice_volume',
 };
 
 export type TStorageKeyTypes = keyof typeof STORAGE_KEYS;

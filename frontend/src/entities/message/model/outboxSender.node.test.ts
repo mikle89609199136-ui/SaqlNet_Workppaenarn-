@@ -13,6 +13,77 @@ import {
 import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
 
+// Пересжатие фото — вместо холста (его нет в тестовой среде) подставной результат.
+const encoded = vi.hoisted(() => ({
+  file: new File(['webp'], 'photo.webp', { type: 'image/webp' }),
+  calls: 0,
+}));
+vi.mock('@/shared/lib', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/lib')>()),
+  encodeChatPhoto: async () => {
+    encoded.calls += 1;
+    return encoded.file;
+  },
+}));
+
+describe('outboxSender: пересжатие фото', () => {
+  beforeEach(() => {
+    clearOutbox();
+    resetInFlightForTests();
+    vi.restoreAllMocks();
+    encoded.calls = 0;
+  });
+
+  it('пересжимает до загрузки один раз: повтор после сбоя берёт готовый файл', async () => {
+    const queryClient = new QueryClient();
+    const original = new File(['jpeg'], 'photo.jpg', { type: 'image/jpeg' });
+    const send = vi
+      .spyOn(services.messageService, 'sendMediaMessage')
+      .mockRejectedValue(new Error('network'));
+
+    addOutboxItem({
+      tempId: 'temp-photo',
+      chatId: 'chat-1',
+      content: '',
+      type: 'image',
+      file: original,
+      optimizeImage: true,
+      status: 'uploading',
+      createdAt: new Date('2026-10-09T00:00:00Z'),
+    });
+
+    await sendOutboxItem(queryClient, getOutboxItem('temp-photo')!);
+    expect(send.mock.calls[0][1]).toBe(encoded.file);
+    expect(getOutboxItem('temp-photo')).toMatchObject({ file: encoded.file, optimizeImage: false });
+
+    await sendOutboxItem(queryClient, getOutboxItem('temp-photo')!);
+    expect(encoded.calls).toBe(1);
+    expect(send.mock.calls[1][1]).toBe(encoded.file);
+  });
+
+  it('без флага отправляет как есть — «Файл» уходит оригиналом', async () => {
+    const queryClient = new QueryClient();
+    const original = new File(['jpeg'], 'original.jpg', { type: 'image/jpeg' });
+    const send = vi
+      .spyOn(services.messageService, 'sendMediaMessage')
+      .mockRejectedValue(new Error('network'));
+
+    addOutboxItem({
+      tempId: 'temp-original',
+      chatId: 'chat-1',
+      content: '',
+      type: 'image',
+      file: original,
+      status: 'uploading',
+      createdAt: new Date('2026-10-09T00:00:00Z'),
+    });
+
+    await sendOutboxItem(queryClient, getOutboxItem('temp-original')!);
+    expect(encoded.calls).toBe(0);
+    expect(send.mock.calls[0][1]).toBe(original);
+  });
+});
+
 describe('outboxSender', () => {
   let queryClient: QueryClient;
 
@@ -176,7 +247,8 @@ describe('outboxSender', () => {
       'image',
       'Картинка',
       null,
-      []
+      [],
+      undefined
     );
     expect(getOutboxItem(tempId)).toBeUndefined();
   });

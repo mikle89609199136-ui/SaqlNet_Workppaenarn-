@@ -55,6 +55,8 @@ interface Props extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: keyof typeof sizes;
   /* Слева внутри поля, украшение — лупа в поиске. */
   icon?: TIconTypes;
+  /* Слева внутри поля, текстом — «@» у имени пользователя (#827). */
+  prefix?: string;
   /* Справа внутри поля, что угодно: кнопка очистки, показ пароля,
      спиннер проверки юзернейма, галочка «свободен». Отступ поля
      подстраивается сам, чтобы текст не заезжал под содержимое. */
@@ -75,6 +77,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
     optional,
     size = 'md',
     icon,
+    prefix,
     addon,
     id,
     className,
@@ -130,6 +133,15 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
           />
         )}
 
+        {prefix && !icon && (
+          <span
+            aria-hidden="true"
+            className={cn('pointer-events-none absolute text-body text-ink-3', s.icon)}
+          >
+            {prefix}
+          </span>
+        )}
+
         <input
           className={cn(
             /* Поле узнаётся по фону ленты на панели и по рамке —
@@ -147,7 +159,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
                него можно копировать, поэтому гасим лишь фон. */
             'read-only:bg-sheet-2',
             s.field,
-            icon && s.withIcon,
+            (icon || prefix) && s.withIcon,
             trailing && s.withAddon,
             inputClassName
           )}

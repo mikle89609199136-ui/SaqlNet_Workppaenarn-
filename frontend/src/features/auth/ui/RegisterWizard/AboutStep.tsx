@@ -17,18 +17,9 @@ export function AboutStep({ avatar, avatarInputRef, errorOf, onAvatarChange, reg
 
   return (
     <>
-      <div className="text-center">
-        <h2 className="text-title font-semibold text-ink">
-          {t('whatIsYourName', 'Как вас зовут?')}
-        </h2>
-        <p className="mt-1 text-caption text-ink-2">
-          {t('addPhotoName', 'Добавьте фото и введите своё имя')}
-        </p>
-      </div>
-
       <div className="flex flex-col items-center gap-2">
         <button
-          className="relative h-24 w-24 overflow-hidden rounded-full border-2 border-dashed border-line bg-sheet-2 transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-brand data-[filled=true]:border-solid data-[filled=true]:border-brand"
+          className="relative size-24 cursor-pointer overflow-hidden rounded-full border-2 border-dashed border-divider transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-brand data-[filled=true]:border-solid data-[filled=true]:border-brand-fill"
           data-filled={Boolean(avatar)}
           onClick={() => avatarInputRef.current?.click()}
           type="button"
@@ -36,11 +27,11 @@ export function AboutStep({ avatar, avatarInputRef, errorOf, onAvatarChange, reg
           {avatar ? (
             <img alt="" className="h-full w-full object-cover" src={avatar} />
           ) : (
-            <Icon className="mx-auto text-ink-3" name="camera" size="lg" />
+            <Icon className="mx-auto size-7 stroke-[1.8px] text-ink-3" name="camera" />
           )}
         </button>
         <span className="text-caption text-ink-3">
-          {t('tapAddPhoto', 'Нажмите чтобы добавить фото')}
+          {t('tapAddPhoto', 'Нажмите, чтобы добавить фото')}
         </span>
         <input
           accept="image/jpeg,image/png,image/webp,image/gif"
@@ -63,7 +54,7 @@ export function AboutStep({ avatar, avatarInputRef, errorOf, onAvatarChange, reg
       <Input
         autoComplete="family-name"
         error={errorOf('lastName')}
-        hint={t('optional', 'Необязательно')}
+        optional
         label={t('lastName', 'Фамилия')}
         maxLength={64}
         placeholder={t('lastNamePlaceholder', 'Ваша фамилия')}

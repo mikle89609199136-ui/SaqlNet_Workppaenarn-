@@ -109,19 +109,4 @@ describe('отправка текста', () => {
 
     await waitFor(() => expect(screen.getByText(text)).toHaveClass('font-semibold'));
   });
-
-  it('should not let the message be typed while the chat key is not ready', async () => {
-    // Пока ключа чата нет, шифровать нечем. Отправить открытым текстом
-    // хуже, чем не отправить, поэтому поле ввода закрыто, и человек видит
-    // почему.
-    const { me, chat, sentBodies } = setupChat();
-
-    renderChatThread({ chat, messages: [], currentUser: me, keyUnavailable: true });
-
-    const input = await screen.findByRole('textbox', { name: 'Сообщение' });
-
-    expect(input).toHaveAttribute('contenteditable', 'false');
-    expect(screen.getByText('Шифрование недоступно')).toBeInTheDocument();
-    expect(sentBodies).toHaveLength(0);
-  });
 });

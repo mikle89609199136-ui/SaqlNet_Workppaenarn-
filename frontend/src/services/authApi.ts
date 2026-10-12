@@ -26,6 +26,7 @@ export async function uploadAvatar(avatar: File | string | null | undefined): Pr
     await services.userService.updateAvatar(avatar);
     return;
   }
+  // Файл уже пересжат при выборе (RegisterWizard, encodeAvatar).
   const { url } = await services.mediaService.upload(avatar);
   await services.userService.updateAvatar(url);
 }
@@ -40,16 +41,8 @@ export async function uploadAvatar(avatar: File | string | null | undefined): Pr
  * Настройки необязательны: при регистрации их ещё неоткуда взять, у
  * нового аккаунта они и так пустые.
  */
-export function saveAuthSession({
-  settings,
-  token,
-  user,
-}: {
-  settings?: ISettingsDto;
-  token: string;
-  user: IUserDto;
-}) {
-  useProfileStore.getState().setToken(token);
+export function saveAuthSession({ settings, user }: { settings?: ISettingsDto; user: IUserDto }) {
+  // Сама сессия уже в cookie — её поставил ответ сервера на вход (#705).
   useProfileStore.getState().setUser(user);
   if (settings) useProfileStore.getState().setSettings(settings);
   window.dispatchEvent(new CustomEvent('craneapp:auth-session-saved'));

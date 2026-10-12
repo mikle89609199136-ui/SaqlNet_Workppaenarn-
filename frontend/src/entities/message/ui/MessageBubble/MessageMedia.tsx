@@ -17,12 +17,14 @@ export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
     message;
 
   if (mediaUnavailable) {
-    return (
-      <div className="message-media-unavailable">
-        {mediaUnavailableReason ??
-          t('mediaUnavailableUnencrypted', 'Медиа недоступно: файл не зашифрован')}
-      </div>
-    );
+    /* Причину называет сервис кодом, подпись — здесь, на языке интерфейса. */
+    const reasonText =
+      mediaUnavailableReason === 'foreign'
+        ? t('mediaUnavailable.foreign', 'Медиа недоступно: файл не из этого приложения')
+        : mediaUnavailableReason === 'decryptFailed'
+          ? t('mediaUnavailable.decryptFailed', 'Медиа недоступно: ошибка расшифровки')
+          : t('mediaUnavailableUnencrypted', 'Медиа недоступно: файл не зашифрован');
+    return <div className="message-media-unavailable">{reasonText}</div>;
   }
 
   if (!mediaUrl) return null;
@@ -54,8 +56,11 @@ export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
     return (
       <div className={actualType === 'voice' ? undefined : 'mt-1 mb-2 w-full'}>
         <AudioPlayer
+          durationMs={actualType === 'voice' ? message.voice?.durationMs : undefined}
+          gainDb={actualType === 'voice' ? message.voice?.gainDb : undefined}
           seed={message.id}
           src={mediaUrl}
+          waveform={actualType === 'voice' ? message.voice?.waveform : undefined}
           trailing={actualType === 'voice' ? trailing : undefined}
           variant={actualType === 'voice' ? 'voice' : 'audio'}
         />

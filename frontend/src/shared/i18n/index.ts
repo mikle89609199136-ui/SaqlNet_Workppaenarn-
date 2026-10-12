@@ -47,4 +47,13 @@ i18n
     },
   });
 
+/* Язык страницы — за языком интерфейса. В index.html стоит ru, и без этого
+   экранный диктор читал английский интерфейс с русским произношением, а
+   браузер предлагал «перевести с русского». */
+const syncDocumentLanguage = (language: string) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = language;
+};
+syncDocumentLanguage(i18n.language);
+i18n.on('languageChanged', syncDocumentLanguage);
+
 export default i18n;

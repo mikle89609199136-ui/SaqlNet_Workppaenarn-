@@ -13,7 +13,8 @@ describe('оснастка настроек', () => {
   it('открывает раздел, заданный адресом', async () => {
     renderSettings({ section: 'privacy' });
 
-    expect(await screen.findByText('Конфиденциальность')).toBeInTheDocument();
+    // Заголовок раздела — в шапке страницы (#828), которой в оснастке нет.
+    expect(await screen.findByRole('region', { name: 'Кто видит' })).toBeInTheDocument();
   });
 
   it('показывает значение из кеша, не обращаясь к серверу', async () => {
@@ -23,13 +24,15 @@ describe('оснастка настроек', () => {
       privacy: { lastSeen: 'nobody' },
     });
 
-    const lastSeen = await screen.findByRole('group', { name: 'Кто видит, когда я был(а) в сети' });
+    const lastSeen = await screen.findByRole('radiogroup', {
+      name: 'Кто видит, когда я был(а) в сети',
+    });
     expect(within(lastSeen).getByRole('radio', { name: 'Никто' })).toBeChecked();
   });
 
   it('открывает подстраницу аккаунта по адресу', async () => {
     renderSettings({ section: 'account', subsection: 'password' });
 
-    expect(await screen.findByRole('heading', { name: 'Изменить пароль' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Текущий пароль')).toBeInTheDocument();
   });
 });

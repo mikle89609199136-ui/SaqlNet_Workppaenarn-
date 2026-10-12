@@ -44,9 +44,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
       <div data-testid="outlet">
         Контент треда
         <button
-          onClick={() =>
-            context.onProfileStateChange({ isOpen: true, userId: 'u-1', chat: null, messages: [] })
-          }
+          onClick={() => context.onProfileStateChange({ isOpen: true, userId: 'u-1', chat: null })}
           type="button"
         >
           Открыть профиль

@@ -16,12 +16,15 @@ import { useCallStore } from '@/features/call';
 import { registerChatResolver, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
+import { setVoiceVolume } from '@/shared/lib/voice/voiceVolume';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
+
+Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
 
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 Element.prototype.getBoundingClientRect = function () {
@@ -120,6 +123,31 @@ if (!globalThis.requestAnimationFrame) {
 if (!globalThis.URL.createObjectURL) {
   globalThis.URL.createObjectURL = vi.fn(() => 'blob:test');
   globalThis.URL.revokeObjectURL = vi.fn();
+}
+
+if (typeof globalThis.DragEvent === 'undefined') {
+  globalThis.DragEvent = class DragEvent extends UIEvent {} as unknown as typeof DragEvent;
+}
+
+if (typeof globalThis.ClipboardEvent === 'undefined') {
+  globalThis.ClipboardEvent =
+    class ClipboardEvent extends Event {} as unknown as typeof ClipboardEvent;
+}
+
+if (typeof globalThis.ClipboardItem === 'undefined') {
+  globalThis.ClipboardItem = class ClipboardItem {
+    readonly types: string[];
+    private data: Record<string, Blob | Promise<Blob | string> | string>;
+    constructor(data: Record<string, Blob | Promise<Blob | string> | string>) {
+      this.data = data;
+      this.types = Object.keys(data);
+    }
+    async getType(type: string): Promise<Blob> {
+      const raw = await this.data[type];
+      if (!raw) throw new Error(`Type ${type} not found`);
+      return raw instanceof Blob ? raw : new Blob([raw as BlobPart], { type });
+    }
+  } as unknown as typeof ClipboardItem;
 }
 
 if (!globalThis.matchMedia) {
@@ -228,6 +256,7 @@ afterEach(() => {
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   clearToasts();
   clearOutbox();
+  setVoiceVolume(1);
 
   localStorage.clear();
 });

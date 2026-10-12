@@ -1,8 +1,10 @@
 import { Avatar, Icon, NotoEmoji } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
-import { useChatUiStore } from '@/entities/chat';
+import { getLastMessageText, useChatUiStore } from '@/entities/chat';
+import { menuPointNear } from '../../model/messageMenu';
+import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
 import type { IMediaItem, IMessageDto } from '../../model/types';
-import { cn } from '@/shared/lib';
+import { cn, receiptState } from '@/shared/lib';
 import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
 import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,6 +65,7 @@ interface Props {
   isFirstInGroup?: boolean;
   /** Последнее сообщение в серии: у него аватарка автора в группе. */
   isLastInGroup?: boolean;
+  tabIndex?: number;
 }
 
 /* Цвет имени автора — из его идентификатора: соседние реплики разных
@@ -77,7 +80,7 @@ function authorInk(senderId: string) {
 }
 
 /* Анимированная картинка Noto играет столько, потом — снова статичная. */
-const REACTION_PLAY_MS = 1800;
+const REACTION_PLAY_MS = 2500;
 
 interface IReactionPillProps {
   emoji: string;
@@ -167,6 +170,7 @@ export const MessageBubble = memo(
     isGroupChat = false,
     isFirstInGroup = true,
     isLastInGroup = true,
+    tabIndex,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -187,6 +191,12 @@ export const MessageBubble = memo(
       setActionMenu,
       message
     );
+    const handleMenuKeys = useMessageMenuKeys({
+      message,
+      selectionMode,
+      onSelection,
+      setActionMenu,
+    });
 
     const actualType = message.type;
     const isAudio = actualType === 'audio' || actualType === 'voice';
@@ -202,19 +212,19 @@ export const MessageBubble = memo(
     const showAuthor = groupIn && isFirstInGroup && Boolean(authorName);
     const failed = mine && message.status === 'failed';
 
-    /* Статус своего сообщения, как в макете: часы — пока уходит, одна
-       галочка — отправлено, две — прочитано. Всё, что пришло с сервера и
-       не в очереди отправки, отправлено; «прочитано» бывает, только когда
-       о нём известно (личный чат). */
+    /* Статус своего сообщения (#657): часы — пока уходит, одна галочка —
+       отправлено, две приглушённые — доставлено, две цветные — прочитано.
+       Доставку и прочтение сообщает сервер; показываются они только в
+       личном чате — в группе у них нет одного значения. */
     const sending = message.status === 'pending' || message.status === 'uploading';
-    const delivery: 'sending' | 'sent' | 'read' | null = !mine
+    const delivery: 'sending' | 'sent' | 'delivered' | 'read' | null = !mine
       ? null
       : sending
         ? 'sending'
         : failed
           ? null
-          : message.status === 'read' && showDeliveryStatus
-            ? 'read'
+          : showDeliveryStatus
+            ? receiptState(message)
             : 'sent';
     const deliveryLabel = {
       sending:
@@ -222,19 +232,29 @@ export const MessageBubble = memo(
           ? t('uploading', 'Загрузка...')
           : t('sending', 'Отправка...'),
       sent: t('messageStatus.sent', 'Отправлено'),
+      delivered: t('messageStatus.delivered', 'Доставлено'),
       read: t('messageStatus.read', 'Прочитано'),
     };
 
-    /* Мета — булавка, «изменено», время, статус — строкой в конце текста.
-       Своё — чистым белым: полупрозрачный на части акцентов не держит
-       контраст. */
-    const meta = (
-      <span
-        className={cn(
-          'message-meta ml-2.5 inline-flex items-center gap-0.75 align-[-2px] text-micro whitespace-nowrap tabular-nums select-none',
-          mine ? 'text-out-meta' : 'text-ink-3'
-        )}
-      >
+    const announcement = [
+      mine ? t('you', 'Вы') : authorName,
+      // Звонок getLastMessageText подписывает сам («Звонок завершен · 28 сек»),
+      // а не читает служебный JSON из content.
+      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
+      formatMessageTime(message.createdAt),
+      delivery && deliveryLabel[delivery],
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    /* Мета — булавка, «изменено», время, статус. Своё — чистым белым:
+       полупрозрачный на части акцентов не держит контраст. */
+    const metaClass = cn(
+      'message-meta ml-2.5 items-center gap-0.75 text-micro whitespace-nowrap tabular-nums select-none',
+      mine ? 'text-out-meta' : 'text-ink-3'
+    );
+    const metaContent = (
+      <>
         {message.isPinned && (
           <span aria-label={t('pinned', 'Закреплено')} className="flex" role="img">
             <Icon className="size-3 stroke-2" name="pin" />
@@ -243,22 +263,44 @@ export const MessageBubble = memo(
         {message.isEdited && <span>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
         {delivery && (
-          <span aria-label={deliveryLabel[delivery]} className="flex" role="img">
+          <span
+            aria-label={deliveryLabel[delivery]}
+            className="flex data-[delivery=delivered]:text-out-tick data-[delivery=read]:text-out-read data-[delivery=sent]:text-out-tick"
+            data-delivery={delivery}
+            role="img"
+          >
             <Icon
               className="size-4 stroke-2"
-              name={delivery === 'sending' ? 'clock' : delivery === 'read' ? 'checkCheck' : 'check'}
+              name={
+                delivery === 'sending'
+                  ? 'clock'
+                  : delivery === 'delivered' || delivery === 'read'
+                    ? 'checkCheck'
+                    : 'check'
+              }
             />
           </span>
         )}
-      </span>
+      </>
+    );
+    /* В звонке, голосовом и под медиа — строкой рядом с содержимым. */
+    const meta = <span className={cn(metaClass, 'inline-flex align-[-2px]')}>{metaContent}</span>;
+    /* В тексте — всегда в правом нижнем углу: прижата вправо в конце
+       текста. Помещается на последней строке — встаёт на неё справа, нет —
+       переносится ниже, тоже справа. */
+    const cornerMeta = (
+      <span className={cn(metaClass, 'float-right mt-1 flex')}>{metaContent}</span>
     );
 
     return (
       <article
+        aria-label={announcement}
         id={message.id}
-        className="flex flex-col"
+        className="group/message flex flex-col outline-none"
         data-first-in-group={isFirstInGroup ? 'true' : undefined}
         data-last-in-group={isLastInGroup ? 'true' : undefined}
+        onKeyDown={handleMenuKeys}
+        tabIndex={tabIndex}
         {...longPressHandlers}
       >
         <div className="flex items-center gap-2.5">
@@ -322,11 +364,14 @@ export const MessageBubble = memo(
               isVoice && 'py-2 pr-3 pl-2',
               message.undecryptable && 'px-3.5 py-2.5',
               hasMessageMedia(message) && 'has-media',
-              isAudio && 'w-full',
+              /* Плееру аудиофайла нужна ширина под ползунок. Голосовое — по
+                 содержимому (кнопка, волна, время), в пределах максимума. */
+              isAudio && !isVoice && 'w-full',
               /* Выбранное и то, над которым открыто меню, — обводкой через
                  зазор цвета ленты, как в макете. */
               (isSelected || isActionTarget) &&
                 'shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
+              'group-focus-visible/message:shadow-[0_0_0_2px_var(--color-chat-bg),0_0_0_4px_var(--color-brand)]',
               isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
               isSelected && 'is-selected',
               /* Переход к сообщению — вспышкой, как в макете. */
@@ -424,9 +469,9 @@ export const MessageBubble = memo(
                 )}
               >
                 <Icon className="size-4.5 shrink-0" name="lock" />
-                <span className="[overflow-wrap:anywhere]">
+                <span className="flow-root min-w-0 [overflow-wrap:anywhere]">
                   {t(`undecryptable.${message.undecryptable}`, message.content)}
-                  <span className="not-italic">{meta}</span>
+                  <span className="not-italic">{cornerMeta}</span>
                 </span>
               </p>
             ) : (
@@ -435,12 +480,34 @@ export const MessageBubble = memo(
                 // У перевода свой текст и свои смещения: форматирование оригинала
                 // к нему не приложить.
                 entities={translations[message.id] ? undefined : message.entities}
-                trailing={hasInlineMeta ? meta : undefined}
+                trailing={hasInlineMeta ? cornerMeta : undefined}
               />
             )}
 
             {!hasInlineMeta && !isCall && !isVoice && (
               <div className="mt-1 flex justify-end">{meta}</div>
+            )}
+
+            {!selectionMode && (
+              <button
+                aria-haspopup="menu"
+                aria-label={t('messageActions.title', 'Действия с сообщением')}
+                className={cn(
+                  'absolute top-1/2 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-pill bg-sheet-2 text-ink-2 shadow-[var(--elev-1)] max-md:hidden',
+                  'pointer-events-none opacity-0 transition-opacity duration-fast',
+                  'group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-visible/message:opacity-100',
+                  'hover:text-ink focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand',
+                  mine ? 'right-full mr-1.5' : 'left-full ml-1.5'
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActionMenu({ messageId: message.id, ...menuPointNear(event.currentTarget) });
+                }}
+                tabIndex={-1}
+                type="button"
+              >
+                <Icon className="size-4.5" name="more" />
+              </button>
             )}
           </div>
         </div>

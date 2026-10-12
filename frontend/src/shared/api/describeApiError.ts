@@ -30,6 +30,7 @@ const MESSAGES: Record<string, string> = {
   rate_limited: 'errors.rateLimited',
   unsupported_type: 'errors.unsupportedType',
   user_not_found: 'errors.userNotFound',
+  username_change_cooldown: 'errors.usernameChangeCooldown',
   username_taken: 'errors.usernameTaken',
   validation_failed: 'errors.validationFailed',
   weak_password: 'errors.weakPassword',

@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS_SECTION: TSettingsSection = 'account';
 
 /* Подстраницы аккаунта — второй уровень: /settings/account/password. */
 export const ACCOUNT_SUBSECTIONS = [
+  /* Свой профиль так, как его видят другие (#828). */
+  'me',
   'profile',
   'email',
   'password',

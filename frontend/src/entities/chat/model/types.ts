@@ -1,4 +1,4 @@
-import type { TLastSeenApprox } from '@/shared/lib';
+import type { IMessageEntity, TLastSeenApprox } from '@/shared/lib';
 import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
 export type TChatType = 'private' | 'group' | 'channel';
@@ -12,21 +12,21 @@ export interface ILastMessageDto {
   senderId: string;
   senderName: string;
   reactions: TReactionsList;
+  /** Форматирование текста сообщения (#971). */
+  entities?: IMessageEntity[];
   /**
    * Почему сообщение не прочиталось: ключа нет, оно старше нашего
    * появления в чате или в устаревшем формате. Подпись по этой причине
    * подставляет интерфейс — сервису язык неизвестен.
    */
   undecryptable?: 'keyUnavailable' | 'beforeJoin' | 'legacy';
-  /**
-   * Дошло ли своё сообщение и прочитано ли (#819). Список рисует по нему
-   * галочки; сервер в списке чатов его пока не присылает — тогда галочек
-   * нет, а не выдуманное «отправлено».
-   */
-  status?: 'sent' | 'read';
+  /** Своё последнее сообщение (#657): когда доставлено и прочитано. */
+  deliveredAt?: string;
+  readAt?: string;
 }
 
 export interface IChatDto {
+  hideNotificationPreview?: boolean;
   id: string;
   type: TChatType;
   title: string;
@@ -55,6 +55,11 @@ export interface IChatDto {
   memberCount: number;
   lastMessageAt?: Date;
   unreadCount: number;
+  /**
+   * До какого момента чат прочитан (время сервера): чужие новее — непрочитанные,
+   * так считается `unreadCount`. Пусто — ещё не читали (#839).
+   */
+  lastReadAt?: string;
   lastMessage?: ILastMessageDto;
   /**
    * Звук чата выключен (#559, #467): приглушённый счётчик и значок после
@@ -95,7 +100,15 @@ export interface IMemberDto {
 
 export type TMembersList = IMemberDto[];
 
+/** Вложение, ждущее отправки в композере. Их может быть несколько. */
 export interface IPendingAttachment {
+  /** Ключ в списке: один и тот же файл можно приложить дважды. */
+  id: string;
   file: File;
   type: TMediaMessageType;
+  /**
+   * Пересжать фото перед отправкой (encodeChatPhoto). Нет — у «Файла»: им
+   * отправляют оригинал без потерь, и у снимка из редактора — он уже сжат.
+   */
+  optimizeImage?: boolean;
 }

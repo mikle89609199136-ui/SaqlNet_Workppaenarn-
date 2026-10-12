@@ -24,7 +24,7 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	handler := NewHandler(NewService(db, ws, nil))
 	content := `a & b <i>x</i> "q"`
 	entities := `[{"type":"bold","offset":0,"length":1},{"type":"link","offset":4,"length":1,"data":{"url":"https://example.com/docs"}}]`
-	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer"}).AddRow("member", false, false))
+	mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"role", "muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO messages\.messages .*entities`).WithArgs(messageValidationChatID, messageValidationUserID, content, "text", sql.NullString{}, []byte("null"), 0, []byte(entities)).WillReturnRows(entityMessageRows(content, entities))
 	mock.ExpectCommit()
@@ -39,6 +39,8 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
 	require.Len(t, response.Messages, 1)
 	require.Equal(t, content, response.Messages[0].Content)
+	require.NotNil(t, response.Messages[0].Reactions)
+	require.Empty(t, response.Messages[0].Reactions)
 	raw, err := json.Marshal(response.Messages[0].Entities)
 	require.NoError(t, err)
 	require.JSONEq(t, entities, string(raw))
@@ -49,6 +51,8 @@ func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(ws.broadcasts[0].payload, &event))
 	require.Equal(t, "new_message", event.Type)
+	require.NotNil(t, event.Message.Reactions)
+	require.Empty(t, event.Message.Reactions)
 	require.Equal(t, response.Messages[0].Entities, event.Message.Entities)
 	require.Equal(t, content, event.Message.Content)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -75,6 +79,8 @@ func TestEditReplacesOrClearsEntities(t *testing.T) {
 			var response Message
 			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
 			require.Equal(t, content, response.Content)
+			require.NotNil(t, response.Reactions)
+			require.Empty(t, response.Reactions)
 			raw, err := json.Marshal(response.Entities)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.want, string(raw))
@@ -145,8 +151,11 @@ func TestLegacyMessageDefaultEntitiesInListResponse(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	// Загрузка ленты отмечает доставку (#657) — границы не сдвинулись.
+	mock.ExpectQuery("WITH source").WillReturnRows(sqlmock.NewRows([]string{"chat_id", "user_id", "up_to", "at", "type"}))
 	mock.ExpectQuery("SELECT ").WillReturnRows(entityMessageRows("legacy &amp; text", "[]"))
 	mock.ExpectQuery("SELECT message_id::text").WillReturnRows(sqlmock.NewRows([]string{"message_id", "emoji", "count", "my_reaction"}))
+	mock.ExpectQuery("chats.receipt_marks").WillReturnRows(sqlmock.NewRows([]string{"id", "delivered_at", "read_at"}))
 	h := NewHandler(NewService(db, nil, nil))
 	rr := httptest.NewRecorder()
 	h.ListMessages(rr, messageValidationRequest(http.MethodGet, "/", "", "chatId", messageValidationChatID))

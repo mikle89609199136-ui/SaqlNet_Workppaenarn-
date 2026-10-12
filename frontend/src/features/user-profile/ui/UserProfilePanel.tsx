@@ -1,5 +1,4 @@
 import { Spinner } from '@/shared/ui';
-import { useCall } from '@/features/call';
 import { useProfileEdit } from '../model/useProfileEdit';
 import {
   type IProfileState,
@@ -11,11 +10,22 @@ import {
   useProfileStore,
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
-import { formatLastSeen, formatLastSeenApprox, getChatSubtitle, useNow } from '@/shared/lib';
-import { memo, useMemo, type ReactNode } from 'react';
+import { formatLastSeen, formatLastSeenApprox, useNow } from '@/shared/lib';
+import { getChatSubtitle, useChatUiStore } from '@/entities/chat';
+import { REACT_ROUTES, ROUTES } from '@/shared/config';
+import { memo, useCallback, useMemo, type ReactNode } from 'react';
+import { useMatch, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileSharedMedia } from './ProfileSharedMedia';
+
+/** Звонок из профиля: в какой личный чат, кому и какой. */
+export interface IProfileCall {
+  chatId: string;
+  peerId: string;
+  peerName: string;
+  kind: 'audio' | 'video';
+}
 
 /** Чей профиль открыт — для действий, которые приходят сверху. */
 export interface IProfileActionsTarget {
@@ -25,6 +35,12 @@ export interface IProfileActionsTarget {
 
 interface Props {
   profileState: IProfileState;
+  /**
+   * Позвонить из профиля. Звонки — отдельная фича, панель о ней не знает:
+   * действие приходит от того, кто собирает экран (#863). Нет его — нет и
+   * кнопок звонка (так и сейчас, пока звонки выключены, #776 → #774).
+   */
+  startCall?: (call: IProfileCall) => void;
   onClose: () => void;
   /**
    * Действия с чужим профилем — сейчас блокировка (#727). Приходят от
@@ -34,13 +50,34 @@ interface Props {
   /** «Назад» — когда профиль открыт из другой панели (участник группы). */
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * «Изменить» своего профиля ведёт не в правку на месте, а сюда — в
+   * настройках это отдельная форма (#828).
+   */
+  onEdit?: () => void;
+  /** Своя полоса «Назад / Закрыть» сверху. В настройках её заменяет шапка раздела. */
+  bar?: boolean;
+  /**
+   * «Перейти к сообщению» из общего закрывает профиль — когда он окном
+   * поверх переписки (телефон): иначе ленту не видно.
+   */
+  closeOnJump?: boolean;
 }
 
 export const UserProfilePanel = memo(
-  ({ profileState, onClose, renderActions, onBack, backLabel }: Props) => {
+  ({
+    profileState,
+    startCall,
+    onClose,
+    renderActions,
+    onBack,
+    backLabel,
+    onEdit,
+    bar = true,
+    closeOnJump = false,
+  }: Props) => {
     const { t } = useTranslation();
     const now = useNow();
-    const { initiateCall } = useCall();
     const currentUser = useProfileStore((state) => state.user);
     const targetUserId = profileState.userId || '';
 
@@ -52,13 +89,28 @@ export const UserProfilePanel = memo(
       profileState.chat?.type === 'private' && profileState.chat.peerId === profileState.userId
         ? profileState.chat
         : null;
-    const chatMessages = chat ? profileState.messages : undefined;
     const { data: profileUser, isLoading, isError } = useQuery(userProfileQuery(targetUserId));
     const isMyProfile = Boolean(
       currentUser?.id && (currentUser.id === targetUserId || currentUser.id === profileUser?.id)
     );
     const { data: statusData } = useQuery(
       userStatusQuery(targetUserId, { enabled: !isMyProfile && !chat })
+    );
+
+    /* Переход к сообщению из общего (#842): запрос выполнит лента чата.
+       Открыт другой чат (профиль участника группы) — сначала в личный. */
+    const navigate = useNavigate();
+    const openChatId = useMatch(REACT_ROUTES.CHAT_BY_ID)?.params.chatId;
+    const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
+    const chatId = chat?.id;
+    const jumpToMessage = useCallback(
+      (messageId: string) => {
+        if (!chatId) return;
+        setJumpRequest({ chatId, messageId });
+        if (openChatId !== chatId) navigate(ROUTES.CHAT_BY_ID(chatId));
+        if (closeOnJump) onClose();
+      },
+      [chatId, closeOnJump, navigate, onClose, openChatId, setJumpRequest]
     );
 
     const displayName =
@@ -122,7 +174,11 @@ export const UserProfilePanel = memo(
         className="flex h-full flex-col overflow-hidden bg-sheet"
         role="complementary"
       >
-        <ProfilePanelBar backLabel={backLabel} onBack={onBack} onClose={onClose} />
+        {bar ? (
+          <ProfilePanelBar backLabel={backLabel} onBack={onBack} onClose={onClose} />
+        ) : (
+          <div className="h-6 shrink-0" />
+        )}
 
         <ProfileHeader
           /* Звонить есть куда — общий личный чат — и можно: блокировка в
@@ -130,10 +186,19 @@ export const UserProfilePanel = memo(
           hasChat={Boolean(chat) && !chat?.isBlockedByPeer && !chat?.isPeerBlocked}
           isMyProfile={isMyProfile}
           isPeerOnline={isPeerOnline}
-          onCall={(kind) =>
-            chat && initiateCall(chat.id, 'private', profileUser.username, kind, profileUser.id)
+          onCall={
+            startCall
+              ? (kind) =>
+                  chat &&
+                  startCall({
+                    chatId: chat.id,
+                    peerId: profileUser.id,
+                    peerName: profileUser.username,
+                    kind,
+                  })
+              : undefined
           }
-          onStartEdit={startEdit}
+          onStartEdit={onEdit ?? startEdit}
           profileSubtitle={profileSubtitle}
           profileUser={profileUser}
         />
@@ -149,7 +214,11 @@ export const UserProfilePanel = memo(
           profileUser={profileUser}
         />
 
-        {chat ? <ProfileSharedMedia messages={chatMessages ?? []} /> : <div className="flex-1" />}
+        {chat ? (
+          <ProfileSharedMedia chatId={chat.id} onJumpToMessage={jumpToMessage} />
+        ) : (
+          <div className="flex-1" />
+        )}
 
         {/* Блокировка — из профиля человека, как в Telegram (#727). */}
         {!isMyProfile && profileUser.id && renderActions && (

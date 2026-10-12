@@ -1,10 +1,15 @@
 import { showToast } from '@/shared/ui';
 import { useChatUiStore } from '@/entities/chat';
+import { MESSAGES_PAGE_SIZE } from '@/entities/message';
+import { services } from '@/services/serviceContainer';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const HIGHLIGHT_DURATION_MS = 1800;
+/** Сколько страниц догружать, если позицию сообщения узнать не удалось. */
 const MAX_LOAD_OLDER_ATTEMPTS = 5;
+/** Потолок даже по позиции: 400 страниц по 50 — двадцать тысяч сообщений. */
+const MAX_LOAD_OLDER_BY_POSITION = 400;
 
 interface IUseJumpToMessageOptions {
   /** Функция скролла к сообщению (например, через виртуализатор) */
@@ -13,6 +18,11 @@ interface IUseJumpToMessageOptions {
   loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
   /** Флаг наличия более старых страниц */
   hasMoreOlder?: boolean;
+  /**
+   * Чат ленты: по нему сервер скажет позицию сообщения (#842), и лента
+   * догрузится ровно до него, а не на пять страниц наугад.
+   */
+  chatId?: string;
 }
 
 /**
@@ -77,16 +87,33 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
         return true;
       }
 
-      // 3. Если сообщение выше в истории и есть возможность догрузить (до 5 страниц)
+      // 3. Если сообщение выше в истории — догрузить до него (по позиции с сервера)
       const initialOpts = optionsRef.current;
       if (initialOpts?.loadOlder && initialOpts?.hasMoreOlder) {
         showToast('info', t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...'));
 
         pendingJumpTargetRef.current = messageId;
         let attempts = 0;
+        // Позиция — сколько сообщений новее: столько страниц и нужно
+        // (плюс одна на сдвиг, пока шёл запрос). Не узнали — как раньше.
+        let maxAttempts = MAX_LOAD_OLDER_ATTEMPTS;
+        if (initialOpts.chatId) {
+          try {
+            const position = await services.messageService.getMessagePosition(
+              initialOpts.chatId,
+              messageId
+            );
+            maxAttempts = Math.min(
+              MAX_LOAD_OLDER_BY_POSITION,
+              Math.ceil((position + 1) / MESSAGES_PAGE_SIZE) + 1
+            );
+          } catch {
+            // Сообщение удалено или сеть недоступна — догружаем как раньше.
+          }
+        }
 
         try {
-          while (attempts < MAX_LOAD_OLDER_ATTEMPTS) {
+          while (attempts < maxAttempts) {
             attempts++;
 
             // Ждем реактивного коммита через эффект списка либо фоллбэк по таймеру

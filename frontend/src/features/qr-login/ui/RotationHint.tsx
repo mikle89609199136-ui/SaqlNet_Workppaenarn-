@@ -15,12 +15,12 @@ export function RotationHint({ rotatesAt }: Props) {
   const seconds = useSecondsLeft(rotatesAt);
 
   return (
-    <p className="text-caption text-center text-ink-3 tabular-nums">
+    <p className="m-0 text-center text-caption text-ink-3 tabular-nums">
       {seconds === null
-        ? t('qrLogin.waiting', 'Ждём подтверждения… Код обновляется сам.')
-        : t('qrLogin.rotatesIn', {
-            defaultValue: 'Ждём подтверждения… Новый код через {{seconds}} с',
-            seconds,
+        ? t('qrLogin.waiting', 'Код обновляется сам')
+        : t('qrLogin.rotatesInTime', {
+            defaultValue: 'Код обновится через {{time}}',
+            time: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
           })}
     </p>
   );

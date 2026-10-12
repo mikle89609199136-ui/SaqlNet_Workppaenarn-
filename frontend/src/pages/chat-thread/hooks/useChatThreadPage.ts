@@ -1,17 +1,24 @@
 import type { IRichTextInputHandle } from '@/shared/ui';
 import { describeApiError, useRealtimeSocket } from '@/shared/api';
 import { useChatEncryption } from '@/features/chat-encryption';
-import { usePhotoEditor } from '@/entities/media';
+import { usePhotoEditor } from './usePhotoEditor';
 import { useChatModals } from '@/features/chat-actions';
 import { useMessageActions, useMessageSelection } from '@/features/message-actions';
 import { useProfilePanel } from '@/features/user-profile';
-import { useAutoScrollToBottom, useEscapeKey } from '@/shared/lib';
-import { chatQuery, useChatUiStore } from '@/entities/chat';
+import { useEscapeKey } from '@/shared/lib';
+import { chatQuery, useChatReadMark, useChatUiStore } from '@/entities/chat';
 import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -51,11 +58,14 @@ export function useChatThreadPage({
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
+  const [threadElement, setThreadElement] = useState<HTMLElement | null>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
   useChatEncryption(chatId);
 
   const { data: chat = null } = useQuery(chatQuery(chatId));
+  // Отметка прочтения на момент открытия: по ней лента встаёт на новые (#839).
+  const readMark = useChatReadMark(chat);
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
   const {
     messages,
@@ -70,12 +80,12 @@ export function useChatThreadPage({
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
     attachmentInputRef,
+    photoEditorFile: modals.photoEditorFile,
     setPhotoEditorFile: modals.setPhotoEditorFile,
-    setPendingAttachment: modals.setPendingAttachment,
+    setPendingAttachments: modals.setPendingAttachments,
   });
   const { profileModal, setProfileModal } = useProfilePanel({
     chat,
-    messages,
     chatId,
     profileMode,
     profileCloseToken,
@@ -91,6 +101,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleReact,
@@ -135,19 +146,6 @@ export function useChatThreadPage({
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
 
-  // Отмечаются только те, что ещё не отмечены: история меняется и от
-  // собственных отправок, и от входящих, а лишний запрос здесь не нужен.
-  useEffect(() => {
-    if (isLoading) return;
-
-    const unread = messages.filter((message) => !message.isRead);
-    if (unread.length === 0) return;
-
-    markMessagesAsRead(unread);
-  }, [messages, isLoading, markMessagesAsRead]);
-
-  useAutoScrollToBottom(bottomRef, chatId, isLoading);
-
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
   useEscapeKey({ active: Boolean(modals.openedImage), onClose: () => modals.setOpenedImage(null) });
@@ -172,6 +170,8 @@ export function useChatThreadPage({
     isLoading,
     hasOlder,
     loadOlder,
+    readMark,
+    markMessagesAsRead,
     threadError,
     setError,
     setEditingMessage,
@@ -186,6 +186,8 @@ export function useChatThreadPage({
     attachmentInputRef,
     draftRef,
     messagesRef,
+    threadElement,
+    setThreadElement,
     socket,
 
     modals,
@@ -203,6 +205,7 @@ export function useChatThreadPage({
     runMessageAction,
     handleCopyMessage,
     handleDelete,
+    confirmDelete,
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,

@@ -8,9 +8,9 @@ import { useServerEvents } from '@/realtime/useServerEvents';
  * не должна зависеть от того, какая страница сейчас открыта.
  */
 export function RealtimeEvents() {
-  const token = useProfileStore((state) => state.token);
+  const signedIn = useProfileStore((state) => state.isAuth);
 
-  useServerEvents(Boolean(token));
+  useServerEvents(signedIn);
 
   return null;
 }

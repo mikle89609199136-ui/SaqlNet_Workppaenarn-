@@ -1,4 +1,5 @@
 import { useChatUiStore } from '@/entities/chat';
+import { ATTACHMENT_SOURCE_ATTR } from '@/features/send-message';
 import { cn } from '@/shared/lib';
 import { Button, ContextMenu, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
@@ -69,6 +70,8 @@ export const AttachmentControl = ({ inputRef, onChange, isSending }: Props) => {
     if (!input) return;
 
     input.accept = source.accept;
+    // По пометке «Файл» уходит оригиналом, без пересжатия (useAttachmentPicker).
+    input.setAttribute(ATTACHMENT_SOURCE_ATTR, source.key);
     if (source.capture) input.setAttribute('capture', 'environment');
     else input.removeAttribute('capture');
     input.click();
@@ -80,6 +83,8 @@ export const AttachmentControl = ({ inputRef, onChange, isSending }: Props) => {
         accept={SOURCES[2].accept}
         aria-label={t('attachFile', 'Прикрепить файл')}
         className="hidden"
+        // Несколько файлов за раз: выбранное добавляется к приложенному.
+        multiple
         onChange={onChange}
         ref={inputRef}
         type="file"

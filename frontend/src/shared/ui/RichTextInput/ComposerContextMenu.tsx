@@ -18,6 +18,7 @@ import {
 import { $isLinkNode, $toggleLink } from '@lexical/link';
 import { $createQuoteNode, $isQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
+import { $insertDataTransferForRichText } from '@lexical/clipboard';
 import { $findMatchingParent } from '@lexical/utils';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { ContextMenu } from '@/shared/ui/ContextMenu';
@@ -90,6 +91,36 @@ interface ISelectionInfo {
 
 const NOTHING: ISelectionInfo = { hasText: false, formats: new Set(), linkUrl: null, quote: false };
 
+interface Props {
+  onPasteFiles?: (files: File[]) => boolean;
+}
+
+function createDataTransfer(data: Record<string, string>): DataTransfer {
+  if (typeof DataTransfer !== 'undefined') {
+    try {
+      const dt = new DataTransfer();
+      for (const [mime, value] of Object.entries(data)) {
+        dt.setData(mime, value);
+      }
+      return dt;
+    } catch {
+      // Игнорируем ошибку конструктора в нестандартных окружениях
+    }
+  }
+  return {
+    getData: (mime: string) => data[mime] || '',
+    setData: (mime: string, val: string) => {
+      data[mime] = val;
+    },
+    clearData: () => {},
+    types: Object.keys(data),
+    files: [] as unknown as FileList,
+    items: [] as unknown as DataTransferItemList,
+    dropEffect: 'none',
+    effectAllowed: 'all',
+  } as unknown as DataTransfer;
+}
+
 /**
  * Своё контекстное меню поля ввода, как в Telegram (#656).
  *
@@ -101,7 +132,7 @@ const NOTHING: ISelectionInfo = { hasText: false, formats: new Set(), linkUrl: n
  * Выделение запоминается при открытии: фокус уходит в меню и в окно, а
  * действовать надо над тем, что было выделено.
  */
-export function ComposerContextMenu() {
+export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
   const { t } = useTranslation();
   const [editor] = useLexicalComposerContext();
   const [menu, setMenu] = useState<IMenuState | null>(null);
@@ -221,7 +252,9 @@ export function ComposerContextMenu() {
       $setBlocksType(selection, () => (info.quote ? $createParagraphNode() : $createQuoteNode()));
     });
 
-  const canPaste = typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText);
+  const canPaste =
+    typeof navigator !== 'undefined' &&
+    Boolean(navigator.clipboard?.readText || navigator.clipboard?.read);
 
   return (
     <>
@@ -318,14 +351,78 @@ export function ComposerContextMenu() {
             <ContextMenu.Item
               icon={<Icon name="paste" />}
               disabled={!canPaste}
-              onClick={() => {
+              onClick={async () => {
                 close();
-                void navigator.clipboard.readText().then((text) =>
+                let htmlText: string | null = null;
+                let plainText: string | null = null;
+
+                if (typeof navigator.clipboard?.read === 'function') {
+                  try {
+                    const items = await navigator.clipboard.read();
+                    for (const item of items) {
+                      if (item.types.includes('text/html') && htmlText === null) {
+                        const blob = await item.getType('text/html');
+                        htmlText = await blob.text();
+                      }
+                      if (item.types.includes('text/plain') && plainText === null) {
+                        const blob = await item.getType('text/plain');
+                        plainText = await blob.text();
+                      }
+                    }
+
+                    const hasText = Boolean(plainText && plainText.trim().length > 0);
+
+                    if (!hasText && onPasteFiles) {
+                      const imageFiles: File[] = [];
+                      let index = 0;
+                      for (const item of items) {
+                        const imageType = item.types.find((type) => type.startsWith('image/'));
+                        if (imageType) {
+                          const blob = await item.getType(imageType);
+                          const ext = imageType.split('/')[1] || 'png';
+                          imageFiles.push(
+                            new File([blob], `pasted-${Date.now()}-${index++}.${ext}`, {
+                              type: blob.type,
+                            })
+                          );
+                        }
+                      }
+                      if (imageFiles.length > 0 && onPasteFiles(imageFiles)) {
+                        return;
+                      }
+                    }
+                  } catch {
+                    // буфер без картинок, нет прав или ошибка чтения — фоллбэк к тексту
+                  }
+                }
+
+                if (plainText === null && typeof navigator.clipboard?.readText === 'function') {
+                  try {
+                    plainText = await navigator.clipboard.readText();
+                  } catch {
+                    // ошибка чтения текста
+                  }
+                }
+
+                if (htmlText || plainText) {
                   run(() => {
                     const selection = $getSelection();
-                    if ($isRangeSelection(selection)) selection.insertRawText(text);
-                  })
-                );
+                    if (!$isRangeSelection(selection)) return;
+
+                    const data: Record<string, string> = {};
+                    if (htmlText) data['text/html'] = htmlText;
+                    if (plainText) data['text/plain'] = plainText;
+                    const dataTransfer = createDataTransfer(data);
+
+                    try {
+                      $insertDataTransferForRichText(dataTransfer, selection);
+                    } catch {
+                      if (plainText) {
+                        selection.insertRawText(plainText);
+                      }
+                    }
+                  });
+                }
               }}
               shortcut="Ctrl+V"
             >
@@ -366,6 +463,7 @@ export function ComposerContextMenu() {
       </ContextMenu>
       {linkDialog && (
         <LinkDialog
+          key={linkDialog.url ?? ''}
           initialUrl={linkDialog.url}
           onApply={applyLink}
           onCancel={() => {

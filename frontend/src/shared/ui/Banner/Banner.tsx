@@ -29,10 +29,14 @@ interface Props {
   icon?: TIconTypes;
   /* Кнопка рядом с текстом: «Понятно», «Подтвердить код». */
   action?: ReactNode;
+  /* Как объявлять: по умолчанию опасное — сразу (alert), остальное —
+     в паузе речи (status). Постоянная плашка на месте поля ввода —
+     состояние, а не тревога, даже если она красная. */
+  role?: 'status' | 'alert';
   className?: string;
 }
 
-export function Banner({ action, children, className, icon, tone = 'info' }: Props) {
+export function Banner({ action, children, className, icon, role, tone = 'info' }: Props) {
   const style = tones[tone];
 
   return (
@@ -45,7 +49,7 @@ export function Banner({ action, children, className, icon, tone = 'info' }: Pro
       /* Опасное объявляется сразу, остальное ждёт паузы в речи диктора:
          предупреждение о подписи перебивать человека вправе, сообщение о
          включённом шифровании — нет. */
-      role={tone === 'danger' ? 'alert' : 'status'}
+      role={role ?? (tone === 'danger' ? 'alert' : 'status')}
     >
       {/* Значок повторяет то, что уже сказано текстом и цветом. */}
       <Icon

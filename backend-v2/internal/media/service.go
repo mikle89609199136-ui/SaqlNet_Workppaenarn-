@@ -81,6 +81,7 @@ type ObjectResponse struct {
 	Body          io.ReadCloser
 	StatusCode    int
 	ContentLength int64
+	ContentType   string
 	ContentRange  string
 	AcceptRanges  string
 }
@@ -241,6 +242,20 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		FROM media.uploads WHERE id = $1
 	`, uploadID).Scan(&bucket, &objectKey, &contentType, &sizeBytes, &isEncrypted, &encryptionJSON)
 
+	catalogObject := false
+	if errors.Is(err, sql.ErrNoRows) {
+		// Стикеры и иконки уже имеют идентификаторы хранилища (#973).
+		// URL из базы не скачиваем: только управляемые bucket/object_key.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT bucket, object_key FROM media.stickers
+			WHERE id = $1 AND bucket <> '' AND object_key <> ''
+			UNION ALL
+			SELECT icon_bucket, icon_object_key FROM media.sticker_packs
+			WHERE id = $1 AND icon_bucket <> '' AND icon_object_key <> ''
+		`, uploadID).Scan(&bucket, &objectKey)
+		catalogObject = err == nil
+	}
+
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -332,12 +347,21 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return ErrStorage
 	}
 
+	if catalogObject {
+		contentType = object.ContentType
+		sizeBytes = object.ContentLength
+	}
+
 	mediaType, allowed := allowedMediaType(contentType)
 	if !allowed {
 		mediaType = "application/octet-stream"
 		w.Header().Set("Content-Disposition", "attachment")
 	}
 	w.Header().Set("Content-Type", mediaType)
+	// Файл по /media/{id} не меняется никогда: новое фото — новая загрузка и
+	// новый адрес. Без заголовка браузер не кешировал ничего, и аватарки на
+	// каждом запуске PWA качались заново. private — не для общих кешей.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
 	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
 	if w.Header().Get("Accept-Ranges") == "" {

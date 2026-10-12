@@ -1,8 +1,20 @@
 import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 import { Icon } from '@/shared/ui/Icon';
-import { cn, useAudio, useIsMobile } from '@/shared/lib';
-import type { ReactNode } from 'react';
+import {
+  applyPlaybackGain,
+  claimPlayback,
+  cn,
+  releasePlaybackGain,
+  setVoiceVolume,
+  toggleVoiceMute,
+  useAudio,
+  useIsMobile,
+  useVoiceVolume,
+  VOICE_LEVEL_MAX,
+} from '@/shared/lib';
+import { useEffect, useState, type ReactNode } from 'react';
+import { VolumePopover } from './VolumePopover';
 import { useTranslation } from 'react-i18next';
 
 interface AudioPlayerProps {
@@ -16,22 +28,50 @@ interface AudioPlayerProps {
   seed?: string;
   /** Время и статус сообщения — под длительностью голосового. */
   trailing?: ReactNode;
+  /**
+   * Длительность и волна голосового из шифрованных метаданных (#843).
+   * Без них — длительность из файла, волна по `seed`.
+   */
+  durationMs?: number;
+  waveform?: number[];
+  /** Поправка громкости голосового, дБ (#843): все голосовые звучат ровно. */
+  gainDb?: number;
 }
 
 const VOICE_BARS = 28;
 
-/* Рисунок волны. Настоящей огибающей сервер не хранит, поэтому высоты
-   выводятся из идентификатора — детерминированно, без мелькания при
-   перерисовке. Диапазон 6–25px, как в макете. */
+/* Рисунок волны. Настоящая огибающая приходит в шифрованных метаданных
+   (#843) и сжимается до числа столбиков пиками. У старых сообщений её нет
+   — тогда высоты выводятся из идентификатора: детерминированно, без
+   мелькания при перерисовке. Диапазон 6–25px, как в макете. */
+function waveformBars(waveform: number[]): number[] {
+  return Array.from({ length: VOICE_BARS }, (_, index) => {
+    const from = Math.floor((index * waveform.length) / VOICE_BARS);
+    const to = Math.max(from + 1, Math.floor(((index + 1) * waveform.length) / VOICE_BARS));
+    let peak = 0;
+    for (let i = from; i < to && i < waveform.length; i++) peak = Math.max(peak, waveform[i]);
+    return 6 + Math.round((peak / VOICE_LEVEL_MAX) * 19);
+  });
+}
+
 function voiceBars(seed: string): number[] {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 9973;
   return Array.from({ length: VOICE_BARS }, (_, i) => 6 + ((i * 29 + hash * 7) % 20));
 }
 
-export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: AudioPlayerProps) => {
+export const AudioPlayer = ({
+  src,
+  variant = 'audio',
+  seed = src,
+  trailing,
+  durationMs,
+  waveform,
+  gainDb,
+}: AudioPlayerProps) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const voiceVolume = useVoiceVolume();
   const {
     mediaRef,
     isPlaying,
@@ -49,15 +89,48 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
     handleVolumeChange,
     formatTime,
   } = useAudio();
+  const [unplayable, setUnplayable] = useState(false);
+
+  // Элемент уходит — отцепляем его от графа громкости, узлы не копятся.
+  useEffect(() => {
+    const media = mediaRef.current;
+    return () => {
+      if (media) releasePlaybackGain(media);
+    };
+  }, [mediaRef]);
 
   if (variant === 'voice') {
-    const progress = duration > 0 ? currentTime / duration : 0;
+    /* Длительность — из метаданных: у записи Ogg/Opus элемент <audio>
+       часто знает её только после проигрывания до конца (Infinity). */
+    const fileDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    const totalSeconds = durationMs ? durationMs / 1000 : fileDuration;
+    const progress = totalSeconds > 0 ? Math.min(1, currentTime / totalSeconds) : 0;
+    const bars = waveform?.length ? waveformBars(waveform) : voiceBars(seed);
+
+    // Браузер не смог проиграть — не молчим: подпись и скачать.
+    if (unplayable) {
+      return (
+        <div className="flex items-center gap-2.5 text-caption">
+          <Icon className="size-5 shrink-0" name="mic" />
+          <span className="flex flex-col gap-0.5">
+            <span>{t('voice.unplayable', 'Этот браузер не проигрывает голосовое')}</span>
+            <a className="underline" download href={src}>
+              {t('voice.download', 'Скачать')}
+            </a>
+          </span>
+          {trailing}
+        </div>
+      );
+    }
 
     return (
       <div className="flex items-center gap-2.5">
         <audio
           onEnded={handleEnded}
+          onError={() => setUnplayable(true)}
           onLoadedMetadata={handleLoadedMetadata}
+          onPlay={(event) => claimPlayback(event.currentTarget)}
+          preload="metadata"
           ref={mediaRef}
           src={src}
         />
@@ -76,6 +149,8 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
           )}
           onClick={(event) => {
             event.stopPropagation();
+            // Громкость — до запуска и в жесте: иначе браузер не даст звук.
+            if (!isPlaying && mediaRef.current) applyPlaybackGain(mediaRef.current, gainDb);
             togglePlay();
           }}
           type="button"
@@ -89,7 +164,7 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
         {/* Волна — она же дорожка перемотки: невидимый ползунок поверх
             даёт и мышь, и стрелки с клавиатуры. */}
         <div className="relative flex h-7 items-center gap-0.5">
-          {voiceBars(seed).map((height, index) => (
+          {bars.map((height, index) => (
             <span
               aria-hidden="true"
               className={cn(
@@ -105,9 +180,9 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
           ))}
           <input
             aria-label={t('media.seek', 'Перемотка')}
-            aria-valuetext={`${formatTime(currentTime)} / ${formatTime(duration)}`}
+            aria-valuetext={`${formatTime(currentTime)} / ${formatTime(totalSeconds)}`}
             className="absolute inset-0 size-full cursor-pointer opacity-0"
-            max={duration || 0}
+            max={totalSeconds || 0}
             min={0}
             onChange={handleSliderChange}
             onClick={(event) => event.stopPropagation()}
@@ -121,10 +196,35 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
 
         <span className="flex shrink-0 flex-col items-end gap-0.5">
           <span className="text-meta text-ink tabular-nums group-data-[mine]/bubble:text-on-brand">
-            {formatTime(isPlaying || currentTime > 0 ? currentTime : duration)}
+            {formatTime(isPlaying || currentTime > 0 ? currentTime : totalSeconds)}
           </span>
           {trailing}
         </span>
+
+        {isMobile ? (
+          voiceVolume === 0 && (
+            <span
+              aria-label={t('voice.muted', 'Звук голосовых выключен')}
+              className="flex shrink-0 text-ink-3 group-data-[mine]/bubble:text-on-brand"
+              role="img"
+            >
+              <Icon className="size-4.5" name="volumeMute" />
+            </span>
+          )
+        ) : (
+          <VolumePopover
+            buttonClassName="text-ink-3 group-data-[mine]/bubble:text-on-brand"
+            onChange={(event) => setVoiceVolume(Number(event.target.value))}
+            onToggle={toggleVoiceMute}
+            sliderLabel={t('voice.volume', 'Громкость голосовых')}
+            toggleLabel={
+              voiceVolume === 0
+                ? t('media.unmute', 'Включить звук')
+                : t('media.mute', 'Выключить звук')
+            }
+            value={voiceVolume}
+          />
+        )}
       </div>
     );
   }
@@ -138,6 +238,7 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
       <audio
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onPlay={(event) => claimPlayback(event.currentTarget)}
         ref={mediaRef}
         src={src}
       />
@@ -169,38 +270,15 @@ export const AudioPlayer = ({ src, variant = 'audio', seed = src, trailing }: Au
           value={currentTime}
         />
         {!isMobile && (
-          <div className="relative group/vol shrink-0">
-            <Button
-              aria-label={
-                isMuted ? t('media.unmute', 'Включить звук') : t('media.mute', 'Выключить звук')
-              }
-              className="shrink-0"
-              iconOnly
-              onClick={toggleMute}
-              size="sm"
-              variant="ghost"
-            >
-              {isMuted || volume === 0 ? (
-                <Icon name="volumeMute" className="w-5 h-5" />
-              ) : (
-                <Icon name="volume" className="w-5 h-5" />
-              )}
-            </Button>
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/vol:opacity-100 group-hover/vol:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity">
-              <div className="bg-sheet shadow-[var(--elev-3)] rounded-field border border-line flex items-center justify-center w-10 h-28 mb-1">
-                <div className="h-20 w-4 flex items-center justify-center">
-                  <Slider
-                    className="w-20 -rotate-90 origin-center shrink-0"
-                    max={1}
-                    min={0}
-                    onChange={handleVolumeChange}
-                    step={0.05}
-                    value={isMuted ? 0 : volume}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+          <VolumePopover
+            onChange={handleVolumeChange}
+            onToggle={toggleMute}
+            sliderLabel={t('media.volume', 'Громкость')}
+            toggleLabel={
+              isMuted ? t('media.unmute', 'Включить звук') : t('media.mute', 'Выключить звук')
+            }
+            value={isMuted ? 0 : volume}
+          />
         )}
       </div>
     </div>

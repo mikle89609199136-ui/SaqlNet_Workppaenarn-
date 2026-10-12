@@ -39,7 +39,7 @@ function renderModal(onClose = () => {}) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  useProfileStore.setState({ user: ME, isAuth: true, token: 'test-token' });
+  useProfileStore.setState({ user: ME, isAuth: true });
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -140,7 +140,7 @@ describe('создание группы', () => {
     expect(bodies).toHaveLength(0);
   });
 
-  it('should not send a group without members', async () => {
+  it('создаёт группу и без участников — группа из одного владельца', async () => {
     const bodies = watchCreate(() => HttpResponse.json({ chatId: 'new-chat' }));
     const user = userEvent.setup();
 
@@ -149,7 +149,8 @@ describe('создание группы', () => {
     await user.type(screen.getByPlaceholderText('Название группы'), 'Поход');
     await user.click(screen.getByRole('button', { name: 'Создать группу' }));
 
-    expect(bodies).toHaveLength(0);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ title: 'Поход', members: [] });
   });
 
   it('should close itself once the group is created', async () => {

@@ -56,7 +56,7 @@ describe('новое устройство входит по коду с воше
       http.get(api(`/auth/qr-offer/${TOKEN}/status`), ({ request }) => {
         polledWith = request.headers.get('X-QR-Secret');
         return HttpResponse.json(
-          payload ? { status: 'confirmed', authToken: 'session', payload } : { status: 'pending' }
+          payload ? { status: 'confirmed', payload } : { status: 'pending' }
         );
       })
     );
@@ -77,7 +77,6 @@ describe('новое устройство входит по коду с воше
     await vi.waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1));
     expect(polledWith).toBe('claim-secret');
     const result = onConfirmed.mock.calls[0][0];
-    expect(result.authToken).toBe('session');
     expect(result.masterKey).toEqual(master);
   });
 

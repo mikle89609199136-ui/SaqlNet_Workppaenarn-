@@ -15,6 +15,7 @@ import (
 	"craneapp/backend-v2/internal/platform/db"
 	"craneapp/backend-v2/internal/platform/httpx"
 	"craneapp/backend-v2/internal/presence"
+	"craneapp/backend-v2/internal/push"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
@@ -42,6 +43,10 @@ func main() {
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
 	defer wsServer.Close()
+	// Звонки, оборванные рестартом, поднимаются входом участников (#713).
+	if err := wsServer.RecoverCallRooms(context.Background()); err != nil {
+		log.Printf("call rooms recovery failed: %v", err)
+	}
 	svc := chat.NewService(pool, wsServer, presenceStore)
 	handler := chat.NewHandler(svc)
 
@@ -68,9 +73,24 @@ func main() {
 	} else {
 		log.Printf("NATS_URL not set — outbox events will accumulate until NATS is configured")
 	}
+	// Web Push (#717): без ключей VAPID push выключен, остальное работает.
+	vapid := push.Config{
+		PublicKey:  config.Value("VAPID_PUBLIC_KEY", ""),
+		PrivateKey: config.Value("VAPID_PRIVATE_KEY", ""),
+		Subject:    config.Value("VAPID_SUBJECT", "mailto:admin@craneapp.local"),
+	}
+	if vapid.Enabled() {
+		notifier := push.NewNotifier(workerCtx, push.DBDirectory{DB: pool}, wsServer, push.NewWebPushTransport(vapid))
+		svc.SetPush(notifier)
+		wsServer.SetPush(notifier)
+	} else {
+		log.Printf("VAPID keys are not set — push notifications are disabled")
+	}
+
 	go chat.OutboxRelay(workerCtx, pool, natsConn)
 	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
+	go chat.RevocationRelay(workerCtx, databaseURL, wsServer)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -107,9 +127,9 @@ func main() {
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
 
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
-	mux.Handle("GET /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.ListRooms)))
 	mux.Handle("POST /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.CallRoom)))
 	mux.Handle("GET /api/v2/calls/rooms/{id}", authenticated(http.HandlerFunc(handler.GetRoom)))
+	mux.Handle("GET /api/v2/calls/history", authenticated(http.HandlerFunc(handler.CallHistory)))
 
 	mux.Handle("/api/v2/mls/keypackages", authenticated(http.HandlerFunc(handler.MLSRoutes)))
 	mux.Handle("/api/v2/mls/keypackages/", authenticated(http.HandlerFunc(handler.MLSRoutes)))

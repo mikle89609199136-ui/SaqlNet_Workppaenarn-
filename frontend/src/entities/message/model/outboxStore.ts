@@ -1,4 +1,5 @@
 import type { IMessageEntity } from '@/shared/lib/richText';
+import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { TMessageDeliveryStatus, TMessageType } from './types';
 import { create } from 'zustand';
 
@@ -10,6 +11,10 @@ export interface IOutboxItem {
   entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
+  /** Пересжать фото перед загрузкой; после пересжатия снимается — повтор не сжимает заново. */
+  optimizeImage?: boolean;
+  /** Длительность и волна голосового (#843): уедут в шифрованном конверте. */
+  voice?: IVoiceMeta;
   replyToId?: string | null;
   status: TMessageDeliveryStatus;
   blobUrl?: string;

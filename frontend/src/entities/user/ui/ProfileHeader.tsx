@@ -1,5 +1,5 @@
 import { Avatar, Icon } from '@/shared/ui';
-import type { TCallKind, TIconTypes } from '@/types';
+import type { TIconTypes } from '@/types';
 import type { IUserDto } from '../model/types';
 import { cn } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,8 @@ interface Props {
   isPeerOnline: boolean;
   profileSubtitle: string | null;
   hasChat: boolean;
-  onCall: (kind: TCallKind) => void;
+  /** Нет — кнопок звонка нет (звонки выключены, #776). */
+  onCall?: (kind: 'audio' | 'video') => void;
   onStartEdit: () => void;
 }
 
@@ -53,24 +54,26 @@ export function ProfileHeader({
           onClick: onStartEdit,
         },
       ]
-    : [
-        {
-          key: 'call',
-          icon: 'phone',
-          label: t('profile.call', 'Звонок'),
-          ariaLabel: t('audioCall', 'Аудиозвонок'),
-          onClick: () => onCall('audio'),
-          disabled: !hasChat,
-        },
-        {
-          key: 'video',
-          icon: 'video',
-          label: t('profile.video', 'Видео'),
-          ariaLabel: t('profile.videoCall', 'Видеозвонок'),
-          onClick: () => onCall('video'),
-          disabled: !hasChat,
-        },
-      ];
+    : !onCall
+      ? []
+      : [
+          {
+            key: 'call',
+            icon: 'phone',
+            label: t('profile.call', 'Звонок'),
+            ariaLabel: t('audioCall', 'Аудиозвонок'),
+            onClick: () => onCall('audio'),
+            disabled: !hasChat,
+          },
+          {
+            key: 'video',
+            icon: 'video',
+            label: t('profile.video', 'Видео'),
+            ariaLabel: t('profile.videoCall', 'Видеозвонок'),
+            onClick: () => onCall('video'),
+            disabled: !hasChat,
+          },
+        ];
 
   return (
     <>
@@ -95,29 +98,32 @@ export function ProfileHeader({
         </p>
       </div>
 
-      <div
-        className="grid gap-2 px-4 pb-5"
-        style={{ gridTemplateColumns: `repeat(${Math.max(tiles.length, 1)}, minmax(0, 1fr))` }}
-      >
-        {tiles.map((tile) => (
-          <button
-            aria-label={tile.ariaLabel}
-            className={cn(
-              'flex cursor-pointer flex-col items-center gap-1.5 rounded-button bg-sheet-2 pt-3 pb-2.5 text-meta text-brand',
-              'transition-colors duration-fast hover:layer-hover active:layer-press',
-              'disabled:cursor-not-allowed disabled:opacity-50',
-              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2'
-            )}
-            disabled={tile.disabled}
-            key={tile.key}
-            onClick={tile.onClick}
-            type="button"
-          >
-            <Icon className="size-5" name={tile.icon} />
-            <span className="text-ink-2">{tile.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Плиток нет (чужой профиль, звонки выключены) — ряда тоже нет. */}
+      {tiles.length > 0 && (
+        <div
+          className="grid gap-2 px-4 pb-5"
+          style={{ gridTemplateColumns: `repeat(${Math.max(tiles.length, 1)}, minmax(0, 1fr))` }}
+        >
+          {tiles.map((tile) => (
+            <button
+              aria-label={tile.ariaLabel}
+              className={cn(
+                'flex cursor-pointer flex-col items-center gap-1.5 rounded-button bg-sheet-2 pt-3 pb-2.5 text-meta text-brand',
+                'transition-colors duration-fast hover:layer-hover active:layer-press',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2'
+              )}
+              disabled={tile.disabled}
+              key={tile.key}
+              onClick={tile.onClick}
+              type="button"
+            >
+              <Icon className="size-5" name={tile.icon} />
+              <span className="text-ink-2">{tile.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 }

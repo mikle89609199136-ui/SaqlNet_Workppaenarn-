@@ -3,18 +3,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ChatThreadComposer } from './ChatThreadComposer';
 import { clearOutbox } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services';
 import { makeChat, makeMessage } from '@/test/fixtures';
-import { chatKeys } from '@/entities/chat';
+import { chatKeys, useChatUiStore } from '@/entities/chat';
 import { useForwardStore } from '@/features/forward-messages';
+import { forgetEncryptionStates, setEncryptionState } from '@/shared/crypto';
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
 import type { IRichTextInputHandle } from '@/shared/ui';
+import type { IPendingAttachment } from '@/types';
 import { typeIntoComposer } from '@/test/harness/composer';
 
 vi.mock('@/features/chat-encryption', () => ({
@@ -26,7 +28,7 @@ vi.mock('@/features/typing-indicator', () => ({
   useTypingIndicator: () => vi.fn(),
 }));
 
-function renderComposer(ui: React.ReactElement, client: QueryClient) {
+function renderComposer(ui: React.ReactElement, client: QueryClient, container?: HTMLElement) {
   return render(
     <QueryClientProvider client={client}>
       <I18nextProvider i18n={testI18n}>
@@ -36,22 +38,33 @@ function renderComposer(ui: React.ReactElement, client: QueryClient) {
           </Routes>
         </MemoryRouter>
       </I18nextProvider>
-    </QueryClientProvider>
+    </QueryClientProvider>,
+    { container }
   );
 }
 
 describe('ChatThreadComposer', () => {
   let queryClient: QueryClient;
+  let dropZone: HTMLElement;
 
   beforeEach(() => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     clearOutbox();
+    useForwardStore.getState().cancel();
     useProfileStore.setState({
       user: { id: 'user-me', username: 'tester' } as any,
     });
+    useChatUiStore.setState({ error: '', editingMessage: null });
+    setEncryptionState('chat-test-1', { status: 'ready', unreachable: [] });
     vi.restoreAllMocks();
+    dropZone = document.body.appendChild(document.createElement('main'));
+  });
+
+  afterEach(() => {
+    forgetEncryptionStates();
+    dropZone.remove();
   });
 
   function setupProps(overrides = {}) {
@@ -60,23 +73,27 @@ describe('ChatThreadComposer', () => {
 
     return {
       selectionMode: false,
-      pendingAttachment: null,
-      setPendingAttachment: vi.fn(),
+      pendingAttachments: [],
+      setPendingAttachments: vi.fn(),
       bottomRef: { current: bottomDiv },
       attachmentInputRef: { current: attachmentInput },
       draftRef: createRef<IRichTextInputHandle>(),
+      dropZone,
       setPhotoEditorFile: vi.fn(),
       setOpenedImage: vi.fn(),
       ...overrides,
     };
   }
 
-  it('рендерит поле ввода и кнопку отправки', () => {
+  // Пустое поле — вместо «Отправить» микрофон (#843), как в макете.
+  it('рендерит поле ввода и, пока отправлять нечего, микрофон', async () => {
     const props = setupProps();
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /отправить сообщение/i })).toBeInTheDocument();
+    // Микрофон — когда шифрование готово: голосовое открытым не уйдёт.
+    expect(await screen.findByRole('button', { name: 'Записать голосовое' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /отправить сообщение/i })).not.toBeInTheDocument();
   });
 
   it('активирует кнопку отправки при вводе текста и отправляет сообщение по клику', async () => {
@@ -87,11 +104,12 @@ describe('ChatThreadComposer', () => {
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     const input = screen.getByRole('textbox', { name: /сообщение/i });
-    const sendButton = screen.getByRole('button', { name: /отправить сообщение/i });
 
-    // Вводим текст
+    // Вводим текст — микрофон уступает место «Отправить».
     await typeIntoComposer(input, 'Привет');
     expect(input.textContent).toBe('Привет');
+    expect(screen.queryByRole('button', { name: 'Записать голосовое' })).not.toBeInTheDocument();
+    const sendButton = screen.getByRole('button', { name: /отправить сообщение/i });
     // Есть что отправить — кнопка залита акцентом, как в макете.
     expect(sendButton).toHaveClass('bg-brand-fill');
 
@@ -102,20 +120,36 @@ describe('ChatThreadComposer', () => {
     expect(input.textContent).toBe('');
   });
 
-  it('отображает блок превью вложения, если pendingAttachment передан', () => {
-    const file = new File(['dummy'], 'photo.png', { type: 'image/png' });
+  it('показывает все приложенные файлы, у каждого свой крестик (#171)', () => {
+    const photo = new File(['dummy'], 'photo.png', { type: 'image/png' });
+    const doc = new File(['dummy'], 'report.pdf', { type: 'application/pdf' });
     const props = setupProps({
-      pendingAttachment: {
-        file,
-        type: 'image',
-      },
+      pendingAttachments: [
+        { id: 'a1', file: photo, type: 'image' },
+        { id: 'a2', file: doc, type: 'file' },
+      ],
     });
 
     renderComposer(<ChatThreadComposer {...props} />, queryClient);
 
     // Фото — плиткой с превью, имя файла — в подписи для диктора.
-    expect(screen.getByRole('button', { name: /photo.png/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /удалить вложение/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Открыть изображение: photo.png/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Удалить вложение: photo.png' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Удалить вложение: report.pdf' })
+    ).toBeInTheDocument();
+    // Карандаш — только у фото.
+    expect(
+      screen.getByRole('button', { name: 'Редактировать фото: photo.png' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Редактировать фото: report.pdf/ })).toBeNull();
+    // Поле выбора — на несколько файлов сразу.
+    expect(screen.getByLabelText('Прикрепить файл', { selector: 'input' })).toHaveAttribute(
+      'multiple'
+    );
   });
 
   describe('пересылка ждёт над полем ввода (#93)', () => {
@@ -207,7 +241,7 @@ describe('ChatThreadComposer', () => {
 
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
 
-      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого пользователя');
+      expect(screen.getByRole('status')).toHaveTextContent('Вы заблокировали этого человека.');
       await userEvent.click(screen.getByRole('button', { name: 'Разблокировать' }));
 
       expect(unblock).toHaveBeenCalledWith('user-peer');
@@ -222,6 +256,232 @@ describe('ChatThreadComposer', () => {
       renderComposer(<ChatThreadComposer {...setupProps()} />, queryClient);
 
       expect(screen.getByRole('textbox', { name: /сообщение/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('вставка картинок из буфера обмена (#891)', () => {
+    it('вставка картинки в поле добавляет её во вложения', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).toHaveBeenCalled();
+      expect(pasteEvent.defaultPrevented).toBe(true);
+    });
+
+    it('смешанная вставка с текстом не добавляет вложения (приоритет текста)', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['text/plain', 'Files'],
+          getData: (format: string) => (format === 'text/plain' ? 'Текст из статьи' : ''),
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('при редактировании сообщения вставка картинки не прикладывает файл', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      useChatUiStore
+        .getState()
+        .setEditingMessage(makeMessage({ id: 'msg-edit', content: 'Текст' }));
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files: [file],
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('вставка более 10 картинок прикладывает допустимое число и выводит ошибку лимита', () => {
+      const setPendingAttachments = vi.fn();
+      const props = setupProps({ setPendingAttachments });
+
+      renderComposer(<ChatThreadComposer {...props} />, queryClient);
+
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      const files = Array.from(
+        { length: 11 },
+        (_, i) => new File([`c${i}`], `shot-${i}.png`, { type: 'image/png' })
+      );
+
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          files,
+          types: ['Files'],
+          getData: () => '',
+        },
+      });
+
+      input.dispatchEvent(pasteEvent);
+
+      expect(setPendingAttachments).toHaveBeenCalled();
+      expect(useChatUiStore.getState().error).toBe('Можно приложить не больше 10 файлов');
+    });
+  });
+
+  describe('перетаскивание файлов (#896)', () => {
+    const photo = () => new File(['x'], 'photo.png', { type: 'image/png' });
+    const withFiles = (files: File[] = []) => ({ dataTransfer: { types: ['Files'], files } });
+
+    function StatefulComposer(props: ReturnType<typeof setupProps>) {
+      const [pendingAttachments, setPendingAttachments] = useState<IPendingAttachment[]>([]);
+      return (
+        <ChatThreadComposer
+          {...props}
+          pendingAttachments={pendingAttachments}
+          setPendingAttachments={setPendingAttachments}
+        />
+      );
+    }
+
+    function renderStateful() {
+      const props = setupProps();
+      renderComposer(<StatefulComposer {...props} />, queryClient, dropZone);
+      return props;
+    }
+
+    const overlay = () => screen.queryByTestId('file-drop-overlay');
+
+    it('файл над чатом показывает зону сброса, уход из чата её прячет', () => {
+      renderStateful();
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      expect(overlay()).toBeInTheDocument();
+      expect(dropZone).toContainElement(overlay());
+      expect(screen.getByText('Перетащите файлы сюда, чтобы отправить')).toBeInTheDocument();
+
+      fireEvent.dragLeave(dropZone, withFiles());
+      expect(overlay()).not.toBeInTheDocument();
+    });
+
+    it('сброшенные файлы появляются во вложениях, набранный текст остаётся, фокус в поле', async () => {
+      renderStateful();
+      const input = screen.getByRole('textbox', { name: /сообщение/i });
+      await typeIntoComposer(input, 'подпись');
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      fireEvent.drop(input, withFiles([photo()]));
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: /Открыть изображение: photo.png/ })
+      ).toBeInTheDocument();
+      expect(input.textContent).toBe('подпись');
+      expect(input).toHaveFocus();
+    });
+
+    it('больше 10 файлов — прикладываются 10 и сообщение о лимите', async () => {
+      renderStateful();
+      const files = Array.from(
+        { length: 12 },
+        (_, i) => new File(['x'], `doc-${i}.pdf`, { type: 'application/pdf' })
+      );
+
+      fireEvent.drop(dropZone, withFiles(files));
+
+      expect(await screen.findAllByRole('button', { name: /Удалить вложение/ })).toHaveLength(10);
+      expect(useChatUiStore.getState().error).toBe('Можно приложить не больше 10 файлов');
+    });
+
+    it('файл больше 100 МБ отклоняется с ошибкой', () => {
+      renderStateful();
+      const huge = new File(['x'], 'movie.mp4', { type: 'video/mp4' });
+      Object.defineProperty(huge, 'size', { value: 100 * 1024 * 1024 + 1 });
+
+      fireEvent.drop(dropZone, withFiles([huge]));
+
+      expect(screen.queryByRole('button', { name: /Удалить вложение/ })).not.toBeInTheDocument();
+      expect(useChatUiStore.getState().error).toBe(
+        'Файл слишком большой. Максимальный размер — 100 МБ.'
+      );
+    });
+
+    it('перетаскивание текста не перехватывается', () => {
+      renderStateful();
+      const text = { dataTransfer: { types: ['text/plain'], files: [] } };
+
+      fireEvent.dragEnter(dropZone, text);
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(fireEvent.drop(dropZone, text)).toBe(true);
+    });
+
+    it('при редактировании сообщения зона не появляется и файлы не принимаются', () => {
+      const setPendingAttachments = vi.fn();
+      useChatUiStore
+        .getState()
+        .setEditingMessage(makeMessage({ id: 'msg-edit', content: 'Текст' }));
+      renderComposer(
+        <ChatThreadComposer {...setupProps({ setPendingAttachments })} />,
+        queryClient
+      );
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      expect(overlay()).not.toBeInTheDocument();
+
+      expect(fireEvent.drop(dropZone, withFiles([photo()]))).toBe(false);
+      expect(setPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it('в заблокированном чате зона не появляется и файлы не принимаются', () => {
+      const setPendingAttachments = vi.fn();
+      queryClient.setQueryData(
+        chatKeys.detail('chat-test-1'),
+        makeChat({ id: 'chat-test-1', type: 'private', peerId: 'user-peer', isBlockedByPeer: true })
+      );
+      renderComposer(
+        <ChatThreadComposer {...setupProps({ setPendingAttachments })} />,
+        queryClient
+      );
+
+      fireEvent.dragEnter(dropZone, withFiles());
+      fireEvent.drop(dropZone, withFiles([photo()]));
+
+      expect(overlay()).not.toBeInTheDocument();
+      expect(setPendingAttachments).not.toHaveBeenCalled();
     });
   });
 });

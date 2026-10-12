@@ -55,7 +55,7 @@ describe('плашка в новом чате от незнакомого (#465)
   it('видна, когда чат начал собеседник, а вы ещё не ответили', () => {
     renderBanner(strangerChat());
 
-    expect(banner()).toHaveTextContent('написал вам первым');
+    expect(banner()).toHaveTextContent('Вы ещё не переписывались с этим человеком');
     expect(screen.getByRole('button', { name: 'Заблокировать' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Пожаловаться' })).toBeInTheDocument();
   });

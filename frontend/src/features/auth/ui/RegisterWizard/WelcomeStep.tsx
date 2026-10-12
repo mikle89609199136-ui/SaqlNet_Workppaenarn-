@@ -20,12 +20,12 @@ export function WelcomeStep({ language, onLanguageChange, onNext }: Props) {
           начнёт что-то заполнять. */}
       <SegmentedControl
         aria-label={t('settings.language.appLanguage', 'Язык приложения')}
-        className="mt-6"
+        className="mt-6 grid w-full"
         onChange={onLanguageChange}
         options={[...LANGUAGES]}
         value={language}
       />
-      <Button className="mt-4 w-full" onClick={onNext} type="button">
+      <Button className="mt-3 w-full" onClick={onNext} type="button">
         {t('createAccount', 'Создать аккаунт')}
       </Button>
     </>

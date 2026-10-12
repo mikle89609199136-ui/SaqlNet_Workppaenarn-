@@ -1,5 +1,5 @@
 x-secure: &secure
-  - bearerAuth: []
+  - sessionCookie: []
 x-error: &error
   $ref: '../components/responses.yaml#/Error'
 /users/me:
@@ -638,6 +638,85 @@ x-error: &error
             },
         }
     responses: { '200': { description: Registered } }
+/users/push/vapid-key:
+  get:
+    tags: [Users]
+    summary: Web Push VAPID public key
+    description: >-
+      Public VAPID key for PushManager.subscribe (applicationServerKey).
+      404 push_not_configured when push notifications are disabled on this
+      server.
+    operationId: getPushVapidKey
+    security: *secure
+    responses:
+      '200':
+        description: Public key
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: 'Base64url, uncompressed P-256 point' }
+      '404': { description: Push notifications are not configured }
+/users/push/subscriptions:
+  post:
+    tags: [Users]
+    summary: Register this device for Web Push
+    description: >-
+      Saves the PushSubscription of the current device. Repeating the same
+      endpoint updates the keys; an endpoint registered by another account on
+      the same device moves to the current account. The endpoint must be an
+      https address of a known push service (Google, Mozilla, Apple,
+      Microsoft) — the server sends requests to it. At most 20 subscriptions
+      per user; older ones are evicted. Push payloads never contain message
+      text (end-to-end encryption): only the event kind, chat id, chat type
+      and title, the sender name and the recipient language.
+    operationId: savePushSubscription
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [endpoint, keys]
+            properties:
+              endpoint: { type: string, format: uri, maxLength: 2048 }
+              keys:
+                type: object
+                required: [p256dh, auth]
+                properties:
+                  p256dh: { type: string, description: 'Base64url, 65-byte P-256 public key' }
+                  auth: { type: string, description: 'Base64url, 16-byte auth secret' }
+    responses:
+      '200':
+        description: Saved; the id is sent over the socket in client_state so that a visible device gets no push
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+      '400': { description: invalid_json or invalid_push_subscription }
+  delete:
+    tags: [Users]
+    summary: Remove the Web Push subscription of this device
+    operationId: deletePushSubscription
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [endpoint]
+            properties:
+              endpoint: { type: string }
+    responses:
+      '204': { description: Removed (only the requester's own subscription) }
+      '400': { description: endpoint is required }
 /users/devices/terminate-all:
   post:
     {

@@ -219,20 +219,26 @@ func assertFileTooLargeResponse(t *testing.T, response *httptest.ResponseRecorde
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	var body struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		RequestID string `json:"requestId"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Error.Code != "file_too_large" {
-		t.Fatalf("code=%q, want file_too_large", body.Error.Code)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["error"]; exists {
+		t.Fatal("unexpected nested error envelope")
+	}
+	if body.Code != "file_too_large" {
+		t.Fatalf("code=%q, want file_too_large", body.Code)
 	}
 	wantMessage := uploadLimitMessage(maxBytes)
-	if body.Error.Message != wantMessage {
-		t.Fatalf("message=%q, want %q", body.Error.Message, wantMessage)
+	if body.Message != wantMessage {
+		t.Fatalf("message=%q, want %q", body.Message, wantMessage)
 	}
 }
 
@@ -482,5 +488,37 @@ func TestUploadLimitMessageForConfigured100MiB(t *testing.T) {
 	const maxFileSize int64 = 104857600
 	if got := uploadLimitMessage(maxFileSize); got != "file exceeds 100 MB limit" {
 		t.Fatalf("uploadLimitMessage()=%q", got)
+	}
+}
+
+// Голосовое больше 8 МБ отклоняется до записи в хранилище (#843); тот же
+// размер обычным файлом проходит.
+func TestVoiceUploadHasItsOwnSizeLimit(t *testing.T) {
+	body := func(kind string, bytes int) string {
+		ciphertext := base64.StdEncoding.EncodeToString(make([]byte, bytes))
+		return `{"purpose":"message","type":"` + kind + `","file":{"version":2,"encrypted":true,"algorithm":"AES-GCM","iv":"AAECAwQFBgcICQoL","keyEpoch":1,"ciphertext":"` + ciphertext + `","mimeType":"audio/ogg","sizeBytes":1}}`
+	}
+
+	handler, mock, _ := newMediaTestHandler(t, 64<<20)
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes+1)))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Request-ID", "voice-file-too-large")
+	response := executeUpload(handler, request)
+	assertFileTooLargeResponse(t, response, maxVoiceBytes)
+	assertUploadErrorContract(t, response, map[string]string{
+		"code":      "file_too_large",
+		"message":   uploadLimitMessage(maxVoiceBytes),
+		"requestId": request.Header.Get("X-Request-ID"),
+	})
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err) // в хранилище ничего не ушло
+	}
+
+	within, withinMock, _ := newMediaTestHandler(t, 64<<20)
+	expectUploadInsert(withinMock, "upload", "application/octet-stream", maxVoiceBytes)
+	request = httptest.NewRequest(http.MethodPost, "/api/v2/media", strings.NewReader(body("voice", maxVoiceBytes)))
+	request.Header.Set("Content-Type", "application/json")
+	if response := executeUpload(within, request); response.Code != http.StatusCreated {
+		t.Fatalf("voice at limit: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

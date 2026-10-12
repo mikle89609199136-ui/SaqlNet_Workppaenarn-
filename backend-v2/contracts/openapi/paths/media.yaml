@@ -1,4 +1,4 @@
-x-secure: &secure [{ bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 /media:
   post:
     tags: [Media]
@@ -24,6 +24,11 @@ x-secure: &secure [{ bearerAuth: [] }]
     tags: [Media]
     summary: Download media
     operationId: getMedia
+    description: >-
+      Streams an upload, managed sticker, or sticker-pack icon by UUID through
+      the media service. Catalog imageUrl and iconUrl use this relative path;
+      no redirect or direct storage URL is returned. Legacy catalog objects
+      without a verified storage identity are unavailable (#973).
     parameters: [{ name: Range, in: header, required: false, schema: { type: string } }]
     responses:
       '200':

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Icon, Input, Spinner } from '@/shared/ui';
 import { getPasswordScore, MIN_PASSWORD_LENGTH } from '@/shared/lib';
 import { checkUsernameQuery, MIN_USERNAME_LENGTH, USERNAME_PATTERN } from '@/entities/user';
-import { PasswordRequirements } from '../PasswordRequirements';
+import { PasswordRequirements } from '@/shared/ui';
 import { PasswordStrength } from './PasswordStrength';
 import { PasswordToggle } from './PasswordToggle';
 import type { TRegisterForm } from '../../model/registerSchema';
@@ -50,7 +50,11 @@ export function CredentialsStep({
 
   const isFormatValid = USERNAME_PATTERN.test(username.trim());
   const isTyping = username !== debouncedUsername && username.trim().length >= MIN_USERNAME_LENGTH;
-  const isChecking = Boolean((isTyping || isCheckingUsername) && isFormatValid && username.trim().length >= MIN_USERNAME_LENGTH);
+  const isChecking = Boolean(
+    (isTyping || isCheckingUsername) &&
+    isFormatValid &&
+    username.trim().length >= MIN_USERNAME_LENGTH
+  );
   const isTaken = Boolean(isFormatValid && usernameCheck && !usernameCheck.available);
 
   useEffect(() => {
@@ -76,25 +80,22 @@ export function CredentialsStep({
 
   return (
     <>
-      <div className="text-center">
-        <h2 className="text-title font-semibold text-ink">
-          {t('chooseLoginTitle', 'Придумайте логин')}
-        </h2>
-        <p className="mt-1 text-caption text-ink-2">
-          {t('chooseLoginSub', 'Имя пользователя и пароль для входа')}
-        </p>
-      </div>
-
       <Input
         addon={usernameAddon}
         autoCapitalize="none"
         autoComplete="username"
         autoCorrect="off"
         error={usernameHelperError}
-        hint={usernameHelperHint}
+        hint={
+          usernameHelperHint ??
+          t('register.usernameRules', 'Латинские буквы, цифры и _, от 3 до 32 символов')
+        }
         label={t('username', 'Имя пользователя')}
         maxLength={32}
-        placeholder="@username"
+        /* «@» — сразу перед текстом, как в макете: отступ под значок был бы шире. */
+        inputClassName="pl-8.5"
+        placeholder="username"
+        prefix="@"
         {...register('username')}
       />
 
