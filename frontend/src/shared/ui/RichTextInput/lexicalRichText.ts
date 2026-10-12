@@ -273,4 +273,3 @@ export function $transformSelectionCase(mode: TTextCaseMode): void {
 
   capitalizeNodes(nodes);
 }
-

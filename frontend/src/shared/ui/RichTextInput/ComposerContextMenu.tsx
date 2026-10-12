@@ -25,10 +25,7 @@ import { ContextMenu } from '@/shared/ui/ContextMenu';
 import { Icon } from '@/shared/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { isLinkShortcut, shortcutHint } from './formatShortcuts';
-import {
-  $transformSelectionCase,
-  type TTextCaseMode,
-} from './lexicalRichText';
+import { $transformSelectionCase, type TTextCaseMode } from './lexicalRichText';
 import { LinkDialog } from './LinkDialog';
 
 interface IFormatItem {
@@ -84,6 +81,10 @@ interface IMenuState {
   x: number;
   y: number;
   view: 'main' | 'format';
+}
+
+interface IContextMenuEvent extends MouseEvent {
+  menuView?: 'main' | 'format';
 }
 
 interface ISelectionInfo {
@@ -169,7 +170,8 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
       if (!editor.isEditable()) return;
       event.preventDefault();
       setInfo(readSelection());
-      const view: 'main' | 'format' = (event as any).menuView === 'format' ? 'format' : 'main';
+      const view: 'main' | 'format' =
+        (event as IContextMenuEvent).menuView === 'format' ? 'format' : 'main';
       setMenu({ x: event.clientX, y: event.clientY, view });
     };
 
