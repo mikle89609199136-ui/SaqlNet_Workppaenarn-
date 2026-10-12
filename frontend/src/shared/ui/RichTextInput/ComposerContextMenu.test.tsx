@@ -34,11 +34,23 @@ async function select(field: HTMLElement, start: number, end: number) {
   });
 }
 
-async function setup(value: string | IRichText, start: number, end: number) {
+async function setup(
+  value: string | IRichText,
+  start: number,
+  end: number,
+  menuView: 'main' | 'format' = 'main'
+) {
   const view = renderInput();
   await typeIntoComposer(view.field, value);
   await select(view.field, start, end);
-  fireEvent.contextMenu(view.field, { clientX: 20, clientY: 20 });
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: 20,
+    clientY: 20,
+  });
+  Object.defineProperty(event, 'menuView', { value: menuView });
+  view.field.dispatchEvent(event);
   return view;
 }
 
@@ -486,6 +498,13 @@ describe('контекстное меню поля ввода (#656)', () => {
         text: 'ЖИРНЫЙ текст',
         entities: [{ type: 'bold', offset: 0, length: 6 }],
       });
+    });
+
+    it('пункты изменения регистра отключены при пустом выделении', async () => {
+      await setup('тестовое сообщение', 0, 0, 'format');
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).toBeDisabled();
     });
   });
 });

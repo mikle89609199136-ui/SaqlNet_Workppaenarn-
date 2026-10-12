@@ -27,12 +27,9 @@ import type { TIconTypes } from '@/types';
 import { isLinkShortcut, shortcutHint } from './formatShortcuts';
 import {
   $transformSelectionCase,
-  transformTextCase,
   type TTextCaseMode,
 } from './lexicalRichText';
 import { LinkDialog } from './LinkDialog';
-
-export { $transformSelectionCase, transformTextCase, type TTextCaseMode };
 
 interface IFormatItem {
   format: TextFormatType;
@@ -172,7 +169,8 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
       if (!editor.isEditable()) return;
       event.preventDefault();
       setInfo(readSelection());
-      setMenu({ x: event.clientX, y: event.clientY, view: 'main' });
+      const view: 'main' | 'format' = (event as any).menuView === 'format' ? 'format' : 'main';
+      setMenu({ x: event.clientX, y: event.clientY, view });
     };
 
     return editor.registerRootListener((root, previous) => {

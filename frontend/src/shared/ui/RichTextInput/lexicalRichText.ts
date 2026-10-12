@@ -214,6 +214,38 @@ function getTextNodes(nodes: LexicalNode[]): TextNode[] {
   return result;
 }
 
+function capitalizeNodes(nodes: TextNode[]): void {
+  let inWord = false;
+  let prevBlock: LexicalNode | null = null;
+
+  for (const node of nodes) {
+    const block = node.getTopLevelElement();
+    if (prevBlock !== null && block !== prevBlock) {
+      inWord = false;
+    }
+    prevBlock = block;
+
+    const text = node.getTextContent();
+    let transformed = '';
+
+    for (const char of text) {
+      if (/\p{L}/u.test(char)) {
+        if (!inWord) {
+          transformed += char.toLocaleUpperCase();
+          inWord = true;
+        } else {
+          transformed += char.toLocaleLowerCase();
+        }
+      } else {
+        inWord = false;
+        transformed += char;
+      }
+    }
+
+    node.setTextContent(transformed);
+  }
+}
+
 /**
  * Изменение регистра текста выделения с сохранением разметки (форматы, ссылки).
  * Вызывать внутри update.
@@ -225,23 +257,20 @@ export function $transformSelectionCase(mode: TTextCaseMode): void {
   const nodes = getTextNodes(selection.extract());
   if (nodes.length === 0) return;
 
-  if (nodes.length === 1) {
-    const node = nodes[0];
-    node.setTextContent(transformTextCase(node.getTextContent(), mode));
+  if (mode === 'uppercase') {
+    for (const node of nodes) {
+      node.setTextContent(node.getTextContent().toLocaleUpperCase());
+    }
     return;
   }
 
-  const fullText = nodes.map((n) => n.getTextContent()).join('');
-  const transformed = transformTextCase(fullText, mode);
-
-  let offset = 0;
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const len = node.getTextContent().length;
-    const nextOffset = offset + len;
-    node.setTextContent(
-      i === nodes.length - 1 ? transformed.slice(offset) : transformed.slice(offset, nextOffset)
-    );
-    offset = nextOffset;
+  if (mode === 'lowercase') {
+    for (const node of nodes) {
+      node.setTextContent(node.getTextContent().toLocaleLowerCase());
+    }
+    return;
   }
+
+  capitalizeNodes(nodes);
 }
+

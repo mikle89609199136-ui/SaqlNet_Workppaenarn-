@@ -463,6 +463,50 @@ describe('комбинированное форматирование в пол�
 
         expect(handle.current?.getValue().text).toBe('тестовое сообщение');
       });
+
+      it('корректно капитализирует текст при выделении через границу абзацев', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+        await typeIntoComposer(field, 'первая строка\nвторая строка');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('capitalize');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('Первая Строка\nВторая Строка');
+      });
+
+      it('корректно обрабатывает смену регистра для символов с изменением длины Unicode (ß -> SS)', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+
+        await typeIntoComposer(field, {
+          text: 'groß artig',
+          entities: [{ type: 'bold', offset: 0, length: 4 }],
+        });
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('uppercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('GROSS ARTIG');
+        // Второй узел не смещается и сохраняет корректное значение
+        expect(handle.current?.getValue().entities).toEqual([
+          expect.objectContaining({ type: 'bold', offset: 0, length: 5 }),
+        ]);
+      });
     });
   });
 });
