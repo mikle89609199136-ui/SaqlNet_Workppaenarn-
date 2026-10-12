@@ -11,7 +11,7 @@ import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
-import { PhotoEditorModal } from '@/entities/media';
+import { PhotoEditorModal } from '@/features/photo-editor';
 
 import { useOutletContext } from 'react-router-dom';
 
@@ -58,6 +58,7 @@ export function ChatThreadPage() {
     hasOlder,
     loadOlder,
     readMark,
+    markMessagesAsRead,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -69,6 +70,8 @@ export function ChatThreadPage() {
     attachmentInputRef,
     draftRef,
     messagesRef,
+    threadElement,
+    setThreadElement,
 
     modals,
     closePhotoEditor,
@@ -126,7 +129,7 @@ export function ChatThreadPage() {
         />
       )}
       {!modals.isPinnedMessagesOpen && (
-        <main className="thread-page">
+        <main className="thread-page" ref={setThreadElement}>
           <ChatThreadHeader setProfileModal={setProfileModal} profileModal={profileModal} />
           {/* Нет связи или идёт переподключение — плашкой под шапкой (#826). */}
           <ConnectionBanner />
@@ -150,6 +153,7 @@ export function ChatThreadPage() {
             messages={messages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
+            onMessagesSeen={markMessagesAsRead}
             onOpenProfile={openProfile}
             onReact={handleReact}
             onRetryMessage={handleRetryMessage}
@@ -212,6 +216,7 @@ export function ChatThreadPage() {
               bottomRef={bottomRef}
               attachmentInputRef={attachmentInputRef}
               draftRef={draftRef}
+              dropZone={threadElement}
               setPhotoEditorFile={modals.setPhotoEditorFile}
               setOpenedImage={modals.setOpenedImage}
             />

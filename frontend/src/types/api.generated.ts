@@ -128,7 +128,7 @@ export interface paths {
         };
         /**
          * Get QR login status
-         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status sets the session cookie and carries the encrypted payload once; later polls report expired. Not cacheable.
          */
         get: operations["getQrStatus"];
         put?: never;
@@ -232,7 +232,7 @@ export interface paths {
         };
         /**
          * Get the result of a claimed code
-         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status sets the session cookie and carries the encrypted payload once; later polls, a declined or an expired code report expired. Not cacheable.
          */
         get: operations["getQrOfferStatus"];
         put?: never;
@@ -294,26 +294,6 @@ export interface paths {
          * @description May return 503 while generation revocation is disabled during a compatibility rollout.
          */
         post: operations["logoutAll"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Exchange a bearer token for the session cookie
-         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
-         */
-        post: operations["exchangeSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1486,14 +1466,27 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                chatId: string;
+            };
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
          * Leave a group chat
-         * @description Removes the caller from the chat together with their chat settings and wrapped chat key. The owner must transfer ownership first. On success every member, including the one who left, receives chat_member_removed with reason "left".
+         * @description Removes the authenticated user from a group chat they are a member of.
+         *
+         *     Leaving is only allowed for group chats. Private chats are rejected
+         *     with `invalid_chat_type` before any membership data is changed.
+         *
+         *     The chat owner cannot leave: ownership must be transferred first,
+         *     otherwise the request fails with `ownership_transfer_required`.
+         *
+         *     On success, the user's encryption keys and per-user chat settings
+         *     are deleted together with the membership row, and the remaining
+         *     members are notified over WebSocket with the `chat_member_removed`
+         *     event and `reason: "left"`.
          */
         post: operations["leaveChat"];
         delete?: never;
@@ -1654,6 +1647,29 @@ export interface paths {
         post: operations["pinChat"];
         /** Unpin a chat */
         delete: operations["unpinChat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set personal notification preferences for a chat
+         * @description Persists the authenticated member's preference across devices.
+         *     Idempotent; does not affect other members, message history, or unread counts.
+         *     Read hideNotificationPreview in chat details and chat lists (including archived).
+         *     Web push payloads already omit message content regardless of this preference.
+         */
+        put: operations["setChatNotificationSettings"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1865,7 +1881,7 @@ export interface paths {
         put: operations["editMessage"];
         /**
          * Send messages to a chat
-         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
+         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit. Sticker and GIF mediaUrl must be a relative /api/v2/media/{uuid} path to an available catalog item; external URLs and encrypted catalog objects are rejected. Stickers cannot have content or entities. Other attachments must remain the sender's own uploads (#871). Catalog metadata uses the message type as mediaType.
          */
         post: operations["sendMessages"];
         /**
@@ -2061,7 +2077,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type.
+         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
          */
         post: operations["createCallRoom"];
         delete?: never;
@@ -2082,6 +2098,26 @@ export interface paths {
          * @description Only members of the room's chat get the room. For anyone else, and for a room that does not exist, the answer is the same 404 room_not_found.
          */
         get: operations["getCallRoom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/calls/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List finished calls of the current user
+         * @description Newest first. Outgoing calls are listed always; incoming ones only when the invitation reached the user. Status is from the viewer's side: an unanswered outgoing call is cancelled (rejected when the peer declined or was busy), an unanswered incoming call is missed (rejected when the viewer declined). The peer's avatar follows the peer's photo privacy rule. Calls in progress are not listed.
+         */
+        get: operations["getCallHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2116,7 +2152,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Download media */
+        /**
+         * Download media
+         * @description Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
+         */
         get: operations["getMedia"];
         put?: never;
         post?: never;
@@ -2154,7 +2193,10 @@ export interface paths {
         /** List GIFs */
         get: operations["listGifs"];
         put?: never;
-        /** Create a GIF */
+        /**
+         * Create a GIF
+         * @description Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB. Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source; 404 upload_not_found (including uploads owned by another user); 413 request_too_large; 500 internal_error.
+         */
         post: operations["createGif"];
         delete?: never;
         options?: never;
@@ -2190,9 +2232,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Favorite a GIF */
+        /**
+         * Favorite a GIF
+         * @description Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record. Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+         */
         post: operations["favoriteGif"];
-        /** Unfavorite a GIF */
+        /**
+         * Unfavorite a GIF
+         * @description Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites. Returns 404 only when the GIF itself does not exist. Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+         */
         delete: operations["unfavoriteGif"];
         options?: never;
         head?: never;
@@ -2209,7 +2257,10 @@ export interface paths {
         /** List sticker packs */
         get: operations["listStickerPacks"];
         put?: never;
-        /** Create a sticker pack */
+        /**
+         * Create a sticker pack
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
+         */
         post: operations["createStickerPack"];
         delete?: never;
         options?: never;
@@ -2229,7 +2280,10 @@ export interface paths {
         /** List stickers in a pack */
         get: operations["listStickers"];
         put?: never;
-        /** Add a sticker */
+        /**
+         * Add a sticker
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
+         */
         post: operations["addSticker"];
         /** Delete a sticker pack */
         delete: operations["deleteStickerPack"];
@@ -2494,6 +2548,7 @@ export interface components {
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
@@ -2553,6 +2608,7 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
@@ -2591,10 +2647,12 @@ export interface components {
             firstName: string;
             lastName?: string;
             language?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         AuthResponse: {
             user: components["schemas"]["User"];
-            token: string;
         };
         LoginRequest: {
             username: string;
@@ -2602,6 +2660,9 @@ export interface components {
             password: string;
             /** Format: password */
             twoFAPassword?: string;
+            deviceName?: string;
+            /** @enum {string} */
+            deviceType?: "desktop" | "mobile" | "tablet";
         };
         QrTokenRequest: {
             /** @description One-time ECDH P-256 public key (SPKI) */
@@ -2645,7 +2706,6 @@ export interface components {
             status: "pending" | "scanned" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrConfirmRequest: {
@@ -2696,11 +2756,26 @@ export interface components {
             status: "pending" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         UpdateProfileRequest: {
             firstName?: string;
@@ -2899,7 +2974,8 @@ export interface components {
             /**
              * @description User IDs to add as members. The owner is added automatically
              *     and does not need to be listed. Unknown or disabled users are
-             *     silently skipped.
+             *     silently skipped. May be empty: the group is then created with
+             *     the owner as its only member.
              * @example [
              *       "550e8400-e29b-41d4-a716-446655440002"
              *     ]
@@ -2950,6 +3026,11 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /**
+             * @description Hide message text in notifications for the authenticated user in this chat.
+             * @default false
+             */
+            hideNotificationPreview: boolean;
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
@@ -3001,6 +3082,7 @@ export interface components {
             lastReadAt: string;
         };
         MessageListResponse: {
+            /** @description Always an array; no messages are represented by [], never null. */
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
@@ -3040,6 +3122,7 @@ export interface components {
             messages: components["schemas"]["SendMessageRequest"][];
         };
         ReactionListResponse: {
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         ReactionToggleResponse: {
@@ -3047,6 +3130,7 @@ export interface components {
             action: "added" | "removed" | "replaced";
             /** @description Empty when the reaction was removed. */
             currentEmoji: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         FavoriteStateResponse: {
@@ -3065,7 +3149,7 @@ export interface components {
         };
         CallRoomCreateRequest: {
             /**
-             * @description Defaults to group when omitted.
+             * @description Ignored — calls are one-to-one, the room type is always p2p.
              * @enum {string}
              */
             type?: "p2p" | "group";
@@ -3103,7 +3187,46 @@ export interface components {
             room: components["schemas"]["CallRoom"];
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
-            maxParticipants: 5;
+            maxParticipants: 2;
+        };
+        CallHistoryItem: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Same as id.
+             */
+            roomId: string;
+            /**
+             * Format: uuid
+             * @description Null when the chat was deleted.
+             */
+            chatId: string | null;
+            /** Format: uuid */
+            peerId: string;
+            /** @description First and last name, else username; empty for a deleted user. */
+            peerName: string;
+            /** @description Null when there is none or the photo rule hides it. */
+            peerAvatar: string | null;
+            /** @enum {string} */
+            direction: "incoming" | "outgoing";
+            /** @enum {string} */
+            kind: "audio" | "video";
+            /** @enum {string} */
+            status: "answered" | "missed" | "rejected" | "cancelled";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            answeredAt: string | null;
+            /** Format: date-time */
+            endedAt: string;
+            /** @description From answer to end; 0 for unanswered calls. */
+            durationSeconds: number;
+        };
+        CallHistoryResponse: {
+            calls: components["schemas"]["CallHistoryItem"][];
+            nextCursor: string | null;
+            hasMore: boolean;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -3170,17 +3293,52 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "error": {
-                 *         "code": "file_too_large",
-                 *         "message": "file exceeds 100 MB limit"
-                 *       }
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260926T120000.000000000"
                  *     }
                  */
-                "application/json": {
-                    error: components["schemas"]["Error"] & {
-                        /** @enum {string} */
-                        code?: "file_too_large";
-                    };
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "file_too_large";
+                };
+            };
+        };
+        /** @description Request body exceeds the configured size limit (request_too_large) */
+        RequestTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "request_too_large",
+                 *       "message": "request body exceeds 64 KiB limit",
+                 *       "requestId": "20260926T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large";
+                };
+            };
+        };
+        /** @description Request body exceeds the JSON body limit (request_too_large) or the decoded image exceeds MAX_FILE_SIZE (file_too_large) */
+        StickerTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260928T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large" | "file_too_large";
                 };
             };
         };
@@ -3621,27 +3779,6 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
-    exchangeSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session cookie set */
-            204: {
-                headers: {
-                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-        };
-    };
     listAuthSessions: {
         parameters: {
             query?: never;
@@ -3651,13 +3788,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sessions */
+            /** @description Active sessions with the current credential first, then by recent activity */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuthSessionsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
         };
     };
     changePassword: {
@@ -5661,30 +5801,61 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Left */
+            /** @description Successfully left the chat. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        success: true;
+                    };
+                };
             };
-            400: components["responses"]["Error"];
-            /** @description access_denied: the caller is not a member (including a repeated leave) */
+            /** @description Invalid request (validation_failed, invalid_chat_type). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Access denied — the authenticated user is not a member of the chat. */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description ownership_transfer_required: the caller owns the chat */
+            /** @description Chat not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The owner must transfer ownership before leaving. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["responses_Error"];
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -5970,6 +6141,67 @@ export interface operations {
         responses: {
             /** @description Unpinned */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setChatNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hideNotificationPreview: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Preference saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid UUID or missing/non-boolean preference */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member of this chat or chat does not exist */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal server error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6324,6 +6556,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
@@ -6797,6 +7030,34 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    getCallHistory: {
+        parameters: {
+            query?: {
+                /** @description nextCursor of the previous page, opaque. */
+                cursor?: string;
+                limit?: number;
+                kind?: "audio" | "video";
+                status?: "answered" | "missed" | "rejected" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of finished calls */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallHistoryResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
     uploadMedia: {
         parameters: {
             query?: never;
@@ -6957,6 +7218,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
                     name?: string;
                     url: string;
                 };
@@ -6970,6 +7232,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["RequestTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {
@@ -7001,13 +7267,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorited */
+            /** @description Already in favorites */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Added to favorites */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     unfavoriteGif: {
@@ -7021,13 +7297,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Unfavorited */
+            /** @description Removed from favorites, idempotent when the GIF is not in favorites */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listStickerPacks: {
@@ -7073,6 +7352,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            413: components["responses"]["StickerTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listStickers: {
@@ -7120,6 +7402,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["StickerTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     deleteStickerPack: {

@@ -48,6 +48,10 @@ import {
   Pen,
   Pencil,
   Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PhoneMissed,
+  PhoneOff,
   Pin,
   Pipette,
   Play,
@@ -81,6 +85,8 @@ import {
   Paperclip,
   Image as ImageIcon,
   Mic,
+  MicOff,
+  VideoOff,
   Smile,
   Archive,
   ArchiveRestore,
@@ -97,6 +103,7 @@ import {
   Ban,
   Laptop,
   Smartphone,
+  MoreHorizontal,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -149,6 +156,10 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   play: Play,
   warning: AlertTriangle,
   phone: Phone,
+  phoneIncoming: PhoneIncoming,
+  phoneOutgoing: PhoneOutgoing,
+  phoneMissed: PhoneMissed,
+  phoneOff: PhoneOff,
   pin: Pin,
   reply: Reply,
   rewind: Rewind,
@@ -185,6 +196,8 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   paperclip: Paperclip,
   image: ImageIcon,
   mic: Mic,
+  micOff: MicOff,
+  videoOff: VideoOff,
   smile: Smile,
   archive: Archive,
   archiveRestore: ArchiveRestore,
@@ -201,6 +214,7 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   ban: Ban,
   laptop: Laptop,
   smartphone: Smartphone,
+  more: MoreHorizontal,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

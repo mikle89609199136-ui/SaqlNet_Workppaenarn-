@@ -1,9 +1,15 @@
-.PHONY: test build migrate migrate-legacy-dry-run migrate-legacy smoke load-test
+GOCACHE  := /tmp/crane-go-cache
+GO_TEST  := GOCACHE=$(GOCACHE) go test
+
+.PHONY: test test-chat-integration build migrate migrate-legacy-dry-run migrate-legacy smoke load-test
 
 BIN_DIR := bin
 
 test:
-	GOCACHE=/tmp/crane-go-cache go test ./...
+	$(GO_TEST) ./...
+
+test-chat-integration:
+	$(GO_TEST) -tags=integration -count=1 -timeout=15m ./internal/chat/tests/integration/...
 
 build:
 	mkdir -p $(BIN_DIR)

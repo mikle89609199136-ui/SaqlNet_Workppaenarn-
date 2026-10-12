@@ -1,3 +1,4 @@
+import i18n from 'i18next';
 import { chatQuery } from '@/entities/chat';
 import { messagesQuery } from '@/entities/message';
 import { queryClient } from '@/shared/api';
@@ -41,9 +42,12 @@ async function requireSession({ request }: { request: Request }) {
     }
 
     // сеть / 500 / таймаут — токен тут ни при чём, сессию не трогаем
-    throw new Response(error?.message || 'Не удалось загрузить профиль', {
-      status: error?.status ?? 500,
-    });
+    throw new Response(
+      error?.message || i18n.t('errors.profileLoad', 'Не удалось загрузить профиль'),
+      {
+        status: error?.status ?? 500,
+      }
+    );
   }
 
   return null;
@@ -80,7 +84,7 @@ const chatLoader = async ({ params }: { params: Params }) => {
     await queryClient.ensureQueryData(chatQuery(chatId));
     return null;
   } catch (error: any) {
-    throw new Response(error.message || 'Не удалось загрузить чат', {
+    throw new Response(error.message || i18n.t('errors.chatLoad', 'Не удалось загрузить чат'), {
       status: 500,
     });
   }

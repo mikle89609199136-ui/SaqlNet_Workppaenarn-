@@ -1,7 +1,7 @@
 import type { IRichTextInputHandle } from '@/shared/ui';
 import { describeApiError, useRealtimeSocket } from '@/shared/api';
 import { useChatEncryption } from '@/features/chat-encryption';
-import { usePhotoEditor } from '@/entities/media';
+import { usePhotoEditor } from './usePhotoEditor';
 import { useChatModals } from '@/features/chat-actions';
 import { useMessageActions, useMessageSelection } from '@/features/message-actions';
 import { useProfilePanel } from '@/features/user-profile';
@@ -11,7 +11,14 @@ import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/m
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useMarkAsRead } from './useMarkAsRead';
@@ -51,6 +58,7 @@ export function useChatThreadPage({
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<IRichTextInputHandle>(null);
   const messagesRef = useRef<HTMLElement>(null);
+  const [threadElement, setThreadElement] = useState<HTMLElement | null>(null);
 
   const { socket } = useRealtimeSocket(Boolean(chatId));
   useChatEncryption(chatId);
@@ -138,17 +146,6 @@ export function useChatThreadPage({
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
 
-  // Отмечаются только те, что ещё не отмечены: история меняется и от
-  // собственных отправок, и от входящих, а лишний запрос здесь не нужен.
-  useEffect(() => {
-    if (isLoading) return;
-
-    const unread = messages.filter((message) => !message.isRead);
-    if (unread.length === 0) return;
-
-    markMessagesAsRead(unread);
-  }, [messages, isLoading, markMessagesAsRead]);
-
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
   useEscapeKey({ active: Boolean(modals.openedImage), onClose: () => modals.setOpenedImage(null) });
@@ -174,6 +171,7 @@ export function useChatThreadPage({
     hasOlder,
     loadOlder,
     readMark,
+    markMessagesAsRead,
     threadError,
     setError,
     setEditingMessage,
@@ -188,6 +186,8 @@ export function useChatThreadPage({
     attachmentInputRef,
     draftRef,
     messagesRef,
+    threadElement,
+    setThreadElement,
     socket,
 
     modals,

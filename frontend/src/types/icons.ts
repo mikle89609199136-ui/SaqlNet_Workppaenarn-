@@ -29,6 +29,10 @@ export type TIconTypes =
   | 'monitor'
   | 'palette'
   | 'phone'
+  | 'phoneIncoming'
+  | 'phoneOutgoing'
+  | 'phoneMissed'
+  | 'phoneOff'
   | 'pin'
   | 'reply'
   | 'search'
@@ -77,6 +81,8 @@ export type TIconTypes =
   | 'paperclip'
   | 'image'
   | 'mic'
+  | 'micOff'
+  | 'videoOff'
   | 'smile'
   | 'archive'
   | 'archiveRestore'
@@ -92,4 +98,5 @@ export type TIconTypes =
   | 'devices'
   | 'ban'
   | 'laptop'
-  | 'smartphone';
+  | 'smartphone'
+  | 'more';

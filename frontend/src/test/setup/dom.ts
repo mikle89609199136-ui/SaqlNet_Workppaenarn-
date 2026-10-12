@@ -16,12 +16,15 @@ import { useCallStore } from '@/features/call';
 import { registerChatResolver, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
+import { setVoiceVolume } from '@/shared/lib/voice/voiceVolume';
 
 // ── Полифилы, которых нет в jsdom ────────────────────────────────────────────
 
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
+
+Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
 
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 Element.prototype.getBoundingClientRect = function () {
@@ -253,6 +256,7 @@ afterEach(() => {
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   clearToasts();
   clearOutbox();
+  setVoiceVolume(1);
 
   localStorage.clear();
 });

@@ -128,4 +128,153 @@ describe('звонки включены', () => {
     const cancelBtn = screen.getByRole('button', { name: 'Отменить' });
     expect(cancelBtn).toBeDisabled();
   });
+
+  it('активный звонок: отображает ActiveCallView в развёрнутом режиме', () => {
+    useCallStore.setState({
+      activeCall: {
+        roomId: 'room-act-1',
+        type: 'p2p',
+        kind: 'audio',
+        peerId: 'peer-act',
+        peerName: 'Дмитрий',
+      },
+      isMinimized: false,
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('dialog', { name: 'Активный звонок' })).toBeInTheDocument();
+    expect(screen.getAllByText('Дмитрий').length).toBeGreaterThan(0);
+  });
+
+  it('активный звонок: отображает MinimizedCallBar в свёрнутом режиме', () => {
+    useCallStore.setState({
+      activeCall: {
+        roomId: 'room-act-2',
+        type: 'p2p',
+        kind: 'audio',
+        peerId: 'peer-act',
+        peerName: 'Дмитрий',
+      },
+      isMinimized: true,
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('region', { name: 'Свёрнутый звонок' })).toBeInTheDocument();
+    expect(screen.getByText('Дмитрий')).toBeInTheDocument();
+  });
+
+  it('завершённый звонок: отображает причину «Собеседник завершил звонок»', () => {
+    useCallStore.setState({
+      endedCall: {
+        roomId: 'room-end-1',
+        peerId: 'peer-bob',
+        peerName: 'Боб',
+        reason: 'peer_ended',
+      },
+    });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByText('Собеседник завершил звонок')).toBeInTheDocument();
+    expect(screen.getByText('Боб')).toBeInTheDocument();
+  });
+
+  it('входящий звонок: кнопка «Проверить камеру и микрофон» открывает CallLobbyView', () => {
+    useCallStore.setState({ incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    const lobbyBtn = screen.getByRole('button', { name: 'Настроить перед входом' });
+    expect(lobbyBtn).toBeInTheDocument();
+
+    fireEvent.click(lobbyBtn);
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+  });
+
+  it('входящий звонок: кнопка «Присоединиться» в лобби вызывает acceptCall', () => {
+    useCallStore.setState({ incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Настроить перед входом' }));
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }));
+    expect(acceptCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('сбрасывает лобби и останавливает медиа при отмене входящего звонка', () => {
+    const mockStopMedia = vi.fn();
+    const fakeStream = {} as MediaStream;
+    const fakeLocalMedia = {
+      stream: fakeStream,
+      stopMedia: mockStopMedia,
+      startMedia: vi.fn(),
+      toggleAudio: vi.fn(),
+      toggleVideo: vi.fn(),
+      switchCamera: vi.fn(),
+      switchMicrophone: vi.fn(),
+      enumerateDevices: vi.fn(),
+      manager: {} as any,
+      audioTrack: null,
+      videoTrack: null,
+      isAudioMuted: false,
+      isVideoMuted: false,
+      audioInputs: [],
+      videoInputs: [],
+      selectedAudioDeviceId: null,
+      selectedVideoDeviceId: null,
+      facingMode: 'user' as const,
+      error: null,
+      isLoading: false,
+    };
+
+    useCallStore.setState({ incomingCall: incoming });
+    const { rerender } = render(<CallOverlay enabled localMedia={fakeLocalMedia} />);
+
+    // Открываем лобби
+    fireEvent.click(screen.getByRole('button', { name: 'Настроить перед входом' }));
+    expect(screen.getByRole('dialog', { name: 'Лобби звонка' })).toBeInTheDocument();
+
+    // Звонящий отменяет вызов
+    useCallStore.setState({ incomingCall: null });
+    rerender(<CallOverlay enabled localMedia={fakeLocalMedia} />);
+
+    // Лобби закрыто, вызван stopMedia
+    expect(screen.queryByRole('dialog', { name: 'Лобби звонка' })).toBeNull();
+    expect(mockStopMedia).toHaveBeenCalled();
+  });
+});
+
+describe('возврат в звонок после перезагрузки (#775)', () => {
+  const resumable = {
+    roomId: 'room-resume-1',
+    peerId: 'peer-bob',
+    peerName: 'Боб',
+    peerAvatar: null,
+    callKind: 'video' as const,
+    expiresAt: Date.now() + 20_000,
+  };
+
+  it('показывает плашку с собеседником: «Вернуться» входит в звонок, крестик — нет', () => {
+    const resumeCall = vi.fn();
+    const dismissResumableCall = vi.fn();
+    useCallStore.setState({ resumableCall: resumable, resumeCall, dismissResumableCall });
+    render(<CallOverlay enabled />);
+
+    expect(screen.getByRole('region', { name: 'Звонок продолжается' })).toBeInTheDocument();
+    expect(screen.getByText('Боб')).toBeInTheDocument();
+    expect(screen.getByText('Звонок ещё идёт')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуться' }));
+    expect(resumeCall).toHaveBeenCalledTimes(1);
+    expect(dismissResumableCall).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Не возвращаться' }));
+    expect(dismissResumableCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('плашки нет, пока идёт другой звонок', () => {
+    useCallStore.setState({ resumableCall: resumable, incomingCall: incoming });
+    render(<CallOverlay enabled />);
+
+    expect(screen.queryByRole('region', { name: 'Звонок продолжается' })).not.toBeInTheDocument();
+  });
 });

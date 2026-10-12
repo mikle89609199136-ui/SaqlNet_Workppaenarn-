@@ -106,18 +106,16 @@ func uploadLimitMessage(maxBytes int64) string {
 	return fmt.Sprintf("file exceeds %d byte limit", maxBytes)
 }
 
+func requestLimitMessage(maxBytes int64) string {
+	return fmt.Sprintf("request body exceeds %d byte limit", maxBytes)
+}
+
 func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {
 	writeTooLarge(w, r, h.service.maxUploadBytes)
 }
 
 func writeTooLarge(w http.ResponseWriter, r *http.Request, limit int64) {
-	httpx.JSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-		"error": httpx.Error{
-			Code:      "file_too_large",
-			Message:   uploadLimitMessage(limit),
-			RequestID: r.Header.Get("X-Request-ID"),
-		},
-	})
+	httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(limit))
 }
 
 // maxVoiceBytes — предел голосового (#843). 15 минут Opus 32 кбит/с —

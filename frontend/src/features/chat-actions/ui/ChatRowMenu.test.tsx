@@ -38,6 +38,28 @@ function renderMenu(chat: IChatDto, onClose = () => {}, extra: Partial<IChatRowM
 describe('меню строки чата', () => {
   const items = () => screen.getAllByRole('menuitem').map((item) => item.textContent);
 
+  it.each([false, true])('сохраняет переключение на сервере (скрыто: %s)', async (hidden) => {
+    const chat = makeChat({ hideNotificationPreview: hidden });
+    const save = vi.fn();
+    server.use(
+      http.put(api('/chats/:chatId/notification-settings'), async ({ request, params }) => {
+        save(params.chatId, await request.json());
+        return HttpResponse.json({ success: true });
+      })
+    );
+    const onClose = vi.fn();
+    renderMenu(chat, onClose);
+    await userEvent.click(
+      screen.getByRole('menuitem', {
+        name: hidden ? 'Показывать текст в уведомлениях' : 'Скрывать текст в уведомлениях',
+      })
+    );
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(chat.id, { hideNotificationPreview: !hidden })
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('по макету: состояние строки сверху, уводящее из чата — после разделителя (#825)', () => {
     renderMenu(makeChat({ type: 'group', unreadCount: 3 }), () => {}, { onLeave: vi.fn() });
 
@@ -45,6 +67,7 @@ describe('меню строки чата', () => {
     expect(items()).toEqual([
       'Закрепить',
       'Отметить как прочитанное',
+      'Скрывать текст в уведомлениях',
       'Архивировать',
       'Покинуть группу',
     ]);
@@ -54,7 +77,7 @@ describe('меню строки чата', () => {
   it('скрытые пункты без функции не показываются', () => {
     renderMenu(makeChat({ type: 'private', unreadCount: 0 }));
 
-    expect(items()).toEqual(['Закрепить', 'Архивировать']);
+    expect(items()).toEqual(['Закрепить', 'Скрывать текст в уведомлениях', 'Архивировать']);
     expect(screen.queryByRole('separator')).not.toBeInTheDocument();
   });
 
@@ -72,6 +95,7 @@ describe('меню строки чата', () => {
     expect(items()).toEqual([
       'Закрепить',
       'Отметить как непрочитанное',
+      'Скрывать текст в уведомлениях',
       'Отключить уведомления',
       'Архивировать',
       'Удалить чат',
@@ -84,7 +108,7 @@ describe('меню строки чата', () => {
 
   it('в архиве не закрепляют, а возвращают', () => {
     renderMenu(makeChat({ type: 'private', isArchived: true, unreadCount: 0 }));
-    expect(items()).toEqual(['Вернуть из архива']);
+    expect(items()).toEqual(['Скрывать текст в уведомлениях', 'Вернуть из архива']);
   });
 
   it('не предлагает «Прочитано» там, где непрочитанных нет', () => {

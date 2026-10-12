@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"craneapp/backend-v2/internal/auth"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	"craneapp/backend-v2/internal/user"
 	"github.com/lib/pq"
@@ -23,8 +24,8 @@ func (authCryptoStub) HashPassword(context.Context, string) (string, error) { re
 func (authCryptoStub) VerifyPassword(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (authCryptoStub) IssueToken(context.Context, string, string, int64) (string, error) {
-	return "token", nil
+func (authCryptoStub) IssueToken(context.Context, string, string, int64) (cryptoclient.IssuedToken, error) {
+	return cryptoclient.IssuedToken{Token: "token", ExpiresAt: time.Unix(2_000_000_000, 0).UTC()}, nil
 }
 
 // TestConcurrentUsernameClaim uses PostgreSQL itself rather than a programmed

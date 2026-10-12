@@ -44,6 +44,8 @@ RegisterRequest:
     firstName: { type: string, minLength: 1 }
     lastName: { type: string }
     language: { type: string }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 LoginRequest:
   type: object
   required: [username, password]
@@ -51,12 +53,33 @@ LoginRequest:
     username: { type: string }
     password: { type: string, format: password }
     twoFAPassword: { type: string, format: password }
+    deviceName: { type: string, maxLength: 64 }
+    deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user, token]
+  required: [user]
   properties:
     user: { $ref: '#/User' }
-    token: { type: string }
+AuthSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  properties:
+    id: { type: string, format: uuid }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    lastActive: { type: string, format: date-time }
+    createdAt: { type: string, format: date-time }
+    isCurrent:
+      type: boolean
+      description: True when this row belongs to the token used for the request.
+AuthSessionsResponse:
+  type: object
+  required: [sessions]
+  properties:
+    sessions:
+      type: array
+      items: { $ref: '#/AuthSession' }
 Success:
   type: object
   required: [success]
@@ -165,6 +188,7 @@ Chat:
     role: { type: string }
     isPinned: { type: boolean }
     isArchived: { type: boolean }
+    hideNotificationPreview: { type: boolean, default: false, description: "Hide message text in notifications for the authenticated user in this chat." }
     memberCount: { type: integer }
     createdAt: { type: string }
     updatedAt: { type: string }
@@ -262,7 +286,10 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
-    reactions: { type: array, items: { $ref: '#/Reaction' } }
+    reactions:
+      type: array
+      description: Always an array; empty reactions are [], never null.
+      items: { $ref: '#/Reaction' }
     deliveredAt:
       type: string
       description: >-
@@ -305,6 +332,7 @@ Message:
     replyToSenderName: { type: string }
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
     metadata:
       type: object
@@ -489,6 +517,7 @@ MessageListResponse:
   properties:
     messages:
       type: array
+      description: Always an array; no messages are represented by [], never null.
       items: { $ref: '#/Message' }
 DeleteMessagesRequest:
   type: object
@@ -541,6 +570,7 @@ ReactionListResponse:
   properties:
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 ReactionToggleResponse:
   type: object
@@ -552,6 +582,7 @@ ReactionToggleResponse:
       description: Empty when the reaction was removed.
     reactions:
       type: array
+      description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
 FavoriteStateResponse:
   type: object
@@ -702,7 +733,7 @@ CallRoomCreateRequest:
     type:
       type: string
       enum: [p2p, group]
-      description: Defaults to group when omitted.
+      description: Ignored — calls are one-to-one, the room type is always p2p.
     chatId: { type: string, format: uuid }
     title: { type: string }
     callKind:
@@ -718,7 +749,33 @@ CallRoomResponse:
     iceServers:
       type: array
       items: { $ref: '#/IceServer' }
-    maxParticipants: { type: integer, enum: [5] }
+    maxParticipants: { type: integer, enum: [2] }
+CallHistoryItem:
+  type: object
+  required: [id, roomId, chatId, peerId, peerName, peerAvatar, direction, kind, status, startedAt, answeredAt, endedAt, durationSeconds]
+  properties:
+    id: { type: string, format: uuid }
+    roomId: { type: string, format: uuid, description: "Same as id." }
+    chatId: { type: string, format: uuid, nullable: true, description: "Null when the chat was deleted." }
+    peerId: { type: string, format: uuid }
+    peerName: { type: string, description: "First and last name, else username; empty for a deleted user." }
+    peerAvatar: { type: string, nullable: true, description: "Null when there is none or the photo rule hides it." }
+    direction: { type: string, enum: [incoming, outgoing] }
+    kind: { type: string, enum: [audio, video] }
+    status: { type: string, enum: [answered, missed, rejected, cancelled] }
+    startedAt: { type: string, format: date-time }
+    answeredAt: { type: string, format: date-time, nullable: true }
+    endedAt: { type: string, format: date-time }
+    durationSeconds: { type: integer, minimum: 0, description: "From answer to end; 0 for unanswered calls." }
+CallHistoryResponse:
+  type: object
+  required: [calls, nextCursor, hasMore]
+  properties:
+    calls:
+      type: array
+      items: { $ref: '#/CallHistoryItem' }
+    nextCursor: { type: string, nullable: true }
+    hasMore: { type: boolean }
 UploadResponse:
   type: object
   required: [success, url]
@@ -766,11 +823,11 @@ CreateGroupRequest:
       example: 'https://cdn.example.com/avatars/team.png'
     members:
       type: array
-      minItems: 1
       description: |
         User IDs to add as members. The owner is added automatically
         and does not need to be listed. Unknown or disabled users are
-        silently skipped.
+        silently skipped. May be empty: the group is then created with
+        the owner as its only member.
       items: { type: string, format: uuid }
       example: ['550e8400-e29b-41d4-a716-446655440002']
 UpdateGroupRequest:
@@ -944,7 +1001,6 @@ QrOfferStatusResponse:
   properties:
     status: { type: string, enum: [pending, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }
 QrOfferConfirmRequest:
   type: object
@@ -957,5 +1013,4 @@ QrStatusResponse:
   properties:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
-    authToken: { type: string }
     payload: { $ref: '#/QrKeyPayload' }

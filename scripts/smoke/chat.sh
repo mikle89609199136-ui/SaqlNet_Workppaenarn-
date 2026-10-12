@@ -11,6 +11,7 @@ run_chat_tests() {
 
 	http_request \
 		-X POST "$BASE_URL/api/v2/auth/register" \
+		-c "$COOKIE_JAR_B" \
 		-H "Content-Type: application/json" \
 		-d "{\"username\":\"$user_b\",\"password\":\"$pass_b\",\"firstName\":\"SmokePeer\"}"
 
@@ -19,15 +20,13 @@ run_chat_tests() {
 		"import sys,json; print(json.load(sys.stdin).get('user',{}).get('id',''))" \
 		2>/dev/null || true)
 
-	TOKEN_B=$(printf '%s' "$HTTP_BODY" | python3 -c \
-		"import sys,json; print(json.load(sys.stdin).get('token',''))" \
-		2>/dev/null || true)
+	SESSION_COOKIE_B=$(session_cookie_header "$COOKIE_JAR_B")
 
-	if [[ "$HTTP_CODE" == "201" && -n "$user_b_id" && -n "$TOKEN_B" ]]; then
+	if [[ "$HTTP_CODE" == "201" && -n "$user_b_id" && -n "$SESSION_COOKIE_B" ]]; then
 		echo "✓ [$HTTP_CODE] POST /api/v2/auth/register (second user)"
 		PASS=$((PASS + 1))
 	else
-		echo "✗ [$HTTP_CODE] POST /api/v2/auth/register (second user) — expected 201 with user.id and token"
+		echo "✗ [$HTTP_CODE] POST /api/v2/auth/register (second user) — expected 201 with user.id and cookie"
 		echo "  ${HTTP_BODY:0:160}"
 		FAIL=$((FAIL + 1))
 		return
@@ -37,7 +36,7 @@ run_chat_tests() {
 	http_request \
 		-X POST "$BASE_URL/api/v2/chats/private" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d "{\"userId\":\"$user_b_id\"}"
 
 	CHAT_ID=$(printf '%s' "$HTTP_BODY" | python3 -c \
@@ -60,7 +59,7 @@ run_chat_tests() {
 	http_request \
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d "{\"messages\":[{\"content\":\"$smoke_message\",\"type\":\"text\"}]}"
 
 	MESSAGE_ID=$(printf '%s' "$HTTP_BODY" | python3 -c \
@@ -79,7 +78,7 @@ run_chat_tests() {
 
 	# Читаем сообщения обратно
 	http_request \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		"$BASE_URL/api/v2/messages/$CHAT_ID"
 
 	if [[ "$HTTP_CODE" == "200" ]] &&
@@ -110,7 +109,7 @@ if not any(
 	http_request \
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d "{\"messages\":[{\"content\":\"$smoke_message-a\",\"type\":\"text\"},{\"content\":\"$smoke_message-b\",\"type\":\"text\"}]}"
 
 	if [[ "$HTTP_CODE" == "201" ]] &&
@@ -133,7 +132,7 @@ if contents != [sys.argv[1] + "-a", sys.argv[1] + "-b"]:
 	http_request \
 		-X POST "$BASE_URL/api/v2/messages/$CHAT_ID" \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $TOKEN" \
+		-b "$COOKIE_JAR" \
 		-d '{"messages":[]}'
 
 	if [[ "$HTTP_CODE" == "400" ]]; then

@@ -162,8 +162,9 @@ export interface ICallPeerDto {
 
 export interface ICallErrorEvent {
   type: string;
-  reason: string;
+  reason?: string;
   roomId?: string;
+  message?: string;
 }
 
 export interface ICallJoinedEvent {
@@ -183,6 +184,7 @@ export interface ICallPeerLeftEvent {
   type: string;
   roomId: string;
   peer: { userId: string };
+  reason?: 'left' | 'disconnected';
 }
 
 export interface ICallIncomingEvent {

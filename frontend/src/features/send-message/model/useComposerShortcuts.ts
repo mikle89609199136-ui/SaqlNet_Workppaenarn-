@@ -37,6 +37,13 @@ export function useComposerShortcuts(draftRef: RefObject<IRichTextInputHandle | 
     draftRef.current?.clear();
   }, [draftRef, setEditingMessage, setReplyToMessage]);
 
+  const fromComposer = useCallback(
+    ({ target }: KeyboardEvent) =>
+      target === document.body ||
+      Boolean(draftRef.current?.contains(target instanceof Node ? target : null)),
+    [draftRef]
+  );
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && (editingMessage || replyToMessage)) {
@@ -51,8 +58,9 @@ export function useComposerShortcuts(draftRef: RefObject<IRichTextInputHandle | 
       // Пустое поле читается из самого элемента: текста в состоянии React
       // больше нет, и это к лучшему — раньше слушатель клавиш
       // переустанавливался на каждый набранный символ.
+      if (event.key !== 'ArrowUp' || event.defaultPrevented || !fromComposer(event)) return;
       const isEmpty = !draftRef.current?.getValue().text.trim();
-      if (event.key !== 'ArrowUp' || !isEmpty || editingMessage || replyToMessage) return;
+      if (!isEmpty || editingMessage || replyToMessage) return;
       const lastOwnMessage = [...messages].reverse().find((m) => m.senderId === user?.id);
       if (!lastOwnMessage) return;
 
@@ -62,7 +70,16 @@ export function useComposerShortcuts(draftRef: RefObject<IRichTextInputHandle | 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cancelComposerMode, draftRef, editingMessage, messages, replyToMessage, startEdit, user?.id]);
+  }, [
+    cancelComposerMode,
+    draftRef,
+    editingMessage,
+    fromComposer,
+    messages,
+    replyToMessage,
+    startEdit,
+    user?.id,
+  ]);
 
   return { cancelComposerMode };
 }

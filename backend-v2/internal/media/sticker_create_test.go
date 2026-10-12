@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"craneapp/backend-v2/internal/platform/authctx"
@@ -30,6 +31,9 @@ func TestCreateStickerPackPersistsCanonicalIconIdentity(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
+	if !strings.Contains(response.Body.String(), "/api/v2/media/") || strings.Contains(response.Body.String(), "https://storage.test") {
+		t.Fatalf("catalog URL must be relative: %s", response.Body.String())
+	}
 	if store.putCalls != 1 {
 		t.Fatalf("Put calls=%d, want 1", store.putCalls)
 	}
@@ -52,6 +56,9 @@ func TestAddStickerPersistsCanonicalIdentity(t *testing.T) {
 	handler.HandleStickersRoutes(response, stickerCreateRequest("/api/v2/stickers/packs/"+stickerTestPackID, `{"image":"`+stickerTestDataURL+`"}`))
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "/api/v2/media/") || strings.Contains(response.Body.String(), "https://storage.test") {
+		t.Fatalf("catalog URL must be relative: %s", response.Body.String())
 	}
 	if store.putCalls != 1 {
 		t.Fatalf("Put calls=%d, want 1", store.putCalls)

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/Button';
 import { Input } from '@/shared/ui/Input';
@@ -20,8 +20,8 @@ export function LinkDialog({ open, initialUrl, onApply, onRemove, onCancel }: Pr
   const [value, setValue] = useState(initialUrl ?? '');
   const [invalid, setInvalid] = useState(false);
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const submit = (event?: SyntheticEvent) => {
+    event?.preventDefault();
     const url = normalizeLinkInput(value);
     if (!url) {
       setInvalid(true);
@@ -42,7 +42,7 @@ export function LinkDialog({ open, initialUrl, onApply, onRemove, onCancel }: Pr
           <Button onClick={onCancel} variant="ghost">
             {t('cancel', 'Отмена')}
           </Button>
-          <Button form="link-dialog-form" type="submit" variant="primary">
+          <Button onClick={submit} type="button" variant="primary">
             {t('save', 'Сохранить')}
           </Button>
         </>
@@ -55,19 +55,23 @@ export function LinkDialog({ open, initialUrl, onApply, onRemove, onCancel }: Pr
           : t('format.addLink', 'Добавить ссылку')
       }
     >
-      <form id="link-dialog-form" onSubmit={submit}>
-        <Input
-          autoFocus
-          error={invalid ? t('format.badLink', 'Нужен адрес вида https://example.com') : undefined}
-          label={t('format.linkAddress', 'Адрес ссылки')}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setInvalid(false);
-          }}
-          placeholder="https://"
-          value={value}
-        />
-      </form>
+      <Input
+        autoFocus
+        error={invalid ? t('format.badLink', 'Нужен адрес вида https://example.com') : undefined}
+        label={t('format.linkAddress', 'Адрес ссылки')}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setInvalid(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            submit(event);
+          }
+        }}
+        placeholder="https://"
+        value={value}
+      />
     </Modal>
   );
 }

@@ -13,6 +13,11 @@ import (
 	"craneapp/backend-v2/internal/platform/httpx"
 )
 
+var (
+	errInvalidLimit  = errors.New("invalid limit")
+	errInvalidOffset = errors.New("invalid offset")
+)
+
 func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	targetID := r.PathValue("chatId")
@@ -27,7 +32,11 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, offset := parsePagination(r)
+	limit, offset, err := parsePagination(r)
+	if err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
 	msgs, err := h.service.ListMessages(r.Context(), current.ID, targetID, limit, offset)
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "chat_not_found", "chat_not_found")
@@ -40,6 +49,9 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to list messages")
 		return
+	}
+	if msgs == nil {
+		msgs = []Message{}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
@@ -204,7 +216,18 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 	}
 
 	var metadata map[string]any
-	if item.MediaURL != "" {
+	if item.Type == "sticker" || item.Type == "gif" {
+		err := h.service.ValidateCatalogMedia(r.Context(), item.Type, item.MediaURL, item.MediaEncrypted)
+		if errors.Is(err, ErrInvalidInput) {
+			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must reference an available catalog item")
+			return OutgoingMessage{}, false
+		}
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to validate catalog media")
+			return OutgoingMessage{}, false
+		}
+		metadata = map[string]any{"mediaUrl": item.MediaURL, "mediaType": item.Type, "isEncrypted": item.IsEncrypted}
+	} else if item.MediaURL != "" {
 		attachment, err := h.service.ValidateMediaMetadata(r.Context(), userID, item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
 		if errors.Is(err, ErrInvalidInput) {
 			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must be the sender's own upload matching fileName and sizeBytes")
@@ -483,16 +506,36 @@ func (h *Handler) MarkMessagesRead(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, mark)
 }
 
-// parsePagination извлекает limit и offset из query-параметров запроса
-// с дефолтными значениями (50 и 0 соответственно).
-func parsePagination(r *http.Request) (int, int) {
-	limit := 50
-	offset := 0
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
-		limit = l
+// parseLimit извлекает и валидирует параметр limit из query-параметров запроса.
+// Если параметр отсутствует, возвращается значение по умолчанию 50.
+// Допустимый диапазон: от 1 до 100 включительно.
+func parseLimit(r *http.Request) (int, error) {
+	q := r.URL.Query()
+	if !q.Has("limit") {
+		return 50, nil
 	}
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil {
-		offset = o
+
+	limit, err := strconv.Atoi(q.Get("limit"))
+	if err != nil || limit < 1 || limit > 100 {
+		return 0, errInvalidLimit
 	}
-	return limit, offset
+	return limit, nil
+}
+
+// parsePagination извлекает и валидирует параметры limit и offset из query-параметров запроса.
+// Значения по умолчанию: limit=50, offset=0. Допустимые границы: 1 <= limit <= 100, offset >= 0.
+func parsePagination(r *http.Request) (int, int, error) {
+	limit, err := parseLimit(r)
+	if err != nil {
+		return 0, 0, err
+	}
+	q := r.URL.Query()
+	if !q.Has("offset") {
+		return limit, 0, nil
+	}
+	offset, err := strconv.Atoi(q.Get("offset"))
+	if err != nil || offset < 0 {
+		return 0, 0, errInvalidOffset
+	}
+	return limit, offset, nil
 }

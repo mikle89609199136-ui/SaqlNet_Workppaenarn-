@@ -1,6 +1,7 @@
 import type { WebSocketClient } from '@/services/WebSocketClient';
 import { services } from '@/services/serviceContainer';
 import { sendCallAnswer, sendCallIce, sendCallOffer } from './callSignaling';
+import { computeCallVerificationEmojis } from './callKeyVerification';
 import type { IIceServer } from './types';
 
 export interface IPeerConnectionOptions {
@@ -13,7 +14,36 @@ export interface IPeerConnectionOptions {
   onRemoteStream?: (stream: MediaStream) => void;
   onRemoteTrack?: (track: MediaStreamTrack, stream: MediaStream) => void;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  onVerificationEmojisChange?: (emojis: string[] | null) => void;
   onError?: (err: Error) => void;
+}
+
+/**
+ * Сколько вежливый пир (принимающий) ждёт первое предложение звонящего,
+ * прежде чем предложить сам. Ждать нужно: встречные предложения в начале
+ * звонка кончаются откатом у принимающего, и Chrome оставляет его дорожки
+ * собеседника «заглушёнными» — медиа идёт, а на экране «Камера выключена».
+ */
+const POLITE_FIRST_OFFER_WAIT_MS = 4000;
+
+/**
+ * Звук в звонке важнее видео (#948): при нехватке канала первым уступает
+ * видео. До согласования у отправителя нет `encodings` — поэтому приоритет
+ * ставится, когда соединение установилось, и после замены звукового трека.
+ */
+export function raiseAudioPriority(pc: RTCPeerConnection): void {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'audio' || !sender.getParameters || !sender.setParameters) continue;
+    const parameters = sender.getParameters();
+    const encodings = parameters.encodings ?? [];
+    if (encodings.length === 0) continue;
+    if (encodings.every((e) => e.priority === 'high' && e.networkPriority === 'high')) continue;
+    encodings.forEach((encoding) => {
+      encoding.priority = 'high';
+      encoding.networkPriority = 'high';
+    });
+    void sender.setParameters(parameters).catch(() => undefined);
+  }
 }
 
 export class PeerConnectionManager {
@@ -32,6 +62,8 @@ export class PeerConnectionManager {
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
   private remoteStream: MediaStream;
   private isClosed = false;
+  private politeWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  private verificationEmojis: string[] | null = null;
 
   private options: IPeerConnectionOptions;
 
@@ -57,6 +89,39 @@ export class PeerConnectionManager {
     return this.remoteStream;
   }
 
+  getVerificationEmojis(): string[] | null {
+    return this.verificationEmojis;
+  }
+
+  private async updateVerificationEmojis(): Promise<void> {
+    if (!this.pc || this.isClosed) {
+      if (this.verificationEmojis !== null) {
+        this.verificationEmojis = null;
+        this.options.onVerificationEmojisChange?.(null);
+      }
+      return;
+    }
+
+    try {
+      const emojis = await computeCallVerificationEmojis(
+        this.pc.localDescription?.sdp,
+        this.pc.remoteDescription?.sdp
+      );
+
+      const isConnected = this.pc?.connectionState
+        ? this.pc.connectionState === 'connected'
+        : this.pc?.iceConnectionState === 'connected' ||
+          this.pc?.iceConnectionState === 'completed';
+
+      if (this.isClosed || !this.pc || !isConnected) return;
+
+      this.verificationEmojis = emojis;
+      this.options.onVerificationEmojisChange?.(emojis);
+    } catch {
+      // Игнорируем непредвиденные ошибки вычисления
+    }
+  }
+
   updateOptions(newOptions: Partial<IPeerConnectionOptions>): void {
     this.options = { ...this.options, ...newOptions };
   }
@@ -80,8 +145,11 @@ export class PeerConnectionManager {
         if (!this.options.iceServers || this.options.iceServers.length === 0) {
           try {
             const iceConfig = await services.callService.getIceServers();
-            if (iceConfig?.servers && iceConfig.servers.length > 0) {
-              this.iceServers = iceConfig.servers.map((s: IIceServer) => ({
+            const rawServers =
+              iceConfig?.servers ??
+              (iceConfig as unknown as { iceServers?: IIceServer[] })?.iceServers;
+            if (rawServers && rawServers.length > 0) {
+              this.iceServers = rawServers.map((s: IIceServer) => ({
                 urls: s.urls,
                 username: s.username,
                 credential: s.credential,
@@ -113,30 +181,16 @@ export class PeerConnectionManager {
         const pc = new PeerConnectionClass({ iceServers: this.iceServers });
         this.pc = pc;
 
-        // Perfect Negotiation: обработка необходимости согласования
-        pc.onnegotiationneeded = async () => {
-          try {
-            this.makingOffer = true;
-            const offer = await pc.createOffer();
-            if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
-            await pc.setLocalDescription(offer);
-            if (!this.pc || this.isClosed) return;
-
-            if (pc.localDescription && this.socket.isConnected) {
-              sendCallOffer(this.socket, {
-                to: this.peerId,
-                roomId: this.roomId,
-                payload: {
-                  type: pc.localDescription.type,
-                  sdp: pc.localDescription.sdp,
-                },
-              });
-            }
-          } catch (err) {
-            this.options.onError?.(err as Error);
-          } finally {
-            this.makingOffer = false;
+        // Perfect Negotiation: обработка необходимости согласования.
+        // Первое согласование начинает звонящий: принимающий (вежливый)
+        // ждёт его предложение и отвечает, а сам предлагает, только если
+        // оно так и не пришло.
+        pc.onnegotiationneeded = () => {
+          if (this.isPolite && !pc.remoteDescription) {
+            this.waitForFirstOffer(pc);
+            return;
           }
+          return this.makeOffer(pc);
         };
 
         // Отправка локальных ICE-кандидатов собеседнику
@@ -173,6 +227,17 @@ export class PeerConnectionManager {
         // Состояние соединения
         pc.onconnectionstatechange = () => {
           if (!this.pc) return;
+          if (this.pc.connectionState === 'connected') {
+            raiseAudioPriority(this.pc);
+            void this.updateVerificationEmojis();
+          } else if (
+            this.pc.connectionState === 'disconnected' ||
+            this.pc.connectionState === 'failed' ||
+            this.pc.connectionState === 'closed'
+          ) {
+            this.verificationEmojis = null;
+            this.options.onVerificationEmojisChange?.(null);
+          }
           this.options.onConnectionStateChange?.(this.pc.connectionState);
         };
 
@@ -182,10 +247,22 @@ export class PeerConnectionManager {
           if (!this.pc.connectionState) {
             const iceState = this.pc.iceConnectionState;
             let mappedState: RTCPeerConnectionState = 'new';
-            if (iceState === 'connected' || iceState === 'completed') mappedState = 'connected';
-            else if (iceState === 'disconnected') mappedState = 'disconnected';
-            else if (iceState === 'failed') mappedState = 'failed';
-            else if (iceState === 'closed') mappedState = 'closed';
+            if (iceState === 'connected' || iceState === 'completed') {
+              mappedState = 'connected';
+              void this.updateVerificationEmojis();
+            } else if (iceState === 'disconnected') {
+              mappedState = 'disconnected';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            } else if (iceState === 'failed') {
+              mappedState = 'failed';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            } else if (iceState === 'closed') {
+              mappedState = 'closed';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            }
             this.options.onConnectionStateChange?.(mappedState);
           }
         };
@@ -204,6 +281,43 @@ export class PeerConnectionManager {
     })();
 
     return this.initPromise;
+  }
+
+  private waitForFirstOffer(pc: RTCPeerConnection): void {
+    if (this.politeWaitTimer) return;
+    this.politeWaitTimer = setTimeout(() => {
+      this.politeWaitTimer = null;
+      if (this.isClosed || this.pc !== pc || pc.remoteDescription) return;
+      void this.makeOffer(pc);
+    }, POLITE_FIRST_OFFER_WAIT_MS);
+  }
+
+  private async makeOffer(pc: RTCPeerConnection): Promise<void> {
+    try {
+      this.makingOffer = true;
+      const offer = await pc.createOffer();
+      if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (!this.pc || this.isClosed) return;
+
+      if (pc.localDescription && this.socket.isConnected) {
+        sendCallOffer(this.socket, {
+          to: this.peerId,
+          roomId: this.roomId,
+          payload: {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch (err) {
+      // Встречное предложение успело прийти между createOffer и
+      // setLocalDescription: наше устарело, согласование идёт по чужому.
+      if ((err as Error)?.name === 'InvalidStateError' && pc.signalingState !== 'stable') return;
+      this.options.onError?.(err as Error);
+    } finally {
+      this.makingOffer = false;
+    }
   }
 
   private async ensureInitialized(): Promise<RTCPeerConnection | null> {
@@ -262,6 +376,41 @@ export class PeerConnectionManager {
     } else if (newTrack) {
       pc.addTrack(newTrack, this.localStream ?? undefined);
     }
+    if (kind === 'audio') raiseAudioPriority(pc);
+  }
+
+  async restartIce(): Promise<void> {
+    if (this.isClosed) return;
+    const pc = await this.ensureInitialized();
+    if (!pc || this.isClosed) return;
+
+    try {
+      if (typeof pc.restartIce === 'function') {
+        pc.restartIce();
+      }
+      if (pc.signalingState !== 'stable' || this.makingOffer) return;
+
+      this.makingOffer = true;
+      const offer = await pc.createOffer({ iceRestart: true });
+      if (!this.pc || this.isClosed || pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (!this.pc || this.isClosed) return;
+
+      if (pc.localDescription && this.socket.isConnected) {
+        sendCallOffer(this.socket, {
+          to: this.peerId,
+          roomId: this.roomId,
+          payload: {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch (err) {
+      this.options.onError?.(err as Error);
+    } finally {
+      this.makingOffer = false;
+    }
   }
 
   async handleRemoteOffer(offer: RTCSessionDescriptionInit): Promise<void> {
@@ -314,6 +463,10 @@ export class PeerConnectionManager {
           },
         });
       }
+
+      if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') {
+        void this.updateVerificationEmojis();
+      }
     } catch (err) {
       this.options.onError?.(err as Error);
     }
@@ -336,6 +489,9 @@ export class PeerConnectionManager {
         await pc.setRemoteDescription(new SessionDescriptionClass(answer));
         if (!this.pc || this.isClosed) return;
         await this.drainIceCandidates();
+        if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') {
+          void this.updateVerificationEmojis();
+        }
       } catch (err) {
         this.options.onError?.(err as Error);
       } finally {
@@ -395,6 +551,10 @@ export class PeerConnectionManager {
     if (this.isClosed) return;
     this.isClosed = true;
     this.initPromise = null;
+    if (this.politeWaitTimer) {
+      clearTimeout(this.politeWaitTimer);
+      this.politeWaitTimer = null;
+    }
 
     if (this.pc) {
       this.pc.onicecandidate = null;
@@ -413,5 +573,7 @@ export class PeerConnectionManager {
 
     this.iceCandidatesQueue = [];
     this.localStream = null;
+    this.verificationEmojis = null;
+    this.options.onVerificationEmojisChange?.(null);
   }
 }

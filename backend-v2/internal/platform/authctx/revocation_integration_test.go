@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -100,7 +101,7 @@ func loginIntegrationToken(t *testing.T, service *auth.Service) string {
 	return token
 }
 
-func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
+func TestLogoutAndLogoutAllRevocationLifecycle(t *testing.T) {
 	db := startRevocationPostgres(t)
 	migrationFiles := revocationMigrationFiles(t)
 	tokenGenerationMigration := migrationIndex(t, migrationFiles, "0025_auth_token_generation.sql")
@@ -118,6 +119,9 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 		assertTokenGenerationBackfill(t, db, userID)
 	})
 	applyRevocationMigrations(t, db, migrationFiles[tokenGenerationMigration+1:])
+	if err := auth.CheckSessionSchema(t.Context(), db); err != nil {
+		t.Fatalf("auth session schema after migrations: %v", err)
+	}
 
 	cryptoServer := startIntegrationCryptoServer(t)
 	crypto := cryptoclient.NewClient(cryptoServer.URL)
@@ -125,6 +129,7 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 	checker := authctx.NewDBTokenChecker(db)
 	oldToken1 := loginIntegrationToken(t, service)
 	oldToken2 := loginIntegrationToken(t, service)
+	assertSessionCount(t, service, userID, oldToken1, 2)
 	oldClaims, err := crypto.VerifyToken(t.Context(), oldToken1)
 	if err != nil {
 		t.Fatalf("verify old token: %v", err)
@@ -151,25 +156,118 @@ func TestLogoutAllRevokesOldTokensAndAllowsNewToken(t *testing.T) {
 	assertRevocation(t, checker, oldToken2, oldClaims, true)
 	assertAuthenticatedHTTPStatus(t, httpHandler, oldToken1, http.StatusUnauthorized)
 	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, oldToken2, http.StatusUnauthorized)
+	assertSessionCount(t, service, userID, oldToken1, 0)
 
-	newToken := loginIntegrationToken(t, service)
-	newClaims, err := crypto.VerifyToken(t.Context(), newToken)
+	newToken1 := loginIntegrationToken(t, service)
+	newToken2 := loginIntegrationToken(t, service)
+	newClaims1, err := crypto.VerifyToken(t.Context(), newToken1)
 	if err != nil {
-		t.Fatalf("verify new token: %v", err)
+		t.Fatalf("verify first new token: %v", err)
 	}
-	if newClaims.TokenGeneration != 1 {
-		t.Fatalf("expected post-logout login generation 1, got %d", newClaims.TokenGeneration)
+	newClaims2, err := crypto.VerifyToken(t.Context(), newToken2)
+	if err != nil {
+		t.Fatalf("verify second new token: %v", err)
 	}
-	assertRevocation(t, checker, newToken, newClaims, false)
-	assertAuthenticatedHTTPStatus(t, httpHandler, newToken, http.StatusNoContent)
-	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken, http.StatusSwitchingProtocols)
+	if newClaims1.TokenGeneration != 1 || newClaims2.TokenGeneration != 1 {
+		t.Fatalf("expected post-logout login generation 1, got %d and %d", newClaims1.TokenGeneration, newClaims2.TokenGeneration)
+	}
+	assertRevocation(t, checker, newToken1, newClaims1, false)
+	assertRevocation(t, checker, newToken2, newClaims2, false)
+	assertSessionCount(t, service, userID, newToken1, 2)
+	assertAuthenticatedHTTPStatus(t, httpHandler, newToken1, http.StatusNoContent)
+	assertAuthenticatedHTTPStatus(t, httpHandler, newToken2, http.StatusNoContent)
 
-	if err := service.Logout(t.Context(), userID, newToken, time.Now().Add(time.Hour)); err != nil {
+	assertSingleLogoutOnlyChangesLinkedDeviceSession(t, db, service, userID, newToken1, time.Unix(newClaims1.Expires, 0).UTC())
+	assertRevocation(t, checker, newToken1, newClaims1, true)
+	assertRevocation(t, checker, newToken2, newClaims2, false)
+	assertSessionCount(t, service, userID, newToken2, 1)
+	assertAuthenticatedHTTPStatus(t, httpHandler, newToken1, http.StatusUnauthorized)
+	assertAuthenticatedHTTPStatus(t, httpHandler, newToken2, http.StatusNoContent)
+	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken1, http.StatusUnauthorized)
+	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken2, http.StatusSwitchingProtocols)
+}
+
+type deviceSessionState struct {
+	ID         string
+	LastActive string
+	IsCurrent  bool
+}
+
+func assertSingleLogoutOnlyChangesLinkedDeviceSession(t *testing.T, db *sql.DB, service *auth.Service, userID, token string, expiresAt time.Time) {
+	t.Helper()
+	const currentDeviceID = "22222222-2222-4222-8222-222222222222"
+	const otherDeviceID = "33333333-3333-4333-8333-333333333333"
+	if _, err := db.Exec(`
+		INSERT INTO public.user_sessions (id, user_id, device_name, last_active, is_current)
+		VALUES
+			($2, $1, 'current-device', NOW() - INTERVAL '1 minute', TRUE),
+			($3, $1, 'other-device', NOW() - INTERVAL '2 minutes', FALSE)
+	`, userID, currentDeviceID, otherDeviceID); err != nil {
+		t.Fatalf("seed device sessions: %v", err)
+	}
+	result, err := db.Exec(`
+		UPDATE auth.sessions SET device_session_id = $3
+		WHERE user_id = $1 AND access_token_hash = $2
+	`, userID, authctx.TokenHash(token), currentDeviceID)
+	if err != nil {
+		t.Fatalf("link current credential to device session: %v", err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		t.Fatalf("linked auth sessions = %d, want 1 (err=%v)", affected, err)
+	}
+
+	before := readDeviceSessionStates(t, db, userID)
+	if err := service.Logout(t.Context(), userID, token, expiresAt); err != nil {
 		t.Fatalf("logout current token: %v", err)
 	}
-	assertRevocation(t, checker, newToken, newClaims, true)
-	assertAuthenticatedHTTPStatus(t, httpHandler, newToken, http.StatusUnauthorized)
-	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken, http.StatusUnauthorized)
+	after := readDeviceSessionStates(t, db, userID)
+	if len(before) != 2 || len(after) != 2 {
+		t.Fatalf("unexpected device sessions: before=%+v after=%+v", before, after)
+	}
+	if after[0].ID != currentDeviceID || after[0].IsCurrent || after[0].LastActive == before[0].LastActive {
+		t.Fatalf("linked device session was not terminated: before=%+v after=%+v", before[0], after[0])
+	}
+	if after[1].ID != otherDeviceID || !reflect.DeepEqual(after[1], before[1]) {
+		t.Fatalf("unrelated device session changed: before=%+v after=%+v", before[1], after[1])
+	}
+}
+
+func readDeviceSessionStates(t *testing.T, db *sql.DB, userID string) []deviceSessionState {
+	t.Helper()
+	rows, err := db.Query(`
+		SELECT id::text, last_active::text, is_current
+		FROM public.user_sessions
+		WHERE user_id = $1
+		ORDER BY id
+	`, userID)
+	if err != nil {
+		t.Fatalf("read device sessions: %v", err)
+	}
+	defer rows.Close()
+
+	var states []deviceSessionState
+	for rows.Next() {
+		var state deviceSessionState
+		if err := rows.Scan(&state.ID, &state.LastActive, &state.IsCurrent); err != nil {
+			t.Fatalf("scan device session: %v", err)
+		}
+		states = append(states, state)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate device sessions: %v", err)
+	}
+	return states
+}
+
+func assertSessionCount(t *testing.T, service *auth.Service, userID, currentToken string, want int) {
+	t.Helper()
+	sessions, err := service.Sessions(t.Context(), userID, currentToken)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != want {
+		t.Fatalf("session count = %d, want %d: %+v", len(sessions), want, sessions)
+	}
 }
 
 func authenticatedIntegrationHandler(verifier authctx.TokenVerifier, checker *authctx.DBTokenChecker) http.Handler {
@@ -190,7 +288,7 @@ func assertAuthenticatedHTTPStatus(t *testing.T, handler http.Handler, token str
 func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, method, token string, want int) {
 	t.Helper()
 	request := httptest.NewRequest(method, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
+	request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: token})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -203,7 +301,8 @@ func assertAuthenticatedHTTPRequestStatus(t *testing.T, handler http.Handler, me
 func assertWebSocketHandshakeStatus(t *testing.T, serverURL, token string, want int) {
 	t.Helper()
 	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
-	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer " + token}})
+	header := http.Header{"Cookie": {"craneapp_session=" + token}, "Origin": {serverURL}}
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()
 	}

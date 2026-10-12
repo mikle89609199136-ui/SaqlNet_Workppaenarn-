@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/httpx"
@@ -13,6 +14,7 @@ type User struct {
 	ID              string
 	Username        string
 	TokenGeneration int64
+	ExpiresAt       time.Time
 }
 
 type contextKey struct{}
@@ -32,10 +34,10 @@ type TokenVerifier interface {
 func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Cookie сессии браузера (#705) или заголовок Bearer.
+			// Сессия браузера хранится только в HttpOnly-cookie (#705).
 			token, source := TokenFromRequest(r)
 			if source == TokenNone {
-				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_token", "session cookie or bearer token is required")
+				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_token", "session cookie is required")
 				return
 			}
 			claims, err := crypto.VerifyToken(r.Context(), token)
@@ -64,6 +66,7 @@ func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) h
 				ID:              claims.Subject,
 				Username:        claims.Username,
 				TokenGeneration: claims.TokenGeneration,
+				ExpiresAt:       time.Unix(claims.Expires, 0).UTC(),
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, user)))
 		})
