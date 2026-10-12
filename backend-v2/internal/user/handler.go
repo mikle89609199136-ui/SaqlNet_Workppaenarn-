@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -581,6 +582,7 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
+	const method = "DeleteDevice"
 	if r.Method != http.MethodDelete {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
@@ -600,7 +602,17 @@ func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "session not found")
 		return
+	case errors.Is(err, ErrCannotTerminateCurrentSession):
+		httpx.ErrorJSON(w, r, http.StatusConflict, "conflict_current_session", "cannot terminate current session")
+		return
 	case err != nil:
+		slog.ErrorContext(r.Context(), "failed to delete device session",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"session_id", sessionID,
+			"error", err,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "operation failed")
 		return
 	}

@@ -728,12 +728,45 @@ x-error: &error
     }
 /users/devices/{sessionId}:
   delete:
-    {
-      tags: [Users],
-      summary: Delete a device session,
-      operationId: deleteDevice,
-      security: *secure,
-      parameters:
-        [{ name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }],
-      responses: { '200': { description: Deleted }, '404': *error },
-    }
+    tags: [Users]
+    summary: Delete a device session
+    description: >-
+      Terminates the device session. The current session cannot be terminated
+      through this endpoint: it returns 409 conflict_current_session — log out
+      to end the current session.
+    operationId: deleteDevice
+    security: *secure
+    parameters:
+      [
+        {
+          name: sessionId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        },
+      ]
+    responses:
+      '200':
+        description: Deleted
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [success]
+              properties: { success: { type: boolean, example: true } }
+      '400':
+        description: sessionId is not a valid UUID
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+      '404': *error
+      '409':
+        description: sessionId is the current session
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            example:
+              {
+                code: conflict_current_session,
+                message: cannot terminate current session,
+              }

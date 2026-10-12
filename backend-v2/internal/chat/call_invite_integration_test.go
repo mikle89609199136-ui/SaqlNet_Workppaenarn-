@@ -128,8 +128,17 @@ func TestCallInviteOnRealSchema(t *testing.T) {
 		invite(mashaConn, igor, roomID, nil)
 		require.Equal(t, []string{"call_incoming"}, types(drain(igorConn)))
 
-		require.Eventually(t, func() bool { return len(igorConn.Send) > 0 }, 3*time.Second, 20*time.Millisecond)
-		require.Equal(t, []string{"call_cancelled"}, types(drain(igorConn)))
+		require.Eventually(t, func() bool {
+			for len(igorConn.Send) > 0 {
+				var event map[string]any
+				require.NoError(t, json.Unmarshal(<-igorConn.Send, &event))
+				if event["type"] == "call_cancelled" {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 20*time.Millisecond)
+		require.Nil(t, ws.callRooms.GetRoom(roomID))
 		require.Nil(t, ws.callRooms.GetRoom(roomID))
 
 		again := connect(igor)

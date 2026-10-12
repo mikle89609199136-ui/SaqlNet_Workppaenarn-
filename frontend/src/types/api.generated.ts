@@ -1000,7 +1000,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a device session */
+        /**
+         * Delete a device session
+         * @description Terminates the device session. The current session cannot be terminated through this endpoint: it returns 409 conflict_current_session — log out to end the current session.
+         */
         delete: operations["deleteDevice"];
         options?: never;
         head?: never;
@@ -4876,9 +4879,38 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @example true */
+                        success: boolean;
+                    };
+                };
+            };
+            /** @description sessionId is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             404: components["responses"]["Error"];
+            /** @description sessionId is the current session */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "conflict_current_session",
+                     *       "message": "cannot terminate current session"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getPushVapidKey: {
