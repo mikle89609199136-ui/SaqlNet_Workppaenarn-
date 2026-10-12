@@ -186,4 +186,102 @@ describe('комбинированное форматирование в пол�
       ])
     );
   });
+
+  describe('вставка из Google Docs, Word и веб-страниц (#966)', () => {
+    async function paste(field: HTMLElement, html: string, text: string) {
+      const editor = composerEditor(field);
+      const data = {
+        getData: (mime: string) =>
+          mime === 'text/html' ? html : mime === 'text/plain' ? text : '',
+        types: ['text/html', 'text/plain'],
+      };
+      await act(async () => {
+        editor.update(
+          () => {
+            const selection = $getRoot().selectStart();
+            if ($isRangeSelection(selection)) {
+              $insertDataTransferForRichText(data as unknown as DataTransfer, selection);
+            }
+          },
+          { discrete: true }
+        );
+      });
+    }
+
+    const textNode = (field: HTMLElement, text: string) =>
+      Array.from(field.querySelectorAll('[data-lexical-text]')).find(
+        (node) => node.textContent === text
+      )!;
+
+    it('стиль, попавший в текстовый узел, очищается, а формат остаётся', async () => {
+      const { field, handle } = renderInput();
+      const editor = composerEditor(field);
+      await typeIntoComposer(field, {
+        text: 'важно',
+        entities: [{ type: 'bold', offset: 0, length: 5 }],
+      });
+
+      await act(async () => {
+        editor.update(
+          () => {
+            const paragraph = $getRoot().getFirstChild();
+            const node = $isElementNode(paragraph) ? paragraph.getFirstChild() : null;
+            if ($isTextNode(node))
+              node.setStyle('font-weight: 400; text-decoration: none; color: red;');
+          },
+          { discrete: true }
+        );
+      });
+
+      expect(textNode(field, 'важно')).not.toHaveAttribute('style');
+      expect(textNode(field, 'важно')).toHaveClass('font-semibold');
+      expect(handle.current?.getValue().entities).toEqual([
+        expect.objectContaining({ type: 'bold', offset: 0, length: 5 }),
+      ]);
+    });
+
+    it('стили сброса источника не перебивают жирный и подчёркнутый в поле', async () => {
+      const { field, handle } = renderInput();
+
+      await paste(
+        field,
+        '<b style="font-weight:normal;"><span style="font-weight:700;text-decoration:underline;">важно</span>' +
+          '<span style="font-weight:400;text-decoration:none;font-style:normal;"> обычный</span></b>',
+        'важно обычный'
+      );
+
+      const bold = textNode(field, 'важно');
+      expect(bold).toHaveClass('font-semibold', 'underline');
+      expect(bold).not.toHaveAttribute('style');
+      expect(textNode(field, ' обычный')).not.toHaveAttribute('style');
+      expect(handle.current?.getValue()).toEqual({
+        text: 'важно обычный',
+        entities: expect.arrayContaining([
+          expect.objectContaining({ type: 'bold', offset: 0, length: 5 }),
+          expect.objectContaining({ type: 'underline', offset: 0, length: 5 }),
+        ]),
+      });
+    });
+
+    it('курсив и зачёркнутый из Word видны в поле, цвета и шрифты источника не переносятся', async () => {
+      const { field, handle } = renderInput();
+
+      await paste(
+        field,
+        '<p><i style="font-family:Calibri;color:#c00000;">курсив</i> ' +
+          '<s style="text-decoration:none;color:red;">мимо</s></p>',
+        'курсив мимо'
+      );
+
+      expect(textNode(field, 'курсив')).toHaveClass('italic');
+      expect(textNode(field, 'мимо')).toHaveClass('line-through');
+      expect(field.querySelectorAll('[style]')).toHaveLength(0);
+      expect(handle.current?.getValue().entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'italic', offset: 0, length: 6 }),
+          expect.objectContaining({ type: 'strikethrough', offset: 7, length: 4 }),
+        ])
+      );
+    });
+  });
 });

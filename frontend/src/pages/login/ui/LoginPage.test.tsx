@@ -153,6 +153,57 @@ describe('вход в аккаунт', () => {
     expect(await screen.findByText(/дополнительный пароль/i)).toBeInTheDocument();
   });
 
+  it('с мышью курсор сразу в поле логина — Enter есть куда отправить', () => {
+    // matchMedia в окружении тестов — уже мок, spyOn поверх него не откатывается:
+    // подменяем и возвращаем руками, иначе «мышь» протекла бы в следующие тесты.
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === '(pointer: fine)',
+        media: query,
+      }) as MediaQueryList) as typeof window.matchMedia;
+    try {
+      renderAuth();
+      expect(screen.getByLabelText('Имя пользователя')).toHaveFocus();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('на телефоне фокус не ставит: клавиатура закрыла бы полэкрана', () => {
+    renderAuth();
+
+    expect(screen.getByLabelText('Имя пользователя')).not.toHaveFocus();
+  });
+
+  it('Enter отправляет то, что подставило автозаполнение без событий ввода', async () => {
+    let sent: unknown;
+    server.use(
+      http.post(api('/auth/login'), async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ code: 'invalid_credentials' }, { status: 401 });
+      })
+    );
+
+    renderAuth();
+
+    // Так подставляет браузер: значение в поле есть, события input не было.
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )!.set!;
+    setNativeValue.call(screen.getByLabelText('Имя пользователя'), 'tester');
+    const password = screen.getByLabelText('Пароль');
+    setNativeValue.call(password, 'saved-password');
+
+    password.focus();
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(sent).toMatchObject({ username: 'tester', password: 'saved-password' })
+    );
+  });
+
   it('показывает пароль по кнопке', async () => {
     renderAuth();
 

@@ -43,6 +43,10 @@ func main() {
 	crypto := cryptoclient.NewClient(config.Value("CRYPTO_URL", "http://127.0.0.1:5005"))
 	wsServer := chat.NewWSServer(pool, crypto, presenceStore)
 	defer wsServer.Close()
+	// Звонки, оборванные рестартом, поднимаются входом участников (#713).
+	if err := wsServer.RecoverCallRooms(context.Background()); err != nil {
+		log.Printf("call rooms recovery failed: %v", err)
+	}
 	svc := chat.NewService(pool, wsServer, presenceStore)
 	handler := chat.NewHandler(svc)
 
@@ -125,6 +129,7 @@ func main() {
 	mux.Handle("GET /api/v2/calls/ice-servers", authenticated(http.HandlerFunc(handler.IceServers)))
 	mux.Handle("POST /api/v2/calls/rooms", authenticated(http.HandlerFunc(handler.CallRoom)))
 	mux.Handle("GET /api/v2/calls/rooms/{id}", authenticated(http.HandlerFunc(handler.GetRoom)))
+	mux.Handle("GET /api/v2/calls/history", authenticated(http.HandlerFunc(handler.CallHistory)))
 
 	mux.Handle("/api/v2/mls/keypackages", authenticated(http.HandlerFunc(handler.MLSRoutes)))
 	mux.Handle("/api/v2/mls/keypackages/", authenticated(http.HandlerFunc(handler.MLSRoutes)))

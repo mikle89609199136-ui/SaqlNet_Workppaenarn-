@@ -23,6 +23,7 @@ import { ListGroup, ListIntro, ListNavItem, ListStaticItem } from '@/shared/ui';
  * состоянием — поэтому здесь только разбор параметра и переходы.
  */
 export function AccountSection() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const params = useParams<{ subsection: string }>();
@@ -59,7 +60,10 @@ export function AccountSection() {
     }
   }
 
-  if (isPending) return <div className="text-body py-16 text-center text-ink-2">Загрузка…</div>;
+  if (isPending)
+    return (
+      <div className="text-body py-16 text-center text-ink-2">{t('loading', 'Загрузка…')}</div>
+    );
 
   function renderView() {
     if (view === 'me') {
@@ -105,15 +109,18 @@ export function AccountSection() {
       {renderView()}
 
       <ConfirmDialog
-        confirmLabel="Выйти"
+        confirmLabel={t('settings.logout.confirm', 'Выйти')}
         confirming={leaving}
         danger={false}
         onCancel={() => setAsked(false)}
         onConfirm={handleLogout}
         open={asked}
-        title="Выйти из аккаунта?"
+        title={t('settings.logout.title', 'Выйти из аккаунта?')}
       >
-        Переписка останется на этом устройстве и откроется после следующего входа.
+        {t(
+          'settings.logout.text',
+          'Переписка останется на этом устройстве и откроется после следующего входа.'
+        )}
       </ConfirmDialog>
     </>
   );
@@ -129,7 +136,9 @@ interface AccountSettingsProps {
 function AccountSettings({ user, sessionsCount, onLogout }: AccountSettingsProps) {
   const { t } = useTranslation();
   const name =
-    [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Пользователь';
+    [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+    user.username ||
+    t('user', 'Пользователь');
   const sub = (subsection: TAccountSubsection) => ROUTES.SETTINGS_SUBSECTION('account', subsection);
 
   return (
@@ -229,8 +238,10 @@ function EmailSettings({ user }: { user: Partial<IUserDto> }) {
       </ListIntro>
 
       <Banner icon="info" tone="info">
-        Привязка почты пока не работает: сервер её не сохраняет. Восстановить доступ по адресу
-        нельзя — пароль держите под рукой.
+        {t(
+          'settings.email.unavailable',
+          'Привязка почты пока не работает: сервер её не сохраняет. Восстановить доступ по адресу нельзя — пароль держите под рукой.'
+        )}
       </Banner>
 
       <ListGroup>

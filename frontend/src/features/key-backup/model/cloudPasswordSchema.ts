@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { z } from 'zod';
 
 /**
@@ -11,29 +12,38 @@ import { z } from 'zod';
 export const MIN_CLOUD_PASSWORD_LENGTH = 12;
 const MAX_CLOUD_PASSWORD_LENGTH = 256;
 
-export const cloudPasswordValue = z
-  .string()
-  .refine((value) => [...value].length >= MIN_CLOUD_PASSWORD_LENGTH, {
-    message: `Не менее ${MIN_CLOUD_PASSWORD_LENGTH} символов`,
-  })
-  .refine((value) => [...value].length <= MAX_CLOUD_PASSWORD_LENGTH, {
-    message: `Не более ${MAX_CLOUD_PASSWORD_LENGTH} символов`,
-  })
-  .refine((value) => new Set(value).size >= 5, {
-    message: 'Слишком однообразный пароль',
-  });
+const createCloudPasswordValue = (t: TFunction) =>
+  z
+    .string()
+    .refine((value) => [...value].length >= MIN_CLOUD_PASSWORD_LENGTH, {
+      message: t('password.rule.length', {
+        min: MIN_CLOUD_PASSWORD_LENGTH,
+        defaultValue: 'Не менее {{min}} символов',
+      }),
+    })
+    .refine((value) => [...value].length <= MAX_CLOUD_PASSWORD_LENGTH, {
+      message: t('password.error.tooLong', {
+        max: MAX_CLOUD_PASSWORD_LENGTH,
+        defaultValue: 'Не более {{max}} символов',
+      }),
+    })
+    .refine((value) => new Set(value).size >= 5, {
+      message: t('validation.cloudPasswordMonotonous', 'Слишком однообразный пароль'),
+    });
 
-export const cloudPasswordFormSchema = z
-  .object({
-    password: cloudPasswordValue,
-    confirmation: z.string().min(1, 'Повторите пароль'),
-  })
-  .refine((values) => values.password === values.confirmation, {
-    message: 'Пароли не совпадают',
-    path: ['confirmation'],
-  });
+/** Фабрика, а не готовая схема: сообщения — на языке интерфейса. */
+export const createCloudPasswordFormSchema = (t: TFunction) =>
+  z
+    .object({
+      password: createCloudPasswordValue(t),
+      confirmation: z.string().min(1, t('validation.repeatPassword', 'Повторите пароль')),
+    })
+    .refine((values) => values.password === values.confirmation, {
+      message: t('validation.passwordsMismatch', 'Пароли не совпадают'),
+      path: ['confirmation'],
+    });
 
-export type TCloudPasswordForm = z.infer<typeof cloudPasswordFormSchema>;
+export type TCloudPasswordForm = z.infer<ReturnType<typeof createCloudPasswordFormSchema>>;
 
 /**
  * Грубая оценка стойкости для полоски под полем: длина и разнообразие.

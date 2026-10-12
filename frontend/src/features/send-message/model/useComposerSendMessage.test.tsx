@@ -58,6 +58,7 @@ describe('useComposerSendMessage', () => {
       insertText: (text) => {
         value = { ...value, text: value.text + text };
       },
+      contains: () => false,
     };
   }
 

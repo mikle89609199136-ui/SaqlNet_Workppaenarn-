@@ -84,4 +84,28 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 		require.Equal(t, "disconnected", event["reason"])
 		ws.handleCallLeave(mashaConn, map[string]interface{}{"roomId": roomID})
 	})
+
+	t.Run("вышел не участник — собеседнику ничего, звонок идёт", func(t *testing.T) {
+		// Только события звонка: запись о прошлом звонке (new_message)
+		// приходит асинхронно.
+		noPeerLeft := func(c *Client) {
+			for len(c.Send) > 0 {
+				var event map[string]any
+				require.NoError(t, json.Unmarshal(<-c.Send, &event))
+				require.NotEqual(t, "call_peer_left", event["type"])
+			}
+		}
+		roomID, mashaConn, igorConn := callBetween(t)
+		// Вторая вкладка Игоря, не входившая в звонок (например, после
+		// перезагрузки), и повторный выход уже вышедшего.
+		ws.handleCallLeave(connect(igor), map[string]interface{}{"roomId": roomID})
+		noPeerLeft(mashaConn)
+		require.True(t, ws.callRooms.IsParticipant(roomID, igor))
+
+		ws.handleCallLeave(igorConn, map[string]interface{}{"roomId": roomID})
+		peerLeft(t, mashaConn)
+		ws.handleCallLeave(igorConn, map[string]interface{}{"roomId": roomID})
+		noPeerLeft(mashaConn)
+		ws.handleCallLeave(mashaConn, map[string]interface{}{"roomId": roomID})
+	})
 }

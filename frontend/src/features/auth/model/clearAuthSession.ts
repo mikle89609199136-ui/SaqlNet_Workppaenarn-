@@ -2,7 +2,7 @@ import { disconnectRealtimeSocket, queryClient } from '@/shared/api';
 import { forgetEncryptionStates, forgetSecurityNotices } from '@/shared/crypto';
 import { clearMediaObjectUrls } from '@/entities/media/model/mediaObjectUrls';
 import { services } from '@/services/serviceContainer';
-import { clearAllDrafts, useChatUiStore } from '@/entities/chat';
+import { clearAllDrafts, forgetDecryptedPreviews, useChatUiStore } from '@/entities/chat';
 import { clearOutbox } from '@/entities/message';
 import { unsubscribePushOnDevice } from '@/shared/lib';
 import { useProfileStore } from '@/entities/user';
@@ -23,6 +23,7 @@ export function clearAuthSession() {
   // Недописанные сообщения — тоже открытый текст, и они не должны
   // достаться следующему, кто войдёт в этой вкладке.
   clearAllDrafts();
+  forgetDecryptedPreviews();
   // Очередь исходящих сообщений и временные Blob URL также очищаются.
   clearOutbox();
   // Показанные переводы — тоже открытый текст. Они сбрасываются при смене
