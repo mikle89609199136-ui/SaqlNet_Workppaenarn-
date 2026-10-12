@@ -11,7 +11,7 @@ import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { UserProfileModal } from '@/features/user-profile';
-import { PhotoEditorModal } from '@/entities/media';
+import { PhotoEditorModal } from '@/features/photo-editor';
 
 import { useOutletContext } from 'react-router-dom';
 

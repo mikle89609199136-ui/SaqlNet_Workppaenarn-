@@ -28,6 +28,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [verificationEmojis, setVerificationEmojis] = useState<string[] | null>(null);
   const [manager, setManager] = useState<PeerConnectionManager | null>(null);
   const managerRef = useRef<PeerConnectionManager | null>(null);
 
@@ -57,6 +58,9 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
         setConnectionState(state);
         callbacksRef.current.onConnectionStateChange?.(state);
       },
+      onVerificationEmojisChange: (emojis) => {
+        setVerificationEmojis(emojis);
+      },
       onError: (err) => {
         callbacksRef.current.onError?.(err);
       },
@@ -77,6 +81,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
         managerRef.current.close();
         managerRef.current = null;
         setManager(null);
+        setVerificationEmojis(null);
       }
       return;
     }
@@ -98,6 +103,9 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
       onConnectionStateChange: (state) => {
         setConnectionState(state);
         callbacksRef.current.onConnectionStateChange?.(state);
+      },
+      onVerificationEmojisChange: (emojis) => {
+        setVerificationEmojis(emojis);
       },
       onError: (err) => {
         callbacksRef.current.onError?.(err);
@@ -148,6 +156,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
       if (managerRef.current === nextManager) {
         managerRef.current = null;
         setManager(null);
+        setVerificationEmojis(null);
       }
     };
     unsubRef.current = unsub;
@@ -182,6 +191,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
     unsubRef.current?.();
     setConnectionState('new');
     setRemoteStream(null);
+    setVerificationEmojis(null);
     setConnectionEpoch((v) => v + 1);
   }, []);
 
@@ -192,6 +202,7 @@ export function usePeerConnection(options: IUsePeerConnectionOptions) {
   return {
     connectionState,
     remoteStream,
+    verificationEmojis,
     manager,
     replaceTrack,
     restartIce,

@@ -1,5 +1,5 @@
 import { useDebounce } from '@/shared/lib';
-import { chatsQuery } from '@/entities/chat';
+import { chatsQuery, getLastMessageText } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
@@ -113,9 +113,9 @@ export const ForwardChatMessagesModal = ({
                     <div className="flex flex-col gap-y-1 w-full">
                       <div className="text-left w-full font-medium">{title}</div>
 
-                      {chat.lastMessage?.content && (
+                      {chat.lastMessage && (
                         <div className="line-clamp-1 truncate min-w-0 max-w-8/10 text-left text-ink-3">
-                          {chat.lastMessage.content}
+                          {getLastMessageText(chat.lastMessage, t)}
                         </div>
                       )}
                     </div>

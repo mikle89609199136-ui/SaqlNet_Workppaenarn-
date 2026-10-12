@@ -128,7 +128,7 @@ export interface paths {
         };
         /**
          * Get QR login status
-         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status carries the session token and the encrypted payload and is returned once; later polls report expired. Not cacheable.
+         * @description Polled by the new device with the secret from creation in X-QR-Secret. scanned means another device captured the code and the person is deciding. A confirmed status sets the session cookie and carries the encrypted payload once; later polls report expired. Not cacheable.
          */
         get: operations["getQrStatus"];
         put?: never;
@@ -232,7 +232,7 @@ export interface paths {
         };
         /**
          * Get the result of a claimed code
-         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status carries the session token and the encrypted payload and is returned once; later polls, a declined or an expired code report expired. Not cacheable.
+         * @description Polled by the new device with the claim secret in X-QR-Secret. A confirmed status sets the session cookie and carries the encrypted payload once; later polls, a declined or an expired code report expired. Not cacheable.
          */
         get: operations["getQrOfferStatus"];
         put?: never;
@@ -294,26 +294,6 @@ export interface paths {
          * @description May return 503 while generation revocation is disabled during a compatibility rollout.
          */
         post: operations["logoutAll"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Exchange a bearer token for the session cookie
-         * @description Transition to cookie sessions (#705): a client signed in before the move sends its stored token once as Bearer and gets the session cookie, then forgets the token. Removed once no such clients remain.
-         */
-        post: operations["exchangeSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1672,6 +1652,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set personal notification preferences for a chat
+         * @description Persists the authenticated member's preference across devices.
+         *     Idempotent; does not affect other members, message history, or unread counts.
+         *     Read hideNotificationPreview in chat details and chat lists (including archived).
+         *     Web push payloads already omit message content regardless of this preference.
+         */
+        put: operations["setChatNotificationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/archive": {
         parameters: {
             query?: never;
@@ -2103,6 +2106,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/calls/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List finished calls of the current user
+         * @description Newest first. Outgoing calls are listed always; incoming ones only when the invitation reached the user. Status is from the viewer's side: an unanswered outgoing call is cancelled (rejected when the peer declined or was busy), an unanswered incoming call is missed (rejected when the viewer declined). The peer's avatar follows the peer's photo privacy rule. Calls in progress are not listed.
+         */
+        get: operations["getCallHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/media": {
         parameters: {
             query?: never;
@@ -2167,7 +2190,10 @@ export interface paths {
         /** List GIFs */
         get: operations["listGifs"];
         put?: never;
-        /** Create a GIF */
+        /**
+         * Create a GIF
+         * @description Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB. Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source; 404 upload_not_found (including uploads owned by another user); 413 request_too_large; 500 internal_error.
+         */
         post: operations["createGif"];
         delete?: never;
         options?: never;
@@ -2507,6 +2533,7 @@ export interface components {
             replyToMessageId?: string | null;
             replySenderName?: string;
             replyToSenderName?: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description A forward carries forwardedSenderName and either forwardedFrom (the original message) with forwardedSenderId, or forwardedHidden: true when the original author's forwards rule did not allow the forwarder to link to them. Decided once, at forwarding time, for every reader. */
             metadata?: {
@@ -2566,6 +2593,7 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
@@ -2610,23 +2638,6 @@ export interface components {
         };
         AuthResponse: {
             user: components["schemas"]["User"];
-            token: string;
-        };
-        AuthSession: {
-            /** Format: uuid */
-            id: string;
-            deviceName: string;
-            deviceType: string;
-            ipAddress: string;
-            /** Format: date-time */
-            lastActive: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** @description True when this row belongs to the token used for the request. */
-            isCurrent: boolean;
-        };
-        AuthSessionsResponse: {
-            sessions: components["schemas"]["AuthSession"][];
         };
         LoginRequest: {
             username: string;
@@ -2680,7 +2691,6 @@ export interface components {
             status: "pending" | "scanned" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrConfirmRequest: {
@@ -2731,11 +2741,26 @@ export interface components {
             status: "pending" | "confirmed" | "expired";
             /** Format: int64 */
             expiresAt?: number;
-            authToken?: string;
             payload?: components["schemas"]["QrKeyPayload"];
         };
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
+        };
+        AuthSession: {
+            /** Format: uuid */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            /** Format: date-time */
+            lastActive: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when this row belongs to the token used for the request. */
+            isCurrent: boolean;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
         };
         UpdateProfileRequest: {
             firstName?: string;
@@ -2934,7 +2959,8 @@ export interface components {
             /**
              * @description User IDs to add as members. The owner is added automatically
              *     and does not need to be listed. Unknown or disabled users are
-             *     silently skipped.
+             *     silently skipped. May be empty: the group is then created with
+             *     the owner as its only member.
              * @example [
              *       "550e8400-e29b-41d4-a716-446655440002"
              *     ]
@@ -2985,6 +3011,11 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /**
+             * @description Hide message text in notifications for the authenticated user in this chat.
+             * @default false
+             */
+            hideNotificationPreview: boolean;
             memberCount?: number;
             createdAt?: string;
             updatedAt?: string;
@@ -3036,6 +3067,7 @@ export interface components {
             lastReadAt: string;
         };
         MessageListResponse: {
+            /** @description Always an array; no messages are represented by [], never null. */
             messages: components["schemas"]["Message"][];
         };
         EditMessageRequest: {
@@ -3075,6 +3107,7 @@ export interface components {
             messages: components["schemas"]["SendMessageRequest"][];
         };
         ReactionListResponse: {
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         ReactionToggleResponse: {
@@ -3082,6 +3115,7 @@ export interface components {
             action: "added" | "removed" | "replaced";
             /** @description Empty when the reaction was removed. */
             currentEmoji: string;
+            /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
         };
         FavoriteStateResponse: {
@@ -3139,6 +3173,45 @@ export interface components {
             iceServers: components["schemas"]["IceServer"][];
             /** @enum {integer} */
             maxParticipants: 2;
+        };
+        CallHistoryItem: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Same as id.
+             */
+            roomId: string;
+            /**
+             * Format: uuid
+             * @description Null when the chat was deleted.
+             */
+            chatId: string | null;
+            /** Format: uuid */
+            peerId: string;
+            /** @description First and last name, else username; empty for a deleted user. */
+            peerName: string;
+            /** @description Null when there is none or the photo rule hides it. */
+            peerAvatar: string | null;
+            /** @enum {string} */
+            direction: "incoming" | "outgoing";
+            /** @enum {string} */
+            kind: "audio" | "video";
+            /** @enum {string} */
+            status: "answered" | "missed" | "rejected" | "cancelled";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            answeredAt: string | null;
+            /** Format: date-time */
+            endedAt: string;
+            /** @description From answer to end; 0 for unanswered calls. */
+            durationSeconds: number;
+        };
+        CallHistoryResponse: {
+            calls: components["schemas"]["CallHistoryItem"][];
+            nextCursor: string | null;
+            hasMore: boolean;
         };
         /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
@@ -3205,17 +3278,33 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "error": {
-                 *         "code": "file_too_large",
-                 *         "message": "file exceeds 100 MB limit"
-                 *       }
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260926T120000.000000000"
                  *     }
                  */
-                "application/json": {
-                    error: components["schemas"]["Error"] & {
-                        /** @enum {string} */
-                        code?: "file_too_large";
-                    };
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "file_too_large";
+                };
+            };
+        };
+        /** @description Request body exceeds the configured size limit (request_too_large) */
+        RequestTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "request_too_large",
+                 *       "message": "request body exceeds 64 KiB limit",
+                 *       "requestId": "20260926T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large";
                 };
             };
         };
@@ -3654,27 +3743,6 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             503: components["responses"]["Error"];
-        };
-    };
-    exchangeSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session cookie set */
-            204: {
-                headers: {
-                    /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
         };
     };
     listAuthSessions: {
@@ -6046,6 +6114,67 @@ export interface operations {
             };
         };
     };
+    setChatNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hideNotificationPreview: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Preference saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid UUID or missing/non-boolean preference */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member of this chat or chat does not exist */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     archiveChat: {
         parameters: {
             query?: never;
@@ -6393,6 +6522,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageListResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
@@ -6866,6 +6996,34 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    getCallHistory: {
+        parameters: {
+            query?: {
+                /** @description nextCursor of the previous page, opaque. */
+                cursor?: string;
+                limit?: number;
+                kind?: "audio" | "video";
+                status?: "answered" | "missed" | "rejected" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of finished calls */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallHistoryResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
     uploadMedia: {
         parameters: {
             query?: never;
@@ -7026,6 +7184,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
                     name?: string;
                     url: string;
                 };
@@ -7039,6 +7198,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["RequestTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {

@@ -13,6 +13,9 @@ export function useCall() {
   const endCall = useCallStore((s) => s.endCall);
   const minimizeCall = useCallStore((s) => s.minimizeCall);
   const maximizeCall = useCallStore((s) => s.maximizeCall);
+  const resumableCall = useCallStore((s) => s.resumableCall);
+  const resumeCall = useCallStore((s) => s.resumeCall);
+  const dismissResumableCall = useCallStore((s) => s.dismissResumableCall);
 
   return {
     incomingCall,
@@ -27,5 +30,8 @@ export function useCall() {
     endCall,
     minimizeCall,
     maximizeCall,
+    resumableCall,
+    resumeCall,
+    dismissResumableCall,
   };
 }

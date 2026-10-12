@@ -71,7 +71,9 @@ export function ChatRowMenu({
   hidden = false,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
-  const { togglePin, toggleArchive, markRead } = useChatActions();
+  const { togglePin, toggleArchive, markRead, toggleNotificationPreview, isNotificationPending } =
+    useChatActions();
+  const previewHidden = Boolean(chat.hideNotificationPreview);
 
   /** Действие и закрытие меню — одним нажатием. */
   const run = (action: () => void) => () => {
@@ -111,6 +113,16 @@ export function ChatRowMenu({
           </ContextMenu.Item>
         )
       )}
+
+      <ContextMenu.Item
+        icon={<Icon name={previewHidden ? 'eye' : 'eyeOff'} />}
+        disabled={isNotificationPending}
+        onClick={run(() => toggleNotificationPreview(chat))}
+      >
+        {previewHidden
+          ? t('showNotificationPreview', 'Показывать текст в уведомлениях')
+          : t('hideNotificationPreview', 'Скрывать текст в уведомлениях')}
+      </ContextMenu.Item>
 
       {mute && (
         <ContextMenu.Item

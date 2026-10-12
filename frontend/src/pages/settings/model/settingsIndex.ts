@@ -1,19 +1,29 @@
-import { ROUTES } from '@/shared/config/routes';
+import type { TFunction } from 'i18next';
+import { ROUTES, type TSettingsSection } from '@/shared/config/routes';
+import { SECTION_TITLES } from '../ui/settingsHeader';
 
 export interface ISettingsEntry {
-  /** Как пункт называется на экране. */
-  title: string;
+  /** Как пункт называется на экране: ключ перевода и запасной текст. */
+  title: readonly [string, string];
   /** Где он лежит — второй строкой в результатах. */
-  section: string;
+  section: TSettingsSection;
   path: string;
   /**
    * Слова, которыми пункт ищут, но которых нет в названии.
    *
    * Не украшение: человек набирает «2FA», а пункт называется
    * «Двухфакторная аутентификация»; набирает «тёмная» — а пункт называется
-   * «Тема».
+   * «Тема». Ищутся оба языка сразу: человек с английским интерфейсом мог
+   * по привычке набрать «пароль».
    */
-  synonyms?: string[];
+  synonyms?: { ru?: readonly string[]; en?: readonly string[] };
+}
+
+/** Найденный пункт — уже на языке интерфейса. */
+export interface ISettingsResult {
+  title: string;
+  section: string;
+  path: string;
 }
 
 /**
@@ -28,106 +38,127 @@ export interface ISettingsEntry {
  */
 export const SETTINGS_INDEX: ISettingsEntry[] = [
   {
-    title: 'Профиль',
-    section: 'Аккаунт',
+    title: ['settings.search.profile', 'Профиль'],
+    section: 'account',
     path: ROUTES.SETTINGS_SUBSECTION('account', 'profile'),
-    synonyms: ['имя', 'фамилия', 'о себе', 'фото', 'аватар'],
+    synonyms: {
+      ru: ['имя', 'фамилия', 'о себе', 'фото', 'аватар'],
+      en: ['name', 'bio', 'photo', 'avatar'],
+    },
   },
   {
-    title: 'Электронная почта',
-    section: 'Аккаунт',
+    title: ['settings.account.email', 'Электронная почта'],
+    section: 'account',
     path: ROUTES.SETTINGS_SUBSECTION('account', 'email'),
-    synonyms: ['email', 'почта', 'адрес'],
+    synonyms: { ru: ['почта', 'адрес'], en: ['email', 'mail', 'address'] },
   },
   {
-    title: 'Пароль',
-    section: 'Аккаунт',
+    title: ['settings.account.password', 'Пароль'],
+    section: 'account',
     path: ROUTES.SETTINGS_SUBSECTION('account', 'password'),
-    synonyms: ['сменить пароль', 'изменить пароль'],
+    synonyms: { ru: ['сменить пароль', 'изменить пароль'], en: ['change password'] },
   },
   {
-    title: 'Активные сеансы',
-    section: 'Аккаунт',
+    title: ['settings.account.sessions', 'Активные сеансы'],
+    section: 'account',
     path: ROUTES.SETTINGS_SUBSECTION('account', 'sessions'),
-    synonyms: ['устройства', 'входы', 'сессии'],
+    synonyms: { ru: ['устройства', 'входы', 'сессии'], en: ['devices', 'sign-ins', 'sessions'] },
   },
   {
-    title: 'Выйти из аккаунта',
-    section: 'Аккаунт',
+    title: ['settings.account.logout', 'Выйти из аккаунта'],
+    section: 'account',
     path: ROUTES.SETTINGS_SECTION('account'),
-    synonyms: ['выход', 'логаут'],
+    synonyms: { ru: ['выход', 'логаут'], en: ['log out', 'logout', 'sign out'] },
   },
   {
-    title: 'Уведомления',
-    section: 'Уведомления',
+    title: ['settings.search.notifications', 'Уведомления'],
+    section: 'notifications',
     path: ROUTES.SETTINGS_SECTION('notifications'),
-    synonyms: ['оповещения', 'пуши'],
+    synonyms: { ru: ['оповещения', 'пуши'], en: ['alerts', 'push'] },
   },
   {
-    title: 'Звуки сообщений',
-    section: 'Уведомления',
+    title: ['settings.search.sounds', 'Звуки сообщений'],
+    section: 'notifications',
     path: ROUTES.SETTINGS_SECTION('notifications'),
-    synonyms: ['звук', 'громкость', 'сигнал'],
+    synonyms: { ru: ['звук', 'громкость', 'сигнал'], en: ['sound', 'volume'] },
   },
   {
-    title: 'Тема оформления',
-    section: 'Внешний вид',
+    title: ['settings.search.theme', 'Тема оформления'],
+    section: 'appearance',
     path: ROUTES.SETTINGS_SECTION('appearance'),
-    synonyms: ['тёмная', 'светлая', 'оформление', 'цвет'],
+    synonyms: {
+      ru: ['тёмная', 'светлая', 'оформление', 'цвет'],
+      en: ['dark', 'light', 'color'],
+    },
   },
   {
-    title: 'Аватарка без фотографии',
-    section: 'Внешний вид',
+    title: ['settings.search.avatarPlaceholder', 'Аватарка без фотографии'],
+    section: 'appearance',
     path: ROUTES.SETTINGS_SECTION('appearance'),
-    synonyms: ['буква', 'сетка', 'аватар'],
+    synonyms: { ru: ['буква', 'сетка', 'аватар'], en: ['letter', 'grid', 'avatar'] },
   },
   {
-    title: 'Последняя активность',
-    section: 'Конфиденциальность',
+    title: ['settings.privacy.lastSeen', 'Последняя активность'],
+    section: 'privacy',
     path: ROUTES.SETTINGS_SUBSECTION('privacy', 'last-seen'),
-    synonyms: ['был в сети', 'кто видит', 'приватность', 'исключения'],
+    synonyms: {
+      ru: ['был в сети', 'кто видит', 'приватность', 'исключения'],
+      en: ['online', 'who can see', 'privacy', 'exceptions'],
+    },
   },
   {
-    title: 'Фото профиля',
-    section: 'Конфиденциальность',
+    title: ['settings.privacy.photo', 'Фото профиля'],
+    section: 'privacy',
     path: ROUTES.SETTINGS_SUBSECTION('privacy', 'photo'),
-    synonyms: ['аватар', 'кто видит фото', 'приватность', 'исключения'],
+    synonyms: {
+      ru: ['аватар', 'кто видит фото', 'приватность', 'исключения'],
+      en: ['avatar', 'who can see', 'privacy', 'exceptions'],
+    },
   },
   {
-    title: 'Пересылка сообщений',
-    section: 'Конфиденциальность',
+    title: ['settings.privacy.forwards', 'Пересылка сообщений'],
+    section: 'privacy',
     path: ROUTES.SETTINGS_SUBSECTION('privacy', 'forwards'),
-    synonyms: ['пересылка', 'ссылка на профиль', 'приватность', 'исключения'],
+    synonyms: {
+      ru: ['пересылка', 'ссылка на профиль', 'приватность', 'исключения'],
+      en: ['forward', 'profile link', 'privacy', 'exceptions'],
+    },
   },
   {
-    title: 'Чёрный список',
-    section: 'Конфиденциальность',
+    title: ['settings.privacy.blocked', 'Чёрный список'],
+    section: 'privacy',
     path: ROUTES.SETTINGS_SUBSECTION('privacy', 'blocked'),
-    synonyms: ['заблокировать', 'блокировка', 'заблокированные', 'незнакомцы'],
+    synonyms: {
+      ru: ['заблокировать', 'блокировка', 'заблокированные', 'незнакомцы'],
+      en: ['block', 'blocked', 'blacklist', 'strangers'],
+    },
   },
   {
-    title: 'Язык приложения',
-    section: 'Язык',
+    title: ['settings.language.appLanguage', 'Язык приложения'],
+    section: 'language',
     path: ROUTES.SETTINGS_SECTION('language'),
-    synonyms: ['language', 'русский', 'english'],
+    synonyms: { ru: ['русский'], en: ['language', 'english'] },
   },
   {
-    title: 'Версия приложения',
-    section: 'О приложении',
+    title: ['settings.search.version', 'Версия приложения'],
+    section: 'about',
     path: ROUTES.SETTINGS_SECTION('about'),
-    synonyms: ['версия', 'сборка'],
+    synonyms: { ru: ['версия', 'сборка'], en: ['version', 'build'] },
   },
   {
-    title: 'Выгрузить данные',
-    section: 'О приложении',
+    title: ['settings.search.export', 'Выгрузить данные'],
+    section: 'about',
     path: ROUTES.SETTINGS_SECTION('about'),
-    synonyms: ['экспорт', 'скачать данные'],
+    synonyms: { ru: ['экспорт', 'скачать данные'], en: ['export', 'download data'] },
   },
   {
-    title: 'Удалить ключи с устройства',
-    section: 'О приложении',
+    title: ['settings.search.wipeKeys', 'Удалить ключи с устройства'],
+    section: 'about',
     path: ROUTES.SETTINGS_SECTION('about'),
-    synonyms: ['стереть ключи', 'шифрование', 'выйти везде'],
+    synonyms: {
+      ru: ['стереть ключи', 'шифрование', 'выйти везде'],
+      en: ['delete keys', 'encryption', 'sign out everywhere'],
+    },
   },
 ];
 
@@ -141,12 +172,29 @@ function normalize(value: string): string {
   return value.toLocaleLowerCase('ru').replaceAll('ё', 'е').trim();
 }
 
-export function searchSettings(query: string): ISettingsEntry[] {
+/**
+ * Поиск по настройкам. Находит по названию на языке интерфейса, по
+ * русскому названию и по словам на обоих языках; отдаёт пункты уже
+ * переведёнными.
+ */
+export function searchSettings(query: string, t: TFunction): ISettingsResult[] {
   const needle = normalize(query);
   if (!needle) return [];
 
-  return SETTINGS_INDEX.filter((entry) => {
-    const haystack = [entry.title, entry.section, ...(entry.synonyms ?? [])];
-    return haystack.some((value) => normalize(value).includes(needle));
+  return SETTINGS_INDEX.flatMap((entry) => {
+    const title = t(entry.title[0], entry.title[1]);
+    const [sectionKey, sectionFallback] = SECTION_TITLES[entry.section];
+    const section = t(sectionKey, sectionFallback);
+    const haystack = [
+      title,
+      entry.title[1],
+      section,
+      sectionFallback,
+      ...(entry.synonyms?.ru ?? []),
+      ...(entry.synonyms?.en ?? []),
+    ];
+    return haystack.some((value) => normalize(value).includes(needle))
+      ? [{ title, section, path: entry.path }]
+      : [];
   });
 }

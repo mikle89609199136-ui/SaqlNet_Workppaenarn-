@@ -75,7 +75,7 @@ func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
-		SELECT sp.id::text, sp.name, sp.description, COALESCE(sp.icon_url, ''),
+		SELECT sp.id::text, sp.name, sp.description, CASE WHEN sp.icon_bucket <> '' AND sp.icon_object_key <> '' THEN '/api/v2/media/' || sp.id::text ELSE '' END,
 			   (SELECT COUNT(*) FROM media.stickers WHERE pack_id = sp.id),
 			   sp.created_at::text
 		FROM media.sticker_packs sp
@@ -150,20 +150,23 @@ func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if icon.ObjectKey != "" {
+		p.IconUrl = "/api/v2/media/" + p.ID
+	}
 	p.StickerCount = 0
 	httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "pack": p})
 }
 
 func (h *Handler) GetStickers(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")
 		return
 	}
 	packID := parts[4]
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
-		SELECT id::text, image_url, created_at::text
+		SELECT id::text, CASE WHEN bucket <> '' AND object_key <> '' THEN '/api/v2/media/' || id::text ELSE '' END, created_at::text
 		FROM media.stickers
 		WHERE pack_id = $1
 		ORDER BY created_at DESC
@@ -236,6 +239,7 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.ImageUrl = "/api/v2/media/" + s.ID
 	httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "sticker": s})
 }
 

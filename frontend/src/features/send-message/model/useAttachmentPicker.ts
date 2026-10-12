@@ -28,10 +28,23 @@ function getMediaMessageType(mimeType = '') {
 
 let nextAttachmentId = 0;
 
-export function createPendingAttachment(file: File): IPendingAttachment {
+/**
+ * Вложение в композер. Фото пересжимается перед отправкой (encodeChatPhoto),
+ * кроме выбранного через «Файл»: так отправляют оригинал без потерь.
+ */
+export function createPendingAttachment(file: File, keepOriginal = false): IPendingAttachment {
   nextAttachmentId += 1;
-  return { id: `attachment-${nextAttachmentId}`, file, type: getMediaMessageType(file.type) };
+  const type = getMediaMessageType(file.type);
+  return {
+    id: `attachment-${nextAttachmentId}`,
+    file,
+    type,
+    optimizeImage: type === 'image' && !keepOriginal,
+  };
 }
+
+/** Через какой пункт меню выбраны файлы — пометка на поле выбора (AttachmentControl). */
+export const ATTACHMENT_SOURCE_ATTR = 'data-source';
 
 export function formatScreenshotName(
   date: Date = new Date(),
@@ -82,14 +95,16 @@ export function useAttachmentPicker({
   const setError = useChatUiStore((state) => state.setError);
 
   const addFiles = useCallback(
-    (files: File[]): boolean => {
+    (files: File[], keepOriginal = false): boolean => {
       if (files.length === 0) return false;
 
       const prefix = t('attachmentScreenshotPrefix', 'Снимок');
       const normalized = files.map((file) => normalizePastedFile(file, undefined, prefix));
       const fitting = normalized.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
       const room = Math.max(0, MAX_PENDING_ATTACHMENTS - pendingAttachments.length);
-      const added = fitting.slice(0, room).map(createPendingAttachment);
+      const added = fitting
+        .slice(0, room)
+        .map((file) => createPendingAttachment(file, keepOriginal));
 
       let error = '';
       if (fitting.length > room) {
@@ -114,9 +129,11 @@ export function useAttachmentPicker({
   const handleAttachmentChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files ?? []);
+      // «Файл» в меню — оригинал без пересжатия; «Фото или видео» и камера — сжать.
+      const keepOriginal = event.target.getAttribute?.(ATTACHMENT_SOURCE_ATTR) === 'file';
       // Сброс сразу: тот же файл можно выбрать ещё раз.
       event.target.value = '';
-      addFiles(files);
+      addFiles(files, keepOriginal);
     },
     [addFiles]
   );

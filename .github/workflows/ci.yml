@@ -54,6 +54,7 @@ jobs:
               - '.github/workflows/ci.yml'
             backend:
               - 'backend-v2/**'
+              - 'scripts/ci-pin-mtimes.go'
               - '.github/workflows/ci.yml'
             crypto:
               - 'server/crypto-rust/**'
@@ -71,8 +72,12 @@ jobs:
         working-directory: frontend
 
     steps:
+      # Две глубины истории: в PR проверяется слияние с базовой веткой, и
+      # HEAD~1 — её вершина. От неё считаются изменённые файлы.
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -95,8 +100,17 @@ jobs:
       - name: Check for import cycles
         run: npm run check:cycles
 
+      # В PR — только тесты, которые импортируют изменённые файлы (граф
+      # импортов vitest). Правка зависимостей, настроек, обвязки тестов,
+      # словарей и CSS-токенов запускает весь набор — forceRerunTriggers в
+      # vitest.config.js. Push в master — весь набор.
       - name: Run React tests
-        run: npm run test
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npm run test -- --changed HEAD~1 --passWithNoTests
+          else
+            npm run test
+          fi
 
       - name: Build frontend
         run: npm run build
@@ -125,8 +139,29 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: backend-v2/go.mod
-          cache: true
-          cache-dependency-path: backend-v2/go.sum
+          cache: false
+
+      # Кеш сборки Go хранит и результаты тестов: пакет, у которого не
+      # изменились ни код, ни зависимости, ни читаемые тестом файлы
+      # (миграции), не перезапускается. Ключ — с коммитом, чтобы каждый
+      # прогон сохранял свежий кеш; восстанавливается последний подходящий:
+      # свой из этого PR или из master.
+      - name: Cache Go build and test results
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('backend-v2/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('backend-v2/go.sum') }}-
+            go-${{ runner.os }}-
+
+      # Время изменения файлов — по содержимому: иначе после checkout все
+      # файлы «новые», и тесты, читающие миграции или фикстуры, не берутся
+      # из кеша никогда (scripts/ci-pin-mtimes.go).
+      - name: Pin file times to content
+        run: go run ../scripts/ci-pin-mtimes.go .
 
       - name: Check formatting
         run: |
@@ -138,7 +173,7 @@ jobs:
           fi
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet -tags=integration ./...
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
@@ -146,35 +181,14 @@ jobs:
           version: v2.13.2
           working-directory: backend-v2
 
+      # Все тесты одним запуском: тег integration включает и обычные. Каждый
+      # интеграционный пакет поднимает один Postgres и копирует для тестов
+      # шаблонную базу (dbtest). Без -count=1 — результаты кешируются. Чат
+      # (сокет, звонки, отзыв сессий) — с детектором гонок.
       - name: Run Go tests
-        run: go test -v ./...
-
-      - name: Run auth revocation integration tests
-        run: go test -count=1 -tags=integration -v ./internal/platform/authctx
-
-      # Все миграции на настоящем Postgres: по одному разу на чистой базе и
-      # повторный прогон с данными — так приходят базы, созданные до
-      # schema_migrations. Неповторяемая миграция упадёт здесь, а не у
-      # разработчиков на стенде.
-      - name: Run migration integration tests
-        run: go test -count=1 -tags=integration -v ./cmd/migrate
-
-      # Единая проверка приватности, исключения по людям и настоящий SQL
-      # статуса, данных чата, рассылки присутствия и списка «в сети» в группе
-      # (#783, #784).
-      - name: Run privacy integration tests
         run: |
-          go test -count=1 -tags=integration -v ./internal/platform/privacy
-          go test -count=1 -tags=integration -v -run 'TestPresenceAudienceOnRealSchema|TestOnlineMembersOnRealSchema|TestBlockOnRealSchema|TestSendBatchOnRealSchema|TestDeleteMessagesOnRealSchema|TestMediaAttachmentOnRealSchema|TestTypingOnRealSchema|TestMarkReadOnRealSchema|TestReceiptsOnRealSchema|TestReceiptsMigrationBackfill|TestSharedMediaOnRealSchema|TestCallRoomAccessOnRealSchema|TestCallSignalOnRealSchema|TestCallInviteOnRealSchema|TestCallRoomBlockedOnRealSchema|TestCallRoomOneToOneOnRealSchema|TestCallPeerLeftReasonOnRealSchema' ./internal/chat
-
-      # Web Push: подписки устройств и получатели уведомлений (#717).
-      - name: Run push integration tests
-        run: go test -count=1 -tags=integration -v -run 'TestPushOnRealSchema' ./internal/push
-
-      # Смена ключа группы: пометка при изменении состава, атомарная запись
-      # новой эпохи и одновременные смены (#806).
-      - name: Run chat key rotation integration tests
-        run: go test -count=1 -tags=integration -v -run 'TestKeyRotationOnRealSchema' ./internal/chat
+          go test -tags=integration $(go list ./... | grep -v '/internal/chat')
+          go test -race -tags=integration ./internal/chat/...
 
       - name: Build services
         run: go build ./...
@@ -199,6 +213,11 @@ jobs:
           rustup toolchain install 1.94.0 --profile minimal --component rustfmt,clippy
           rustup default 1.94.0
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server/crypto-rust
+
       - name: Check formatting
         run: cargo fmt --check
 
@@ -208,7 +227,10 @@ jobs:
       - name: Run tests
         run: cargo test --locked
 
+      # Релизная сборка в PR ничего не добавляет к clippy и тестам: тот же
+      # код. Проверяется на push в master, перед деплоем.
       - name: Build release binary
+        if: github.event_name == 'push'
         run: cargo build --release --locked
 
   # Выпуск в master повышает номер версии (#892): версия видна в

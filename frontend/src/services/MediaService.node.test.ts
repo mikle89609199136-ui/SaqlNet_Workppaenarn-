@@ -1,6 +1,7 @@
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { services } from '@/services/serviceContainer';
+import { describeApiError, type IApiError } from '@/shared/api';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 
@@ -36,17 +37,32 @@ describe('MediaService: upload', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should throw error when server returns failure status', async () => {
+  it('слишком большой файл — код file_too_large и понятное сообщение', async () => {
     server.use(
       http.post(api('/media'), () =>
         HttpResponse.json(
-          { error: 'file_too_large', message: 'Файл слишком большой' },
+          {
+            code: 'file_too_large',
+            message: 'file exceeds 100 MB limit',
+            requestId: 'media-upload-test',
+          },
           { status: 413 }
         )
       )
     );
 
     const file = new File(['large content'], 'large.png', { type: 'image/png' });
-    await expect(services.mediaService.upload(file)).rejects.toThrow('file_too_large');
+    const failure = await services.mediaService
+      .upload(file)
+      .catch((error: unknown) => error as IApiError);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.status).toBe(413);
+    expect(failure.code).toBe('file_too_large');
+    expect(failure.message).toBe('file exceeds 100 MB limit');
+
+    const t = ((key: string, fallback?: string) =>
+      key === 'errors.fileTooLarge' ? 'Файл слишком большой' : (fallback ?? key)) as never;
+    expect(describeApiError(failure, t)).toBe('Файл слишком большой');
   });
 });

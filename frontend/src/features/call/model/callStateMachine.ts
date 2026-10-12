@@ -45,6 +45,7 @@ export type TCallFsmAction =
       type: 'RECEIVE_INCOMING';
       payload: {
         roomId: string;
+        chatId?: string;
         from: string;
         fromName?: string;
         fromAvatar?: string | null;
@@ -114,6 +115,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         ...initialCallContext,
         state: 'incoming',
         roomId: action.payload.roomId,
+        chatId: action.payload.chatId ?? null,
         peerId: action.payload.from,
         peerName: action.payload.fromName ?? null,
         peerAvatar: action.payload.fromAvatar ?? null,

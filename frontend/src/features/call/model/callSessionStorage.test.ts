@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearCallSession,
   loadCallSession,
+  markCallSessionLeft,
   saveCallSession,
   MAX_SESSION_AGE_MS,
   type IStoredCallSession,
@@ -79,5 +80,36 @@ describe('callSessionStorage', () => {
 
     expect(loadCallSession()).toBeNull();
     expect(window.sessionStorage.getItem('crane_active_call_session')).toBeNull();
+  });
+});
+
+describe('markCallSessionLeft (#775)', () => {
+  afterEach(() => window.sessionStorage.clear());
+
+  it('запоминает момент ухода со страницы, не трогая остальное', () => {
+    saveCallSession({
+      roomId: 'room-left',
+      peerId: 'peer-left',
+      peerName: null,
+      peerAvatar: null,
+      callKind: 'audio',
+      roomType: 'p2p',
+      callStartedAt: null,
+      isCaller: false,
+      chatId: null,
+      title: null,
+    });
+    const before = Date.now();
+
+    markCallSessionLeft();
+
+    const loaded = loadCallSession();
+    expect(loaded?.roomId).toBe('room-left');
+    expect(loaded?.leftAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('без звонка ничего не записывает', () => {
+    markCallSessionLeft();
+    expect(loadCallSession()).toBeNull();
   });
 });

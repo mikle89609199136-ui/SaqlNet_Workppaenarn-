@@ -15,3 +15,4 @@ export * from './model/chatKeys';
 export * from './ui/ChatListItem';
 export * from './model/chatListReceipts';
 export * from './model/readMark';
+export { forgetDecryptedPreviews } from './model/previewDecryptionCache';

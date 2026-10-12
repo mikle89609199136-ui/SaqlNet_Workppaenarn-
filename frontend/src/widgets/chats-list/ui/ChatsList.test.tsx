@@ -1,11 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
 import { makeChat, makeMessage } from '@/test/fixtures';
 import { chatKeys } from '@/entities/chat';
+import { useServerEvents } from '@/realtime/useServerEvents';
+import { mockChatListLayout } from '@/test/harness/chatListLayout';
+import { fakeSocket } from '@/test/harness/fakeSocket';
+import { scrollElementTo } from '@/test/harness/virtualLayout';
+import { api } from '@/test/msw/handlers';
+import { server } from '@/test/msw/server';
+import type { IChatDto } from '@/types';
 import { ChatsList } from './ChatsList';
 
 /* Состояние связи подменяется: заголовок списка обязан его отражать. */
@@ -115,12 +123,21 @@ describe('ChatsList widget', () => {
       queryClient.setQueryData(chatKeys.archived(), [archived]);
     });
 
-    it('показывает Чаты, Группы и Архив; каналов и встреч пока нет', () => {
+    it('показывает Чаты, Группы, Встречи и Архив; каналов пока нет', () => {
       renderChatsList(vi.fn(), queryClient);
 
       const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
-      expect(tabs).toEqual(['Чаты', 'Группы', 'Архив']);
+      expect(tabs).toEqual(['Чаты', 'Группы', 'Встречи', 'Архив']);
       expect(screen.getByRole('tab', { name: 'Чаты' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('переключается на вкладку «Встречи» и отображает экран звонков', async () => {
+      renderChatsList(vi.fn(), queryClient);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Встречи' }));
+
+      expect(screen.getByRole('tabpanel', { name: 'Встречи' })).toBeInTheDocument();
+      expect(await screen.findByText('Звонков пока нет')).toBeInTheDocument();
     });
 
     it('панель вкладки названа выбранной вкладкой', () => {
@@ -224,5 +241,171 @@ describe('ChatsList widget', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(title);
     connection.status = 'connected';
+  });
+
+  describe('виртуальный список (#946)', () => {
+    const ROW = 66;
+    const START = Date.UTC(2026, 9, 1, 12, 0);
+    const minutesAgo = (minutes: number) => new Date(START - minutes * 60_000).toISOString();
+
+    const group = (index: number, extra: Partial<IChatDto> = {}) =>
+      makeChat({
+        id: `g-${index}`,
+        title: `Группа ${index}`,
+        type: 'group',
+        lastMessageAt: minutesAgo(index) as never,
+        ...extra,
+      });
+
+    const groups = (count: number) => Array.from({ length: count }, (_, index) => group(index + 1));
+
+    function ServerEvents() {
+      useServerEvents(true);
+      return null;
+    }
+
+    function renderList(chats: IChatDto[], { path = '/chats', archived = [] as IChatDto[] } = {}) {
+      queryClient.setQueryData(chatKeys.list(), chats);
+      queryClient.setQueryData(chatKeys.archived(), archived);
+      render(
+        <QueryClientProvider client={queryClient}>
+          <I18nextProvider i18n={testI18n}>
+            <MemoryRouter initialEntries={[path]}>
+              <ServerEvents />
+              <ChatsList onOpenCreateGroup={vi.fn()} />
+            </MemoryRouter>
+          </I18nextProvider>
+        </QueryClientProvider>
+      );
+      return screen.getByRole('tabpanel');
+    }
+
+    const titleOf = (link: HTMLElement) =>
+      Array.from(link.querySelectorAll('span'), (span) => span.textContent).find((text) =>
+        /^Группа \d+$/.test(text ?? '')
+      );
+
+    const rowNames = (panel: HTMLElement) => within(panel).queryAllByRole('link').map(titleOf);
+
+    const rowLink = (title: string) => screen.queryByText(title, { exact: true })?.closest('a');
+
+    beforeEach(() => {
+      mockChatListLayout({ viewport: 600, row: ROW });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('из 200 чатов в DOM только видимые строки и запас, первая — первый чат', () => {
+      const panel = renderList(groups(200));
+
+      const names = rowNames(panel);
+      expect(names.length).toBeGreaterThan(0);
+      expect(names.length).toBeLessThan(40);
+      expect(names[0]).toBe('Группа 1');
+    });
+
+    it('прокрутка в конец — отрисованы последние чаты', () => {
+      const panel = renderList(groups(200));
+
+      scrollElementTo(panel, 200 * ROW);
+
+      expect(rowNames(panel)).toContain('Группа 200');
+      expect(rowNames(panel)).not.toContain('Группа 1');
+      expect(rowLink('Группа 200')).toBeInTheDocument();
+    });
+
+    it('новое сообщение поднимает чат из конца списка первой строкой, без дублей', async () => {
+      const chats = groups(200);
+      const panel = renderList(chats);
+      const raised = { ...chats[199], lastMessageAt: minutesAgo(-1) as never };
+      server.use(
+        http.get(api('/chats'), ({ request }) =>
+          HttpResponse.json({
+            chats: new URL(request.url).searchParams.get('archived')
+              ? []
+              : [raised, ...chats.slice(0, 199)],
+          })
+        )
+      );
+
+      await act(async () => {
+        fakeSocket.emit('new_message', {
+          chatId: raised.id,
+          message: makeMessage({ chatId: raised.id, senderId: 'user-2' }),
+        });
+      });
+
+      await waitFor(() => expect(rowNames(panel)[0]).toBe('Группа 200'));
+      const names = rowNames(panel);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    it('закреплённый первым и после прокрутки туда и обратно', () => {
+      const chats = groups(200);
+      chats[149] = group(150, { isPinned: true });
+      const panel = renderList(chats);
+
+      expect(rowNames(panel)[0]).toBe('Группа 150');
+      scrollElementTo(panel, 200 * ROW);
+      scrollElementTo(panel, 0);
+
+      expect(rowNames(panel)[0]).toBe('Группа 150');
+    });
+
+    it('«Группы»: первой «Новая группа», за ней группы', () => {
+      renderList(groups(50));
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Группы' }));
+
+      const create = screen.getByRole('button', { name: 'Новая группа' });
+      const first = rowLink('Группа 1')!;
+      expect(create.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('«Архив»: заметка, за ней чаты архива', () => {
+      renderList([], { archived: [group(7, { isArchived: true })] });
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Архив' }));
+
+      const note = screen.getByText('Здесь чаты, которые вы убрали из основного списка.');
+      const row = rowLink('Группа 7')!;
+      expect(note.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('смена вкладки открывает список с начала', () => {
+      const panel = renderList(groups(200));
+      scrollElementTo(panel, 150 * ROW);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Группы' }));
+
+      expect(screen.getByRole('tabpanel').scrollTop).toBe(0);
+      expect(screen.getByRole('button', { name: 'Новая группа' })).toBeInTheDocument();
+      expect(rowNames(screen.getByRole('tabpanel'))[0]).toBe('Группа 1');
+    });
+
+    it('открытый чат подсвечен и после прокрутки туда и обратно', () => {
+      const panel = renderList(groups(200), { path: '/chats/g-3' });
+      const current = () => rowLink('Группа 3');
+
+      expect(current()).toHaveAttribute('aria-current', 'page');
+      scrollElementTo(panel, 200 * ROW);
+      expect(current()).toBeFalsy();
+      scrollElementTo(panel, 0);
+
+      expect(current()).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('правая кнопка открывает меню строки, прокрутка его закрывает', () => {
+      const panel = renderList(groups(200));
+
+      fireEvent.contextMenu(rowLink('Группа 2')!);
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+
+      scrollElementTo(panel, 10 * ROW);
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
   });
 });

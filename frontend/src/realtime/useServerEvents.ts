@@ -13,6 +13,7 @@ import {
   putThreadReceipt,
 } from '@/entities/message';
 import { putChatListReceipt, useTypingStore } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -41,8 +42,9 @@ export function useServerEvents(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return undefined;
 
-    const invalidate = (eventType: string, payload: { chatId?: string }) => {
-      resolveInvalidations(eventType, payload).forEach((queryKey) => {
+    const invalidate = (eventType: string, payload: { chatId?: string; userId?: string }) => {
+      const currentUserId = useProfileStore.getState().user?.id;
+      resolveInvalidations(eventType, { ...payload, currentUserId }).forEach((queryKey) => {
         void queryClient.invalidateQueries({ queryKey });
       });
     };

@@ -23,7 +23,7 @@ export function SettingsSearch() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
 
-  const results = useMemo(() => searchSettings(query), [query]);
+  const results = useMemo(() => searchSettings(query, t), [query, t]);
   const isOpen = query.trim().length > 0;
 
   function open(path: string) {

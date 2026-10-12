@@ -83,6 +83,17 @@ passed the smoke checks above:
 
 Do not combine the compatibility deployment and activation into one rollout.
 
+### Cookie-auth cleanup (#705)
+
+The cleanup release that removes `Bearer` authentication and
+`POST /api/v2/auth/session` must be deployed only after the compatibility
+release containing #895 and #900 has reached production. Do not merge the
+cleanup PR into `dev` until that deployment is complete. Verify that
+`/health/live` reports the compatibility release and that an existing v0.9.0
+browser session has exchanged its local token for an `HttpOnly` session cookie.
+Combining both phases in one release signs every existing user out and is not
+allowed.
+
 ## Откат
 
 Откат — это тоже выпуск: содержимое возвращается к тегу отката, а номер

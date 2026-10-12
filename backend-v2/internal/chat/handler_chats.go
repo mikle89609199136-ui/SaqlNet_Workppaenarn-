@@ -39,13 +39,11 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 
 	chatID := r.PathValue("chatID")
-	if chatID == "" {
-		slog.WarnContext(r.Context(), "missing chat ID in path",
-			"layer", "handler",
-			"method", method,
-			"path", r.URL.Path,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "chat ID is required")
+
+	var inputParams ChatID
+	inputParams.ChatID = chatID
+
+	if !validateAndLogInput(w, r, inputParams, method, current.ID, "invalid chat ID") {
 		return
 	}
 
@@ -106,6 +104,12 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject requests where no fields were provided. An empty PATCH is
+	// almost always a client bug, so failing fast with 400 is more
+	// helpful than silently returning the unchanged chat.
+
+	// Call the service layer with the provided fields.
+	// Note: the service expects *string arguments; nil means "do not update".
 	updatedChat, err := h.service.UpdateGroup(
 		r.Context(),
 		current.ID,
@@ -115,6 +119,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		input.AvatarURL,
 	)
 
+	// Map domain errors to appropriate HTTP status codes.
 	switch {
 	case errors.Is(err, ErrInvalidInput):
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
@@ -150,7 +155,7 @@ func trimString(s *string) *string {
 // extra data, and contains no unknown fields (strict mode).
 // If an error occurs, decode writes an error response and returns false.
 func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
-	const helper = "decode"
+	const helper = "decodeStrict"
 	// Limit the request body to 256 KiB to prevent memory exhaustion.
 	const maxBodySize = 256 << 10 // 256 KiB
 	body := http.MaxBytesReader(w, r.Body, maxBodySize)
@@ -169,7 +174,7 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
 	}
 
 	// Ensure there is no trailing data after the first JSON value.
-	if _, err := dec.Token(); err != io.EOF {
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		slog.WarnContext(r.Context(), "trailing data in request body",
 			"layer", "handler",
 			"helperFunc", helper,
@@ -187,6 +192,14 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, value any) bool {
 func (h *Handler) GetOnlineMembers(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID := r.PathValue("chatID")
+
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
 
 	members, err := h.service.GetOnlineMembers(r.Context(), chatID, current.ID)
 	switch {
