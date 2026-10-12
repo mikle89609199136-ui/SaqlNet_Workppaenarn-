@@ -125,12 +125,18 @@ export interface IMediaPayload {
   sizeBytes?: number;
   [key: string]: unknown;
 }
+/**
+ * Почему вложение не показать. Код, а не фраза: сервис языка не знает,
+ * подпись подставляет интерфейс (MessageMedia).
+ */
+export type TMediaUnavailableReason = 'unencrypted' | 'foreign' | 'decryptFailed';
+
 export interface IMediaItem extends IMessageDto {
   mediaUrl?: string | null;
   mediaEncrypted?: boolean;
   mediaEncryption?: IEncryptedMedia | null;
   mediaUnavailable?: boolean;
-  mediaUnavailableReason?: string;
+  mediaUnavailableReason?: TMediaUnavailableReason;
   mediaType?: TMediaMessageType;
 }
 export interface IMediaDisplayPatch {
@@ -139,7 +145,7 @@ export interface IMediaDisplayPatch {
   mediaEncrypted?: boolean;
   mediaEncryption?: IEncryptedMedia | null;
   mediaUnavailable?: boolean;
-  mediaUnavailableReason?: string;
+  mediaUnavailableReason?: TMediaUnavailableReason;
 }
 
 export interface IPinMessagePayload {

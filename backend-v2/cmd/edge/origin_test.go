@@ -46,6 +46,7 @@ func TestCorsExplicitOriginAllowsCredentials(t *testing.T) {
 
 func TestCrossSiteRequestWithSessionCookieIsForbidden(t *testing.T) {
 	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("CRANE_ENV", "production")
 	handler, reached := guarded()
 	request := httptest.NewRequest(http.MethodPost, "https://craneapp.example/api/v2/messages/c1", nil)
 	request.Header.Set("Origin", "https://evil.example")
@@ -58,8 +59,23 @@ func TestCrossSiteRequestWithSessionCookieIsForbidden(t *testing.T) {
 	}
 }
 
+func TestMutationWithSessionCookieWithoutOriginIsForbidden(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("CRANE_ENV", "production")
+	handler, reached := guarded()
+	request := httptest.NewRequest(http.MethodPost, "https://craneapp.example/api/v2/messages/c1", nil)
+	request.AddCookie(&http.Cookie{Name: "__Host-craneapp_session", Value: "tok"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden || *reached {
+		t.Fatalf("status %d, reached %v; want 403 before the route", response.Code, *reached)
+	}
+}
+
 func TestSameSiteRequestWithSessionCookiePasses(t *testing.T) {
 	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("CRANE_ENV", "production")
 	handler, reached := guarded()
 	request := httptest.NewRequest(http.MethodPost, "https://craneapp.example/api/v2/messages/c1", nil)
 	request.Header.Set("Origin", "https://craneapp.example")

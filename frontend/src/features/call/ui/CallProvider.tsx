@@ -3,6 +3,7 @@ import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/shared/api';
 import { useCallStore } from '../model/callStore';
 import { subscribeCallBroadcast } from '../model/callBroadcast';
+import { markCallSessionLeft } from '../model/callSessionStorage';
 import type {
   ICallCancelledEvent,
   ICallIncomingEvent,
@@ -18,6 +19,17 @@ export function CallProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     useCallStore.getState().attachSocket(socket ?? null);
   }, [socket]);
+
+  useEffect(() => {
+    useCallStore.getState().restoreActiveSession();
+  }, []);
+
+  /* Момент ухода со страницы: после перезагрузки вернуться в звонок можно,
+     пока собеседник ждёт (#775). */
+  useEffect(() => {
+    window.addEventListener('pagehide', markCallSessionLeft);
+    return () => window.removeEventListener('pagehide', markCallSessionLeft);
+  }, []);
 
   useEffect(() => {
     const unsubBroadcast = subscribeCallBroadcast((event) => {
@@ -67,9 +79,29 @@ export function CallProvider({ children }: PropsWithChildren) {
     const unsubPeerLeft = eventBus.on(WS_EVENTS.CALL.PEER_LEFT, (payload: ICallPeerLeftEvent) => {
       const { fsm } = useCallStore.getState();
       if (fsm.roomId && payload.roomId === fsm.roomId) {
-        useCallStore.getState().endCall('peer_ended');
+        if (payload.reason === 'left') {
+          useCallStore.getState().endCall('peer_ended');
+        } else if (fsm.state === 'active' || fsm.state === 'connecting') {
+          useCallStore.getState().dispatch({ type: 'CONNECTION_LOST' });
+        } else if (fsm.state !== 'reconnecting') {
+          useCallStore.getState().endCall('peer_ended');
+        }
       }
     });
+
+    const unsubSocketConnected = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
+      useCallStore.getState().rejoinActiveCall();
+    });
+
+    const unsubCallError = eventBus.on(
+      WS_EVENTS.CALL.ERROR,
+      (payload?: { roomId?: string; reason?: string; message?: string }) => {
+        const { fsm } = useCallStore.getState();
+        if (fsm.roomId && (!payload?.roomId || payload.roomId === fsm.roomId)) {
+          useCallStore.getState().endCall('network_error');
+        }
+      }
+    );
 
     return () => {
       unsubIncoming();
@@ -78,6 +110,8 @@ export function CallProvider({ children }: PropsWithChildren) {
       unsubJoined();
       unsubPeerJoined();
       unsubPeerLeft();
+      unsubSocketConnected();
+      unsubCallError();
     };
   }, [eventBus]);
 

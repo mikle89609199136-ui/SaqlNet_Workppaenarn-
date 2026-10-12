@@ -7,6 +7,7 @@ import {
   findFirstUnreadId,
   needsOlderForUnread,
   openingScrollTarget,
+  selectReadUpTo,
   takeUnreadSnapshot,
 } from './unread';
 
@@ -123,5 +124,31 @@ describe('куда встать при открытии (#839)', () => {
   it('без новых — вниз; догрузка упёрлась в потолок — на верх загруженного', () => {
     expect(openingScrollTarget([m, m, m], false)).toEqual({ index: 2, align: 'end' });
     expect(openingScrollTarget([m, m, m], true)).toEqual({ index: 0, align: 'start' });
+  });
+});
+
+describe('что отметить прочитанным по показу на экране (#919)', () => {
+  const message = (source: IMessageDto) => ({ type: 'message' as const, message: source });
+  const ids = (list: IMessageDto[]) => list.map((entry) => entry.id);
+  const items = [
+    message(msg('old', 1)),
+    { type: 'unread' as const },
+    message(msg('a', 3)),
+    message(msg('mine', 4, ME)),
+    message(msg('b', 5)),
+    message(msg('c', 6)),
+  ];
+
+  it('чужие новее отметки — до последнего видимого, не дальше', () => {
+    expect(ids(selectReadUpTo(items, 4, pgTime(2), ME))).toEqual(['a', 'b']);
+  });
+
+  it('уже отмеченные на клиенте не повторяются', () => {
+    const read = [message({ ...msg('a', 3), isRead: true }), message(msg('b', 5))];
+    expect(ids(selectReadUpTo(read, 1, pgTime(2), ME))).toEqual(['b']);
+  });
+
+  it('чат ещё не читали — всё чужое до видимого', () => {
+    expect(ids(selectReadUpTo(items, 5, null, ME))).toEqual(['old', 'a', 'b', 'c']);
   });
 });

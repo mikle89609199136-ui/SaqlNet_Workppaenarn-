@@ -1,4 +1,4 @@
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 x-error: &error { $ref: '../components/responses.yaml#/Error' }
 
 /calls/ice-servers:
@@ -18,7 +18,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   post:
     tags: [Calls]
     summary: Create a call room
-    description: Self chats do not support calls and return 400 invalid_chat_type.
+    description: "Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable."
     operationId: createCallRoom
     security: *secure
     requestBody:
@@ -52,3 +52,24 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
           application/json:
             schema: { $ref: '../components/schemas.yaml#/CallRoomResponse' }
       '404': *error
+
+/calls/history:
+  get:
+    tags: [Calls]
+    summary: List finished calls of the current user
+    description: "Newest first. Outgoing calls are listed always; incoming ones only when the invitation reached the user. Status is from the viewer's side: an unanswered outgoing call is cancelled (rejected when the peer declined or was busy), an unanswered incoming call is missed (rejected when the viewer declined). The peer's avatar follows the peer's photo privacy rule. Calls in progress are not listed."
+    operationId: getCallHistory
+    security: *secure
+    parameters:
+      - { name: cursor, in: query, required: false, description: "nextCursor of the previous page, opaque.", schema: { type: string } }
+      - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: kind, in: query, required: false, schema: { type: string, enum: [audio, video] } }
+      - { name: status, in: query, required: false, schema: { type: string, enum: [answered, missed, rejected, cancelled] } }
+    responses:
+      '200':
+        description: A page of finished calls
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/CallHistoryResponse' }
+      '400': *error
+      '401': *error

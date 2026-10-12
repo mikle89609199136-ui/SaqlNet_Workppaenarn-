@@ -1,5 +1,6 @@
 export {
   MAX_ENTITIES,
+  buildInlineSegments,
   buildRichBlocks,
   copyRichTextToClipboard,
   escapeHtml,

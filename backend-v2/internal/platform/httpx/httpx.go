@@ -58,7 +58,10 @@ func Middleware(next http.Handler) http.Handler {
 				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
 				"img-src 'self' data: blob: https:; "+
 				"media-src 'self' blob:; "+
-				"connect-src 'self' wss: ws: https://api.ipify.org; "+
+				// translate.googleapis.com — «Перевести» в меню сообщения: клиент
+				// ходит туда напрямую (frontend/src/services/translatorApi.ts).
+				// Без него браузер блокировал запрос, и перевод не работал.
+				"connect-src 'self' wss: ws: https://api.ipify.org https://translate.googleapis.com; "+
 				"font-src 'self' data: https://fonts.gstatic.com; "+
 				"frame-ancestors "+frameAncestors,
 		)

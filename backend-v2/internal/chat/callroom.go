@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-const maxCallParticipants = 5
+// maxCallParticipants — звонки только один на один (#715).
+const maxCallParticipants = 2
 
 type Participant struct {
 	UserID      string `json:"userId"`
@@ -34,6 +35,10 @@ type RoomSnapshot struct {
 	AnsweredAt int64
 	CreatedAt  int64
 	HostID     string
+	// EndedAt — когда звонок кончился, если не сейчас: комнату, не
+	// восстановленную после рестарта, закрывают позже, а оборвался звонок
+	// в момент рестарта (#713). 0 — сейчас.
+	EndedAt int64
 }
 
 type RoomPublic struct {
@@ -50,6 +55,10 @@ type JoinResult struct {
 	OK    bool
 	Error string
 	Peers []*Participant
+	// Вход в новую комнату выводит из прежней; если она от этого
+	// опустела — закрыта, и её итог нужно записать (#713).
+	ClosedRoomID string
+	Closed       *RoomSnapshot
 }
 
 type LeaveResult struct {
@@ -62,12 +71,21 @@ type CallRoomManager struct {
 	mu         sync.Mutex
 	rooms      map[string]*callRoom
 	userToRoom map[string]string
+	// restorable — отвеченные звонки, оборванные рестартом сервера: ждут,
+	// пока участник войдёт снова (#713).
+	restorable map[string]*restorableRoom
+}
+
+type restorableRoom struct {
+	room    *callRoom
+	parties [2]string // звонящий и собеседник — только они поднимают комнату
 }
 
 func NewCallRoomManager() *CallRoomManager {
 	return &CallRoomManager{
 		rooms:      make(map[string]*callRoom),
 		userToRoom: make(map[string]string),
+		restorable: make(map[string]*restorableRoom),
 	}
 }
 
@@ -149,8 +167,12 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 	if len(r.participants) >= maxCallParticipants && !alreadyIn {
 		return JoinResult{OK: false, Error: "room_full"}
 	}
+	var closedID string
+	var closed *RoomSnapshot
 	if prev, ok := m.userToRoom[userID]; ok && prev != roomID {
-		m.leaveRoomLocked(prev, userID)
+		if lr := m.leaveRoomLocked(prev, userID); lr.Closed {
+			closedID, closed = prev, lr.Snapshot
+		}
 	}
 	r.participants[userID] = &Participant{
 		UserID: userID, DisplayName: displayName, AvatarURL: avatarURL,
@@ -166,7 +188,49 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 			peers = append(peers, p)
 		}
 	}
-	return JoinResult{OK: true, Peers: peers}
+	return JoinResult{OK: true, Peers: peers, ClosedRoomID: closedID, Closed: closed}
+}
+
+// CloseIfEmpty — закрыть комнату, в которую никто не вошёл (#850).
+func (m *CallRoomManager) CloseIfEmpty(roomID string) (*RoomSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[roomID]
+	if !ok || len(r.participants) > 0 {
+		return nil, false
+	}
+	delete(m.rooms, roomID)
+	return &RoomSnapshot{
+		ChatID: r.chatID, CallKind: r.callKind,
+		AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+	}, true
+}
+
+// LeaveIfAlone — вывести звонящего из комнаты, где больше никого нет, и
+// закрыть её. Нужно, когда звонок кончился без ответа (#713): клиент
+// звонящего на отказ не шлёт call_leave, и комната с ним одним иначе
+// висела бы до его следующего звонка или отключения.
+func (m *CallRoomManager) LeaveIfAlone(roomID, userID string) (*RoomSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rooms[roomID]
+	if !ok {
+		return nil, false
+	}
+	for id := range r.participants {
+		if id != userID {
+			return nil, false
+		}
+	}
+	if _, in := r.participants[userID]; !in {
+		delete(m.rooms, roomID)
+		return &RoomSnapshot{
+			ChatID: r.chatID, CallKind: r.callKind,
+			AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+		}, true
+	}
+	lr := m.leaveRoomLocked(roomID, userID)
+	return lr.Snapshot, lr.Closed
 }
 
 func (m *CallRoomManager) LeaveRoom(roomID, userID string) LeaveResult {
@@ -191,6 +255,10 @@ func (m *CallRoomManager) GetUserRoom(userID string) *RoomPublic {
 func (m *CallRoomManager) leaveRoomLocked(roomID, userID string) LeaveResult {
 	r, ok := m.rooms[roomID]
 	if !ok {
+		return LeaveResult{OK: false}
+	}
+	// Выйти можно только из комнаты, в которой состоишь.
+	if _, in := r.participants[userID]; !in {
 		return LeaveResult{OK: false}
 	}
 	delete(r.participants, userID)
@@ -233,4 +301,60 @@ func randStr(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+// RestorableRoom — звонок, оборванный рестартом сервера, из базы (#713).
+type RestorableRoom struct {
+	ID, ChatID, CallKind, Title, HostID, CalleeID string
+	CreatedAt, AnsweredAt                         int64
+}
+
+// AddRestorable — ждать возвращения участников этого звонка.
+func (m *CallRoomManager) AddRestorable(r RestorableRoom) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.restorable == nil {
+		m.restorable = make(map[string]*restorableRoom)
+	}
+	m.restorable[r.ID] = &restorableRoom{
+		room: &callRoom{
+			id: r.ID, hostID: r.HostID, roomType: "p2p", callKind: r.CallKind,
+			chatID: r.ChatID, title: r.Title, createdAt: r.CreatedAt, answeredAt: r.AnsweredAt,
+			participants: make(map[string]*Participant),
+		},
+		parties: [2]string{r.HostID, r.CalleeID},
+	}
+}
+
+// Restore — участник оборванного звонка вернулся: комната снова живая, со
+// временем начала и ответа из базы. Посторонний её не поднимает.
+func (m *CallRoomManager) Restore(roomID, userID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pending, ok := m.restorable[roomID]
+	if !ok || userID == "" || (pending.parties[0] != userID && pending.parties[1] != userID) {
+		return false
+	}
+	delete(m.restorable, roomID)
+	if _, live := m.rooms[roomID]; !live {
+		m.rooms[roomID] = pending.room
+	}
+	return true
+}
+
+// TakeRestorable — никто так и не вернулся: забрать оставшиеся, чтобы
+// закрыть.
+func (m *CallRoomManager) TakeRestorable() map[string]*RoomSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]*RoomSnapshot, len(m.restorable))
+	for id, pending := range m.restorable {
+		r := pending.room
+		out[id] = &RoomSnapshot{
+			ChatID: r.chatID, CallKind: r.callKind,
+			AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+		}
+		delete(m.restorable, id)
+	}
+	return out
 }

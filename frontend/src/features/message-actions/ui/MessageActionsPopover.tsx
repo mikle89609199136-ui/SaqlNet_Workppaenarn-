@@ -123,6 +123,15 @@ export const MessageActionsPopover = ({
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
 
+  const messageRef = useMemo(
+    () => ({
+      get current() {
+        return document.getElementById(message.id);
+      },
+    }),
+    [message.id]
+  );
+
   const mine = message.senderId === currentUser?.id;
   const myReaction = message.reactions?.find((reaction) => reaction.myReaction)?.emoji;
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
@@ -256,6 +265,7 @@ export const MessageActionsPopover = ({
       className="w-61 min-w-0"
       onClose={() => setActionMenu(null)}
       open
+      returnFocusRef={messageRef}
       x={actionMenu?.x}
       y={actionMenu?.y}
     >

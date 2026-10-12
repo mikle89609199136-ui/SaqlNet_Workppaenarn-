@@ -19,6 +19,7 @@ export interface ICallFsmContext {
   endReason: TCallEndReason | null;
   callStartedAt: number | null;
   outgoingPhase?: TOutgoingCallPhase | null;
+  isCaller?: boolean;
 }
 
 export type TCallFsmAction =
@@ -44,6 +45,7 @@ export type TCallFsmAction =
       type: 'RECEIVE_INCOMING';
       payload: {
         roomId: string;
+        chatId?: string;
         from: string;
         fromName?: string;
         fromAvatar?: string | null;
@@ -72,6 +74,7 @@ export const initialCallContext: ICallFsmContext = {
   endReason: null,
   callStartedAt: null,
   outgoingPhase: null,
+  isCaller: false,
 };
 
 export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): ICallFsmContext {
@@ -91,6 +94,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         callKind: action.payload.kind,
         title: action.payload.title ?? null,
         outgoingPhase: action.payload.phase ?? (action.payload.roomId ? 'ringing' : 'calling'),
+        isCaller: true,
       };
     }
 
@@ -111,11 +115,13 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
         ...initialCallContext,
         state: 'incoming',
         roomId: action.payload.roomId,
+        chatId: action.payload.chatId ?? null,
         peerId: action.payload.from,
         peerName: action.payload.fromName ?? null,
         peerAvatar: action.payload.fromAvatar ?? null,
         callKind: action.payload.kind,
         title: action.payload.title ?? null,
+        isCaller: false,
       };
     }
 
@@ -147,7 +153,7 @@ export function callStateReducer(ctx: ICallFsmContext, action: TCallFsmAction): 
     }
 
     case 'CONNECTION_LOST': {
-      if (ctx.state !== 'active') return ctx;
+      if (ctx.state !== 'active' && ctx.state !== 'connecting') return ctx;
       return {
         ...ctx,
         state: 'reconnecting',

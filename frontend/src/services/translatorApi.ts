@@ -40,7 +40,14 @@ export async function translateText(text: string) {
 
   const data = await rawGet(url.toString());
 
-  const translatedText = data[0][0][0];
+  // Google режет текст на предложения и возвращает каждое отдельным куском:
+  // data[0] — список кусков, у каждого [0] — перевод. Раньше брался только
+  // первый, и длинное сообщение переводилось до первой точки.
+  const translatedText = Array.isArray(data?.[0])
+    ? data[0]
+        .map((segment: unknown[]) => (typeof segment?.[0] === 'string' ? segment[0] : ''))
+        .join('')
+    : '';
   const detectedSourceLang = data?.[2] || null; // язык, который Google определил в исходном тексте
 
   if (!translatedText) {

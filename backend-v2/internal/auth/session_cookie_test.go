@@ -1,18 +1,19 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
-// Сессия браузера в cookie (#705): вход ставит, выход стирает, старый
-// токен меняется на cookie без повторного входа.
+// Сессия браузера в cookie (#705): вход ставит, выход стирает.
 
 // sessionCookieValue — значение cookie сессии в ответе; нет её — пусто.
 func sessionCookieValue(t *testing.T, response *httptest.ResponseRecorder) string {
@@ -45,10 +46,14 @@ func TestLoginSetsSessionCookie(t *testing.T) {
 	mock.ExpectQuery("SELECT token_generation").
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
+	mock.ExpectExec("INSERT INTO auth.sessions").
+		WithArgs("user-id", sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), "Chrome on Linux", "desktop", "203.0.113.7").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{verifyResult: true}))
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/login",
-		strings.NewReader(`{"username":"ivan","password":"Password1"}`))
+		strings.NewReader(`{"username":"ivan","password":"Password1","deviceName":" Chrome on Linux ","deviceType":"desktop"}`))
+	request.Header.Set(clientIPHeader, "203.0.113.7")
 	response := httptest.NewRecorder()
 	handler.Login(response, request)
 
@@ -57,6 +62,13 @@ func TestLoginSetsSessionCookie(t *testing.T) {
 	}
 	if got := sessionCookieValue(t, response); got != "token" {
 		t.Fatalf("session cookie = %q, want the issued token", got)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := body["token"]; exposed {
+		t.Fatalf("login response exposes session token: %v", body)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -70,17 +82,21 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	expiresAt := time.Unix(1_900_000_123, 0).UTC()
+	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
-		WithArgs(tokenHash("cookie-token"), "user-id", sqlmock.AnyArg()).
+		WithArgs(authctx.TokenHash("cookie-token"), "user-id", expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs("user-id").
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("UPDATE auth.sessions").
+		WithArgs("user-id", authctx.TokenHash("cookie-token")).
+		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
+	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{}))
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout", nil)
-	request.AddCookie(&http.Cookie{Name: "__Host-craneapp_session", Value: "cookie-token"})
-	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "cookie-token"})
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id", ExpiresAt: expiresAt}))
 	response := httptest.NewRecorder()
 	handler.Logout(response, request)
 
@@ -98,27 +114,5 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// Клиент, вошедший до перехода на cookie, меняет свой токен на cookie.
-func TestSessionExchangesBearerTokenForCookie(t *testing.T) {
-	handler := NewHandler(nil)
-	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/session", nil)
-	request.Header.Set("Authorization", "Bearer legacy-token")
-	response := httptest.NewRecorder()
-	handler.Session(response, request)
-
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status %d", response.Code)
-	}
-	if got := sessionCookieValue(t, response); got != "legacy-token" {
-		t.Fatalf("session cookie = %q", got)
-	}
-
-	response = httptest.NewRecorder()
-	handler.Session(response, httptest.NewRequest(http.MethodGet, "/api/v2/auth/session", nil))
-	if response.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("GET: status %d, want 405", response.Code)
 	}
 }

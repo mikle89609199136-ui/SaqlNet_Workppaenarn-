@@ -1,4 +1,5 @@
 import { Icon } from '../Icon';
+import { useTranslation } from 'react-i18next';
 import { PASSWORD_RULES, checkPassword, cn } from '@/shared/lib';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
  * второстепенный текст, а не красный: человек ещё печатает.
  */
 export function PasswordRequirements({ value, className }: Props) {
+  const { t } = useTranslation();
   const done = checkPassword(value);
 
   return (
@@ -32,7 +34,7 @@ export function PasswordRequirements({ value, className }: Props) {
             className="size-3.5 shrink-0 stroke-2"
             name={done[rule.id] ? 'checkCircle' : 'circleAlert'}
           />
-          {rule.label}
+          {rule.label(t)}
         </li>
       ))}
     </ul>

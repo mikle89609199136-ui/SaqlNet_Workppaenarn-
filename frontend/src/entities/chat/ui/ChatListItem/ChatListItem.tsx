@@ -1,13 +1,13 @@
 import { ROUTES } from '@/shared/config';
 import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
 import type { TReceiptState } from '@/shared/lib';
-import { readDraft, subscribeToDraft } from '../../model/chatDraftsStore';
+import { readDraftRich, subscribeToDraft } from '../../model/chatDraftsStore';
 import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useMatch } from 'react-router-dom';
-import { Avatar, Badge } from '@/shared/ui';
+import { Avatar, Badge, MessageSnippet } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
 import { useContextMenu } from '@/shared/ui/ContextMenu';
 import { chatRowStyles, onCurrentRow } from './chatRowStyles';
@@ -61,7 +61,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
   // иначе строка мигала бы всё время набора.
   const draft = useSyncExternalStore(
     useCallback((onChange) => subscribeToDraft(chat.id, onChange), [chat.id]),
-    useCallback(() => readDraft(chat.id), [chat.id])
+    useCallback(() => readDraftRich(chat.id), [chat.id])
   );
 
   const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
@@ -176,12 +176,16 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
           <div className="flex items-center gap-2">
             {/* Недописанное важнее последнего сообщения: человек к нему вернётся. */}
             <span className={cn('min-w-0 flex-1 truncate text-ui text-ink-2', onCurrentRow)}>
-              {draft && !typingLabel ? (
+              {draft?.text && !typingLabel ? (
                 <>
                   <span className={cn('text-danger', onCurrentRow)}>
                     {t('draft', 'Черновик')}:{' '}
                   </span>
-                  {draft}
+                  {draft.entities?.length ? (
+                    <MessageSnippet entities={draft.entities} text={draft.text} />
+                  ) : (
+                    draft.text.replace(/[\r\n]/g, ' ')
+                  )}
                 </>
               ) : typingLabel ? (
                 // Кто печатает — цветом акцента, как живое событие (#837).
@@ -189,7 +193,11 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
               ) : (
                 <>
                   {prefix}
-                  {lastMessage}
+                  {last?.content && last.entities?.length && !last.undecryptable ? (
+                    <MessageSnippet entities={last.entities} text={last.content} />
+                  ) : (
+                    lastMessage
+                  )}
                 </>
               )}
             </span>

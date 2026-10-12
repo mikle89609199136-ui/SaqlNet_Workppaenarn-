@@ -76,15 +76,11 @@ export function useQrClaim(
       setStage('failed');
     };
 
-    const finish = async (
-      { claim }: IClaimed,
-      authToken: string,
-      payload: Parameters<IQrClaim['open']>[0]
-    ) => {
+    const finish = async ({ claim }: IClaimed, payload: Parameters<IQrClaim['open']>[0]) => {
       setStage('finishing');
       const masterKey = await claim.open(payload).catch(() => null);
       try {
-        await confirmedRef.current({ authToken, masterKey });
+        await confirmedRef.current({ masterKey });
       } catch {
         fail('error');
       }
@@ -104,8 +100,8 @@ export function useQrClaim(
         fail('declined');
         return;
       }
-      if (state?.status === 'confirmed' && state.authToken && state.payload) {
-        await finish(current, state.authToken, state.payload);
+      if (state?.status === 'confirmed' && state.payload) {
+        await finish(current, state.payload);
         return;
       }
       timer = setTimeout(() => void poll(current), POLL_INTERVAL_MS);
