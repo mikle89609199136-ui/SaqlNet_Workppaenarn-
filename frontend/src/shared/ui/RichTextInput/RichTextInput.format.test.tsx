@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
 import { composerEditor, typeIntoComposer } from '@/test/harness/composer';
 import { RichTextInput, type IRichTextInputHandle } from './RichTextInput';
+import { $transformSelectionCase, transformTextCase } from './lexicalRichText';
 
 function renderInput() {
   const handle = createRef<IRichTextInputHandle>();
@@ -282,6 +283,230 @@ describe('комбинированное форматирование в пол�
           expect.objectContaining({ type: 'strikethrough', offset: 7, length: 4 }),
         ])
       );
+    });
+  });
+
+  describe('изменение регистра текста (#1000)', () => {
+    describe('утилита transformTextCase', () => {
+      it('переводит текст в UPPERCASE', () => {
+        expect(transformTextCase('тестовое сообщение', 'uppercase')).toBe('ТЕСТОВОЕ СООБЩЕНИЕ');
+        expect(transformTextCase('Hello World!', 'uppercase')).toBe('HELLO WORLD!');
+        expect(transformTextCase('🎉 emoji 🚀 тест', 'uppercase')).toBe('🎉 EMOJI 🚀 ТЕСТ');
+      });
+
+      it('переводит текст в lowercase', () => {
+        expect(transformTextCase('ТЕСТОВОЕ СООБЩЕНИЕ', 'lowercase')).toBe('тестовое сообщение');
+        expect(transformTextCase('Hello World!', 'lowercase')).toBe('hello world!');
+        expect(transformTextCase('🎉 EMOJI 🚀 ТЕСТ', 'lowercase')).toBe('🎉 emoji 🚀 тест');
+      });
+
+      it('переводит текст в Capitalize (первая буква слова заглавная, остальные строчные)', () => {
+        expect(transformTextCase('тестовое сообщение', 'capitalize')).toBe('Тестовое Сообщение');
+        expect(transformTextCase('hELLO wORLD', 'capitalize')).toBe('Hello World');
+        expect(transformTextCase('ТЕСТ-КЕЙС 123', 'capitalize')).toBe('Тест-Кейс 123');
+        expect(transformTextCase('🎉 emoji 🚀 тест', 'capitalize')).toBe('🎉 Emoji 🚀 Тест');
+      });
+    });
+
+    describe('трансформация в редакторе ($transformSelectionCase)', () => {
+      it('трансформирует простой фрагмент в UPPERCASE, lowercase и Capitalize', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+        await typeIntoComposer(field, 'тестовое сообщение');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('uppercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('ТЕСТОВОЕ СООБЩЕНИЕ');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('lowercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('тестовое сообщение');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('capitalize');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('Тестовое Сообщение');
+      });
+
+      it('сохраняет жирный шрифт, курсив и ссылку при изменении регистра', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+
+        await typeIntoComposer(field, {
+          text: 'жирный курсив ссылка',
+          entities: [
+            { type: 'bold', offset: 0, length: 6 },
+            { type: 'italic', offset: 7, length: 6 },
+            { type: 'link', offset: 14, length: 6, data: { url: 'https://example.com' } },
+          ],
+        });
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('uppercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue()).toEqual({
+          text: 'ЖИРНЫЙ КУРСИВ ССЫЛКА',
+          entities: expect.arrayContaining([
+            expect.objectContaining({ type: 'bold', offset: 0, length: 6 }),
+            expect.objectContaining({ type: 'italic', offset: 7, length: 6 }),
+            expect.objectContaining({
+              type: 'link',
+              offset: 14,
+              length: 6,
+              data: { url: 'https://example.com' },
+            }),
+          ]),
+        });
+      });
+
+      it('сохраняет форматирование при частичном выделении внутри слова и фразы', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+
+        await typeIntoComposer(field, {
+          text: 'префикс-слово-суффикс',
+          entities: [{ type: 'bold', offset: 8, length: 5 }],
+        });
+
+        await act(async () => {
+          editor.update(
+            () => {
+              const paragraph = $getRoot().getFirstChild();
+              // 'слово' — это второй текстовый узел (жирный)
+              if ($isElementNode(paragraph)) {
+                const boldNode = paragraph.getChildAtIndex(1);
+                if ($isTextNode(boldNode)) {
+                  boldNode.select(0, 5);
+                  $transformSelectionCase('uppercase');
+                }
+              }
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue()).toEqual({
+          text: 'префикс-СЛОВО-суффикс',
+          entities: [expect.objectContaining({ type: 'bold', offset: 8, length: 5 })],
+        });
+      });
+
+      it('корректно обрабатывает эмодзи и спецсимволы', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+
+        await typeIntoComposer(field, '🎉 привет мир! #1000 — супер!');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('uppercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('🎉 ПРИВЕТ МИР! #1000 — СУПЕР!');
+      });
+
+      it('не меняет текст, если выделение схлопнуто (collapsed)', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+        await typeIntoComposer(field, 'тестовое сообщение');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              const paragraph = $getRoot().getFirstChild();
+              if ($isElementNode(paragraph)) {
+                const textNode = paragraph.getFirstChild();
+                if ($isTextNode(textNode)) {
+                  textNode.select(3, 3);
+                  $transformSelectionCase('uppercase');
+                }
+              }
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('тестовое сообщение');
+      });
+
+      it('корректно капитализирует текст при выделении через границу абзацев', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+        await typeIntoComposer(field, 'первая строка\nвторая строка');
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('capitalize');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('Первая Строка\nВторая Строка');
+      });
+
+      it('корректно обрабатывает смену регистра для символов с изменением длины Unicode (ß -> SS)', async () => {
+        const { field, handle } = renderInput();
+        const editor = composerEditor(field);
+
+        await typeIntoComposer(field, {
+          text: 'groß artig',
+          entities: [{ type: 'bold', offset: 0, length: 4 }],
+        });
+
+        await act(async () => {
+          editor.update(
+            () => {
+              $getRoot().select(0, $getRoot().getChildrenSize());
+              $transformSelectionCase('uppercase');
+            },
+            { discrete: true }
+          );
+        });
+
+        expect(handle.current?.getValue().text).toBe('GROSS ARTIG');
+        // Второй узел не смещается и сохраняет корректное значение
+        expect(handle.current?.getValue().entities).toEqual([
+          expect.objectContaining({ type: 'bold', offset: 0, length: 5 }),
+        ]);
+      });
     });
   });
 });
