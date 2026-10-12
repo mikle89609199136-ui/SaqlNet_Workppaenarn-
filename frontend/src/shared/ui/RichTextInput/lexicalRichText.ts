@@ -2,11 +2,15 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getRoot,
+  $getSelection,
   $isElementNode,
   $isLineBreakNode,
+  $isRangeSelection,
   $isTextNode,
   type ElementNode,
+  type LexicalNode,
   type TextFormatType,
+  type TextNode,
 } from 'lexical';
 import { $createLinkNode, $isLinkNode } from '@lexical/link';
 import { $createQuoteNode, $isQuoteNode } from '@lexical/rich-text';
@@ -171,4 +175,73 @@ export function $writeRichText({ text, entities }: IRichText): void {
 /** Пусто ли — по тексту, а не по узлам: пустые абзацы тоже узлы. */
 export function isRichTextEmpty(value: IRichText): boolean {
   return value.text.trim() === '';
+}
+
+export type TTextCaseMode = 'uppercase' | 'lowercase' | 'capitalize';
+
+export function transformTextCase(text: string, mode: TTextCaseMode): string {
+  if (mode === 'uppercase') {
+    return text.toLocaleUpperCase();
+  }
+  if (mode === 'lowercase') {
+    return text.toLocaleLowerCase();
+  }
+  return text.replace(
+    /\p{L}+/gu,
+    (word) => word.slice(0, 1).toLocaleUpperCase() + word.slice(1).toLocaleLowerCase()
+  );
+}
+
+function getTextNodes(nodes: LexicalNode[]): TextNode[] {
+  const result: TextNode[] = [];
+  const seen = new Set<string>();
+
+  for (const node of nodes) {
+    if ($isTextNode(node)) {
+      if (!seen.has(node.getKey())) {
+        seen.add(node.getKey());
+        result.push(node);
+      }
+    } else if ($isElementNode(node)) {
+      for (const child of node.getAllTextNodes()) {
+        if (!seen.has(child.getKey())) {
+          seen.add(child.getKey());
+          result.push(child);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Изменение регистра текста выделения с сохранением разметки (форматы, ссылки).
+ * Вызывать внутри update.
+ */
+export function $transformSelectionCase(mode: TTextCaseMode): void {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+
+  const nodes = getTextNodes(selection.extract());
+  if (nodes.length === 0) return;
+
+  if (nodes.length === 1) {
+    const node = nodes[0];
+    node.setTextContent(transformTextCase(node.getTextContent(), mode));
+    return;
+  }
+
+  const fullText = nodes.map((n) => n.getTextContent()).join('');
+  const transformed = transformTextCase(fullText, mode);
+
+  let offset = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const len = node.getTextContent().length;
+    const nextOffset = offset + len;
+    node.setTextContent(
+      i === nodes.length - 1 ? transformed.slice(offset) : transformed.slice(offset, nextOffset)
+    );
+    offset = nextOffset;
+  }
 }

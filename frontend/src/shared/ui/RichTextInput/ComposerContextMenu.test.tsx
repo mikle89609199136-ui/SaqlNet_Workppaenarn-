@@ -432,4 +432,60 @@ describe('контекстное меню поля ввода (#656)', () => {
       });
     }
   });
+
+  describe('изменение регистра в меню форматирования (#1000)', () => {
+    it('пункт «ВЕРХНИЙ РЕГИСТР» переводит выделенный фрагмент в заглавные буквы', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      expect(screen.getByRole('menu', { name: 'Форматирование' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).not.toBeDisabled();
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('ТЕСТОВОЕ СООБЩЕНИЕ');
+    });
+
+    it('пункт «нижний регистр» переводит выделенный фрагмент в строчные буквы', async () => {
+      const { handle } = await setup('ТЕСТОВОЕ СООБЩЕНИЕ', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /нижний регистр/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('тестовое сообщение');
+    });
+
+    it('пункт «С заглавной буквы» капитализирует слова выделенного фрагмента', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /С заглавной буквы/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('Тестовое Сообщение');
+    });
+
+    it('сохраняет форматирование узлов при применении регистра через меню', async () => {
+      const { handle } = await setup(
+        {
+          text: 'жирный текст',
+          entities: [{ type: 'bold', offset: 0, length: 6 }],
+        },
+        0,
+        6
+      );
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(handle.current?.getValue()).toEqual({
+        text: 'ЖИРНЫЙ текст',
+        entities: [{ type: 'bold', offset: 0, length: 6 }],
+      });
+    });
+  });
 });
