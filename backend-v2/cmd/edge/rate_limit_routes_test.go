@@ -5,6 +5,37 @@ import (
 	"testing"
 )
 
+func TestClassifyRouteQRPoll(t *testing.T) {
+	tests := []struct {
+		method string
+		path   string
+		want   routeGroup
+	}{
+		{http.MethodGet, "/api/v2/auth/qr-status/token", routeGroupQRPoll},
+		{http.MethodGet, "/api/v2/auth/qr-offer/token", routeGroupQRPoll},
+		{http.MethodGet, "/api/v2/auth/qr-offer/token/status", routeGroupQRPoll},
+		{http.MethodPost, "/api/v2/auth/qr-token", routeGroupOtherAuth},
+		{http.MethodPost, "/api/v2/auth/qr-offer", routeGroupOtherAuth},
+		{http.MethodPost, "/api/v2/auth/qr-offer/token/claim", routeGroupOtherAuth},
+		{http.MethodPost, "/api/v2/auth/qr-offer/token/confirm", routeGroupOtherAuth},
+		{http.MethodPost, "/api/v2/auth/qr-confirm", routeGroupOtherAuth},
+		{http.MethodDelete, "/api/v2/auth/qr-offer/token", routeGroupOtherAuth},
+		{http.MethodPost, "/api/v2/auth/qr-status/token", routeGroupOtherAuth},
+		{http.MethodGet, "/api/v2/auth/qr-status/", routeGroupOtherAuth},
+		{http.MethodGet, "/api/v2/auth/qr-status/token/extra", routeGroupOtherAuth},
+		{http.MethodGet, "/api/v2/auth/qr-offer//status", routeGroupOtherAuth},
+		{http.MethodGet, "/api/v2/auth/qr-offer/token/status/extra", routeGroupOtherAuth},
+		{http.MethodGet, "/api/v2/auth/qr-offer/token/confirm", routeGroupOtherAuth},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			if got := classifyRoute(tt.method, tt.path); got != tt.want {
+				t.Fatalf("group = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyRouteLoginRegister(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -15,6 +15,7 @@ type rateLimitConfig struct {
 	loginRegister bucketConfig
 	password2FA   bucketConfig
 	otherAuth     bucketConfig
+	qrPoll        bucketConfig
 	usernameCheck bucketConfig
 	messageWrite  bucketConfig
 	messageRead   bucketConfig
@@ -50,6 +51,7 @@ func loadRateLimitConfig() rateLimitConfig {
 		loginRegister: loadBucketConfig("LOGIN_REGISTER", perMinute(10), 5),
 		password2FA:   loadBucketConfig("PASSWORD_2FA", perMinute(10), 5),
 		otherAuth:     loadBucketConfig("OTHER_AUTH", perMinute(30), 10),
+		qrPoll:        loadBucketConfig("QR_POLL", perSecond(2), 10),
 		usernameCheck: loadBucketConfig("USERNAME_CHECK", perSecond(2), 5),
 		messageWrite:  loadBucketConfig("MESSAGE_WRITE", perSecond(5), 20),
 		messageRead:   loadBucketConfig("MESSAGE_READ", perSecond(20), 40),
@@ -173,6 +175,8 @@ func (cfg rateLimitConfig) bucketFor(group routeGroup) bucketConfig {
 		return cfg.password2FA
 	case routeGroupOtherAuth:
 		return cfg.otherAuth
+	case routeGroupQRPoll:
+		return cfg.qrPoll
 	case routeGroupUsernameCheck:
 		return cfg.usernameCheck
 	case routeGroupMessageWrite:
