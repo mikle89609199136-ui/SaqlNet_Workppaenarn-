@@ -2232,9 +2232,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Favorite a GIF */
+        /**
+         * Favorite a GIF
+         * @description Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record. Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+         */
         post: operations["favoriteGif"];
-        /** Unfavorite a GIF */
+        /**
+         * Unfavorite a GIF
+         * @description Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites. Returns 404 only when the GIF itself does not exist. Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+         */
         delete: operations["unfavoriteGif"];
         options?: never;
         head?: never;
@@ -7261,13 +7267,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Favorited */
+            /** @description Already in favorites */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Added to favorites */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     unfavoriteGif: {
@@ -7281,13 +7297,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Unfavorited */
+            /** @description Removed from favorites, idempotent when the GIF is not in favorites */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     listStickerPacks: {

@@ -78,11 +78,77 @@ assert json.load(sys.stdin)["code"] == sys.argv[1]
 	done
 }
 
+run_gif_favorite_tests() {
+	local media_url gif_id payload missing_id
+	http_request -X POST "$BASE_URL/api/v2/media" \
+		-H "Content-Type: application/json" -b "$COOKIE_JAR" \
+		-d '{"file":"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7","fileName":"smoke-favorite.gif"}'
+	media_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url", ""))' 2>/dev/null || true)
+	if [[ "$HTTP_CODE" == "201" && -n "$media_url" ]]; then
+		echo "✓ [$HTTP_CODE] upload GIF for favorite tests"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] upload GIF for favorite tests — expected 201 with url"
+		FAIL=$((FAIL + 1))
+		return
+	fi
+	printf -v payload '{"url":"%s","name":"smoke favorite GIF"}' "$media_url"
+	http_request -X POST "$BASE_URL/api/v2/gifs" \
+		-H "Content-Type: application/json" -b "$COOKIE_JAR" -d "$payload"
+	gif_id=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("gif", {}).get("id", ""))' 2>/dev/null || true)
+	if [[ "$HTTP_CODE" == "201" && -n "$gif_id" ]]; then
+		echo "✓ [$HTTP_CODE] create GIF for favorite tests"
+		PASS=$((PASS + 1))
+	else
+		echo "✗ [$HTTP_CODE] create GIF for favorite tests — expected 201 with gif.id"
+		FAIL=$((FAIL + 1))
+		return
+	fi
+
+	missing_id=$(python3 -c 'import uuid; print(uuid.uuid4())')
+	local scenario method target_id expected_status expected_code
+	for scenario in add repeat_add remove repeat_remove invalid reserved missing; do
+		method=POST
+		target_id="$gif_id"
+		expected_status=200
+		expected_code=''
+		case "$scenario" in
+			add) expected_status=201 ;;
+			remove|repeat_remove) method=DELETE ;;
+			invalid|reserved)
+				target_id=not-a-uuid
+				if [[ "$scenario" == "reserved" ]]; then target_id=favorites; fi
+				expected_status=400
+				expected_code=invalid_gif_id
+				;;
+			missing)
+				target_id="$missing_id"
+				expected_status=404
+				expected_code=gif_not_found
+				;;
+		esac
+		http_request -X "$method" "$BASE_URL/api/v2/gifs/$target_id/favorite" \
+			-b "$COOKIE_JAR"
+		if [[ "$HTTP_CODE" == "$expected_status" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+body = json.load(sys.stdin)
+assert body.get("code") == sys.argv[1] if sys.argv[1] else body == {"success": True}
+' "$expected_code"; then
+			echo "✓ [$HTTP_CODE] GIF favorite $scenario"
+			PASS=$((PASS + 1))
+		else
+			echo "✗ [$HTTP_CODE] GIF favorite $scenario — expected $expected_status $expected_code"
+			echo "  ${HTTP_BODY:0:160}"
+			FAIL=$((FAIL + 1))
+		fi
+	done
+}
+
 run_gif_tests() {
 	local text_url="$1"
 	local gif_url payload
 	http_request -X POST "$BASE_URL/api/v2/media" \
-		-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+		-H "Content-Type: application/json" -b "$COOKIE_JAR" \
 		-d '{"file":"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7","fileName":"smoke.gif"}'
 	gif_url=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url", ""))' 2>/dev/null || true)
 	if [[ "$HTTP_CODE" == "201" && -n "$gif_url" ]]; then
@@ -106,7 +172,7 @@ run_gif_tests() {
 		fi
 		printf -v payload '{"url":"%s"}' "$source_url"
 		http_request -X POST "$BASE_URL/api/v2/gifs" \
-			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d "$payload"
+			-H "Content-Type: application/json" -b "$COOKIE_JAR" -d "$payload"
 		if [[ "$HTTP_CODE" == "400" ]] && printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 assert json.load(sys.stdin)["code"] == sys.argv[1]
@@ -170,7 +236,7 @@ PY
 				;;
 		esac
 		http_request -X POST "$BASE_URL/api/v2/stickers/packs" \
-			-H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+			-H "Content-Type: application/json" -b "$COOKIE_JAR" \
 			--data-binary "$payload"
 		pack_id=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("pack", {}).get("id", ""))' 2>/dev/null || true)
 		if [[ -n "$pack_id" ]]; then
@@ -286,6 +352,7 @@ run_media_tests() {
 		FAIL=$((FAIL + 1))
 	fi
 
+	run_gif_favorite_tests
 	run_gif_tests "$MEDIA_URL"
 	run_sticker_tests
 }

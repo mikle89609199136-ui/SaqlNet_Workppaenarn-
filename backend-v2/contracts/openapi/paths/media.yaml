@@ -93,8 +93,34 @@ x-secure: &secure [{ sessionCookie: [] }]
   get: { tags: [Media], summary: List favorite GIFs, operationId: listFavoriteGifs, security: *secure, responses: { '200': { description: Favorite GIFs } } }
 /gifs/{gifId}/favorite:
   parameters: [{ name: gifId, in: path, required: true, schema: { type: string, format: uuid } }]
-  post: { tags: [Media], summary: Favorite a GIF, operationId: favoriteGif, security: *secure, responses: { '201': { description: Favorited } } }
-  delete: { tags: [Media], summary: Unfavorite a GIF, operationId: unfavoriteGif, security: *secure, responses: { '200': { description: Unfavorited } } }
+  post:
+    tags: [Media]
+    summary: Favorite a GIF
+    description: >-
+      Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record.
+      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+    operationId: favoriteGif
+    security: *secure
+    responses:
+      '201': { description: Added to favorites }
+      '200': { description: Already in favorites }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
+  delete:
+    tags: [Media]
+    summary: Unfavorite a GIF
+    description: >-
+      Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites.
+      Returns 404 only when the GIF itself does not exist.
+      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+    operationId: unfavoriteGif
+    security: *secure
+    responses:
+      '200': { description: 'Removed from favorites, idempotent when the GIF is not in favorites' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
 /stickers/packs:
   get: { tags: [Media], summary: List sticker packs, operationId: listStickerPacks, security: *secure, responses: { '200': { description: Sticker packs } } }
   post:
