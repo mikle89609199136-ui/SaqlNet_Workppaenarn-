@@ -156,7 +156,6 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/
 )
 ```
 
-go vet ./...
 Проверки Rust crypto-сервиса:
 
 ```bash
