@@ -1,5 +1,7 @@
 import { API_ENDPOINTS, type ApiClient } from '@/shared/api';
 import type {
+  ICallHistoryParams,
+  ICallHistoryResponse,
   ICallRoomCreateRequest,
   ICallRoomResponse,
   IIceConfiguration,
@@ -32,6 +34,21 @@ export class CallService {
   /** Получение STUN/TURN конфигурации через GET /calls/ice-servers */
   async getIceServers(): Promise<IIceConfiguration> {
     const response = await this.apiClient.get<IIceConfiguration>(API_ENDPOINTS.CALL_ICE_SERVERS);
+    return response.data;
+  }
+
+  /** Получение истории звонков через GET /calls/history (#722) */
+  async getCallHistory(params: ICallHistoryParams = {}): Promise<ICallHistoryResponse> {
+    const queryParams: Record<string, string> = {};
+    if (params.cursor) queryParams.cursor = params.cursor;
+    if (params.limit != null) queryParams.limit = String(params.limit);
+    if (params.kind) queryParams.kind = params.kind;
+    if (params.status) queryParams.status = params.status;
+
+    const response = await this.apiClient.get<ICallHistoryResponse>(
+      API_ENDPOINTS.CALL_HISTORY,
+      queryParams
+    );
     return response.data;
   }
 }

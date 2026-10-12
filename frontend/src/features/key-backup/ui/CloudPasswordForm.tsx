@@ -1,10 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { services } from '@/services/serviceContainer';
 import { Button } from '@/shared/ui';
+import { BackupVersionConflictError } from '@/shared/crypto';
 import {
-  cloudPasswordFormSchema,
+  createCloudPasswordFormSchema,
   cloudPasswordScore,
   type TCloudPasswordForm,
 } from '../model/cloudPasswordSchema';
@@ -30,6 +32,8 @@ const SCORE_COLORS = [
  */
 export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
   const { t } = useTranslation();
+  /* Сообщения схемы — на языке интерфейса: сменился язык — новая схема. */
+  const schema = useMemo(() => createCloudPasswordFormSchema(t), [t]);
   const {
     register,
     handleSubmit,
@@ -37,7 +41,7 @@ export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<TCloudPasswordForm>({
-    resolver: zodResolver(cloudPasswordFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: { password: '', confirmation: '' },
     mode: 'onTouched',
   });
@@ -62,9 +66,17 @@ export function CloudPasswordForm({ submitLabel, onSubmit }: Props) {
     try {
       await onSubmit(values.password);
     } catch (error) {
+      /* Конфликт с другим устройством — своими словами на языке интерфейса:
+         текст этой ошибки задаёт слой шифрования, и он русский. */
       setError('password', {
         message:
-          (error as Error).message || t('keyBackup.password.failed', 'Не удалось сохранить пароль'),
+          error instanceof BackupVersionConflictError
+            ? t(
+                'keyBackup.password.conflict',
+                'Резервную копию только что изменило другое устройство. Попробуйте ещё раз.'
+              )
+            : (error as Error).message ||
+              t('keyBackup.password.failed', 'Не удалось сохранить пароль'),
       });
     }
   }

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { services } from '@/services';
 import type { TMediaMessageType } from '@/types';
+import { encodeChatPhoto } from '@/shared/lib';
 import { dropThreadMessage, patchThreadMessage, replaceThreadMessage } from './threadCacheActions';
 import {
   type IOutboxItem,
@@ -57,9 +58,18 @@ export async function sendOutboxItem(
         status: 'uploading',
       });
 
+      /* Фото — пересжать до шифрования: после него сервер видит только
+         шифровку и уменьшить ничего не может. Готовый файл — обратно в
+         очередь, чтобы повтор после сбоя не сжимал заново. */
+      let file = item.file;
+      if (item.optimizeImage && file instanceof File) {
+        file = await encodeChatPhoto(file);
+        updateOutboxItem(item.tempId, { file, optimizeImage: false });
+      }
+
       const message = await services.messageService.sendMediaMessage(
         item.chatId,
-        item.file,
+        file,
         item.type as TMediaMessageType,
         item.content,
         item.replyToId ?? null,

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { z } from 'zod';
 
 /**
@@ -38,7 +39,8 @@ const SPECIAL_CHARACTERS = '!@#$%^&*()_+-=[]{}|;:\'",.<>/?`~';
 
 export interface IPasswordRule {
   id: string;
-  label: string;
+  /** Подпись на языке интерфейса: строкой её не сохранить — язык меняется. */
+  label: (t: TFunction) => string;
   test: (value: string) => boolean;
 }
 
@@ -54,17 +56,25 @@ export interface IPasswordRule {
 export const PASSWORD_RULES: IPasswordRule[] = [
   {
     id: 'length',
-    label: `Не менее ${MIN_PASSWORD_LENGTH} символов`,
+    label: (t) =>
+      t('password.rule.length', {
+        min: MIN_PASSWORD_LENGTH,
+        defaultValue: 'Не менее {{min}} символов',
+      }),
     test: (value) => [...value].length >= MIN_PASSWORD_LENGTH,
   },
   {
     id: 'digit',
-    label: 'Цифра',
+    label: (t) => t('password.rule.digit', 'Цифра'),
     test: (value) => /\d/.test(value),
   },
   {
     id: 'special',
-    label: `Знак из ${SPECIAL_CHARACTERS.slice(0, 8)} и подобных`,
+    label: (t) =>
+      t('password.rule.special', {
+        chars: SPECIAL_CHARACTERS.slice(0, 8),
+        defaultValue: 'Знак из {{chars}} и подобных',
+      }),
     test: (value) => [...value].some((character) => SPECIAL_CHARACTERS.includes(character)),
   },
 ];
@@ -90,19 +100,31 @@ export function getPasswordScore(value: string): number {
  * Порядок проверок тот же, что у сервера (`ValidatePassword`): сначала
  * длина, потом пробелы, потом состав. Сообщение называет ближайшее
  * невыполненное требование, а не всё разом.
+ *
+ * Фабрика, а не готовая схема: сообщения — на языке интерфейса, а язык
+ * меняется на ходу. Форма пересобирает схему при смене `t`.
  */
-export const passwordSchema = z
-  .string()
-  .refine((value) => [...value].length >= MIN_PASSWORD_LENGTH, {
-    message: `Не менее ${MIN_PASSWORD_LENGTH} символов`,
-  })
-  .refine((value) => [...value].length <= MAX_PASSWORD_LENGTH, {
-    message: `Не более ${MAX_PASSWORD_LENGTH} символов`,
-  })
-  .refine((value) => !/\s/.test(value), {
-    message: 'Без пробелов',
-  })
-  .refine((value) => /\d/.test(value), { message: 'Нужна цифра' })
-  .refine((value) => [...value].some((character) => SPECIAL_CHARACTERS.includes(character)), {
-    message: 'Нужен знак: ! @ # $ % и подобные',
-  });
+export const createPasswordSchema = (t: TFunction) =>
+  z
+    .string()
+    .refine((value) => [...value].length >= MIN_PASSWORD_LENGTH, {
+      message: t('password.rule.length', {
+        min: MIN_PASSWORD_LENGTH,
+        defaultValue: 'Не менее {{min}} символов',
+      }),
+    })
+    .refine((value) => [...value].length <= MAX_PASSWORD_LENGTH, {
+      message: t('password.error.tooLong', {
+        max: MAX_PASSWORD_LENGTH,
+        defaultValue: 'Не более {{max}} символов',
+      }),
+    })
+    .refine((value) => !/\s/.test(value), {
+      message: t('password.error.spaces', 'Без пробелов'),
+    })
+    .refine((value) => /\d/.test(value), {
+      message: t('password.error.digit', 'Нужна цифра'),
+    })
+    .refine((value) => [...value].some((character) => SPECIAL_CHARACTERS.includes(character)), {
+      message: t('password.error.special', 'Нужен знак: ! @ # $ % и подобные'),
+    });

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -48,4 +49,25 @@ func TestDisableWriteDeadlineReturnsUnexpectedError(t *testing.T) {
 	if err := DisableWriteDeadline(w); !errors.Is(err, want) {
 		t.Fatalf("expected %v, got %v", want, err)
 	}
+}
+
+// «Перевести» в меню сообщения ходит из браузера в translate.googleapis.com.
+// Пропади домен из connect-src — браузер снова молча заблокирует запрос.
+func TestMiddlewareAllowsTranslatorInConnectSrc(t *testing.T) {
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	csp := response.Header().Get("Content-Security-Policy")
+	for _, directive := range strings.Split(csp, ";") {
+		directive = strings.TrimSpace(directive)
+		if strings.HasPrefix(directive, "connect-src ") {
+			if !strings.Contains(directive, "https://translate.googleapis.com") {
+				t.Fatalf("connect-src does not allow the translator: %q", directive)
+			}
+			return
+		}
+	}
+	t.Fatalf("no connect-src in CSP: %q", csp)
 }

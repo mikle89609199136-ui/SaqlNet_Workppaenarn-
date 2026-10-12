@@ -1,5 +1,20 @@
-import { describe, expect, it } from 'vitest';
-import { profileFormSchema } from './profileSchema';
+import i18n from 'i18next';
+import { beforeAll, describe, expect, it } from 'vitest';
+import ruTranslations from '../../../../public/locales/ru/translation.json';
+import { createProfileFormSchema } from './profileSchema';
+
+// Схема с настоящим русским словарём: проверяются и правила, и тексты.
+let profileFormSchema: ReturnType<typeof createProfileFormSchema>;
+beforeAll(async () => {
+  const instance = i18n.createInstance();
+  await instance.init({
+    lng: 'ru',
+    keySeparator: false,
+    interpolation: { escapeValue: false },
+    resources: { ru: { translation: ruTranslations } },
+  });
+  profileFormSchema = createProfileFormSchema(instance.t);
+});
 
 describe('profileFormSchema', () => {
   const validData = {

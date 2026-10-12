@@ -1,10 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import i18n, { type TFunction } from 'i18next';
+import { beforeAll, describe, expect, it } from 'vitest';
+import enTranslations from '../../../../public/locales/en/translation.json';
+import ruTranslations from '../../../../public/locales/ru/translation.json';
 import {
   isAccountSubsection,
   isPrivacySubsection,
   isSettingsSection,
 } from '@/shared/config/routes';
-import { SETTINGS_INDEX, searchSettings } from '../model/settingsIndex';
+import { SETTINGS_INDEX, searchSettings as searchIn } from '../model/settingsIndex';
+
+// Настоящие словари: пункты находятся и подписываются на языке интерфейса.
+let ru: TFunction;
+let en: TFunction;
+beforeAll(async () => {
+  const instance = i18n.createInstance();
+  await instance.init({
+    lng: 'ru',
+    keySeparator: false,
+    interpolation: { escapeValue: false },
+    resources: { ru: { translation: ruTranslations }, en: { translation: enTranslations } },
+  });
+  ru = instance.getFixedT('ru');
+  en = instance.getFixedT('en');
+});
+
+const searchSettings = (query: string) => searchIn(query, ru);
 
 /**
  * Поиск по настройкам.
@@ -13,6 +33,18 @@ import { SETTINGS_INDEX, searchSettings } from '../model/settingsIndex';
  * ведёт, а не как выглядит список.
  */
 describe('поиск по настройкам', () => {
+  it('в английском интерфейсе находит по-английски и подписывает по-английски', () => {
+    const found = searchIn('password', en);
+    expect(found.map((entry) => entry.title)).toContain('Password');
+    expect(found.find((entry) => entry.title === 'Password')).toMatchObject({
+      section: 'Account',
+      path: '/settings/account/password',
+    });
+    expect(searchIn('devices', en).map((entry) => entry.title)).toContain('Active sessions');
+    // Набранное по-русски тоже находится — но показывается на языке интерфейса.
+    expect(searchIn('пароль', en).map((entry) => entry.title)).toContain('Password');
+  });
+
   it('находит то, что лежит на подстранице и в меню не видно', () => {
     const found = searchSettings('пароль');
 

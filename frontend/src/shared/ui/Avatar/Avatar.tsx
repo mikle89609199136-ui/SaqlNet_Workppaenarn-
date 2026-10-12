@@ -156,7 +156,14 @@ export const Avatar = ({
         )}
       >
         {src ? (
-          <img alt="" src={src} className="size-full object-cover" />
+          // Лениво: в длинном списке чатов качаются только видимые аватарки.
+          <img
+            alt=""
+            className="size-full object-cover"
+            decoding="async"
+            loading="lazy"
+            src={src}
+          />
         ) : resolvedShape === 'grid' && id ? (
           <GridMark bytes={bytes} box={grid} />
         ) : (

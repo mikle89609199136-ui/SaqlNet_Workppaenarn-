@@ -18,6 +18,20 @@ RequestTooLarge:
         code: request_too_large
         message: request body exceeds 64 KiB limit
         requestId: 20260926T120000.000000000
+StickerTooLarge:
+  description: Request body exceeds the JSON body limit (request_too_large) or the decoded image exceeds MAX_FILE_SIZE (file_too_large)
+  content:
+    application/json:
+      schema:
+        allOf:
+          - { $ref: './schemas.yaml#/Error' }
+          - type: object
+            properties:
+              code: { type: string, enum: [request_too_large, file_too_large] }
+      example:
+        code: file_too_large
+        message: file exceeds 100 MB limit
+        requestId: 20260928T120000.000000000
 FileTooLarge:
   description: Media payload exceeds the configured upload limit
   content:

@@ -98,4 +98,7 @@ export const defaultHandlers = [
   ),
 
   http.get(api('/chats/:chatId/members'), () => HttpResponse.json({ members: [] })),
+  http.get(api('/calls/history'), () =>
+    HttpResponse.json({ calls: [], nextCursor: null, hasMore: false })
+  ),
 ];

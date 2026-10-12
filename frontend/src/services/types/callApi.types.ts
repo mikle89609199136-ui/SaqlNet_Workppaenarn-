@@ -44,3 +44,34 @@ export interface IIceConfiguration {
   meteredConfigured?: boolean;
   meteredTest?: unknown;
 }
+
+export type TCallDirection = 'incoming' | 'outgoing';
+export type TCallStatus = 'answered' | 'missed' | 'rejected' | 'cancelled';
+
+export interface ICallHistoryItemDto {
+  id: string;
+  roomId: string;
+  chatId?: string;
+  peerId: string;
+  peerName?: string;
+  peerAvatar?: string | null;
+  direction: TCallDirection;
+  kind: TCallKind;
+  status: TCallStatus;
+  startedAt: string;
+  endedAt?: string | null;
+  durationSeconds: number;
+}
+
+export interface ICallHistoryParams {
+  cursor?: string;
+  limit?: number;
+  kind?: TCallKind;
+  status?: TCallStatus;
+}
+
+export interface ICallHistoryResponse {
+  calls: ICallHistoryItemDto[];
+  nextCursor?: string | null;
+  hasMore: boolean;
+}
