@@ -3,8 +3,6 @@ package media
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -53,7 +51,7 @@ func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (
 		mimeType = strings.TrimSuffix(mimeType, ";base64")
 	}
 
-	data, err := base64.StdEncoding.DecodeString(b64Data)
+	data, err := decodeBase64Payload(b64Data, h.service.maxUploadBytes)
 	if err != nil {
 		return uploadedStickerObject{}, err
 	}
@@ -105,12 +103,17 @@ func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
+	r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Icon        string `json:"icon"` // base64
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", requestLimitMessage(h.jsonBodyLimit()))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
@@ -126,6 +129,10 @@ func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 	if req.Icon != "" {
 		icon, err = h.uploadBase64(r.Context(), user.ID, req.Icon)
 		if err != nil {
+			if errors.Is(err, ErrTooBig) {
+				httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 			return
 		}
@@ -201,10 +208,15 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	}
 	packID := parts[4]
 
+	r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 	var req struct {
 		Image string `json:"image"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", requestLimitMessage(h.jsonBodyLimit()))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
@@ -223,6 +235,10 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 
 	image, err := h.uploadBase64(r.Context(), user.ID, req.Image)
 	if err != nil {
+		if errors.Is(err, ErrTooBig) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 		return
 	}
