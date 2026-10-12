@@ -122,14 +122,12 @@ assert json.load(sys.stdin)["code"] == sys.argv[1]
 }
 
 run_sticker_tests() {
-	local body_file body_cleanup
+	local body_file
 	local -a scenarios=(valid trailing)
 	if [[ -n "${MAX_FILE_SIZE:-}" ]]; then
 		scenarios+=(oversized)
 		body_file=$(mktemp)
-		trap 'rm -f "$body_file"; trap - RETURN EXIT' RETURN
-		printf -v body_cleanup 'rm -f -- %q' "$body_file"
-		trap "$body_cleanup" EXIT
+		trap 'rm -f -- "$body_file"; trap - RETURN' RETURN
 		# Match the media service's explicitly supplied MAX_FILE_SIZE.
 		if ! python3 - "$body_file" "$MAX_FILE_SIZE" <<'PY'
 import sys

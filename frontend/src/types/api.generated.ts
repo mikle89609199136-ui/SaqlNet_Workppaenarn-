@@ -1881,7 +1881,7 @@ export interface paths {
         put: operations["editMessage"];
         /**
          * Send messages to a chat
-         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit.
+         * @description Always a batch, even for one message (#808). Messages are stored in one transaction in the given order: either all of them or none. A forward is an item with forwardedFrom whose content the client has already re-encrypted for this chat. An error about a particular item carries its position in details.index. 403 member_muted when the sender is muted; 403 blocked_by_user when the other member of a private chat has blocked the sender — nothing is stored or delivered. One new_message event per message, in order, after the commit. Sticker and GIF mediaUrl must be a relative /api/v2/media/{uuid} path to an available catalog item; external URLs and encrypted catalog objects are rejected. Stickers cannot have content or entities. Other attachments must remain the sender's own uploads (#871). Catalog metadata uses the message type as mediaType.
          */
         post: operations["sendMessages"];
         /**
@@ -2152,7 +2152,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Download media */
+        /**
+         * Download media
+         * @description Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
+         */
         get: operations["getMedia"];
         put?: never;
         post?: never;
@@ -2248,7 +2251,10 @@ export interface paths {
         /** List sticker packs */
         get: operations["listStickerPacks"];
         put?: never;
-        /** Create a sticker pack */
+        /**
+         * Create a sticker pack
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
+         */
         post: operations["createStickerPack"];
         delete?: never;
         options?: never;
@@ -2268,7 +2274,10 @@ export interface paths {
         /** List stickers in a pack */
         get: operations["listStickers"];
         put?: never;
-        /** Add a sticker */
+        /**
+         * Add a sticker
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
+         */
         post: operations["addSticker"];
         /** Delete a sticker pack */
         delete: operations["deleteStickerPack"];
@@ -3305,6 +3314,25 @@ export interface components {
                 "application/json": components["schemas"]["Error"] & {
                     /** @enum {string} */
                     code?: "request_too_large";
+                };
+            };
+        };
+        /** @description Request body exceeds the JSON body limit (request_too_large) or the decoded image exceeds MAX_FILE_SIZE (file_too_large) */
+        StickerTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "file_too_large",
+                 *       "message": "file exceeds 100 MB limit",
+                 *       "requestId": "20260928T120000.000000000"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"] & {
+                    /** @enum {string} */
+                    code?: "request_too_large" | "file_too_large";
                 };
             };
         };
@@ -7305,6 +7333,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            413: components["responses"]["StickerTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     listStickers: {
@@ -7352,6 +7383,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["StickerTooLarge"];
+            500: components["responses"]["Error"];
         };
     };
     deleteStickerPack: {
