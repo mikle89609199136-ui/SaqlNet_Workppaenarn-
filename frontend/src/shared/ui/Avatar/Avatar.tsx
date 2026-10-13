@@ -95,8 +95,15 @@ export const Avatar = ({
   const tone = tones[bytes[0] % tones.length];
   const letter = (name || '?').trim().charAt(0).toUpperCase() || '?';
 
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const showImage = Boolean(src && failedSrc !== src);
+  const [prevSrc, setPrevSrc] = useState(src);
+  const [hasError, setHasError] = useState(false);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setHasError(false);
+  }
+
+  const showImage = Boolean(src && !hasError);
 
   return (
     <span className={cn('relative inline-flex shrink-0', className)}>
@@ -117,7 +124,7 @@ export const Avatar = ({
             className="size-full object-cover"
             decoding="async"
             loading="lazy"
-            onError={() => setFailedSrc(src ?? null)}
+            onError={() => setHasError(true)}
             src={src ?? undefined}
           />
         ) : resolvedShape === 'grid' && id ? (

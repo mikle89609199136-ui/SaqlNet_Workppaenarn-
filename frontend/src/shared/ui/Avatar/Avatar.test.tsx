@@ -117,4 +117,20 @@ describe('аватарка', () => {
     expect(container.querySelector('svg')).toBeInTheDocument();
     expect(circle(container).className).toMatch(/bg-av-\d/);
   });
+
+  it('смена src на null, а затем повторно на тот же url пробует загрузить изображение заново (#1005)', () => {
+    const { container, rerender } = render(
+      <Avatar id="u-anna" name="Анна" src="/retry-avatar.png" />
+    );
+
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+
+    rerender(<Avatar id="u-anna" name="Анна" src={null} />);
+    expect(circle(container)).toHaveTextContent('А');
+
+    rerender(<Avatar id="u-anna" name="Анна" src="/retry-avatar.png" />);
+    expect(container.querySelector('img')).toBeInTheDocument();
+  });
 });
