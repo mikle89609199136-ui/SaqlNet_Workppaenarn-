@@ -99,4 +99,6 @@ export type TIconTypes =
   | 'ban'
   | 'laptop'
   | 'smartphone'
-  | 'more';
+  | 'more'
+  | 'heart'
+  | 'sticker';

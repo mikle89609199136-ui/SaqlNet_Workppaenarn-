@@ -82,6 +82,32 @@ export async function sendOutboxItem(
          отдаёт, до какого сообщения прочитал собеседник. */
       replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
       removeOutboxItem(item.tempId);
+    } else if (item.type === 'sticker') {
+      patchThreadMessage(queryClient, item.chatId, item.tempId, {
+        status: 'pending',
+      });
+
+      const message = await services.messageService.sendSticker(
+        item.chatId,
+        item.mediaUrl ?? item.content,
+        item.replyToId ?? null
+      );
+
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
+      removeOutboxItem(item.tempId);
+    } else if (item.type === 'gif') {
+      patchThreadMessage(queryClient, item.chatId, item.tempId, {
+        status: 'pending',
+      });
+
+      const message = await services.messageService.sendGif(
+        item.chatId,
+        item.mediaUrl ?? item.content,
+        item.replyToId ?? null
+      );
+
+      replaceThreadMessage(queryClient, item.chatId, item.tempId, { ...message, status: 'sent' });
+      removeOutboxItem(item.tempId);
     } else {
       patchThreadMessage(queryClient, item.chatId, item.tempId, {
         status: 'pending',

@@ -41,6 +41,11 @@ export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
 
+/** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973, #1003). */
+export function isCatalogMediaUrl(url: string): boolean {
+  return isOwnMediaUrl(url);
+}
+
 export class MessageService {
   private apiClient: ApiClient;
   private cryptoService: CryptoService;
@@ -299,6 +304,52 @@ export class MessageService {
     return message as IMediaItem;
   }
 
+  async sendSticker(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    return this.sendCatalogMedia(chatId, mediaUrl, 'sticker', replyTo);
+  }
+
+  async sendGif(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    return this.sendCatalogMedia(chatId, mediaUrl, 'gif', replyTo);
+  }
+
+  async sendCatalogMedia(
+    chatId: string,
+    mediaUrl: string,
+    type: 'sticker' | 'gif',
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    const prepared: IPreparedSend = {
+      item: {
+        content: '',
+        type,
+        replyTo,
+        mediaUrl,
+        mediaType: type,
+        mediaEncrypted: false,
+      },
+      toDisplay: (sent) =>
+        ({
+          ...sent,
+          content: '',
+          type,
+          mediaUrl,
+          mediaType: type,
+          mediaEncrypted: false,
+          mediaUnavailable: false,
+        }) as IMessageDto,
+    };
+    const [message] = await this.sendPrepared(chatId, [prepared]);
+    return message;
+  }
+
   async processMessageForDisplay(
     chatId: string,
     item: IMessageDto,
@@ -443,11 +494,33 @@ export class MessageService {
   async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
+    const mediaUrl =
+      (metadata && 'mediaUrl' in metadata ? metadata.mediaUrl : null) ||
+      ((item as unknown as { mediaUrl?: string }).mediaUrl ?? null);
+
+    if (!mediaUrl) return {};
+
+    // Стикеры и GIF не шифруются сквозным шифрованием файлов и берутся из каталога приложения (#593, #871, #973)
+    if (item.type === 'sticker' || item.type === 'gif') {
+      if (!isCatalogMediaUrl(mediaUrl)) {
+        return {
+          mediaUrl: null,
+          mediaEncrypted: false,
+          mediaUnavailable: true,
+          mediaUnavailableReason: 'foreign',
+        };
+      }
+      return {
+        mediaUrl,
+        mediaOriginalUrl: mediaUrl,
+        mediaEncrypted: false,
+        mediaUnavailable: false,
+      };
+    }
+
     if (!metadata || !('mediaUrl' in metadata)) {
       return {};
     }
-    const mediaUrl = metadata.mediaUrl;
-    if (!mediaUrl) return {};
 
     /* Скачиваем только загрузки сервиса медиа (#871). Любой другой адрес —
        чужой сервер или другой маршрут API — не трогаем: запрос ушёл бы
@@ -507,7 +580,7 @@ export class MessageService {
   }
 
   mediaMetadataFromPayload(payload: IEncryptedMedia): Omit<IEncryptedMedia, 'ciphertext'> {
-    const { ciphertext, ...metadata } = payload;
+    const { ciphertext: _ciphertext, ...metadata } = payload;
     return metadata;
   }
 
