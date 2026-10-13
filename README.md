@@ -14,7 +14,7 @@ database rows and uploaded files.
 
 - Frontend: React/Vite SPA in `frontend`, with its own dependency manifest
 - Backend: Go edge/auth/user/chat/media/admin services, PostgreSQL schemas,
-  OpenAPI, Protobuf, NATS, Redis, and S3-compatible object storage.
+  OpenAPI, Protobuf, NATS, Redis, and S3-compatible object storage
 - Crypto: Rust service with Argon2id password hashing, signed access tokens,
   AES-256-GCM envelope encryption, and MLS artifact validation.
 - Infrastructure: Docker Compose and Kubernetes manifests.
