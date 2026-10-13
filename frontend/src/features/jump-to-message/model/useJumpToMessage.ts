@@ -116,26 +116,30 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
           while (attempts < maxAttempts) {
             attempts++;
 
-            // Ждем реактивного коммита через эффект списка либо фоллбэк по таймеру
-            const waitForUpdate = new Promise<boolean>((resolve) => {
-              const timer = setTimeout(() => {
-                pendingResolveRef.current = null;
-                resolve(optionsRef.current?.onScrollToMessage?.(messageId) ?? false);
-              }, 30);
-
-              pendingResolveRef.current = (found) => {
-                clearTimeout(timer);
-                resolve(found);
-              };
-            });
-
             try {
               await optionsRef.current?.loadOlder?.({ isJump: true });
             } catch {
               break;
             }
 
-            const found = await waitForUpdate;
+            // Проверяем сразу после разрешения сетевого запроса
+            let found = optionsRef.current?.onScrollToMessage?.(messageId) ?? false;
+
+            // Если реактивный коммит ленты ещё в процессе, ждём эффект списка или следующий тик
+            if (!found) {
+              found = await new Promise<boolean>((resolve) => {
+                const timer = setTimeout(() => {
+                  pendingResolveRef.current = null;
+                  resolve(optionsRef.current?.onScrollToMessage?.(messageId) ?? false);
+                }, 40);
+
+                pendingResolveRef.current = (res) => {
+                  clearTimeout(timer);
+                  resolve(res);
+                };
+              });
+            }
+
             if (found) {
               applyHighlight(messageId);
               return true;

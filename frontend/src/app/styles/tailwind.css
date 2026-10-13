@@ -126,10 +126,15 @@
 @keyframes msg-flash {
   0%, 65% {
     filter: brightness(1.25);
-    box-shadow: 0 0 0 2px var(--color-brand), 0 0 16px var(--color-brand-soft);
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    box-shadow: 0 0 16px var(--color-brand-soft);
   }
   100% {
     filter: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
