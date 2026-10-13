@@ -124,9 +124,17 @@
 /* Переход к сообщению (ответ, закреплённое): акцентная рамка со свечением
    и затухающая заливка поверхности пузыря после перехода. */
 @keyframes msg-flash {
-  0%, 60% {
+  0%, 25% {
     box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 20px var(--color-brand-soft);
     filter: brightness(1.15);
+  }
+  65% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2.5px var(--color-brand), 0 0 10px var(--color-brand-soft);
+    filter: brightness(1.05);
+  }
+  90% {
+    box-shadow: 0 0 0 1px var(--color-chat-bg), 0 0 0 1px transparent, 0 0 4px transparent;
+    filter: brightness(1.01);
   }
   100% {
     box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent, 0 0 0 0 transparent;
@@ -135,8 +143,14 @@
 }
 
 @keyframes msg-overlay-fade {
-  0%, 60% {
+  0%, 25% {
     opacity: 1;
+  }
+  60% {
+    opacity: 0.45;
+  }
+  85% {
+    opacity: 0.12;
   }
   100% {
     opacity: 0;
