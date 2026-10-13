@@ -378,6 +378,12 @@ export const MessageBubble = memo(
               isHighlighted && 'animate-[msg-flash_1800ms_ease-out] motion-reduce:animate-none'
             )}
           >
+            {isHighlighted && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-10 rounded-[inherit] bg-brand/20 animate-[msg-overlay-fade_1800ms_ease-out] motion-reduce:animate-none"
+              />
+            )}
             {showAuthor && (
               <div className="mb-0.5 flex items-center gap-1.5">
                 {onOpenProfile ? (

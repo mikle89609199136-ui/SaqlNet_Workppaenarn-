@@ -121,20 +121,25 @@
 @keyframes spoiler-twinkle { from { opacity: 0.65; } to { opacity: 1; } }
 @keyframes spoiler-reveal { from { filter: blur(5px); opacity: 0.3; } to { filter: blur(0); opacity: 1; } }
 
-/* Переход к сообщению (ответ, закреплённое): пузырь вспыхивает ярче и
-   плавно гаснет после перехода. */
+/* Переход к сообщению (ответ, закреплённое): акцентная рамка со свечением
+   и затухающая заливка поверхности пузыря после перехода. */
 @keyframes msg-flash {
-  0%, 65% {
-    filter: brightness(1.25);
-    outline: 2px solid var(--color-brand);
-    outline-offset: 2px;
-    box-shadow: 0 0 16px var(--color-brand-soft);
+  0%, 60% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 20px var(--color-brand-soft);
+    filter: brightness(1.15);
   }
   100% {
+    box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent, 0 0 0 0 transparent;
     filter: none;
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes msg-overlay-fade {
+  0%, 60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }
 
