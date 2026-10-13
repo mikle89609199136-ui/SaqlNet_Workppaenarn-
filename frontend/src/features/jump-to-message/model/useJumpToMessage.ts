@@ -90,8 +90,6 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
       // 3. Если сообщение выше в истории — догрузить до него (по позиции с сервера)
       const initialOpts = optionsRef.current;
       if (initialOpts?.loadOlder && initialOpts?.hasMoreOlder) {
-        showToast('info', t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...'));
-
         pendingJumpTargetRef.current = messageId;
         let attempts = 0;
         // Позиция — сколько сообщений новее: столько страниц и нужно
