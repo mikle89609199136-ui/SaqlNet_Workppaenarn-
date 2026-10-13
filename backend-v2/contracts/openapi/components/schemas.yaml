@@ -584,6 +584,42 @@ ReactionToggleResponse:
       type: array
       description: Always an array; empty reactions are [], never null.
       items: { $ref: '#/Reaction' }
+ReactionAuthor:
+  type: object
+  required: [id, username, firstName, lastName]
+  properties:
+    id: { type: string, format: uuid }
+    username: { type: string }
+    firstName: { type: string }
+    lastName: { type: string }
+    avatarUrl:
+      type: string
+      description: >-
+        Empty when the author's photoVisibility rule (with the block list and
+        exceptions) hides the photo from the caller. The caller always sees
+        their own.
+ReactionAuthorsPage:
+  type: object
+  required: [emoji, total, users]
+  properties:
+    emoji: { type: string, description: Echo of the requested emoji. }
+    total:
+      type: integer
+      minimum: 0
+      description: >-
+        Number of reactions with this emoji on the message. Matches
+        Reaction.count in the aggregate from GET /messages/{messageId}/reactions
+        and does not depend on the page. Privacy does not remove an author
+        from the list, only hides the avatar.
+    users:
+      type: array
+      description: Newest reactions first; stable order (created_at DESC, user_id DESC).
+      items: { $ref: '#/ReactionAuthor' }
+    nextCursor:
+      type: string
+      description: >-
+        Opaque cursor for the next page; absent when this is the last page.
+        Pass it back as the cursor query parameter.
 FavoriteStateResponse:
   type: object
   required: [favorited]
