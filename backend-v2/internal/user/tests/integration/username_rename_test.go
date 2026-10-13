@@ -1,19 +1,20 @@
+//go:build integration
+
 package integration
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"craneapp/backend-v2/internal/auth"
+	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	"craneapp/backend-v2/internal/user"
+
 	"github.com/lib/pq"
 )
 
@@ -23,37 +24,37 @@ func (authCryptoStub) HashPassword(context.Context, string) (string, error) { re
 func (authCryptoStub) VerifyPassword(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (authCryptoStub) IssueToken(context.Context, string, string, int64) (string, error) {
-	return "token", nil
+func (authCryptoStub) IssueToken(context.Context, string, string, int64) (cryptoclient.IssuedToken, error) {
+	return cryptoclient.IssuedToken{Token: "token", ExpiresAt: time.Unix(2_000_000_000, 0).UTC()}, nil
 }
 
-// TestConcurrentUsernameClaim uses PostgreSQL itself rather than a programmed
-// sqlmock result. Run it with TEST_DATABASE_URL pointing at a migrated test DB.
+// TestConcurrentUsernameClaim exercises the registry and the rename path under
+// real PostgreSQL concurrency, against the shared TestDB container managed by
+// TestMain. The clean-state contract of withCleanDB lets us use fixed names:
+// every table is truncated after the test, so a fresh run starts empty.
+//
+// If the DB is run without TEST_DATABASE_URL, the shared container is what
+// supplies it, so no skip is needed here.
 func TestConcurrentUsernameClaim(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not configured")
-	}
-	db, err := sql.Open("postgres", databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(4)
-
+	db := withCleanDB(t)
 	ctx := context.Background()
+
+	// Truncation in withCleanDB wipes the registry between tests; the schema
+	// itself is created once by TestMain's migrations.
 	var registryExists bool
-	if err := db.QueryRowContext(ctx, `SELECT to_regclass('auth.username_registry') IS NOT NULL`).Scan(&registryExists); err != nil {
+	if err := db.QueryRowContext(ctx,
+		`SELECT to_regclass('auth.username_registry') IS NOT NULL`,
+	).Scan(&registryExists); err != nil {
 		t.Fatal(err)
 	}
 	if !registryExists {
 		t.Fatal("migration 0025_username_changes.sql is not applied")
 	}
 
-	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
-	oldNames := []string{"race_a_" + suffix, "race_b_" + suffix}
-	target := "race_t_" + suffix
-	userIDs := make([]string, 0, 2)
+	oldNames := []string{"race_a", "race_b"}
+	target := "race_target"
+
+	userIDs := make([]string, 0, len(oldNames))
 	for _, username := range oldNames {
 		var userID string
 		err := db.QueryRowContext(ctx, `
@@ -67,33 +68,33 @@ func TestConcurrentUsernameClaim(t *testing.T) {
 			RETURNING id::text
 		`, username).Scan(&userID)
 		if err != nil {
-			t.Fatalf("seed user: %v", err)
+			t.Fatalf("seed user %q: %v", username, err)
 		}
 		userIDs = append(userIDs, userID)
 	}
-	t.Cleanup(func() {
-		for _, userID := range userIDs {
-			_, _ = db.Exec(`DELETE FROM auth.users WHERE id = $1`, userID)
-		}
-	})
 
 	service := user.NewService(db)
-	listener := pq.NewListener(databaseURL, time.Second, 5*time.Second, nil)
-	defer listener.Close()
+
+	// LISTEN/NOTIFY needs its own connection; it comes from the shared DSN.
+	// pq.NewListener manages reconnects, so it is closed via defer, not via
+	// the *sql.DB pool.
+	listener := pq.NewListener(TestDSN, time.Second, 5*time.Second, nil)
+	defer func() { _ = listener.Close() }()
 	if err := listener.Listen(profileevent.Channel); err != nil {
 		t.Fatalf("listen for profile event: %v", err)
 	}
+
 	start := make(chan struct{})
-	results := make(chan error, 2)
+	results := make(chan error, len(userIDs))
 	var wg sync.WaitGroup
-	for _, userID := range userIDs {
+	for _, id := range userIDs {
 		wg.Add(1)
-		go func() {
+		go func(userID string) {
 			defer wg.Done()
 			<-start
 			_, renameErr := service.RenameUsername(ctx, userID, target)
 			results <- renameErr
-		}()
+		}(id)
 	}
 	close(start)
 	wg.Wait()
@@ -131,7 +132,9 @@ func TestConcurrentUsernameClaim(t *testing.T) {
 	}
 
 	var claims int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM auth.username_registry WHERE username = $1`, target).Scan(&claims); err != nil {
+	if err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM auth.username_registry WHERE username = $1`, target,
+	).Scan(&claims); err != nil {
 		t.Fatal(err)
 	}
 	if claims != 1 {
@@ -139,13 +142,16 @@ func TestConcurrentUsernameClaim(t *testing.T) {
 	}
 
 	var winnerID string
-	if err := db.QueryRowContext(ctx, `SELECT id::text FROM auth.users WHERE username = $1`, target).Scan(&winnerID); err != nil {
+	if err := db.QueryRowContext(ctx,
+		`SELECT id::text FROM auth.users WHERE username = $1`, target,
+	).Scan(&winnerID); err != nil {
 		t.Fatal(err)
 	}
 	winnerOldName := oldNames[0]
 	if winnerID == userIDs[1] {
 		winnerOldName = oldNames[1]
 	}
+
 	available, err := service.IsUsernameAvailable(ctx, winnerOldName)
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +159,7 @@ func TestConcurrentUsernameClaim(t *testing.T) {
 	if available {
 		t.Fatalf("previous username %q must remain reserved", winnerOldName)
 	}
+
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO auth.users (username, password_hash, first_name)
 		VALUES ($1, 'test', 'Bypass')
@@ -167,10 +174,7 @@ func TestConcurrentUsernameClaim(t *testing.T) {
 		t.Fatalf("expected previous username registration to fail with ErrUsernameTaken, got %v", err)
 	}
 
-	freshUsername := "race_n_" + suffix
-	freshUser, _, err := authService.Register(ctx, freshUsername, "Password1!", "Fresh", "", "")
-	if err != nil {
+	if _, _, err := authService.Register(ctx, "race_fresh", "Password1!", "Fresh", "", ""); err != nil {
 		t.Fatalf("register fresh username through registry: %v", err)
 	}
-	userIDs = append(userIDs, freshUser.ID)
 }

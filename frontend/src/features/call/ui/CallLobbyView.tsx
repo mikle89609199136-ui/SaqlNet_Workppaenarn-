@@ -176,20 +176,10 @@ export function CallLobbyView({
 
         {/* Кнопки действий */}
         <div className="w-full flex items-center justify-end gap-3 mt-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onCancel}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
             {t('call.lobby.cancel', 'Отмена')}
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={onJoin}
-          >
+          <Button type="button" variant="primary" size="sm" onClick={onJoin}>
             {t('call.lobby.join', 'Присоединиться')}
           </Button>
         </div>

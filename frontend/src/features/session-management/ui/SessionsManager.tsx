@@ -13,10 +13,12 @@ import {
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { disconnectRealtimeSocket } from '@/shared/api';
-import type { ISessionDto } from '@/types';
+import type { components } from '@/types/api.generated';
+
+type AuthSession = components['schemas']['AuthSession'];
 
 export function SessionsManager() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessions = useQuery(sessionsQuery());
@@ -54,15 +56,29 @@ export function SessionsManager() {
     }
   }
 
-  const sessionList = (sessions.data ?? []) as ISessionDto[];
+  const sessionList = sessions.data ?? [];
 
-  const [current, ...others] = sessionList;
-  const sessionItem = (session: ISessionDto) => (
+  const current = sessionList.find((session) => session.isCurrent);
+  const others = sessionList.filter((session) => !session.isCurrent);
+  /* Тип с сервера — слово-код (desktop, mobile, tablet): показывать его
+     как есть значило бы писать по-английски и в русском интерфейсе. */
+  const deviceTypeLabel = (type: string | undefined) => {
+    if (type === 'desktop') return t('settings.sessions.type.desktop', 'компьютер');
+    if (type === 'mobile') return t('settings.sessions.type.mobile', 'телефон');
+    if (type === 'tablet') return t('settings.sessions.type.tablet', 'планшет');
+    return type || t('settings.sessions.type.unknown', 'неизвестно');
+  };
+  const formatDate = (value: string | number | undefined) =>
+    value
+      ? new Date(value).toLocaleString(i18n.language)
+      : t('settings.sessions.noData', 'нет данных');
+
+  const sessionItem = (session: AuthSession) => (
     <ListStaticItem
-      hint={`${session.deviceType || 'неизвестно'} · ${formatDate(session.lastActive)}`}
+      hint={`${deviceTypeLabel(session.deviceType)} · ${formatDate(session.lastActive)}`}
       icon={session.deviceType === 'mobile' ? 'smartphone' : 'laptop'}
       key={session.id}
-      label={session.deviceName || 'Устройство'}
+      label={session.deviceName || t('settings.sessions.device', 'Устройство')}
     />
   );
 
@@ -75,23 +91,37 @@ export function SessionsManager() {
 
       {sessions.isError && (
         <Banner tone="danger">
-          Не удалось получить список устройств. Это не значит, что их нет, — попробуйте обновить
-          страницу.
+          {t(
+            'settings.sessions.loadFailed',
+            'Не удалось получить список устройств. Это не значит, что их нет, — попробуйте обновить страницу.'
+          )}
         </Banner>
       )}
 
       {logoutError && (
         <Banner tone="danger">
-          Не удалось завершить сеансы. Другие устройства всё ещё могут иметь доступ к аккаунту;
-          повторите попытку позже.
+          {t(
+            'settings.sessions.terminateFailed',
+            'Не удалось завершить сеансы. Другие устройства всё ещё могут иметь доступ к аккаунту; повторите попытку позже.'
+          )}
         </Banner>
       )}
 
       {!sessions.isPending && !sessions.isError && sessionList.length === 0 && (
         <Banner icon="shield" tone="warn">
-          Учёт устройств на сервере пока не ведётся, поэтому список всегда пуст. Это не значит, что
-          входов с других устройств не было. Завершить все сеансы кнопкой ниже при этом можно — она
-          отзывает выданные ранее ключи входа.
+          {t(
+            'settings.sessions.noneFound',
+            'Активные сеансы не найдены. Это возможно для входа, выполненного до обновления учёта устройств; при необходимости завершите все сеансы кнопкой ниже.'
+          )}
+        </Banner>
+      )}
+
+      {!sessions.isPending && !sessions.isError && sessionList.length > 0 && !current && (
+        <Banner icon="shield" tone="warn">
+          {t(
+            'settings.sessions.currentMissing',
+            'Текущее устройство было авторизовано до обновления учёта сеансов и пока не отображается в списке.'
+          )}
         </Banner>
       )}
 
@@ -100,11 +130,13 @@ export function SessionsManager() {
           <ListStaticItem label={t('loading', 'Загрузка...')} />
         </ListGroup>
       ) : (
-        current && (
+        sessionList.length > 0 && (
           <>
-            <ListGroup title={t('settings.sessions.current', 'Это устройство')}>
-              {sessionItem(current)}
-            </ListGroup>
+            {current && (
+              <ListGroup title={t('settings.sessions.current', 'Это устройство')}>
+                {sessionItem(current)}
+              </ListGroup>
+            )}
             {others.length > 0 && (
               <ListGroup title={t('settings.sessions.others', 'Другие сеансы')}>
                 {others.map(sessionItem)}
@@ -129,22 +161,19 @@ export function SessionsManager() {
       </ListGroup>
 
       <ConfirmDialog
-        confirmLabel="Завершить сеансы"
+        confirmLabel={t('settings.sessions.terminateConfirm', 'Завершить сеансы')}
         confirming={leaving}
         danger
         onCancel={() => setAsked(false)}
         onConfirm={handleLogoutAll}
         open={asked}
-        title="Завершить все сеансы?"
+        title={t('settings.sessions.terminateTitle', 'Завершить все сеансы?')}
       >
-        Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Переписка
-        сохранена в резервной копии: после входа откройте её облачным паролем.
+        {t(
+          'settings.sessions.terminateText',
+          'Выход произойдёт на всех устройствах, а ключи шифрования с этого будут удалены. Переписка сохранена в резервной копии: после входа откройте её облачным паролем.'
+        )}
       </ConfirmDialog>
     </>
   );
-}
-
-function formatDate(value: string | number | undefined) {
-  if (!value) return 'нет данных';
-  return new Date(value).toLocaleString();
 }

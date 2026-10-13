@@ -1,2 +1,2 @@
 export { ChangePasswordForm } from './ui/ChangePasswordForm';
-export { passwordFormSchema, type TPasswordForm } from './model/passwordSchema';
+export { createPasswordFormSchema, type TPasswordForm } from './model/passwordSchema';

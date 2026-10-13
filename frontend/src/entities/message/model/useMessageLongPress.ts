@@ -1,6 +1,7 @@
 import type { IActionMenu } from '@/entities/chat';
 import type { IMessageDto } from '@/types';
 import { useCallback, useEffect, useRef } from 'react';
+import { menuPointNear } from './messageMenu';
 
 export const useMessageLongPress = (
   messageId: string,
@@ -52,13 +53,20 @@ export const useMessageLongPress = (
   const handleContextMenu = useCallback(
     (event) => {
       event.preventDefault();
+      const fromKeyboard =
+        event.button !== 2 &&
+        event.currentTarget === event.currentTarget.ownerDocument.activeElement;
+      if (fromKeyboard) {
+        setActionMenu({ messageId, ...menuPointNear(event.currentTarget) });
+        return;
+      }
       if (actionMenu) {
         setActionMenu(null);
         return;
       }
       openMessageActions(event.clientX, event.clientY);
     },
-    [openMessageActions, actionMenu, setActionMenu]
+    [openMessageActions, actionMenu, setActionMenu, messageId]
   );
 
   const handlePointerDown = useCallback(

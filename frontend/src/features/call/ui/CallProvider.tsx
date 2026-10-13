@@ -3,6 +3,7 @@ import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/shared/api';
 import { useCallStore } from '../model/callStore';
 import { subscribeCallBroadcast } from '../model/callBroadcast';
+import { markCallSessionLeft } from '../model/callSessionStorage';
 import type {
   ICallCancelledEvent,
   ICallIncomingEvent,
@@ -21,6 +22,13 @@ export function CallProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     useCallStore.getState().restoreActiveSession();
+  }, []);
+
+  /* Момент ухода со страницы: после перезагрузки вернуться в звонок можно,
+     пока собеседник ждёт (#775). */
+  useEffect(() => {
+    window.addEventListener('pagehide', markCallSessionLeft);
+    return () => window.removeEventListener('pagehide', markCallSessionLeft);
   }, []);
 
   useEffect(() => {

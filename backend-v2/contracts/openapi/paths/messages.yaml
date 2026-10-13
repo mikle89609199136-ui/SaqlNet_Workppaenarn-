@@ -1,4 +1,4 @@
-x-secure: &secure [{ sessionCookie: [] }, { bearerAuth: [] }]
+x-secure: &secure [{ sessionCookie: [] }]
 x-error: &error { $ref: '../components/responses.yaml#/Error' }
 
 /messages/read:
@@ -36,7 +36,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     security: *secure
     parameters:
       - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
     responses:
       '200':
         description: Matching messages
@@ -53,14 +53,15 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     operationId: listFavoriteMessages
     security: *secure
     parameters:
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
-      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
     responses:
       '200':
         description: Favorite messages
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
+      '400': *error
       '500': *error
 
 /messages/{id}:
@@ -76,8 +77,8 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     operationId: listMessages
     security: *secure
     parameters:
-      - { name: limit, in: query, schema: { type: integer, default: 50 } }
-      - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
     responses:
       '200':
         description: Chat messages
@@ -101,7 +102,11 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       position in details.index. 403 member_muted when the sender is muted;
       403 blocked_by_user when the other member of a private chat has blocked
       the sender — nothing is stored or delivered. One new_message event per
-      message, in order, after the commit.
+      message, in order, after the commit. Sticker and GIF mediaUrl must be a
+      relative /api/v2/media/{uuid} path to an available catalog item; external
+      URLs and encrypted catalog objects are rejected. Stickers cannot have
+      content or entities. Other attachments must remain the sender's own
+      uploads (#871). Catalog metadata uses the message type as mediaType.
     requestBody:
       required: true
       content:

@@ -11,8 +11,6 @@ export const API_ENDPOINTS = {
   AUTH_2FA_ENABLE: '/auth/2fa/enable',
   AUTH_2FA_DISABLE: '/auth/2fa/disable',
   AUTH_RESEND_CODE: '/auth/resend-code',
-  /** Обмен токена прежней версии на cookie сессии (#705), до уборки. */
-  AUTH_SESSION: '/auth/session',
   AUTH_PUBLIC_KEY: '/auth/public-key',
   AUTH_QR_TOKEN: '/auth/qr-token',
   AUTH_QR_TOKEN_BY_ID: (token: string) => `/auth/qr-token/${token}`,
@@ -26,6 +24,7 @@ export const API_ENDPOINTS = {
   AUTH_QR_OFFER_CONFIRM: (token: string) => `/auth/qr-offer/${token}/confirm`,
 
   USERS_ME: '/users/me',
+  USERS_ME_USERNAME: '/users/me/username',
   USERS_AVATAR: '/users/avatar',
   CHATS: '/chats',
   CHAT_PRIVATE: '/chats/private',
@@ -39,6 +38,7 @@ export const API_ENDPOINTS = {
   CHAT_LEAVE: (chatId: string) => `/chats/${chatId}/leave`,
   CHAT_TRANSFER_OWNERSHIP: (chatId: string) => `/chats/${chatId}/transfer-ownership`,
   CHAT_PIN: (chatId: string) => `/chats/${chatId}/pin`,
+  CHAT_NOTIFICATION_SETTINGS: (chatId: string) => `/chats/${chatId}/notification-settings`,
   CHAT_ARCHIVE: (chatId: string) => `/chats/${chatId}/archive`,
   CHAT_READ: (chatId: string) => `/chats/${chatId}/read`,
   /** Удаление выбранных сообщений у всех или у себя (#840). */
@@ -105,5 +105,11 @@ export const API_ENDPOINTS = {
   CALL_ROOMS: '/calls/rooms',
   CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
   CALL_ICE_SERVERS: '/calls/ice-servers',
+  CALL_HISTORY: '/calls/history',
   EMOJIS: '/emojis',
+  STICKER_PACKS: '/stickers/packs',
+  STICKER_PACK: (packId: string) => `/stickers/packs/${packId}`,
+  GIFS: '/gifs',
+  GIFS_FAVORITES: '/gifs/favorites',
+  GIF_FAVORITE: (gifId: string) => `/gifs/${gifId}/favorite`,
 };

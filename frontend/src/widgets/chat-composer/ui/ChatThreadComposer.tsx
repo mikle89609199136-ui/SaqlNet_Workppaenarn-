@@ -137,7 +137,7 @@ export const ChatThreadComposer = ({
     pendingAttachments,
     setPendingAttachments,
   });
-  const { handleSubmit, isSending } = useComposerSendMessage({
+  const { handleSubmit, isSending, sendSticker, sendGif } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
     draftRef,
@@ -283,7 +283,12 @@ export const ChatThreadComposer = ({
             ref={draftRef}
           />
 
-          <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+          <EmojiControl
+            disabled={encryption.status !== 'ready'}
+            draftRef={draftRef}
+            onPickGif={(gif) => sendGif(gif.url)}
+            onPickSticker={(sticker) => sendSticker(sticker.imageUrl)}
+          />
         </div>
 
         {/* Отправлять нечего — микрофон (#843); иначе «Отправить», залитая

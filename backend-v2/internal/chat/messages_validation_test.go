@@ -353,3 +353,44 @@ func TestEditMessageHTTPReturnsNotFoundWhenMessageCannotBeEdited(t *testing.T) {
 		})
 	}
 }
+
+func TestSendCatalogMessage(t *testing.T) {
+	for _, kind := range []string{"sticker", "gif"} {
+		t.Run(kind, func(t *testing.T) {
+			h, mock := messageValidationHandler(t)
+			url := mediaURLPrefix + messageValidationMessageID
+			metadata := []byte(`{"isEncrypted":false,"mediaType":"` + kind + `","mediaUrl":"` + url + `"}`)
+			mock.ExpectQuery(`SELECT EXISTS`).WithArgs(messageValidationMessageID).
+				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+			mock.ExpectQuery(`SELECT cm\.role`).WithArgs(messageValidationChatID, messageValidationUserID).
+				WillReturnRows(sqlmock.NewRows([]string{"role", "is_muted", "blocked_by_peer", "chat_type"}).AddRow("member", false, false, "private"))
+			mock.ExpectBegin()
+			mock.ExpectQuery(`WITH inserted AS`).WithArgs(messageValidationChatID, messageValidationUserID, "", kind, sql.NullString{}, metadata, 0, []byte("[]")).
+				WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}).
+					AddRow(messageValidationMessageID, messageValidationChatID, messageValidationUserID, "Alice", "", "", []byte("[]"), kind, nil, metadata, false, false, "2026-10-12T00:00:00Z", "2026-10-12T00:00:00Z", nil))
+			mock.ExpectCommit()
+			rr := httptest.NewRecorder()
+			req := messageValidationRequest(http.MethodPost, "/api/v2/messages/"+messageValidationChatID,
+				sendBody(`{"type":"`+kind+`","mediaUrl":"`+url+`","mediaType":"file","fileName":"untrusted","sizeBytes":999,"mediaEncryption":{"secret":"ignored"}}`), "chatId", messageValidationChatID)
+			h.SendMessage(rr, req)
+			require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+			require.Contains(t, rr.Body.String(), `"mediaType":"`+kind+`"`)
+			require.NotContains(t, rr.Body.String(), "ignored")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestSendCatalogMessageRejectsMissingItem(t *testing.T) {
+	for _, kind := range []string{"sticker", "gif"} {
+		t.Run(kind, func(t *testing.T) {
+			h, mock := messageValidationHandler(t)
+			mock.ExpectQuery(`SELECT EXISTS`).WithArgs(messageValidationMessageID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+			rr := httptest.NewRecorder()
+			h.SendMessage(rr, messageValidationRequest(http.MethodPost, "/api/v2/messages/"+messageValidationChatID, sendBody(`{"type":"`+kind+`","mediaUrl":"`+mediaURLPrefix+messageValidationMessageID+`"}`), "chatId", messageValidationChatID))
+			assertErrorResponse(t, rr, http.StatusBadRequest, "invalid_media_metadata")
+			require.Contains(t, rr.Body.String(), `"index":0`)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

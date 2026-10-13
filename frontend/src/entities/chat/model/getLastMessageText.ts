@@ -1,5 +1,6 @@
 import type { ILastMessageDto } from './types';
 import type { TFunction } from 'i18next';
+import { formatCallPreview } from '@/shared/lib';
 
 export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: TFunction) {
   if (!lastMessage) return t('noMessages', 'Нет сообщений');
@@ -11,11 +12,14 @@ export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: 
     return `🔒 ${t(`undecryptable.${lastMessage.undecryptable}`, lastMessage.content)}`;
   }
 
+  /* Звонок хранит в содержимом служебный JSON (длительность) — подпись
+     собирается здесь, на языке интерфейса. */
+  if (lastMessage.type === 'call') return formatCallPreview(lastMessage.content, t);
+
   if (lastMessage.content) return lastMessage.content;
 
   if (lastMessage.type === 'image') return t('lastMessage.image', 'Фотография');
   if (lastMessage.type === 'audio') return t('lastMessage.audio', 'Аудио');
-  if (lastMessage.type === 'call') return t('lastMessage.call', 'Звонок');
   if (lastMessage.type === 'file') return t('lastMessage.file', 'Файл');
   if (lastMessage.type === 'gif') return t('lastMessage.gif', 'Гиф');
   if (lastMessage.type === 'sticker') return t('lastMessage.sticker', 'Стикер');

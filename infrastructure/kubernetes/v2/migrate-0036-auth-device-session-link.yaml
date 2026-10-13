@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-0036-auth-device-session-link
+  namespace: craneapp-v2
+  labels:
+    app.kubernetes.io/name: schema-migrate
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: craneapp-v2
+    craneapp.ru/migration: 0036-auth-device-session-link
+spec:
+  backoffLimit: 4
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: schema-migrate
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: craneapp-v2
+        craneapp.ru/migration: 0036-auth-device-session-link
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          # Pin this image to the immutable tag or digest built for the release.
+          image: craneapp/migrate:v2
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: url
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 250m, memory: 128Mi }

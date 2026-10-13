@@ -39,3 +39,4 @@ export {
   ListStaticItem,
   ListSwitchItem,
 } from './List';
+export { MessageSnippet, type IMessageSnippetProps } from './MessageSnippet';

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import source from '../../../../pwa/sw.js?raw';
 
 /*
@@ -133,9 +133,16 @@ function loadWorker() {
     });
     Object.defineProperty(request, 'mode', { value: init.mode ?? 'cors' });
     let responded: Promise<Response> | null = null;
-    listeners.fetch({ request, respondWith: (p: Promise<Response>) => (responded = p) });
+    listeners.fetch({
+      request,
+      respondWith: (p: Promise<Response>) => (responded = p),
+      waitUntil: (p: Promise<unknown>) => background.push(p),
+    });
     return responded ? await responded : null;
   }
+  const background: Promise<unknown>[] = [];
+  /** Дождаться работы, которую worker продолжает после ответа. */
+  const settle = () => Promise.all(background.splice(0));
   async function lifecycle(type: 'install' | 'activate') {
     let waited: Promise<unknown> = Promise.resolve();
     listeners[type]({ waitUntil: (p: Promise<unknown>) => (waited = p) });
@@ -162,7 +169,7 @@ function loadWorker() {
   function message(data: unknown) {
     listeners.message({ data });
   }
-  return { dispatch, lifecycle, stores, fetchMock, self, push, click, displayed, message };
+  return { dispatch, settle, lifecycle, stores, fetchMock, self, push, click, displayed, message };
 }
 
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html' } });
@@ -265,6 +272,53 @@ describe('service worker (#880)', () => {
     worker.fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     const offline = await worker.dispatch('/chats/42', { mode: 'navigate' });
     expect(await offline!.text()).toBe('shell-v2');
+  });
+
+  describe('медленная сеть (#899)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function slowNetwork() {
+      let answer: (response: Response) => void = () => undefined;
+      worker.fetchMock.mockImplementationOnce(
+        () => new Promise<Response>((resolve) => (answer = resolve))
+      );
+      return (response: Response) => answer(response);
+    }
+
+    it('сеть не ответила за 800 мс — оболочка из кеша, пришедший позже ответ обновляет её', async () => {
+      worker.fetchMock.mockResolvedValueOnce(html('shell-v1'));
+      await worker.dispatch('/', { mode: 'navigate' });
+      vi.useFakeTimers();
+      const answer = slowNetwork();
+
+      const pending = worker.dispatch('/chats/7', { mode: 'navigate' });
+      await vi.advanceTimersByTimeAsync(799);
+      let opened: Response | null = null;
+      void pending.then((response) => (opened = response));
+      await Promise.resolve();
+      expect(opened).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await (await pending)!.text()).toBe('shell-v1');
+
+      answer(html('shell-v2'));
+      await worker.settle();
+      const cached = await worker.stores.get('craneapp-shell-test')!.match('/index.html');
+      expect(await cached!.text()).toBe('shell-v2');
+    });
+
+    it('оболочки в кеше нет — ждёт сеть, сколько нужно', async () => {
+      vi.useFakeTimers();
+      const answer = slowNetwork();
+
+      const pending = worker.dispatch('/', { mode: 'navigate' });
+      await vi.advanceTimersByTimeAsync(5000);
+      answer(html('first-visit'));
+
+      expect(await (await pending)!.text()).toBe('first-visit');
+    });
   });
 
   it('в оболочку не попадает не-HTML и ошибки сервера', async () => {

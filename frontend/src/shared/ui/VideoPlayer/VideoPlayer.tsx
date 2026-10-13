@@ -118,12 +118,16 @@ export const VideoPlayer = ({ src, sources }: VideoPlayerProps) => {
               {seekIndicator === 'forward' ? (
                 <>
                   <Icon name="fastForward" className="w-6 h-6 mb-0.5" />
-                  <span className="text-[10px] font-bold leading-none">+5с</span>
+                  <span className="text-[10px] font-bold leading-none">
+                    {t('video.seekForward', '+5с')}
+                  </span>
                 </>
               ) : (
                 <>
                   <Icon name="rewind" className="w-6 h-6 mb-0.5" />
-                  <span className="text-[10px] font-bold leading-none">-5с</span>
+                  <span className="text-[10px] font-bold leading-none">
+                    {t('video.seekBack', '-5с')}
+                  </span>
                 </>
               )}
             </div>

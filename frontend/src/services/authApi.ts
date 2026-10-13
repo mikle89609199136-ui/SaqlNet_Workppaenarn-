@@ -26,6 +26,7 @@ export async function uploadAvatar(avatar: File | string | null | undefined): Pr
     await services.userService.updateAvatar(avatar);
     return;
   }
+  // Файл уже пересжат при выборе (RegisterWizard, encodeAvatar).
   const { url } = await services.mediaService.upload(avatar);
   await services.userService.updateAvatar(url);
 }

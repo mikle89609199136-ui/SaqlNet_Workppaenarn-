@@ -32,9 +32,10 @@ func TestCallInviteOnRealSchema(t *testing.T) {
 		VALUES ($1, 'Мария', 'Иванова', '/api/v2/media/masha-avatar')`, masha)
 	require.NoError(t, err)
 
-	prevTTL := callInviteTTL
+	prevTTL, prevHold := callInviteTTL, callAcceptHold
 	callInviteTTL = 300 * time.Millisecond
-	t.Cleanup(func() { callInviteTTL = prevTTL })
+	callAcceptHold = time.Second
+	t.Cleanup(func() { callInviteTTL, callAcceptHold = prevTTL, prevHold })
 
 	ws := &WSServer{
 		db: db, clients: make(map[string]map[*Client]bool),
@@ -127,8 +128,17 @@ func TestCallInviteOnRealSchema(t *testing.T) {
 		invite(mashaConn, igor, roomID, nil)
 		require.Equal(t, []string{"call_incoming"}, types(drain(igorConn)))
 
-		require.Eventually(t, func() bool { return len(igorConn.Send) > 0 }, 3*time.Second, 20*time.Millisecond)
-		require.Equal(t, []string{"call_cancelled"}, types(drain(igorConn)))
+		require.Eventually(t, func() bool {
+			for len(igorConn.Send) > 0 {
+				var event map[string]any
+				require.NoError(t, json.Unmarshal(<-igorConn.Send, &event))
+				if event["type"] == "call_cancelled" {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 20*time.Millisecond)
+		require.Nil(t, ws.callRooms.GetRoom(roomID))
 		require.Nil(t, ws.callRooms.GetRoom(roomID))
 
 		again := connect(igor)
@@ -181,11 +191,124 @@ func TestCallInviteOnRealSchema(t *testing.T) {
 		require.Empty(t, drain(mashaConn))
 
 		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"to": stranger, "roomId": roomID, "accepted": true})
+		ws.handleCallJoin(igorConn, map[string]interface{}{"roomId": roomID})
 		got := drain(mashaConn)
 		require.Len(t, got, 1)
 		require.Equal(t, "call_invite_response", got[0]["type"])
 		require.Equal(t, igor, got[0]["from"])
 		require.Equal(t, true, got[0]["accepted"])
 		require.Empty(t, drain(strangerConn))
+
+		ws.handleCallLeave(igorConn, map[string]interface{}{"roomId": roomID})
+		drain(igorConn)
+	})
+
+	// #939: звонящий начинает согласование, как только узнал о «принял», а
+	// сигнал адресату вне комнаты сервер отбрасывает. «Принял» уходит
+	// звонящему, только когда принявший уже в комнате.
+	ringing := func(caller *Client) string {
+		roomID := room(masha, igor, "audio")
+		ws.handleCallJoin(caller, map[string]interface{}{"roomId": roomID})
+		invite(caller, igor, roomID, nil)
+		drain(caller)
+		drain(mashaConn)
+		require.Equal(t, []string{"call_incoming"}, types(drain(igorConn)))
+		return roomID
+	}
+	hangUp := func(roomID string, conns ...*Client) {
+		for _, c := range conns {
+			ws.handleCallLeave(c, map[string]interface{}{"roomId": roomID})
+		}
+		for _, c := range conns {
+			drain(c)
+		}
+	}
+
+	t.Run("предложение звонящего сразу по «принял» доходит, хотя вход принявшего запоздал", func(t *testing.T) {
+		roomID := ringing(mashaConn)
+		defer hangUp(roomID, igorConn, mashaConn)
+
+		// Звонящий: получил «принял» — сразу шлёт предложение.
+		offered := make(chan struct{})
+		go func() {
+			defer close(offered)
+			deadline := time.After(3 * time.Second)
+			for {
+				select {
+				case raw := <-mashaConn.Send:
+					var event map[string]any
+					if json.Unmarshal(raw, &event) == nil && event["type"] == "call_invite_response" {
+						ws.relayCallSignal(mashaConn, "call_offer", map[string]interface{}{
+							"to": igor, "roomId": roomID, "payload": map[string]any{"type": "offer", "sdp": "v=0"},
+						})
+						return
+					}
+				case <-deadline:
+					return
+				}
+			}
+		}()
+
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": roomID, "accepted": true})
+		time.Sleep(200 * time.Millisecond) // вход принявшего — после запроса к базе
+		ws.handleCallJoin(igorConn, map[string]interface{}{"roomId": roomID})
+		<-offered
+
+		require.Equal(t, []string{"call_joined", "call_offer"}, types(drain(igorConn)))
+	})
+
+	t.Run("принявший уже в комнате — «принял» звонящему сразу", func(t *testing.T) {
+		roomID := ringing(mashaConn)
+		defer hangUp(roomID, igorConn, mashaConn)
+		ws.handleCallJoin(igorConn, map[string]interface{}{"roomId": roomID})
+		drain(igorConn)
+		drain(mashaConn)
+
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": roomID, "accepted": true})
+		got := drain(mashaConn)
+		require.Len(t, got, 1)
+		require.Equal(t, "call_invite_response", got[0]["type"])
+		require.Equal(t, true, got[0]["accepted"])
+	})
+
+	t.Run("отказ — звонящему сразу", func(t *testing.T) {
+		roomID := ringing(mashaConn)
+		defer hangUp(roomID, mashaConn)
+
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": roomID, "accepted": false})
+		got := drain(mashaConn)
+		require.Len(t, got, 1)
+		require.Equal(t, "call_invite_response", got[0]["type"])
+		require.Equal(t, false, got[0]["accepted"])
+	})
+
+	t.Run("принявший так и не вошёл — «принял» звонящему по истечении ожидания", func(t *testing.T) {
+		roomID := ringing(mashaConn)
+		defer hangUp(roomID, mashaConn)
+
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": roomID, "accepted": true})
+		require.Empty(t, drain(mashaConn), "пока принявший не вошёл — ждём")
+
+		require.Eventually(t, func() bool { return len(mashaConn.Send) > 0 }, 3*time.Second, 20*time.Millisecond)
+		got := drain(mashaConn)
+		require.Len(t, got, 1)
+		require.Equal(t, "call_invite_response", got[0]["type"])
+		require.Equal(t, true, got[0]["accepted"])
+	})
+
+	t.Run("звонящий отключился или положил трубку до входа принявшего — «принял» не уходит", func(t *testing.T) {
+		callerTab := connect(masha)
+		gone := ringing(callerTab)
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": gone, "accepted": true})
+		ws.handleCallDisconnect(callerTab)
+
+		hungUp := ringing(mashaConn)
+		ws.handleCallInviteResponse(igorConn, map[string]interface{}{"roomId": hungUp, "accepted": true})
+		ws.handleCallLeave(mashaConn, map[string]interface{}{"roomId": hungUp})
+
+		time.Sleep(callAcceptHold + 300*time.Millisecond)
+		require.Empty(t, drain(callerTab))
+		require.Empty(t, drain(mashaConn))
+		drain(igorConn)
 	})
 }

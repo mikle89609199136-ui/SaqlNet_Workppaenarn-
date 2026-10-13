@@ -1,10 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Button, Input, showToast } from '@/shared/ui';
 import { PasswordRequirements } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
-import { passwordFormSchema, type TPasswordForm } from '../model/passwordSchema';
+import { createPasswordFormSchema, type TPasswordForm } from '../model/passwordSchema';
 
 interface Props {
   /** Куда вернуться после смены пароля. */
@@ -13,6 +14,8 @@ interface Props {
 
 export function ChangePasswordForm({ onBack }: Props) {
   const { t } = useTranslation();
+  /* Сообщения схемы — на языке интерфейса: сменился язык — новая схема. */
+  const schema = useMemo(() => createPasswordFormSchema(t), [t]);
   const {
     register,
     handleSubmit,
@@ -20,7 +23,7 @@ export function ChangePasswordForm({ onBack }: Props) {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<TPasswordForm>({
-    resolver: zodResolver(passwordFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: { currentPassword: '', newPassword: '', confirmation: '' },
     mode: 'onTouched',
   });
@@ -36,7 +39,11 @@ export function ChangePasswordForm({ onBack }: Props) {
       const code = (error as { data?: { code?: string } })?.data?.code;
 
       if (code === 'wrong_password') {
-        setError('currentPassword', { message: 'Неверный текущий пароль' }, { shouldFocus: true });
+        setError(
+          'currentPassword',
+          { message: t('validation.currentPasswordWrong', 'Неверный текущий пароль') },
+          { shouldFocus: true }
+        );
         return;
       }
 
