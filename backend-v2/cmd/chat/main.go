@@ -123,6 +123,7 @@ func main() {
 	mux.Handle("PUT /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.EditMessage)))
 	mux.Handle("DELETE /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.DeleteMessage)))
 	mux.Handle("GET /api/v2/messages/{messageId}/reactions", authenticated(http.HandlerFunc(handler.ListReactions)))
+	mux.Handle("GET /api/v2/messages/{messageId}/reactions/users", authenticated(http.HandlerFunc(handler.ListReactionAuthors)))
 
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
 

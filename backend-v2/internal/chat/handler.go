@@ -1021,6 +1021,77 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListReactionAuthors handles GET /api/v2/messages/{messageId}/reactions/users.
+// Returns a paginated list of authors of a single reaction, respecting privacy/block rules.
+func (h *Handler) ListReactionAuthors(w http.ResponseWriter, r *http.Request) {
+	const method = "ListReactionAuthors"
+
+	// Only GET is allowed for this endpoint.
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, r)
+		return
+	}
+
+	// The caller must be authenticated; MustUser panics otherwise.
+	current := authctx.MustUser(r)
+
+	// Extract and validate the message identifier from the URL path.
+	messageID := r.PathValue("messageId")
+	if validate.Var(messageID, "required,uuid") != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid messageId")
+		return
+	}
+
+	q := r.URL.Query()
+
+	// emoji is required: the authors request is always about a specific reaction.
+	// Reject duplicate parameter values as a contract error — same as parseArchived for archived.
+	emojiValues := q["emoji"]
+	if len(emojiValues) != 1 || emojiValues[0] == "" {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji required")
+		return
+	}
+	emoji := emojiValues[0]
+
+	// limit is optional; if provided, it must be a positive integer within the allowed maximum.
+	limit := 0
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > reactionAuthorsMaxLimit {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid limit")
+			return
+		}
+		limit = n
+	}
+
+	// Delegate the lookup to the service layer and map domain errors to HTTP codes.
+	page, err := h.service.ListReactionAuthors(
+		r.Context(), current.ID, messageID, emoji, q.Get("cursor"), limit,
+	)
+	switch {
+	case errors.Is(err, ErrInvalidInput):
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid input")
+	case errors.Is(err, ErrNotFound):
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "message not found")
+	case errors.Is(err, ErrForbidden):
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
+	case err != nil:
+		// Unexpected error: log with context and return an opaque 500 response.
+		slog.ErrorContext(r.Context(), "list reaction authors failed",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"message_id", messageID,
+			"emoji_len", len(emoji),
+			"err", err,
+		)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "reaction authors fetch failed")
+	default:
+		// Return the paginated result as-is.
+		httpx.JSON(w, http.StatusOK, page)
+	}
+}
+
 func parseMessagePath(path string) (string, string) {
 	rest := strings.TrimPrefix(path, "/api/v2/messages/")
 	if rest == path || rest == "" {

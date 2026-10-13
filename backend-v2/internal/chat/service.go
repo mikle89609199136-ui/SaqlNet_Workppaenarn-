@@ -5,6 +5,7 @@ import (
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/presence"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -3301,6 +3302,244 @@ func getAdvisoryKey(messageID, userID string) int64 {
 	// FNV-1a returns uint64, convert to int64
 	// PostgreSQL advisory locks work with signed 64-bit integers
 	return int64(h.Sum64())
+}
+
+// ReactionAuthor is the minimal public profile of a reaction author.
+// The avatar is hidden if the author restricted photo visibility
+// or blocked the viewer; name and username remain visible as part of the
+// chat-member profile.
+type ReactionAuthor struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
+}
+
+// ReactionAuthorsPage is a page of authors for a single reaction.
+// Total is the overall number of reactions with this emoji on the message;
+// it matches Reaction.Count in the aggregate and does not depend on the page.
+type ReactionAuthorsPage struct {
+	Emoji      string           `json:"emoji"`
+	Total      int              `json:"total"`
+	Users      []ReactionAuthor `json:"users"`
+	NextCursor string           `json:"nextCursor,omitempty"`
+}
+
+const (
+	reactionAuthorsDefaultLimit = 50
+	reactionAuthorsMaxLimit     = 100
+)
+
+// reactionAuthorsCursor is the opaque keyset-pagination cursor payload.
+// Field names are short to keep the encoded cursor compact.
+type reactionAuthorsCursor struct {
+	CreatedAt string `json:"ca"`
+	UserID    string `json:"uid"`
+}
+
+// encodeReactionAuthorsCursor serializes the (createdAt, userID) keyset
+// position into a URL-safe base64 string. Marshaling cannot fail for this
+// fixed-shape struct, so the error is intentionally ignored.
+func encodeReactionAuthorsCursor(createdAt, userID string) string {
+	raw, _ := json.Marshal(reactionAuthorsCursor{CreatedAt: createdAt, UserID: userID})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+// decodeReactionAuthorsCursor parses an opaque cursor back into its
+// (createdAt, userID) components. Any malformed input is reported as
+// ErrInvalidInput so callers can map it to a 400 response without
+// leaking decoding details.
+func decodeReactionAuthorsCursor(cursor string) (time.Time, string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return time.Time{}, "", ErrInvalidInput
+	}
+	var c reactionAuthorsCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return time.Time{}, "", ErrInvalidInput
+	}
+	t, err := time.Parse(time.RFC3339Nano, c.CreatedAt)
+	if err != nil {
+		return time.Time{}, "", ErrInvalidInput
+	}
+	if validate.Var(c.UserID, "required,uuid") != nil {
+		return time.Time{}, "", ErrInvalidInput
+	}
+	return t, c.UserID, nil
+}
+
+// ListReactionAuthors returns a page of authors for a single reaction on a message.
+//
+// Ordering is stable: (created_at DESC, user_id DESC). The cursor resumes
+// the scan exactly after the last item of the previous page. Total is the
+// overall counter of reactions with this emoji (== Reaction.Count from the
+// aggregate).
+//
+// Access: the message exists and is not deleted, and the viewer is a current
+// member of the chat. Otherwise ErrNotFound / ErrForbidden.
+//
+// Everything the page needs is fetched with two queries: access+total and
+// the page itself. There is no N+1.
+func (s *Service) ListReactionAuthors(
+	ctx context.Context,
+	viewerID, messageID, emoji, cursor string,
+	limit int,
+) (ReactionAuthorsPage, error) {
+	// Validate identifiers early so downstream queries only see well-formed input.
+	if validate.Var(messageID, "required,uuid") != nil {
+		return ReactionAuthorsPage{}, ErrInvalidInput
+	}
+	if validate.Var(viewerID, "required,uuid") != nil {
+		return ReactionAuthorsPage{}, ErrInvalidInput
+	}
+	// Same rules as in ToggleReaction: empty, too long, or markup-breaking
+	// characters → ErrInvalidInput.
+	if emoji == "" || len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
+		return ReactionAuthorsPage{}, ErrInvalidInput
+	}
+	// Clamp limit to the safe range; zero/negative means "use default".
+	if limit <= 0 {
+		limit = reactionAuthorsDefaultLimit
+	}
+	if limit > reactionAuthorsMaxLimit {
+		limit = reactionAuthorsMaxLimit
+	}
+
+	// Decode the keyset cursor, if any, into typed bounds for the query.
+	var (
+		cursorTime   *time.Time
+		cursorUserID *string
+	)
+	if cursor != "" {
+		t, uid, err := decodeReactionAuthorsCursor(cursor)
+		if err != nil {
+			return ReactionAuthorsPage{}, err
+		}
+		cursorTime = &t
+		cursorUserID = &uid
+	}
+
+	// Query #1: access check + total. The LEFT JOIN lets us distinguish
+	// "message not found" from "not a member" without revealing the chat type.
+	var (
+		chatID   string
+		isMember bool
+		total    int
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text,
+		       (cm.user_id IS NOT NULL) AS is_member,
+		       (SELECT COUNT(*) FROM messages.reactions r
+		        WHERE r.message_id = m.id AND r.emoji = $3) AS total
+		FROM messages.messages m
+		LEFT JOIN chats.members cm
+		  ON cm.chat_id = m.chat_id AND cm.user_id = $2
+		WHERE m.id = $1 AND m.deleted_at IS NULL
+	`, messageID, viewerID, emoji).Scan(&chatID, &isMember, &total)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReactionAuthorsPage{}, ErrNotFound
+	}
+	if err != nil {
+		return ReactionAuthorsPage{}, err
+	}
+	if !isMember {
+		return ReactionAuthorsPage{}, ErrForbidden
+	}
+	_ = chatID // only needed to verify access; not exposed to callers
+
+	// Query #2: the page itself. viewer_privacy / viewer_blocks_owner /
+	// viewer_exceptions are intentionally omitted — the "Photo" rule does not
+	// read them, see Decide: photo visibility is one-way and decided by the
+	// owner (applyPeerPrivacy in service.go).
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT r.user_id::text,
+		       au.username,
+		       COALESCE(up.first_name, au.first_name, ''),
+		       COALESCE(up.last_name, au.last_name, ''),
+		       COALESCE(up.avatar_url, ''),
+		       r.created_at,
+		       ps.privacy_settings,
+		       EXISTS(SELECT 1 FROM users.blocked_users b
+		              WHERE b.user_id = r.user_id AND b.blocked_user_id = $2) AS owner_blocks_viewer,
+		       (SELECT jsonb_object_agg(e.rule, e.allow)
+		        FROM users.privacy_exceptions e
+		        WHERE e.owner_id = r.user_id AND e.user_id = $2) AS owner_exceptions
+		FROM messages.reactions r
+		JOIN auth.users au ON au.id = r.user_id
+		LEFT JOIN users.profiles up ON up.user_id = r.user_id
+		LEFT JOIN users.settings ps ON ps.user_id = r.user_id
+		WHERE r.message_id = $1
+		  AND r.emoji = $3
+		  AND ($4::timestamptz IS NULL
+		       OR (r.created_at, r.user_id) < ($4, $5::uuid))
+		ORDER BY r.created_at DESC, r.user_id DESC
+		LIMIT $6
+	`, messageID, viewerID, emoji, cursorTime, cursorUserID, limit+1)
+	if err != nil {
+		return ReactionAuthorsPage{}, err
+	}
+	defer rows.Close()
+
+	users := make([]ReactionAuthor, 0, limit)
+	var (
+		lastCreatedAt time.Time
+		lastUserID    string
+		hasMore       bool
+	)
+
+	for rows.Next() {
+		if len(users) == limit {
+			// The page is already full; the existence of one more row is
+			// just a "has next" marker. We don't read or return it so the
+			// cursor does not drift past total.
+			hasMore = true
+			break
+		}
+
+		var author ReactionAuthor
+		var (
+			createdAt                     time.Time
+			ownerPrivacy, ownerExceptions []byte
+			ownerBlocksViewer             bool
+		)
+		if err := rows.Scan(
+			&author.ID, &author.Username, &author.FirstName, &author.LastName,
+			&author.AvatarURL, &createdAt,
+			&ownerPrivacy, &ownerBlocksViewer, &ownerExceptions,
+		); err != nil {
+			return ReactionAuthorsPage{}, err
+		}
+
+		// Photo visibility is one-way: only the owner (the reaction author)
+		// and their relation to the viewer matter here.
+		rel := privacy.Relation{
+			Self:       author.ID == viewerID,
+			Blocked:    ownerBlocksViewer,
+			Exceptions: privacy.ParseExceptions(ownerExceptions),
+		}
+		if !privacy.Decide(privacy.Parse(ownerPrivacy), rel, privacy.Photo) {
+			// Drop the avatar from the response instead of failing the request.
+			author.AvatarURL = ""
+		}
+
+		users = append(users, author)
+		lastCreatedAt = createdAt
+		lastUserID = author.ID
+	}
+	if err := rows.Err(); err != nil {
+		return ReactionAuthorsPage{}, err
+	}
+
+	// Emit a next-page cursor only when an extra row was observed.
+	page := ReactionAuthorsPage{Emoji: emoji, Total: total, Users: users}
+	if hasMore {
+		page.NextCursor = encodeReactionAuthorsCursor(
+			lastCreatedAt.UTC().Format(time.RFC3339Nano),
+			lastUserID,
+		)
+	}
+	return page, nil
 }
 
 // Message pin types.
