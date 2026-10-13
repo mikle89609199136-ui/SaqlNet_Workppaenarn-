@@ -124,15 +124,15 @@
 /* Переход к сообщению (ответ, закреплённое): быстрая выразительная вспышка
    с плавным затуханием рамки и заливки. */
 @keyframes msg-flash {
-  0%, 15% {
+  0%, 35% {
     box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 24px var(--color-brand);
     filter: brightness(1.18);
   }
-  50% {
-    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2px var(--color-brand), 0 0 10px var(--color-brand-soft);
+  65% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2.5px var(--color-brand), 0 0 10px var(--color-brand-soft);
     filter: brightness(1.05);
   }
-  80% {
+  85% {
     box-shadow: 0 0 0 1px var(--color-chat-bg), 0 0 0 1px transparent, 0 0 4px transparent;
     filter: brightness(1.01);
   }
@@ -143,14 +143,14 @@
 }
 
 @keyframes msg-overlay-fade {
-  0%, 15% {
+  0%, 35% {
     opacity: 1;
   }
-  50% {
-    opacity: 0.4;
+  65% {
+    opacity: 0.45;
   }
-  75% {
-    opacity: 0.1;
+  85% {
+    opacity: 0.12;
   }
   100% {
     opacity: 0;

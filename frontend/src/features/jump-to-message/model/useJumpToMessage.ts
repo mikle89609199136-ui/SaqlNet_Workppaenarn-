@@ -5,7 +5,7 @@ import { services } from '@/services/serviceContainer';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const HIGHLIGHT_DURATION_MS = 1200;
+const HIGHLIGHT_DURATION_MS = 1800;
 /** Сколько страниц догружать, если позицию сообщения узнать не удалось. */
 const MAX_LOAD_OLDER_ATTEMPTS = 5;
 /** Потолок даже по позиции: 400 страниц по 50 — двадцать тысяч сообщений. */

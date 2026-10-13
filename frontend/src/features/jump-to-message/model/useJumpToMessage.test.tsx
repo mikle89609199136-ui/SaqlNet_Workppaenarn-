@@ -39,9 +39,9 @@ describe('useJumpToMessage', () => {
     expect(onScrollToMessage).toHaveBeenCalledWith('target-msg-1');
     expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
 
-    // Подсветка исчезает через 1.2с
+    // Подсветка исчезает через 1.8с
     act(() => {
-      vi.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1800);
     });
     expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });

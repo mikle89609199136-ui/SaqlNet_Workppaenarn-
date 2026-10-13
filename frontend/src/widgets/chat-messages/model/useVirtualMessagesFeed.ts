@@ -395,21 +395,7 @@ export function useVirtualMessagesFeed({
       if (!messageId) return false;
       const targetIndex = feedItemsRef.current.findIndex((item) => item.id === messageId);
       if (targetIndex !== -1) {
-        const isFar =
-          !virtualizer.range ||
-          targetIndex < virtualizer.range.startIndex - 5 ||
-          targetIndex > virtualizer.range.endIndex + 5;
-
-        virtualizer.scrollToIndex(targetIndex, {
-          align: 'center',
-          behavior: isFar ? 'auto' : 'smooth',
-        });
-
-        if (isFar) {
-          requestAnimationFrame(() => {
-            virtualizer.scrollToIndex(targetIndex, { align: 'center', behavior: 'auto' });
-          });
-        }
+        virtualizer.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
         return true;
       }
       return false;

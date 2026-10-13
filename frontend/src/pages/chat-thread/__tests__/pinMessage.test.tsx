@@ -151,6 +151,6 @@ describe('закрепление сообщения', () => {
 
     const targetBubble = messageBubble('сообщение 1');
     const bubbleInner = targetBubble.querySelector('.message-bubble');
-    expect(bubbleInner?.className).toContain('animate-[msg-flash_1200ms_ease-out]');
+    expect(bubbleInner?.className).toContain('animate-[msg-flash_1800ms_ease-out]');
   });
 });
