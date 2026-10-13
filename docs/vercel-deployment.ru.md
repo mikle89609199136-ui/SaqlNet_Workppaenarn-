@@ -85,3 +85,9 @@ docker run --rm -e DATABASE_URL --entrypoint /usr/local/bin/migrate craneapp-ver
 - https://vercel.com/docs/services
 - https://vercel.com/docs/functions/runtimes/container
 - https://vercel.com/docs/functions/websockets
+
+Локальная проверка конфигурации: схема vercel.json прошла проверку, frontend
+и backend-образ собраны, `go test ./...` прошёл. На отдельной локальной базе
+проверены миграции, readiness всех backend-сервисов, регистрация, вход и
+WebSocket handshake через edge с production-cookie. Реальный деплой на Vercel,
+звонки и обмен сообщениями между инстансами этим не проверены.
