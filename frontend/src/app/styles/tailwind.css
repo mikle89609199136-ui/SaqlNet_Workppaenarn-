@@ -121,18 +121,18 @@
 @keyframes spoiler-twinkle { from { opacity: 0.65; } to { opacity: 1; } }
 @keyframes spoiler-reveal { from { filter: blur(5px); opacity: 0.3; } to { filter: blur(0); opacity: 1; } }
 
-/* Переход к сообщению (ответ, закреплённое): акцентная рамка со свечением
-   и затухающая заливка поверхности пузыря после перехода. */
+/* Переход к сообщению (ответ, закреплённое): быстрая выразительная вспышка
+   с плавным затуханием рамки и заливки. */
 @keyframes msg-flash {
-  0%, 25% {
-    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 20px var(--color-brand-soft);
-    filter: brightness(1.15);
+  0%, 15% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 24px var(--color-brand);
+    filter: brightness(1.18);
   }
-  65% {
-    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2.5px var(--color-brand), 0 0 10px var(--color-brand-soft);
+  50% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2px var(--color-brand), 0 0 10px var(--color-brand-soft);
     filter: brightness(1.05);
   }
-  90% {
+  80% {
     box-shadow: 0 0 0 1px var(--color-chat-bg), 0 0 0 1px transparent, 0 0 4px transparent;
     filter: brightness(1.01);
   }
@@ -143,14 +143,14 @@
 }
 
 @keyframes msg-overlay-fade {
-  0%, 25% {
+  0%, 15% {
     opacity: 1;
   }
-  60% {
-    opacity: 0.45;
+  50% {
+    opacity: 0.4;
   }
-  85% {
-    opacity: 0.12;
+  75% {
+    opacity: 0.1;
   }
   100% {
     opacity: 0;

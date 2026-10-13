@@ -39,9 +39,9 @@ describe('useJumpToMessage', () => {
     expect(onScrollToMessage).toHaveBeenCalledWith('target-msg-1');
     expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
 
-    // Подсветка исчезает через 2.4с
+    // Подсветка исчезает через 1.2с
     act(() => {
-      vi.advanceTimersByTime(2400);
+      vi.advanceTimersByTime(1200);
     });
     expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });
@@ -133,7 +133,7 @@ describe('useJumpToMessage', () => {
       let success = false;
       await act(async () => {
         const promise = result.current.jumpToMessage('old-msg');
-        await vi.advanceTimersByTimeAsync(2000);
+        await vi.advanceTimersByTimeAsync(600);
         success = await promise;
       });
       return success;
