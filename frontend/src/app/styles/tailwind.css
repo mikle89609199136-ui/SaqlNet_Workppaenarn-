@@ -123,7 +123,16 @@
 
 /* Переход к сообщению (ответ, закреплённое): пузырь вспыхивает ярче и
    гаснет за 1.2 секунды. */
-@keyframes msg-flash { 0%, 30% { filter: brightness(1.35); } 100% { filter: none; } }
+@keyframes msg-flash {
+  0%, 60% {
+    filter: brightness(1.2);
+    box-shadow: 0 0 0 2px var(--color-brand), 0 0 12px var(--color-brand-soft);
+  }
+  100% {
+    filter: none;
+    box-shadow: none;
+  }
+}
 
 /* Своя реакция: отметка «хлопает» — сжимается и пружинит обратно. */
 @keyframes rx-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }

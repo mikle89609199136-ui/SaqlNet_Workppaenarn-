@@ -53,7 +53,7 @@ describe('PinnedMessagesNavigator', () => {
     expect(screen.getByText(/Алексей/)).toBeInTheDocument();
   });
 
-  it('should set highlighted message id in chatUi store on click', () => {
+  it('should set jumpRequest in chatUi store on click', () => {
     const pin = makePin({
       message: makeMessage({ id: 'target-msg-123', content: 'Целевое' }),
     });
@@ -65,7 +65,10 @@ describe('PinnedMessagesNavigator', () => {
     const navButton = screen.getByRole('button', { name: 'Закреплённые сообщения' });
     fireEvent.click(navButton);
 
-    expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-123');
+    expect(useChatUiStore.getState().jumpRequest).toEqual({
+      chatId: pin.chatId,
+      messageId: 'target-msg-123',
+    });
   });
 
   it('should render localized snippet for video message without text', () => {

@@ -36,7 +36,7 @@ describe('usePinnedNavigator', () => {
     expect(result.current.windowStart).toBe(6);
   });
 
-  it('should cycle through messages and trigger highlight on handleClick', () => {
+  it('should cycle through messages and emit jumpRequest on handleClick', () => {
     const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
     const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
 
@@ -46,7 +46,10 @@ describe('usePinnedNavigator', () => {
       result.current.handleClick();
     });
 
-    expect(useChatUiStore.getState().highlightedMessageId).toBe('msg-2');
+    expect(useChatUiStore.getState().jumpRequest).toEqual({
+      chatId: pin2.message.chatId,
+      messageId: 'msg-2',
+    });
     expect(result.current.safeIndex).toBe(0);
     expect(result.current.currentMessage?.id).toBe('msg-1');
 
@@ -54,6 +57,10 @@ describe('usePinnedNavigator', () => {
       result.current.handleClick();
     });
 
+    expect(useChatUiStore.getState().jumpRequest).toEqual({
+      chatId: pin1.message.chatId,
+      messageId: 'msg-1',
+    });
     expect(result.current.safeIndex).toBe(1);
   });
 });
