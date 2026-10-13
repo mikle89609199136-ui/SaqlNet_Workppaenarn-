@@ -122,15 +122,14 @@
 @keyframes spoiler-reveal { from { filter: blur(5px); opacity: 0.3; } to { filter: blur(0); opacity: 1; } }
 
 /* Переход к сообщению (ответ, закреплённое): пузырь вспыхивает ярче и
-   гаснет за 1.2 секунды. */
+   плавно гаснет после перехода. */
 @keyframes msg-flash {
-  0%, 60% {
-    filter: brightness(1.2);
-    box-shadow: 0 0 0 2px var(--color-brand), 0 0 12px var(--color-brand-soft);
+  0%, 65% {
+    filter: brightness(1.25);
+    box-shadow: 0 0 0 2px var(--color-brand), 0 0 16px var(--color-brand-soft);
   }
   100% {
     filter: none;
-    box-shadow: none;
   }
 }
 

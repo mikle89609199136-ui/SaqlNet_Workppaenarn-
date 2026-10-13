@@ -375,7 +375,7 @@ export const MessageBubble = memo(
               isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
               isSelected && 'is-selected',
               /* Переход к сообщению — вспышкой, как в макете. */
-              isHighlighted && 'animate-[msg-flash_1200ms_ease-out] motion-reduce:animate-none'
+              isHighlighted && 'animate-[msg-flash_1800ms_ease-out] motion-reduce:animate-none'
             )}
           >
             {showAuthor && (

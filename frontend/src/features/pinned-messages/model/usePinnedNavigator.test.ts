@@ -63,4 +63,36 @@ describe('usePinnedNavigator', () => {
     });
     expect(result.current.safeIndex).toBe(1);
   });
+
+  it('should stably emit jumpRequest on repeated clicks with a single pinned message', () => {
+    const pin = makePin({ message: makeMessage({ id: 'msg-single' }) });
+
+    const { result } = renderHook(() => usePinnedNavigator([pin]));
+
+    expect(result.current.safeIndex).toBe(0);
+    expect(result.current.currentMessage?.id).toBe('msg-single');
+
+    act(() => {
+      result.current.handleClick();
+    });
+
+    expect(useChatUiStore.getState().jumpRequest).toEqual({
+      chatId: pin.chatId,
+      messageId: 'msg-single',
+    });
+    expect(result.current.safeIndex).toBe(0);
+
+    // Сброс запроса лентой при его получении (MessagesList.tsx:147)
+    useChatUiStore.getState().setJumpRequest(null);
+
+    act(() => {
+      result.current.handleClick();
+    });
+
+    expect(useChatUiStore.getState().jumpRequest).toEqual({
+      chatId: pin.chatId,
+      messageId: 'msg-single',
+    });
+    expect(result.current.safeIndex).toBe(0);
+  });
 });
