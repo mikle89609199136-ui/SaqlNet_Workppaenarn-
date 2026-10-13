@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
 import type { IPrivacyDto, ISettingsDto, ISettingsPayloadDto } from '@/types';
 import { userKeys } from '../model/userKeys';
-import { useProfileStore } from '../model/profileStore';
 
 /**
  * Сохранение настроек и приватности.
@@ -68,35 +67,16 @@ export function useUpdateSettings() {
         mergeSettings(current, patch)
       );
 
-      useProfileStore.getState().setSettings({
-        ...useProfileStore.getState().settings,
-        ...patch,
-      });
-
       return { previous };
     },
 
     onError: (_error, _patch, context) => {
       queryClient.setQueryData(userKeys.settings(), context?.previous);
-      if (context?.previous?.settings) {
-        useProfileStore.getState().setSettings({
-          ...useProfileStore.getState().settings,
-          ...context.previous.settings,
-        });
-      }
     },
 
     // Ответ сервера — окончательное состояние: у него могли быть свои
     // умолчания и правки, которых клиент не предполагал.
-    onSettled: (data) => {
-      if (data?.settings) {
-        useProfileStore.getState().setSettings({
-          ...useProfileStore.getState().settings,
-          ...data.settings,
-        });
-      }
-      return queryClient.invalidateQueries({ queryKey: userKeys.settings() });
-    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: userKeys.settings() }),
   });
 }
 

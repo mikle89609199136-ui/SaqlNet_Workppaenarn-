@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { PushSettingItem } from '@/features/push-notifications';
 import { formatVolume, setVoiceVolume, useVoiceVolume } from '@/shared/lib';
 import { ListGroup, ListStaticItem, ListSwitchItem, Slider } from '@/shared/ui';
+import { selectCallSounds } from '@/entities/user';
 import { useSettingsData } from './useSettingsData';
 
 /** «Уведомления и звуки» — два переключателя, как в макете (#828). */
@@ -30,7 +31,7 @@ export function NotificationsSection() {
         onChange={(checked) => saveSettings({ sounds: checked })}
       />
       <ListSwitchItem
-        checked={settings.callSounds ?? true}
+        checked={selectCallSounds(settings)}
         hint={t(
           'settings.notifications.callSoundsHint',
           'Рингтон при входящем аудио- или видеозвонке'

@@ -488,7 +488,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.endReason).toBe('busy');
   });
 
-  it('не запускает рингтон, если звуки выключены в настройках профиля', async () => {
+  it('запускает рингтон, если выключены только звуки сообщений sounds: false (#1002)', async () => {
     useProfileStore.setState({
       settings: {
         sounds: false,
@@ -502,7 +502,7 @@ describe('useCallStore', () => {
     });
 
     expect(useCallStore.getState().fsm.state).toBe('incoming');
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(startRingtone).toHaveBeenCalledTimes(1);
   });
 
   it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
