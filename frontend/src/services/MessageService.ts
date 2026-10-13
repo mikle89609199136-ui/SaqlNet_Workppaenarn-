@@ -41,45 +41,9 @@ export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
 
-const STICKER_API_PATH =
-  /^\/api\/v2\/stickers\/(?:packs\/)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const STICKER_STORAGE_PATH =
-  /^(?:\/[^/]+)?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/stickers\/\d+$/i;
-const TRUSTED_STORAGE_HOSTS = /^(?:localhost|127\.0\.0\.1|minio)(?::\d+)?$/i;
-
-/** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973). */
+/** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973, #1003). */
 export function isCatalogMediaUrl(url: string): boolean {
-  if (!url || typeof url !== 'string' || url.includes('..')) return false;
-  if (isOwnMediaUrl(url)) return true;
-  if (STICKER_API_PATH.test(url)) return true;
-
-  try {
-    const base =
-      typeof window !== 'undefined' && window.location?.origin
-        ? window.location.origin
-        : 'http://localhost';
-    const parsed = new URL(url, base);
-    const path = parsed.pathname;
-
-    if (path.includes('..')) return false;
-
-    const isSameOrigin =
-      typeof window !== 'undefined' && window.location?.origin
-        ? parsed.origin === window.location.origin
-        : parsed.origin === 'http://localhost';
-
-    const isTrustedHost = isSameOrigin || TRUSTED_STORAGE_HOSTS.test(parsed.host);
-
-    if (isTrustedHost) {
-      if (isOwnMediaUrl(path)) return true;
-      if (STICKER_API_PATH.test(path)) return true;
-      if (STICKER_STORAGE_PATH.test(path)) return true;
-    }
-  } catch {
-    return false;
-  }
-
-  return false;
+  return isOwnMediaUrl(url);
 }
 
 export class MessageService {

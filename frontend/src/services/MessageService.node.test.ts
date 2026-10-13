@@ -7,7 +7,7 @@ import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
-import { MessageService } from './MessageService';
+import { isCatalogMediaUrl, isOwnMediaUrl, MessageService } from './MessageService';
 import { setChatResolver } from '@/entities/chat/model/chatResolver';
 import type { ILastMessageDto } from '@/entities/chat/model/types';
 import type { IMessageEntity } from '@/shared/lib/richText';
@@ -471,10 +471,34 @@ describe('MessageService: пересылка голосового (#843)', () =>
   });
 });
 
-describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
-  const validStickerUrl =
-    'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678';
+describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
+  const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
   const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
+  it('isCatalogMediaUrl и isOwnMediaUrl пропускают только относительные пути /api/v2/media/{uuid}', () => {
+    expect(isCatalogMediaUrl(validStickerUrl)).toBe(true);
+    expect(isCatalogMediaUrl(validGifUrl)).toBe(true);
+    expect(isOwnMediaUrl(validStickerUrl)).toBe(true);
+    expect(isOwnMediaUrl(validGifUrl)).toBe(true);
+    expect(isCatalogMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(isOwnMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(
+      isCatalogMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(
+      isOwnMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(isCatalogMediaUrl('https://example.com/dance.gif')).toBe(false);
+    expect(isOwnMediaUrl('https://example.com/dance.gif')).toBe(false);
+  });
 
   it('sendSticker отправляет сообщение типа sticker с mediaUrl', async () => {
     const requests = serveSend();
@@ -544,7 +568,7 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
     });
   });
 
-  it('resolveMediaForDisplay блокирует сторонние (не из каталога) URL для стикеров и GIF (#871)', async () => {
+  it('resolveMediaForDisplay блокирует сторонние (не из каталога) URL для стикеров и GIF (#871, #1003)', async () => {
     const service = createService();
     const foreignStickerMsg = {
       ...message('m-sticker-foreign', TARGET_CHAT, ''),
@@ -555,6 +579,14 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
       ...message('m-sticker-traversal', TARGET_CHAT, ''),
       type: 'sticker' as const,
       metadata: { mediaUrl: '/api/v2/stickers/../leak.png' } as never,
+    };
+    const minioStickerMsg = {
+      ...message('m-sticker-minio', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
     };
     const evilBypassStickerMsg = {
       ...message('m-sticker-evil', TARGET_CHAT, ''),
@@ -572,6 +604,7 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
 
     const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
     const patchTraversal = await service.resolveMediaForDisplay(TARGET_CHAT, traversalStickerMsg);
+    const patchMinioSticker = await service.resolveMediaForDisplay(TARGET_CHAT, minioStickerMsg);
     const patchEvilSticker = await service.resolveMediaForDisplay(
       TARGET_CHAT,
       evilBypassStickerMsg
@@ -585,6 +618,12 @@ describe('MessageService: стикеры и GIF (#593, #871, #973)', () => {
       mediaUnavailableReason: 'foreign',
     });
     expect(patchTraversal).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchMinioSticker).toEqual({
       mediaUrl: null,
       mediaEncrypted: false,
       mediaUnavailable: true,
