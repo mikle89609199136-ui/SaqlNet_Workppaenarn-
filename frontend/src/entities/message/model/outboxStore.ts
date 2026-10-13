@@ -11,6 +11,7 @@ export interface IOutboxItem {
   entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
+  mediaUrl?: string;
   /** Пересжать фото перед загрузкой; после пересжатия снимается — повтор не сжимает заново. */
   optimizeImage?: boolean;
   /** Длительность и волна голосового (#843): уедут в шифрованном конверте. */

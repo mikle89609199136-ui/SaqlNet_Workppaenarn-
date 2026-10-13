@@ -66,3 +66,90 @@ describe('MediaService: upload', () => {
     expect(describeApiError(failure, t)).toBe('Файл слишком большой');
   });
 });
+
+describe('MediaService: стикеры и гифки (#593)', () => {
+  it('listStickerPacks запрашивает GET /stickers/packs', async () => {
+    server.use(
+      http.get(api('/stickers/packs'), () =>
+        HttpResponse.json({
+          packs: [
+            {
+              id: 'pack-1',
+              name: 'Котики',
+              description: 'Милые котики',
+              iconUrl: 'http://icon',
+              stickerCount: 5,
+              createdAt: '2026-01-01',
+            },
+          ],
+        })
+      )
+    );
+
+    const packs = await services.mediaService.listStickerPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0].name).toBe('Котики');
+  });
+
+  it('listStickers запрашивает GET /stickers/packs/:packId', async () => {
+    server.use(
+      http.get(api('/stickers/packs/pack-1'), () =>
+        HttpResponse.json({
+          stickers: [
+            { id: 's-1', imageUrl: 'http://s1.png', createdAt: '2026-01-01' },
+            { id: 's-2', imageUrl: 'http://s2.png', createdAt: '2026-01-01' },
+          ],
+        })
+      )
+    );
+
+    const stickers = await services.mediaService.listStickers('pack-1');
+    expect(stickers).toHaveLength(2);
+    expect(stickers[0].imageUrl).toBe('http://s1.png');
+  });
+
+  it('listGifs и listFavoriteGifs запрашивают /gifs и /gifs/favorites', async () => {
+    server.use(
+      http.get(api('/gifs'), () =>
+        HttpResponse.json({
+          gifs: [
+            { id: 'g-1', name: 'wave', url: 'http://g1.gif', userName: 'u1', createdAt: '2026' },
+          ],
+        })
+      ),
+      http.get(api('/gifs/favorites'), () =>
+        HttpResponse.json({
+          gifs: [
+            { id: 'g-fav', name: 'dance', url: 'http://g2.gif', userName: 'u1', createdAt: '2026' },
+          ],
+        })
+      )
+    );
+
+    const allGifs = await services.mediaService.listGifs();
+    const favGifs = await services.mediaService.listFavoriteGifs();
+    expect(allGifs[0].name).toBe('wave');
+    expect(favGifs[0].name).toBe('dance');
+  });
+
+  it('favoriteGif и unfavoriteGif вызывают POST и DELETE /gifs/:gifId/favorite', async () => {
+    let postCalled = false;
+    let deleteCalled = false;
+
+    server.use(
+      http.post(api('/gifs/g-1/favorite'), () => {
+        postCalled = true;
+        return HttpResponse.json({ success: true }, { status: 201 });
+      }),
+      http.delete(api('/gifs/g-1/favorite'), () => {
+        deleteCalled = true;
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await services.mediaService.favoriteGif('g-1');
+    await services.mediaService.unfavoriteGif('g-1');
+    expect(postCalled).toBe(true);
+    expect(deleteCalled).toBe(true);
+  });
+});
