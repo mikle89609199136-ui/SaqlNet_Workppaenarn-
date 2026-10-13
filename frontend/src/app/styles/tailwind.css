@@ -124,16 +124,16 @@
 /* Переход к сообщению (ответ, закреплённое): быстрая выразительная вспышка
    с плавным затуханием рамки и заливки. */
 @keyframes msg-flash {
-  0%, 35% {
-    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 24px var(--color-brand);
-    filter: brightness(1.18);
+  0%, 15% {
+    box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 4px var(--color-brand), 0 0 20px var(--color-brand);
+    filter: brightness(1.15);
   }
-  65% {
+  50% {
     box-shadow: 0 0 0 2px var(--color-chat-bg), 0 0 0 2.5px var(--color-brand), 0 0 10px var(--color-brand-soft);
-    filter: brightness(1.05);
+    filter: brightness(1.06);
   }
-  85% {
-    box-shadow: 0 0 0 1px var(--color-chat-bg), 0 0 0 1px transparent, 0 0 4px transparent;
+  80% {
+    box-shadow: 0 0 0 1px var(--color-chat-bg), 0 0 0 1px color-mix(in srgb, var(--color-brand) 30%, transparent), 0 0 4px transparent;
     filter: brightness(1.01);
   }
   100% {
@@ -143,18 +143,26 @@
 }
 
 @keyframes msg-overlay-fade {
-  0%, 35% {
+  0%, 15% {
     opacity: 1;
   }
-  65% {
-    opacity: 0.45;
+  50% {
+    opacity: 0.55;
   }
-  85% {
-    opacity: 0.12;
+  80% {
+    opacity: 0.15;
   }
   100% {
     opacity: 0;
   }
+}
+
+@utility msg-flash {
+  animation: msg-flash 900ms ease-out forwards;
+}
+
+@utility msg-overlay {
+  animation: msg-overlay-fade 900ms ease-out forwards;
 }
 
 /* Своя реакция: отметка «хлопает» — сжимается и пружинит обратно. */
