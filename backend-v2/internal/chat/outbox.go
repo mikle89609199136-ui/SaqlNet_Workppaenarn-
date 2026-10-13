@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
-	"net"
 	"time"
+
+	"github.com/nats-io/nats.go"
 )
 
 // NATSConn is a minimal interface for publishing to NATS.
@@ -100,64 +101,25 @@ func publishPending(ctx context.Context, db *sql.DB, nats NATSConn) error {
 	return nil
 }
 
-// natsConn wraps a raw TCP connection to NATS using the minimal text protocol.
-// This avoids adding the nats.go client as a dependency.
+// The official client supports authenticated cloud endpoints, TLS and reconnects.
 type natsConn struct {
-	conn net.Conn
+	conn *nats.Conn
 }
 
 func DialNATS(url string) (NATSConn, error) {
-	addr := url
-	// strip nats:// prefix
-	if len(addr) > 7 && addr[:7] == "nats://" {
-		addr = addr[7:]
-	}
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := nats.Connect(url, nats.Timeout(5*time.Second), nats.Name("craneapp-outbox"))
 	if err != nil {
-		return nil, err
-	}
-	// read INFO line
-	buf := make([]byte, 1024)
-	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-	if _, err := conn.Read(buf); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if err := conn.SetReadDeadline(time.Time{}); err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-	// send CONNECT
-	if _, err := conn.Write([]byte("CONNECT {}\r\n")); err != nil {
-		conn.Close()
 		return nil, err
 	}
 	return &natsConn{conn: conn}, nil
 }
 
 func (n *natsConn) Publish(subject string, data []byte) error {
-	msg := []byte("PUB " + subject + " " + itoa(len(data)) + "\r\n")
-	msg = append(msg, data...)
-	msg = append(msg, '\r', '\n')
-	_, err := n.conn.Write(msg)
-	return err
+	if err := n.conn.Publish(subject, data); err != nil {
+		return err
+	}
+	// Do not mark an outbox row as sent while it is only buffered locally.
+	return n.conn.FlushTimeout(5 * time.Second)
 }
 
 func (n *natsConn) Close() { n.conn.Close() }
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	pos := len(buf)
-	for n > 0 {
-		pos--
-		buf[pos] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[pos:])
-}

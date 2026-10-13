@@ -1,0 +1,27 @@
+FROM golang:1.26-alpine AS go-build
+WORKDIR /src
+COPY backend-v2/go.mod backend-v2/go.sum ./
+RUN go mod download
+COPY backend-v2/ ./
+RUN set -eu; mkdir /out; for service in auth user chat media admin edge migrate; do \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/$service ./cmd/$service; \
+    done
+
+FROM rust:1.94-slim-bookworm AS rust-build
+WORKDIR /src
+COPY server/crypto-rust/Cargo.toml server/crypto-rust/Cargo.lock ./
+COPY server/crypto-rust/src ./src
+RUN cargo build --release --locked
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-build /out/ /usr/local/bin/
+COPY --from=rust-build /src/target/release/crypto-rust /usr/local/bin/crypto-rust
+COPY backend-v2/migrations /app/migrations
+COPY deploy/vercel/supervisord.conf /etc/craneapp-supervisord.conf
+COPY deploy/vercel/start.sh /usr/local/bin/vercel-start
+WORKDIR /app
+ENV CRANE_ENV=production PORT=80 AUTH_LOGOUT_ALL_GENERATION_ENABLED=false
+EXPOSE 80
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/vercel-start"]

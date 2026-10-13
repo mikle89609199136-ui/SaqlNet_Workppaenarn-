@@ -1,0 +1,75 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "framework": "vite",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build -- --outDir dist",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/((?!api(?:/|$)|ws(?:/|$)).*)",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "/sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/version.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ],
+      "root": "frontend"
+    },
+    "backend": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "Dockerfile.vercel"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/ws",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/health/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/docs/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/:path*",
+      "destination": {
+        "service": "frontend"
+      }
+    }
+  ]
+}
