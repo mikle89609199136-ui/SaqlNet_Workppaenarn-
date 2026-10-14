@@ -1918,6 +1918,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/messages/{messageId}/reactions/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authors of one reaction on a message
+         * @description Paginated list of chat members who reacted to a message with the given emoji (#566). Each item is a minimal public profile of the author; the avatar is empty when the author's photoVisibility rule (with the block list and exceptions) hides the photo from the caller. Only current members of the chat get a result; a stranger or a former member gets 403, a non-existent or deleted message gets 404. Ordering is stable newest-first, (created_at DESC, user_id DESC); pass nextCursor as cursor for the next page. total is the count of this emoji on the message and matches Reaction.count — the author list is not filtered by privacy, only the avatar is.
+         */
+        get: operations["listReactionAuthors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/messages/{messageId}/favorite": {
         parameters: {
             query?: never;
@@ -3135,6 +3155,25 @@ export interface components {
             currentEmoji: string;
             /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
+        };
+        ReactionAuthor: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            /** @description Empty when the author's photoVisibility rule (with the block list and exceptions) hides the photo from the caller. The caller always sees their own. */
+            avatarUrl?: string;
+        };
+        ReactionAuthorsPage: {
+            /** @description Echo of the requested emoji. */
+            emoji: string;
+            /** @description Number of reactions with this emoji on the message. Matches Reaction.count in the aggregate from GET /messages/{messageId}/reactions and does not depend on the page. Privacy does not remove an author from the list, only hides the avatar. */
+            total: number;
+            /** @description Newest reactions first; stable order (created_at DESC, user_id DESC). */
+            users: components["schemas"]["ReactionAuthor"][];
+            /** @description Opaque cursor for the next page; absent when this is the last page. Pass it back as the cursor query parameter. */
+            nextCursor?: string;
         };
         FavoriteStateResponse: {
             favorited: boolean;
@@ -6766,6 +6805,79 @@ export interface operations {
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             500: components["responses"]["Error"];
+        };
+    };
+    listReactionAuthors: {
+        parameters: {
+            query: {
+                /** @description Exactly one emoji string. Same validation as POST /messages/{messageId}/reactions: at most 64 UTF-8 bytes and no HTML-hostile characters (< > " ' & / \). */
+                emoji: string;
+                /** @description nextCursor of the previous page; omit for the newest authors. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of reaction authors */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionAuthorsPage"];
+                };
+            };
+            /** @description validation_failed: invalid messageId, missing or duplicated emoji, invalid limit, or a malformed cursor. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description access_denied: the caller is not a member of the chat (or left it). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not_found: the message does not exist or is deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     favoriteMessage: {
