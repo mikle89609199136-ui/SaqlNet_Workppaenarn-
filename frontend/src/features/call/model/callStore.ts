@@ -51,6 +51,7 @@ interface CallStoreState {
   fsm: ICallFsmContext;
   currentAttemptId: number;
   isMinimized: boolean;
+  startsWithoutVideo: boolean;
   socket: WebSocketClient | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
   reconnectTimeoutTimer: ReturnType<typeof setTimeout> | null;
@@ -89,7 +90,7 @@ interface CallStoreState {
     peerName?: string | null
   ) => Promise<void>;
   cancelCall: () => void;
-  acceptCall: () => void;
+  acceptCall: (options?: { video?: boolean }) => void;
   rejectCall: () => void;
   endCall: (reason?: TCallEndReason) => void;
   minimizeCall: () => void;
@@ -311,6 +312,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     fsm: initialCallContext,
     currentAttemptId: 0,
     isMinimized: false,
+    startsWithoutVideo: false,
     socket: null,
     callTimeoutTimer: null,
     reconnectTimeoutTimer: null,
@@ -626,7 +628,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       clearTimer();
       const attemptId = get().currentAttemptId + 1;
-      set({ currentAttemptId: attemptId });
+      set({ currentAttemptId: attemptId, startsWithoutVideo: false });
 
       const targetPeerId = peerId ?? '';
       const targetPeerName = peerName ?? title;
@@ -755,10 +757,11 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       }, 1500);
     },
 
-    acceptCall: () => {
+    acceptCall: (options) => {
       stopRingtone();
       const { fsm, socket } = get();
       if (!fsm.roomId || !fsm.peerId) return;
+      set({ startsWithoutVideo: options?.video === false });
 
       broadcastCallEvent({ type: 'CALL_ACCEPTED', roomId: fsm.roomId });
 

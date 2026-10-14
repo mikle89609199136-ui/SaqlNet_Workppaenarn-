@@ -313,4 +313,6 @@ export interface IStartMediaOptions {
   videoDeviceId?: string;
   facingMode?: TFacingMode;
   timeoutMs?: number;
+  /** Видео не обязательно: при отказе в камере звонок продолжается голосом. */
+  videoOptional?: boolean;
 }

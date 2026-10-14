@@ -1,5 +1,11 @@
 export { AudioPlayer } from './AudioPlayer';
-export { Avatar, AvatarShapeProvider, useAvatarShape, type TAvatarShape } from './Avatar';
+export {
+  Avatar,
+  avatarColor,
+  AvatarShapeProvider,
+  useAvatarShape,
+  type TAvatarShape,
+} from './Avatar';
 export { Badge } from './Badge';
 export { Banner } from './Banner';
 export { Button, buttonStyles } from './Button';

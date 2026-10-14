@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { Avatar, Icon } from '@/shared/ui';
+import { Icon } from '@/shared/ui';
+import { cn } from '@/shared/lib';
 import type { IActiveCall, TCallConnectionState } from '../model/types';
+import { CallLayer } from './CallLayer';
 import { useCallDuration } from './useCallDuration';
 
 export interface IMinimizedCallBarProps {
@@ -10,8 +12,12 @@ export interface IMinimizedCallBarProps {
   isAudioEnabled: boolean;
   isVideoEnabled: boolean;
   onMaximize: () => void;
+  onToggleAudio: () => void;
   onEndCall: () => void;
 }
+
+const ROUND =
+  'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-pill transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-brand';
 
 export function MinimizedCallBar({
   activeCall,
@@ -20,89 +26,84 @@ export function MinimizedCallBar({
   isAudioEnabled,
   isVideoEnabled,
   onMaximize,
+  onToggleAudio,
   onEndCall,
 }: IMinimizedCallBarProps) {
   const { t } = useTranslation();
   const duration = useCallDuration(callStartedAt);
-
   const peerDisplayName =
     activeCall.peerName || activeCall.title || t('call.defaultUser', 'Пользователь');
 
-  const getStatusText = () => {
-    if (connectionState === 'connecting') {
-      return t('call.status.connecting', 'Соединение…');
-    }
-    if (
-      connectionState === 'reconnecting' ||
-      connectionState === 'disconnected' ||
-      connectionState === 'failed'
-    ) {
-      return t('call.status.reconnecting', 'Восстановление…');
-    }
-    return duration;
-  };
+  const status =
+    connectionState === 'connecting'
+      ? t('call.status.connecting', 'Соединение…')
+      : ['reconnecting', 'disconnected', 'failed'].includes(connectionState)
+        ? t('call.status.reconnecting', 'Восстановление…')
+        : duration;
 
   return (
-    <aside
-      role="region"
+    <CallLayer
       aria-label={t('call.minimized.bar', 'Свёрнутый звонок')}
-      className="fixed z-[9990] top-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-md bg-sheet/95 backdrop-blur-md border border-line-soft shadow-[var(--elev-2)] rounded-window px-4 py-2.5 flex items-center justify-between gap-3 animate-fade-in select-none"
+      className="flex items-center gap-2 bg-brand-fill pr-1.5 pl-3 text-on-brand select-none"
+      role="region"
+      screenClassName="fixed inset-x-0 top-0 z-[9990] h-[calc(44px+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]"
+      stageClassName="absolute inset-x-0 top-16 z-30 h-11"
     >
-      {/* Информация о звонке (клик разворачивает) */}
       <button
-        type="button"
-        onClick={onMaximize}
-        className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-brand rounded-field"
         aria-label={t('call.minimized.maximize', 'Развернуть звонок')}
+        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left focus-visible:outline-2 focus-visible:outline-on-brand"
+        onClick={onMaximize}
+        type="button"
       >
-        <Avatar
-          id={activeCall.peerId ?? 'peer'}
-          name={activeCall.peerName}
-          size="sm"
-          src={activeCall.peerAvatar}
+        <span
+          aria-hidden="true"
+          className="size-2 shrink-0 rounded-pill bg-on-brand animate-[rec-pulse_1.2s_ease-in-out_infinite] motion-reduce:animate-none"
         />
-        <div className="flex flex-col min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink truncate">{peerDisplayName}</span>
-            {!isAudioEnabled && (
-              <Icon
-                name="micOff"
-                className="size-3 text-danger shrink-0"
-                aria-label={t('call.controls.micMuted', 'Микрофон выключен')}
-              />
-            )}
-            {activeCall.kind === 'video' && !isVideoEnabled && (
-              <Icon
-                name="videoOff"
-                className="size-3 text-ink-2 shrink-0"
-                aria-label={t('call.cameraOff', 'Камера выключена')}
-              />
-            )}
-          </div>
-          <span className="text-[11px] font-medium text-ink-2">{getStatusText()}</span>
-        </div>
+        <span className="truncate text-[14px] font-semibold">{peerDisplayName}</span>
+        <span aria-live="polite" className="shrink-0 text-[14px] text-on-brand/85 tabular-nums">
+          {status}
+        </span>
+        {activeCall.kind === 'video' && !isVideoEnabled && (
+          <Icon
+            aria-label={t('call.cameraOff', 'Камера выключена')}
+            className="size-3.5 shrink-0 text-on-brand/85"
+            name="videoOff"
+          />
+        )}
+        <span className="ml-auto shrink-0 pr-1 text-[13px] text-on-brand/85">
+          {t('call.minimized.return', 'Вернуться')}
+        </span>
       </button>
 
-      {/* Кнопки действий */}
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={onMaximize}
-          className="size-8 rounded-full flex items-center justify-center text-ink hover:bg-ground active:scale-95 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-brand"
-          aria-label={t('call.minimized.maximize', 'Развернуть звонок')}
-        >
-          <Icon name="maximize" className="size-4" />
-        </button>
+      <button
+        aria-label={
+          isAudioEnabled
+            ? t('call.controls.muteMic', 'Выключить микрофон')
+            : t('call.controls.unmuteMic', 'Включить микрофон')
+        }
+        aria-pressed={!isAudioEnabled}
+        className={cn(
+          ROUND,
+          isAudioEnabled ? 'bg-on-brand/18 text-on-brand' : 'bg-on-brand text-brand-fill'
+        )}
+        onClick={onToggleAudio}
+        type="button"
+      >
+        <Icon
+          aria-label={isAudioEnabled ? undefined : t('call.controls.micMuted', 'Микрофон выключен')}
+          className="size-4"
+          name={isAudioEnabled ? 'mic' : 'micOff'}
+        />
+      </button>
 
-        <button
-          type="button"
-          onClick={onEndCall}
-          className="size-8 rounded-full bg-danger text-on-brand flex items-center justify-center hover:opacity-90 active:scale-95 transition-transform cursor-pointer focus-visible:outline-2 focus-visible:outline-danger"
-          aria-label={t('call.controls.end', 'Завершить')}
-        >
-          <Icon name="phone" className="size-4 rotate-[135deg]" />
-        </button>
-      </div>
-    </aside>
+      <button
+        aria-label={t('call.controls.end', 'Завершить')}
+        className={cn(ROUND, 'bg-call-reject text-on-brand')}
+        onClick={onEndCall}
+        type="button"
+      >
+        <Icon className="size-4 rotate-[135deg]" name="phone" />
+      </button>
+    </CallLayer>
   );
 }
