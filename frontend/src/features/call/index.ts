@@ -1,5 +1,6 @@
 export { useCallStore } from './model/callStore';
 export { useCall } from './model/useCall';
+export { setCallStage, useMinimizedCallOnScreen } from './model/callStage';
 export { LocalMediaManager, parseMediaError } from './model/localMedia';
 export { useLocalMedia } from './model/useLocalMedia';
 export { PeerConnectionManager } from './model/peerConnection';
@@ -10,4 +11,5 @@ export { ActiveCallView } from './ui/ActiveCallView';
 export { MinimizedCallBar } from './ui/MinimizedCallBar';
 export { CallLobbyView } from './ui/CallLobbyView';
 export { CallHistoryList } from './ui/history';
+export { useCallSounds, getCallSoundsEnabled } from './model/useCallSounds';
 export * from './model/types';

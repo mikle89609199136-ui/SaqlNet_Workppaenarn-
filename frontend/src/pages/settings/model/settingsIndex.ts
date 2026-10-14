@@ -83,6 +83,15 @@ export const SETTINGS_INDEX: ISettingsEntry[] = [
     synonyms: { ru: ['звук', 'громкость', 'сигнал'], en: ['sound', 'volume'] },
   },
   {
+    title: ['settings.search.callSounds', 'Звуки звонков'],
+    section: 'notifications',
+    path: ROUTES.SETTINGS_SECTION('notifications'),
+    synonyms: {
+      ru: ['звонок', 'рингтон', 'вызов', 'гудок'],
+      en: ['call', 'ringtone', 'incoming call'],
+    },
+  },
+  {
     title: ['settings.search.theme', 'Тема оформления'],
     section: 'appearance',
     path: ROUTES.SETTINGS_SECTION('appearance'),

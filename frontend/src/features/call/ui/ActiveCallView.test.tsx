@@ -83,7 +83,7 @@ describe('ActiveCallView', () => {
 
     expect(screen.getAllByText('Алексей').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Выключить микрофон' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Включить камеру' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Включить камеру' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Свернуть звонок' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Завершить' })).toBeInTheDocument();
   });
@@ -186,7 +186,7 @@ describe('ActiveCallView', () => {
     render(
       <ActiveCallView
         activeCall={videoCall}
-        localStream={null}
+        localStream={new FakeStream([new FakeTrack('video')]) as unknown as MediaStream}
         remoteStream={null}
         connectionState="connected"
         isAudioEnabled={true}
@@ -254,7 +254,7 @@ describe('ActiveCallView', () => {
   });
 
   it('не зеркалирует локальное видео PiP при задней камере (facingMode: environment)', () => {
-    const fakeStream = new MediaStream();
+    const fakeStream = new FakeStream([new FakeTrack('video')]) as unknown as MediaStream;
 
     render(
       <ActiveCallView
