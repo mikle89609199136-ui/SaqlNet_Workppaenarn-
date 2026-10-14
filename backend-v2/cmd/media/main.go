@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -29,46 +30,40 @@ func main() {
 	}
 	defer pool.Close()
 
-	// In production, refuse to start with default dev credentials.
-	minioSecret := config.Value("MINIO_SECRET_KEY", "craneapp-local-secret")
-	if config.Value("CRANE_ENV", "development") == "production" && minioSecret == "craneapp-local-secret" {
-		log.Fatal("MINIO_SECRET_KEY must be set to a non-default value in production")
+	store, err := media.NewConfiguredStore(os.Getenv, maxFileSize)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	minioEndpoint := config.Value("MINIO_ENDPOINT", "http://127.0.0.1:9000")
-	store := media.NewMinioStore(
-		minioEndpoint,
-		config.Value("MINIO_ACCESS_KEY", "craneapp"),
-		minioSecret,
-		config.Value("MINIO_REGION", "us-east-1"),
-	)
 	bucket := config.Value("MEDIA_BUCKET", "crane-media")
+	if minioStore, ok := store.(*media.MinioStore); ok {
+		minioEndpoint := config.Value("MINIO_ENDPOINT", "http://127.0.0.1:9000")
+		// Ensure the bucket exists before accepting uploads.
+		// Retry because MinIO may still be starting up when the media service starts.
+		initCtx, cancel := context.WithTimeout(context.Background(), time.Duration(minioEnsureRetries)*minioEnsureRetryDelay+5*time.Second)
+		defer cancel()
 
-	// Ensure the bucket exists before accepting uploads.
-	// Retry because MinIO may still be starting up when the media service starts.
-	initCtx, cancel := context.WithTimeout(context.Background(), time.Duration(minioEnsureRetries)*minioEnsureRetryDelay+5*time.Second)
-	defer cancel()
+		var ensureErr error
+		for i := 0; i < minioEnsureRetries; i++ {
+			if i > 0 {
+				log.Printf("media: retrying bucket ensure %q (%d/%d) after error: %v", bucket, i+1, minioEnsureRetries, ensureErr)
+				time.Sleep(minioEnsureRetryDelay)
+			}
+			ensureErr = minioStore.EnsureBucket(initCtx, bucket)
+			if ensureErr == nil {
+				log.Printf("media: bucket %q ensured", bucket)
+				break
+			}
+		}
+		if ensureErr != nil {
+			log.Fatalf("media: failed to ensure bucket %q after %d retries: %v", bucket, minioEnsureRetries, ensureErr)
+		}
+		backfillCtx, backfillCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		backfillErr := media.BackfillStickerStorageIdentities(backfillCtx, pool, minioEndpoint, bucket)
+		backfillCancel()
+		if backfillErr != nil {
+			log.Fatalf("media: backfill sticker storage identities: %v", backfillErr)
+		}
 
-	var ensureErr error
-	for i := 0; i < minioEnsureRetries; i++ {
-		if i > 0 {
-			log.Printf("media: retrying bucket ensure %q (%d/%d) after error: %v", bucket, i+1, minioEnsureRetries, ensureErr)
-			time.Sleep(minioEnsureRetryDelay)
-		}
-		ensureErr = store.EnsureBucket(initCtx, bucket)
-		if ensureErr == nil {
-			log.Printf("media: bucket %q ensured", bucket)
-			break
-		}
-	}
-	if ensureErr != nil {
-		log.Fatalf("media: failed to ensure bucket %q after %d retries: %v", bucket, minioEnsureRetries, ensureErr)
-	}
-	backfillCtx, backfillCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	backfillErr := media.BackfillStickerStorageIdentities(backfillCtx, pool, minioEndpoint, bucket)
-	backfillCancel()
-	if backfillErr != nil {
-		log.Fatalf("media: backfill sticker storage identities: %v", backfillErr)
 	}
 
 	svc := media.NewService(pool, store, bucket, maxFileSize)

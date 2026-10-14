@@ -98,7 +98,7 @@ WebSocket handshake через edge с production-cookie. Реальный де�
 
 ```sh
 node scripts/check-deployment-env.cjs
-node scripts/check-deployment-env.cjs --env-file /path/to/private.env --check
+node -- scripts/check-deployment-env.cjs --env-file /path/to/private.env --check
 ```
 
 Переменные процесса имеют приоритет над файлом. Команда выводит адреса и
@@ -108,3 +108,11 @@ node scripts/check-deployment-env.cjs --env-file /path/to/private.env --check
 не проверка TLS или прав доступа. Отсутствующие настройки/ошибки дают exit 1.
 Локальный `.env` не является источником production-секретов: реальные значения
 нужно брать из настроек окружения текущего хостинга. Не публиковать их в логах.
+
+## Vercel Blob вместо MinIO/S3
+
+Для `STORAGE_PROVIDER=vercel_blob` подключить PRIVATE Blob store и задать
+`BLOB_READ_WRITE_TOKEN`. `MEDIA_BUCKET` остаётся namespace, MINIO_* не нужны.
+По умолчанию сохраняется MinIO. Инструкция, исследование контрактов,
+ограничения payload, quotas и перенос объектов:
+[vercel-blob-storage.ru.md](vercel-blob-storage.ru.md).

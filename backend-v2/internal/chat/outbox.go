@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -107,10 +109,22 @@ type natsConn struct {
 }
 
 func DialNATS(url string) (NATSConn, error) {
-	conn, err := nats.Connect(url, nats.Timeout(5*time.Second), nats.Name("craneapp-outbox"))
-	if err != nil {
-		return nil, err
+	opts := []nats.Option{
+		nats.Timeout(5 * time.Second),
+		nats.Name("craneapp-outbox"),
 	}
+
+	if creds := os.Getenv("NATS_CREDS"); creds != "" {
+		opts = append(opts,
+			nats.UserCredentialBytes([]byte(creds)),
+		)
+	}
+
+	conn, err := nats.Connect(url, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("connect to NATS: %w", err)
+	}
+
 	return &natsConn{conn: conn}, nil
 }
 

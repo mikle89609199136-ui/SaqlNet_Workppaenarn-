@@ -64,7 +64,8 @@ func allowedMediaType(raw string) (string, bool) {
 	return mediaType, ok && allowedTypes[mediaType]
 }
 
-// Store abstracts object storage (MinIO / S3-compatible).
+// Store abstracts object storage. HTTP handlers expose authorized media routes,
+// not provider URLs returned as internal storage references by PresignGet.
 type Store interface {
 	Put(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error
 	Get(ctx context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error)

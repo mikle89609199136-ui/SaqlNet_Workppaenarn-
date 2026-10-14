@@ -14,11 +14,12 @@ if (fileIndex >= 0 && (!file || file.startsWith('--'))) {
 let values = {};
 if (fs.existsSync(file)) values = dotenv.parse(fs.readFileSync(file));
 const env = { ...values, ...process.env };
+const provider = env.STORAGE_PROVIDER || 'minio';
 const endpoints = {
   DATABASE_URL: 5432,
   REDIS_URL: 6379,
   NATS_URL: 4222,
-  MINIO_ENDPOINT: 443,
+  ...(provider === 'minio' ? { MINIO_ENDPOINT: 443 } : {}),
 };
 let failed = false;
 
@@ -34,6 +35,8 @@ function tcp(host, port) {
 }
 
 async function main() {
+  console.log(`STORAGE_PROVIDER: ${provider === 'minio' || provider === 'vercel_blob' ? provider : 'INVALID'}`);
+  if (!['minio', 'vercel_blob'].includes(provider)) failed = true;
   for (const [key, defaultPort] of Object.entries(endpoints)) {
     if (!env[key]) { console.log(`${key}: MISSING`); failed = true; continue; }
     let url;
@@ -65,7 +68,7 @@ async function main() {
       console.log('  TCP only: authentication and TLS not verified');
     }
   }
-  for (const key of ['CRYPTO_SIGNING_SECRET', 'CRYPTO_ENCRYPTION_SECRET', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY', 'MINIO_REGION', 'MEDIA_BUCKET', 'MAX_FILE_SIZE', 'ALLOWED_ORIGINS']) {
+  for (const key of ['CRYPTO_SIGNING_SECRET', 'CRYPTO_ENCRYPTION_SECRET', ...(provider === 'minio' ? ['MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY', 'MINIO_REGION'] : ['BLOB_READ_WRITE_TOKEN']), 'MEDIA_BUCKET', 'MAX_FILE_SIZE', 'ALLOWED_ORIGINS']) {
     console.log(`${key}: ${env[key] ? 'SET (value hidden)' : 'MISSING'}`);
     if (!env[key]) failed = true;
   }

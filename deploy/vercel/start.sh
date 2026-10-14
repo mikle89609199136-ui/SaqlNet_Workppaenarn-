@@ -2,7 +2,13 @@
 set -eu
 
 # Fail before exposing the gateway; print missing names, never secret values.
-for name in DATABASE_URL REDIS_URL NATS_URL ALLOWED_ORIGINS CRYPTO_SIGNING_SECRET CRYPTO_ENCRYPTION_SECRET MINIO_ENDPOINT MINIO_ACCESS_KEY MINIO_SECRET_KEY MINIO_REGION MEDIA_BUCKET MAX_FILE_SIZE; do
+required="DATABASE_URL REDIS_URL NATS_URL ALLOWED_ORIGINS CRYPTO_SIGNING_SECRET CRYPTO_ENCRYPTION_SECRET MEDIA_BUCKET MAX_FILE_SIZE"
+case "${STORAGE_PROVIDER:-minio}" in
+    minio) required="$required MINIO_ENDPOINT MINIO_ACCESS_KEY MINIO_SECRET_KEY MINIO_REGION" ;;
+    vercel_blob) required="$required BLOB_READ_WRITE_TOKEN" ;;
+    *) echo "STORAGE_PROVIDER must be minio or vercel_blob" >&2; exit 1 ;;
+esac
+for name in $required; do
     value=$(printenv "$name" || true)
     if [ -z "$value" ]; then
         echo "Missing required environment variable: $name" >&2
