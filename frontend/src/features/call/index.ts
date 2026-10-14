@@ -11,4 +11,5 @@ export { ActiveCallView } from './ui/ActiveCallView';
 export { MinimizedCallBar } from './ui/MinimizedCallBar';
 export { CallLobbyView } from './ui/CallLobbyView';
 export { CallHistoryList } from './ui/history';
+export { useCallSounds, getCallSoundsEnabled } from './model/useCallSounds';
 export * from './model/types';

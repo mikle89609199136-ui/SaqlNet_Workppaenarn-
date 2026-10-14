@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
+import { getCallSoundsEnabled } from './useCallSounds';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import {
   useProfileStore,
@@ -563,8 +564,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         },
       });
 
-      const soundsEnabled = useProfileStore.getState().settings.sounds;
-      if (soundsEnabled !== false) {
+      if (getCallSoundsEnabled()) {
         startRingtone();
       }
     },
