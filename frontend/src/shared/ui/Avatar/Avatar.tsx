@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { cn } from '@/shared/lib';
 import { useAvatarShape, type TAvatarShape } from './avatarShape';
+import { avatarToneIndex, hashBytes } from './avatarTone';
 import { GridMark } from './GridMark';
 
 /* Цвета перечислены готовыми именами классов, а не собираются из кусков:
@@ -36,26 +37,8 @@ const sizes = {
   xl: { box: 'size-14 text-section', dot: 'size-4 border-2 right-0 bottom-0', grid: 56 },
   card: { box: 'size-18 text-[28px]', dot: 'size-4.5 border-3 right-0.5 bottom-0.5', grid: 72 },
   '2xl': { box: 'size-24 text-display', dot: 'size-4.5 border-3 right-1 bottom-1', grid: 96 },
+  call: { box: 'size-32 text-[48px]', dot: 'size-5 border-3 right-1.5 bottom-1.5', grid: 128 },
 } as const;
-
-/* Тот же хеш, что был в Identicon: он уже разложен по чужим аватаркам,
-   и менять его значит перекрасить всех разом без причины. */
-function hashBytes(value: string) {
-  const bytes = new Uint8Array(16);
-  let seed = 0x811c9dc5;
-
-  for (let i = 0; i < value.length; i++) {
-    seed ^= value.charCodeAt(i);
-    seed = Math.imul(seed, 0x01000193) >>> 0;
-  }
-
-  for (let i = 0; i < 16; i++) {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    bytes[i] = (seed >>> 24) & 0xff;
-  }
-
-  return bytes;
-}
 
 interface Props {
   /* От него цвет и рисунок. У групп и каналов его нет. */
@@ -92,7 +75,7 @@ export const Avatar = ({
   const resolvedShape = shape ?? preferredShape;
   const { box, dot, grid } = sizes[size];
   const bytes = hashBytes(id || name || 'anon');
-  const tone = tones[bytes[0] % tones.length];
+  const tone = tones[avatarToneIndex(bytes)];
   const letter = (name || '?').trim().charAt(0).toUpperCase() || '?';
 
   const [prevSrc, setPrevSrc] = useState(src);

@@ -24,6 +24,7 @@ describe('MinimizedCallBar', () => {
         isAudioEnabled={true}
         isVideoEnabled={false}
         onMaximize={onMaximize}
+        onToggleAudio={vi.fn()}
         onEndCall={onEndCall}
       />
     );
@@ -44,6 +45,7 @@ describe('MinimizedCallBar', () => {
         isAudioEnabled={true}
         isVideoEnabled={false}
         onMaximize={onMaximize}
+        onToggleAudio={vi.fn()}
         onEndCall={vi.fn()}
       />
     );
@@ -63,6 +65,7 @@ describe('MinimizedCallBar', () => {
         isAudioEnabled={true}
         isVideoEnabled={false}
         onMaximize={vi.fn()}
+        onToggleAudio={vi.fn()}
         onEndCall={onEndCall}
       />
     );
@@ -80,6 +83,7 @@ describe('MinimizedCallBar', () => {
         isAudioEnabled={false}
         isVideoEnabled={false}
         onMaximize={vi.fn()}
+        onToggleAudio={vi.fn()}
         onEndCall={vi.fn()}
       />
     );
@@ -101,10 +105,35 @@ describe('MinimizedCallBar', () => {
         isAudioEnabled={true}
         isVideoEnabled={false}
         onMaximize={vi.fn()}
+        onToggleAudio={vi.fn()}
         onEndCall={vi.fn()}
       />
     );
 
     expect(screen.getByLabelText('Камера выключена')).toBeInTheDocument();
+  });
+
+  it('микрофон переключается прямо из плашки', () => {
+    const onToggleAudio = vi.fn();
+    render(
+      <MinimizedCallBar
+        activeCall={activeCall}
+        connectionState="connected"
+        callStartedAt={Date.now()}
+        isAudioEnabled={false}
+        isVideoEnabled={false}
+        onMaximize={vi.fn()}
+        onToggleAudio={onToggleAudio}
+        onEndCall={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить микрофон' }));
+
+    expect(onToggleAudio).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Включить микрофон' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 });

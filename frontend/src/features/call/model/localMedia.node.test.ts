@@ -406,6 +406,31 @@ describe('LocalMediaManager', () => {
     expect(state.error?.type).toBe('NotFoundError');
   });
 
+  it('ответ без видео при запрете камеры продолжается голосом', async () => {
+    mockGetUserMedia.mockRejectedValueOnce({ name: 'NotAllowedError', message: 'Denied' });
+    const aTrack = new FakeMediaStreamTrack('audio');
+    const audioStream = new FakeMediaStream([aTrack]);
+    mockGetUserMedia.mockResolvedValueOnce(audioStream);
+
+    const manager = new LocalMediaManager();
+    const result = await manager.startMedia({ kind: 'video', videoOptional: true });
+
+    expect(result).toBe(audioStream);
+    expect(manager.getState().audioTrack).toBe(aTrack);
+    expect(manager.getState().isVideoMuted).toBe(true);
+  });
+
+  it('обычный видеозвонок при запрете камеры голосом не продолжается', async () => {
+    mockGetUserMedia.mockRejectedValueOnce({ name: 'NotAllowedError', message: 'Denied' });
+
+    const manager = new LocalMediaManager();
+    const result = await manager.startMedia({ kind: 'video' });
+
+    expect(result).toBeNull();
+    expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+    expect(manager.getState().error?.type).toBe('NotAllowedError');
+  });
+
   it('switchCamera в голосовом звонке не открывает камеру', async () => {
     const aTrack = new FakeMediaStreamTrack('audio');
     const audioStream = new FakeMediaStream([aTrack]);
