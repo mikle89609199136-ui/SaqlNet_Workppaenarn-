@@ -5,7 +5,7 @@ import { ListGroup, ListStaticItem, ListSwitchItem, Slider } from '@/shared/ui';
 import { selectCallSounds } from '@/entities/user';
 import { useSettingsData } from './useSettingsData';
 
-/** «Уведомления и звуки» — два переключателя, как в макете (#828). */
+/** «Уведомления и звуки» — переключатели уведомлений и звуков (макет #828, звонки #1002). */
 export function NotificationsSection() {
   const { t } = useTranslation();
   const { settings, saveSettings } = useSettingsData();
