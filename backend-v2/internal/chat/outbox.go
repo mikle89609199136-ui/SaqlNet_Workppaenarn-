@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 	"os"
+	"fmt"
 
 	"github.com/nats-io/nats.go"
 )
