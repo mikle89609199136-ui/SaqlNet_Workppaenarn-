@@ -38,7 +38,6 @@ export function usePinnedNavigator(messages: TPinnedList) {
     if (!currentMessage) return;
 
     const chatId = currentItem.chatId || currentMessage.chatId;
-    useChatUiStore.getState().setHighlightedMessageId(null);
     setJumpRequest({ chatId, messageId: currentMessage.id });
 
     if (safeIndex === 0 && trackRef.current) {

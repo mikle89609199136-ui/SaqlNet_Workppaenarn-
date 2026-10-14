@@ -436,7 +436,6 @@
   "link.openApp": "Открыть CraneApp",
   "loading": "Загрузка...",
   "loadingError": "Ошибка загрузки",
-  "loadingOlderForJump": "Загрузка истории для перехода к сообщению...",
   "login": "Войти",
   "login.byPassword": "Пароль",
   "login.byQr": "QR-код",

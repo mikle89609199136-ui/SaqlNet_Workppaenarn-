@@ -61,7 +61,7 @@ async function openMessageActions(content: string) {
 }
 
 describe('закрепление сообщения', () => {
-  it('should post the pin and show the pinned message after the server confirms it', async () => {
+  it('отправляет закрепление и показывает закреплённое сообщение после подтверждения сервером', async () => {
     const user = userEvent.setup();
     const { chat, messages, pinRequests } = setupChat();
     const target = messages[0];
@@ -98,7 +98,7 @@ describe('закрепление сообщения', () => {
     expect(within(navigator).getByText('сообщение 1')).toBeInTheDocument();
   });
 
-  it('should delete the pin and drop it from the navigator after the server confirms it', async () => {
+  it('удаляет закрепление и убирает его из навигатора после подтверждения сервером', async () => {
     const user = userEvent.setup();
     const { chat, messages, pinRequests } = setupChat();
     const target = messages[0];
@@ -134,7 +134,7 @@ describe('закрепление сообщения', () => {
     expect(screen.getByText('сообщение 1')).toBeInTheDocument();
   });
 
-  it('should scroll and highlight target message when navigator is clicked', async () => {
+  it('прокручивает ленту и подсвечивает целевое сообщение при клике на навигатор', async () => {
     const user = userEvent.setup();
     const { chat, messages } = setupChat();
     const target = messages[0];

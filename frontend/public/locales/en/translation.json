@@ -436,7 +436,6 @@
   "link.openApp": "Open CraneApp",
   "loading": "Loading…",
   "loadingError": "Loading error",
-  "loadingOlderForJump": "Loading chat history to navigate to message...",
   "login": "Sign in",
   "login.byPassword": "Password",
   "login.byQr": "QR code",

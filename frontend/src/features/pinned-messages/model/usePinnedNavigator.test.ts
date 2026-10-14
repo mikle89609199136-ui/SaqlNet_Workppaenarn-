@@ -64,7 +64,7 @@ describe('usePinnedNavigator', () => {
     expect(result.current.safeIndex).toBe(1);
   });
 
-  it('should stably emit jumpRequest on repeated clicks with a single pinned message', () => {
+  it('стабильно отправляет jumpRequest при повторных кликах с единственным закреплением', () => {
     const pin = makePin({ message: makeMessage({ id: 'msg-single' }) });
 
     const { result } = renderHook(() => usePinnedNavigator([pin]));

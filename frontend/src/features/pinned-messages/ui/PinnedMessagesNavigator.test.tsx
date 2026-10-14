@@ -53,7 +53,7 @@ describe('PinnedMessagesNavigator', () => {
     expect(screen.getByText(/Алексей/)).toBeInTheDocument();
   });
 
-  it('should set jumpRequest in chatUi store on click', () => {
+  it('устанавливает jumpRequest в сторе chatUi при клике', () => {
     const pin = makePin({
       message: makeMessage({ id: 'target-msg-123', content: 'Целевое' }),
     });

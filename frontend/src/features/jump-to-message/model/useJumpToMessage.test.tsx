@@ -46,7 +46,7 @@ describe('useJumpToMessage', () => {
     expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });
 
-  it('resets and restarts highlight on repeated jump to same message', async () => {
+  it('сбрасывает и перезапускает подсветку при повторном переходе к тому же сообщению', async () => {
     const onScrollToMessage = vi.fn().mockReturnValue(true);
     const { result } = renderHook(() => useJumpToMessage({ onScrollToMessage }), { wrapper });
 
