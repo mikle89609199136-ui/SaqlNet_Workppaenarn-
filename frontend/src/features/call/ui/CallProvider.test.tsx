@@ -13,20 +13,13 @@ const mockSocket = {
 } as unknown as WebSocketClient;
 
 import * as sharedApi from '@/shared/api';
-
-vi.mock('@/services/ringtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-}));
-
-vi.mock('@/services/ringtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-}));
+import * as callRingtone from '../model/callRingtone';
 
 describe('CallProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(callRingtone, 'startRingtone').mockReturnValue(undefined);
+    vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
     vi.spyOn(sharedApi, 'useRealtimeSocket').mockReturnValue({
       socket: mockSocket,
       eventBus,

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
-import { startRingtone, stopRingtone } from '@/services/ringtone';
+import * as callRingtone from './callRingtone';
 import { getCallSoundsEnabled } from './useCallSounds';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import {
@@ -565,7 +565,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       });
 
       if (getCallSoundsEnabled()) {
-        startRingtone();
+        callRingtone.startRingtone();
       }
     },
 
@@ -576,7 +576,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       }
       const { fsm } = get();
       if (fsm.roomId === roomId) {
-        stopRingtone();
+        callRingtone.stopRingtone();
         clearTimer();
         const finishedRoomId = fsm.roomId;
         get().dispatch({ type: 'END_CALL', reason: 'peer_ended' });
@@ -591,7 +591,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     handleBroadcastEvent: (event) => {
       const { fsm } = get();
       if (fsm.state === 'incoming' && (!event.roomId || fsm.roomId === event.roomId)) {
-        stopRingtone();
+        callRingtone.stopRingtone();
         clearTimer();
         get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
         get().dispatch({ type: 'RESET_TO_IDLE', roomId: event.roomId });
@@ -773,7 +773,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     acceptCall: (options) => {
-      stopRingtone();
+      callRingtone.stopRingtone();
       const { fsm, socket } = get();
       if (!fsm.roomId || !fsm.peerId) return;
       set({ startsWithoutVideo: options?.video === false });
@@ -802,7 +802,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     rejectCall: () => {
-      stopRingtone();
+      callRingtone.stopRingtone();
       const { fsm, socket } = get();
       if (fsm.roomId) {
         broadcastCallEvent({ type: 'CALL_DISMISSED', roomId: fsm.roomId });
@@ -825,7 +825,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     endCall: (reason: TCallEndReason = 'completed') => {
-      stopRingtone();
+      callRingtone.stopRingtone();
       clearAllTimers();
       const { fsm, socket } = get();
 

@@ -12,4 +12,5 @@ export { MinimizedCallBar } from './ui/MinimizedCallBar';
 export { CallLobbyView } from './ui/CallLobbyView';
 export { CallHistoryList } from './ui/history';
 export { useCallSounds, getCallSoundsEnabled } from './model/useCallSounds';
+export { startRingtone, stopRingtone, isRingtoneActive } from './model/callRingtone';
 export * from './model/types';

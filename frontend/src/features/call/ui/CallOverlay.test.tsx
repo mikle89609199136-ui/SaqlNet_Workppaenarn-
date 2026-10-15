@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCallStore } from '../model/callStore';
+import * as callRingtone from '../model/callRingtone';
 import { CallOverlay } from './CallOverlay';
 
 /* Звонки выключены, пока нет нового экрана разговора (#776 → #774). */
@@ -56,6 +57,15 @@ describe('звонки выключены', () => {
     });
     render(<CallOverlay enabled={false} />);
     expect(endCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('останавливает рингтон при размонтировании CallOverlay (#1001)', () => {
+    const stopSpy = vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
+    const { unmount } = render(<CallOverlay enabled={true} />);
+    expect(stopSpy).not.toHaveBeenCalled();
+    unmount();
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    stopSpy.mockRestore();
   });
 });
 

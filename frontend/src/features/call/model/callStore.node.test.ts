@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_TIMEOUT_MS, useCallStore, _resetCancelledRoomsForTest } from './callStore';
 import { services } from '@/services/serviceContainer';
-import { startRingtone, stopRingtone } from '@/services/ringtone';
+import { startRingtone, stopRingtone } from './callRingtone';
 import { useProfileStore, blockedUsersQuery, userKeys } from '@/entities/user';
 import { chatKeys } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 
-vi.mock('@/services/ringtone', () => ({
+vi.mock('./callRingtone', () => ({
   startRingtone: vi.fn(),
   stopRingtone: vi.fn(),
+  isRingtoneActive: vi.fn(),
 }));
 
 describe('useCallStore', () => {
