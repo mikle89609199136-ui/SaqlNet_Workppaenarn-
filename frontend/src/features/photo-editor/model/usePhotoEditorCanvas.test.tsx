@@ -144,7 +144,53 @@ describe('usePhotoEditorCanvas saveImage', () => {
     expect(savedFile.type).toBe('image/jpeg');
   });
 
-  it('при сбое экспорта в WebP откатывается на JPEG', async () => {
+  it('при возврате PNG вместо WebP по спецификации W3C (Safari < 17) откатывается на JPEG', async () => {
+    const onSave = vi.fn();
+    const file = new File(['webp-data'], 'safari.webp', { type: 'image/webp' });
+
+    let callCount = 0;
+    const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+      type?: string
+    ) {
+      callCount++;
+      if (type === 'image/webp') {
+        // По спецификации W3C Safari < 17 возвращает PNG blob при отсутствии поддержки WebP
+        callback(new Blob(['safari-png-blob'], { type: 'image/png' }));
+      } else {
+        callback(new Blob(['fallback-jpeg'], { type: 'image/jpeg' }));
+      }
+    });
+
+    const { result } = renderHook(() =>
+      usePhotoEditorCanvas({
+        ...baseParams,
+        file,
+        onSave,
+      })
+    );
+
+    const mockCanvas = document.createElement('canvas');
+    mockCanvas.width = 200;
+    mockCanvas.height = 200;
+    result.current.canvasRef.current = mockCanvas;
+
+    await act(async () => {
+      await result.current.saveImage();
+    });
+
+    expect(callCount).toBe(2);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.94);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(2, expect.any(Function), 'image/jpeg', 0.94);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const savedFile: File = onSave.mock.calls[0][0];
+    expect(savedFile.name).toBe('safari-edited.jpg');
+    expect(savedFile.type).toBe('image/jpeg');
+  });
+
+  it('при сбое экспорта в null откатывается на JPEG', async () => {
     const onSave = vi.fn();
     const file = new File(['webp-data'], 'fallback.webp', { type: 'image/webp' });
 
@@ -156,7 +202,6 @@ describe('usePhotoEditorCanvas saveImage', () => {
     ) {
       callCount++;
       if (type === 'image/webp') {
-        // Имитируем сбой поддержки WebP браузером
         callback(null);
       } else {
         callback(new Blob(['fallback-jpeg'], { type: 'image/jpeg' }));

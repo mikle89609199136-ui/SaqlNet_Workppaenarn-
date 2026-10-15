@@ -179,13 +179,15 @@ export function usePhotoEditorCanvas({
         new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
       const { mimeType, quality } = getImageExportConfig(file);
       let blob = await encode(mimeType, quality);
-      // Если браузер не смог закодировать в запрошенный формат (Safari до 17 вместо WebP
-      // отдаёт null или не поддерживает), пробуем JPEG.
-      if (!blob) blob = await encode('image/jpeg', 0.94);
+      // По спецификации W3C HTML Canvas toBlob при неподдерживаемом формате (Safari < 17 для WebP)
+      // браузер возвращает PNG. В этом случае откатываемся на JPEG.
+      if (!blob || (mimeType === 'image/webp' && blob.type !== 'image/webp')) {
+        blob = await encode('image/jpeg', 0.94);
+      }
       if (!blob) throw new Error('Не удалось подготовить изображение');
+
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-      const extension =
-        blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+      const extension = getImageExportConfig(blob).extension;
       onSave(
         new File([blob], `${baseName}-edited.${extension}`, {
           type: blob.type,

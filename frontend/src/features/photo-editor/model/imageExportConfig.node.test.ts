@@ -35,6 +35,37 @@ describe('getImageExportConfig', () => {
     });
   });
 
+  it('нормализует регистр MIME-типа', () => {
+    expect(getImageExportConfig({ type: 'image/PNG' })).toEqual({
+      mimeType: 'image/png',
+      extension: 'png',
+    });
+    expect(getImageExportConfig({ type: 'IMAGE/WEBP' })).toEqual({
+      mimeType: 'image/webp',
+      extension: 'webp',
+      quality: 0.94,
+    });
+    expect(getImageExportConfig({ type: 'Image/JPEG' })).toEqual({
+      mimeType: 'image/jpeg',
+      extension: 'jpg',
+      quality: 0.94,
+    });
+  });
+
+  it('принимает объект Blob и объект с опциональным type', () => {
+    const blob = new Blob(['data'], { type: 'image/png' });
+    expect(getImageExportConfig(blob)).toEqual({
+      mimeType: 'image/png',
+      extension: 'png',
+    });
+
+    expect(getImageExportConfig({})).toEqual({
+      mimeType: 'image/jpeg',
+      extension: 'jpg',
+      quality: 0.94,
+    });
+  });
+
   it('возвращает JPEG fallback для неподдерживаемых или неопределённых типов', () => {
     const file = new File(['other-data'], 'image.bmp', { type: 'image/bmp' });
     const config = getImageExportConfig(file);
