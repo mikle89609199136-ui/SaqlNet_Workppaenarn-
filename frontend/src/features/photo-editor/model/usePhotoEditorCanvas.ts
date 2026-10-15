@@ -1,5 +1,6 @@
 import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from './types';
 import { drawObject, drawSelection } from './editorCanvas';
+import { getImageExportConfig } from './imageExportConfig';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface Params {
@@ -174,16 +175,17 @@ export function usePhotoEditorCanvas({
       if (ctx) {
         ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
       }
-      const encode = (type: string, quality: number) =>
+      const encode = (type: string, quality?: number) =>
         new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
-      // WebP, как и прочие фото в чате (encodeImage): при отправке снимок из
-      // редактора второй раз не пересжимается. Safari до 17 вместо WebP
-      // отдаёт PNG — тогда JPEG.
-      let blob = await encode('image/webp', 0.92);
-      if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg', 0.94);
+      const { mimeType, quality } = getImageExportConfig(file);
+      let blob = await encode(mimeType, quality);
+      // Если браузер не смог закодировать в запрошенный формат (Safari до 17 вместо WebP
+      // отдаёт null или не поддерживает), пробуем JPEG.
+      if (!blob) blob = await encode('image/jpeg', 0.94);
       if (!blob) throw new Error('Не удалось подготовить изображение');
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-      const extension = blob.type === 'image/webp' ? 'webp' : 'jpg';
+      const extension =
+        blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
       onSave(
         new File([blob], `${baseName}-edited.${extension}`, {
           type: blob.type,
