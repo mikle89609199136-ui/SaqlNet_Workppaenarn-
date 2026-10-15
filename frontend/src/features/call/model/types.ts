@@ -236,12 +236,6 @@ export interface IActiveCall {
   isCaller?: boolean;
 }
 
-export interface IRingtone {
-  ctx: AudioContext;
-  ringtoneTimer: ReturnType<typeof setInterval>;
-  vibrateTimer: ReturnType<typeof setInterval> | null;
-}
-
 export interface ICallInviteResponsePayload {
   roomId: string;
   from?: string;

@@ -8,7 +8,7 @@ interface IRingtoneHandle {
 let ringtoneHandle: IRingtoneHandle | null = null;
 
 function playBurst(ctx: AudioContext): void {
-  if (ctx.state === 'closed') return;
+  if (ctx.state !== 'running') return;
   const t0 = ctx.currentTime;
   [0, 0.5].forEach((offset) => {
     const o1 = ctx.createOscillator();
@@ -32,6 +32,19 @@ function playBurst(ctx: AudioContext): void {
     o1.connect(g1).connect(ctx.destination);
     o2.connect(g2).connect(ctx.destination);
 
+    o1.onended = () => {
+      try {
+        o1.disconnect();
+        g1.disconnect();
+      } catch {}
+    };
+    o2.onended = () => {
+      try {
+        o2.disconnect();
+        g2.disconnect();
+      } catch {}
+    };
+
     o1.start(t0 + offset);
     o1.stop(t0 + offset + 0.42);
     o2.start(t0 + offset);
@@ -42,12 +55,17 @@ function playBurst(ctx: AudioContext): void {
 /**
  * Запускает циклический рингтон входящего вызова (#1001).
  * Воспроизводит первый звуковой импульс немедленно при старте и повторяет каждые 2 секунды.
- * При блокировке Autoplay Policy регистрирует однократное возобновление при первом клике или нажатии клавиши.
+ * При блокировке Autoplay Policy регистрирует разблокировку при первом клике или нажатии клавиши.
  */
 export function startRingtone(): void {
   stopRingtone();
 
   if (typeof window === 'undefined') return;
+
+  let ctx: AudioContext | null = null;
+  let ringtoneTimer: ReturnType<typeof setInterval> | null = null;
+  let vibrateTimer: ReturnType<typeof setInterval> | null = null;
+  let cleanupListeners: (() => void) | null = null;
 
   try {
     const AudioContextClass =
@@ -56,42 +74,70 @@ export function startRingtone(): void {
 
     if (!AudioContextClass) return;
 
-    const ctx = new AudioContextClass();
+    ctx = new AudioContextClass();
 
-    let cleanupListeners: (() => void) | null = null;
     if (ctx.state === 'suspended') {
       void ctx.resume().catch(() => {});
 
-      const unlock = () => {
-        if (ctx.state === 'suspended') {
-          void ctx.resume().catch(() => {});
-        }
-      };
-
-      window.addEventListener('pointerdown', unlock, { once: true, capture: true });
-      window.addEventListener('keydown', unlock, { once: true, capture: true });
-      cleanupListeners = () => {
+      const removeListeners = () => {
         window.removeEventListener('pointerdown', unlock, { capture: true });
         window.removeEventListener('keydown', unlock, { capture: true });
       };
+
+      const unlock = () => {
+        removeListeners();
+        cleanupListeners = null;
+        if (ringtoneHandle) {
+          ringtoneHandle.cleanupListeners = null;
+        }
+        if (ctx && ctx.state === 'suspended') {
+          void ctx
+            .resume()
+            .then(() => {
+              if (ctx && ctx.state === 'running') {
+                playBurst(ctx);
+              }
+            })
+            .catch(() => {});
+        }
+      };
+
+      window.addEventListener('pointerdown', unlock, { capture: true });
+      window.addEventListener('keydown', unlock, { capture: true });
+      cleanupListeners = removeListeners;
+    } else {
+      // Первый звуковой импульс сразу при активном контексте
+      playBurst(ctx);
     }
 
-    // Первый звуковой импульс сразу, без 2-секундного ожидания
-    playBurst(ctx);
-    const ringtoneTimer = setInterval(() => {
-      playBurst(ctx);
+    ringtoneTimer = setInterval(() => {
+      if (ctx) {
+        playBurst(ctx);
+      }
     }, 2000);
 
-    let vibrateTimer: ReturnType<typeof setInterval> | null = null;
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([400, 200, 400, 1000]);
-      vibrateTimer = setInterval(() => {
+      try {
         navigator.vibrate([400, 200, 400, 1000]);
-      }, 2000);
+        vibrateTimer = setInterval(() => {
+          try {
+            navigator.vibrate([400, 200, 400, 1000]);
+          } catch {}
+        }, 2000);
+      } catch {}
     }
 
     ringtoneHandle = { ctx, ringtoneTimer, vibrateTimer, cleanupListeners };
   } catch (e) {
+    if (ringtoneTimer) clearInterval(ringtoneTimer);
+    if (vibrateTimer) clearInterval(vibrateTimer);
+    cleanupListeners?.();
+    if (ctx && ctx.state !== 'closed') {
+      try {
+        void ctx.close();
+      } catch {}
+    }
+    ringtoneHandle = null;
     console.warn('Ringtone failed:', e);
   }
 }

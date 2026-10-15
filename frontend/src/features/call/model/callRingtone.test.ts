@@ -86,22 +86,77 @@ describe('callRingtone', () => {
     expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(4);
   });
 
-  it('возобновляет приостановленный AudioContext при suspended состоянии', () => {
+  it('не накапливает пачки звука при suspended состоянии и играет после разблокировки жестом', async () => {
     mockAudioContext.state = 'suspended';
 
     startRingtone();
 
     expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
+    // Пока suspended, пачки не создаются
+    expect(mockAudioContext.createOscillator).not.toHaveBeenCalled();
 
-    // Имитируем клик пользователя — должен повторно вызвать resume
+    // Прошло 4 секунды (2 тика таймера) в suspended состоянии — пачки не копятся
+    vi.advanceTimersByTime(4000);
+    expect(mockAudioContext.createOscillator).not.toHaveBeenCalled();
+
+    // Имитируем клик пользователя с переходом в running
+    mockAudioContext.resume.mockImplementation(async () => {
+      mockAudioContext.state = 'running';
+    });
     window.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+
+    expect(mockAudioContext.resume).toHaveBeenCalledTimes(2);
+    expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(4);
+
+    // Слушатели сняты: последующий keydown не вызывает resume
+    window.dispatchEvent(new Event('keydown'));
     expect(mockAudioContext.resume).toHaveBeenCalledTimes(2);
 
     stopRingtone();
+  });
 
-    // После остановки слушатели сняты, клик больше не вызывает resume
-    window.dispatchEvent(new Event('pointerdown'));
-    expect(mockAudioContext.resume).toHaveBeenCalledTimes(2);
+  it('не роняет рингтон и корректно останавливается при ошибке SecurityError в navigator.vibrate', () => {
+    (navigator as any).vibrate = vi.fn(() => {
+      throw new Error('SecurityError');
+    });
+
+    expect(() => startRingtone()).not.toThrow();
+    expect(isRingtoneActive()).toBe(true);
+
+    // Таймер работает и звук играет
+    expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(4);
+
+    stopRingtone();
+    expect(isRingtoneActive()).toBe(false);
+  });
+
+  it('отключает узлы oscillator и gain при завершении воспроизведения импульса', () => {
+    let capturedOscillator: any = null;
+    let capturedGain: any = null;
+    mockAudioContext.createOscillator = vi.fn(() => {
+      capturedOscillator = {
+        ...mockOscillator,
+        disconnect: vi.fn(),
+      };
+      return capturedOscillator;
+    });
+    mockAudioContext.createGain = vi.fn(() => {
+      capturedGain = {
+        ...mockGain,
+        disconnect: vi.fn(),
+      };
+      return capturedGain;
+    });
+
+    startRingtone();
+    expect(capturedOscillator).toBeDefined();
+    expect(capturedGain).toBeDefined();
+
+    // Симулируем событие onended
+    capturedOscillator.onended();
+    expect(capturedOscillator.disconnect).toHaveBeenCalledTimes(1);
+    expect(capturedGain.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('безопасно обрабатывает отсутствие поддержки AudioContext или ошибку конструктора', () => {
