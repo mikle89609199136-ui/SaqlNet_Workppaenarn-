@@ -189,7 +189,7 @@ func newBlockingCrypto(t *testing.T) *blockingCrypto {
 		b.inFlight.Add(-1)
 		_, _ = w.Write([]byte(`{"valid":true,"key_id":"k","next_epoch":1}`))
 	}))
-	t.Cleanup(b.Server.Close)
+	t.Cleanup(b.Close)
 	return b
 }
 
