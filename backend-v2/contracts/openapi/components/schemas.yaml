@@ -1,3 +1,79 @@
+# USER-D002 (#454): legacy bulk envelopes; field validation is completed in #453/#495.
+LegacyBulkObjectPatch:
+  type: object
+  nullable: true
+  additionalProperties: true
+  description: >-
+    A shallow patch of one legacy preference section. Omitted or null section
+    is unchanged; an empty object does not reset it. Null leaf values are not
+    delete commands and are checked by the section schema (#453/#495).
+LegacySettingsBulkPatch:
+  type: object
+  additionalProperties: false
+  description: >-
+    Deprecated partial bulk update (#454), not replacement. No section is
+    required. Empty object is a no-op. Unknown root keys and non-object root
+    rejection require #495; the current generic decoder is more permissive.
+    Section-specific fields and alias validation are defined in #453/#496/#495;
+    safe concurrency requires the separate backend implementation task.
+  properties:
+    settings: { $ref: '#/LegacyBulkObjectPatch' }
+    privacySettings:
+      allOf: [{ $ref: '#/LegacyBulkObjectPatch' }]
+      description: >-
+        Partial PrivacySettings rules; a null section is a compatibility no-op,
+        but invalid leaf rules are rejected by the existing privacy validator.
+    notificationSettings: { $ref: '#/LegacyBulkObjectPatch' }
+    soundSettings:
+      allOf: [{ $ref: '#/LegacyBulkObjectPatch' }]
+      description: >-
+        Legacy sound patch. After #1042, valid canonical flags in settings
+        override aliases (#496); conflicting submitted aliases without a
+        canonical winner fail validation. Runtime currently stores it separately.
+    storageSettings: { $ref: '#/LegacyBulkObjectPatch' }
+    advancedSettings: { $ref: '#/LegacyBulkObjectPatch' }
+    folders:
+      type: array
+      nullable: true
+      items: {}
+      description: >-
+        Omitted or null preserves the current list; an array replaces it
+        entirely, including an empty array which clears it. Item DTO is #453.
+    passcodeEnabled:
+      type: boolean
+      readOnly: true
+      description: Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; use the separate passcode API.
+    passcodeTimeout:
+      type: integer
+      readOnly: true
+      description: Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; cannot change passcode timeout here.
+LegacySettingsSnapshot:
+  type: object
+  required: [settings, privacySettings, notificationSettings, soundSettings, storageSettings, advancedSettings, folders, passcodeEnabled, passcodeTimeout]
+  description: >-
+    Deprecated compatibility snapshot (#454). Preference keys/defaults may be
+    incomplete until #451. This is not a compare-and-swap token; build a patch
+    of changed keys rather than sending a stale writable snapshot back.
+  properties:
+    settings: { $ref: '#/MvpSettings' }
+    privacySettings: { $ref: '#/PrivacySettings' }
+    notificationSettings: { $ref: '#/Object' }
+    soundSettings: { $ref: '#/Object' }
+    storageSettings: { $ref: '#/Object' }
+    advancedSettings: { $ref: '#/Object' }
+    folders:
+      type: array
+      nullable: true
+      items: {}
+      description: Legacy list; stored JSON null may currently read as null. Empty-array normalization is #451.
+    passcodeEnabled: { type: boolean, readOnly: true }
+    passcodeTimeout: { type: integer, readOnly: true }
+LegacySettingsBulkUpdateResult:
+  type: object
+  required: [success]
+  properties:
+    success: { type: boolean, enum: [true] }
+  description: Compatibility acknowledgement after a successful update; read the resulting snapshot with a separate GET.
 # USER-D003 (#496): partial preferences; defaults are descriptive so generated PUT fields stay optional.
 NotificationPreferences:
   type: object

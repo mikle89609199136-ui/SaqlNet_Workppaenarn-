@@ -570,15 +570,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get all settings
+         * Get legacy settings snapshot
          * @deprecated
-         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
+         * @description Deprecated compatibility snapshot (#498/#454). Use GET /users/settings for MVP settings/privacy. Passcode fields are read-only; exceptions, blocklist, subscriptions and sessions are separate resources. After #1042, sound aliases are resolved from canonical flags (#496).
          */
         get: operations["getAllSettings"];
         /**
-         * Replace all settings
+         * Partially update legacy settings sections
          * @deprecated
-         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the current service can still lose parallel updates. Strict root/section validation requires #495. After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -2905,6 +2905,45 @@ export interface components {
             twoFactorAuth?: boolean;
             autoDeleteAccount?: boolean;
         };
+        /** @description Deprecated compatibility snapshot (#454). Preference keys/defaults may be incomplete until #451. This is not a compare-and-swap token; build a patch of changed keys rather than sending a stale writable snapshot back. */
+        LegacySettingsSnapshot: {
+            settings: components["schemas"]["MvpSettings"];
+            privacySettings: components["schemas"]["PrivacySettings"];
+            notificationSettings: components["schemas"]["Object"];
+            soundSettings: components["schemas"]["Object"];
+            storageSettings: components["schemas"]["Object"];
+            advancedSettings: components["schemas"]["Object"];
+            /** @description Legacy list; stored JSON null may currently read as null. Empty-array normalization is */
+            folders: unknown[] | null;
+            readonly passcodeEnabled: boolean;
+            readonly passcodeTimeout: number;
+        };
+        /** @description A shallow patch of one legacy preference section. Omitted or null section is unchanged; an empty object does not reset it. Null leaf values are not delete commands and are checked by the section schema (#453/#495). */
+        LegacyBulkObjectPatch: {
+            [key: string]: unknown;
+        } | null;
+        /** @description Deprecated partial bulk update (#454), not replacement. No section is required. Empty object is a no-op. Unknown root keys and non-object root rejection require #495; the current generic decoder is more permissive. Section-specific fields and alias validation are defined in #453/#496/#495; safe concurrency requires the separate backend implementation task. */
+        LegacySettingsBulkPatch: {
+            settings?: components["schemas"]["LegacyBulkObjectPatch"];
+            /** @description Partial PrivacySettings rules; a null section is a compatibility no-op, but invalid leaf rules are rejected by the existing privacy validator. */
+            privacySettings?: components["schemas"]["LegacyBulkObjectPatch"];
+            notificationSettings?: components["schemas"]["LegacyBulkObjectPatch"];
+            /** @description Legacy sound patch. After #1042, valid canonical flags in settings override aliases (#496); conflicting submitted aliases without a canonical winner fail validation. Runtime currently stores it separately. */
+            soundSettings?: components["schemas"]["LegacyBulkObjectPatch"];
+            storageSettings?: components["schemas"]["LegacyBulkObjectPatch"];
+            advancedSettings?: components["schemas"]["LegacyBulkObjectPatch"];
+            /** @description Omitted or null preserves the current list; an array replaces it entirely, including an empty array which clears it. Item DTO is #453. */
+            folders?: unknown[] | null;
+            /** @description Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; use the separate passcode API. */
+            readonly passcodeEnabled?: boolean;
+            /** @description Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; cannot change passcode timeout here. */
+            readonly passcodeTimeout?: number;
+        };
+        /** @description Compatibility acknowledgement after a successful update; read the resulting snapshot with a separate GET. */
+        LegacySettingsBulkUpdateResult: {
+            /** @enum {boolean} */
+            success: true;
+        };
         /**
          * @description Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
          * @enum {string}
@@ -4331,13 +4370,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All settings */
+            /** @description Complete compatibility envelope, not a revision or replacement command */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacySettingsSnapshot"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     updateAllSettings: {
@@ -4349,17 +4394,25 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["LegacySettingsBulkPatch"];
             };
         };
         responses: {
-            /** @description Settings updated */
+            /** @description Compatibility acknowledgement; does not contain a settings snapshot */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacySettingsBulkUpdateResult"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getSettings: {

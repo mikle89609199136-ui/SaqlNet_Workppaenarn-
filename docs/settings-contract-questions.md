@@ -1,5 +1,9 @@
 # Настройки пользователя: что выяснилось и что спрошено у бэкенда
 
+> **Решение #454:** [bulk semantics](settings-bulk-api.md) — shallow update
+> переданных разделов, явная замена folders, read-only passcode и сохранение
+> ответа success. Серверная защита конкурентной записи — #1047.
+
 > **Решение #498:** канонические маршруты, deprecation и путь миграции описаны в
 > [Settings API](settings-api.md). Для MVP используем `GET/PUT /users/settings`
 > и `PUT /users/privacy`; детальные legacy routes остаются для совместимости.
