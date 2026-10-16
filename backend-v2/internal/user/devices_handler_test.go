@@ -2,13 +2,13 @@ package user
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 
@@ -34,6 +34,7 @@ func TestDevices_MethodNotAllowed(t *testing.T) {
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/users/devices", nil)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -67,15 +68,16 @@ func TestDevices_EmptyListSerializedAsArray(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, COALESCE\(device_name.*ORDER BY last_active DESC`).
-		WithArgs("user-id").
+	mock.ExpectQuery(`SELECT s.id::text.*FROM auth.sessions s`).
+		WithArgs("user-id", authctx.TokenHash("caller-token")).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "device_name", "device_type", "ip_address", "location",
-			"user_agent", "last_active", "first_login", "is_current",
+			"id", "device_name", "device_type", "ip_address", "last_active", "created_at",
+			"location", "user_agent", "is_current",
 		}))
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/devices", nil)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -109,17 +111,19 @@ func TestDevices_ReturnsList(t *testing.T) {
 	defer db.Close()
 
 	rows := sqlmock.NewRows([]string{
-		"id", "device_name", "device_type", "ip_address", "location",
-		"user_agent", "last_active", "first_login", "is_current",
-	}).AddRow("session-1", "Device One", "desktop", "IP A", "Unknown",
-		"audit-agent-1", "2024-01-01T10:00:00Z", "2024-01-01T09:00:00Z", true)
+		"id", "device_name", "device_type", "ip_address", "last_active", "created_at",
+		"location", "user_agent", "is_current",
+	}).AddRow("session-1", "Device One", "desktop", "IP A",
+		time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC), time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC),
+		"Unknown", "audit-agent-1", true)
 
-	mock.ExpectQuery(`SELECT id, COALESCE\(device_name.*ORDER BY last_active DESC`).
-		WithArgs("user-id").
+	mock.ExpectQuery(`SELECT s.id::text.*FROM auth.sessions s`).
+		WithArgs("user-id", authctx.TokenHash("caller-token")).
 		WillReturnRows(rows)
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/devices", nil)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -166,12 +170,13 @@ func TestDevices_ServiceError(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, COALESCE\(device_name.*ORDER BY last_active DESC`).
-		WithArgs("user-id").
+	mock.ExpectQuery(`SELECT s.id::text.*FROM auth.sessions s`).
+		WithArgs("user-id", authctx.TokenHash("caller-token")).
 		WillReturnError(errors.New("boom"))
 
 	handler := NewHandler(NewService(db), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/devices", nil)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -231,17 +236,9 @@ func TestRegisterDevice_Success(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM public\.user_sessions\s+WHERE user_id = \$1 AND user_agent = \$2 LIMIT 1`).
-		WithArgs("user-id", "audit-agent-1").
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(`INSERT INTO public\.user_sessions.*RETURNING id`).
-		WithArgs("user-id", "Device One", "desktop", "IP A", "Unknown", "audit-agent-1").
+	mock.ExpectQuery(`UPDATE auth\.sessions s`).
+		WithArgs("user-id", authctx.TokenHash("caller-token"), "Device One", "desktop", "IP A", "Unknown", "audit-agent-1").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("session-1"))
-	mock.ExpectExec(`UPDATE public\.user_sessions SET is_current = FALSE WHERE user_id = \$1 AND id != \$2`).
-		WithArgs("user-id", "session-1").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 
 	handler := NewHandler(NewService(db), nil)
 	body := bytes.NewBufferString(`{
@@ -251,6 +248,7 @@ func TestRegisterDevice_Success(t *testing.T) {
 		"clientIP":   "IP A"
 	}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/users/devices", body)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -284,8 +282,8 @@ func TestRegisterDevice_ServiceError_Returns500(t *testing.T) {
 	}
 	defer db.Close()
 
-	// BeginTx fails immediately; the service returns a generic error.
-	mock.ExpectBegin().WillReturnError(errors.New("boom"))
+	// Metadata update fails; the service returns a generic error.
+	mock.ExpectQuery(`UPDATE auth\.sessions s`).WillReturnError(errors.New("boom"))
 
 	handler := NewHandler(NewService(db), nil)
 	body := bytes.NewBufferString(`{
@@ -295,6 +293,7 @@ func TestRegisterDevice_ServiceError_Returns500(t *testing.T) {
 		"clientIP":   "IP A"
 	}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/users/devices", body)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
@@ -329,6 +328,7 @@ func TestRegisterDevice_InvalidBody_Returns400(t *testing.T) {
 	handler := NewHandler(NewService(db), nil)
 	body := bytes.NewBufferString(`{not valid json`)
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/users/devices", body)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
 	response := httptest.NewRecorder()
 
