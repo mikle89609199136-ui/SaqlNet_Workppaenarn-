@@ -347,18 +347,27 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	if roomID == "" {
 		return
 	}
-	// Звонок, оборванный рестартом сервера, поднимается входом его
-	// участника (#713) — клиент после переподключения входит снова сам.
-	ws.callRooms.Restore(roomID, client.UserID)
+	// Оборванный звонок пока только читаем: отказ не должен убрать его
+	// из очереди, которую закрывает таймер восстановления (#714).
+	room := ws.callRooms.GetRoomForJoin(roomID, client.UserID)
 	// Войти можно только в комнату, созданную через POST /calls/rooms, и
 	// только участнику её чата (#848). Комната входом не создаётся.
 	// «Нет комнаты» и «чужая» отвечаются одинаково: не раскрываем, что
 	// комната есть.
-	if !ws.mayJoinCallRoom(client.UserID, roomID) {
+	if room == nil || !ws.mayJoinCallRoom(client.UserID, room.ChatID) {
 		out, _ := json.Marshal(map[string]interface{}{"type": "call_error", "roomId": roomID, "reason": "room_not_found"})
 		client.Send <- out
 		return
 	}
+	// Нельзя обойти запрет прямым call_join в ранее созданную комнату.
+	if !ws.allowCallRoomJoin(room.ChatID, room.HostID) {
+		ws.closeDeniedCallRoom(roomID, room.HostID)
+		out, _ := json.Marshal(map[string]interface{}{"type": "call_error", "roomId": roomID, "reason": "calls_forbidden"})
+		client.Send <- out
+		return
+	}
+	// Только после проверок переносим разрешённый звонок в активные.
+	ws.callRooms.Restore(roomID, client.UserID)
 	displayName, _ := msg["displayName"].(string)
 	avatarURL, _ := msg["avatarUrl"].(string)
 	r := ws.callRooms.JoinRoom(roomID, client.UserID, displayName, avatarURL)
@@ -399,17 +408,15 @@ func (ws *WSServer) handleCallJoin(client *Client, msg map[string]interface{}) {
 	ws.sendToCallRoom(roomID, peerJoined, client.UserID)
 }
 
-// mayJoinCallRoom — комната есть и пользователь участник её чата. Ошибка
-// базы — не пускать.
-func (ws *WSServer) mayJoinCallRoom(userID, roomID string) bool {
-	room := ws.callRooms.GetRoom(roomID)
-	if room == nil || room.chatID == "" || ws.db == nil {
+// mayJoinCallRoom — пользователь участник чата комнаты. Ошибка базы — не пускать.
+func (ws *WSServer) mayJoinCallRoom(userID, chatID string) bool {
+	if chatID == "" || ws.db == nil {
 		return false
 	}
 	var member bool
 	err := ws.db.QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
-		userID, room.chatID,
+		userID, chatID,
 	).Scan(&member)
 	if err != nil {
 		slog.Error("call room membership check", "err", err)
@@ -718,19 +725,4 @@ func (ws *WSServer) sendToUserLocked(userID string, message []byte) {
 			}
 		}
 	}
-}
-
-// isBlockedBy — заблокировал ли owner пользователя userID. Ошибка базы —
-// считаем, что нет: звонок от этого не ломается, а запись о сбое остаётся.
-func (ws *WSServer) isBlockedBy(owner, userID string) bool {
-	if ws.db == nil {
-		return false
-	}
-	var blocked bool
-	err := ws.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM users.blocked_users WHERE user_id = $1::uuid AND blocked_user_id = $2::uuid)`, owner, userID).Scan(&blocked)
-	if err != nil {
-		slog.Error("block check for call invite", "err", err)
-		return false
-	}
-	return blocked
 }
