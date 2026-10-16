@@ -121,7 +121,11 @@ func sanitizeFilename(filename string) string {
 }
 
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
-	if int64(len(data)) > s.maxUploadBytes {
+	limit := s.maxUploadBytes
+	if isEncrypted {
+		limit = s.encryptedUploadLimit()
+	}
+	if int64(len(data)) > limit {
 		return Upload{}, ErrTooBig
 	}
 
@@ -163,7 +167,7 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 }
 
 func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
-	data, err := decodeBase64Payload(base64Ciphertext, s.maxUploadBytes)
+	data, err := decodeBase64Payload(base64Ciphertext, s.encryptedUploadLimit())
 	if err != nil {
 		if errors.Is(err, ErrTooBig) {
 			return Upload{}, err

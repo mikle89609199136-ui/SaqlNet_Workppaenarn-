@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+export MAX_FILE_SIZE="${MAX_FILE_SIZE:-104857600}"
+
 MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-craneapp}"
 MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-craneapp2024}"
 MEDIA_BUCKET="${MEDIA_BUCKET:-crane-media}"

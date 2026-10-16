@@ -1,0 +1,22 @@
+# Optional ingress-nginx entrypoint. Set the host/TLS for the target environment.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: edge
+  namespace: craneapp-v2
+  annotations:
+    # 100 MiB media + AES-GCM tag + Base64 + bounded JSON metadata.
+    nginx.ingress.kubernetes.io/proxy-body-size: "140m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: web.craneapp.ru
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: edge
+                port:
+                  number: 80
