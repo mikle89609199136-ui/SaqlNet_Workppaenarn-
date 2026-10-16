@@ -79,3 +79,210 @@ CryptoBusy:
       example:
         code: crypto_busy
         message: crypto service is busy
+
+
+UserInvalidJson:
+  description: >-
+    HTTP 400; code is invalid_json. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidJsonBody}
+
+UserInvalidPushSubscription:
+  description: >-
+    HTTP 400; code is invalid_json or invalid_push_subscription. See docs/user-api-contract.md for current
+    behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidPushSubscriptionBody}
+
+UserPasscodeNotSet:
+  description: >-
+    HTTP 400; code is invalid_json or no_passcode_set. See docs/user-api-contract.md for current behavior and
+    marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserPasscodeNotSetBody}
+
+UserInvalidBlock:
+  description: >-
+    HTTP 400; code is invalid_json or self_block or validation_failed. See docs/user-api-contract.md for
+    current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidBlockBody}
+
+UserInvalidException:
+  description: >-
+    HTTP 400; code is invalid_json or self_exception or validation_failed. See docs/user-api-contract.md for
+    current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidExceptionBody}
+
+UserInvalidInput:
+  description: >-
+    HTTP 400; code is invalid_json or validation_failed. See docs/user-api-contract.md for current behavior
+    and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidInputBody}
+
+UserInvalidSessionId:
+  description: >-
+    HTTP 400; code is invalid_request or validation_failed. See docs/user-api-contract.md for current behavior
+    and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidSessionIdBody}
+
+UserInvalidParameter:
+  description: >-
+    HTTP 400; code is validation_failed. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInvalidParameterBody}
+
+UserUnauthorized:
+  description: >-
+    HTTP 401; code is invalid_token or missing_token or token_revoked. See docs/user-api-contract.md for
+    current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserUnauthorizedBody}
+
+UserPasscodeUnauthorized:
+  description: >-
+    HTTP 401; code is invalid_token or missing_token or token_revoked or wrong_passcode. See
+    docs/user-api-contract.md for current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserPasscodeUnauthorizedBody}
+
+UserForbidden:
+  description: >-
+    HTTP 403; code is cross_site_request. See docs/user-api-contract.md for current behavior and marked
+    runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserForbiddenBody}
+
+UserSessionNotFound:
+  description: HTTP 404; code is not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserSessionNotFoundBody}
+
+UserPushNotConfigured:
+  description: >-
+    HTTP 404; code is push_not_configured. See docs/user-api-contract.md for current behavior and marked
+    runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserPushNotConfiguredBody}
+
+UserRouteNotFound:
+  description: >-
+    HTTP 404; code is route_not_found. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserRouteNotFoundBody}
+
+UserProfileRouteNotFound:
+  description: >-
+    HTTP 404; code is route_not_found or user_not_found. See docs/user-api-contract.md for current behavior
+    and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserProfileRouteNotFoundBody}
+
+UserNotFound:
+  description: >-
+    HTTP 404; code is user_not_found. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserNotFoundBody}
+
+UserMethodNotAllowed:
+  description: >-
+    HTTP 405; code is method_not_allowed. See docs/user-api-contract.md for current behavior and marked
+    runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserMethodNotAllowedBody}
+
+UserAlreadyBlocked:
+  description: >-
+    HTTP 409; code is already_blocked. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserAlreadyBlockedBody}
+
+UserCurrentSessionConflict:
+  description: >-
+    HTTP 409; code is conflict_current_session. See docs/user-api-contract.md for current behavior and marked
+    runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserCurrentSessionConflictBody}
+
+UserUsernameConflict:
+  description: >-
+    HTTP 409; code is username_taken. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserUsernameConflictBody}
+
+UserRateLimited:
+  description: >-
+    HTTP 429; code is rate_limited. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  headers:
+    Retry-After:
+      description: Seconds until retry; at least 1.
+      schema: {type: integer, minimum: 1}
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserRateLimitedBody}
+
+UserRenameRateLimited:
+  description: >-
+    HTTP 429; code is rate_limited or username_change_cooldown. See docs/user-api-contract.md for current
+    behavior and marked runtime gaps.
+  headers:
+    Retry-After:
+      description: Seconds until retry; at least 1.
+      schema: {type: integer, minimum: 1}
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserRenameRateLimitedBody}
+
+UserInternalError:
+  description: >-
+    HTTP 500; code is internal_error. See docs/user-api-contract.md for current behavior and marked runtime
+    gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserInternalErrorBody}
+
+UserBadGateway:
+  description: >-
+    HTTP 502; code is upstream_unavailable. See docs/user-api-contract.md for current behavior and marked
+    runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserBadGatewayBody}
+
+UserUnavailable:
+  description: >-
+    HTTP 503; code is auth_check_unavailable or crypto_protocol_not_ready. See docs/user-api-contract.md for
+    current behavior and marked runtime gaps.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserUnavailableBody}

@@ -50,6 +50,7 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              - 'backend-v2/contracts/openapi/**'
               - 'scripts/**'
               - '.github/workflows/ci.yml'
             backend:
@@ -88,6 +89,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check User API contract and generated types
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/types/api.generated.ts
+          npm run api:check
 
       # Проверка типов из конвейера убрана: корневой tsconfig — файл-решение
       # со списком проектов и пустым files, поэтому `tsc --noEmit` завершался

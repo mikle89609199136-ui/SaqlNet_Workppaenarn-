@@ -27,7 +27,7 @@
 - **Defaults — целевое правило:** единый набор для регистрации, восстановления отсутствующей строки и чтения через любой поддерживаемый маршрут (#451). Отсутствие нового поля в старой записи не должно сбрасывать другие предпочтения. Нельзя утверждать готовность этого правила до #451/#1040/#1042.
 - **Конкурентность:** patch разных полей не должен терять соседние изменения. Текущий SQL merge общих settings сохраняет omitted keys; read-modify-write bulk/preferences имеет риск потери параллельной записи. Семантика bulk определена в [#454](settings-bulk-api.md), runtime-защита конкурентной записи — #1047; стратегия синхронизации устройств/вкладок — #1041. Атомарности нескольких разных HTTP-запросов не обещаем.
 
-Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. Общие settings пока принимают `map[string]any`: строгая проверка неизвестных ключей/типов/null **ещё не реализована**. OpenAPI в #498 уточняет маршруты, envelopes и deprecation; общие поля остаются generic до #453, кроме трёх typed notification preferences из #496 (`MvpSettings`/`NotificationPreferences`). Примеры новых Appearance-полей из аудита не становятся реализованным контрактом автоматически.
+Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. Общие settings пока принимают `map[string]any`: строгая проверка неизвестных ключей/типов/null **ещё не реализована**. OpenAPI в #498 уточняет маршруты, envelopes и deprecation; [#453 фиксирует полный typed contract](user-api-contract.md), включая Appearance enums/defaults и notification preferences из #496. Runtime validation/migration и применение новых Appearance-полей остаются #495/#451/#1040/#728.
 
 ### Ошибки канонических маршрутов
 
