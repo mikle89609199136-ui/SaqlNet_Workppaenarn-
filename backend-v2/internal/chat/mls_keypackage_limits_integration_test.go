@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	kpAnna  = "91600000-0000-4000-8000-000000000001"
+	kpAnna  = "91600000-0000-4000-8000-00000000a001"
 	kpMax   = "91600000-0000-4000-8000-000000000002"
 	kpBoris = "91600000-0000-4000-8000-000000000003"
 	kpCarl  = "91600000-0000-4000-8000-000000000004"
@@ -66,6 +67,38 @@ func isRateLimited(err error) bool {
 
 func TestMLSKeyPackageLimitsOnRealSchema(t *testing.T) {
 	ctx := context.Background()
+	aliases := []string{
+		strings.ReplaceAll(kpAnna, "-", ""),
+		"{" + kpAnna + "}",
+		strings.ToUpper(kpAnna),
+	}
+
+	t.Run("UUID aliases share the pair limit", func(t *testing.T) {
+		svc, db := kpFixture(t, kpLimits(2, 100))
+		for _, target := range []string{kpAnna, aliases[0]} {
+			_, err := svc.MLSFetchKeyPackage(ctx, kpMax, target)
+			require.NoError(t, err)
+		}
+		for _, target := range aliases {
+			// Альтернативная запись запрашивающего тоже не создаёт новую пару.
+			_, err := svc.MLSFetchKeyPackage(ctx, "{"+kpMax+"}", target)
+			require.True(t, isRateLimited(err), "alias %s bypassed pair limit: %v", target, err)
+		}
+		require.Equal(t, 18, annaKeyPackages(t, db))
+	})
+
+	t.Run("UUID aliases share the target limit across requesters", func(t *testing.T) {
+		svc, db := kpFixture(t, kpLimits(100, 2))
+		for i, requester := range []string{kpMax, kpBoris} {
+			_, err := svc.MLSFetchKeyPackage(ctx, requester, aliases[i])
+			require.NoError(t, err)
+		}
+		for _, target := range append([]string{kpAnna}, aliases...) {
+			_, err := svc.MLSFetchKeyPackage(ctx, kpCarl, target)
+			require.True(t, isRateLimited(err), "alias %s bypassed target limit: %v", target, err)
+		}
+		require.Equal(t, 18, annaKeyPackages(t, db))
+	})
 
 	t.Run("pair limit stops repeated fetches and keeps the remaining keys", func(t *testing.T) {
 		svc, db := kpFixture(t, kpLimits(2, 100))

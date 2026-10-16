@@ -106,12 +106,13 @@ func (s *Service) MLSUploadKeyPackages(ctx context.Context, userID string, packa
 }
 
 func (s *Service) MLSFetchKeyPackage(ctx context.Context, requesterID, targetUserID string) (MLSKeyPackage, error) {
-	var dummy int
+	// PostgreSQL нормализует все допустимые записи UUID до ключей лимитера.
+	// Иначе один адресат получает разные корзины для UUID с дефисами и без них.
 	err := s.db.QueryRowContext(ctx, `
-		SELECT 1 FROM chats.members a
+		SELECT a.user_id::text, b.user_id::text FROM chats.members a
 		JOIN chats.members b ON a.chat_id = b.chat_id
 		WHERE a.user_id = $1 AND b.user_id = $2 LIMIT 1
-	`, requesterID, targetUserID).Scan(&dummy)
+	`, requesterID, targetUserID).Scan(&requesterID, &targetUserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MLSKeyPackage{}, errors.New("access denied")
 	}
