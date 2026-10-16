@@ -16,7 +16,7 @@
 
 Исключения приватности остаются отдельными ресурсами: `GET /users/privacy/exceptions[?rule=…]`, `PUT/DELETE /users/privacy/exceptions/{rule}/{userId}`. Чёрный список — `/users/blocked`. Изменение базового правила не заменяет исключения и не снимает блокировки.
 
-Выбор этой поверхности API не определяет физическое размещение полей в БД. При решении #496 и миграции #1042 потребители сохраняют канонические маршруты; если меняется DTO, изменение сначала отражается в OpenAPI и совместимом rollout. Детальные notification/sound endpoints не становятся вторым способом записи новых MVP-полей.
+Источник notification/sound определён в [решении #496](notification-settings.md): канонические `notifications/sounds/callSounds` остаются в общем settings; sound aliases нормализуются в #1042. Подробные поля без эквивалента сохраняются как compatibility data. Канонические маршруты сохраняются, runtime adapter и миграция выпускаются совместимо. Детальные legacy endpoints не становятся независимым источником глобальных preferences.
 
 ## Единые правила
 
@@ -27,7 +27,7 @@
 - **Defaults — целевое правило:** единый набор для регистрации, восстановления отсутствующей строки и чтения через любой поддерживаемый маршрут (#451). Отсутствие нового поля в старой записи не должно сбрасывать другие предпочтения. Нельзя утверждать готовность этого правила до #451/#1040/#1042.
 - **Конкурентность:** patch разных полей не должен терять соседние изменения. Текущий SQL merge общих settings сохраняет omitted keys; read-modify-write bulk/preferences имеет риск потери параллельной записи. Защита bulk и его semantics — #454; стратегия синхронизации устройств/вкладок — #1041. Атомарности нескольких разных HTTP-запросов не обещаем.
 
-Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. Общие settings пока принимают `map[string]any`: строгая проверка неизвестных ключей/типов/null **ещё не реализована**. OpenAPI в #498 уточняет маршруты, envelopes и deprecation; generic schema общих полей остаётся до #453. Примеры новых Appearance-полей из аудита не становятся реализованным контрактом автоматически.
+Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. Общие settings пока принимают `map[string]any`: строгая проверка неизвестных ключей/типов/null **ещё не реализована**. OpenAPI в #498 уточняет маршруты, envelopes и deprecation; общие поля остаются generic до #453, кроме трёх typed notification preferences из #496 (`MvpSettings`/`NotificationPreferences`). Примеры новых Appearance-полей из аудита не становятся реализованным контрактом автоматически.
 
 ### Ошибки канонических маршрутов
 
@@ -52,8 +52,8 @@ Privacy validation уже действует при `PUT /users/privacy` и за
 | Метод и адрес                      | Решение                      | Путь перехода                                                                                                                                              |
 | ---------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET/PUT /users/all-settings`      | Deprecated compatibility API | Для MVP читать `/users/settings`, писать только изменённый раздел через `/users/settings` или `/users/privacy`. Bulk semantics/совместимость остаются #454 |
-| `GET/PUT /users/notifications`     | Deprecated compatibility API | Общие MVP-намерения — через `/users/settings`; точный mapping подробных полей и миграция только после #496/#1042                                           |
-| `GET/PUT /users/sounds`            | Deprecated compatibility API | Аналогично notification settings; нельзя автоматически приравнять legacy callsSound к любому современному флагу                                            |
+| `GET/PUT /users/notifications`     | Deprecated compatibility API | Общие MVP-намерения — через `/users/settings`; mapping определён в [#496](notification-settings.md); runtime переход — #1042                               |
+| `GET/PUT /users/sounds`            | Deprecated compatibility API | messagesSound/notificationsSound → sounds, callsSound → callSounds по [#496](notification-settings.md); runtime aliases — #1042                            |
 | `GET/PUT /users/advanced-settings` | Deprecated compatibility API | Нового MVP editor нет. Сохранить legacy data; поддерживаемую замену определять вместе с будущей функцией                                                   |
 | `GET/PUT /users/folders`           | Deprecated compatibility API | Folders вне текущего MVP settings; не переносить их как произвольное поле в общий settings                                                                 |
 | `PUT /users/storage/settings`      | Deprecated compatibility API | Storage preferences вне MVP settings; не изобретать равнозначный canonical field без отдельного контракта                                                  |
@@ -64,19 +64,19 @@ Privacy validation уже действует при `PUT /users/privacy` и за
 
 1. **В #498:** пометить перечисленные операции `deprecated: true` в OpenAPI, сохранить paths/security/operationId; убрать из активного React `UserService` неиспользуемые методы detailed notification/sound/advanced/folder/storage-preference и их constants. React уже использует canonical settings/privacy, поэтому подменять его запросы не требуется. Сгенерировать frontend types из обновлённого контракта.
 2. **Существующие legacy clients:** сервер продолжает обслуживать прежние bodies и responses; не вводить 404/410, redirects или смену response envelope. `legacy/mobile-client` остаётся замороженным справочником и не переписывается. Возобновление его поставки требует отдельного переноса настроек на canonical API.
-3. **При переводе внешнего клиента:** прочитать общий settings/privacy через canonical GET; разбить bulk write на изменённые разделы. Не переносить поля неизвестного назначения и не обещать атомарность двух PUT. Если нужны detailed preferences, дождаться mapping #496/#1042; для advanced/folders/storage оставить существующий compatibility маршрут до появления согласованной замены или снятия функции. Прямой перенос всех старых keys запрещён.
+3. **При переводе внешнего клиента:** прочитать общий settings/privacy через canonical GET; разбить bulk write на изменённые разделы. Не переносить поля неизвестного назначения и не обещать атомарность двух PUT. Если нужны detailed preferences, применить mapping [#496](notification-settings.md) после внедрения resolver #1042; для advanced/folders/storage оставить существующий compatibility маршрут до появления согласованной замены или снятия функции. Прямой перенос всех старых keys запрещён.
 4. **До удаления routes:** проверить реальные обращения в production за согласованное окно (нулевых обращений по поиску в репозитории недостаточно), определить поддерживаемые версии клиентов, завершить миграцию данных и проверить, что оставленные bulk/section writers не обходят новую модель. Если используется deprecation telemetry, не логировать содержимое настроек/сессий.
 5. **Удаление отдельным изменением:** после подтверждения перехода объявить версию прекращения поддержки и обновить клиентов, OpenAPI и tests вместе. Дата sunset сейчас не назначается; `Sunset`/`Deprecation` response headers сервером в #498 не добавляются. Наличие `deprecated` не означает, что такие headers уже отправляются.
 
 ## Границы следующих задач
 
-| Задача             | Что решает после #498                                                                                 |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| #496               | Канонические notification/sound поля, приоритеты и compatibility mapping                              |
-| #454               | Точный bulk contract, конкурентность и судьба его read-only/неработающих полей в compatibility-период |
-| #453               | Типизированные keys/enums/ranges и полная status matrix User API, включая выбранные envelopes         |
-| #451 / #495 / #497 | Runtime defaults/validation/avatarShape                                                               |
-| #1040 / #1042      | Backend Appearance и notification migration по согласованной схеме                                    |
-| #1041              | Доставка изменений и применение между устройствами/вкладками                                          |
+| Задача             | Что решает после #498                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| #496               | Решение принято: [канонические поля, приоритеты и mapping](notification-settings.md); внедрение — #1042/#725 |
+| #454               | Точный bulk contract, конкурентность и судьба его read-only/неработающих полей в compatibility-период        |
+| #453               | Типизированные keys/enums/ranges и полная status matrix User API, включая выбранные envelopes                |
+| #451 / #495 / #497 | Runtime defaults/validation/avatarShape                                                                      |
+| #1040 / #1042      | Backend Appearance и notification migration по согласованной схеме                                           |
+| #1041              | Доставка изменений и применение между устройствами/вкладками                                                 |
 
 Решение #498 считается реализованным при согласованности этой таблицы, OpenAPI и активного frontend service. Дальнейшая реализация runtime validation/migration остаётся в перечисленных задачах и не считается готовой от одной пометки deprecated.

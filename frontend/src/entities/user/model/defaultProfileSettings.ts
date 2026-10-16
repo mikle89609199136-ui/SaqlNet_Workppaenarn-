@@ -10,7 +10,8 @@ export const DEFAULT_PROFILE_SETTINGS: ISettingsDto = {
 };
 
 /**
- * Извлекает флаг включения звука звонка с учётом настроек по умолчанию (#1002).
+ * Читает сохранённое предпочтение рингтона (#496/#1002), независимо от sounds.
+ * Это не effective policy: global notifications и контекст применяются в #725.
  */
 export function selectCallSounds(settings?: Partial<ISettingsDto> | null): boolean {
   return settings?.callSounds ?? DEFAULT_PROFILE_SETTINGS.callSounds ?? true;
