@@ -1,5 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { MESSAGES_PAGE_SIZE, putThreadMessage, retryAllOutboxMessages } from '@/entities/message';
+import {
+  captureThreadChanges,
+  MESSAGES_PAGE_SIZE,
+  putThreadMessages,
+  retryAllOutboxMessages,
+} from '@/entities/message';
 import { chatKeys } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 
@@ -33,19 +38,27 @@ export async function resyncAfterReconnect(queryClient: QueryClient): Promise<vo
 
   await Promise.all(
     openChatIds(queryClient).map(async (chatId) => {
+      const changes = captureThreadChanges(queryClient, chatId);
       try {
         // Только свежая страница. Прокрученную вверх историю не трогаем:
         // это десятки запросов и полная перерасшифровка ради сообщений,
         // которые никуда не делись.
         const page = await services.messageService.fetchMessagesPage(chatId, 0, MESSAGES_PAGE_SIZE);
 
-        // Уже известные сообщения отсеются: запись в ленту различает их по
-        // идентификатору. Порядок восстановится при чтении.
-        page.forEach((message) => putThreadMessage(queryClient, chatId, message));
+        // Страница обновляет и известные ID: событие правки могло пропасть,
+        // а заглушка расшифровки — остаться после появления ключа.
+        // Старые страницы сохраняются, новые ID добавляются без дубликатов.
+        changes.stop();
+        putThreadMessages(queryClient, chatId, page, {
+          replaceExisting: true,
+          replay: changes.replay,
+        });
       } catch (error) {
         // Связь только вернулась и могла отвалиться снова. Следующее
         // восстановление повторит попытку.
         console.warn('Не удалось догнать пропущенные сообщения', error);
+      } finally {
+        changes.stop();
       }
     })
   );

@@ -63,6 +63,15 @@ describe('запись сообщения в тред', () => {
     ).toEqual(['m-1', 'm-2']);
   });
 
+  it('keeps a known message when a duplicate realtime event arrives', () => {
+    const edited = makeMessage({ id: 'm-1', content: 'edited' });
+    seedThread([edited]);
+    putThreadMessage(queryClient, CHAT_ID, { ...edited, content: 'old echo' });
+    expect(
+      flattenThread(queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID)))
+    ).toEqual([edited]);
+  });
+
   it('should refetch instead of appending to a thread that was never loaded', () => {
     // Одно сообщение было бы принято за всю историю чата (#174).
     putThreadMessage(queryClient, CHAT_ID, makeMessage({ id: 'm-1' }));
@@ -89,6 +98,24 @@ describe('запись пачки в тред (#808)', () => {
     ).toEqual(['m-1', 'm-2', 'm-3', 'm-4']);
     const listKey = JSON.stringify(chatKeys.list());
     expect(invalidated.filter((key) => JSON.stringify(key) === listKey)).toHaveLength(1);
+  });
+
+  it('does not overwrite a newer realtime edit with an older fetched snapshot', () => {
+    const latest = makeMessage({
+      id: 'm-1',
+      content: 'new edit',
+      updatedAt: new Date('2026-10-16T10:00:02Z'),
+    });
+    seedThread([latest]);
+    putThreadMessages(
+      queryClient,
+      CHAT_ID,
+      [{ ...latest, content: 'old edit', updatedAt: new Date('2026-10-16T10:00:01Z') }],
+      { replaceExisting: true }
+    );
+    expect(
+      flattenThread(queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID)))
+    ).toEqual([latest]);
   });
 
   it('несколько пометок подряд дают один запрос списка, а не отменяют друг друга', async () => {
