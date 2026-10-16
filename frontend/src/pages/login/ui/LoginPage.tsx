@@ -1,13 +1,14 @@
 import { useProfileStore } from '@/entities/user';
-import { LoginForm } from '@/features/auth';
+import { LoginForm, safeReturnPath } from '@/features/auth';
 import { completeQrLogin, QrLoginPanel, QrScanLoginPanel } from '@/features/qr-login';
 import { ROUTES } from '@/shared/config/routes';
 import { AuthLayout, Icon, SegmentedControl } from '@/shared/ui';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 
 export function LoginPage() {
+  const [searchParams] = useSearchParams();
   const signedIn = useProfileStore((state) => state.isAuth);
   const { t } = useTranslation();
   const [method, setMethod] = useState<'password' | 'qr'>('password');
@@ -16,7 +17,7 @@ export function LoginPage() {
   const [qrDirection, setQrDirection] = useState<'show' | 'scan'>('show');
 
   /* Уже вошли — на странице входа делать нечего. */
-  if (signedIn) return <Navigate replace to={ROUTES.CHATS} />;
+  if (signedIn) return <Navigate replace to={safeReturnPath(searchParams.get('from'))} />;
 
   return (
     <AuthLayout
