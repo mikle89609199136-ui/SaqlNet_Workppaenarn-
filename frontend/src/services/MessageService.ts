@@ -33,8 +33,6 @@ interface IPreparedSend {
   toDisplay: (sent: IMessageDto) => IMessageDto | Promise<IMessageDto>;
 }
 
-const LEGACY_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не зашифрован';
-
 /** Загрузка в сервисе медиа — единственный адрес вложения, который скачиваем (#871). */
 const OWN_MEDIA_URL =
   /^\/api\/v2\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +41,10 @@ export function isOwnMediaUrl(url: string): boolean {
   return OWN_MEDIA_URL.test(url);
 }
 
-const FOREIGN_MEDIA_UNAVAILABLE = 'Медиа недоступно: файл не из этого приложения';
+/** Проверяет, что медиафайл принадлежит каталогу стикеров или GIF (#593, #871, #973, #1003). */
+export function isCatalogMediaUrl(url: string): boolean {
+  return isOwnMediaUrl(url);
+}
 
 export class MessageService {
   private apiClient: ApiClient;
@@ -303,6 +304,52 @@ export class MessageService {
     return message as IMediaItem;
   }
 
+  async sendSticker(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    return this.sendCatalogMedia(chatId, mediaUrl, 'sticker', replyTo);
+  }
+
+  async sendGif(
+    chatId: string,
+    mediaUrl: string,
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    return this.sendCatalogMedia(chatId, mediaUrl, 'gif', replyTo);
+  }
+
+  async sendCatalogMedia(
+    chatId: string,
+    mediaUrl: string,
+    type: 'sticker' | 'gif',
+    replyTo: string | null = null
+  ): Promise<IMessageDto> {
+    const prepared: IPreparedSend = {
+      item: {
+        content: '',
+        type,
+        replyTo,
+        mediaUrl,
+        mediaType: type,
+        mediaEncrypted: false,
+      },
+      toDisplay: (sent) =>
+        ({
+          ...sent,
+          content: '',
+          type,
+          mediaUrl,
+          mediaType: type,
+          mediaEncrypted: false,
+          mediaUnavailable: false,
+        }) as IMessageDto,
+    };
+    const [message] = await this.sendPrepared(chatId, [prepared]);
+    return message;
+  }
+
   async processMessageForDisplay(
     chatId: string,
     item: IMessageDto,
@@ -378,14 +425,16 @@ export class MessageService {
 
     let content = message.content;
     let undecryptable: TUndecryptableReason | undefined;
+    let entities = message.entities;
 
     if (content) {
       const decrypted = await this.decryptContent(chatId, content, context, message.senderId);
       content = decrypted.text;
       undecryptable = decrypted.undecryptable;
+      if (decrypted.entities) entities = decrypted.entities;
     }
 
-    return { ...message, content, undecryptable };
+    return { ...message, content, undecryptable, ...(entities ? { entities } : {}) };
   }
 
   /**
@@ -445,11 +494,33 @@ export class MessageService {
   async resolveMediaForDisplay(chatId: string, item: IMessageDto) {
     const metadata = item.metadata;
 
+    const mediaUrl =
+      (metadata && 'mediaUrl' in metadata ? metadata.mediaUrl : null) ||
+      ((item as unknown as { mediaUrl?: string }).mediaUrl ?? null);
+
+    if (!mediaUrl) return {};
+
+    // Стикеры и GIF не шифруются сквозным шифрованием файлов и берутся из каталога приложения (#593, #871, #973)
+    if (item.type === 'sticker' || item.type === 'gif') {
+      if (!isCatalogMediaUrl(mediaUrl)) {
+        return {
+          mediaUrl: null,
+          mediaEncrypted: false,
+          mediaUnavailable: true,
+          mediaUnavailableReason: 'foreign',
+        };
+      }
+      return {
+        mediaUrl,
+        mediaOriginalUrl: mediaUrl,
+        mediaEncrypted: false,
+        mediaUnavailable: false,
+      };
+    }
+
     if (!metadata || !('mediaUrl' in metadata)) {
       return {};
     }
-    const mediaUrl = metadata.mediaUrl;
-    if (!mediaUrl) return {};
 
     /* Скачиваем только загрузки сервиса медиа (#871). Любой другой адрес —
        чужой сервер или другой маршрут API — не трогаем: запрос ушёл бы
@@ -459,7 +530,7 @@ export class MessageService {
         mediaUrl: null,
         mediaEncrypted: Boolean(metadata.mediaEncrypted),
         mediaUnavailable: true,
-        mediaUnavailableReason: FOREIGN_MEDIA_UNAVAILABLE,
+        mediaUnavailableReason: 'foreign',
       };
     }
 
@@ -470,7 +541,7 @@ export class MessageService {
         mediaUrl: null,
         mediaEncrypted: false,
         mediaUnavailable: true,
-        mediaUnavailableReason: LEGACY_MEDIA_UNAVAILABLE,
+        mediaUnavailableReason: 'unencrypted',
       };
     }
 
@@ -503,13 +574,13 @@ export class MessageService {
         mediaEncrypted: true,
         mediaEncryption: metadata.mediaEncryption ?? null,
         mediaUnavailable: true,
-        mediaUnavailableReason: 'Медиа недоступно: ошибка расшифровки',
+        mediaUnavailableReason: 'decryptFailed',
       };
     }
   }
 
   mediaMetadataFromPayload(payload: IEncryptedMedia): Omit<IEncryptedMedia, 'ciphertext'> {
-    const { ciphertext, ...metadata } = payload;
+    const { ciphertext: _ciphertext, ...metadata } = payload;
     return metadata;
   }
 

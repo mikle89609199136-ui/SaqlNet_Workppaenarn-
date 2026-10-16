@@ -7,8 +7,9 @@ import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
-import { MessageService } from './MessageService';
+import { isCatalogMediaUrl, isOwnMediaUrl, MessageService } from './MessageService';
 import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import type { ILastMessageDto } from '@/entities/chat/model/types';
 import type { IMessageEntity } from '@/shared/lib/richText';
 
 const TARGET_CHAT = 'chat-target';
@@ -467,5 +468,205 @@ describe('MessageService: пересылка голосового (#843)', () =>
     }
 
     expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+  });
+});
+
+describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
+  const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
+  const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
+  it('isCatalogMediaUrl и isOwnMediaUrl пропускают только относительные пути /api/v2/media/{uuid}', () => {
+    expect(isCatalogMediaUrl(validStickerUrl)).toBe(true);
+    expect(isCatalogMediaUrl(validGifUrl)).toBe(true);
+    expect(isOwnMediaUrl(validStickerUrl)).toBe(true);
+    expect(isOwnMediaUrl(validGifUrl)).toBe(true);
+    expect(isCatalogMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(isOwnMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(
+      isCatalogMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(
+      isOwnMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(isCatalogMediaUrl('https://example.com/dance.gif')).toBe(false);
+    expect(isOwnMediaUrl('https://example.com/dance.gif')).toBe(false);
+  });
+
+  it('sendSticker отправляет сообщение типа sticker с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendSticker(TARGET_CHAT, validStickerUrl);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'sticker',
+      mediaUrl: validStickerUrl,
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'sticker',
+      mediaUrl: validStickerUrl,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('sendGif отправляет сообщение типа gif с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendGif(TARGET_CHAT, validGifUrl);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'gif',
+      mediaUrl: validGifUrl,
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'gif',
+      mediaUrl: validGifUrl,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay не блокирует URL каталога для стикеров и GIF', async () => {
+    const service = createService();
+    const stickerMsg = {
+      ...message('m-sticker', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: validStickerUrl } as never,
+    };
+    const gifMsg = {
+      ...message('m-gif', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: validGifUrl,
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, stickerMsg);
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, gifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: validStickerUrl,
+      mediaOriginalUrl: validStickerUrl,
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: validGifUrl,
+      mediaOriginalUrl: validGifUrl,
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay блокирует сторонние (не из каталога) URL для стикеров и GIF (#871, #1003)', async () => {
+    const service = createService();
+    const foreignStickerMsg = {
+      ...message('m-sticker-foreign', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: 'https://evil.com/leak.png' } as never,
+    };
+    const traversalStickerMsg = {
+      ...message('m-sticker-traversal', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: '/api/v2/stickers/../leak.png' } as never,
+    };
+    const minioStickerMsg = {
+      ...message('m-sticker-minio', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
+    };
+    const evilBypassStickerMsg = {
+      ...message('m-sticker-evil', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'https://evil.com/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
+    };
+    const foreignGifMsg = {
+      ...message('m-gif-foreign', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: 'https://example.com/dance.gif',
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
+    const patchTraversal = await service.resolveMediaForDisplay(TARGET_CHAT, traversalStickerMsg);
+    const patchMinioSticker = await service.resolveMediaForDisplay(TARGET_CHAT, minioStickerMsg);
+    const patchEvilSticker = await service.resolveMediaForDisplay(
+      TARGET_CHAT,
+      evilBypassStickerMsg
+    );
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, foreignGifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchTraversal).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchMinioSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchEvilSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+  });
+});
+
+describe('MessageService: обработка последнего сообщения для превью (#971)', () => {
+  it('сохраняет форматирование (entities) из расшифровки или открытого сообщения', async () => {
+    const cryptoWithEntities = {
+      decryptMessage: vi.fn(async (_chatId: string, content: string) => ({
+        text: content,
+        entities: [{ type: 'bold' as const, offset: 0, length: 6 }],
+      })),
+    } as unknown as CryptoService;
+
+    const service = new MessageService(createApiClient(), cryptoWithEntities);
+    const lastMsg: ILastMessageDto = {
+      id: 'msg-1',
+      content: 'Привет мир',
+      type: 'text',
+      senderId: 'user-1',
+      senderName: 'User',
+      reactions: [],
+    };
+
+    const processed = await service.processLastMessageForDisplay('chat-1', lastMsg, {
+      type: 'private',
+    });
+    expect(processed.content).toBe('Привет мир');
+    expect(processed.entities).toEqual([{ type: 'bold', offset: 0, length: 6 }]);
   });
 });

@@ -1,8 +1,11 @@
 package media
 
 import (
-	"encoding/json"
+	"database/sql"
+	"errors"
+	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/authctx"
@@ -59,27 +62,66 @@ func (h *Handler) CreateGif(w http.ResponseWriter, r *http.Request) {
 
 	user := authctx.MustUser(r)
 
+	r.Body = http.MaxBytesReader(w, r.Body, gifCreateBodyLimitBytes)
 	var req struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", "request body exceeds 64 KiB limit")
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
-	if req.URL == "" {
+	if strings.TrimSpace(req.URL) == "" {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "missing_url", "url is required")
 		return
 	}
 
-	var gif Gif
+	uploadID, ok := parseGifMediaPath(req.URL)
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_url", "url must be a media upload path")
+		return
+	}
+	name, ok := validateGifName(req.Name)
+	if !ok {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "name must contain at most 255 characters and no control characters")
+		return
+	}
+
+	var contentType string
+	var encrypted bool
 	err := h.service.db.QueryRowContext(r.Context(), `
+		SELECT content_type, is_encrypted
+		FROM media.uploads
+		WHERE id = $1 AND uploader_id = $2
+	`, uploadID, user.ID).Scan(&contentType, &encrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "upload_not_found", "upload not found")
+		return
+	}
+	if err != nil {
+		slog.Error("find GIF source upload", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	mediaType, valid := normalizeMediaType(contentType)
+	if !valid || mediaType != "image/gif" || encrypted {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_gif_source", "source must be an unencrypted GIF upload")
+		return
+	}
+
+	var gif Gif
+	err = h.service.db.QueryRowContext(r.Context(), `
 		INSERT INTO media.gifs (user_id, name, url)
 		VALUES ($1, $2, $3)
 		RETURNING id::text, name, url, created_at::text
-	`, user.ID, req.Name, req.URL).Scan(&gif.ID, &gif.Name, &gif.URL, &gif.CreatedAt)
+	`, user.ID, name, req.URL).Scan(&gif.ID, &gif.Name, &gif.URL, &gif.CreatedAt)
 	if err != nil {
-		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
+		slog.Error("create GIF", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 
@@ -124,6 +166,8 @@ func (h *Handler) ListFavoriteGifs(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"gifs": gifs})
 }
 
+var gifIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 func (h *Handler) ToggleFavoriteGif(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
 	parts := strings.Split(r.URL.Path, "/")
@@ -133,28 +177,63 @@ func (h *Handler) ToggleFavoriteGif(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gifID := parts[4]
+	if !gifIDPattern.MatchString(gifID) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_gif_id", "invalid GIF id")
+		return
+	}
 
 	if r.Method == http.MethodPost {
-		_, err := h.service.db.ExecContext(r.Context(), `
-			INSERT INTO media.favorite_gifs (user_id, gif_id)
-			VALUES ($1, $2)
-			ON CONFLICT DO NOTHING
-		`, user.ID, gifID)
+		var gifExists, inserted bool
+		err := h.service.db.QueryRowContext(r.Context(), `
+			WITH gif AS (
+				SELECT id FROM media.gifs WHERE id = $2
+			), inserted AS (
+				INSERT INTO media.favorite_gifs (user_id, gif_id)
+				SELECT $1, id FROM gif
+				ON CONFLICT DO NOTHING
+				RETURNING 1
+			)
+			SELECT EXISTS (SELECT 1 FROM gif) AS gif_exists,
+			       EXISTS (SELECT 1 FROM inserted) AS inserted
+		`, user.ID, gifID).Scan(&gifExists, &inserted)
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
+			slog.Error("toggle favorite GIF", "err", err)
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		httpx.JSON(w, http.StatusCreated, map[string]any{"success": true})
+		if !gifExists {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "gif_not_found", "GIF not found")
+			return
+		}
+		status := http.StatusOK
+		if inserted {
+			status = http.StatusCreated
+		}
+		httpx.JSON(w, status, map[string]any{"success": true})
 
 	} else if r.Method == http.MethodDelete {
-		_, err := h.service.db.ExecContext(r.Context(), `
-			DELETE FROM media.favorite_gifs
-			WHERE user_id = $1 AND gif_id = $2
-		`, user.ID, gifID)
+		var gifExists, deleted bool
+		err := h.service.db.QueryRowContext(r.Context(), `
+			WITH gif AS (
+				SELECT id FROM media.gifs WHERE id = $2
+			), deleted AS (
+				DELETE FROM media.favorite_gifs
+				WHERE user_id = $1 AND gif_id IN (SELECT id FROM gif)
+				RETURNING 1
+			)
+			SELECT EXISTS (SELECT 1 FROM gif) AS gif_exists,
+			       EXISTS (SELECT 1 FROM deleted) AS deleted
+		`, user.ID, gifID).Scan(&gifExists, &deleted)
 		if err != nil {
-			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "db_error", err.Error())
+			slog.Error("toggle favorite GIF", "err", err)
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
+		if !gifExists {
+			httpx.ErrorJSON(w, r, http.StatusNotFound, "gif_not_found", "GIF not found")
+			return
+		}
+		slog.Debug("toggle favorite GIF", "deleted", deleted)
 		httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 	} else {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { getVoiceVolume, setVoiceVolume } from '@/shared/lib';
 import { testI18n } from '@/test/harness/i18n';
 import { AudioPlayer } from './AudioPlayer';
 
@@ -190,6 +191,76 @@ describe('AudioPlayer', () => {
 
       expect(first.paused).toBe(true);
       expect(second.paused).toBe(false);
+    });
+  });
+
+  describe('громкость голосовых (#874)', () => {
+    const asPhone = () =>
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query.includes('max-width'),
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList
+      );
+
+    it('у голосового на ПК — регулятор громкости голосовых, с процентами для диктора', () => {
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      const slider = screen.getByRole('slider', { name: 'Громкость голосовых' });
+      expect(slider).toHaveAttribute('aria-valuetext', '100%');
+
+      fireEvent.change(slider, { target: { value: '0.4' } });
+
+      expect(getVoiceVolume()).toBe(0.4);
+      expect(slider).toHaveAttribute('aria-valuetext', '40%');
+    });
+
+    it('регулятор доступен с клавиатуры: нативный ползунок в обходе Tab, шаг 5%', async () => {
+      const user = userEvent.setup();
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+      const slider = screen.getByRole('slider', { name: 'Громкость голосовых' });
+
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.tab();
+
+      expect(slider).toHaveFocus();
+      expect(slider).toHaveAttribute('type', 'range');
+      expect(slider).toHaveAttribute('step', '0.05');
+    });
+
+    it('кнопка выключает звук голосовых и возвращает прежний уровень', () => {
+      setVoiceVolume(0.7);
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Выключить звук' }));
+      expect(getVoiceVolume()).toBe(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Включить звук' }));
+      expect(getVoiceVolume()).toBe(0.7);
+    });
+
+    it('на телефоне регулятора в пузыре нет', () => {
+      asPhone();
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      expect(screen.queryByRole('slider', { name: 'Громкость голосовых' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('img', { name: 'Звук голосовых выключен' })
+      ).not.toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it('на телефоне при выключенном в настройках звуке пузырь это показывает', () => {
+      asPhone();
+      setVoiceVolume(0);
+      renderPlayer({ src: 'voice.ogg', variant: 'voice' });
+
+      expect(screen.getByRole('img', { name: 'Звук голосовых выключен' })).toBeInTheDocument();
+      vi.restoreAllMocks();
     });
   });
 });

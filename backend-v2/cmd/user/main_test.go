@@ -27,7 +27,8 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 	authenticated := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authenticatedCalls++
-			if r.Header.Get("Authorization") != "Bearer valid-token" {
+			cookie, err := r.Cookie("craneapp_session")
+			if err != nil || cookie.Value != "valid-token" {
 				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "missing_token", "missing or invalid token")
 				return
 			}
@@ -39,11 +40,11 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 	query := regexp.QuoteMeta(`SELECT EXISTS(SELECT 1 FROM auth.username_registry WHERE username = $1)`)
 
 	tests := []struct {
-		name          string
-		authorization string
+		name  string
+		token string
 	}{
 		{name: "without token"},
-		{name: "with valid token", authorization: "Bearer valid-token"},
+		{name: "with valid token", token: "valid-token"},
 	}
 
 	for _, tt := range tests {
@@ -53,8 +54,8 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
 			request := httptest.NewRequest(http.MethodGet, "/api/v2/users/check-username?username=available_name", nil)
-			if tt.authorization != "" {
-				request.Header.Set("Authorization", tt.authorization)
+			if tt.token != "" {
+				request.AddCookie(&http.Cookie{Name: "craneapp_session", Value: tt.token})
 			}
 			response := httptest.NewRecorder()
 
@@ -86,7 +87,7 @@ func TestRegisterUsernameRoutesAuthenticationBoundaries(t *testing.T) {
 	}
 
 	authorizedRequest := httptest.NewRequest(http.MethodDelete, "/api/v2/users/search?q=alice", nil)
-	authorizedRequest.Header.Set("Authorization", "Bearer valid-token")
+	authorizedRequest.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "valid-token"})
 	authorizedResponse := httptest.NewRecorder()
 	mux.ServeHTTP(authorizedResponse, authorizedRequest)
 	if authorizedResponse.Code != http.StatusMethodNotAllowed {

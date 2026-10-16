@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { cn } from '@/shared/lib';
 import { useAvatarShape, type TAvatarShape } from './avatarShape';
+import { avatarToneIndex, hashBytes } from './avatarTone';
+import { GridMark } from './GridMark';
 
 /* Цвета перечислены готовыми именами классов, а не собираются из кусков:
    Tailwind ищет их в исходниках подстрокой и не выпустит то, чего не
@@ -34,76 +37,8 @@ const sizes = {
   xl: { box: 'size-14 text-section', dot: 'size-4 border-2 right-0 bottom-0', grid: 56 },
   card: { box: 'size-18 text-[28px]', dot: 'size-4.5 border-3 right-0.5 bottom-0.5', grid: 72 },
   '2xl': { box: 'size-24 text-display', dot: 'size-4.5 border-3 right-1 bottom-1', grid: 96 },
+  call: { box: 'size-32 text-[48px]', dot: 'size-5 border-3 right-1.5 bottom-1.5', grid: 128 },
 } as const;
-
-/* Тот же хеш, что был в Identicon: он уже разложен по чужим аватаркам,
-   и менять его значит перекрасить всех разом без причины. */
-function hashBytes(value: string) {
-  const bytes = new Uint8Array(16);
-  let seed = 0x811c9dc5;
-
-  for (let i = 0; i < value.length; i++) {
-    seed ^= value.charCodeAt(i);
-    seed = Math.imul(seed, 0x01000193) >>> 0;
-  }
-
-  for (let i = 0; i < 16; i++) {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    bytes[i] = (seed >>> 24) & 0xff;
-  }
-
-  return bytes;
-}
-
-/* Сетка нарисована на 70% круга и по центру: если растянуть её на весь
-   квадрат, скруглённые углы срежут крайние клетки и рисунок читается
-   обрывком. */
-function GridMark({ bytes, box }: { bytes: Uint8Array; box: number }) {
-  const field = box * 0.7;
-  const offset = (box - field) / 2;
-  const cell = field / 5;
-  const rects = [];
-
-  let byteIndex = 2;
-  let bitShift = 0;
-
-  for (let row = 0; row < 5; row++) {
-    for (let col = 0; col < 3; col++) {
-      const filled = (bytes[byteIndex] >> bitShift) & 1;
-      bitShift++;
-
-      if (bitShift === 8) {
-        bitShift = 0;
-        byteIndex++;
-      }
-
-      if (!filled) continue;
-
-      const y = offset + row * cell;
-      rects.push(
-        <rect key={`${row}-${col}`} x={offset + col * cell} y={y} width={cell} height={cell} />
-      );
-
-      if (col !== 2) {
-        rects.push(
-          <rect
-            key={`${row}-m${col}`}
-            x={offset + (4 - col) * cell}
-            y={y}
-            width={cell}
-            height={cell}
-          />
-        );
-      }
-    }
-  }
-
-  return (
-    <svg width={box} height={box} viewBox={`0 0 ${box} ${box}`} fill="currentColor">
-      {rects}
-    </svg>
-  );
-}
 
 interface Props {
   /* От него цвет и рисунок. У групп и каналов его нет. */
@@ -140,8 +75,18 @@ export const Avatar = ({
   const resolvedShape = shape ?? preferredShape;
   const { box, dot, grid } = sizes[size];
   const bytes = hashBytes(id || name || 'anon');
-  const tone = tones[bytes[0] % tones.length];
+  const tone = tones[avatarToneIndex(bytes)];
   const letter = (name || '?').trim().charAt(0).toUpperCase() || '?';
+
+  const [prevSrc, setPrevSrc] = useState(src);
+  const [hasError, setHasError] = useState(false);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setHasError(false);
+  }
+
+  const showImage = Boolean(src && !hasError);
 
   return (
     <span className={cn('relative inline-flex shrink-0', className)}>
@@ -152,11 +97,19 @@ export const Avatar = ({
         className={cn(
           'inline-flex items-center justify-center overflow-hidden rounded-pill font-semibold text-on-brand',
           box,
-          !src && tone
+          !showImage && tone
         )}
       >
-        {src ? (
-          <img alt="" src={src} className="size-full object-cover" />
+        {showImage ? (
+          // Лениво: в длинном списке чатов качаются только видимые аватарки.
+          <img
+            alt=""
+            className="size-full object-cover"
+            decoding="async"
+            loading="lazy"
+            onError={() => setHasError(true)}
+            src={src ?? undefined}
+          />
         ) : resolvedShape === 'grid' && id ? (
           <GridMark bytes={bytes} box={grid} />
         ) : (

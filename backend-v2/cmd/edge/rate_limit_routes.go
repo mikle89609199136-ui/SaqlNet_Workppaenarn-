@@ -14,6 +14,7 @@ var allRouteGroups = []routeGroup{
 	routeGroupLoginRegister,
 	routeGroupPassword2FA,
 	routeGroupOtherAuth,
+	routeGroupQRPoll,
 	routeGroupUsernameCheck,
 	routeGroupMessageWrite,
 	routeGroupMessageRead,
@@ -29,6 +30,7 @@ const (
 	routeGroupLoginRegister routeGroup = "login-register"
 	routeGroupPassword2FA   routeGroup = "password-2fa"
 	routeGroupOtherAuth     routeGroup = "other-auth"
+	routeGroupQRPoll        routeGroup = "qr-poll"
 	routeGroupUsernameCheck routeGroup = "username-check"
 	routeGroupMessageWrite  routeGroup = "message-write"
 	routeGroupMessageRead   routeGroup = "message-read"
@@ -54,6 +56,8 @@ func classifyRoute(method, path string) routeGroup {
 		return routeGroupPassword2FA
 	case method == http.MethodPost && path == "/api/v2/auth/2fa/verify":
 		return routeGroupPassword2FA
+	case method == http.MethodGet && isQRPollPath(path):
+		return routeGroupQRPoll
 	case strings.HasPrefix(path, "/api/v2/auth/"):
 		return routeGroupOtherAuth
 	case strings.HasPrefix(path, "/api/v2/messages/"):
@@ -94,6 +98,17 @@ func classifyRoute(method, path string) routeGroup {
 	default:
 		return routeGroupNone
 	}
+}
+
+// Только чтение статуса: создание, захват, подтверждение и отзыв QR-кода
+// остаются в other-auth и не делят токены с периодическим опросом.
+func isQRPollPath(path string) bool {
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v2/auth/"), "/")
+	if !strings.HasPrefix(path, "/api/v2/auth/") || len(parts) < 2 || parts[1] == "" {
+		return false
+	}
+	return parts[0] == "qr-status" && len(parts) == 2 ||
+		parts[0] == "qr-offer" && (len(parts) == 2 || len(parts) == 3 && parts[2] == "status")
 }
 
 func classifyMessageRoute(method, path string) routeGroup {

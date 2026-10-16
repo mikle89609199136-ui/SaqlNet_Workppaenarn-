@@ -10,6 +10,84 @@ import (
 	"time"
 )
 
+func TestQRPollingSupportsTwoClientsBehindSameIP(t *testing.T) {
+	for _, pollPath := range []string{
+		"/api/v2/auth/qr-status/token",
+		"/api/v2/auth/qr-offer/token",
+		"/api/v2/auth/qr-offer/token/status",
+	} {
+		t.Run(pollPath, func(t *testing.T) {
+			clearRateLimitEnvironment(t)
+			limiters := newLimiterSet(loadRateLimitConfig())
+			start := time.Now()
+			const ip = "192.0.2.10"
+			request := func(method, path string, second int) {
+				t.Helper()
+				allowed, wait := limiters.allowRequestAt(ip, classifyRoute(method, path), start.Add(time.Duration(second)*time.Second))
+				if !allowed {
+					t.Fatalf("%s %s at %ds rejected, retry after %v", method, path, second, wait)
+				}
+			}
+			// Две вкладки за одним NAT: опрос каждые 2с и ротация кода
+			// каждые 30с. После двух минут должны остаться токены подтверждения.
+			for second := 0; second <= 120; second += 2 {
+				for client := 0; client < 2; client++ {
+					if second%30 == 0 {
+						request(http.MethodPost, "/api/v2/auth/qr-token", second)
+					}
+					request(http.MethodGet, pollPath, second)
+				}
+			}
+			request(http.MethodPost, "/api/v2/auth/qr-confirm", 120)
+			request(http.MethodPost, "/api/v2/auth/qr-offer/token/confirm", 120)
+			request(http.MethodGet, "/api/v2/auth/sessions", 120)
+		})
+	}
+}
+
+func TestQRPollMiddlewareKeepsAuthAvailableAndEnforcesGlobal(t *testing.T) {
+	clearRateLimitEnvironment(t)
+	limiters := newLimiterSet(loadRateLimitConfig())
+	for _, limiter := range limiters.groups {
+		limiter.rate = 0 // фиксированный burst без пополнения в этом сценарии
+	}
+	limiters.global.rate = 0
+	const ip = "192.0.2.10"
+	handler := rateLimitMiddleware(trustedProxySet{}, limiters, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := func(method, path string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(method, path, nil)
+		r.RemoteAddr = ip + ":1234"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, r)
+		if response.Code != want {
+			t.Fatalf("%s %s: status %d, want %d", method, path, response.Code, want)
+		}
+		if want == http.StatusTooManyRequests && response.Header().Get("Retry-After") == "" {
+			t.Fatal("missing Retry-After")
+		}
+	}
+	for i := 0; i < int(limiters.groups[routeGroupQRPoll].capacity); i++ {
+		request(http.MethodGet, "/api/v2/auth/qr-status/token", http.StatusNoContent)
+	}
+	request(http.MethodGet, "/api/v2/auth/qr-offer/token/status", http.StatusTooManyRequests)
+	request(http.MethodPost, "/api/v2/auth/qr-confirm", http.StatusNoContent)
+	request(http.MethodGet, "/api/v2/auth/sessions", http.StatusNoContent)
+	request(http.MethodPost, "/api/v2/auth/login", http.StatusNoContent)
+
+	// Даже с токенами QR-группы пустая глобальная корзина отклоняет
+	// polling. Отказ не должен списывать токен QR-группы.
+	limiters.groups[routeGroupQRPoll].buckets[ip].tokens = 1
+	for allowed, _ := limiters.AllowRequest(ip, routeGroupNone); allowed; allowed, _ = limiters.AllowRequest(ip, routeGroupNone) {
+	}
+	request(http.MethodGet, "/api/v2/auth/qr-offer/token", http.StatusTooManyRequests)
+	if got := limiters.groups[routeGroupQRPoll].buckets[ip].tokens; got != 1 {
+		t.Fatalf("global rejection consumed QR token, remaining %v", got)
+	}
+}
+
 func TestLimiterSetDoesNotConsumeGroupTokenWhenGlobalRejects(t *testing.T) {
 	ip := "192.0.2.10"
 	now := time.Now()

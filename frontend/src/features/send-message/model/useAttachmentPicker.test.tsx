@@ -32,6 +32,19 @@ function renderPicker(initial: IPendingAttachment[] = []) {
     { wrapper: ({ children }) => <I18nextProvider i18n={testI18n}>{children}</I18nextProvider> }
   );
 
+  const pickFrom = (source: string, ...files: File[]) => {
+    const target = {
+      files,
+      value: 'C:\\fakepath\\x',
+      getAttribute: (name: string) => (name === 'data-source' ? source : null),
+    };
+    act(() => {
+      view.result.current.handleAttachmentChange({
+        target,
+      } as unknown as ChangeEvent<HTMLInputElement>);
+    });
+  };
+
   const pick = (...files: File[]) => {
     const target = { files, value: 'C:\\fakepath\\x' };
     act(() => {
@@ -41,7 +54,7 @@ function renderPicker(initial: IPendingAttachment[] = []) {
     });
     return target;
   };
-  return { ...view, pick, input };
+  return { ...view, pick, pickFrom, input };
 }
 
 const names = (attachments: IPendingAttachment[]) => attachments.map((a) => a.file.name);
@@ -52,6 +65,22 @@ beforeEach(() => {
 
 /* Выбор вложений (#171): добавляется, а не заменяет. */
 describe('выбор вложений', () => {
+  it('фото пересжимается перед отправкой, кроме выбранного через «Файл»', () => {
+    const { result, pickFrom } = renderPicker();
+    pickFrom('media', fileOf('photo.jpg', 'image/jpeg'));
+    pickFrom('file', fileOf('original.jpg', 'image/jpeg'));
+    pickFrom('file', fileOf('doc.pdf', 'application/pdf'));
+    pickFrom('media', fileOf('clip.mp4', 'video/mp4'));
+
+    expect(result.current.pendingAttachments.map((a) => [a.file.name, a.optimizeImage])).toEqual([
+      ['photo.jpg', true],
+      // «Файл» — способ отправить оригинал без потерь.
+      ['original.jpg', false],
+      ['doc.pdf', false],
+      ['clip.mp4', false],
+    ]);
+  });
+
   it('новый файл добавляется к приложенному, а не заменяет его', () => {
     const { result, pick } = renderPicker();
     pick(fileOf('a.png'));

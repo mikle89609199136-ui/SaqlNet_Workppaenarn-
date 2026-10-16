@@ -1,6 +1,7 @@
 import type { WebSocketClient } from '@/services/WebSocketClient';
 import { services } from '@/services/serviceContainer';
 import { sendCallAnswer, sendCallIce, sendCallOffer } from './callSignaling';
+import { computeCallVerificationEmojis } from './callKeyVerification';
 import type { IIceServer } from './types';
 
 export interface IPeerConnectionOptions {
@@ -13,6 +14,7 @@ export interface IPeerConnectionOptions {
   onRemoteStream?: (stream: MediaStream) => void;
   onRemoteTrack?: (track: MediaStreamTrack, stream: MediaStream) => void;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  onVerificationEmojisChange?: (emojis: string[] | null) => void;
   onError?: (err: Error) => void;
 }
 
@@ -61,6 +63,7 @@ export class PeerConnectionManager {
   private remoteStream: MediaStream;
   private isClosed = false;
   private politeWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  private verificationEmojis: string[] | null = null;
 
   private options: IPeerConnectionOptions;
 
@@ -84,6 +87,39 @@ export class PeerConnectionManager {
 
   getRemoteStream(): MediaStream {
     return this.remoteStream;
+  }
+
+  getVerificationEmojis(): string[] | null {
+    return this.verificationEmojis;
+  }
+
+  private async updateVerificationEmojis(): Promise<void> {
+    if (!this.pc || this.isClosed) {
+      if (this.verificationEmojis !== null) {
+        this.verificationEmojis = null;
+        this.options.onVerificationEmojisChange?.(null);
+      }
+      return;
+    }
+
+    try {
+      const emojis = await computeCallVerificationEmojis(
+        this.pc.localDescription?.sdp,
+        this.pc.remoteDescription?.sdp
+      );
+
+      const isConnected = this.pc?.connectionState
+        ? this.pc.connectionState === 'connected'
+        : this.pc?.iceConnectionState === 'connected' ||
+          this.pc?.iceConnectionState === 'completed';
+
+      if (this.isClosed || !this.pc || !isConnected) return;
+
+      this.verificationEmojis = emojis;
+      this.options.onVerificationEmojisChange?.(emojis);
+    } catch {
+      // Игнорируем непредвиденные ошибки вычисления
+    }
   }
 
   updateOptions(newOptions: Partial<IPeerConnectionOptions>): void {
@@ -191,7 +227,17 @@ export class PeerConnectionManager {
         // Состояние соединения
         pc.onconnectionstatechange = () => {
           if (!this.pc) return;
-          if (this.pc.connectionState === 'connected') raiseAudioPriority(this.pc);
+          if (this.pc.connectionState === 'connected') {
+            raiseAudioPriority(this.pc);
+            void this.updateVerificationEmojis();
+          } else if (
+            this.pc.connectionState === 'disconnected' ||
+            this.pc.connectionState === 'failed' ||
+            this.pc.connectionState === 'closed'
+          ) {
+            this.verificationEmojis = null;
+            this.options.onVerificationEmojisChange?.(null);
+          }
           this.options.onConnectionStateChange?.(this.pc.connectionState);
         };
 
@@ -201,10 +247,22 @@ export class PeerConnectionManager {
           if (!this.pc.connectionState) {
             const iceState = this.pc.iceConnectionState;
             let mappedState: RTCPeerConnectionState = 'new';
-            if (iceState === 'connected' || iceState === 'completed') mappedState = 'connected';
-            else if (iceState === 'disconnected') mappedState = 'disconnected';
-            else if (iceState === 'failed') mappedState = 'failed';
-            else if (iceState === 'closed') mappedState = 'closed';
+            if (iceState === 'connected' || iceState === 'completed') {
+              mappedState = 'connected';
+              void this.updateVerificationEmojis();
+            } else if (iceState === 'disconnected') {
+              mappedState = 'disconnected';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            } else if (iceState === 'failed') {
+              mappedState = 'failed';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            } else if (iceState === 'closed') {
+              mappedState = 'closed';
+              this.verificationEmojis = null;
+              this.options.onVerificationEmojisChange?.(null);
+            }
             this.options.onConnectionStateChange?.(mappedState);
           }
         };
@@ -405,6 +463,10 @@ export class PeerConnectionManager {
           },
         });
       }
+
+      if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') {
+        void this.updateVerificationEmojis();
+      }
     } catch (err) {
       this.options.onError?.(err as Error);
     }
@@ -427,6 +489,9 @@ export class PeerConnectionManager {
         await pc.setRemoteDescription(new SessionDescriptionClass(answer));
         if (!this.pc || this.isClosed) return;
         await this.drainIceCandidates();
+        if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') {
+          void this.updateVerificationEmojis();
+        }
       } catch (err) {
         this.options.onError?.(err as Error);
       } finally {
@@ -508,5 +573,7 @@ export class PeerConnectionManager {
 
     this.iceCandidatesQueue = [];
     this.localStream = null;
+    this.verificationEmojis = null;
+    this.options.onVerificationEmojisChange?.(null);
   }
 }

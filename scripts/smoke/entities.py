@@ -5,14 +5,18 @@ import sys
 import urllib.error
 import urllib.request
 
-base, token, chat_id = sys.argv[1:]
+base, session_cookie, chat_id = sys.argv[1:]
 
 
 def request(method, path, body=None, status=200):
     req = urllib.request.Request(
         base + '/api/v2' + path,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
+        headers={
+            'Cookie': session_cookie,
+            'Content-Type': 'application/json',
+            'Origin': base,
+        },
         method=method,
     )
     try:

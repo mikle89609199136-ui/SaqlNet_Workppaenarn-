@@ -12,6 +12,8 @@ export interface IStoredCallSession {
   chatId: string | null;
   title: string | null;
   savedAt: number;
+  /** Когда ушли со страницы (перезагрузка, закрытие вкладки). */
+  leftAt?: number;
 }
 
 const STORAGE_KEY = 'crane_active_call_session';
@@ -64,6 +66,22 @@ export function loadCallSession(): IStoredCallSession | null {
     return data;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Запомнить момент ухода со страницы: после перезагрузки вернуться в звонок
+ * можно, пока собеседник ждёт (RECONNECT_TIMEOUT_MS от этого момента).
+ */
+export function markCallSessionLeft(): void {
+  try {
+    const storage = getSessionStorage();
+    const raw = storage?.getItem(STORAGE_KEY);
+    if (!storage || !raw) return;
+    const data = JSON.parse(raw) as IStoredCallSession;
+    storage.setItem(STORAGE_KEY, JSON.stringify({ ...data, leftAt: Date.now() }));
+  } catch {
+    // Игнорируем ошибки разбора и недоступности sessionStorage
   }
 }
 

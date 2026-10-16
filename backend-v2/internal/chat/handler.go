@@ -1,19 +1,19 @@
 package chat
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"log/slog"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
-	"unicode/utf8"
-
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/config"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -30,6 +30,62 @@ func init() {
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+func validateAndLogInput(w http.ResponseWriter, r *http.Request, input any, method, currentID, text string) bool {
+	if err := validate.Struct(input); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			slog.WarnContext(
+				r.Context(),
+				text,
+				"layer", "handler",
+				"method", method,
+				"user_id", currentID,
+				"path", r.URL.Path,
+				"errors", validationErrors,
+			)
+
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid input",
+			)
+			return false
+		}
+
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusInternalServerError,
+			"internal_error",
+			err.Error(),
+		)
+		return false
+	}
+	return true
+}
+
+func validateInput(w http.ResponseWriter, r *http.Request, input any) bool {
+	if err := validate.Struct(input); err != nil {
+		if _, ok := err.(validator.ValidationErrors); ok {
+			httpx.ErrorJSON(
+				w, r,
+				http.StatusBadRequest,
+				"validation_failed",
+				"invalid input",
+			)
+			return false
+		}
+
+		httpx.ErrorJSON(
+			w, r,
+			http.StatusInternalServerError,
+			"internal_error",
+			err.Error(),
+		)
+		return false
+	}
+	return true
 }
 
 // List handles GET /api/v2/chats and returns the chats of the
@@ -117,12 +173,16 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	var input struct {
-		UserID string `json:"userId"`
-	}
+	var input UserID
+
 	if !decode(w, r, &input) {
 		return
 	}
+
+	if !validateInput(w, r, input) {
+		return
+	}
+
 	chatID, exists, err := h.service.CreatePrivate(r.Context(), current.ID, input.UserID)
 	switch {
 	case errors.Is(err, ErrInvalidInput):
@@ -147,8 +207,8 @@ func (h *Handler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 //
 // The title is trimmed of leading and trailing whitespace before
 // validation and storage; an all-whitespace title is rejected. The
-// maxTitleLen limit applies to the trimmed value, and the members list
-// must not be empty.
+// maxTitleLen limit applies to the trimmed value. The members list may be
+// empty (a group of one: just the owner), but must be present.
 //
 // On success it returns 201 with the new chat ID and the stored title.
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
@@ -161,12 +221,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	current := authctx.MustUser(r)
 
-	var input struct {
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		AvatarURL   string   `json:"avatarUrl"`
-		Members     []string `json:"members"`
-	}
+	var input CreateGroupRequest
 
 	if !decode(w, r, &input) {
 		return // decode logs internally
@@ -175,49 +230,20 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	// Trim before validating: a value that is only too long because of
 	// surrounding whitespace must be accepted, and the service must
 	// receive the same value that was validated.
-	title := strings.TrimSpace(input.Title)
-	description := strings.TrimSpace(input.Description)
-	avatarUrl := strings.TrimSpace(input.AvatarURL)
+	input.Title = strings.TrimSpace(input.Title)
+	input.Description = strings.TrimSpace(input.Description)
+	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
 
-	if title == "" {
-		slog.WarnContext(r.Context(), "group title is empty after trimming",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "title is required")
-		return
-	}
-
-	if utf8.RuneCountInString(title) > maxTitleLen {
-		slog.WarnContext(r.Context(), "group title exceeds maximum length",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-			"length", utf8.RuneCountInString(title),
-			"max", maxTitleLen,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed",
-			fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLen))
-		return
-	}
-
-	if len(input.Members) == 0 {
-		slog.WarnContext(r.Context(), "group members list is empty",
-			"layer", "handler",
-			"method", method,
-			"user_id", current.ID,
-		)
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "members must not be empty")
+	if !validateAndLogInput(w, r, input, method, current.ID, "group creation validation failed") {
 		return
 	}
 
 	chatID, err := h.service.CreateGroup(
 		r.Context(),
 		current.ID,
-		title,
-		description,
-		avatarUrl,
+		input.Title,
+		input.Description,
+		input.AvatarURL,
 		input.Members,
 	)
 
@@ -231,7 +257,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.JSON(w, http.StatusCreated, map[string]any{
 			"chatId": chatID,
-			"title":  title,
+			"title":  input.Title,
 		})
 	}
 }
@@ -239,9 +265,23 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	chatID, suffix := parseChatPath(r.URL.Path)
-	switch {
-	case chatID == "":
+
+	if chatID == "" {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+
+	// Данная проверка валидирует chatId для всех кейсов в функции Chat.
+	// Если вы будете выносить кейс в отдельную функцию, добавьте такую же проверку.
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
+
+	switch {
 	case suffix == "" && r.Method == http.MethodGet:
 		chat, err := h.service.Get(r.Context(), current.ID, chatID)
 		respondChat(w, r, chat, err)
@@ -257,6 +297,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 	case suffix == "/members" && r.Method == http.MethodGet:
+
 		members, err := h.service.Members(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
 			httpx.ErrorJSON(w, r, http.StatusForbidden, "access_denied", "access denied")
@@ -268,12 +309,15 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"members": members})
 	case suffix == "/members" && r.Method == http.MethodPost:
-		var input struct {
-			UserID string `json:"userId"`
-		}
+		var input UserID
 		if !decode(w, r, &input) {
 			return
 		}
+
+		if !validateInput(w, r, input) {
+			return
+		}
+
 		member, err := h.service.AddMember(r.Context(), current.ID, chatID, input.UserID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
@@ -366,6 +410,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
+
 		err := h.service.TransferOwnership(r.Context(), current.ID, chatID, input.UserID)
 		switch {
 		case errors.Is(err, ErrInvalidInput):
@@ -392,6 +437,15 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			methodNotAllowed(w, r)
 			return
 		}
+
+		userIDInput := UUIDInput{
+			ID: memberID,
+		}
+
+		if !validateInput(w, r, userIDInput) {
+			return
+		}
+
 		if action == "/role" && r.Method == http.MethodPost {
 			var input struct {
 				Role string `json:"role"`
@@ -404,14 +458,31 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/ban" && r.Method == http.MethodPost {
 			var input struct {
-				BannedUntil *time.Time `json:"bannedUntil"`
-				Reason      string     `json:"reason"`
+				BannedUntil *string `json:"bannedUntil"`
+				Reason      string  `json:"reason"`
 			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid ban body")
+			if !decode(w, r, &input) {
 				return
 			}
-			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, input.BannedUntil, input.Reason))
+
+			var bannedUntil *time.Time
+			if input.BannedUntil != nil {
+				t, err := time.Parse(time.RFC3339, *input.BannedUntil)
+				if err != nil {
+					slog.WarnContext(r.Context(), "invalid bannedUntil",
+						"layer", "handler",
+						"method", "Chat",
+						"user_id", current.ID,
+						"chat_id", chatID,
+						"member_id", memberID,
+						"err", err,
+					)
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid bannedUntil")
+					return
+				}
+				bannedUntil = &t
+			}
+			respondSuccess(w, r, h.service.BanMember(r.Context(), current.ID, chatID, memberID, bannedUntil, input.Reason))
 			return
 		}
 		if action == "/unban" && r.Method == http.MethodPost {
@@ -420,13 +491,31 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "/mute" && r.Method == http.MethodPost {
 			var input struct {
-				MutedUntil *time.Time `json:"mutedUntil"`
+				MutedUntil *string `json:"mutedUntil"`
 			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&input); err != nil {
-				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mute body")
+			if !decode(w, r, &input) {
 				return
 			}
-			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, input.MutedUntil)
+
+			var mutedUntil *time.Time
+			if input.MutedUntil != nil {
+				t, err := time.Parse(time.RFC3339, *input.MutedUntil)
+				if err != nil {
+					slog.WarnContext(r.Context(), "invalid mutedUntil",
+						"layer", "handler",
+						"method", "Chat",
+						"user_id", current.ID,
+						"chat_id", chatID,
+						"member_id", memberID,
+						"err", err,
+					)
+					httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid mutedUntil")
+					return
+				}
+				mutedUntil = &t
+			}
+
+			err := h.service.MuteMember(r.Context(), current.ID, chatID, memberID, mutedUntil)
 			if errors.Is(err, ErrNotFound) {
 				httpx.ErrorJSON(w, r, http.StatusNotFound, "member_not_found", "member not found")
 				return
@@ -463,6 +552,18 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"state": map[string]any{"chatId": chatID, "epoch": epoch, "groupState": treeState}})
+	case suffix == "/notification-settings" && r.Method == http.MethodPut:
+		var input struct {
+			HideNotificationPreview *bool `json:"hideNotificationPreview"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if input.HideNotificationPreview == nil {
+			respondSuccess(w, r, ErrInvalidInput)
+			return
+		}
+		respondSuccess(w, r, h.service.SetNotificationPreview(r.Context(), current.ID, chatID, *input.HideNotificationPreview))
 	case suffix == "/pin" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "pin", r.Method == http.MethodPost))
 	case suffix == "/archive" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
@@ -632,6 +733,40 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		"iceServers":      getIceServers(),
 		"maxParticipants": maxCallParticipants,
 	})
+}
+
+// CallHistory — завершённые звонки текущего пользователя (#713).
+func (h *Handler) CallHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, r)
+		return
+	}
+	query := r.URL.Query()
+	params := CallHistoryParams{
+		Cursor: query.Get("cursor"),
+		Kind:   query.Get("kind"),
+		Status: query.Get("status"),
+	}
+	if raw := query.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > callHistoryMaxLimit {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid limit")
+			return
+		}
+		params.Limit = limit
+	}
+	current := authctx.MustUser(r)
+	page, err := h.service.CallHistory(r.Context(), current.ID, params)
+	if errors.Is(err, ErrInvalidCallCursor) || errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "call history", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "call history failed")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, page)
 }
 
 func respondChat(w http.ResponseWriter, r *http.Request, chat Chat, err error) {
@@ -837,6 +972,14 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chatIDInput := UUIDInput{
+		ID: chatID,
+	}
+
+	if !validateInput(w, r, chatIDInput) {
+		return
+	}
+
 	if suffix == "/pins" && r.Method == http.MethodGet {
 		pins, err := h.service.ListPins(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -914,16 +1057,43 @@ func parseMemberAction(suffix string) (string, string) {
 	return parts[0], "/" + parts[1]
 }
 
+// decode decodes a JSON request body into value using the default 256 KiB limit.
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	return decodeLimited(w, r, value, 256<<10)
 }
 
-// decodeLimited — decode со своим пределом тела: отправке пачкой общего не хватает.
+// decodeLimited decodes a JSON request body into value with a custom size limit.
+// It returns true on success; on failure it writes an error response and returns false.
+// The body must contain exactly one JSON value with no trailing data.
 func decodeLimited(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(value); err != nil {
+	const helper = "decodeLimited"
+
+	body := http.MaxBytesReader(w, r.Body, limit)
+	dec := json.NewDecoder(body)
+
+	if err := dec.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "invalid JSON body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
+
+	// Reject trailing data after the first JSON value.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		slog.WarnContext(r.Context(), "trailing data in request body",
+			"layer", "handler",
+			"helperFunc", helper,
+			"err", err,
+			"path", r.URL.Path,
+		)
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+		return false
+	}
+
 	return true
 }
 

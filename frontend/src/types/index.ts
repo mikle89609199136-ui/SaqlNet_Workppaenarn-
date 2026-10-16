@@ -91,20 +91,3 @@ export type {
   IWsEventMap,
   TWsEventType,
 } from './wsEvents.types';
-export type {
-  IBrushOption,
-  IEditorCrop,
-  IEditorFilter,
-  IEditorPathObject,
-  IEditorPoint,
-  IEditorState,
-  IEditorTextObject,
-  IFontOption,
-  IPhotoEditorModalProps,
-  IRatioOption,
-  TBrushType,
-  TCropRatioValue,
-  TEditorObject,
-  TEditorTool,
-  TTextFontId,
-} from '@/entities/media';

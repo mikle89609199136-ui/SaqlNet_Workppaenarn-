@@ -79,6 +79,7 @@ func newLimiterSet(cfg rateLimitConfig) *limiterSet {
 			routeGroupLoginRegister: newTokenBucket(cfg.loginRegister.rate, float64(cfg.loginRegister.burst)),
 			routeGroupPassword2FA:   newTokenBucket(cfg.password2FA.rate, float64(cfg.password2FA.burst)),
 			routeGroupOtherAuth:     newTokenBucket(cfg.otherAuth.rate, float64(cfg.otherAuth.burst)),
+			routeGroupQRPoll:        newTokenBucket(cfg.qrPoll.rate, float64(cfg.qrPoll.burst)),
 			routeGroupUsernameCheck: newTokenBucket(cfg.usernameCheck.rate, float64(cfg.usernameCheck.burst)),
 			routeGroupMessageWrite:  newTokenBucket(cfg.messageWrite.rate, float64(cfg.messageWrite.burst)),
 			routeGroupMessageRead:   newTokenBucket(cfg.messageRead.rate, float64(cfg.messageRead.burst)),
@@ -108,11 +109,20 @@ func (tb *tokenBucket) allowAt(ip string, now time.Time) bool {
 }
 
 func (ls *limiterSet) AllowRequest(ip string, group routeGroup) (bool, time.Duration) {
+	return ls.allowRequestAt(ip, group, time.Time{})
+}
+
+// Нулевой now означает текущее время после захвата блокировок; фиксированное
+// время позволяет проверять длительные сценарии без ожидания в тестах.
+func (ls *limiterSet) allowRequestAt(ip string, group routeGroup, now time.Time) (bool, time.Duration) {
 	if group == routeGroupNone {
 		ls.global.mu.Lock()
 		defer ls.global.mu.Unlock()
 
-		globalBucket := ls.global.refillBucketLocked(ip, time.Now())
+		if now.IsZero() {
+			now = time.Now()
+		}
+		globalBucket := ls.global.refillBucketLocked(ip, now)
 		if globalBucket.tokens < 1 {
 			// остаток после пополнения может быть дробным, поэтому ждать нужно
 			// не целый токен, а только недостающую часть
@@ -136,7 +146,9 @@ func (ls *limiterSet) AllowRequest(ip string, group routeGroup) (bool, time.Dura
 	ls.global.mu.Lock()
 	defer ls.global.mu.Unlock()
 
-	now := time.Now()
+	if now.IsZero() {
+		now = time.Now()
+	}
 	groupBucket := groupLimiter.refillBucketLocked(ip, now)
 	globalBucket := ls.global.refillBucketLocked(ip, now)
 
@@ -462,7 +474,7 @@ func originGuard(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Crane-Language")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Crane-Language")
 			// С credentials (cookie сессии, #705) — только точно
 			// перечисленным адресам: "*" разрешает чужой Origin без них,
 			// иначе любой сайт читал бы ответы от имени человека.

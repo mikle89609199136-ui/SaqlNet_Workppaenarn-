@@ -3,8 +3,6 @@ package media
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -53,7 +51,7 @@ func (h *Handler) uploadBase64(ctx context.Context, userID string, b64 string) (
 		mimeType = strings.TrimSuffix(mimeType, ";base64")
 	}
 
-	data, err := base64.StdEncoding.DecodeString(b64Data)
+	data, err := decodeBase64Payload(b64Data, h.service.maxUploadBytes)
 	if err != nil {
 		return uploadedStickerObject{}, err
 	}
@@ -75,7 +73,7 @@ func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
-		SELECT sp.id::text, sp.name, sp.description, COALESCE(sp.icon_url, ''),
+		SELECT sp.id::text, sp.name, sp.description, CASE WHEN sp.icon_bucket <> '' AND sp.icon_object_key <> '' THEN '/api/v2/media/' || sp.id::text ELSE '' END,
 			   (SELECT COUNT(*) FROM media.stickers WHERE pack_id = sp.id),
 			   sp.created_at::text
 		FROM media.sticker_packs sp
@@ -105,12 +103,17 @@ func (h *Handler) ListStickerPacks(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 	user := authctx.MustUser(r)
+	r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Icon        string `json:"icon"` // base64
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", requestLimitMessage(h.jsonBodyLimit()))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
@@ -126,6 +129,10 @@ func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 	if req.Icon != "" {
 		icon, err = h.uploadBase64(r.Context(), user.ID, req.Icon)
 		if err != nil {
+			if errors.Is(err, ErrTooBig) {
+				httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
+				return
+			}
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 			return
 		}
@@ -150,20 +157,23 @@ func (h *Handler) CreateStickerPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if icon.ObjectKey != "" {
+		p.IconUrl = "/api/v2/media/" + p.ID
+	}
 	p.StickerCount = 0
 	httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "pack": p})
 }
 
 func (h *Handler) GetStickers(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 5 {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_path", "invalid path")
 		return
 	}
 	packID := parts[4]
 
 	rows, err := h.service.db.QueryContext(r.Context(), `
-		SELECT id::text, image_url, created_at::text
+		SELECT id::text, CASE WHEN bucket <> '' AND object_key <> '' THEN '/api/v2/media/' || id::text ELSE '' END, created_at::text
 		FROM media.stickers
 		WHERE pack_id = $1
 		ORDER BY created_at DESC
@@ -198,10 +208,15 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	}
 	packID := parts[4]
 
+	r.Body = http.MaxBytesReader(w, r.Body, h.jsonBodyLimit())
 	var req struct {
 		Image string `json:"image"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeSingleJSON(r.Body, &req); err != nil {
+		if isMaxBytesError(err) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "request_too_large", requestLimitMessage(h.jsonBodyLimit()))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
@@ -220,6 +235,10 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 
 	image, err := h.uploadBase64(r.Context(), user.ID, req.Image)
 	if err != nil {
+		if errors.Is(err, ErrTooBig) {
+			httpx.ErrorJSON(w, r, http.StatusRequestEntityTooLarge, "file_too_large", uploadLimitMessage(h.service.maxUploadBytes))
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "upload_error", err.Error())
 		return
 	}
@@ -236,6 +255,7 @@ func (h *Handler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.ImageUrl = "/api/v2/media/" + s.ID
 	httpx.JSON(w, http.StatusCreated, map[string]any{"success": true, "sticker": s})
 }
 

@@ -58,6 +58,7 @@ describe('useComposerSendMessage', () => {
       insertText: (text) => {
         value = { ...value, text: value.text + text };
       },
+      contains: () => false,
     };
   }
 
@@ -330,6 +331,66 @@ describe('useComposerSendMessage', () => {
         expect(items[0]?.status).toBe('failed');
       });
       expect(services.messageService.sendMediaMessage).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('стикеры и GIF (#593)', () => {
+    it('sendSticker добавляет оптимистичное сообщение и вызывает messageService.sendSticker', async () => {
+      const sendSpy = vi
+        .spyOn(services.messageService, 'sendSticker')
+        .mockResolvedValue(
+          makeMessage({ id: 'srv-sticker-1', chatId: 'chat-test-1', type: 'sticker' })
+        );
+
+      const refs = setupRefs('');
+      queryClient.setQueryData(chatKeys.messages('chat-test-1'), { pages: [[]], pageParams: [0] });
+      const { result } = renderHook(
+        () =>
+          useComposerSendMessage({
+            attachmentInputRef: refs.attachmentInputRef,
+            bottomRef: refs.bottomRef,
+            draftRef: refs.draftRef,
+            pendingAttachments: [],
+            selectionMode: false,
+            setPendingAttachments: refs.setPendingAttachments,
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      await act(async () => {
+        await result.current.sendSticker('http://example.com/sticker.png');
+      });
+
+      expect(sendSpy).toHaveBeenCalledWith('chat-test-1', 'http://example.com/sticker.png', null);
+      await waitFor(() => expect(useOutboxStore.getState().items).toHaveLength(0));
+    });
+
+    it('sendGif добавляет оптимистичное сообщение и вызывает messageService.sendGif', async () => {
+      const sendSpy = vi
+        .spyOn(services.messageService, 'sendGif')
+        .mockResolvedValue(makeMessage({ id: 'srv-gif-1', chatId: 'chat-test-1', type: 'gif' }));
+
+      const refs = setupRefs('');
+      queryClient.setQueryData(chatKeys.messages('chat-test-1'), { pages: [[]], pageParams: [0] });
+      const { result } = renderHook(
+        () =>
+          useComposerSendMessage({
+            attachmentInputRef: refs.attachmentInputRef,
+            bottomRef: refs.bottomRef,
+            draftRef: refs.draftRef,
+            pendingAttachments: [],
+            selectionMode: false,
+            setPendingAttachments: refs.setPendingAttachments,
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      await act(async () => {
+        await result.current.sendGif('http://example.com/funny.gif');
+      });
+
+      expect(sendSpy).toHaveBeenCalledWith('chat-test-1', 'http://example.com/funny.gif', null);
+      await waitFor(() => expect(useOutboxStore.getState().items).toHaveLength(0));
     });
   });
 });

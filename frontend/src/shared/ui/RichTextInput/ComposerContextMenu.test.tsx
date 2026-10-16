@@ -34,11 +34,23 @@ async function select(field: HTMLElement, start: number, end: number) {
   });
 }
 
-async function setup(value: string | IRichText, start: number, end: number) {
+async function setup(
+  value: string | IRichText,
+  start: number,
+  end: number,
+  menuView: 'main' | 'format' = 'main'
+) {
   const view = renderInput();
   await typeIntoComposer(view.field, value);
   await select(view.field, start, end);
-  fireEvent.contextMenu(view.field, { clientX: 20, clientY: 20 });
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: 20,
+    clientY: 20,
+  });
+  Object.defineProperty(event, 'menuView', { value: menuView });
+  view.field.dispatchEvent(event);
   return view;
 }
 
@@ -274,5 +286,225 @@ describe('контекстное меню поля ввода (#656)', () => {
         writable: true,
       });
     }
+  });
+
+  it('вставка скопированного изображения из браузера (image/png + text/html <img> без text/plain) передаёт файл в onPasteFiles (#915)', async () => {
+    const onPasteFiles = vi.fn().mockReturnValue(true);
+    const { field } = renderInput(onPasteFiles);
+
+    const imageBlob = new Blob(['image-bytes'], { type: 'image/png' });
+    const htmlBlob = new Blob(['<img src="https://example.com/pic.png">'], { type: 'text/html' });
+    const mockClipboardItem = {
+      types: ['image/png', 'text/html'],
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'image/png' ? imageBlob : htmlBlob)
+        ),
+    };
+
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        read: vi.fn().mockResolvedValue([mockClipboardItem]),
+        readText: vi.fn().mockResolvedValue(''),
+        writeText: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      fireEvent.contextMenu(field, { clientX: 20, clientY: 20 });
+      const pasteItem = screen.getByRole('menuitem', { name: /Вставить/ });
+      expect(pasteItem).not.toBeDisabled();
+
+      await userEvent.click(pasteItem);
+
+      expect(onPasteFiles).toHaveBeenCalledTimes(1);
+      const files = onPasteFiles.mock.calls[0][0] as File[];
+      expect(files).toHaveLength(1);
+      expect(files[0].type).toBe('image/png');
+      expect(files[0].name).toMatch(/^pasted-\d+-0\.png$/);
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: originalClipboard,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  it('вставка из контекстного меню с text/html сохраняет разметку (#915)', async () => {
+    const { field, handle } = renderInput();
+
+    const htmlBlob = new Blob(['<p><b>жирный</b> и <a href="https://example.com">ссылка</a></p>'], {
+      type: 'text/html',
+    });
+    const textBlob = new Blob(['жирный и ссылка'], { type: 'text/plain' });
+    const mockClipboardItem = {
+      types: ['text/html', 'text/plain'],
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
+        ),
+    };
+
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        read: vi.fn().mockResolvedValue([mockClipboardItem]),
+        readText: vi.fn().mockResolvedValue('жирный и ссылка'),
+        writeText: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      fireEvent.contextMenu(field, { clientX: 20, clientY: 20 });
+      const pasteItem = screen.getByRole('menuitem', { name: /Вставить/ });
+      await userEvent.click(pasteItem);
+
+      const val = handle.current?.getValue();
+      expect(val?.text).toBe('жирный и ссылка');
+      expect(val?.entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'bold', offset: 0, length: 6 }),
+          expect.objectContaining({
+            type: 'link',
+            offset: 9,
+            length: 6,
+            data: { url: 'https://example.com' },
+          }),
+        ])
+      );
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: originalClipboard,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  it('вставка из буфера обмена зачёркнутого спойлера вместе со ссылкой сохраняет все форматы (#915)', async () => {
+    const { field, handle } = renderInput();
+
+    const htmlBlob = new Blob(
+      ['<p><mark><s>секрет</s></mark> и <a href="https://example.com">ссылка</a></p>'],
+      { type: 'text/html' }
+    );
+    const textBlob = new Blob(['секрет и ссылка'], { type: 'text/plain' });
+    const mockClipboardItem = {
+      types: ['text/html', 'text/plain'],
+      getType: vi
+        .fn()
+        .mockImplementation((type: string) =>
+          Promise.resolve(type === 'text/html' ? htmlBlob : textBlob)
+        ),
+    };
+
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        read: vi.fn().mockResolvedValue([mockClipboardItem]),
+        readText: vi.fn().mockResolvedValue('секрет и ссылка'),
+        writeText: vi.fn(),
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      fireEvent.contextMenu(field, { clientX: 20, clientY: 20 });
+      const pasteItem = screen.getByRole('menuitem', { name: /Вставить/ });
+      await userEvent.click(pasteItem);
+
+      const val = handle.current?.getValue();
+      expect(val?.text).toBe('секрет и ссылка');
+      expect(val?.entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'strikethrough', offset: 0, length: 6 }),
+          expect.objectContaining({ type: 'spoiler', offset: 0, length: 6 }),
+          expect.objectContaining({
+            type: 'link',
+            offset: 9,
+            length: 6,
+            data: { url: 'https://example.com' },
+          }),
+        ])
+      );
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: originalClipboard,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  describe('изменение регистра в меню форматирования (#1000)', () => {
+    it('пункт «ВЕРХНИЙ РЕГИСТР» переводит выделенный фрагмент в заглавные буквы', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      expect(screen.getByRole('menu', { name: 'Форматирование' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).not.toBeDisabled();
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('ТЕСТОВОЕ СООБЩЕНИЕ');
+    });
+
+    it('пункт «нижний регистр» переводит выделенный фрагмент в строчные буквы', async () => {
+      const { handle } = await setup('ТЕСТОВОЕ СООБЩЕНИЕ', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /нижний регистр/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('тестовое сообщение');
+    });
+
+    it('пункт «С заглавной буквы» капитализирует слова выделенного фрагмента', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /С заглавной буквы/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('Тестовое Сообщение');
+    });
+
+    it('сохраняет форматирование узлов при применении регистра через меню', async () => {
+      const { handle } = await setup(
+        {
+          text: 'жирный текст',
+          entities: [{ type: 'bold', offset: 0, length: 6 }],
+        },
+        0,
+        6
+      );
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(handle.current?.getValue()).toEqual({
+        text: 'ЖИРНЫЙ текст',
+        entities: [{ type: 'bold', offset: 0, length: 6 }],
+      });
+    });
+
+    it('пункты изменения регистра отключены при пустом выделении', async () => {
+      await setup('тестовое сообщение', 0, 0, 'format');
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).toBeDisabled();
+    });
   });
 });

@@ -2,11 +2,15 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getRoot,
+  $getSelection,
   $isElementNode,
   $isLineBreakNode,
+  $isRangeSelection,
   $isTextNode,
   type ElementNode,
+  type LexicalNode,
   type TextFormatType,
+  type TextNode,
 } from 'lexical';
 import { $createLinkNode, $isLinkNode } from '@lexical/link';
 import { $createQuoteNode, $isQuoteNode } from '@lexical/rich-text';
@@ -171,4 +175,101 @@ export function $writeRichText({ text, entities }: IRichText): void {
 /** Пусто ли — по тексту, а не по узлам: пустые абзацы тоже узлы. */
 export function isRichTextEmpty(value: IRichText): boolean {
   return value.text.trim() === '';
+}
+
+export type TTextCaseMode = 'uppercase' | 'lowercase' | 'capitalize';
+
+export function transformTextCase(text: string, mode: TTextCaseMode): string {
+  if (mode === 'uppercase') {
+    return text.toLocaleUpperCase();
+  }
+  if (mode === 'lowercase') {
+    return text.toLocaleLowerCase();
+  }
+  return text.replace(
+    /\p{L}+/gu,
+    (word) => word.slice(0, 1).toLocaleUpperCase() + word.slice(1).toLocaleLowerCase()
+  );
+}
+
+function getTextNodes(nodes: LexicalNode[]): TextNode[] {
+  const result: TextNode[] = [];
+  const seen = new Set<string>();
+
+  for (const node of nodes) {
+    if ($isTextNode(node)) {
+      if (!seen.has(node.getKey())) {
+        seen.add(node.getKey());
+        result.push(node);
+      }
+    } else if ($isElementNode(node)) {
+      for (const child of node.getAllTextNodes()) {
+        if (!seen.has(child.getKey())) {
+          seen.add(child.getKey());
+          result.push(child);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+function capitalizeNodes(nodes: TextNode[]): void {
+  let inWord = false;
+  let prevBlock: LexicalNode | null = null;
+
+  for (const node of nodes) {
+    const block = node.getTopLevelElement();
+    if (prevBlock !== null && block !== prevBlock) {
+      inWord = false;
+    }
+    prevBlock = block;
+
+    const text = node.getTextContent();
+    let transformed = '';
+
+    for (const char of text) {
+      if (/\p{L}/u.test(char)) {
+        if (!inWord) {
+          transformed += char.toLocaleUpperCase();
+          inWord = true;
+        } else {
+          transformed += char.toLocaleLowerCase();
+        }
+      } else {
+        inWord = false;
+        transformed += char;
+      }
+    }
+
+    node.setTextContent(transformed);
+  }
+}
+
+/**
+ * Изменение регистра текста выделения с сохранением разметки (форматы, ссылки).
+ * Вызывать внутри update.
+ */
+export function $transformSelectionCase(mode: TTextCaseMode): void {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+
+  const nodes = getTextNodes(selection.extract());
+  if (nodes.length === 0) return;
+
+  if (mode === 'uppercase') {
+    for (const node of nodes) {
+      node.setTextContent(node.getTextContent().toLocaleUpperCase());
+    }
+    return;
+  }
+
+  if (mode === 'lowercase') {
+    for (const node of nodes) {
+      node.setTextContent(node.getTextContent().toLocaleLowerCase());
+    }
+    return;
+  }
+
+  capitalizeNodes(nodes);
 }
