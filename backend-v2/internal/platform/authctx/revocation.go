@@ -10,8 +10,8 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 )
 
-// DBTokenChecker checks both exact-token revocations and the user's current
-// logout-all generation.
+// DBTokenChecker requires an active owned session and checks exact-token
+// revocations and the user's current logout-all generation.
 // Any Go service with a DB pool can use this to participate in token revocation.
 type DBTokenChecker struct {
 	db *sql.DB
@@ -32,7 +32,7 @@ func (c *DBTokenChecker) IsTokenRevoked(ctx context.Context, token string, claim
 	if c == nil || c.db == nil {
 		return false, errors.New("token revocation database is unavailable")
 	}
-	var individuallyRevoked bool
+	var sessionRevoked bool
 	var currentGeneration int64
 	err := c.db.QueryRowContext(ctx,
 		`SELECT
@@ -40,18 +40,23 @@ func (c *DBTokenChecker) IsTokenRevoked(ctx context.Context, token string, claim
 				SELECT 1
 				FROM auth.revoked_tokens
 				WHERE token_hash = $1 AND expires_at > NOW()
+			) OR NOT EXISTS (
+				SELECT 1 FROM auth.sessions s
+				WHERE s.access_token_hash = $1 AND s.user_id = $2
+					AND s.revoked_at IS NULL AND s.expires_at > NOW()
+					AND s.token_generation = auth.users.token_generation
 			),
 			token_generation
 		FROM auth.users
 		WHERE id = $2`,
 		TokenHash(token),
 		claims.Subject,
-	).Scan(&individuallyRevoked, &currentGeneration)
+	).Scan(&sessionRevoked, &currentGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return individuallyRevoked || currentGeneration != claims.TokenGeneration, nil
+	return sessionRevoked || currentGeneration != claims.TokenGeneration, nil
 }

@@ -47,7 +47,7 @@ func TestLoginSetsSessionCookie(t *testing.T) {
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
 	mock.ExpectExec("INSERT INTO auth.sessions").
-		WithArgs("user-id", sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), "Chrome on Linux", "desktop", "203.0.113.7").
+		WithArgs("user-id", sqlmock.AnyArg(), int64(0), sqlmock.AnyArg(), "Chrome on Linux", "desktop", "203.0.113.7", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	handler := NewHandler(NewService(db, handlerCryptoStub{verifyResult: true}))
@@ -87,9 +87,9 @@ func TestLogoutRevokesCookieTokenAndClearsCookie(t *testing.T) {
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
 		WithArgs(authctx.TokenHash("cookie-token"), "user-id", expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("UPDATE auth.sessions").
+	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs("user-id", authctx.TokenHash("cookie-token")).
-		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 

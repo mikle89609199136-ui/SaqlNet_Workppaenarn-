@@ -676,17 +676,21 @@ x-error: &error
     }
 /users/devices:
   get:
-    {
-      tags: [Users],
-      summary: List devices,
-      operationId: listDevices,
-      security: *secure,
-      responses: { '200': { description: Devices } },
-    }
+    tags: [Users]
+    summary: List active authenticated devices
+    description: Compatibility view of /auth/sessions with the same stable IDs and request-relative isCurrent, current session first.
+    operationId: listDevices
+    security: *secure
+    responses:
+      '200':
+        description: Active devices
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/DevicesResponse' } } }
+      '401': *error
 /users/devices/register:
   post:
     tags: [Users]
-    summary: Register a device
+    summary: Update the current session device metadata
+    description: Updates only the session identified by the request cookie and returns its existing canonical ID. Matching User-Agent values never merge sessions.
     operationId: registerDevice
     security: *secure
     requestBody:
@@ -708,7 +712,11 @@ x-error: &error
                 },
             },
         }
-    responses: { '200': { description: Registered } }
+    responses:
+      '200':
+        description: Current session metadata updated
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/DeviceRegistrationResponse' } } }
+      '401': *error
 /users/push/vapid-key:
   get:
     tags: [Users]
@@ -790,19 +798,22 @@ x-error: &error
       '400': { description: endpoint is required }
 /users/devices/terminate-all:
   post:
-    {
-      tags: [Users],
-      summary: Terminate all devices,
-      operationId: terminateAllDevices,
-      security: *secure,
-      responses: { '200': { description: Terminated } },
-    }
+    tags: [Users]
+    summary: Revoke all other sessions
+    description: Immediately revokes tokens and closes sockets of every other active session. Preserves the request cookie session. Use /auth/logout-all to revoke every session including the caller.
+    operationId: terminateAllDevices
+    security: *secure
+    responses:
+      '200': { description: Other sessions revoked }
+      '401': *error
 /users/devices/{sessionId}:
   delete:
     tags: [Users]
     summary: Delete a device session
     description: >-
-      Terminates the device session. The current session cannot be terminated
+      Revokes the canonical auth session and immediately invalidates its token and
+      WebSocket connections on all replicas. Other device metadata is preserved.
+      The current session cannot be terminated
       through this endpoint: it returns 409 conflict_current_session — log out
       to end the current session.
     operationId: deleteDevice
@@ -811,6 +822,7 @@ x-error: &error
       [
         {
           name: sessionId,
+          description: Canonical ID from /auth/sessions or /users/devices.,
           in: path,
           required: true,
           schema: { type: string, format: uuid },

@@ -307,7 +307,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List authenticated sessions */
+        /**
+         * List authenticated sessions
+         * @description Canonical active credential sessions, sharing stable IDs with /users/devices. isCurrent belongs to the request cookie. Unregistered legacy tokens require a fresh login.
+         */
         get: operations["listAuthSessions"];
         put?: never;
         post?: never;
@@ -996,7 +999,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List devices */
+        /**
+         * List active authenticated devices
+         * @description Compatibility view of /auth/sessions with the same stable IDs and request-relative isCurrent, current session first.
+         */
         get: operations["listDevices"];
         put?: never;
         post?: never;
@@ -1015,7 +1021,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a device */
+        /**
+         * Update the current session device metadata
+         * @description Updates only the session identified by the request cookie and returns its existing canonical ID. Matching User-Agent values never merge sessions.
+         */
         post: operations["registerDevice"];
         delete?: never;
         options?: never;
@@ -1032,7 +1041,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Terminate all devices */
+        /**
+         * Revoke all other sessions
+         * @description Immediately revokes tokens and closes sockets of every other active session. Preserves the request cookie session. Use /auth/logout-all to revoke every session including the caller.
+         */
         post: operations["terminateAllDevices"];
         delete?: never;
         options?: never;
@@ -1052,7 +1064,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a device session
-         * @description Terminates the device session. The current session cannot be terminated through this endpoint: it returns 409 conflict_current_session — log out to end the current session.
+         * @description Revokes the canonical auth session and immediately invalidates its token and WebSocket connections on all replicas. Other device metadata is preserved. The current session cannot be terminated through this endpoint: it returns 409 conflict_current_session — log out to end the current session.
          */
         delete: operations["deleteDevice"];
         options?: never;
@@ -2818,11 +2830,16 @@ export interface components {
             payload: components["schemas"]["QrKeyPayload"];
         };
         AuthSession: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable auth.sessions ID shared with the devices API.
+             */
             id: string;
             deviceName: string;
             deviceType: string;
             ipAddress: string;
+            location: string;
+            userAgent: string;
             /** Format: date-time */
             lastActive: string;
             /** Format: date-time */
@@ -2909,6 +2926,39 @@ export interface components {
             mode: components["schemas"]["PrivacyExceptionMode"];
             /** Format: date-time */
             createdAt: string;
+        };
+        DeviceSession: {
+            /**
+             * Format: uuid
+             * @description Same stable ID as AuthSession.id.
+             */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            location: string;
+            userAgent: string;
+            /** Format: date-time */
+            lastActive: string;
+            /**
+             * Format: date-time
+             * @description Alias of AuthSession.createdAt.
+             */
+            firstLogin: string;
+            /** @description True only for the session cookie used by this request. */
+            isCurrent: boolean;
+        };
+        DevicesResponse: {
+            devices: components["schemas"]["DeviceSession"][];
+        };
+        DeviceRegistrationResponse: {
+            /** @enum {boolean} */
+            success: true;
+            /**
+             * Format: uuid
+             * @description Existing canonical session ID; registration never creates a credential.
+             */
+            sessionId: string;
         };
         PublicEncryptionKey: {
             /** Format: byte */
@@ -4932,13 +4982,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Devices */
+            /** @description Active devices */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DevicesResponse"];
+                };
             };
+            401: components["responses"]["Error"];
         };
     };
     registerDevice: {
@@ -4959,13 +5012,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Registered */
+            /** @description Current session metadata updated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DeviceRegistrationResponse"];
+                };
             };
+            401: components["responses"]["Error"];
         };
     };
     terminateAllDevices: {
@@ -4977,13 +5033,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Terminated */
+            /** @description Other sessions revoked */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
         };
     };
     deleteDevice: {
@@ -4991,6 +5048,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Canonical ID from /auth/sessions or /users/devices. */
                 sessionId: string;
             };
             cookie?: never;

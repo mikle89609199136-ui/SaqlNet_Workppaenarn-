@@ -14,6 +14,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db/dbtest"
+	"craneapp/backend-v2/internal/user"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +40,13 @@ func TestActiveWSLogoutAcrossReplicas(t *testing.T) {
 		"b":     {Subject: user, Expires: expires},
 		"new":   {Subject: user, Expires: expires, TokenGeneration: 1},
 		"other": {Subject: other, Expires: expires},
+	}
+	for token, claims := range verifier {
+		if claims.TokenGeneration > 0 {
+			continue
+		}
+		_, err := db.Exec(`INSERT INTO auth.sessions (user_id, access_token_hash, token_generation, expires_at) VALUES ($1, $2, $3, $4)`, claims.Subject, authctx.TokenHash(token), claims.TokenGeneration, time.Unix(claims.Expires, 0))
+		require.NoError(t, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -115,8 +123,69 @@ func TestActiveWSLogoutAcrossReplicas(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
 	_ = response.Body.Close()
+	_, err = db.Exec(`INSERT INTO auth.sessions (user_id, access_token_hash, token_generation, expires_at) VALUES ($1,$2,1,$3)`, user, authctx.TokenHash("new"), time.Unix(expires, 0))
+	require.NoError(t, err)
 	fresh := revocationDial(t, servers[0], "new")
 	revocationPing(t, fresh)
 	require.NoError(t, replicas[0].applyRevocation(`{"userId":"`+user+`","generation":1}`))
 	revocationPing(t, fresh)
+}
+
+// Deleting a device closes its idle sockets on every replica at commit;
+// another device of the same account stays usable.
+func TestDeviceRevocationClosesOnlySelectedSessionAcrossReplicas(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "*")
+	db, url := dbtest.PostgresURL(t)
+	const owner = "aaaaaaaa-0706-4706-8706-111111111111"
+	dbtest.User(t, db, owner, "device_owner")
+	verifier := revocationVerifier{
+		"caller": {Subject: owner, Expires: time.Now().Add(time.Hour).Unix()},
+		"target": {Subject: owner, Expires: time.Now().Add(time.Hour).Unix()},
+	}
+	var targetID string
+	for token, claims := range verifier {
+		var id string
+		require.NoError(t, db.QueryRow(`INSERT INTO auth.sessions (user_id, access_token_hash, expires_at) VALUES ($1,$2,$3) RETURNING id::text`, owner, authctx.TokenHash(token), time.Unix(claims.Expires, 0)).Scan(&id))
+		if token == "target" {
+			targetID = id
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var servers []*httptest.Server
+	for i := 0; i < 2; i++ {
+		ws := NewWSServer(db, verifier, nil)
+		ws.activity = nil
+		ws.pingInterval = time.Hour
+		srv := httptest.NewServer(http.HandlerFunc(ws.ServeWS))
+		done := make(chan struct{})
+		go func() { defer close(done); RevocationRelay(ctx, url, ws) }()
+		t.Cleanup(func() { srv.Close(); cancel(); <-done; ws.Close() })
+		servers = append(servers, srv)
+	}
+	require.Eventually(t, func() bool {
+		var count int
+		err := db.QueryRow(`SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'LISTEN%' AND query LIKE '%auth_token_revoked%'`).Scan(&count)
+		return err == nil && count == 2
+	}, 5*time.Second, 10*time.Millisecond)
+	var targetSockets, callerSockets []*websocket.Conn
+	for _, srv := range servers {
+		targetSockets = append(targetSockets, revocationDial(t, srv, "target"))
+		callerSockets = append(callerSockets, revocationDial(t, srv, "caller"))
+	}
+	for _, conn := range append(targetSockets, callerSockets...) {
+		revocationPing(t, conn)
+	}
+	handler := user.NewHandler(user.NewService(db), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v2/users/devices/"+targetID, nil)
+	req.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller"})
+	response := httptest.NewRecorder()
+	authctx.Middleware(verifier, authctx.NewDBTokenChecker(db))(http.HandlerFunc(handler.DeleteDevice)).ServeHTTP(response, req)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	for _, conn := range targetSockets {
+		requireRevocationClosed(t, conn)
+	}
+	for _, conn := range callerSockets {
+		revocationPing(t, conn)
+	}
 }

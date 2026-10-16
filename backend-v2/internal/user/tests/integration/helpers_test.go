@@ -130,141 +130,50 @@ func createTestUser(t *testing.T, db *sql.DB, username string) string {
 	return id
 }
 
-// sessionRow mirrors the user_sessions columns integration tests assert on.
+// sessionRow contains canonical metadata; current is relative to the requesting token.
 type sessionRow struct {
-	ID         string
-	UserID     string
-	DeviceName string
-	DeviceType string
-	IPAddress  string
-	Location   string
-	UserAgent  string
-	IsCurrent  bool
+	ID, UserID, DeviceName, DeviceType, IPAddress, Location, UserAgent string
+	CreatedAt, LastActive                                              time.Time
 }
 
-// authSessionOpts describes the shape of an auth.sessions row that
-// integration tests need. Zero values for optional fields are treated as
-// SQL NULL where the schema allows it.
 type authSessionOpts struct {
 	UserID          string
 	AccessTokenHash string
 	Revoked         bool
 	ExpiresAt       time.Time
-	// DeviceSessionID, when non-empty, is stored as the FK link to
-	// public.user_sessions. Empty means NULL.
-	DeviceSessionID string
 }
 
-// createAuthSession inserts a minimal auth.sessions row and returns its
-// UUID as text.
-//
-// The column set is limited to what RegisterDevice queries and what the
-// integration tests assert on. refresh_token_hash and token_generation are
-// intentionally omitted: the former is nullable after the legacy rollout,
-// the latter has a default of 0.
 func createAuthSession(t *testing.T, db *sql.DB, opts authSessionOpts) string {
 	t.Helper()
-
+	if opts.ExpiresAt.IsZero() {
+		opts.ExpiresAt = time.Now().Add(time.Hour)
+	}
 	var revokedAt sql.NullTime
 	if opts.Revoked {
 		revokedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	}
-	var accessHash sql.NullString
-	if opts.AccessTokenHash != "" {
-		accessHash = sql.NullString{String: opts.AccessTokenHash, Valid: true}
-	}
-	var deviceSess sql.NullString
-	if opts.DeviceSessionID != "" {
-		deviceSess = sql.NullString{String: opts.DeviceSessionID, Valid: true}
-	}
-
 	var id string
 	err := db.QueryRowContext(context.Background(), `
-		INSERT INTO auth.sessions
-			(user_id, access_token_hash, revoked_at, expires_at, device_session_id)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id::text
-	`, opts.UserID, accessHash, revokedAt, opts.ExpiresAt, deviceSess).Scan(&id)
+		INSERT INTO auth.sessions (user_id, access_token_hash, revoked_at, expires_at)
+		VALUES ($1, $2, $3, $4) RETURNING id::text
+	`, opts.UserID, opts.AccessTokenHash, revokedAt, opts.ExpiresAt).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert auth session: %v", err)
 	}
 	return id
 }
 
-// authSessionDeviceLink returns the device_session_id of an auth.sessions
-// row as text, or "" when the column is NULL.
-func authSessionDeviceLink(t *testing.T, db *sql.DB, authSessionID string) string {
-	t.Helper()
-	var link sql.NullString
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT device_session_id::text FROM auth.sessions WHERE id = $1`,
-		authSessionID,
-	).Scan(&link); err != nil {
-		t.Fatalf("select auth session %s: %v", authSessionID, err)
-	}
-	if !link.Valid {
-		return ""
-	}
-	return link.String
-}
-
-// sessionByID fetches a single row from public.user_sessions for assertions.
-// It fails the test if the row is missing.
 func sessionByID(t *testing.T, db *sql.DB, id string) sessionRow {
 	t.Helper()
 	var row sessionRow
 	err := db.QueryRowContext(context.Background(), `
-		SELECT id::text, user_id::text, device_name, device_type,
-		       ip_address, location, user_agent, is_current
-		FROM public.user_sessions
-		WHERE id = $1
-	`, id).Scan(
-		&row.ID, &row.UserID, &row.DeviceName, &row.DeviceType,
-		&row.IPAddress, &row.Location, &row.UserAgent, &row.IsCurrent,
-	)
+		SELECT id::text, user_id::text, device_name, device_type, ip_address,
+		       location, user_agent, created_at, last_active
+		FROM auth.sessions WHERE id = $1
+	`, id).Scan(&row.ID, &row.UserID, &row.DeviceName, &row.DeviceType,
+		&row.IPAddress, &row.Location, &row.UserAgent, &row.CreatedAt, &row.LastActive)
 	if err != nil {
 		t.Fatalf("select session %s: %v", id, err)
 	}
 	return row
-}
-
-// countSessionsForUser returns the number of public.user_sessions rows for
-// the given user.
-func countSessionsForUser(t *testing.T, db *sql.DB, userID string) int {
-	t.Helper()
-	var n int
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM public.user_sessions WHERE user_id = $1`,
-		userID,
-	).Scan(&n); err != nil {
-		t.Fatalf("count sessions: %v", err)
-	}
-	return n
-}
-
-// currentSessionID returns the id of the only session with is_current = TRUE
-// for the user, and fails if there is not exactly one such session.
-func currentSessionID(t *testing.T, db *sql.DB, userID string) string {
-	t.Helper()
-	var id string
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT id::text FROM public.user_sessions
-		 WHERE user_id = $1 AND is_current = TRUE`,
-		userID,
-	).Scan(&id); err != nil {
-		t.Fatalf("select current session: %v", err)
-	}
-
-	var count int
-	if err := db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM public.user_sessions
-		 WHERE user_id = $1 AND is_current = TRUE`,
-		userID,
-	).Scan(&count); err != nil {
-		t.Fatalf("count current sessions: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("expected exactly one current session, got %d", count)
-	}
-	return id
 }
