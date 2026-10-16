@@ -8,11 +8,12 @@
   `docker-entrypoint.sh` runs migrations and, on first start, the full
   legacy→v2 data migration (marker file `/data/.legacy-v2-migration-complete`;
   disable with `RUN_LEGACY_MIGRATION=false`).
-- Hosting platform: Amvera (`amvera.yaml` at root builds `Dockerfile.prod`,
-  container port 8080, persistence mounted at `/data`; per-service manifests
-  in `deploy/amvera/`). `railway.json` also exists for Railway.
-- Production environment must define a positive `MAX_FILE_SIZE` in bytes for
-  the media service (`.env.example` uses `104857600`, or 100 MiB).
+- Hosting platform: Amvera (`amvera.yml` at root builds `Dockerfile.prod`,
+  container port 8080, persistence mounted at `/data`). `railway.json` also
+  exists for Railway.
+- `MAX_FILE_SIZE` defaults to `104857600` (100 MiB) in the combined-image
+  entrypoint and both Compose variants. Supervisor forwards the exported value
+  to media. Standalone media processes must receive a positive value explicitly.
 - Health endpoint: `/api/v2/health`.
 - Merge/rollback process: follow `docs/prod-merge-runbook.md` — create a
   rollback tag before merging to `main`, smoke-check with
@@ -29,6 +30,59 @@
 
 `scripts/` contains: `start.sh`, `smoke-test.sh`, `load-test.sh`,
 `migrate-and-verify.sh`, `seedDatabase.js`.
+
+## Media upload limits (#897)
+
+Use `MAX_FILE_SIZE=104857600` in the local `.env` and the hosting environment
+to match the client's 100 MB limit (the UI uses binary megabytes). An explicit
+older value, such as `52428800`, overrides the entrypoint/Compose default:
+update it in Amvera/Railway environment settings and restart the deployment.
+Supervisor inherits this value; it does not impose a separate 50 MB limit.
+
+Encrypted message uploads append a 16-byte AES-GCM tag, then encode the result
+in Base64 inside JSON. Media allows `MAX_FILE_SIZE + 16` ciphertext bytes and
+`4 * ceil((MAX_FILE_SIZE + 16) / 3) + 65536` JSON request bytes. With the
+default, the JSON limit is 139875692 bytes, about 133.4 MiB. Plain uploads
+retain the original 100 MiB limit. Checks use actual data sizes, independent
+of the client-provided `sizeBytes`. Voice messages retain their separate
+8 MiB ciphertext limit.
+
+Every reverse proxy in front of edge must allow at least **140 MiB** per
+request with this default. For a self-managed Nginx server, set this in the
+existing API `server` or `location` configuration and reload Nginx:
+
+```nginx
+client_max_body_size 140m;
+```
+
+For ingress-nginx, the optional
+`infrastructure/kubernetes/v2/ingress.yaml` sets
+`nginx.ingress.kubernetes.io/proxy-body-size: "140m"` and routes to edge.
+Adapt its host, ingress class and TLS configuration to the target cluster,
+or copy the annotation onto the Ingress that already serves edge.
+
+Amvera/Railway managed ingress and any additional CDN/proxy are configured
+outside this repository. Arrange an equivalent body limit through the
+platform's configuration/support before rollout; changing `MAX_FILE_SIZE`
+inside the container cannot raise an upstream limit. If the upstream cannot
+accept 140 MiB requests, use an ingress/plan that can before advertising
+100 MiB uploads. Raise the proxy budget again if increasing `MAX_FILE_SIZE`.
+
+Media returns oversized uploads as HTTP 413 with a flat JSON response:
+
+```json
+{"code":"file_too_large","message":"file exceeds 100 MB limit","requestId":"..."}
+```
+
+An upstream-generated 413 may use the proxy's own response format; it never
+reaches media. Do not replace media's JSON errors with proxy error pages.
+
+After deployment, send encrypted files of 1, 70, 80, 99.9 and exactly 100 MiB
+through the public `POST /api/v2/media` endpoint and confirm HTTP 201. A file
+of 104857601 original bytes must return the JSON 413 above. Check the public
+route as well as the container port to detect an upstream rejection. The
+backend regression test `TestEncryptedUpload100MiBBoundaries` exercises these
+wire sizes with mocked database/storage; it does not verify hosted ingress.
 
 ## Kubernetes rollout for auth token generation
 

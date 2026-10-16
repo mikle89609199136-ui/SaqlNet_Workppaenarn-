@@ -3,6 +3,13 @@ x-secure: &secure [{ sessionCookie: [] }]
   post:
     tags: [Media]
     summary: Upload media
+    description: >-
+      MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB).
+      Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body
+      limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies
+      must allow at least 140 MiB with the default file limit.
+      Oversized uploads return a flat 413 file_too_large error with message and requestId.
+      Voice uploads have a separate 8 MiB ciphertext limit.
     operationId: uploadMedia
     security: *secure
     requestBody:
@@ -127,7 +134,7 @@ x-secure: &secure [{ sessionCookie: [] }]
     tags: [Media]
     summary: Create a sticker pack
     description: >-
-      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB;
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
       the decoded icon is limited to MAX_FILE_SIZE.
       Errors: 400 invalid_json, invalid_name, upload_error;
       413 request_too_large, file_too_large; 500 db_error.
@@ -150,7 +157,7 @@ x-secure: &secure [{ sessionCookie: [] }]
     tags: [Media]
     summary: Add a sticker
     description: >-
-      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB;
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
       the decoded image is limited to MAX_FILE_SIZE.
       Errors: 400 invalid_json, missing_image, invalid_path, upload_error;
       404 not_found (pack missing or owned by another user);

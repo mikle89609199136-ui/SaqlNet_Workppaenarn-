@@ -569,9 +569,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get all settings */
+        /**
+         * Get all settings
+         * @deprecated
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
+         */
         get: operations["getAllSettings"];
-        /** Replace all settings */
+        /**
+         * Replace all settings
+         * @deprecated
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
+         */
         put: operations["updateAllSettings"];
         post?: never;
         delete?: never;
@@ -587,9 +595,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get settings */
+        /**
+         * Get own account settings and privacy
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Field schemas and consistent defaults are tracked in #453 and #451.
+         */
         get: operations["getSettings"];
-        /** Update settings */
+        /**
+         * Partially update own account settings
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys, null/unknown-key validation and legacy normalization require #453/#495; the current generic settings handler does not enforce that validation yet. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         */
         put: operations["updateSettings"];
         post?: never;
         delete?: never;
@@ -607,8 +621,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Update privacy
-         * @description Partial update. Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the legacy contacts and none are accepted and stored as nobody, everyone as all.
+         * Partially update own privacy rules
+         * @description Canonical MVP privacy write (#498); read via GET /users/settings. Send a flat partial object, not a privacy envelope. Omitted rules are preserved; merging is shallow. Returns the resulting privacy object. Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the legacy contacts and none are accepted and stored as nobody, everyone as all. Exceptions remain separate resources under /users/privacy/exceptions and are not replaced by this update. State-changing cookie requests require an allowed Origin.
          */
         put: operations["updatePrivacy"];
         post?: never;
@@ -672,9 +686,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get notification settings */
+        /**
+         * Get notification settings
+         * @deprecated
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         */
         get: operations["getNotifications"];
-        /** Update notification settings */
+        /**
+         * Update notification settings
+         * @deprecated
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         */
         put: operations["updateNotifications"];
         post?: never;
         delete?: never;
@@ -690,9 +712,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get sound settings */
+        /**
+         * Get sound settings
+         * @deprecated
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         */
         get: operations["getSounds"];
-        /** Update sound settings */
+        /**
+         * Update sound settings
+         * @deprecated
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         */
         put: operations["updateSounds"];
         post?: never;
         delete?: never;
@@ -708,9 +738,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get advanced settings */
+        /**
+         * Get advanced settings
+         * @deprecated
+         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+         */
         get: operations["getAdvancedSettings"];
-        /** Update advanced settings */
+        /**
+         * Update advanced settings
+         * @deprecated
+         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+         */
         put: operations["updateAdvancedSettings"];
         post?: never;
         delete?: never;
@@ -726,9 +764,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List chat folders */
+        /**
+         * List chat folders
+         * @deprecated
+         * @description Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.
+         */
         get: operations["listFolders"];
-        /** Update chat folders */
+        /**
+         * Update chat folders
+         * @deprecated
+         * @description Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.
+         */
         put: operations["updateFolders"];
         post?: never;
         delete?: never;
@@ -762,7 +808,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update storage settings */
+        /**
+         * Update storage settings
+         * @deprecated
+         * @description Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences.
+         */
         put: operations["updateStorageSettings"];
         post?: never;
         delete?: never;
@@ -2092,7 +2142,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
+         * @description Self chats return 400 invalid_chat_type; groups and channels return 400 group_calls_unavailable. Before creating any database or in-memory room, the server applies the private-chat recipient's calls privacy rule, per-user exceptions and block list. A blocked caller gets 403 blocked_by_user; any other policy denial gets 403 calls_forbidden. Denial creates no room, participant, invite, history entry, realtime event or push notification, and does not disclose online/busy status. A settings read failure returns 500 internal_error without creating a room. WebSocket call_invite rechecks the same policy before busy status, history, incoming events and push. A denied invite returns only to the caller: call_invite_response with accepted=false and reason=calls_forbidden (blocked_by_user for a block). Read failures also deny as calls_forbidden. Pending invite delivery on reconnect and acceptance recheck the policy; a revoked pending invite is cancelled on all recipient devices. call_join also checks the original caller-to-recipient direction and returns call_error calls_forbidden on denial, without adding a participant or notifying the peer. Policy denials close an already-created unanswered room and mark its existing room/participant rows as ended, without creating messages, new history rows or missed-call push notifications. The caller is freed for incoming calls. An already active call is not terminated; subsequent joins use the current policy. A denied restore leaves the room queued for normal recovery timeout cleanup.
          */
         post: operations["createCallRoom"];
         delete?: never;
@@ -2150,7 +2200,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload media */
+        /**
+         * Upload media
+         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit.
+         */
         post: operations["uploadMedia"];
         delete?: never;
         options?: never;
@@ -2274,7 +2327,7 @@ export interface paths {
         put?: never;
         /**
          * Create a sticker pack
-         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["createStickerPack"];
         delete?: never;
@@ -2297,7 +2350,7 @@ export interface paths {
         put?: never;
         /**
          * Add a sticker
-         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["addSticker"];
         /** Delete a sticker pack */
@@ -2823,6 +2876,17 @@ export interface components {
         Object: {
             [key: string]: unknown;
         };
+        /** @description Canonical MVP notification preferences stored in users.settings.settings. Fields are optional in a patch; omission preserves the current value. Defaults describe normalized reads/new accounts, not resetting a patch. These are stored preferences, not effective delivery decisions. Detailed legacy objects are compatibility data, with sound aliases mapped in #1042. Runtime validation/default normalization require #495/#451/#1042. */
+        NotificationPreferences: {
+            /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
+            notifications?: boolean;
+            /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
+            sounds?: boolean;
+            /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
+            callSounds?: boolean;
+        };
+        /** @description Partial MVP settings contract: notification preferences are typed by #496; appearance/language/other fields remain generic until #453. The generic server write handler does not yet enforce these types (#495). */
+        MvpSettings: components["schemas"]["Object"] & components["schemas"]["NotificationPreferences"];
         /**
          * @description Who else sees it. There are no contacts yet, so only everyone or nobody. Being blocked by the owner hides it regardless of the rule.
          * @enum {string}
@@ -2834,6 +2898,7 @@ export interface components {
             photoVisibility?: components["schemas"]["PrivacyVisibility"];
             phoneVisibility?: components["schemas"]["PrivacyVisibility"];
             forwards?: components["schemas"]["PrivacyVisibility"];
+            /** @description Who may call this user (the callsFrom requirement). The canonical key is calls; callsFrom is not accepted. all allows any private-chat peer, nobody denies incoming calls except always-allow exceptions. There is no contact list: an existing chat or shared group does not grant access. The callee's block list overrides exceptions; otherwise the per-user calls exception overrides the base rule. Outgoing calls use the recipient's rule. Legacy everyone/everybody normalize to all, contacts/none to nobody. Invalid values and explicit JSON null deny; only an absent rule uses the default. Checked before room creation, invite delivery (also on reconnect), accepting and joining a call. */
             calls?: components["schemas"]["PrivacyVisibility"];
             groupsAdd?: components["schemas"]["PrivacyVisibility"];
             messagesFromStrangers?: boolean;
@@ -3308,7 +3373,7 @@ export interface components {
                 sizeBytes: number;
                 /**
                  * Format: byte
-                 * @description Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+                 * @description Standard base64 ciphertext; decoded size is limited to MAX_FILE_SIZE plus the 16-byte AES-GCM tag (413 file_too_large). The limit is enforced from actual bytes, independently of sizeBytes. Voice uploads retain their separate 8 MiB ciphertext limit.
                  */
                 ciphertext: string;
                 /** @description At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies. */
@@ -4306,13 +4371,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Settings */
+            /** @description Own account settings and privacy */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        settings: components["schemas"]["MvpSettings"];
+                        privacy: components["schemas"]["PrivacySettings"];
+                    };
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     updateSettings: {
@@ -4324,17 +4398,27 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["MvpSettings"];
             };
         };
         responses: {
-            /** @description Updated settings */
+            /** @description Resulting account settings */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        settings: components["schemas"]["MvpSettings"];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     updatePrivacy: {
@@ -4350,7 +4434,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated privacy */
+            /** @description Resulting privacy rules */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4362,6 +4446,11 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listPrivacyExceptions: {

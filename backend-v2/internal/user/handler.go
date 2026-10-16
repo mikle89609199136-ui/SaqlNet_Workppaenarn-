@@ -567,8 +567,12 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, _ := authctx.TokenFromRequest(r)
+	var tokenHash string
+	if token != "" {
+		tokenHash = authctx.TokenHash(token)
+	}
 	sessionID, err := h.service.RegisterDevice(
-		r.Context(), current.ID, authctx.TokenHash(token),
+		r.Context(), current.ID, tokenHash,
 		input.DeviceName, input.DeviceType, input.ClientIP, "Unknown", input.UserAgent,
 	)
 	if errors.Is(err, ErrAuthSessionInactive) {

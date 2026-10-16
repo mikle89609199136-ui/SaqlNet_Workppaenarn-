@@ -75,6 +75,7 @@ func runTests(m *testing.M) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	defer func() { _ = db.Close() }()
 
 	tables, err := discoverTables(setupCtx, db)
