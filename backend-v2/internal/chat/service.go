@@ -24,6 +24,7 @@ var (
 	ErrInvalidInput    = errors.New("invalid input")
 	ErrUserNotFound    = errors.New("user not found")
 	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrCallsForbidden  = errors.New("calls forbidden by privacy")
 	ErrInvalidChatType = errors.New("invalid chat type")
 	// ErrGroupCallsUnavailable — в MVP звонки только один на один (#715).
 	ErrGroupCallsUnavailable     = errors.New("group calls are not available")
@@ -138,6 +139,8 @@ type Service struct {
 	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
+	// mls — лимиты MLS; nil только в тестах.
+	mls *mlsLimits
 }
 
 type realtimeServer interface {
@@ -271,7 +274,7 @@ func (s *Service) ValidateCatalogMedia(ctx context.Context, mediaType, mediaURL 
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
-	return &Service{db: db, ws: ws, presence: presence}
+	return &Service{db: db, ws: ws, presence: presence, mls: newMLSLimitsFromEnv()}
 }
 
 // hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
@@ -3637,22 +3640,17 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
-	var chatType string
-	var blockedByPeer bool
+	var chatType, peerID string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT c.type,
-		       -- Собеседник по личному чату заблокировал звонящего (#912) —
-		       -- как у сообщений (sendPermissionQuery).
-		       EXISTS(
-		         SELECT 1
-		         FROM chats.members peer
-		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
-		         WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id AND c.type = 'private'
-		       )
+		SELECT c.type, COALESCE((
+		  SELECT peer.user_id::text FROM chats.members peer
+		  WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		  LIMIT 1
+		), '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
 		WHERE c.id = $1
-	`, chatID, userID).Scan(&chatType, &blockedByPeer)
+	`, chatID, userID).Scan(&chatType, &peerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
 	}
@@ -3667,9 +3665,12 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 	if chatType != "private" {
 		return "", ErrGroupCallsUnavailable
 	}
-	// Ни в базу, ни в память: заблокировавший его звонка не получит.
-	if blockedByPeer {
-		return "", ErrBlockedByUser
+	// Проверка до любых записей и создания комнаты в памяти (#714).
+	if peerID == "" {
+		return "", ErrCallsForbidden
+	}
+	if err := checkCallPrivacy(ctx, s.db, peerID, userID); err != nil {
+		return "", err
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {

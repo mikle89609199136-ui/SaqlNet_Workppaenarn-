@@ -536,7 +536,8 @@ func respondProfile(w http.ResponseWriter, r *http.Request, profile Profile, err
 func (h *Handler) Devices(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	if r.Method == http.MethodGet {
-		devices, err := h.service.Devices(r.Context(), current.ID)
+		token, _ := authctx.TokenFromRequest(r)
+		devices, err := h.service.Devices(r.Context(), current.ID, token)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to fetch devices")
 			return
@@ -566,8 +567,12 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, _ := authctx.TokenFromRequest(r)
+	var tokenHash string
+	if token != "" {
+		tokenHash = authctx.TokenHash(token)
+	}
 	sessionID, err := h.service.RegisterDevice(
-		r.Context(), current.ID, authctx.TokenHash(token),
+		r.Context(), current.ID, tokenHash,
 		input.DeviceName, input.DeviceType, input.ClientIP, "Unknown", input.UserAgent,
 	)
 	if errors.Is(err, ErrAuthSessionInactive) {
@@ -597,8 +602,12 @@ func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid sessionId")
 		return
 	}
-	err := h.service.DeleteDevice(r.Context(), current.ID, sessionID)
+	token, _ := authctx.TokenFromRequest(r)
+	err := h.service.DeleteDevice(r.Context(), current.ID, sessionID, authctx.TokenHash(token))
 	switch {
+	case errors.Is(err, ErrAuthSessionInactive):
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "session not found")
 		return
@@ -625,7 +634,12 @@ func (h *Handler) TerminateAllDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	err := h.service.TerminateAllDevices(r.Context(), current.ID)
+	token, _ := authctx.TokenFromRequest(r)
+	err := h.service.TerminateAllDevices(r.Context(), current.ID, authctx.TokenHash(token))
+	if errors.Is(err, ErrAuthSessionInactive) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to terminate devices")
 		return

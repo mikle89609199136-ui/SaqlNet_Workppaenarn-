@@ -419,6 +419,7 @@ func sessionMetadataFromRequest(r *http.Request, deviceName, deviceType string) 
 		DeviceName: deviceName,
 		DeviceType: deviceType,
 		IPAddress:  requestClientIP(r),
+		UserAgent:  truncateRunes(r.UserAgent(), maxQRUserAgentRunes),
 	}
 }
 
@@ -820,6 +821,7 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		DeviceName: data.DeviceName,
 		DeviceType: deviceTypeFromUserAgent(data.UserAgent),
 		IPAddress:  data.IPAddress,
+		UserAgent:  data.UserAgent,
 	})
 	if errors.Is(err, ErrAuthorizationRevoked) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")

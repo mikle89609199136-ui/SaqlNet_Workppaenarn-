@@ -67,6 +67,8 @@ struct VerifyTokenRequest {
 
 #[derive(Serialize, Deserialize)]
 struct TokenClaims {
+    #[serde(default)]
+    jti: String,
     #[serde(rename = "sub")]
     subject: String,
     #[serde(rename = "userId", default)]
@@ -259,7 +261,10 @@ async fn issue_token(Json(payload): Json<IssueTokenRequest>) -> ApiResult<IssueT
     }
     let issued_at = unix_time();
     let expires_at = issued_at + token_ttl();
+    let mut token_id = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut token_id);
     let claims = TokenClaims {
+        jti: general_purpose::URL_SAFE_NO_PAD.encode(token_id),
         subject: payload.subject.clone(),
         user_id: payload.subject,
         username: payload.username,
@@ -726,6 +731,32 @@ mod tests {
             response_json["token_generation"],
             contract["verify_response"]["token_generation"]
         );
+    }
+
+    #[tokio::test]
+    async fn consecutive_logins_have_distinct_tokens() {
+        let _environment_lock = TOKEN_ENV_LOCK.lock().await;
+        let _signing_secret = EnvVarGuard::set(
+            "CRYPTO_SIGNING_SECRET",
+            "test-signing-secret-with-at-least-32-bytes",
+        );
+        let mut identifiers = std::collections::HashSet::new();
+        for _ in 0..64 {
+            let request = IssueTokenRequest {
+                subject: "same-user".into(),
+                username: "same-name".into(),
+                token_generation: 0,
+            };
+            let Ok(Json(issued)) = issue_token(Json(request)).await else {
+                panic!("issue failed")
+            };
+            let body = issued.token.split('.').nth(1).unwrap();
+            let claims: TokenClaims =
+                serde_json::from_slice(&general_purpose::URL_SAFE_NO_PAD.decode(body).unwrap())
+                    .unwrap();
+            assert!(!claims.jti.is_empty());
+            assert!(identifiers.insert(claims.jti));
+        }
     }
 
     #[tokio::test]

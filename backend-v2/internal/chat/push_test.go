@@ -106,7 +106,7 @@ func TestCallInviteNotifiesPushOnlyForRoomWithChat(t *testing.T) {
 	ws.callRooms.CreateRoom("igor", "room-1", "p2p", "audio", "chat-1", "")
 	mock.ExpectQuery(`FROM chats\.chats c`).WithArgs("chat-1", "igor", "masha").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-	mock.ExpectQuery(`users\.blocked_users`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery(`FROM auth\.users`).WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions"}).AddRow([]byte(`{}`), false, nil))
 	mock.ExpectQuery(`FROM auth\.users au`).WillReturnRows(sqlmock.NewRows([]string{"name", "avatar"}).AddRow("Игорь", ""))
 	ws.handleCallInvite(caller, map[string]interface{}{"to": "masha", "roomId": "room-1", "kind": "video"})
 	require.Equal(t, []push.Event{{

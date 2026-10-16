@@ -614,6 +614,10 @@ func (h *Handler) CallRoom(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusForbidden, "blocked_by_user", "you are blocked by this user")
 		return
 	}
+	if errors.Is(err, ErrCallsForbidden) {
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "calls_forbidden", "calls are not allowed by privacy settings")
+		return
+	}
 	if errors.Is(err, ErrGroupCallsUnavailable) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "group_calls_unavailable", "calls are one-to-one only")
 		return

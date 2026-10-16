@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -60,11 +61,8 @@ func (ws *WSServer) handleCallInvite(client *Client, msg map[string]interface{})
 	if room == nil || room.hostID != client.UserID || !ws.arePrivatePeers(room.chatID, client.UserID, to) {
 		return
 	}
-	// Заблокировавший не получает звонков от заблокированного (#760).
-	if ws.isBlockedBy(to, client.UserID) {
-		ws.recordCallRefused(roomID, to, callEndBusy)
-		ws.refuseInvite(client.UserID, roomID, to, "blocked_by_user")
-		ws.endUnansweredCall(roomID, client.UserID, false)
+	// До проверки «занят», записей, событий и push (#714).
+	if !ws.allowCallInvite(client.UserID, to, roomID) {
 		return
 	}
 	if ws.callRooms.GetUserRoom(to) != nil {
@@ -114,6 +112,17 @@ func (ws *WSServer) handleCallInviteResponse(client *Client, msg map[string]inte
 	ws.inviteMu.Lock()
 	invite := ws.pendingInvites[client.UserID]
 	if invite == nil || invite.roomID != roomID {
+		ws.inviteMu.Unlock()
+		return
+	}
+	ws.inviteMu.Unlock()
+	// Оставляем приглашение зарегистрированным на время проверки: отказ
+	// должен отменить звонок на всех устройствах, где он уже показан.
+	if accepted && !ws.allowCallInvite(invite.callerID, client.UserID, roomID) {
+		return
+	}
+	ws.inviteMu.Lock()
+	if ws.pendingInvites[client.UserID] != invite {
 		ws.inviteMu.Unlock()
 		return
 	}
@@ -214,6 +223,16 @@ func (ws *WSServer) deliverPendingInvite(client *Client) {
 	}
 	ws.inviteMu.Unlock()
 	if invite != nil {
+		// Правило могло измениться, пока получатель был не в сети.
+		if !ws.allowCallInvite(invite.callerID, client.UserID, invite.roomID) {
+			return
+		}
+		// Пока читали базу, приглашение могло истечь или смениться.
+		ws.inviteMu.Lock()
+		defer ws.inviteMu.Unlock()
+		if ws.pendingInvites[client.UserID] != invite {
+			return
+		}
 		select {
 		case client.Send <- invite.payload:
 		default:
@@ -372,4 +391,36 @@ func (ws *WSServer) callerCard(callerID, viewerID string) (string, string) {
 		}
 	}
 	return name, avatar
+}
+
+// allowCallInvite проверяет ту же политику, что создание комнаты. Отказ
+// не создаёт сообщений и новых записей, не раскрывает presence. Ранее
+// доставленный входящий отменяется, неотвеченная комната закрывается.
+func (ws *WSServer) allowCallInvite(callerID, to, roomID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), callRecordTimeout)
+	defer cancel()
+	err := checkCallPrivacy(ctx, ws.db, to, callerID)
+	if err == nil {
+		return true
+	}
+	reason := "calls_forbidden"
+	if errors.Is(err, ErrBlockedByUser) {
+		reason = "blocked_by_user"
+	} else if !errors.Is(err, ErrCallsForbidden) {
+		slog.Error("call privacy check", "err", err)
+	}
+	ws.inviteMu.Lock()
+	cancelled := false
+	if invite := ws.pendingInvites[to]; invite != nil && invite.roomID == roomID && invite.callerID == callerID {
+		invite.timer.Stop()
+		delete(ws.pendingInvites, to)
+		cancelled = true
+	}
+	ws.inviteMu.Unlock()
+	if cancelled {
+		ws.sendCallCancelled(to, roomID)
+	}
+	ws.closeDeniedCallRoom(roomID, callerID)
+	ws.refuseInvite(callerID, roomID, to, reason)
+	return false
 }

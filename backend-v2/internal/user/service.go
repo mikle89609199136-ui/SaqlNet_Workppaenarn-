@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"craneapp/backend-v2/internal/auth"
+	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/blockevent"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
@@ -784,9 +786,6 @@ func (s *Service) DeleteAllData(ctx context.Context, userID string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM users.settings WHERE user_id = $1`, userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1`, userID); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 OR blocked_user_id = $1`, userID); err != nil {
 		return err
 	}
@@ -1012,152 +1011,143 @@ type Session struct {
 	IsCurrent  bool   `json:"isCurrent"`
 }
 
+// RegisterDevice enriches the caller's existing session. User-Agent is metadata,
+// never an identity key: two identical browsers can hold independent sessions.
 func (s *Service) RegisterDevice(ctx context.Context, userID, accessTokenHash, deviceName, deviceType, ipAddress, location, userAgent string) (string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	var sessionID string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
-	if err == nil {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE public.user_sessions
-			SET device_name = $2, device_type = $3, ip_address = $4,
-				location = $5, last_active = NOW(), is_current = TRUE
-			WHERE id = $1
-		`, sessionID, deviceName, deviceType, ipAddress, location); err != nil {
-			return "", err
-		}
-	} else if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `
-		INSERT INTO public.user_sessions (id, user_id, device_name, device_type, ip_address, location, user_agent, last_active, first_login, is_current)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW(), TRUE)
-		RETURNING id
-	`, userID, deviceName, deviceType, ipAddress, location, userAgent).Scan(&sessionID)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		return "", err
+	err := s.db.QueryRowContext(ctx, `
+		UPDATE auth.sessions s
+		SET device_name = $3, device_type = $4, ip_address = $5,
+			location = $6, user_agent = $7, last_active = NOW()
+		FROM auth.users u
+		WHERE s.user_id = $1 AND s.access_token_hash = $2 AND u.id = s.user_id
+			AND s.revoked_at IS NULL AND s.expires_at > NOW()
+			AND s.token_generation = u.token_generation
+			AND NOT EXISTS (SELECT 1 FROM auth.revoked_tokens rt
+				WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW())
+		RETURNING s.id::text
+	`, userID, accessTokenHash, deviceName, deviceType, ipAddress, location, userAgent).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrAuthSessionInactive
 	}
-
-	if _, err := tx.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID); err != nil {
-		return "", err
-	}
-
-	if accessTokenHash != "" {
-		var authSessionID string
-		err := tx.QueryRowContext(ctx, `
-			SELECT id::text
-			FROM auth.sessions
-			WHERE user_id = $1 AND access_token_hash = $2
-				AND revoked_at IS NULL AND expires_at > NOW()
-			FOR UPDATE
-		`, userID, accessTokenHash).Scan(&authSessionID)
-		if errors.Is(err, sql.ErrNoRows) {
-			var knownCredential bool
-			if err := tx.QueryRowContext(ctx, `
-				SELECT EXISTS (
-					SELECT 1 FROM auth.sessions
-					WHERE user_id = $1 AND access_token_hash = $2
-				)
-			`, userID, accessTokenHash).Scan(&knownCredential); err != nil {
-				return "", err
-			}
-			if knownCredential {
-				return "", ErrAuthSessionInactive
-			}
-		} else if err != nil {
-			return "", err
-		} else {
-			// The most recent registration owns this legacy device record. Moving
-			// the optional link is safe; credential revocation remains per token.
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE auth.sessions
-				SET device_session_id = NULL
-				WHERE device_session_id = $1 AND id != $2
-			`, sessionID, authSessionID); err != nil {
-				return "", err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE auth.sessions SET device_session_id = $2 WHERE id = $1
-			`, authSessionID, sessionID); err != nil {
-				return "", err
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return "", err
-	}
-	return sessionID, nil
+	return sessionID, err
 }
 
-func (s *Service) Devices(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(device_name, ''), COALESCE(device_type, ''), COALESCE(ip_address, ''), COALESCE(location, ''), COALESCE(user_agent, ''), last_active::text, first_login::text, COALESCE(is_current, false)
-		FROM public.user_sessions
-		WHERE user_id = $1
-		ORDER BY last_active DESC
-	`, userID)
+func (s *Service) Devices(ctx context.Context, userID, currentToken string) ([]Session, error) {
+	canonical, err := auth.NewService(s.db, nil).Sessions(ctx, userID, currentToken)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		rows.Close()
-	}()
-	var sessions []Session
-	for rows.Next() {
-		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.DeviceName, &sess.DeviceType, &sess.IPAddress, &sess.Location, &sess.UserAgent, &sess.LastActive, &sess.FirstLogin, &sess.IsCurrent); err != nil {
-			return nil, err
+	sessions := make([]Session, 0, len(canonical))
+	for _, item := range canonical {
+		sessions = append(sessions, Session{
+			ID: item.ID, DeviceName: item.DeviceName, DeviceType: item.DeviceType,
+			IPAddress: item.IPAddress, Location: item.Location, UserAgent: item.UserAgent,
+			LastActive: item.LastActive.Format(time.RFC3339Nano),
+			FirstLogin: item.CreatedAt.Format(time.RFC3339Nano), IsCurrent: item.IsCurrent,
+		})
+	}
+	return sessions, nil
+}
+
+func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID, currentTokenHash string) error {
+	return s.revokeDevices(ctx, userID, sessionID, currentTokenHash)
+}
+
+// TerminateAllDevices preserves the caller; /auth/logout-all also revokes it.
+func (s *Service) TerminateAllDevices(ctx context.Context, userID, currentTokenHash string) error {
+	return s.revokeDevices(ctx, userID, "", currentTokenHash)
+}
+
+func (s *Service) revokeDevices(ctx context.Context, userID, sessionID, currentTokenHash string) error {
+	if currentTokenHash == "" {
+		return ErrAuthSessionInactive
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Serialize with logout-all and issuance's generation check. Session row
+	// locks below serialize metadata updates with selective revocation.
+	var generation int64
+	if err := tx.QueryRowContext(ctx, `SELECT token_generation FROM auth.users WHERE id = $1 FOR UPDATE`, userID).Scan(&generation); err != nil {
+		return err
+	}
+	var callerActive bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM auth.sessions s WHERE s.user_id = $1 AND s.access_token_hash = $2
+			AND s.revoked_at IS NULL AND s.expires_at > NOW() AND s.token_generation = $3
+			AND NOT EXISTS (SELECT 1 FROM auth.revoked_tokens rt
+				WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW())
+	)`, userID, currentTokenHash, generation).Scan(&callerActive); err != nil {
+		return err
+	}
+	if !callerActive {
+		return ErrAuthSessionInactive
+	}
+	var hashes []string
+	if sessionID != "" {
+		var hash string
+		err := tx.QueryRowContext(ctx, `
+			SELECT access_token_hash FROM auth.sessions
+			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+				AND expires_at > NOW() AND token_generation = $3 AND access_token_hash IS NOT NULL
+			FOR UPDATE
+		`, sessionID, userID, generation).Scan(&hash)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-		sessions = append(sessions, sess)
+		if err != nil {
+			return err
+		}
+		if hash == currentTokenHash {
+			return ErrCannotTerminateCurrentSession
+		}
+		hashes = append(hashes, hash)
+	} else {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT access_token_hash FROM auth.sessions
+			WHERE user_id = $1 AND access_token_hash != $2 AND revoked_at IS NULL
+				AND expires_at > NOW() AND token_generation = $3
+			FOR UPDATE
+		`, userID, currentTokenHash, generation)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var hash string
+			if err := rows.Scan(&hash); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			hashes = append(hashes, hash)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return err
+		}
 	}
-	return sessions, rows.Err()
-}
-
-func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID string) error {
-	const method = "DeleteDevice"
-
-	var isCurrent bool
-	err := s.db.QueryRowContext(ctx, `SELECT is_current FROM public.user_sessions WHERE id = $1 AND user_id = $2`, sessionID, userID).Scan(&isCurrent)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+	for _, hash := range hashes {
+		if _, err := tx.ExecContext(ctx, `
+			WITH revoked AS (
+				UPDATE auth.sessions SET revoked_at = NOW()
+				WHERE user_id = $1 AND access_token_hash = $2 AND revoked_at IS NULL
+				RETURNING access_token_hash, user_id, expires_at
+			)
+			INSERT INTO auth.revoked_tokens (token_hash, user_id, expires_at)
+			SELECT access_token_hash, user_id, expires_at FROM revoked
+			ON CONFLICT DO NOTHING
+		`, userID, hash); err != nil {
+			return err
+		}
+		if err := authctx.NotifyRevocation(ctx, tx, authctx.RevocationEvent{UserID: userID, TokenHash: hash}); err != nil {
+			return err
+		}
 	}
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to query device session",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"session_id", sessionID,
-			"error", err,
-		)
-		return err
-	}
-	if isCurrent {
-		return ErrCannotTerminateCurrentSession
-	}
-
-	_, err = s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE id = $1`, sessionID)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to delete device session",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"session_id", sessionID,
-			"error", err,
-		)
-		return err
-	}
-	return nil
-}
-
-func (s *Service) TerminateAllDevices(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1 AND is_current = FALSE`, userID)
-	return err
+	return tx.Commit()
 }
 
 func (s *Service) Passcode(ctx context.Context, userID string) (PasscodeState, error) {

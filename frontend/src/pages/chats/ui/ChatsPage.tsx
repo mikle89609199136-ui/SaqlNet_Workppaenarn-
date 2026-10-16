@@ -1,7 +1,7 @@
 import { ChatsList } from '@/widgets/chats-list';
 import { CreateGroupModal } from '@/features/group-management';
 import { GroupInfoPanel } from '@/widgets/group-info';
-import { useCall } from '@/features/call';
+import { setCallStage, useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
 import { UserProfilePanel } from '@/features/user-profile';
 import { cn, useIsMobile, usePaneWidth } from '@/shared/lib';
@@ -190,7 +190,10 @@ export function ChatsPage() {
       />
 
       {/* app-chat-pane — зацепка для стилей ленты (tailwind.css). */}
-      <div className="app-chat-pane flex min-w-0 flex-1 flex-col overflow-hidden rounded-window bg-chat-bg">
+      <div
+        className="app-chat-pane relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-window bg-chat-bg"
+        ref={setCallStage}
+      >
         <Outlet
           context={{
             onProfileStateChange: setProfileState,

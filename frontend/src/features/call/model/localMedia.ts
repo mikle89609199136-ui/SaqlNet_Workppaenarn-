@@ -338,7 +338,8 @@ export class LocalMediaManager {
         !isAudioOnly &&
         (mediaError.type === 'NotFoundError' ||
           mediaError.type === 'NotReadableError' ||
-          mediaError.type === 'OverconstrainedError')
+          mediaError.type === 'OverconstrainedError' ||
+          (options.videoOptional && mediaError.type === 'NotAllowedError'))
       ) {
         try {
           const audioOnlyStream = await nav.mediaDevices.getUserMedia({

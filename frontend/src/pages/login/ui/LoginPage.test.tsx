@@ -82,6 +82,7 @@ describe('вход в аккаунт', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
     await waitFor(() => expect(sentUsername).toBe('tester'));
+    expect(await screen.findByText('Список чатов')).toBeInTheDocument();
   });
 
   it('после успешного входа уводит в чаты', async () => {
@@ -102,10 +103,20 @@ describe('вход в аккаунт', () => {
   });
 
   it('возвращает туда, откуда выкинуло', async () => {
+    let releaseSettings!: () => void;
+    let settingsRequested = false;
+    const settingsReady = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
+    });
     server.use(
       http.post(api('/auth/login'), () =>
         HttpResponse.json({ user: { id: 'user-1', username: 'tester' } })
-      )
+      ),
+      http.get(api('/users/settings'), async () => {
+        settingsRequested = true;
+        await settingsReady;
+        return HttpResponse.json({ settings: {}, privacy: {} });
+      })
     );
 
     // Так адрес выглядит после того, как AuthGuard увёл с переписки.
@@ -115,6 +126,14 @@ describe('вход в аккаунт', () => {
     await userEvent.type(screen.getByLabelText('Пароль'), 'right-password');
     await userEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
+    try {
+      await waitFor(() => expect(settingsRequested).toBe(true));
+      // Медленные настройки не должны вызвать ранний переход в /chats.
+      expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
+      expect(screen.queryByText('Список чатов')).not.toBeInTheDocument();
+    } finally {
+      releaseSettings();
+    }
     expect(await screen.findByText('Переписка')).toBeInTheDocument();
   });
 
