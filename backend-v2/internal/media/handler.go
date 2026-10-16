@@ -64,7 +64,7 @@ func addRequestOverhead(payloadBytes, overheadBytes int64) int64 {
 }
 
 func (h *Handler) jsonBodyLimit() int64 {
-	return addRequestOverhead(base64EncodedSize(h.service.maxUploadBytes), jsonRequestOverheadBytes)
+	return addRequestOverhead(base64EncodedSize(h.service.encryptedUploadLimit()), jsonRequestOverheadBytes)
 }
 
 func (h *Handler) multipartBodyLimit() int64 {

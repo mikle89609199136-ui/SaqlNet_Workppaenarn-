@@ -510,7 +510,7 @@ EncryptedMediaUploadRequest:
         ciphertext:
           type: string
           format: byte
-          description: Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+          description: Standard base64 ciphertext; decoded size is limited to MAX_FILE_SIZE plus the 16-byte AES-GCM tag (413 file_too_large). The limit is enforced from actual bytes, independently of sizeBytes. Voice uploads retain their separate 8 MiB ciphertext limit.
         mimeType:
           type: string
           maxLength: 255

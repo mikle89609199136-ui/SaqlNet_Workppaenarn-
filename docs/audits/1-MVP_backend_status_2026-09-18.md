@@ -1,5 +1,11 @@
 # MVP: состояние бэкенда
 
+> **Настройки пересмотрены 16 октября 2026:** см.
+> [актуальный аудит настроек](settings-audit-2026-10-16.md).
+> Сведения ниже о настройках/сеансах относятся к 18 сентября и частично устарели.
+> Источник обязательного оформления — #728; animation/GIF controls исключены из MVP.
+
+
 Дата статического аудита: 2026-09-18  
 Проверенный commit: `d93a9ab`  
 Источник требований: `MVP_scope_draft.md`
@@ -33,9 +39,9 @@
 | 8. Звонки 1:1 | **Начато** | Room REST, in-memory call manager, WebSocket signaling/ICE, STUN/TURN config, invite/accept/reject/leave, сохранение call-message после закрытия. | Active room state теряется при рестарте; reconnect звонка не восстановлен надёжно. `calls.rooms` создаётся, но ended_at/participants lifecycle фактически не ведётся полностью. Ограничить/отделить group calls согласно MVP. |
 | 9. Недавние звонки | **Не сделано как API** | Итог звонка сохраняется в `messages.messages` как `type='call'` со status/duration/initiatorId. Таблицы calls существуют. | Нет `GET /calls/history`, направления для каждого участника, нормального missed/rejected lifecycle, pagination и повторного звонка. `calls.rooms.ended_at` и `calls.participants` не заполняются полностью. |
 | 10. Мой профиль | **Начато** | `GET/PUT /users/me`, avatar update, public profile, search/check username. | Нет endpoint изменения username. Нужны проверки uniqueness/rate limits/audit для будущего rename. |
-| 11. Устройства | **Начато, модели расходятся** | `/auth/sessions`, `/users/devices`, register/delete/terminate-all, metadata columns и token revocation. | Удаление device через user service работает с legacy `public.user_sessions` и само по себе не гарантирует отзыв bearer token. Нужен единый session ID/current-session contract и revoke одной auth session. |
-| 12. Уведомления и звуки | **Начато** | Settings JSON endpoints, unread counts, realtime new message/call events. | Web Push отсутствует; нет push subscriptions/service worker delivery; mute chat хранится, но нужно гарантировать применение к событиям; preview policy не типизирована. |
-| 13. Конфиденциальность | **Начато** | Privacy JSON, blocked users CRUD, last seen/profile fields. | JSON не валидируется по schema; ограничения messages/calls/profile/chat list применяются не во всех путях. Добавить callsFrom/visibility contract и central policy checks. |
+| 11. Устройства | **Обновлено 16 октября** | Auth-сессии записываются, current определяется по token hash, logout-all работает. | #706 в работе: каноническая модель и revoke одной сессии; [детали](settings-audit-2026-10-16.md). |
+| 12. Уведомления и звуки | **Обновлено 16 октября** | Push subscriptions/delivery (#717), global notifications filter, per-chat preview (#560). | Personal mute #559, source of truth #496 и миграция consumers; [детали](settings-audit-2026-10-16.md). |
+| 13. Конфиденциальность | **Обновлено 16 октября** | Typed privacy schema, центральная policy, исключения, фото/пересылка/last seen и calls enforcement. | UI calls ещё отсутствует; direct connection #855 — отдельная функция. [Аудит](settings-audit-2026-10-16.md). |
 | 14. Оформление | **Начато как универсальное хранение** | `GET/PUT /users/settings` merge arbitrary JSON; defaults содержат dark/language/etc. | Нет schema validation/enums/versioning, поэтому backend не гарантирует допустимые значения. Системная тема и расширенные поля пока не зафиксированы контрактом. |
 | 15. Язык | **Сделано как хранение** | `language` сохраняется в settings JSON. | Добавить allowlist/versioned validation, если backend должен гарантировать поддерживаемые языки. |
 | 16. Realtime | **Начато, основа готова** | WebSocket, user connections, chat broadcasts, reactions/read/calls, ping/pong, origin check. | Auth использует token query/header, не cookie. Logout/revocation не закрывает уже открытые сокеты немедленно. In-memory pending invites/rooms теряются при restart и не масштабируются между chat replicas. |
@@ -101,46 +107,18 @@
 
 ## Отдельно: блок после `+**********************`
 
-### 7. Оформление — как у Telegram Web
+### 7. Оформление и 10. Язык — обновление 16 октября
 
-Для всего набора уже можно технически использовать:
+См. [детальную матрицу реализации, контрактов и задач](settings-audit-2026-10-16.md).
 
-- `GET /api/v2/users/settings` — получить settings;
-- `PUT /api/v2/users/settings` — merge частичного JSON patch.
-
-Текущая реализация сохраняет произвольные ключи JSONB, поэтому миграция БД для этих предпочтений не обязательна. Однако «принимает всё» не равно готовому контракту: сервер не валидирует ни имя поля, ни тип, ни enum.
-
-Рекомендуемый contract patch:
-
-```json
-{
-  "theme": "light | dark | system",
-  "accentPreset": "blue | violet | green | orange | pink",
-  "textSize": "small | medium | large",
-  "chatDensity": "compact | normal | large",
-  "showMessageTime": true,
-  "showMessageStatus": true,
-  "showMessageAvatars": true,
-  "groupConsecutiveMessages": true,
-  "interfaceAnimations": true,
-  "animatedEmoji": true,
-  "animatedStickers": true,
-  "autoplayGifs": true
-}
-```
-
-Что сделать на backend:
-
-1. Зафиксировать поля/enums/defaults в OpenAPI schema.
-2. Валидировать patch и возвращать `400 validation_failed` на неизвестные типы/значения.
-3. Решить, разрешён ли произвольный hex accent. Для MVP безопаснее presets: они гарантируют contrast и не требуют серверной проверки цвета.
-4. Добавить handler/service tests на merge, defaults и invalid values.
-
-Новых отдельных endpoints для каждой настройки не нужно.
-
-### 10. Язык
-
-Статус: **хранение сделано** через `GET/PUT /api/v2/users/settings`, поле `language`. Нужно согласовать allowlist с фронтом (`ru`, `en`) или явно оставить forward-compatible string. Сейчас backend сохранит любое значение.
+- Light/dark, fallback avatar и RU/EN уже сохраняются и применяются.
+- Палитра и акцент уже имеют picker и применяются, но сохраняются только локально (#828).
+- Группировка сообщений, групповые аватары и delivery/read statuses уже существуют;
+  в #728 нужны пользовательские переключатели, а не повторная реализация renderer.
+- System theme, textSize, chatDensity и четыре visibility/grouping flags ещё не реализованы.
+- Для серверного хранения нужны schema/defaults/validation/migration (#453/#451/#495/#728),
+  согласование endpoints (#498) и синхронизации.
+- Анимации интерфейса, animated emoji/stickers и autoplay GIF **не входят в #728/MVP**.
 
 ### 11. Звонки — записывать последние звонки
 

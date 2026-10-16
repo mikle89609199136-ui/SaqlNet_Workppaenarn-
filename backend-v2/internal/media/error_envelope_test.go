@@ -29,7 +29,7 @@ func TestFileTooLargeResponseContract(t *testing.T) {
 		{
 			name: "encrypted ciphertext exceeds upload limit",
 			request: func(t *testing.T, _ *Handler) *http.Request {
-				return encryptedUploadRequest(t, "large.bin", "application/octet-stream", bytes.Repeat([]byte{'a'}, int(limit+1)))
+				return encryptedUploadRequest(t, "large.bin", "application/octet-stream", bytes.Repeat([]byte{'a'}, int(limit+mediaEncryptionOverheadBytes+1)))
 			},
 		},
 		{

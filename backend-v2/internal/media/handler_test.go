@@ -249,10 +249,11 @@ func TestUploadActualSizeBoundaries(t *testing.T) {
 		filename    string
 		contentType string
 		request     func(*testing.T, string, string, []byte) *http.Request
+		overhead    int64
 	}{
 		{name: "multipart", filename: "boundary.pdf", contentType: "application/pdf", request: multipartUploadRequest},
 		{name: "data URL", filename: "boundary.txt", contentType: "text/plain", request: dataURLUploadRequest},
-		{name: "encrypted", filename: "boundary.bin", contentType: "application/octet-stream", request: encryptedUploadRequest},
+		{name: "encrypted", filename: "boundary.bin", contentType: "application/octet-stream", request: encryptedUploadRequest, overhead: mediaEncryptionOverheadBytes},
 	}
 	tests := []struct {
 		name       string
@@ -269,10 +270,11 @@ func TestUploadActualSizeBoundaries(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
 					handler, mock, store := newMediaTestHandler(t, limit)
+					storedSize := tt.size + variant.overhead
 					if tt.wantStatus == http.StatusCreated {
-						expectUploadInsert(mock, variant.filename, variant.contentType, tt.size)
+						expectUploadInsert(mock, variant.filename, variant.contentType, storedSize)
 					}
-					request := variant.request(t, variant.filename, variant.contentType, bytes.Repeat([]byte{'a'}, int(tt.size)))
+					request := variant.request(t, variant.filename, variant.contentType, bytes.Repeat([]byte{'a'}, int(storedSize)))
 					response := executeUpload(handler, request)
 
 					if tt.wantStatus == http.StatusRequestEntityTooLarge {
@@ -284,8 +286,8 @@ func TestUploadActualSizeBoundaries(t *testing.T) {
 						if response.Code != tt.wantStatus {
 							t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 						}
-						if store.putCalls != 1 || store.lastPutSize != tt.size {
-							t.Fatalf("Store.Put calls=%d size=%d, want calls=1 size=%d", store.putCalls, store.lastPutSize, tt.size)
+						if store.putCalls != 1 || store.lastPutSize != storedSize {
+							t.Fatalf("Store.Put calls=%d size=%d, want calls=1 size=%d", store.putCalls, store.lastPutSize, storedSize)
 						}
 					}
 					if err := mock.ExpectationsWereMet(); err != nil {
