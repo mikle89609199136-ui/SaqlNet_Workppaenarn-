@@ -566,9 +566,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get all settings */
+        /**
+         * Get all settings
+         * @deprecated
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+         */
         get: operations["getAllSettings"];
-        /** Replace all settings */
+        /**
+         * Replace all settings
+         * @deprecated
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+         */
         put: operations["updateAllSettings"];
         post?: never;
         delete?: never;
@@ -584,9 +592,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get settings */
+        /**
+         * Get own account settings and privacy
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Field schemas and consistent defaults are tracked in #453 and #451.
+         */
         get: operations["getSettings"];
-        /** Update settings */
+        /**
+         * Partially update own account settings
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys, null/unknown-key validation and legacy normalization require #453/#495; the current generic settings handler does not enforce that validation yet. Notification/sound field mapping remains in #496/#1042.
+         */
         put: operations["updateSettings"];
         post?: never;
         delete?: never;
@@ -604,8 +618,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Update privacy
-         * @description Partial update. Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the legacy contacts and none are accepted and stored as nobody, everyone as all.
+         * Partially update own privacy rules
+         * @description Canonical MVP privacy write (#498); read via GET /users/settings. Send a flat partial object, not a privacy envelope. Omitted rules are preserved; merging is shallow. Returns the resulting privacy object. Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the legacy contacts and none are accepted and stored as nobody, everyone as all. Exceptions remain separate resources under /users/privacy/exceptions and are not replaced by this update. State-changing cookie requests require an allowed Origin.
          */
         put: operations["updatePrivacy"];
         post?: never;
@@ -669,9 +683,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get notification settings */
+        /**
+         * Get notification settings
+         * @deprecated
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         */
         get: operations["getNotifications"];
-        /** Update notification settings */
+        /**
+         * Update notification settings
+         * @deprecated
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         */
         put: operations["updateNotifications"];
         post?: never;
         delete?: never;
@@ -687,9 +709,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get sound settings */
+        /**
+         * Get sound settings
+         * @deprecated
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         */
         get: operations["getSounds"];
-        /** Update sound settings */
+        /**
+         * Update sound settings
+         * @deprecated
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         */
         put: operations["updateSounds"];
         post?: never;
         delete?: never;
@@ -705,9 +735,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get advanced settings */
+        /**
+         * Get advanced settings
+         * @deprecated
+         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+         */
         get: operations["getAdvancedSettings"];
-        /** Update advanced settings */
+        /**
+         * Update advanced settings
+         * @deprecated
+         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+         */
         put: operations["updateAdvancedSettings"];
         post?: never;
         delete?: never;
@@ -723,9 +761,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List chat folders */
+        /**
+         * List chat folders
+         * @deprecated
+         * @description Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.
+         */
         get: operations["listFolders"];
-        /** Update chat folders */
+        /**
+         * Update chat folders
+         * @deprecated
+         * @description Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.
+         */
         put: operations["updateFolders"];
         post?: never;
         delete?: never;
@@ -759,7 +805,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update storage settings */
+        /**
+         * Update storage settings
+         * @deprecated
+         * @description Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences.
+         */
         put: operations["updateStorageSettings"];
         post?: never;
         delete?: never;
@@ -4260,13 +4310,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Settings */
+            /** @description Own account settings and privacy */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        settings: components["schemas"]["Object"];
+                        privacy: components["schemas"]["PrivacySettings"];
+                    };
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     updateSettings: {
@@ -4282,13 +4341,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated settings */
+            /** @description Resulting account settings */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        settings: components["schemas"]["Object"];
+                    };
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     updatePrivacy: {
@@ -4304,7 +4373,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated privacy */
+            /** @description Resulting privacy rules */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4316,6 +4385,11 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listPrivacyExceptions: {

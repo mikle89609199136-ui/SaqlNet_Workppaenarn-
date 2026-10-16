@@ -152,12 +152,18 @@ x-error: &error
     responses: { '200': { description: Subscribed } }
 /users/all-settings:
   get:
+    deprecated: true
+    description: >-
+      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
     tags: [Users]
     summary: Get all settings
     operationId: getAllSettings
     security: *secure
     responses: { '200': { description: All settings } }
   put:
+    deprecated: true
+    description: >-
+      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
     tags: [Users]
     summary: Replace all settings
     operationId: updateAllSettings
@@ -170,42 +176,84 @@ x-error: &error
     responses: { '200': { description: Settings updated } }
 /users/settings:
   get:
-    {
-      tags: [Users],
-      summary: Get settings,
-      operationId: getSettings,
-      security: *secure,
-      responses: { '200': { description: Settings } },
-    }
+    tags: [Users]
+    summary: Get own account settings and privacy
+    operationId: getSettings
+    security: *secure
+    description: >-
+      Canonical MVP settings read (#498). Returns the authenticated owner's
+      settings and privacy in separate objects; never another user's settings.
+      Detailed legacy notification/sound/storage sections are not included.
+      Field schemas and consistent defaults are tracked in #453 and #451.
+    responses:
+      '200':
+        description: Own account settings and privacy
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [settings, privacy]
+              properties:
+                settings: { $ref: '../components/schemas.yaml#/Object' }
+                privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '405': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
+      '503': { $ref: '../components/responses.yaml#/Error' }
   put:
-    {
-      tags: [Users],
-      summary: Update settings,
-      operationId: updateSettings,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated settings } },
-    }
+    tags: [Users]
+    summary: Partially update own account settings
+    operationId: updateSettings
+    security: *secure
+    description: >-
+      Canonical MVP preference write (#498). Send a flat partial JSON object,
+      for example {"theme":"light"}, not an envelope with a settings key.
+      Omitted keys are preserved; merging is shallow, not JSON Merge Patch.
+      Returns the resulting settings object in a settings envelope. Privacy
+      is changed only via PUT /users/privacy. Typed keys, null/unknown-key
+      validation and legacy normalization require #453/#495; the current
+      generic settings handler does not enforce that validation yet.
+      Notification/sound field mapping remains in #496/#1042.
+    requestBody:
+      required: true
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } }
+    responses:
+      '200':
+        description: Resulting account settings
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [settings]
+              properties:
+                settings: { $ref: '../components/schemas.yaml#/Object' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+      '405': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
+      '503': { $ref: '../components/responses.yaml#/Error' }
 /users/privacy:
   put:
     tags: [Users]
-    summary: Update privacy
+    summary: Partially update own privacy rules
     operationId: updatePrivacy
     security: *secure
     description: >-
-      Partial update. Unknown keys or values are rejected with 400
-      validation_failed. Visibility rules take all or nobody; the legacy
-      contacts and none are accepted and stored as nobody, everyone as all.
+      Canonical MVP privacy write (#498); read via GET /users/settings.
+      Send a flat partial object, not a privacy envelope. Omitted rules are
+      preserved; merging is shallow. Returns the resulting privacy object.
+      Unknown keys or values are rejected with 400 validation_failed.
+      Visibility rules take all or nobody; the legacy contacts and none
+      are accepted and stored as nobody, everyone as all. Exceptions remain
+      separate resources under /users/privacy/exceptions and are not replaced
+      by this update. State-changing cookie requests require an allowed Origin.
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/PrivacySettings' } } }
     responses:
       '200':
-        description: Updated privacy
+        description: Resulting privacy rules
         content:
           application/json:
             schema:
@@ -213,6 +261,11 @@ x-error: &error
               required: [privacy]
               properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
       '400': { $ref: '../components/responses.yaml#/Error' }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+      '405': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
+      '503': { $ref: '../components/responses.yaml#/Error' }
 /users/privacy/exceptions:
   get:
     tags: [Users]
@@ -292,6 +345,8 @@ x-error: &error
 /users/notifications:
   get:
     {
+      deprecated: true,
+      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
       tags: [Users],
       summary: Get notification settings,
       operationId: getNotifications,
@@ -300,6 +355,8 @@ x-error: &error
     }
   put:
     {
+      deprecated: true,
+      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
       tags: [Users],
       summary: Update notification settings,
       operationId: updateNotifications,
@@ -314,6 +371,8 @@ x-error: &error
 /users/sounds:
   get:
     {
+      deprecated: true,
+      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
       tags: [Users],
       summary: Get sound settings,
       operationId: getSounds,
@@ -322,6 +381,8 @@ x-error: &error
     }
   put:
     {
+      deprecated: true,
+      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
       tags: [Users],
       summary: Update sound settings,
       operationId: updateSounds,
@@ -336,6 +397,8 @@ x-error: &error
 /users/advanced-settings:
   get:
     {
+      deprecated: true,
+      description: 'Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.',
       tags: [Users],
       summary: Get advanced settings,
       operationId: getAdvancedSettings,
@@ -344,6 +407,8 @@ x-error: &error
     }
   put:
     {
+      deprecated: true,
+      description: 'Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.',
       tags: [Users],
       summary: Update advanced settings,
       operationId: updateAdvancedSettings,
@@ -358,6 +423,8 @@ x-error: &error
 /users/folders:
   get:
     {
+      deprecated: true,
+      description: 'Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.',
       tags: [Users],
       summary: List chat folders,
       operationId: listFolders,
@@ -366,6 +433,8 @@ x-error: &error
     }
   put:
     {
+      deprecated: true,
+      description: 'Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.',
       tags: [Users],
       summary: Update chat folders,
       operationId: updateFolders,
@@ -404,6 +473,8 @@ x-error: &error
 /users/storage/settings:
   put:
     {
+      deprecated: true,
+      description: 'Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences.',
       tags: [Users],
       summary: Update storage settings,
       operationId: updateStorageSettings,
