@@ -33,6 +33,20 @@ describe('AuthService session metadata', () => {
   });
 });
 
+describe('AuthService.login', () => {
+  it('returns the user without publishing an incomplete login session', async () => {
+    const user = { id: 'user-id', username: 'anna' };
+    const post = vi.fn().mockResolvedValue({ data: { user } });
+    const setUser = vi.fn();
+    const service = new AuthService({ post }, { setUser });
+
+    await expect(service.login({ username: 'anna', password: 'secret' })).resolves.toEqual({
+      user,
+    });
+    expect(setUser).not.toHaveBeenCalled();
+  });
+});
+
 describe('AuthService.logoutAll', () => {
   it('clears the local profile only after the server confirms revocation', async () => {
     const post = vi.fn().mockResolvedValue({ data: { success: true } });

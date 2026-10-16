@@ -12,19 +12,13 @@ import {
 } from './outboxSender';
 import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
+import * as imageEncoder from '@/shared/lib/utils/encodeImage';
 
 // Пересжатие фото — вместо холста (его нет в тестовой среде) подставной результат.
-const encoded = vi.hoisted(() => ({
+const encoded = {
   file: new File(['webp'], 'photo.webp', { type: 'image/webp' }),
   calls: 0,
-}));
-vi.mock('@/shared/lib', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/lib')>()),
-  encodeChatPhoto: async () => {
-    encoded.calls += 1;
-    return encoded.file;
-  },
-}));
+};
 
 describe('outboxSender: пересжатие фото', () => {
   beforeEach(() => {
@@ -32,6 +26,10 @@ describe('outboxSender: пересжатие фото', () => {
     resetInFlightForTests();
     vi.restoreAllMocks();
     encoded.calls = 0;
+    vi.spyOn(imageEncoder, 'encodeChatPhoto').mockImplementation(async () => {
+      encoded.calls += 1;
+      return encoded.file;
+    });
   });
 
   it('пересжимает до загрузки один раз: повтор после сбоя берёт готовый файл', async () => {

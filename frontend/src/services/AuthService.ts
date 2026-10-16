@@ -53,10 +53,8 @@ export class AuthService {
       deviceType: describeDeviceType(),
     });
 
-    if (response.data?.user) {
-      this.authStorage.setUser(response.data.user);
-    }
-
+    // LoginForm сохранит профиль после загрузки настроек и подготовки ключей.
+    // Ранний isAuth размонтирует форму и запускает перенаправление до её завершения.
     return response.data;
   }
 
