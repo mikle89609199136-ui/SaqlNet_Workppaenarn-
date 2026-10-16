@@ -62,12 +62,14 @@ AuthResponse:
     user: { $ref: '#/User' }
 AuthSession:
   type: object
-  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, createdAt, isCurrent]
   properties:
-    id: { type: string, format: uuid }
+    id: { type: string, format: uuid, description: Stable auth.sessions ID shared with the devices API. }
     deviceName: { type: string }
     deviceType: { type: string }
     ipAddress: { type: string }
+    location: { type: string }
+    userAgent: { type: string }
     lastActive: { type: string, format: date-time }
     createdAt: { type: string, format: date-time }
     isCurrent:
@@ -80,6 +82,32 @@ AuthSessionsResponse:
     sessions:
       type: array
       items: { $ref: '#/AuthSession' }
+DeviceSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, firstLogin, isCurrent]
+  properties:
+    id: { type: string, format: uuid, description: Same stable ID as AuthSession.id. }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    location: { type: string }
+    userAgent: { type: string }
+    lastActive: { type: string, format: date-time }
+    firstLogin: { type: string, format: date-time, description: Alias of AuthSession.createdAt. }
+    isCurrent: { type: boolean, description: True only for the session cookie used by this request. }
+DevicesResponse:
+  type: object
+  required: [devices]
+  properties:
+    devices:
+      type: array
+      items: { $ref: '#/DeviceSession' }
+DeviceRegistrationResponse:
+  type: object
+  required: [success, sessionId]
+  properties:
+    success: { type: boolean, enum: [true] }
+    sessionId: { type: string, format: uuid, description: Existing canonical session ID; registration never creates a credential. }
 Success:
   type: object
   required: [success]

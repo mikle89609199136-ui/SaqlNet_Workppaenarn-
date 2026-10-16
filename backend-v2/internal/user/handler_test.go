@@ -322,13 +322,14 @@ func TestMalformedUUIDReturnsValidationFailedWithoutDatabaseCall(t *testing.T) {
 const (
 	deleteDeviceUserID    = "11111111-1111-4111-8111-111111111111"
 	deleteDeviceSessionID = "22222222-2222-4222-8222-222222222222"
-	deleteDeviceSelectSQL = `SELECT is_current FROM public\.user_sessions WHERE id = \$1 AND user_id = \$2`
-	deleteDeviceDeleteSQL = `DELETE FROM public\.user_sessions WHERE id = \$1`
+	deleteDeviceSelectSQL = `SELECT access_token_hash FROM auth.sessions`
+	deleteDeviceDeleteSQL = `WITH revoked AS`
 )
 
 func newDeleteDeviceRequest(t *testing.T, path string) *http.Request {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodDelete, path, nil)
+	request.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: "caller-token"})
 	return request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: deleteDeviceUserID}))
 }
 
@@ -426,9 +427,11 @@ func TestDeleteDeviceNotFoundReturnsNotFound(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectDeviceRevocationCaller(mock)
 	mock.ExpectQuery(deleteDeviceSelectSQL).
-		WithArgs(deleteDeviceSessionID, deleteDeviceUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"is_current"}))
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"access_token_hash"}))
+	mock.ExpectRollback()
 
 	handler := NewHandler(NewService(db), nil)
 	response := httptest.NewRecorder()
@@ -458,9 +461,11 @@ func TestDeleteDeviceCurrentSessionReturnsConflict(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectDeviceRevocationCaller(mock)
 	mock.ExpectQuery(deleteDeviceSelectSQL).
-		WithArgs(deleteDeviceSessionID, deleteDeviceUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"is_current"}).AddRow(true))
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"access_token_hash"}).AddRow(authctx.TokenHash("caller-token")))
+	mock.ExpectRollback()
 
 	handler := NewHandler(NewService(db), nil)
 	response := httptest.NewRecorder()
@@ -491,9 +496,11 @@ func TestDeleteDeviceUnexpectedDatabaseErrorReturns500(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectDeviceRevocationCaller(mock)
 	mock.ExpectQuery(deleteDeviceSelectSQL).
-		WithArgs(deleteDeviceSessionID, deleteDeviceUserID).
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
 		WillReturnError(errors.New("connection reset by peer"))
+	mock.ExpectRollback()
 
 	handler := NewHandler(NewService(db), nil)
 	response := httptest.NewRecorder()
@@ -524,12 +531,15 @@ func TestDeleteDeviceSuccessReturnsOK(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectDeviceRevocationCaller(mock)
 	mock.ExpectQuery(deleteDeviceSelectSQL).
-		WithArgs(deleteDeviceSessionID, deleteDeviceUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"is_current"}).AddRow(false))
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"access_token_hash"}).AddRow("other-hash"))
 	mock.ExpectExec(deleteDeviceDeleteSQL).
-		WithArgs(deleteDeviceSessionID).
+		WithArgs(deleteDeviceUserID, "other-hash").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_notify").WithArgs(authctx.RevocationChannel, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
 	handler := NewHandler(NewService(db), nil)
 	response := httptest.NewRecorder()
@@ -563,12 +573,14 @@ func TestDeleteDeviceDeleteExecutionErrorReturns500(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectDeviceRevocationCaller(mock)
 	mock.ExpectQuery(deleteDeviceSelectSQL).
-		WithArgs(deleteDeviceSessionID, deleteDeviceUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"is_current"}).AddRow(false))
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"access_token_hash"}).AddRow("other-hash"))
 	mock.ExpectExec(deleteDeviceDeleteSQL).
-		WithArgs(deleteDeviceSessionID).
+		WithArgs(deleteDeviceUserID, "other-hash").
 		WillReturnError(errors.New("deadlock detected"))
+	mock.ExpectRollback()
 
 	handler := NewHandler(NewService(db), nil)
 	response := httptest.NewRecorder()
@@ -584,6 +596,35 @@ func TestDeleteDeviceDeleteExecutionErrorReturns500(t *testing.T) {
 	}
 	if msg != "operation failed" {
 		t.Fatalf("expected message %q, got %q", "operation failed", msg)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func expectDeviceRevocationCaller(mock sqlmock.Sqlmock) {
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT token_generation FROM auth.users").WithArgs(deleteDeviceUserID).WillReturnRows(sqlmock.NewRows([]string{"token_generation"}).AddRow(0))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(deleteDeviceUserID, authctx.TokenHash("caller-token"), int64(0)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+}
+
+func TestDeleteDeviceRollsBackWhenNotificationFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	expectDeviceRevocationCaller(mock)
+	mock.ExpectQuery(deleteDeviceSelectSQL).
+		WithArgs(deleteDeviceSessionID, deleteDeviceUserID, int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"access_token_hash"}).AddRow("other-hash"))
+	mock.ExpectExec(deleteDeviceDeleteSQL).WithArgs(deleteDeviceUserID, "other-hash").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_notify").WillReturnError(errors.New("notification failed"))
+	mock.ExpectRollback()
+	response := httptest.NewRecorder()
+	NewHandler(NewService(db), nil).DeleteDevice(response, newDeleteDeviceRequest(t, "/api/v2/users/devices/"+deleteDeviceSessionID))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", response.Code)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
