@@ -233,6 +233,27 @@ func (m *CallRoomManager) LeaveIfAlone(roomID, userID string) (*RoomSnapshot, bo
 	return lr.Snapshot, lr.Closed
 }
 
+// CloseUnanswered закрывает только ещё не отвеченный звонок его создателя.
+// Проверка и удаление атомарны: отказ не должен завершить уже начатый разговор.
+func (m *CallRoomManager) CloseUnanswered(roomID, callerID string) (*RoomSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.rooms[roomID]
+	if r == nil || r.hostID != callerID || r.answeredAt != 0 {
+		return nil, false
+	}
+	for id := range r.participants {
+		if id != callerID {
+			return nil, false
+		}
+	}
+	delete(m.rooms, roomID)
+	if m.userToRoom[callerID] == roomID {
+		delete(m.userToRoom, callerID)
+	}
+	return &RoomSnapshot{ChatID: r.chatID, CallKind: r.callKind, CreatedAt: r.createdAt, HostID: r.hostID}, true
+}
+
 func (m *CallRoomManager) LeaveRoom(roomID, userID string) LeaveResult {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -324,6 +345,21 @@ func (m *CallRoomManager) AddRestorable(r RestorableRoom) {
 		},
 		parties: [2]string{r.HostID, r.CalleeID},
 	}
+}
+
+// GetRoomForJoin читает комнату, не вынимая её из очереди восстановления.
+// Отказ до Restore оставляет её под действием таймера callRestoreGrace.
+func (m *CallRoomManager) GetRoomForJoin(roomID, userID string) *RoomPublic {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if room := m.rooms[roomID]; room != nil {
+		return room.toPublic()
+	}
+	pending := m.restorable[roomID]
+	if pending == nil || userID == "" || (pending.parties[0] != userID && pending.parties[1] != userID) {
+		return nil
+	}
+	return pending.room.toPublic()
 }
 
 // Restore — участник оборванного звонка вернулся: комната снова живая, со
