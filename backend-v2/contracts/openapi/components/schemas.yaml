@@ -119,7 +119,20 @@ PrivacySettings:
     photoVisibility: { $ref: '#/PrivacyVisibility' }
     phoneVisibility: { $ref: '#/PrivacyVisibility' }
     forwards: { $ref: '#/PrivacyVisibility' }
-    calls: { $ref: '#/PrivacyVisibility' }
+    calls:
+      allOf:
+        - { $ref: '#/PrivacyVisibility' }
+      description: >-
+        Who may call this user (the callsFrom requirement). The canonical key
+        is calls; callsFrom is not accepted. all allows any private-chat peer,
+        nobody denies incoming calls except always-allow exceptions. There is
+        no contact list: an existing chat or shared group does not grant access.
+        The callee's block list overrides exceptions; otherwise the per-user
+        calls exception overrides the base rule. Outgoing calls use the
+        recipient's rule. Legacy everyone/everybody normalize to all,
+        contacts/none to nobody. Invalid values and explicit JSON null deny;
+        only an absent rule uses the default. Checked before room creation,
+        invite delivery (also on reconnect), accepting and joining a call.
     groupsAdd: { $ref: '#/PrivacyVisibility' }
     messagesFromStrangers: { type: boolean }
     twoFactorAuth: { type: boolean }

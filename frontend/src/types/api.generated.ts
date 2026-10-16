@@ -2080,7 +2080,7 @@ export interface paths {
         put?: never;
         /**
          * Create a call room
-         * @description Self chats do not support calls and return 400 invalid_chat_type. In a private chat where the peer has blocked the caller, the answer is 403 blocked_by_user and no room is created. Calls are one-to-one: in a group or a channel the answer is 400 group_calls_unavailable.
+         * @description Self chats return 400 invalid_chat_type; groups and channels return 400 group_calls_unavailable. Before creating any database or in-memory room, the server applies the private-chat recipient's calls privacy rule, per-user exceptions and block list. A blocked caller gets 403 blocked_by_user; any other policy denial gets 403 calls_forbidden. Denial creates no room, participant, invite, history entry, realtime event or push notification, and does not disclose online/busy status. A settings read failure returns 500 internal_error without creating a room. WebSocket call_invite rechecks the same policy before busy status, history, incoming events and push. A denied invite returns only to the caller: call_invite_response with accepted=false and reason=calls_forbidden (blocked_by_user for a block). Read failures also deny as calls_forbidden. Pending invite delivery on reconnect and acceptance recheck the policy; a revoked pending invite is cancelled on all recipient devices. call_join also checks the original caller-to-recipient direction and returns call_error calls_forbidden on denial, without adding a participant or notifying the peer. Policy denials close an already-created unanswered room and mark its existing room/participant rows as ended, without creating messages, new history rows or missed-call push notifications. The caller is freed for incoming calls. An already active call is not terminated; subsequent joins use the current policy. A denied restore leaves the room queued for normal recovery timeout cleanup.
          */
         post: operations["createCallRoom"];
         delete?: never;
@@ -2817,6 +2817,7 @@ export interface components {
             photoVisibility?: components["schemas"]["PrivacyVisibility"];
             phoneVisibility?: components["schemas"]["PrivacyVisibility"];
             forwards?: components["schemas"]["PrivacyVisibility"];
+            /** @description Who may call this user (the callsFrom requirement). The canonical key is calls; callsFrom is not accepted. all allows any private-chat peer, nobody denies incoming calls except always-allow exceptions. There is no contact list: an existing chat or shared group does not grant access. The callee's block list overrides exceptions; otherwise the per-user calls exception overrides the base rule. Outgoing calls use the recipient's rule. Legacy everyone/everybody normalize to all, contacts/none to nobody. Invalid values and explicit JSON null deny; only an absent rule uses the default. Checked before room creation, invite delivery (also on reconnect), accepting and joining a call. */
             calls?: components["schemas"]["PrivacyVisibility"];
             groupsAdd?: components["schemas"]["PrivacyVisibility"];
             messagesFromStrangers?: boolean;
@@ -3285,6 +3286,40 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many requests. Returned with code rate_limited when a limit is exceeded (MLS routes: per user; GET /mls/keypackages/{userId}: also per requester-target pair and per target user). Retry after the delay given in Retry-After. */
+        RateLimited: {
+            headers: {
+                /** @description Seconds to wait before retrying (integer, at least 1). */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "rate_limited",
+                 *       "message": "too many requests"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The crypto service is at its limit of concurrent requests (code crypto_busy) or unreachable (code crypto_unavailable). The request changed nothing; retry after the delay given in Retry-After. */
+        CryptoBusy: {
+            headers: {
+                /** @description Seconds to wait before retrying (integer, at least 1). Present for crypto_busy. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "crypto_busy",
+                 *       "message": "crypto service is busy"
+                 *     }
+                 */
                 "application/json": components["schemas"]["Error"];
             };
         };
@@ -6837,6 +6872,8 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getMlsKeyPackage: {
@@ -6858,6 +6895,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getMlsGroupState: {
@@ -6878,6 +6916,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     commitMlsUpdate: {
@@ -6902,6 +6941,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getMlsWelcome: {
@@ -6922,6 +6963,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     storeMlsWelcome: {
@@ -6946,6 +6988,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     listMlsProposals: {
@@ -6966,6 +7010,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     addMlsProposal: {
@@ -6990,6 +7035,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["CryptoBusy"];
         };
     };
     getIceServers: {

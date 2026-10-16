@@ -56,6 +56,8 @@ npm test
 React tests run through
 Vitest.
 
+Production E2E protocol, compatibility and recovery checks: [contract](docs/crypto/production-e2e.md).
+
 ## Mobile Web
 
 The dedicated mobile web shell is served at:

@@ -73,17 +73,16 @@ type Settings struct {
 // умолчанию, незнакомое значение и повреждённый JSON — «nobody».
 func Parse(raw []byte) Settings {
 	var stored map[string]any
-	if len(raw) > 0 && json.Unmarshal(raw, &stored) != nil {
+	if len(raw) > 0 && (json.Unmarshal(raw, &stored) != nil || stored == nil) {
 		return Closed()
 	}
 
 	s := Settings{rules: make(map[Rule]string, len(defaults)), flags: map[string]bool{}}
 	for rule, fallback := range defaults {
-		switch {
-		case stored == nil || stored[string(rule)] == nil:
+		if value, exists := stored[string(rule)]; exists {
+			s.rules[rule] = readRule(rule, value)
+		} else {
 			s.rules[rule] = fallback
-		default:
-			s.rules[rule] = readRule(rule, stored[string(rule)])
 		}
 	}
 	for name := range flags {

@@ -11,3 +11,4 @@ export {
 } from './model/registerSchema';
 export { LoginForm } from './ui/LoginForm';
 export { RegisterWizard } from './ui/RegisterWizard/RegisterWizard';
+export { safeReturnPath } from './model/safeReturnPath';

@@ -64,7 +64,7 @@ func TestCreateCallRoomRejectsSelfChat(t *testing.T) {
 	const chatID = "71900000-0000-4000-8000-000000000004"
 	mock.ExpectQuery(`SELECT c\.type.*FROM chats\.chats c.*JOIN chats\.members`).
 		WithArgs(chatID, selfChatUserID).
-		WillReturnRows(sqlmock.NewRows([]string{"type", "blocked_by_peer"}).AddRow("self", false))
+		WillReturnRows(sqlmock.NewRows([]string{"type", "peer_id"}).AddRow("self", ""))
 
 	_, err = NewService(db, nil, nil).CreateCallRoom(
 		t.Context(), selfChatUserID, chatID, "p2p", "video", savedMessagesTitle,
