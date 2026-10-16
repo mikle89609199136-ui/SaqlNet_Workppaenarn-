@@ -2138,7 +2138,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload media */
+        /**
+         * Upload media
+         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit.
+         */
         post: operations["uploadMedia"];
         delete?: never;
         options?: never;
@@ -2262,7 +2265,7 @@ export interface paths {
         put?: never;
         /**
          * Create a sticker pack
-         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["createStickerPack"];
         delete?: never;
@@ -2285,7 +2288,7 @@ export interface paths {
         put?: never;
         /**
          * Add a sticker
-         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
+         * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["addSticker"];
         /** Delete a sticker pack */
@@ -3259,7 +3262,7 @@ export interface components {
                 sizeBytes: number;
                 /**
                  * Format: byte
-                 * @description Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+                 * @description Standard base64 ciphertext; decoded size is limited to MAX_FILE_SIZE plus the 16-byte AES-GCM tag (413 file_too_large). The limit is enforced from actual bytes, independently of sizeBytes. Voice uploads retain their separate 8 MiB ciphertext limit.
                  */
                 ciphertext: string;
                 /** @description At most 255 UTF-8 bytes. Empty or absent uses the default; no plain MIME allowlist applies. */
