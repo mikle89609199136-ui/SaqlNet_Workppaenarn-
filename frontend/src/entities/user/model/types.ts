@@ -1,5 +1,6 @@
 import type { IChatDto } from '@/types';
 import type { TLastSeenApprox } from '@/shared/lib';
+import type { components } from '@/types/api.generated';
 
 export interface IUserDto {
   id: string;
@@ -13,12 +14,15 @@ export interface IUserDto {
   badges: string[]; // неизвестно какое dto у бэйджа
 }
 
-export interface ISettingsDto {
+type TNotificationPreferences = components['schemas']['NotificationPreferences'];
+
+/** Флаги берутся из общего контракта #496; callSounds может отсутствовать до #1042. */
+export interface ISettingsDto
+  extends
+    Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,
+    Pick<TNotificationPreferences, 'callSounds'> {
   language: string;
   theme: 'dark' | 'light';
-  notifications: boolean;
-  sounds: boolean;
-  callSounds?: boolean;
   /* Чем заменять фотографию, когда её нет: буквой или сеткой от
      идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
   avatarShape: 'letter' | 'grid';

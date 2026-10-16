@@ -115,3 +115,36 @@ describe('NotificationsSection — тумблер звуков звонков (#
     );
   });
 });
+
+describe('NotificationsSection — независимые предпочтения (#496)', () => {
+  it('глобальное выключение и включение сохраняет выбранные sounds и callSounds', async () => {
+    let stored = { notifications: true, sounds: false, callSounds: true };
+    const patches: unknown[] = [];
+    server.use(
+      http.get(api('/users/settings'), () => HttpResponse.json({ settings: stored, privacy: {} })),
+      http.put(api('/users/settings'), async ({ request }) => {
+        const patch = await request.json();
+        patches.push(patch);
+        stored = { ...stored, ...(patch as Partial<typeof stored>) };
+        return HttpResponse.json({ settings: stored });
+      })
+    );
+
+    renderSettings({ section: 'notifications', settings: stored });
+    const notifications = await screen.findByRole('switch', { name: 'Уведомления', exact: true });
+
+    await userEvent.click(notifications);
+    await waitFor(() => expect(notifications).not.toBeChecked());
+    await waitFor(() => expect(patches).toEqual([{ notifications: false }]));
+    expect(screen.getByRole('switch', { name: 'Звуки сообщений' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Звуки звонков' })).toBeChecked();
+
+    await userEvent.click(notifications);
+    await waitFor(() => expect(notifications).toBeChecked());
+    await waitFor(() =>
+      expect(patches).toEqual([{ notifications: false }, { notifications: true }])
+    );
+    expect(screen.getByRole('switch', { name: 'Звуки сообщений' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Звуки звонков' })).toBeChecked();
+  });
+});

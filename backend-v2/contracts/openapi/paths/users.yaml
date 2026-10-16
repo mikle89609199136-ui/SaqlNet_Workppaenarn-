@@ -154,7 +154,7 @@ x-error: &error
   get:
     deprecated: true
     description: >-
-      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
     tags: [Users]
     summary: Get all settings
     operationId: getAllSettings
@@ -163,7 +163,7 @@ x-error: &error
   put:
     deprecated: true
     description: >-
-      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+      Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
     tags: [Users]
     summary: Replace all settings
     operationId: updateAllSettings
@@ -194,7 +194,7 @@ x-error: &error
               type: object
               required: [settings, privacy]
               properties:
-                settings: { $ref: '../components/schemas.yaml#/Object' }
+                settings: { $ref: '../components/schemas.yaml#/MvpSettings' }
                 privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' }
       '401': { $ref: '../components/responses.yaml#/Error' }
       '405': { $ref: '../components/responses.yaml#/Error' }
@@ -213,10 +213,10 @@ x-error: &error
       is changed only via PUT /users/privacy. Typed keys, null/unknown-key
       validation and legacy normalization require #453/#495; the current
       generic settings handler does not enforce that validation yet.
-      Notification/sound field mapping remains in #496/#1042.
+      Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
     requestBody:
       required: true
-      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } }
+      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/MvpSettings' } } }
     responses:
       '200':
         description: Resulting account settings
@@ -226,7 +226,7 @@ x-error: &error
               type: object
               required: [settings]
               properties:
-                settings: { $ref: '../components/schemas.yaml#/Object' }
+                settings: { $ref: '../components/schemas.yaml#/MvpSettings' }
       '400': { $ref: '../components/responses.yaml#/Error' }
       '401': { $ref: '../components/responses.yaml#/Error' }
       '403': { $ref: '../components/responses.yaml#/Error' }
@@ -346,7 +346,7 @@ x-error: &error
   get:
     {
       deprecated: true,
-      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
+      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
       tags: [Users],
       summary: Get notification settings,
       operationId: getNotifications,
@@ -356,7 +356,7 @@ x-error: &error
   put:
     {
       deprecated: true,
-      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
+      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
       tags: [Users],
       summary: Update notification settings,
       operationId: updateNotifications,
@@ -372,7 +372,7 @@ x-error: &error
   get:
     {
       deprecated: true,
-      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
+      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
       tags: [Users],
       summary: Get sound settings,
       operationId: getSounds,
@@ -382,7 +382,7 @@ x-error: &error
   put:
     {
       deprecated: true,
-      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.',
+      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
       tags: [Users],
       summary: Update sound settings,
       operationId: updateSounds,

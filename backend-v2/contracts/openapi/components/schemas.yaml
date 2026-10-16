@@ -1,3 +1,43 @@
+# USER-D003 (#496): partial preferences; defaults are descriptive so generated PUT fields stay optional.
+NotificationPreferences:
+  type: object
+  description: >-
+    Canonical MVP notification preferences stored in users.settings.settings.
+    Fields are optional in a patch; omission preserves the current value.
+    Defaults describe normalized reads/new accounts, not resetting a patch.
+    These are stored preferences, not effective delivery decisions. Detailed
+    legacy objects are compatibility data, with sound aliases mapped in #1042.
+    Runtime validation/default normalization require #495/#451/#1042.
+  properties:
+    notifications:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Master preference for automatic message/call alerts, including their
+        sounds. False masks sounds/callSounds without changing those stored
+        values, subscriptions, chat preferences, receipts or conversation audio.
+        Browser fallback and ringtone enforcement remain in #725.
+    sounds:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Incoming message sound preference, independent of callSounds.
+        Effective message sound also requires notifications, an unmuted chat
+        and an eligible delivery context. Legacy messagesSound and
+        notificationsSound become compatibility aliases after #1042.
+    callSounds:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated
+        to conversation audio. Effective ringtone also requires notifications
+        and an allowed call. Legacy callsSound becomes an alias after #1042.
+        Absent on older accounts: default true until backend normalization.
+MvpSettings:
+  allOf:
+    - { $ref: '#/Object' }
+    - { $ref: '#/NotificationPreferences' }
+  description: >-
+    Partial MVP settings contract: notification preferences are typed by #496;
+    appearance/language/other fields remain generic until #453. The generic
+    server write handler does not yet enforce these types (#495).
 Error:
   type: object
   required: [code, message]

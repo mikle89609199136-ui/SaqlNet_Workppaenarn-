@@ -569,13 +569,13 @@ export interface paths {
         /**
          * Get all settings
          * @deprecated
-         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
          */
         get: operations["getAllSettings"];
         /**
          * Replace all settings
          * @deprecated
-         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454; section data is not interchangeable.
+         * @description Legacy bulk settings API, deprecated by decision USER-D004 (#498). Kept for compatibility; no new consumers. Use GET /users/settings, PUT /users/settings and PUT /users/privacy for MVP preferences. Bulk semantics remain tracked in #454. After resolver rollout #1042, valid settings notification flags take precedence over sound aliases (#496); until then this route retains its legacy behavior.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -599,7 +599,7 @@ export interface paths {
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys, null/unknown-key validation and legacy normalization require #453/#495; the current generic settings handler does not enforce that validation yet. Notification/sound field mapping remains in #496/#1042.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys, null/unknown-key validation and legacy normalization require #453/#495; the current generic settings handler does not enforce that validation yet. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -686,13 +686,13 @@ export interface paths {
         /**
          * Get notification settings
          * @deprecated
-         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
          */
         get: operations["getNotifications"];
         /**
          * Update notification settings
          * @deprecated
-         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
          */
         put: operations["updateNotifications"];
         post?: never;
@@ -712,13 +712,13 @@ export interface paths {
         /**
          * Get sound settings
          * @deprecated
-         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
          */
         get: operations["getSounds"];
         /**
          * Update sound settings
          * @deprecated
-         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings; field mapping and data migration require #496 and #1042.
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
          */
         put: operations["updateSounds"];
         post?: never;
@@ -2859,6 +2859,17 @@ export interface components {
         Object: {
             [key: string]: unknown;
         };
+        /** @description Canonical MVP notification preferences stored in users.settings.settings. Fields are optional in a patch; omission preserves the current value. Defaults describe normalized reads/new accounts, not resetting a patch. These are stored preferences, not effective delivery decisions. Detailed legacy objects are compatibility data, with sound aliases mapped in #1042. Runtime validation/default normalization require #495/#451/#1042. */
+        NotificationPreferences: {
+            /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
+            notifications?: boolean;
+            /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
+            sounds?: boolean;
+            /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
+            callSounds?: boolean;
+        };
+        /** @description Partial MVP settings contract: notification preferences are typed by #496; appearance/language/other fields remain generic until #453. The generic server write handler does not yet enforce these types (#495). */
+        MvpSettings: components["schemas"]["Object"] & components["schemas"]["NotificationPreferences"];
         /**
          * @description Who else sees it. There are no contacts yet, so only everyone or nobody. Being blocked by the owner hides it regardless of the rule.
          * @enum {string}
@@ -4317,7 +4328,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        settings: components["schemas"]["Object"];
+                        settings: components["schemas"]["MvpSettings"];
                         privacy: components["schemas"]["PrivacySettings"];
                     };
                 };
@@ -4337,7 +4348,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["MvpSettings"];
             };
         };
         responses: {
@@ -4348,7 +4359,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        settings: components["schemas"]["Object"];
+                        settings: components["schemas"]["MvpSettings"];
                     };
                 };
             };
