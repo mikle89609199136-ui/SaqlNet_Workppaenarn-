@@ -484,7 +484,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search users */
+        /**
+         * Search users
+         * @description Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by username, at most 50 results, no pagination. Empty query returns []; current unmatched nonempty query may return null (#435).
+         */
         get: operations["searchUsers"];
         put?: never;
         post?: never;
@@ -501,7 +504,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Generate a profile QR code */
+        /**
+         * Generate a profile QR code
+         * @description Looks up the exact existing normalized username. Returns a PNG data URL encoding a profile link. Chosen canonical pattern is trusted-public-origin/user/@{canonicalUsername}; username comes from the stored profile, not caller spelling. Current handler still trusts Host/X-Forwarded-Proto (#452), and React has no profile-link landing route; see docs/user-api-contract.md. This is unrelated to QR login.
+         */
         get: operations["getUserQrCode"];
         put?: never;
         post?: never;
@@ -554,7 +560,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Subscribe to premium */
+        /**
+         * Subscribe to premium
+         * @description Current compatibility operation grants isPremium=true to the authenticated account without payment, billing receipt or entitlement verification. It requires a valid session, not an existing subscription. It is not a production checkout/paid entitlement contract; a billing policy and protected grant flow must precede paid rollout.
+         */
         post: operations["subscribePremium"];
         delete?: never;
         options?: never;
@@ -597,12 +606,12 @@ export interface paths {
         };
         /**
          * Get own account settings and privacy
-         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Field schemas and consistent defaults are tracked in #453 and #451.
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; runtime normalization is #451/#1040/#1042.
          */
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys, null/unknown-key validation and legacy normalization require #453/#495; the current generic settings handler does not enforce that validation yet. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453; null/unknown-key validation and legacy normalization require #495/#451; the current generic settings handler does not enforce that validation yet. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -773,7 +782,7 @@ export interface paths {
         /**
          * Update chat folders
          * @deprecated
-         * @description Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.
+         * @description Dedicated replacement command: folders is a required non-null array; [] clears it. Current omitted/null input clears instead of rejecting (#441). Items are opaque legacy JSON because no folder domain is implemented; this does not add folders to MVP. Bulk omission/null is a no-op (#454).
          */
         put: operations["updateFolders"];
         post?: never;
@@ -790,7 +799,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get storage usage */
+        /**
+         * Get storage usage
+         * @description Current usage reports own nondeleted stored message content character count; media/files/cache are zero placeholders (#445), not verified physical bytes. Returns legacy storage preferences separately from canonical account settings.
+         */
         get: operations["getStorage"];
         put?: never;
         post?: never;
@@ -831,7 +843,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Clear cache records */
+        /**
+         * Clear cache records
+         * @description Current implementation only ensures a settings row and acknowledges success; no cache is removed yet (#446). Do not present this acknowledgement as reclaimed disk space.
+         */
         delete: operations["clearStorageCache"];
         options?: never;
         head?: never;
@@ -848,7 +863,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete all user data */
+        /**
+         * Delete all user data
+         * @description Current transaction deletes authored messages, chat memberships, settings, and both directions of blocklist rows. It does not delete the auth account/profile, sessions, uploads/object storage, private keys or all other resources. This is not a complete account erasure endpoint; #448 tracks the declared wider scope. Any SQL failure rolls back this transaction.
+         */
         delete: operations["deleteAllUserData"];
         options?: never;
         head?: never;
@@ -862,7 +880,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export user data */
+        /**
+         * Export user data
+         * @description Downloads craneapp_data.json: current profile, chat membership metadata, general settings and privacy only. Message content, media/files, keys, subscriptions and other account resources are excluded; #447 tracks a full agreed archive. exportedAt is UTC RFC 3339; chat createdAt is currently PostgreSQL text.
+         */
         get: operations["exportUserData"];
         put?: never;
         post?: never;
@@ -983,7 +1004,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update passcode timeout */
+        /**
+         * Update passcode timeout
+         * @description Chosen contract: required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Invalid input must fail without a write. Current missing/zero/negative values are replaced with 60 (#442).
+         */
         put: operations["updatePasscodeTimeout"];
         post?: never;
         delete?: never;
@@ -2850,17 +2874,112 @@ export interface components {
         AuthSessionsResponse: {
             sessions: components["schemas"]["AuthSession"][];
         };
+        UserProfile: {
+            /** Format: uuid */
+            id: string;
+            /** @description Canonical username. */
+            username: string;
+            firstName: string;
+            lastName: string;
+            bio: string;
+            /** @description Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer. */
+            avatarUrl: string;
+            /** @description Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum. */
+            badges: string[] | null;
+            isPremium: boolean;
+            isBot: boolean;
+        };
+        ProfileResponse: {
+            user: components["schemas"]["UserProfile"];
+        };
+        UserUnauthorizedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_token" | "missing_token" | "token_revoked";
+        };
+        UserNotFoundBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "user_not_found";
+        };
+        UserMethodNotAllowedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "method_not_allowed";
+        };
+        UserRateLimitedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "rate_limited";
+        };
+        UserInternalErrorBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "internal_error";
+        };
+        UserBadGatewayBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "upstream_unavailable";
+        };
+        UserUnavailableBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "auth_check_unavailable" | "crypto_protocol_not_ready";
+        };
+        /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
         UpdateProfileRequest: {
-            firstName?: string;
-            lastName?: string;
-            bio?: string;
-            avatarUrl?: string;
+            firstName?: string | null;
+            lastName?: string | null;
+            bio?: string | null;
+            avatarUrl?: string | null;
+        };
+        UserInvalidJsonBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json";
+        };
+        UserForbiddenBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "cross_site_request";
         };
         RenameUsernameRequest: {
             username: components["schemas"]["Username"];
         };
-        ProfileResponse: {
-            user: components["schemas"]["User"];
+        UserUsernameConflictBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "username_taken";
+        };
+        UserRenameRateLimitedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "rate_limited" | "username_change_cooldown";
+        };
+        /** @description Partial compatibility update; absence/null of both fields leaves the avatar unchanged. No URI validation is currently enforced. */
+        UpdateAvatarRequest: {
+            /** @description Legacy alias; used only when avatarUrl is absent/null. */
+            avatar?: string | null;
+            /** @description Preferred field; empty string clears the avatar. */
+            avatarUrl?: string | null;
+        };
+        UsernameAvailabilityResponse: {
+            available: boolean;
+        };
+        UserInvalidParameterBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "validation_failed";
+        };
+        UserSearchItem: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            /** @description Empty when absent or hidden. */
+            avatarUrl: string;
+        };
+        UserSearchResponse: {
+            /** @description Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username. */
+            users: components["schemas"]["UserSearchItem"][] | null;
+        };
+        ProfileQrResponse: {
+            /** @description 256px PNG data URL. Encoded payload is the profile deep link, not a login token. Canonical URL policy and runtime gap are documented in docs/user-api-contract.md (#452). */
+            qrCode: string;
+        };
+        UserProfileRouteNotFoundBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "route_not_found" | "user_not_found";
         };
         /**
          * @description Approximate last activity, given instead of the exact time when it is hidden. The exact time is shown only if both people share it with each other (lastSeen rule, exceptions and the block list, checked both ways); otherwise recently is up to 3 days, within_week up to 7, within_month up to 30, long_ago beyond that or never. Someone blocked by the owner always gets long_ago.
@@ -2873,20 +2992,72 @@ export interface components {
             lastSeen: string;
             lastSeenApprox?: components["schemas"]["LastSeenApprox"];
         };
-        Object: {
-            [key: string]: unknown;
+        Success: {
+            /** @enum {boolean} */
+            success: true;
         };
-        /** @description Canonical MVP notification preferences stored in users.settings.settings. Fields are optional in a patch; omission preserves the current value. Defaults describe normalized reads/new accounts, not resetting a patch. These are stored preferences, not effective delivery decisions. Detailed legacy objects are compatibility data, with sound aliases mapped in #1042. Runtime validation/default normalization require #495/#451/#1042. */
-        NotificationPreferences: {
-            /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
-            notifications?: boolean;
-            /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
-            sounds?: boolean;
-            /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
-            callSounds?: boolean;
+        /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
+        notifications: boolean;
+        /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
+        sounds: boolean;
+        /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
+        callSounds: boolean;
+        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected by target validation (#495). Existing persisted unknown data needs migration; it is not an extension point. */
+        LegacyGeneralSettings: {
+            /**
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @enum {string}
+             */
+            theme?: "light" | "dark" | "system";
+            /**
+             * @description Default graphite. Background palette; independent of theme and accentPreset.
+             * @enum {string}
+             */
+            palette?: "graphite" | "midnight" | "warm";
+            /**
+             * @description Default violet. Maps the existing local appearance.accent preference.
+             * @enum {string}
+             */
+            accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
+            /**
+             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @enum {string}
+             */
+            textSize?: "small" | "medium" | "large";
+            /**
+             * @description Default normal. Size/spacing of chat list, message bubbles and composer, independent of textSize.
+             * @enum {string}
+             */
+            chatDensity?: "compact" | "normal" | "large";
+            /** @description Default true. Show message timestamps in the conversation; does not remove metadata. */
+            showMessageTime?: boolean;
+            /** @description Default true. Show outgoing delivery/read marks. Hiding marks never disables delivery/read receipts or hides send failures/retry controls. */
+            showMessageStatus?: boolean;
+            /** @description Default true. Show sender avatars in the message timeline where currently supported (incoming group messages). Does not hide avatars in chat lists, profiles or calls. */
+            showMessageAvatars?: boolean;
+            /** @description Default true. Visually group consecutive messages of one sender using existing boundary rules. False renders each bubble independently; ordering/data are unchanged. */
+            groupConsecutiveMessages?: boolean;
+            /**
+             * @description Default letter. Fallback avatar rendering when no photo is available; #497.
+             * @enum {string}
+             */
+            avatarShape?: "letter" | "grid";
+            /**
+             * @description Default ru for a missing server preference. Initial locale detection belongs to the client; an explicit saved choice wins.
+             * @enum {string}
+             */
+            language?: "ru" | "en";
+            notifications?: components["schemas"]["notifications"];
+            sounds?: components["schemas"]["sounds"];
+            callSounds?: components["schemas"]["callSounds"];
+            /** @description Deprecated legacy hex preference. Retained for compatibility; not a second MVP accent source. */
+            accentColor?: string;
+            /**
+             * @description Deprecated alias data. New clients write textSize; migration is #1040.
+             * @enum {string}
+             */
+            fontSize?: "small" | "medium" | "large";
         };
-        /** @description Partial MVP settings contract: notification preferences are typed by #496; appearance/language/other fields remain generic until #453. The generic server write handler does not yet enforce these types (#495). */
-        MvpSettings: components["schemas"]["Object"] & components["schemas"]["NotificationPreferences"];
         /**
          * @description Who else sees it. There are no contacts yet, so only everyone or nobody. Being blocked by the owner hides it regardless of the rule.
          * @enum {string}
@@ -2902,38 +3073,171 @@ export interface components {
             calls?: components["schemas"]["PrivacyVisibility"];
             groupsAdd?: components["schemas"]["PrivacyVisibility"];
             messagesFromStrangers?: boolean;
+            /** @description Compatibility preference; normalized default false. Does not enable auth MFA. */
             twoFactorAuth?: boolean;
+            /** @description Compatibility preference; chosen normalized default true, matching registration. Missing flags currently read false; unify in #451. Does not implement account erasure. */
             autoDeleteAccount?: boolean;
         };
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        LegacyNotificationSettings: {
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            privateChats?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            groups?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            channels?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            calls?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            videoCalls?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            inAppNotifications?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            messagePreview?: boolean;
+            /** @description Compatibility preference; fallback false. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            readReceipts?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            reactions?: boolean;
+            /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
+            newContacts?: boolean;
+        };
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        LegacySoundSettings: {
+            /** @description Compatibility percentage; fallback 80. */
+            notificationsVolume?: number;
+            /** @description Compatibility percentage; fallback 100. Not call conversation audio volume. */
+            mediaVolume?: number;
+            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            notificationsSound?: boolean;
+            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            messagesSound?: boolean;
+            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            sendSound?: boolean;
+            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            callsSound?: boolean;
+            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            vibrateOnCall?: boolean;
+            /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
+            notificationSound?: string;
+            /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
+            messageSound?: string;
+            /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
+            ringtone?: string;
+        };
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        LegacyStorageSettings: {
+            /** @description Compatibility preference. */
+            autoDownloadMobile?: boolean;
+            /** @description Compatibility preference. */
+            autoDownloadWifi?: boolean;
+            /** @description Compatibility preference. */
+            autoDownloadRoaming?: boolean;
+            /** @description Opaque legacy retention identifier; known fallback never. No other supported retention catalogue or enforcement is defined. */
+            deleteMediaAfter?: string;
+        };
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        LegacyAdvancedSettings: {
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            autoReconnect?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            fastConnection?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            dataCompression?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            saveDrafts?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            analytics?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            developerMode?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            debugLog?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            hardwareAcceleration?: boolean;
+            /** @description Compatibility-only stored data; not a new MVP control. */
+            autoplayGifs?: boolean;
+            /** @description Opaque legacy connection identifier; known fallback auto. No other supported connection catalogue is defined. */
+            connectionType?: string;
+        };
+        /** @description Opaque JSON value retained only for legacy folders (#441/#561). No folder domain DTO or new MVP folder feature is promised. Scalar, object and nested array values are passed through, not interpreted. */
+        LegacyFolderValue: (string | null) | number | boolean | {
+            [key: string]: unknown;
+        } | unknown[];
+        /** @description Stored legacy list; null can currently be read (#451). Empty array is the normalized empty list. Bulk null/omission preserves; dedicated PUT requires a non-null array (#441). */
+        LegacyFolders: components["schemas"]["LegacyFolderValue"][] | null;
         /** @description Deprecated compatibility snapshot (#454). Preference keys/defaults may be incomplete until #451. This is not a compare-and-swap token; build a patch of changed keys rather than sending a stale writable snapshot back. */
         LegacySettingsSnapshot: {
-            settings: components["schemas"]["MvpSettings"];
+            settings: components["schemas"]["LegacyGeneralSettings"];
             privacySettings: components["schemas"]["PrivacySettings"];
-            notificationSettings: components["schemas"]["Object"];
-            soundSettings: components["schemas"]["Object"];
-            storageSettings: components["schemas"]["Object"];
-            advancedSettings: components["schemas"]["Object"];
-            /** @description Legacy list; stored JSON null may currently read as null. Empty-array normalization is */
-            folders: unknown[] | null;
+            notificationSettings: components["schemas"]["LegacyNotificationSettings"];
+            soundSettings: components["schemas"]["LegacySoundSettings"];
+            storageSettings: components["schemas"]["LegacyStorageSettings"];
+            advancedSettings: components["schemas"]["LegacyAdvancedSettings"];
+            folders: components["schemas"]["LegacyFolders"];
             readonly passcodeEnabled: boolean;
             readonly passcodeTimeout: number;
         };
-        /** @description A shallow patch of one legacy preference section. Omitted or null section is unchanged; an empty object does not reset it. Null leaf values are not delete commands and are checked by the section schema (#453/#495). */
-        LegacyBulkObjectPatch: {
-            [key: string]: unknown;
-        } | null;
-        /** @description Deprecated partial bulk update (#454), not replacement. No section is required. Empty object is a no-op. Unknown root keys and non-object root rejection require #495; the current generic decoder is more permissive. Section-specific fields and alias validation are defined in #453/#496/#495; safe concurrency requires the separate backend implementation task. */
+        /**
+         * @description Only JSON null. Bulk compatibility no-op, never a leaf reset.
+         * @enum {object|null}
+         */
+        LegacyNullSection: never | null;
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyGeneralSettings; invalid leaves and unknown keys reject the complete command (#495). */
+        LegacyGeneralSettingsBulkSection: components["schemas"]["LegacyGeneralSettings"] | components["schemas"]["LegacyNullSection"];
+        /** @description Partial privacy write. Null root/leaves and unknown keys are invalid. Visibility aliases accepted for compatibility; output is canonical. Empty object preserves all rules. twoFactorAuth/autoDeleteAccount are stored compatibility switches, not proof that security/account deletion features are enabled. */
+        PrivacySettingsPatch: {
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            lastSeen?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            photoVisibility?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            phoneVisibility?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            forwards?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            calls?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            /**
+             * @description all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+             * @enum {string}
+             */
+            groupsAdd?: "all" | "nobody" | "everyone" | "everybody" | "contacts" | "none";
+            messagesFromStrangers?: boolean;
+            twoFactorAuth?: boolean;
+            autoDeleteAccount?: boolean;
+        };
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows PrivacySettingsPatch; invalid leaves and unknown keys reject the complete command (#495). */
+        PrivacySettingsPatchBulkSection: components["schemas"]["PrivacySettingsPatch"] | components["schemas"]["LegacyNullSection"];
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyNotificationSettings; invalid leaves and unknown keys reject the complete command (#495). */
+        LegacyNotificationSettingsBulkSection: components["schemas"]["LegacyNotificationSettings"] | components["schemas"]["LegacyNullSection"];
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacySoundSettings; invalid leaves and unknown keys reject the complete command (#495). */
+        LegacySoundSettingsBulkSection: components["schemas"]["LegacySoundSettings"] | components["schemas"]["LegacyNullSection"];
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyStorageSettings; invalid leaves and unknown keys reject the complete command (#495). */
+        LegacyStorageSettingsBulkSection: components["schemas"]["LegacyStorageSettings"] | components["schemas"]["LegacyNullSection"];
+        /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings; invalid leaves and unknown keys reject the complete command (#495). */
+        LegacyAdvancedSettingsBulkSection: components["schemas"]["LegacyAdvancedSettings"] | components["schemas"]["LegacyNullSection"];
+        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are invalid under target validation. */
         LegacySettingsBulkPatch: {
-            settings?: components["schemas"]["LegacyBulkObjectPatch"];
-            /** @description Partial PrivacySettings rules; a null section is a compatibility no-op, but invalid leaf rules are rejected by the existing privacy validator. */
-            privacySettings?: components["schemas"]["LegacyBulkObjectPatch"];
-            notificationSettings?: components["schemas"]["LegacyBulkObjectPatch"];
-            /** @description Legacy sound patch. After #1042, valid canonical flags in settings override aliases (#496); conflicting submitted aliases without a canonical winner fail validation. Runtime currently stores it separately. */
-            soundSettings?: components["schemas"]["LegacyBulkObjectPatch"];
-            storageSettings?: components["schemas"]["LegacyBulkObjectPatch"];
-            advancedSettings?: components["schemas"]["LegacyBulkObjectPatch"];
-            /** @description Omitted or null preserves the current list; an array replaces it entirely, including an empty array which clears it. Item DTO is #453. */
-            folders?: unknown[] | null;
+            settings?: components["schemas"]["LegacyGeneralSettingsBulkSection"];
+            privacySettings?: components["schemas"]["PrivacySettingsPatchBulkSection"];
+            notificationSettings?: components["schemas"]["LegacyNotificationSettingsBulkSection"];
+            soundSettings?: components["schemas"]["LegacySoundSettingsBulkSection"];
+            storageSettings?: components["schemas"]["LegacyStorageSettingsBulkSection"];
+            advancedSettings?: components["schemas"]["LegacyAdvancedSettingsBulkSection"];
+            folders?: components["schemas"]["LegacyFolders"];
             /** @description Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; use the separate passcode API. */
             readonly passcodeEnabled?: boolean;
             /** @description Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; cannot change passcode timeout here. */
@@ -2943,6 +3247,69 @@ export interface components {
         LegacySettingsBulkUpdateResult: {
             /** @enum {boolean} */
             success: true;
+        };
+        UserInvalidInputBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json" | "validation_failed";
+        };
+        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Runtime enforcement/normalization remains #495/#451/#1040/#1042. Animation/GIF controls are outside MVP. */
+        MvpSettings: {
+            /**
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @enum {string}
+             */
+            theme?: "light" | "dark" | "system";
+            /**
+             * @description Default graphite. Background palette; independent of theme and accentPreset.
+             * @enum {string}
+             */
+            palette?: "graphite" | "midnight" | "warm";
+            /**
+             * @description Default violet. Maps the existing local appearance.accent preference.
+             * @enum {string}
+             */
+            accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
+            /**
+             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @enum {string}
+             */
+            textSize?: "small" | "medium" | "large";
+            /**
+             * @description Default normal. Size/spacing of chat list, message bubbles and composer, independent of textSize.
+             * @enum {string}
+             */
+            chatDensity?: "compact" | "normal" | "large";
+            /** @description Default true. Show message timestamps in the conversation; does not remove metadata. */
+            showMessageTime?: boolean;
+            /** @description Default true. Show outgoing delivery/read marks. Hiding marks never disables delivery/read receipts or hides send failures/retry controls. */
+            showMessageStatus?: boolean;
+            /** @description Default true. Show sender avatars in the message timeline where currently supported (incoming group messages). Does not hide avatars in chat lists, profiles or calls. */
+            showMessageAvatars?: boolean;
+            /** @description Default true. Visually group consecutive messages of one sender using existing boundary rules. False renders each bubble independently; ordering/data are unchanged. */
+            groupConsecutiveMessages?: boolean;
+            /**
+             * @description Default letter. Fallback avatar rendering when no photo is available; #497.
+             * @enum {string}
+             */
+            avatarShape?: "letter" | "grid";
+            /**
+             * @description Default ru for a missing server preference. Initial locale detection belongs to the client; an explicit saved choice wins.
+             * @enum {string}
+             */
+            language?: "ru" | "en";
+            notifications?: components["schemas"]["notifications"];
+            sounds?: components["schemas"]["sounds"];
+            callSounds?: components["schemas"]["callSounds"];
+        };
+        SettingsResponse: {
+            settings: components["schemas"]["MvpSettings"];
+            privacy: components["schemas"]["PrivacySettings"];
+        };
+        SettingsUpdateResponse: {
+            settings: components["schemas"]["MvpSettings"];
+        };
+        PrivacyUpdateResponse: {
+            privacy: components["schemas"]["PrivacySettings"];
         };
         /**
          * @description Rules that take per-person exceptions. messagesFromStrangers is a switch and has none.
@@ -2965,6 +3332,153 @@ export interface components {
             mode: components["schemas"]["PrivacyExceptionMode"];
             /** Format: date-time */
             createdAt: string;
+        };
+        PrivacyExceptionsResponse: {
+            exceptions: components["schemas"]["PrivacyException"][];
+        };
+        PrivacyExceptionRequest: {
+            mode: components["schemas"]["PrivacyExceptionMode"];
+        };
+        PrivacyExceptionResponse: {
+            exception: components["schemas"]["PrivacyException"];
+        };
+        UserInvalidExceptionBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json" | "self_exception" | "validation_failed";
+        };
+        LegacyNotificationResponse: {
+            settings: components["schemas"]["LegacyNotificationSettings"];
+        };
+        LegacyNotificationUpdateResponse: {
+            /** @enum {boolean} */
+            success: true;
+            settings: components["schemas"]["LegacyNotificationSettings"];
+        };
+        LegacySoundResponse: {
+            settings: components["schemas"]["LegacySoundSettings"];
+        };
+        LegacySoundUpdateResponse: {
+            /** @enum {boolean} */
+            success: true;
+            settings: components["schemas"]["LegacySoundSettings"];
+        };
+        LegacyAdvancedResponse: {
+            settings: components["schemas"]["LegacyAdvancedSettings"];
+        };
+        LegacyAdvancedUpdateResponse: {
+            /** @enum {boolean} */
+            success: true;
+            settings: components["schemas"]["LegacyAdvancedSettings"];
+        };
+        LegacyFoldersResponse: {
+            folders: components["schemas"]["LegacyFolders"];
+        };
+        /** @description Dedicated PUT replaces the array; [] clears it. Omitted/null folders are invalid by contract, but the handler currently clears them (#441). Bulk omission/null semantics differ (#454). */
+        LegacyFoldersRequest: {
+            folders: unknown[];
+        };
+        StorageUsage: {
+            /**
+             * Format: int64
+             * @description Currently SUM(LENGTH(content)) for own nondeleted messages: character count of stored content, not physical bytes. #445.
+             */
+            messages: number;
+            /**
+             * Format: int64
+             * @description Currently always zero; actual storage accounting requires #445.
+             */
+            media: number;
+            /**
+             * Format: int64
+             * @description Currently always zero; actual storage accounting requires #445.
+             */
+            files: number;
+            /**
+             * Format: int64
+             * @description Currently always zero; actual storage accounting requires #445.
+             */
+            cache: number;
+        };
+        StorageResponse: {
+            storage: components["schemas"]["StorageUsage"];
+            settings: components["schemas"]["LegacyStorageSettings"];
+        };
+        UserRouteNotFoundBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "route_not_found";
+        };
+        StorageSettingsUpdateResponse: {
+            /** @enum {boolean} */
+            success: true;
+            settings: components["schemas"]["LegacyStorageSettings"];
+        };
+        /**
+         * @description Current PostgreSQL timestamptz::text serialization, including date, time and numeric offset; not guaranteed RFC 3339. Consumers must not assume format date-time. UTC RFC 3339 normalization requires a runtime change.
+         * @example 2026-10-16 18:00:00+00
+         */
+        DatabaseTimestamp: string;
+        UserExportChat: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** @enum {string} */
+            type: "private" | "group" | "channel" | "self";
+            createdAt: components["schemas"]["DatabaseTimestamp"];
+        };
+        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may currently be null when empty (#435). */
+        UserExport: {
+            user: components["schemas"]["UserProfile"];
+            chats: components["schemas"]["UserExportChat"][] | null;
+            settings: components["schemas"]["LegacyGeneralSettings"];
+            privacy: components["schemas"]["PrivacySettings"];
+            /**
+             * Format: date-time
+             * @description UTC RFC 3339 generation time.
+             */
+            exportedAt: string;
+        };
+        UserBlockedItem: components["schemas"]["UserSearchItem"] & {
+            blockedAt: components["schemas"]["DatabaseTimestamp"];
+        };
+        UserBlockedResponse: {
+            blocked: components["schemas"]["UserBlockedItem"][] | null;
+        };
+        BlockUserRequest: {
+            /** Format: uuid */
+            userId: string;
+        };
+        UserInvalidBlockBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json" | "self_block" | "validation_failed";
+        };
+        UserAlreadyBlockedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "already_blocked";
+        };
+        PasscodeState: {
+            enabled: boolean;
+            /** @description Seconds. Current runtime defaults nonpositive writes to 60; target 0 means disabled auto-lock, positive values are delays (#442). */
+            timeout: number;
+        };
+        SetPasscodeRequest: {
+            /** @description At least 4 bytes after trimming whitespace, as measured by the Go validator. No digit-only, 4-6 character or upper-length rule is implemented. */
+            passcode: string;
+        };
+        PasscodeRequest: {
+            /** @description Exact supplied string for verify/disable; not a numeric PIN schema. */
+            passcode: string;
+        };
+        UserPasscodeNotSetBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json" | "no_passcode_set";
+        };
+        UserPasscodeUnauthorizedBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_token" | "missing_token" | "token_revoked" | "wrong_passcode";
+        };
+        PasscodeTimeoutRequest: {
+            /** @description Seconds; 0 disables automatic re-lock. Required; negatives are rejected without writes. Runtime currently substitutes 60 for missing/zero/negative (#442). */
+            timeout: number;
         };
         DeviceSession: {
             /**
@@ -2990,6 +3504,16 @@ export interface components {
         DevicesResponse: {
             devices: components["schemas"]["DeviceSession"][];
         };
+        DeviceRegistrationRequest: {
+            /** @description Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists. */
+            deviceName?: string | null;
+            /** @description Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists. */
+            deviceType?: string | null;
+            /** @description Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists. */
+            userAgent?: string | null;
+            /** @description Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists. */
+            clientIP?: string | null;
+        };
         DeviceRegistrationResponse: {
             /** @enum {boolean} */
             success: true;
@@ -2998,6 +3522,50 @@ export interface components {
              * @description Existing canonical session ID; registration never creates a credential.
              */
             sessionId: string;
+        };
+        UserInvalidSessionIdBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_request" | "validation_failed";
+        };
+        UserSessionNotFoundBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "not_found";
+        };
+        UserCurrentSessionConflictBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "conflict_current_session";
+        };
+        PushVapidResponse: {
+            /** @description Base64url encoded uncompressed P-256 point. */
+            publicKey: string;
+        };
+        UserPushNotConfiguredBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "push_not_configured";
+        };
+        PushSubscriptionRequest: {
+            /**
+             * Format: uri
+             * @description HTTPS URL without userinfo or explicit port, on the service allowlist in internal/push/subscription.go; checked server-side. At most 20 endpoints/account.
+             */
+            endpoint: string;
+            keys: {
+                /** @description 65 decoded bytes, first byte 0x04; curve membership is not checked by this handler. Base64url or standard base64, padded or unpadded. */
+                p256dh: string;
+                /** @description 16 decoded bytes; base64url or standard base64, padded or unpadded. */
+                auth: string;
+            };
+        };
+        PushSubscriptionResponse: {
+            /** Format: uuid */
+            id: string;
+        };
+        UserInvalidPushSubscriptionBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "invalid_json" | "invalid_push_subscription";
+        };
+        DeletePushSubscriptionRequest: {
+            endpoint: string;
         };
         PublicEncryptionKey: {
             /** Format: byte */
@@ -3293,6 +3861,9 @@ export interface components {
         FavoriteStateResponse: {
             favorited: boolean;
         };
+        Object: {
+            [key: string]: unknown;
+        };
         IceServer: {
             urls: string | string[];
             username?: string;
@@ -3440,6 +4011,235 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description HTTP 401; code is invalid_token or missing_token or token_revoked. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserUnauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserUnauthorizedBody"];
+            };
+        };
+        /** @description HTTP 404; code is user_not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserNotFoundBody"];
+            };
+        };
+        /** @description HTTP 405; code is method_not_allowed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserMethodNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+            };
+        };
+        /** @description HTTP 429; code is rate_limited. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserRateLimited: {
+            headers: {
+                /** @description Seconds until retry; at least 1. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserRateLimitedBody"];
+            };
+        };
+        /** @description HTTP 500; code is internal_error. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInternalErrorBody"];
+            };
+        };
+        /** @description HTTP 502; code is upstream_unavailable. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserBadGateway: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserBadGatewayBody"];
+            };
+        };
+        /** @description HTTP 503; code is auth_check_unavailable or crypto_protocol_not_ready. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserUnavailableBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidJson: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidJsonBody"];
+            };
+        };
+        /** @description HTTP 403; code is cross_site_request. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserForbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserForbiddenBody"];
+            };
+        };
+        /** @description HTTP 409; code is username_taken. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserUsernameConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserUsernameConflictBody"];
+            };
+        };
+        /** @description HTTP 429; code is rate_limited or username_change_cooldown. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserRenameRateLimited: {
+            headers: {
+                /** @description Seconds until retry; at least 1. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserRenameRateLimitedBody"];
+            };
+        };
+        /** @description HTTP 400; code is validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidParameter: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidParameterBody"];
+            };
+        };
+        /** @description HTTP 404; code is route_not_found or user_not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserProfileRouteNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserProfileRouteNotFoundBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidInput: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidInputBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json or self_exception or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidException: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidExceptionBody"];
+            };
+        };
+        /** @description HTTP 404; code is route_not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserRouteNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserRouteNotFoundBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json or self_block or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidBlock: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidBlockBody"];
+            };
+        };
+        /** @description HTTP 409; code is already_blocked. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserAlreadyBlocked: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserAlreadyBlockedBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json or no_passcode_set. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserPasscodeNotSet: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserPasscodeNotSetBody"];
+            };
+        };
+        /** @description HTTP 401; code is invalid_token or missing_token or token_revoked or wrong_passcode. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserPasscodeUnauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserPasscodeUnauthorizedBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_request or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidSessionId: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidSessionIdBody"];
+            };
+        };
+        /** @description HTTP 404; code is not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserSessionNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserSessionNotFoundBody"];
+            };
+        };
+        /** @description HTTP 409; code is conflict_current_session. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserCurrentSessionConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserCurrentSessionConflictBody"];
+            };
+        };
+        /** @description HTTP 404; code is push_not_configured. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserPushNotConfigured: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserPushNotConfiguredBody"];
+            };
+        };
+        /** @description HTTP 400; code is invalid_json or invalid_push_subscription. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        UserInvalidPushSubscription: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserInvalidPushSubscriptionBody"];
             };
         };
         /** @description Too many requests. Returned with code rate_limited when a limit is exceeded (MLS routes: per user; GET /mls/keypackages/{userId}: also per requester-target pair and per target user). Retry after the delay given in Retry-After. */
@@ -4128,9 +4928,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
             };
-            401: components["responses"]["Error"];
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateCurrentUser: {
@@ -4140,6 +4948,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateProfileRequest"];
@@ -4151,9 +4960,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
             };
-            400: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidJson"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     renameCurrentUser: {
@@ -4163,6 +4982,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RenameUsernameRequest"];
@@ -4178,19 +4998,16 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-            /** @description Rename cooldown is active; Retry-After contains seconds remaining */
-            429: {
-                headers: {
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["UserInvalidJson"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            409: components["responses"]["UserUsernameConflict"];
+            429: components["responses"]["UserRenameRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateAvatar: {
@@ -4200,12 +5017,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    avatar?: string;
-                    avatarUrl?: string;
-                };
+                "application/json": components["schemas"]["UpdateAvatarRequest"];
             };
         };
         responses: {
@@ -4214,8 +5029,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
             };
+            400: components["responses"]["UserInvalidJson"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     checkUsername: {
@@ -4235,13 +5061,14 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        available: boolean;
-                    };
+                    "application/json": components["schemas"]["UsernameAvailabilityResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            429: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidParameter"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
         };
     };
     searchUsers: {
@@ -4260,8 +5087,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserSearchResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getUserQrCode: {
@@ -4280,9 +5115,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfileQrResponse"];
+                };
             };
-            404: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getPublicProfile: {
@@ -4301,9 +5145,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
             };
-            404: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserProfileRouteNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getUserStatus: {
@@ -4326,21 +5179,14 @@ export interface operations {
                     "application/json": components["schemas"]["UserStatus"];
                 };
             };
-            /** @description User not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "code": "user_not_found",
-                     *       "message": "user not found"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserProfileRouteNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     subscribePremium: {
@@ -4357,8 +5203,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getAllSettings: {
@@ -4379,10 +5234,12 @@ export interface operations {
                     "application/json": components["schemas"]["LegacySettingsSnapshot"];
                 };
             };
-            401: components["responses"]["Error"];
-            405: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateAllSettings: {
@@ -4392,6 +5249,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacySettingsBulkPatch"];
@@ -4407,12 +5265,14 @@ export interface operations {
                     "application/json": components["schemas"]["LegacySettingsBulkUpdateResult"];
                 };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            405: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getSettings: {
@@ -4430,16 +5290,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        settings: components["schemas"]["MvpSettings"];
-                        privacy: components["schemas"]["PrivacySettings"];
-                    };
+                    "application/json": components["schemas"]["SettingsResponse"];
                 };
             };
-            401: components["responses"]["Error"];
-            405: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateSettings: {
@@ -4449,6 +5308,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MvpSettings"];
@@ -4461,17 +5321,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        settings: components["schemas"]["MvpSettings"];
-                    };
+                    "application/json": components["schemas"]["SettingsUpdateResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            405: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updatePrivacy: {
@@ -4481,9 +5341,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PrivacySettings"];
+                "application/json": components["schemas"]["PrivacySettingsPatch"];
             };
         };
         responses: {
@@ -4493,17 +5354,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        privacy: components["schemas"]["PrivacySettings"];
-                    };
+                    "application/json": components["schemas"]["PrivacyUpdateResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            405: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     listPrivacyExceptions: {
@@ -4523,12 +5384,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        exceptions: components["schemas"]["PrivacyException"][];
-                    };
+                    "application/json": components["schemas"]["PrivacyExceptionsResponse"];
                 };
             };
-            400: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     setPrivacyException: {
@@ -4541,11 +5406,10 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    mode: components["schemas"]["PrivacyExceptionMode"];
-                };
+                "application/json": components["schemas"]["PrivacyExceptionRequest"];
             };
         };
         responses: {
@@ -4555,13 +5419,18 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        exception: components["schemas"]["PrivacyException"];
-                    };
+                    "application/json": components["schemas"]["PrivacyExceptionResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            404: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidException"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     removePrivacyException: {
@@ -4581,9 +5450,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getNotifications: {
@@ -4600,8 +5478,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacyNotificationResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateNotifications: {
@@ -4611,9 +5497,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["LegacyNotificationSettings"];
             };
         };
         responses: {
@@ -4622,8 +5509,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacyNotificationUpdateResponse"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getSounds: {
@@ -4640,8 +5537,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacySoundResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateSounds: {
@@ -4651,9 +5556,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["LegacySoundSettings"];
             };
         };
         responses: {
@@ -4662,8 +5568,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacySoundUpdateResponse"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getAdvancedSettings: {
@@ -4680,8 +5596,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacyAdvancedResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateAdvancedSettings: {
@@ -4691,9 +5615,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["LegacyAdvancedSettings"];
             };
         };
         responses: {
@@ -4702,8 +5627,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacyAdvancedUpdateResponse"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     listFolders: {
@@ -4720,8 +5655,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LegacyFoldersResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateFolders: {
@@ -4731,13 +5674,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    folders: {
-                        [key: string]: unknown;
-                    }[];
-                };
+                "application/json": components["schemas"]["LegacyFoldersRequest"];
             };
         };
         responses: {
@@ -4746,8 +5686,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getStorage: {
@@ -4764,8 +5714,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StorageResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updateStorageSettings: {
@@ -4775,9 +5733,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Object"];
+                "application/json": components["schemas"]["LegacyStorageSettings"];
             };
         };
         responses: {
@@ -4786,8 +5745,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StorageSettingsUpdateResponse"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     clearStorageCache: {
@@ -4804,8 +5773,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     deleteAllUserData: {
@@ -4822,8 +5800,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     exportUserData: {
@@ -4838,12 +5825,20 @@ export interface operations {
             /** @description JSON export */
             200: {
                 headers: {
+                    /** @description attachment; filename=craneapp_data.json */
+                    "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Object"];
+                    "application/json": components["schemas"]["UserExport"];
                 };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     listBlockedUsers: {
@@ -4860,8 +5855,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserBlockedResponse"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     blockUser: {
@@ -4871,12 +5874,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uuid */
-                    userId: string;
-                };
+                "application/json": components["schemas"]["BlockUserRequest"];
             };
         };
         responses: {
@@ -4885,9 +5886,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            409: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidBlock"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            409: components["responses"]["UserAlreadyBlocked"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     unblockUser: {
@@ -4906,8 +5918,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["UserInvalidParameter"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getPasscodeState: {
@@ -4924,8 +5946,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PasscodeState"];
+                };
             };
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     setPasscode: {
@@ -4935,11 +5965,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    passcode: string;
-                };
+                "application/json": components["schemas"]["SetPasscodeRequest"];
             };
         };
         responses: {
@@ -4948,9 +5977,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     verifyPasscode: {
@@ -4960,11 +5998,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    passcode: string;
-                };
+                "application/json": components["schemas"]["PasscodeRequest"];
             };
         };
         responses: {
@@ -4973,9 +6010,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            401: components["responses"]["Error"];
+            400: components["responses"]["UserPasscodeNotSet"];
+            401: components["responses"]["UserPasscodeUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     disablePasscode: {
@@ -4985,11 +6031,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    passcode: string;
-                };
+                "application/json": components["schemas"]["PasscodeRequest"];
             };
         };
         responses: {
@@ -4998,8 +6043,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["UserPasscodeNotSet"];
+            401: components["responses"]["UserPasscodeUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     updatePasscodeTimeout: {
@@ -5009,11 +6064,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    timeout: number;
-                };
+                "application/json": components["schemas"]["PasscodeTimeoutRequest"];
             };
         };
         responses: {
@@ -5022,8 +6076,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["UserInvalidInput"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserRouteNotFound"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     listDevices: {
@@ -5044,7 +6108,12 @@ export interface operations {
                     "application/json": components["schemas"]["DevicesResponse"];
                 };
             };
-            401: components["responses"]["Error"];
+            401: components["responses"]["UserUnauthorized"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     registerDevice: {
@@ -5054,14 +6123,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
         requestBody: {
             content: {
-                "application/json": {
-                    deviceName?: string;
-                    deviceType?: string;
-                    userAgent?: string;
-                    clientIP?: string;
-                };
+                "application/json": components["schemas"]["DeviceRegistrationRequest"];
             };
         };
         responses: {
@@ -5074,7 +6139,14 @@ export interface operations {
                     "application/json": components["schemas"]["DeviceRegistrationResponse"];
                 };
             };
-            401: components["responses"]["Error"];
+            400: components["responses"]["UserInvalidJson"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     terminateAllDevices: {
@@ -5091,9 +6163,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            401: components["responses"]["Error"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     deleteDevice: {
@@ -5114,37 +6194,19 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** @example true */
-                        success: boolean;
-                    };
+                    "application/json": components["schemas"]["Success"];
                 };
             };
-            /** @description sessionId is not a valid UUID */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            404: components["responses"]["Error"];
-            /** @description sessionId is the current session */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "code": "conflict_current_session",
-                     *       "message": "cannot terminate current session"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["UserInvalidSessionId"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            404: components["responses"]["UserSessionNotFound"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            409: components["responses"]["UserCurrentSessionConflict"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     getPushVapidKey: {
@@ -5162,19 +6224,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** @description Base64url, uncompressed P-256 point */
-                        publicKey: string;
-                    };
+                    "application/json": components["schemas"]["PushVapidResponse"];
                 };
             };
-            /** @description Push notifications are not configured */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+            401: components["responses"]["UserUnauthorized"];
+            404: components["responses"]["UserPushNotConfigured"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     savePushSubscription: {
@@ -5184,18 +6243,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 8 KiB JSON body. */
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uri */
-                    endpoint: string;
-                    keys: {
-                        /** @description Base64url, 65-byte P-256 public key */
-                        p256dh: string;
-                        /** @description Base64url, 16-byte auth secret */
-                        auth: string;
-                    };
-                };
+                "application/json": components["schemas"]["PushSubscriptionRequest"];
             };
         };
         responses: {
@@ -5205,19 +6256,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                    };
+                    "application/json": components["schemas"]["PushSubscriptionResponse"];
                 };
             };
-            /** @description invalid_json or invalid_push_subscription */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+            400: components["responses"]["UserInvalidPushSubscription"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     deletePushSubscription: {
@@ -5227,11 +6276,10 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description At most 8 KiB JSON body. */
         requestBody: {
             content: {
-                "application/json": {
-                    endpoint: string;
-                };
+                "application/json": components["schemas"]["DeletePushSubscriptionRequest"];
             };
         };
         responses: {
@@ -5242,13 +6290,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description endpoint is required */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+            400: components["responses"]["UserInvalidJson"];
+            401: components["responses"]["UserUnauthorized"];
+            403: components["responses"]["UserForbidden"];
+            405: components["responses"]["UserMethodNotAllowed"];
+            429: components["responses"]["UserRateLimited"];
+            500: components["responses"]["UserInternalError"];
+            502: components["responses"]["UserBadGateway"];
+            503: components["responses"]["UserUnavailable"];
         };
     };
     uploadEncryptionKey: {

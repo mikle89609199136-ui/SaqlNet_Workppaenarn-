@@ -23,7 +23,7 @@
 | `folders`                                | Массив legacy folders; текущий GET может вернуть null из сохранённого JSON null, нормализация в [] относится к #451 |
 | `passcodeEnabled` / `passcodeTimeout`    | Read-only сведения о passcode, не обновляемые этим PUT                                                              |
 
-Ключи snapshot обязательны, состав preference objects может быть неполным до единых defaults #451. Shape отдельных полей/элементов folders уточняется в #453. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
+Ключи snapshot обязательны, состав preference objects может быть неполным до единых defaults #451. [#453 фиксирует typed leaf schemas](user-api-contract.md); folders намеренно остаются opaque legacy JSON без обещания новой MVP-модели. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
 
 ## PUT: обязательность и правила по полям
 

@@ -1,887 +1,1467 @@
-x-secure: &secure
-  - sessionCookie: []
-x-error: &error
-  $ref: '../components/responses.yaml#/Error'
+# USER-D001 (#453): all User API operations. Runtime gaps are explicit; schemas do not implement validators.
 /users/me:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Get current profile
     operationId: getCurrentUser
-    security: *secure
-    responses: { '200': { description: Profile }, '401': *error }
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    tags: [Users]
+    tags:
+      - Users
     summary: Update current profile
     operationId: updateCurrentUser
-    security: *secure
-    requestBody:
-      {
-        required: true,
-        content:
-          {
-            application/json:
-              { schema: { $ref: '../components/schemas.yaml#/UpdateProfileRequest' } },
-          },
-      }
-    responses: { '200': { description: Updated profile }, '400': *error }
-/users/me/username:
-  put:
-    tags: [Users]
-    summary: Change the current user's username
-    description: >-
-      Normalizes the username to lowercase and changes it atomically. A successful
-      change invalidates old username deep links; user IDs and existing chats remain
-      unchanged. The operation is limited to once every 24 hours.
-    operationId: renameCurrentUser
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
       required: true
-      content:
-        application/json:
-          schema: { $ref: '../components/schemas.yaml#/RenameUsernameRequest' }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UpdateProfileRequest}}}
     responses:
-      '200':
-        description: Updated canonical profile
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/ProfileResponse' }
-      '400': *error
-      '401': *error
-      '409': *error
-      '429':
-        description: Rename cooldown is active; Retry-After contains seconds remaining
-        headers:
-          Retry-After: { schema: { type: integer, minimum: 1 } }
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/Error' }
+      '200': {description: Updated profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidJson}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+/users/me/username:
+  put:
+    tags:
+      - Users
+    summary: Change the current user's username
+    description: >-
+      Normalizes the username to lowercase and changes it atomically. A successful change invalidates old
+      username deep links; user IDs and existing chats remain unchanged. The operation is limited to once
+      every 24 hours.
+    operationId: renameCurrentUser
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/RenameUsernameRequest}}}
+    responses:
+      '200': {description: Updated canonical profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidJson}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '409': {$ref: ../components/responses.yaml#/UserUsernameConflict}
+      '429': {$ref: ../components/responses.yaml#/UserRenameRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '409': [username_taken]
+      '429': [rate_limited, username_change_cooldown]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/avatar:
   put:
-    tags: [Users]
+    tags:
+      - Users
     summary: Update avatar
     operationId: updateAvatar
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
-      {
-        required: true,
-        content:
-          {
-            application/json:
-              {
-                schema:
-                  {
-                    type: object,
-                    properties: { avatar: { type: string }, avatarUrl: { type: string } },
-                  },
-              },
-          },
-      }
-    responses: { '200': { description: Updated profile } }
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UpdateAvatarRequest}}}
+    responses:
+      '200': {description: Updated profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidJson}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/check-username:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Check username availability
     operationId: checkUsername
     parameters:
-      [
-        {
-          name: username,
-          in: query,
-          required: true,
-          schema: { $ref: '../components/schemas.yaml#/Username' },
-        },
-      ]
+      - {name: username, in: query, required: true, schema: {$ref: ../components/schemas.yaml#/Username}}
     responses:
-      '200':
-        description: Availability
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [available]
-              properties: { available: { type: boolean } }
-      '400': *error
-      '429': *error
+      '200': {description: Availability, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UsernameAvailabilityResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+    x-error-codes:
+      '400': [validation_failed]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
 /users/search:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Search users
     operationId: searchUsers
-    security: *secure
-    parameters: [{ name: q, in: query, schema: { type: string } }]
-    responses: { '200': { description: Search results } }
+    security:
+      - {sessionCookie: []}
+    parameters:
+      - {name: q, in: query, schema: {type: string}}
+    responses:
+      '200': {description: Search results, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserSearchResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and
+      an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by
+      username, at most 50 results, no pagination. Empty query returns []; current unmatched nonempty query
+      may return null (#435).
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/qr-code:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Generate a profile QR code
     operationId: getUserQrCode
-    security: *secure
-    parameters: [{ name: username, in: query, required: true, schema: { type: string } }]
-    responses: { '200': { description: QR code data URL }, '404': *error }
+    security:
+      - {sessionCookie: []}
+    parameters:
+      - {name: username, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 64, description: Trimmed and lowercased for lookup; canonical output username comes from the existing profile.}}
+    responses:
+      '200': {description: QR code data URL, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileQrResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Looks up the exact existing normalized username. Returns a PNG data URL encoding a profile link. Chosen
+      canonical pattern is trusted-public-origin/user/@{canonicalUsername}; username comes from the stored
+      profile, not caller spelling. Current handler still trusts Host/X-Forwarded-Proto (#452), and React has
+      no profile-link landing route; see docs/user-api-contract.md. This is unrelated to QR login.
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/{userId}/profile:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Get a public profile
     operationId: getPublicProfile
-    security: *secure
-    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-    responses: { '200': { description: Public profile }, '404': *error }
+    security:
+      - {sessionCookie: []}
+    parameters:
+      - {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
+    responses:
+      '200': {description: Public profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserProfileRouteNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [user_not_found, route_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/{userId}/status:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Get user presence status
     operationId: getUserStatus
-    security: *secure
-    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    security:
+      - {sessionCookie: []}
+    parameters:
+      - {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
     responses:
-      '200':
-        description: User status as the caller may see it
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UserStatus' } } }
-      '404':
-        description: User not found
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/Error' }
-            example: { code: user_not_found, message: user not found }
+      '200': {description: User status as the caller may see it, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserStatus}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserProfileRouteNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [user_not_found, route_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /premium/subscribe:
   post:
-    tags: [Users]
+    tags:
+      - Users
     summary: Subscribe to premium
     operationId: subscribePremium
-    security: *secure
-    responses: { '200': { description: Subscribed } }
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Subscribed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Current compatibility operation grants isPremium=true to the authenticated account without payment,
+      billing receipt or entitlement verification. It requires a valid session, not an existing subscription.
+      It is not a production checkout/paid entitlement contract; a billing policy and protected grant flow
+      must precede paid rollout.
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/all-settings:
   get:
     deprecated: true
     description: >-
-      Deprecated compatibility snapshot (#498/#454). Use GET /users/settings
-      for MVP settings/privacy. Passcode fields are read-only; exceptions,
-      blocklist, subscriptions and sessions are separate resources.
+      Deprecated compatibility snapshot (#498/#454). Use GET /users/settings for MVP settings/privacy.
+      Passcode fields are read-only; exceptions, blocklist, subscriptions and sessions are separate resources.
       After #1042, sound aliases are resolved from canonical flags (#496).
-    tags: [Users]
+    tags:
+      - Users
     summary: Get legacy settings snapshot
     operationId: getAllSettings
-    security: *secure
+    security:
+      - {sessionCookie: []}
     responses:
-      '200':
-        description: Complete compatibility envelope, not a revision or replacement command
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/LegacySettingsSnapshot' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '405': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: 'Complete compatibility envelope, not a revision or replacement command', content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySettingsSnapshot}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
     deprecated: true
     description: >-
-      Deprecated partial bulk update (#454), NOT replace. Each provided object
-      section is shallow-merged; omitted, null or empty object sections do not
-      reset values. A provided folders array replaces the list (empty clears),
-      omission/null preserves it. Correctly typed passcode fields are accepted
-      but ignored for legacy snapshot compatibility. Response stays success
-      only; GET separately for the resulting snapshot. Safe concurrent writes
-      require a shared locked transaction for bulk and section read-modify-write;
-      the current service can still lose parallel updates. Strict root/section
-      validation requires #495. After #1042, canonical sound flags win over
-      aliases as specified in #496; conflicting aliases fail without writes.
-    tags: [Users]
+      Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged;
+      omitted, null or empty object sections do not reset values. A provided folders array replaces the list
+      (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for
+      legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot.
+      Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the
+      current service can still lose parallel updates. Strict root/section validation requires #495. After
+      #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without
+      writes.
+    tags:
+      - Users
     summary: Partially update legacy settings sections
     operationId: updateAllSettings
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
       required: true
-      content:
-        application/json:
-          schema: { $ref: '../components/schemas.yaml#/LegacySettingsBulkPatch' }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySettingsBulkPatch}}}
     responses:
-      '200':
-        description: Compatibility acknowledgement; does not contain a settings snapshot
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/LegacySettingsBulkUpdateResult' }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '405': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Compatibility acknowledgement; does not contain a settings snapshot, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySettingsBulkUpdateResult}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
 /users/settings:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Get own account settings and privacy
     operationId: getSettings
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: >-
-      Canonical MVP settings read (#498). Returns the authenticated owner's
-      settings and privacy in separate objects; never another user's settings.
-      Detailed legacy notification/sound/storage sections are not included.
-      Field schemas and consistent defaults are tracked in #453 and #451.
+      Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate
+      objects; never another user's settings. Detailed legacy notification/sound/storage sections are not
+      included. Typed field contract is #453; runtime normalization is #451/#1040/#1042.
     responses:
-      '200':
-        description: Own account settings and privacy
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [settings, privacy]
-              properties:
-                settings: { $ref: '../components/schemas.yaml#/MvpSettings' }
-                privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '405': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Own account settings and privacy, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    tags: [Users]
+    tags:
+      - Users
     summary: Partially update own account settings
     operationId: updateSettings
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: >-
-      Canonical MVP preference write (#498). Send a flat partial JSON object,
-      for example {"theme":"light"}, not an envelope with a settings key.
-      Omitted keys are preserved; merging is shallow, not JSON Merge Patch.
-      Returns the resulting settings object in a settings envelope. Privacy
-      is changed only via PUT /users/privacy. Typed keys, null/unknown-key
-      validation and legacy normalization require #453/#495; the current
-      generic settings handler does not enforce that validation yet.
-      Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+      Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"},
+      not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge
+      Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT
+      /users/privacy. Typed keys are fixed in #453; null/unknown-key validation and legacy normalization
+      require #495/#451; the current generic settings handler does not enforce that validation yet.
+      Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound
+      aliases and read normalization require #1042; consumers apply effective policy in #725.
     requestBody:
       required: true
-      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/MvpSettings' } } }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/MvpSettings}}}
     responses:
-      '200':
-        description: Resulting account settings
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [settings]
-              properties:
-                settings: { $ref: '../components/schemas.yaml#/MvpSettings' }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '405': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Resulting account settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
 /users/privacy:
   put:
-    tags: [Users]
+    tags:
+      - Users
     summary: Partially update own privacy rules
     operationId: updatePrivacy
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: >-
-      Canonical MVP privacy write (#498); read via GET /users/settings.
-      Send a flat partial object, not a privacy envelope. Omitted rules are
-      preserved; merging is shallow. Returns the resulting privacy object.
-      Unknown keys or values are rejected with 400 validation_failed.
-      Visibility rules take all or nobody; the legacy contacts and none
-      are accepted and stored as nobody, everyone as all. Exceptions remain
-      separate resources under /users/privacy/exceptions and are not replaced
-      by this update. State-changing cookie requests require an allowed Origin.
+      Canonical MVP privacy write (#498); read via GET /users/settings. Send a flat partial object, not a
+      privacy envelope. Omitted rules are preserved; merging is shallow. Returns the resulting privacy object.
+      Unknown keys or values are rejected with 400 validation_failed. Visibility rules take all or nobody; the
+      legacy contacts and none are accepted and stored as nobody, everyone as all. Exceptions remain separate
+      resources under /users/privacy/exceptions and are not replaced by this update. State-changing cookie
+      requests require an allowed Origin.
     requestBody:
       required: true
-      content: { application/json: { schema: { $ref: '../components/schemas.yaml#/PrivacySettings' } } }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacySettingsPatch}}}
     responses:
-      '200':
-        description: Resulting privacy rules
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [privacy]
-              properties: { privacy: { $ref: '../components/schemas.yaml#/PrivacySettings' } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '405': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Resulting privacy rules, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/privacy/exceptions:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: List privacy exceptions
     operationId: listPrivacyExceptions
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: >-
-      People the owner let see a closed rule (allow) or hid an open one from
-      (deny), newest first. Without rule, exceptions of every rule.
+      People the owner let see a closed rule (allow) or hid an open one from (deny), newest first. Without
+      rule, exceptions of every rule.
     parameters:
-      - name: rule
-        in: query
-        required: false
-        schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+      - {name: rule, in: query, required: false, schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionRule}}
     responses:
-      '200':
-        description: Privacy exceptions
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [exceptions]
-              properties:
-                exceptions:
-                  type: array
-                  items: { $ref: '../components/schemas.yaml#/PrivacyException' }
-      '400': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Privacy exceptions, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionsResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/privacy/exceptions/{rule}/{userId}:
   parameters:
     - name: rule
       in: path
       required: true
-      schema: { $ref: '../components/schemas.yaml#/PrivacyExceptionRule' }
+      schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionRule}
     - name: userId
       in: path
       required: true
-      schema: { type: string, format: uuid }
+      schema: {type: string, format: uuid}
   put:
-    tags: [Users]
+    tags:
+      - Users
     summary: Add or switch a privacy exception
     operationId: setPrivacyException
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: >-
-      One exception per person and rule: putting someone on the allow list
-      moves them off the deny list. Order of the check: the owner themself,
-      the block list, the exception, the rule. Yourself is 400
+      One exception per person and rule: putting someone on the allow list moves them off the deny list. Order
+      of the check: the owner themself, the block list, the exception, the rule. Yourself is 400
       self_exception; an unknown or disabled user is 404 user_not_found.
     requestBody:
       required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [mode]
-            additionalProperties: false
-            properties: { mode: { $ref: '../components/schemas.yaml#/PrivacyExceptionMode' } }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionRequest}}}
     responses:
-      '200':
-        description: Saved exception
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [exception]
-              properties: { exception: { $ref: '../components/schemas.yaml#/PrivacyException' } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Saved exception, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidException}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed, self_exception]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   delete:
-    tags: [Users]
+    tags:
+      - Users
     summary: Remove a privacy exception
     operationId: removePrivacyException
-    security: *secure
+    security:
+      - {sessionCookie: []}
     description: Removing an exception that is not there is not an error.
     responses:
-      '200': { description: Removed }
-      '400': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Removed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/notifications:
   get:
-    {
-      deprecated: true,
-      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
-      tags: [Users],
-      summary: Get notification settings,
-      operationId: getNotifications,
-      security: *secure,
-      responses: { '200': { description: Notification settings } },
-    }
+    deprecated: true
+    description: >-
+      Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of
+      /users/settings. New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
+      until then this route retains its legacy behavior.
+    tags:
+      - Users
+    summary: Get notification settings
+    operationId: getNotifications
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Notification settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyNotificationResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    {
-      deprecated: true,
-      description: 'Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
-      tags: [Users],
-      summary: Update notification settings,
-      operationId: updateNotifications,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    deprecated: true
+    description: >-
+      Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of
+      /users/settings. New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
+      until then this route retains its legacy behavior.
+    tags:
+      - Users
+    summary: Update notification settings
+    operationId: updateNotifications
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyNotificationSettings}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyNotificationUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
 /users/sounds:
   get:
-    {
-      deprecated: true,
-      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
-      tags: [Users],
-      summary: Get sound settings,
-      operationId: getSounds,
-      security: *secure,
-      responses: { '200': { description: Sound settings } },
-    }
+    deprecated: true
+    description: >-
+      Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of
+      /users/settings. New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
+      until then this route retains its legacy behavior.
+    tags:
+      - Users
+    summary: Get sound settings
+    operationId: getSounds
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Sound settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySoundResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    {
-      deprecated: true,
-      description: 'Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.',
-      tags: [Users],
-      summary: Update sound settings,
-      operationId: updateSounds,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    deprecated: true
+    description: >-
+      Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of
+      /users/settings. New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
+      until then this route retains its legacy behavior.
+    tags:
+      - Users
+    summary: Update sound settings
+    operationId: updateSounds
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySoundSettings}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySoundUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
 /users/advanced-settings:
   get:
-    {
-      deprecated: true,
-      description: 'Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.',
-      tags: [Users],
-      summary: Get advanced settings,
-      operationId: getAdvancedSettings,
-      security: *secure,
-      responses: { '200': { description: Advanced settings } },
-    }
+    deprecated: true
+    description: >-
+      Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or
+      replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+    tags:
+      - Users
+    summary: Get advanced settings
+    operationId: getAdvancedSettings
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Advanced settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyAdvancedResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    {
-      deprecated: true,
-      description: 'Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.',
-      tags: [Users],
-      summary: Update advanced settings,
-      operationId: updateAdvancedSettings,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    deprecated: true
+    description: >-
+      Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or
+      replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+    tags:
+      - Users
+    summary: Update advanced settings
+    operationId: updateAdvancedSettings
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyAdvancedSettings}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyAdvancedUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
 /users/folders:
   get:
-    {
-      deprecated: true,
-      description: 'Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.',
-      tags: [Users],
-      summary: List chat folders,
-      operationId: listFolders,
-      security: *secure,
-      responses: { '200': { description: Folders } },
-    }
+    deprecated: true
+    description: >-
+      Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings
+      surface; no equivalent canonical preference or automatic migration is defined.
+    tags:
+      - Users
+    summary: List chat folders
+    operationId: listFolders
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Folders, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyFoldersResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   put:
-    {
-      deprecated: true,
-      description: 'Legacy folder API, deprecated by #498. Kept for compatibility only. Folders are outside the MVP settings surface; no equivalent canonical preference or automatic migration is defined.',
-      tags: [Users],
-      summary: Update chat folders,
-      operationId: updateFolders,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [folders],
-                      properties:
-                        {
-                          folders:
-                            { type: array, items: { type: object, additionalProperties: true } },
-                        },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    deprecated: true
+    description: >-
+      Dedicated replacement command: folders is a required non-null array; [] clears it. Current omitted/null
+      input clears instead of rejecting (#441). Items are opaque legacy JSON because no folder domain is
+      implemented; this does not add folders to MVP. Bulk omission/null is a no-op (#454).
+    tags:
+      - Users
+    summary: Update chat folders
+    operationId: updateFolders
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyFoldersRequest}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#441'
 /users/storage:
   get:
-    {
-      tags: [Users],
-      summary: Get storage usage,
-      operationId: getStorage,
-      security: *secure,
-      responses: { '200': { description: Storage usage and settings } },
-    }
+    tags:
+      - Users
+    summary: Get storage usage
+    operationId: getStorage
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Storage usage and settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/StorageResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Current usage reports own nondeleted stored message content character count; media/files/cache are zero
+      placeholders (#445), not verified physical bytes. Returns legacy storage preferences separately from
+      canonical account settings.
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/settings:
   put:
-    {
-      deprecated: true,
-      description: 'Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences.',
-      tags: [Users],
-      summary: Update storage settings,
-      operationId: updateStorageSettings,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    deprecated: true
+    description: >-
+      Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are
+      outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical
+      account preferences.
+    tags:
+      - Users
+    summary: Update storage settings
+    operationId: updateStorageSettings
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyStorageSettings}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/StorageSettingsUpdateResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#495'
+      - '#451'
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/cache:
   delete:
-    {
-      tags: [Users],
-      summary: Clear cache records,
-      operationId: clearStorageCache,
-      security: *secure,
-      responses: { '200': { description: Cache cleared } },
-    }
+    tags:
+      - Users
+    summary: Clear cache records
+    operationId: clearStorageCache
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Cache cleared, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Current implementation only ensures a settings row and acknowledges success; no cache is removed yet
+      (#446). Do not present this acknowledgement as reclaimed disk space.
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/all:
   delete:
-    {
-      tags: [Users],
-      summary: Delete all user data,
-      operationId: deleteAllUserData,
-      security: *secure,
-      responses: { '200': { description: Data deleted } },
-    }
+    tags:
+      - Users
+    summary: Delete all user data
+    operationId: deleteAllUserData
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Data deleted, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Current transaction deletes authored messages, chat memberships, settings, and both directions of
+      blocklist rows. It does not delete the auth account/profile, sessions, uploads/object storage, private
+      keys or all other resources. This is not a complete account erasure endpoint; #448 tracks the declared
+      wider scope. Any SQL failure rolls back this transaction.
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/export:
   get:
-    {
-      tags: [Users],
-      summary: Export user data,
-      operationId: exportUserData,
-      security: *secure,
-      responses:
-        {
-          '200':
-            {
-              description: JSON export,
-              content:
-                { application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } } },
-            },
-        },
-    }
+    tags:
+      - Users
+    summary: Export user data
+    operationId: exportUserData
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: JSON export, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserExport}}}, headers: {Content-Disposition: {schema: {type: string}, description: attachment; filename=craneapp_data.json}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Downloads craneapp_data.json: current profile, chat membership metadata, general settings and privacy
+      only. Message content, media/files, keys, subscriptions and other account resources are excluded; #447
+      tracks a full agreed archive. exportedAt is UTC RFC 3339; chat createdAt is currently PostgreSQL text.
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/blocked:
   get:
-    {
-      tags: [Users],
-      summary: List blocked users,
-      operationId: listBlockedUsers,
-      security: *secure,
-      responses: { '200': { description: Blocked users } },
-    }
+    tags:
+      - Users
+    summary: List blocked users
+    operationId: listBlockedUsers
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Blocked users, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserBlockedResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   post:
-    {
-      tags: [Users],
-      summary: Block a user,
-      operationId: blockUser,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [userId],
-                      properties: { userId: { type: string, format: uuid } },
-                    },
-                },
-            },
-        },
-      responses: { '201': { description: Blocked }, '409': *error },
-    }
+    tags:
+      - Users
+    summary: Block a user
+    operationId: blockUser
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/BlockUserRequest}}}
+    responses:
+      '201': {description: Blocked, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidBlock}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '409': {$ref: ../components/responses.yaml#/UserAlreadyBlocked}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed, self_block]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [user_not_found]
+      '405': [method_not_allowed]
+      '409': [already_blocked]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/blocked/{userId}:
   delete:
-    {
-      tags: [Users],
-      summary: Unblock a user,
-      operationId: unblockUser,
-      security: *secure,
-      parameters:
-        [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }],
-      responses: { '200': { description: Unblocked } },
-    }
+    tags:
+      - Users
+    summary: Unblock a user
+    operationId: unblockUser
+    security:
+      - {sessionCookie: []}
+    parameters:
+      - {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
+    responses:
+      '200': {description: Unblocked, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidParameter}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/passcode:
   get:
-    {
-      tags: [Users],
-      summary: Get passcode state,
-      operationId: getPasscodeState,
-      security: *secure,
-      responses: { '200': { description: Passcode state } },
-    }
+    tags:
+      - Users
+    summary: Get passcode state
+    operationId: getPasscodeState
+    security:
+      - {sessionCookie: []}
+    responses:
+      '200': {description: Passcode state, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeState}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/set:
   post:
-    {
-      tags: [Users],
-      summary: Set passcode,
-      operationId: setPasscode,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [passcode],
-                      properties: { passcode: { type: string, minLength: 4 } },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Set }, '400': *error },
-    }
+    tags:
+      - Users
+    summary: Set passcode
+    operationId: setPasscode
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SetPasscodeRequest}}}
+    responses:
+      '200': {description: Set, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/verify:
   post:
-    {
-      tags: [Users],
-      summary: Verify passcode,
-      operationId: verifyPasscode,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [passcode],
-                      properties: { passcode: { type: string } },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Verified }, '401': *error },
-    }
+    tags:
+      - Users
+    summary: Verify passcode
+    operationId: verifyPasscode
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeRequest}}}
+    responses:
+      '200': {description: Verified, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserPasscodeNotSet}
+      '401': {$ref: ../components/responses.yaml#/UserPasscodeUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, no_passcode_set]
+      '401': [missing_token, invalid_token, token_revoked, wrong_passcode]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/disable:
   post:
-    {
-      tags: [Users],
-      summary: Disable passcode,
-      operationId: disablePasscode,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [passcode],
-                      properties: { passcode: { type: string } },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Disabled } },
-    }
+    tags:
+      - Users
+    summary: Disable passcode
+    operationId: disablePasscode
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeRequest}}}
+    responses:
+      '200': {description: Disabled, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserPasscodeNotSet}
+      '401': {$ref: ../components/responses.yaml#/UserPasscodeUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, no_passcode_set]
+      '401': [missing_token, invalid_token, token_revoked, wrong_passcode]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/timeout:
   put:
-    {
-      tags: [Users],
-      summary: Update passcode timeout,
-      operationId: updatePasscodeTimeout,
-      security: *secure,
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      required: [timeout],
-                      properties: { timeout: { type: integer, minimum: 0 } },
-                    },
-                },
-            },
-        },
-      responses: { '200': { description: Updated } },
-    }
+    tags:
+      - Users
+    summary: Update passcode timeout
+    operationId: updatePasscodeTimeout
+    security:
+      - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeTimeoutRequest}}}
+    responses:
+      '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    description: >-
+      Chosen contract: required integer seconds >=0; 0 disables automatic re-lock, positive values are delays.
+      Invalid input must fail without a write. Current missing/zero/negative values are replaced with 60
+      (#442).
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [route_not_found]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+    x-contract-gaps:
+      - '#442'
+    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/devices:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: List active authenticated devices
-    description: Compatibility view of /auth/sessions with the same stable IDs and request-relative isCurrent, current session first.
+    description: >-
+      Compatibility view of /auth/sessions with the same stable IDs and request-relative isCurrent, current
+      session first.
     operationId: listDevices
-    security: *secure
+    security:
+      - {sessionCookie: []}
     responses:
-      '200':
-        description: Active devices
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/DevicesResponse' } } }
-      '401': *error
+      '200': {description: Active devices, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DevicesResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/devices/register:
   post:
-    tags: [Users]
+    tags:
+      - Users
     summary: Update the current session device metadata
-    description: Updates only the session identified by the request cookie and returns its existing canonical ID. Matching User-Agent values never merge sessions.
+    description: >-
+      Updates only the session identified by the request cookie and returns its existing canonical ID.
+      Matching User-Agent values never merge sessions.
     operationId: registerDevice
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
       required: true
-      content:
-        {
-          application/json:
-            {
-              schema:
-                {
-                  type: object,
-                  properties:
-                    {
-                      deviceName: { type: string },
-                      deviceType: { type: string },
-                      userAgent: { type: string },
-                      clientIP: { type: string },
-                    },
-                },
-            },
-        }
+      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeviceRegistrationRequest}}}
     responses:
-      '200':
-        description: Current session metadata updated
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/DeviceRegistrationResponse' } } }
-      '401': *error
+      '200': {description: Current session metadata updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeviceRegistrationResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidJson}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/push/vapid-key:
   get:
-    tags: [Users]
+    tags:
+      - Users
     summary: Web Push VAPID public key
     description: >-
-      Public VAPID key for PushManager.subscribe (applicationServerKey).
-      404 push_not_configured when push notifications are disabled on this
-      server.
+      Public VAPID key for PushManager.subscribe (applicationServerKey). 404 push_not_configured when push
+      notifications are disabled on this server.
     operationId: getPushVapidKey
-    security: *secure
+    security:
+      - {sessionCookie: []}
     responses:
-      '200':
-        description: Public key
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [publicKey]
-              properties:
-                publicKey: { type: string, description: 'Base64url, uncompressed P-256 point' }
-      '404': { description: Push notifications are not configured }
+      '200': {description: Public key, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushVapidResponse}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '404': {$ref: ../components/responses.yaml#/UserPushNotConfigured}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '404': [push_not_configured]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/push/subscriptions:
   post:
-    tags: [Users]
+    tags:
+      - Users
     summary: Register this device for Web Push
     description: >-
-      Saves the PushSubscription of the current device. Repeating the same
-      endpoint updates the keys; an endpoint registered by another account on
-      the same device moves to the current account. The endpoint must be an
-      https address of a known push service (Google, Mozilla, Apple,
-      Microsoft) — the server sends requests to it. At most 20 subscriptions
-      per user; older ones are evicted. Push payloads never contain message
-      text (end-to-end encryption): only the event kind, chat id, chat type
-      and title, the sender name and the recipient language.
+      Saves the PushSubscription of the current device. Repeating the same endpoint updates the keys; an
+      endpoint registered by another account on the same device moves to the current account. The endpoint
+      must be an https address of a known push service (Google, Mozilla, Apple, Microsoft) — the server sends
+      requests to it. At most 20 subscriptions per user; older ones are evicted. Push payloads never contain
+      message text (end-to-end encryption): only the event kind, chat id, chat type and title, the sender name
+      and the recipient language.
     operationId: savePushSubscription
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
       required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [endpoint, keys]
-            properties:
-              endpoint: { type: string, format: uri, maxLength: 2048 }
-              keys:
-                type: object
-                required: [p256dh, auth]
-                properties:
-                  p256dh: { type: string, description: 'Base64url, 65-byte P-256 public key' }
-                  auth: { type: string, description: 'Base64url, 16-byte auth secret' }
+      description: At most 8 KiB JSON body.
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionRequest}}}
     responses:
-      '200':
-        description: Saved; the id is sent over the socket in client_state so that a visible device gets no push
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [id]
-              properties:
-                id: { type: string, format: uuid }
-      '400': { description: invalid_json or invalid_push_subscription }
+      '200': {description: Saved; the id is sent over the socket in client_state so that a visible device gets no push, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionResponse}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidPushSubscription}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json, invalid_push_subscription]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
   delete:
-    tags: [Users]
+    tags:
+      - Users
     summary: Remove the Web Push subscription of this device
     operationId: deletePushSubscription
-    security: *secure
+    security:
+      - {sessionCookie: []}
     requestBody:
       required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [endpoint]
-            properties:
-              endpoint: { type: string }
+      description: At most 8 KiB JSON body.
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeletePushSubscriptionRequest}}}
     responses:
-      '204': { description: Removed (only the requester's own subscription) }
-      '400': { description: endpoint is required }
+      '204': {description: Removed (only the requester's own subscription)}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidJson}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/devices/terminate-all:
   post:
-    tags: [Users]
+    tags:
+      - Users
     summary: Revoke all other sessions
-    description: Immediately revokes tokens and closes sockets of every other active session. Preserves the request cookie session. Use /auth/logout-all to revoke every session including the caller.
+    description: >-
+      Immediately revokes tokens and closes sockets of every other active session. Preserves the request
+      cookie session. Use /auth/logout-all to revoke every session including the caller.
     operationId: terminateAllDevices
-    security: *secure
+    security:
+      - {sessionCookie: []}
     responses:
-      '200': { description: Other sessions revoked }
-      '401': *error
+      '200': {description: Other sessions revoked, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
 /users/devices/{sessionId}:
   delete:
-    tags: [Users]
+    tags:
+      - Users
     summary: Delete a device session
     description: >-
-      Revokes the canonical auth session and immediately invalidates its token and
-      WebSocket connections on all replicas. Other device metadata is preserved.
-      The current session cannot be terminated
-      through this endpoint: it returns 409 conflict_current_session — log out
-      to end the current session.
+      Revokes the canonical auth session and immediately invalidates its token and WebSocket connections on
+      all replicas. Other device metadata is preserved. The current session cannot be terminated through this
+      endpoint: it returns 409 conflict_current_session — log out to end the current session.
     operationId: deleteDevice
-    security: *secure
+    security:
+      - {sessionCookie: []}
     parameters:
-      [
-        {
-          name: sessionId,
-          description: Canonical ID from /auth/sessions or /users/devices.,
-          in: path,
-          required: true,
-          schema: { type: string, format: uuid },
-        },
-      ]
+      - {name: sessionId, description: Canonical ID from /auth/sessions or /users/devices., in: path, required: true, schema: {type: string, format: uuid}}
     responses:
-      '200':
-        description: Deleted
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [success]
-              properties: { success: { type: boolean, example: true } }
-      '400':
-        description: sessionId is not a valid UUID
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/Error' }
-      '404': *error
-      '409':
-        description: sessionId is the current session
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/Error' }
-            example:
-              {
-                code: conflict_current_session,
-                message: cannot terminate current session,
-              }
+      '200': {description: Deleted, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserInvalidSessionId}
+      '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
+      '403': {$ref: ../components/responses.yaml#/UserForbidden}
+      '404': {$ref: ../components/responses.yaml#/UserSessionNotFound}
+      '405': {$ref: ../components/responses.yaml#/UserMethodNotAllowed}
+      '409': {$ref: ../components/responses.yaml#/UserCurrentSessionConflict}
+      '429': {$ref: ../components/responses.yaml#/UserRateLimited}
+      '500': {$ref: ../components/responses.yaml#/UserInternalError}
+      '502': {$ref: ../components/responses.yaml#/UserBadGateway}
+      '503': {$ref: ../components/responses.yaml#/UserUnavailable}
+    x-error-codes:
+      '400': [invalid_request, validation_failed]
+      '401': [missing_token, invalid_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [not_found]
+      '405': [method_not_allowed]
+      '409': [conflict_current_session]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready]
