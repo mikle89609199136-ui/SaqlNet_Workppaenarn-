@@ -25,6 +25,7 @@ import { ContextMenu } from '@/shared/ui/ContextMenu';
 import { Icon } from '@/shared/ui/Icon';
 import type { TIconTypes } from '@/types';
 import { isLinkShortcut, shortcutHint } from './formatShortcuts';
+import { $transformSelectionCase, type TTextCaseMode } from './lexicalRichText';
 import { LinkDialog } from './LinkDialog';
 
 interface IFormatItem {
@@ -80,6 +81,10 @@ interface IMenuState {
   x: number;
   y: number;
   view: 'main' | 'format';
+}
+
+interface IContextMenuEvent extends MouseEvent {
+  menuView?: 'main' | 'format';
 }
 
 interface ISelectionInfo {
@@ -165,7 +170,9 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
       if (!editor.isEditable()) return;
       event.preventDefault();
       setInfo(readSelection());
-      setMenu({ x: event.clientX, y: event.clientY, view: 'main' });
+      const view: 'main' | 'format' =
+        (event as IContextMenuEvent).menuView === 'format' ? 'format' : 'main';
+      setMenu({ x: event.clientX, y: event.clientY, view });
     };
 
     return editor.registerRootListener((root, previous) => {
@@ -252,6 +259,8 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
       $setBlocksType(selection, () => (info.quote ? $createParagraphNode() : $createQuoteNode()));
     });
 
+  const changeCase = (mode: TTextCaseMode) => run(() => $transformSelectionCase(mode));
+
   const canPaste =
     typeof navigator !== 'undefined' &&
     Boolean(navigator.clipboard?.readText || navigator.clipboard?.read);
@@ -302,6 +311,28 @@ export function ComposerContextMenu({ onPasteFiles }: Props = {}) {
               onClick={toggleQuote}
             >
               {t('format.quote', 'Цитата')}
+            </ContextMenu.Item>
+            <ContextMenu.Separator />
+            <ContextMenu.Item
+              disabled={!info.hasText}
+              icon={<Icon name="type" />}
+              onClick={() => changeCase('uppercase')}
+            >
+              {t('format.uppercase', 'ВЕРХНИЙ РЕГИСТР')}
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              disabled={!info.hasText}
+              icon={<Icon name="type" />}
+              onClick={() => changeCase('lowercase')}
+            >
+              {t('format.lowercase', 'нижний регистр')}
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              disabled={!info.hasText}
+              icon={<Icon name="type" />}
+              onClick={() => changeCase('capitalize')}
+            >
+              {t('format.capitalize', 'С заглавной буквы')}
             </ContextMenu.Item>
             <ContextMenu.Separator />
             <ContextMenu.Item icon={<Icon name="clearFormatting" />} onClick={clearFormatting}>

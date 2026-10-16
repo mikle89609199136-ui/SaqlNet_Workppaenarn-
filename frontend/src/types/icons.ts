@@ -29,6 +29,10 @@ export type TIconTypes =
   | 'monitor'
   | 'palette'
   | 'phone'
+  | 'phoneIncoming'
+  | 'phoneOutgoing'
+  | 'phoneMissed'
+  | 'phoneOff'
   | 'pin'
   | 'reply'
   | 'search'
@@ -43,6 +47,7 @@ export type TIconTypes =
   | 'volume'
   | 'volumeMute'
   | 'maximize'
+  | 'minimize'
   | 'fastForward'
   | 'rewind'
   | 'undo'
@@ -94,4 +99,7 @@ export type TIconTypes =
   | 'devices'
   | 'ban'
   | 'laptop'
-  | 'smartphone';
+  | 'smartphone'
+  | 'more'
+  | 'heart'
+  | 'sticker';

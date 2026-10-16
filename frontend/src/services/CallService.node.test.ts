@@ -74,4 +74,43 @@ describe('CallService', () => {
     expect(mockGet).toHaveBeenCalledWith('/calls/ice-servers');
     expect(result.hasTurn).toBe(false);
   });
+
+  it('запрашивает историю звонков с параметрами пагинации и фильтрации (#722)', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        calls: [
+          {
+            id: 'call-1',
+            roomId: 'room-1',
+            chatId: 'chat-1',
+            peerId: 'peer-1',
+            direction: 'incoming',
+            kind: 'audio',
+            status: 'answered',
+            startedAt: '2026-10-09T12:00:00Z',
+            durationSeconds: 120,
+          },
+        ],
+        nextCursor: 'cursor-2',
+        hasMore: true,
+      },
+    });
+
+    const result = await service.getCallHistory({
+      cursor: 'cursor-1',
+      limit: 20,
+      kind: 'audio',
+      status: 'answered',
+    });
+
+    expect(mockGet).toHaveBeenCalledWith('/calls/history', {
+      cursor: 'cursor-1',
+      limit: '20',
+      kind: 'audio',
+      status: 'answered',
+    });
+    expect(result.calls).toHaveLength(1);
+    expect(result.nextCursor).toBe('cursor-2');
+    expect(result.hasMore).toBe(true);
+  });
 });

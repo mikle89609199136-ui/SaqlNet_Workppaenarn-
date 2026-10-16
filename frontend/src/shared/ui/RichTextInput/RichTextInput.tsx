@@ -11,6 +11,7 @@ import {
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   PASTE_COMMAND,
+  TextNode,
   type EditorThemeClasses,
 } from 'lexical';
 import { LinkNode } from '@lexical/link';
@@ -44,6 +45,7 @@ export interface IRichTextInputHandle {
   clear(): void;
   /** Вставить текст на место курсора (эмодзи из панели, #824). */
   insertText(text: string): void;
+  contains(node: Node | null): boolean;
 }
 
 interface Props {
@@ -93,6 +95,7 @@ function HandlePlugin({ handleRef }: { handleRef: React.Ref<IRichTextInputHandle
     handleRef,
     () => ({
       getValue: () => editor.getEditorState().read($readRichText),
+      contains: (node) => Boolean(node && editor.getRootElement()?.contains(node)),
       setValue: (value) =>
         // discrete — чтобы сразу после записи чтение видело новое значение.
         editor.update(
@@ -230,6 +233,20 @@ function PasteFilesPlugin({ onPasteFiles }: { onPasteFiles?: (files: File[]) => 
   return null;
 }
 
+function StripInlineStylesPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(
+    () =>
+      editor.registerNodeTransform(TextNode, (node) => {
+        if (node.getStyle()) node.setStyle('');
+      }),
+    [editor]
+  );
+
+  return null;
+}
+
 export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function RichTextInput(
   { ariaLabel, placeholder, disabled = false, className, onPasteFiles, onChange, onSubmit },
   ref
@@ -272,6 +289,7 @@ export const RichTextInput = forwardRef<IRichTextInputHandle, Props>(function Ri
       <EnterPlugin onSubmit={onSubmit} />
       <ShortcutsPlugin />
       <PasteFilesPlugin onPasteFiles={onPasteFiles} />
+      <StripInlineStylesPlugin />
       {onChange && (
         <OnChangePlugin
           ignoreSelectionChange

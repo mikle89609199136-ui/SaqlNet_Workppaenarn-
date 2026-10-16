@@ -105,5 +105,11 @@ export const API_ENDPOINTS = {
   CALL_ROOMS: '/calls/rooms',
   CALL_ROOM: (id: string) => `/calls/rooms/${id}`,
   CALL_ICE_SERVERS: '/calls/ice-servers',
+  CALL_HISTORY: '/calls/history',
   EMOJIS: '/emojis',
+  STICKER_PACKS: '/stickers/packs',
+  STICKER_PACK: (packId: string) => `/stickers/packs/${packId}`,
+  GIFS: '/gifs',
+  GIFS_FAVORITES: '/gifs/favorites',
+  GIF_FAVORITE: (gifId: string) => `/gifs/${gifId}/favorite`,
 };

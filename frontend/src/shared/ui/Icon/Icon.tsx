@@ -39,6 +39,7 @@ import {
   Lock,
   LogOut,
   Maximize,
+  Minimize2,
   Megaphone,
   Menu,
   MessageCircle,
@@ -48,6 +49,10 @@ import {
   Pen,
   Pencil,
   Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PhoneMissed,
+  PhoneOff,
   Pin,
   Pipette,
   Play,
@@ -99,6 +104,9 @@ import {
   Ban,
   Laptop,
   Smartphone,
+  MoreHorizontal,
+  Heart,
+  Sticker,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -145,12 +153,17 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   lock: Lock,
   logOut: LogOut,
   maximize: Maximize,
+  minimize: Minimize2,
   monitor: Monitor,
   palette: Palette,
   pause: Pause,
   play: Play,
   warning: AlertTriangle,
   phone: Phone,
+  phoneIncoming: PhoneIncoming,
+  phoneOutgoing: PhoneOutgoing,
+  phoneMissed: PhoneMissed,
+  phoneOff: PhoneOff,
   pin: Pin,
   reply: Reply,
   rewind: Rewind,
@@ -205,6 +218,9 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   ban: Ban,
   laptop: Laptop,
   smartphone: Smartphone,
+  more: MoreHorizontal,
+  heart: Heart,
+  sticker: Sticker,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Avatar } from './Avatar';
 
@@ -71,5 +71,66 @@ describe('аватарка', () => {
 
     const dot = container.querySelector('.bg-ok');
     expect(dot).toHaveClass('size-4', 'border-2', 'border-sheet');
+  });
+
+  it('при ошибке загрузки изображения скрывает img и показывает заглушку с буквой и фоном tone (#1005)', () => {
+    const { container } = render(<Avatar id="u-anna" name="Анна" src="/broken-avatar.png" />);
+
+    const img = container.querySelector('img');
+    expect(img).toBeInTheDocument();
+
+    fireEvent.error(img!);
+
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(circle(container)).toHaveTextContent('А');
+    expect(circle(container).className).toMatch(/bg-av-\d/);
+  });
+
+  it('смена src на новый сбрасывает ошибку и повторно пытается загрузить img (#1005)', () => {
+    const { container, rerender } = render(
+      <Avatar id="u-anna" name="Анна" src="/broken-avatar.png" />
+    );
+
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(circle(container)).toHaveTextContent('А');
+
+    rerender(<Avatar id="u-anna" name="Анна" src="/new-avatar.png" />);
+
+    const newImg = container.querySelector('img');
+    expect(newImg).toBeInTheDocument();
+    expect(newImg).toHaveAttribute('src', '/new-avatar.png');
+    expect(container).not.toHaveTextContent('А');
+  });
+
+  it('при ошибке загрузки в режиме shape="grid" показывает svg GridMark и фон tone (#1005)', () => {
+    const { container } = render(
+      <Avatar id="u-anna" name="Анна" shape="grid" src="/broken-avatar.png" />
+    );
+
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(container.querySelector('svg')).toBeInTheDocument();
+    expect(circle(container).className).toMatch(/bg-av-\d/);
+  });
+
+  it('смена src на null, а затем повторно на тот же url пробует загрузить изображение заново (#1005)', () => {
+    const { container, rerender } = render(
+      <Avatar id="u-anna" name="Анна" src="/retry-avatar.png" />
+    );
+
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+
+    rerender(<Avatar id="u-anna" name="Анна" src={null} />);
+    expect(circle(container)).toHaveTextContent('А');
+
+    rerender(<Avatar id="u-anna" name="Анна" src="/retry-avatar.png" />);
+    expect(container.querySelector('img')).toBeInTheDocument();
   });
 });

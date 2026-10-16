@@ -112,15 +112,10 @@ func newService(db *sql.DB) *user.Service {
 }
 
 // createTestUser inserts a minimal auth.users row and returns its UUID as
-// text.
-//
-// All NOT NULL columns without DEFAULT must be supplied explicitly:
-//   - username      (VARCHAR(32) NOT NULL)
-//   - password_hash (TEXT NOT NULL)
-//   - first_name    (VARCHAR(64) NOT NULL)
-//
-// last_name has DEFAULT ”, id has DEFAULT gen_random_uuid(), and the
-// timestamp columns have DEFAULT NOW(), so they can be omitted.
+// text. Column list mirrors the NOT NULL constraints introduced by
+// migrations 0001_auth.sql (username, password_hash, first_name) and
+// extended by 0025_username_changes.sql (trigger auth.ensure_username_claim
+// auto-populates auth.username_registry on insert).
 func createTestUser(t *testing.T, db *sql.DB, username string) string {
 	t.Helper()
 	var id string
@@ -128,7 +123,7 @@ func createTestUser(t *testing.T, db *sql.DB, username string) string {
 		INSERT INTO auth.users (username, password_hash, first_name)
 		VALUES ($1, $2, $3)
 		RETURNING id::text
-	`, username, "test-password-hash", username).Scan(&id)
+	`, username, "test-password-hash", "Test").Scan(&id)
 	if err != nil {
 		t.Fatalf("insert test user %q: %v", username, err)
 	}

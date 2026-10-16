@@ -28,6 +28,12 @@ import (
 // as read-only afterwards.
 var TestDB *sql.DB
 
+// TestDSN is the connection string for the shared container. It is assigned
+// exactly once in TestMain, before m.Run, and is treated as read-only
+// afterwards. Tests that need a raw pq connection (e.g. LISTEN/NOTIFY)
+// must use it instead of opening their own.
+var TestDSN string
+
 // TestMain wires up the shared PostgreSQL container, runs all tests in the
 // package, and tears the container down. Any setup failure aborts the run
 // with a non-zero exit code.
@@ -60,10 +66,16 @@ func runTests(m *testing.M) (int, error) {
 	}
 	defer terminateContainer(container)
 
-	db, err := openAndMigrate(setupCtx, container)
+	dsn, err := container.ConnectionString(setupCtx, "sslmode=disable")
+	if err != nil {
+		return 0, fmt.Errorf("get connection string: %w", err)
+	}
+
+	db, err := openAndMigrate(setupCtx, dsn)
 	if err != nil {
 		return 0, err
 	}
+
 	defer func() { _ = db.Close() }()
 
 	tables, err := discoverTables(setupCtx, db)
@@ -75,6 +87,7 @@ func runTests(m *testing.M) (int, error) {
 	// Publish the handle only after setup fully succeeds, so a failed run
 	// never leaves a half-initialised TestDB behind.
 	TestDB = db
+	TestDSN = dsn
 
 	return m.Run(), nil
 }
@@ -98,15 +111,10 @@ func startPostgres(ctx context.Context) (*postgres.PostgresContainer, error) {
 	return container, nil
 }
 
-// openAndMigrate connects to the container, configures the connection pool,
-// and applies all SQL migrations from migrationsql.FS. The caller receives a
-// ready-to-use *sql.DB and is responsible for closing it.
-func openAndMigrate(ctx context.Context, container *postgres.PostgresContainer) (*sql.DB, error) {
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		return nil, fmt.Errorf("get connection string: %w", err)
-	}
-
+// openAndMigrate connects to the database at dsn, configures the connection
+// pool, and applies all SQL migrations from migrationsql.FS. The caller
+// receives a ready-to-use *sql.DB and is responsible for closing it.
+func openAndMigrate(ctx context.Context, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)

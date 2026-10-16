@@ -34,11 +34,23 @@ async function select(field: HTMLElement, start: number, end: number) {
   });
 }
 
-async function setup(value: string | IRichText, start: number, end: number) {
+async function setup(
+  value: string | IRichText,
+  start: number,
+  end: number,
+  menuView: 'main' | 'format' = 'main'
+) {
   const view = renderInput();
   await typeIntoComposer(view.field, value);
   await select(view.field, start, end);
-  fireEvent.contextMenu(view.field, { clientX: 20, clientY: 20 });
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: 20,
+    clientY: 20,
+  });
+  Object.defineProperty(event, 'menuView', { value: menuView });
+  view.field.dispatchEvent(event);
   return view;
 }
 
@@ -431,5 +443,68 @@ describe('контекстное меню поля ввода (#656)', () => {
         writable: true,
       });
     }
+  });
+
+  describe('изменение регистра в меню форматирования (#1000)', () => {
+    it('пункт «ВЕРХНИЙ РЕГИСТР» переводит выделенный фрагмент в заглавные буквы', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      expect(screen.getByRole('menu', { name: 'Форматирование' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).not.toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).not.toBeDisabled();
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('ТЕСТОВОЕ СООБЩЕНИЕ');
+    });
+
+    it('пункт «нижний регистр» переводит выделенный фрагмент в строчные буквы', async () => {
+      const { handle } = await setup('ТЕСТОВОЕ СООБЩЕНИЕ', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /нижний регистр/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('тестовое сообщение');
+    });
+
+    it('пункт «С заглавной буквы» капитализирует слова выделенного фрагмента', async () => {
+      const { handle } = await setup('тестовое сообщение', 0, 18);
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /С заглавной буквы/ }));
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(handle.current?.getValue().text).toBe('Тестовое Сообщение');
+    });
+
+    it('сохраняет форматирование узлов при применении регистра через меню', async () => {
+      const { handle } = await setup(
+        {
+          text: 'жирный текст',
+          entities: [{ type: 'bold', offset: 0, length: 6 }],
+        },
+        0,
+        6
+      );
+
+      await userEvent.click(screen.getByRole('menuitem', { name: /Форматирование/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ }));
+
+      expect(handle.current?.getValue()).toEqual({
+        text: 'ЖИРНЫЙ текст',
+        entities: [{ type: 'bold', offset: 0, length: 6 }],
+      });
+    });
+
+    it('пункты изменения регистра отключены при пустом выделении', async () => {
+      await setup('тестовое сообщение', 0, 0, 'format');
+      expect(screen.getByRole('menuitem', { name: /ВЕРХНИЙ РЕГИСТР/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /нижний регистр/ })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: /С заглавной буквы/ })).toBeDisabled();
+    });
   });
 });

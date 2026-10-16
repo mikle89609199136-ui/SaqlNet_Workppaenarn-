@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RECONNECT_TIMEOUT_MS, useCallStore } from './callStore';
+import { RECONNECT_TIMEOUT_MS, useCallStore, _resetCancelledRoomsForTest } from './callStore';
 import { services } from '@/services/serviceContainer';
 import { startRingtone, stopRingtone } from '@/services/ringtone';
-import { useProfileStore, blockedUsersQuery } from '@/entities/user';
+import { useProfileStore, blockedUsersQuery, userKeys } from '@/entities/user';
+import { chatKeys } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
 
@@ -20,8 +21,70 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetCancelledRoomsForTest();
     services.userService.listBlocked = vi.fn().mockResolvedValue([]);
     queryClient.setQueryData(blockedUsersQuery().queryKey, []);
+
+    vi.spyOn(services.callService, 'getRoom').mockImplementation(async (roomId) => ({
+      success: true,
+      room: {
+        id: roomId,
+        type: 'p2p',
+        callKind: 'audio',
+        // Общая комната на всех звонящих: чат не задан — личный чат ищется по звонящему.
+        chatId: '',
+        title: '',
+        hostId: 'caller-1',
+        participants: [
+          { userId: 'caller-1' },
+          { userId: 'caller-2' },
+          { userId: 'second-caller' },
+          { userId: 'caller-a' },
+          { userId: 'allowed-user' },
+          { userId: 'blocked-user-1' },
+          { userId: 'blocked-user-2' },
+          { userId: 'bob' },
+          { userId: 'new-caller' },
+          { userId: 'caller-mute' },
+          { userId: 'blocked-user' },
+          { userId: 'server-blocked' },
+          { userId: 'caller-fresh' },
+        ],
+      },
+      iceServers: [],
+      maxParticipants: 2,
+    }));
+
+    queryClient.setQueryData(chatKeys.list(), [
+      { id: 'chat-caller-1', type: 'private', peerId: 'caller-1', title: 'Анна' },
+      { id: 'chat-caller-2', type: 'private', peerId: 'caller-2', title: 'Борис' },
+      { id: 'chat-second', type: 'private', peerId: 'second-caller', title: 'Второй' },
+      { id: 'chat-caller-a', type: 'private', peerId: 'caller-a', title: 'Алексей' },
+      { id: 'chat-allowed', type: 'private', peerId: 'allowed-user', title: 'Разрешённый' },
+      {
+        id: 'chat-blocked-1',
+        type: 'private',
+        peerId: 'blocked-user-1',
+        title: 'Заблокированный 1',
+      },
+      {
+        id: 'chat-blocked-2',
+        type: 'private',
+        peerId: 'blocked-user-2',
+        title: 'Заблокированный 2',
+      },
+      { id: 'chat-bob', type: 'private', peerId: 'bob', title: 'Боб' },
+      { id: 'chat-new-caller', type: 'private', peerId: 'new-caller', title: 'Новый' },
+      { id: 'chat-caller-mute', type: 'private', peerId: 'caller-mute', title: 'Без звука' },
+      {
+        id: 'chat-blocked-user',
+        type: 'private',
+        peerId: 'blocked-user',
+        title: 'Заблокированный',
+      },
+      { id: 'chat-server-blocked', type: 'private', peerId: 'server-blocked', title: 'Спаммер' },
+      { id: 'chat-caller-fresh', type: 'private', peerId: 'caller-fresh', title: 'Свежий' },
+    ]);
 
     useCallStore.setState({
       fsm: {
@@ -63,8 +126,8 @@ describe('useCallStore', () => {
     });
   });
 
-  it('обрабатывает входящий вызов в состоянии idle и запускает рингтон', () => {
-    useCallStore.getState().handleIncoming({
+  it('обрабатывает входящий вызов в состоянии idle и запускает рингтон', async () => {
+    await useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
       fromName: 'Анна',
@@ -109,8 +172,8 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.roomId).toBe('existing-room');
   });
 
-  it('принимает входящий звонок и отправляет accept и call_join', () => {
-    useCallStore.getState().handleIncoming({
+  it('принимает входящий звонок и отправляет accept и call_join', async () => {
+    await useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
       kind: 'video',
@@ -134,8 +197,8 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.state).toBe('connecting');
   });
 
-  it('отклоняет входящий вызов и останавливает рингтон', () => {
-    useCallStore.getState().handleIncoming({
+  it('отклоняет входящий вызов и останавливает рингтон', async () => {
+    await useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
       kind: 'video',
@@ -226,8 +289,8 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.state).toBe('ended');
   });
 
-  it('повторный call_incoming по той же комнате не отправляет busy и не сбрасывает вызов', () => {
-    useCallStore.getState().handleIncoming({
+  it('повторный call_incoming по той же комнате не отправляет busy и не сбрасывает вызов', async () => {
+    await useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
       kind: 'video',
@@ -237,7 +300,7 @@ describe('useCallStore', () => {
     mockSend.mockClear();
 
     // Приходит дубликат того же incoming события
-    useCallStore.getState().handleIncoming({
+    await useCallStore.getState().handleIncoming({
       roomId: 'room-1',
       from: 'caller-1',
       kind: 'video',
@@ -368,7 +431,7 @@ describe('useCallStore', () => {
     );
   });
 
-  it('отложенный сброс предыдущего звонка не сбрасывает начавшийся новый звонок', () => {
+  it('отложенный сброс предыдущего звонка не сбрасывает начавшийся новый звонок', async () => {
     vi.useFakeTimers();
 
     useCallStore.setState({
@@ -385,7 +448,7 @@ describe('useCallStore', () => {
 
     // Через 200 мс (до истечения 800 мс таймаута) приходит новый входящий вызов
     vi.advanceTimersByTime(200);
-    useCallStore.getState().handleIncoming({
+    await useCallStore.getState().handleIncoming({
       roomId: 'new-room',
       from: 'new-caller',
       kind: 'audio',
@@ -416,6 +479,7 @@ describe('useCallStore', () => {
     useCallStore.getState().handleInviteResponse({
       type: 'call_invite_response',
       roomId: 'room-invite',
+      from: 'peer-invite',
       accepted: false,
       reason: 'busy',
     });
@@ -424,7 +488,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.endReason).toBe('busy');
   });
 
-  it('не запускает рингтон, если звуки выключены в настройках профиля', async () => {
+  it('запускает рингтон, если выключены только звуки сообщений sounds: false (#1002)', async () => {
     useProfileStore.setState({
       settings: {
         sounds: false,
@@ -433,6 +497,24 @@ describe('useCallStore', () => {
 
     await useCallStore.getState().handleIncoming({
       roomId: 'room-mute',
+      from: 'caller-mute',
+      kind: 'audio',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(startRingtone).toHaveBeenCalledTimes(1);
+  });
+
+  it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
+    useProfileStore.setState({
+      settings: {
+        sounds: true,
+        callSounds: false,
+      } as any,
+    });
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-mute-2',
       from: 'caller-mute',
       kind: 'audio',
     });
@@ -461,6 +543,23 @@ describe('useCallStore', () => {
 
   it('загружает список заблокированных с сервера, если кеш пуст, и отсекает заблокированного', async () => {
     queryClient.clear();
+    queryClient.setQueryData(chatKeys.list(), [
+      { id: 'chat-server-blocked', type: 'private', peerId: 'server-blocked', title: 'Спаммер' },
+    ]);
+    vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+      success: true,
+      room: {
+        id: 'room-uncached',
+        type: 'p2p',
+        callKind: 'audio',
+        chatId: 'chat-server-blocked',
+        title: '',
+        hostId: 'server-blocked',
+        participants: [{ userId: 'server-blocked' }],
+      },
+      iceServers: [],
+      maxParticipants: 2,
+    });
     services.userService.listBlocked = vi
       .fn()
       .mockResolvedValue([{ id: 'server-blocked', username: 'spammer' }]);
@@ -543,6 +642,7 @@ describe('useCallStore', () => {
     useCallStore.getState().handleInviteResponse({
       type: 'call_invite_response',
       roomId: 'busy-room',
+      from: 'peer-busy',
       accepted: false,
       reason: 'busy',
     });
@@ -566,6 +666,7 @@ describe('useCallStore', () => {
     useCallStore.getState().handleInviteResponse({
       type: 'call_invite_response',
       roomId: 'declined-room',
+      from: 'peer-declined',
       accepted: false,
       reason: 'declined',
     });
@@ -591,6 +692,7 @@ describe('useCallStore', () => {
     useCallStore.getState().handleInviteResponse({
       type: 'call_invite_response',
       roomId: 'room-status',
+      from: 'peer-status',
       accepted: false,
       reason: 'busy',
     });
@@ -683,6 +785,23 @@ describe('useCallStore', () => {
   it('отправляет busy, если во время асинхронной проверки чёрного списка начался другой звонок', async () => {
     let resolveBlockedQuery!: (val: any) => void;
     queryClient.clear();
+    queryClient.setQueryData(chatKeys.list(), [
+      { id: 'chat-caller-a', type: 'private', peerId: 'caller-a', title: 'Алексей' },
+    ]);
+    vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+      success: true,
+      room: {
+        id: 'room-race',
+        type: 'p2p',
+        callKind: 'audio',
+        chatId: 'chat-caller-a',
+        title: '',
+        hostId: 'caller-a',
+        participants: [{ userId: 'caller-a' }],
+      },
+      iceServers: [],
+      maxParticipants: 2,
+    });
     services.userService.listBlocked = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -696,6 +815,9 @@ describe('useCallStore', () => {
       from: 'caller-a',
       kind: 'audio',
     });
+
+    // Даём микротаскам дойти до проверки чёрного списка
+    for (let i = 0; i < 5; i++) await Promise.resolve();
 
     // Пока проверка идёт, пользователь сам начинает исходящий звонок
     useCallStore.setState({
@@ -724,7 +846,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.roomId).toBe('my-outgoing');
   });
 
-  it('отложенный RESET_TO_IDLE от отменённого исходящего не сбрасывает новый звонок', () => {
+  it('отложенный RESET_TO_IDLE от отменённого исходящего не сбрасывает новый звонок', async () => {
     vi.useFakeTimers();
 
     useCallStore.setState({
@@ -742,7 +864,7 @@ describe('useCallStore', () => {
 
     // Через 100мс начинается новый входящий звонок
     vi.advanceTimersByTime(100);
-    useCallStore.getState().handleIncoming({
+    await useCallStore.getState().handleIncoming({
       roomId: 'incoming-fresh',
       from: 'caller-fresh',
       kind: 'audio',
@@ -776,6 +898,7 @@ describe('useCallStore', () => {
     // Собеседник принял вызов
     useCallStore.getState().handleInviteResponse({
       roomId: 'room-accepted-test',
+      from: 'peer-1',
       accepted: true,
     });
 
@@ -1002,39 +1125,110 @@ describe('useCallStore', () => {
         expect(fakeSessionStorage.removeItem).toHaveBeenCalledWith('crane_active_call_session');
       });
 
-      it('restoreActiveSession восстанавливает FSM в reconnecting и запускает таймаут 25с', () => {
+      const savedSession = (extra: Record<string, unknown> = {}) =>
         mockStorage.set(
           'crane_active_call_session',
           JSON.stringify({
             roomId: 'saved-room-1',
             peerId: 'saved-peer-1',
             peerName: 'Боб',
+            peerAvatar: null,
             callKind: 'video',
             roomType: 'p2p',
             callStartedAt: 1234567,
             isCaller: false,
+            chatId: 'saved-chat-1',
+            title: null,
             savedAt: Date.now(),
+            ...extra,
           })
         );
 
+      afterEach(() => {
+        useCallStore.getState().dismissResumableCall();
+        vi.useRealTimers();
+      });
+
+      it('после перезагрузки в звонок не входит сам — предлагает вернуться, пока собеседник ждёт', () => {
+        vi.useFakeTimers();
+        savedSession({ leftAt: Date.now() - 5_000 });
         mockSend.mockClear();
+
         const restored = useCallStore.getState().restoreActiveSession();
 
         expect(restored).toBe(true);
         const state = useCallStore.getState();
+        expect(state.fsm.state).toBe('idle');
+        expect(state.activeCall).toBeNull();
+        expect(state.resumableCall).toMatchObject({
+          roomId: 'saved-room-1',
+          peerId: 'saved-peer-1',
+          peerName: 'Боб',
+          callKind: 'video',
+        });
+        expect(state.resumableCall?.expiresAt).toBe(Date.now() - 5_000 + RECONNECT_TIMEOUT_MS);
+        expect(mockSend).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'call_join' }));
+
+        // Собеседник перестал ждать — предложение исчезает, сессия стёрта.
+        vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS - 5_000);
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+      });
+
+      it('ушли со страницы давно — собеседник уже не ждёт, предлагать нечего', () => {
+        savedSession({ leftAt: Date.now() - RECONNECT_TIMEOUT_MS - 1 });
+
+        expect(useCallStore.getState().restoreActiveSession()).toBe(false);
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+      });
+
+      it('«Вернуться» — звонок восстанавливается: reconnecting, таймаут 25 с и call_join', () => {
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+        mockSend.mockClear();
+
+        useCallStore.getState().resumeCall();
+
+        const state = useCallStore.getState();
+        expect(state.resumableCall).toBeNull();
         expect(state.fsm.state).toBe('reconnecting');
         expect(state.fsm.roomId).toBe('saved-room-1');
         expect(state.fsm.peerId).toBe('saved-peer-1');
         expect(state.activeCall?.roomId).toBe('saved-room-1');
         expect(state.reconnectTimeoutTimer).not.toBeNull();
-
-        // По сокету отправлен call_join
         expect(mockSend).toHaveBeenCalledWith(
-          expect.objectContaining({
-            type: 'call_join',
-            roomId: 'saved-room-1',
-          })
+          expect.objectContaining({ type: 'call_join', roomId: 'saved-room-1' })
         );
+      });
+
+      it('«Не возвращаться» — предложение и сессия убраны, в звонок не входит', () => {
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+        mockSend.mockClear();
+
+        useCallStore.getState().dismissResumableCall();
+
+        expect(useCallStore.getState().resumableCall).toBeNull();
+        expect(useCallStore.getState().fsm.state).toBe('idle');
+        expect(mockStorage.has('crane_active_call_session')).toBe(false);
+        expect(mockSend).not.toHaveBeenCalled();
+      });
+
+      it('начался другой звонок — предложение вернуться снимается, а сессию нового его таймер не стирает', () => {
+        vi.useFakeTimers();
+        savedSession();
+        useCallStore.getState().restoreActiveSession();
+
+        useCallStore.getState().dispatch({
+          type: 'RECEIVE_INCOMING',
+          payload: { roomId: 'new-room', from: 'peer-new', fromName: 'Новый', kind: 'audio' },
+        });
+        expect(useCallStore.getState().resumableCall).toBeNull();
+
+        savedSession({ roomId: 'new-room' });
+        vi.advanceTimersByTime(RECONNECT_TIMEOUT_MS + 1_000);
+        expect(mockStorage.has('crane_active_call_session')).toBe(true);
       });
 
       it('restoreActiveSession возвращает false, если хранилище пусто', () => {
@@ -1042,6 +1236,383 @@ describe('useCallStore', () => {
         expect(restored).toBe(false);
         expect(useCallStore.getState().fsm.state).toBe('idle');
       });
+    });
+  });
+
+  describe('безопасность входящих и исходящих вызовов (#854)', () => {
+    it('имя и аватар звонящего берутся из профиля / чата, поддельный fromName из invite игнорируется', async () => {
+      queryClient.setQueryData(userKeys.profile('caller-alice'), {
+        id: 'caller-alice',
+        firstName: 'Алиса',
+        lastName: 'Иванова',
+        username: 'alice',
+        avatarUrl: 'https://example.com/alice.png',
+      });
+      queryClient.setQueryData(chatKeys.list(), [
+        {
+          id: 'chat-alice',
+          type: 'private',
+          peerId: 'caller-alice',
+          title: 'Алиса Иванова',
+          avatarUrl: 'https://example.com/alice.png',
+        },
+      ]);
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-1',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-alice',
+          title: '',
+          hostId: 'caller-alice',
+          participants: [{ userId: 'caller-alice' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      await useCallStore.getState().handleIncoming({
+        roomId: 'room-1',
+        from: 'caller-alice',
+        fromName: 'Взломщик',
+        fromAvatar: 'https://example.com/hacker.png',
+        title: 'Ограбление',
+        kind: 'audio',
+      });
+
+      const state = useCallStore.getState();
+      expect(state.fsm.state).toBe('incoming');
+      expect(state.incomingCall?.fromName).toBe('Алиса Иванова');
+      expect(state.incomingCall?.fromAvatar).toBe('https://example.com/alice.png');
+      expect(state.incomingCall?.title).toBeUndefined();
+    });
+
+    it('ответ call_invite_response от постороннего пользователя игнорируется', () => {
+      useCallStore.setState({
+        fsm: {
+          ...useCallStore.getState().fsm,
+          state: 'outgoing',
+          roomId: 'room-out',
+          peerId: 'peer-alice',
+        },
+      });
+
+      useCallStore.getState().handleInviteResponse({
+        roomId: 'room-out',
+        from: 'attacker-mallory',
+        accepted: false,
+        reason: 'busy',
+      });
+
+      expect(useCallStore.getState().fsm.state).toBe('outgoing');
+    });
+
+    it('устаревший входящий звонок не показывается, если комната 404', async () => {
+      vi.spyOn(services.callService, 'getRoom').mockRejectedValueOnce(new Error('Room not found'));
+
+      await useCallStore.getState().handleIncoming({
+        roomId: 'stale-room',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+    });
+
+    it('устаревший входящий звонок не показывается, если звонящий отсутствует в комнате', async () => {
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-empty',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-1',
+          title: '',
+          hostId: 'caller-alice',
+          participants: [],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      await useCallStore.getState().handleIncoming({
+        roomId: 'room-empty',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+    });
+
+    it('входящий звонок не показывается, если нет личного чата со звонящим', async () => {
+      queryClient.setQueryData(chatKeys.list(), []);
+      queryClient.setQueryData(chatKeys.archived(), []);
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-stranger',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-stranger',
+          title: '',
+          hostId: 'stranger-1',
+          participants: [{ userId: 'stranger-1' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      await useCallStore.getState().handleIncoming({
+        roomId: 'room-stranger',
+        from: 'stranger-1',
+        kind: 'audio',
+      });
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+    });
+
+    it('ограничивает историю отмененных комнат (FIFO вытеснение сверх лимита 50)', async () => {
+      queryClient.setQueryData(chatKeys.list(), [
+        {
+          id: 'chat-alice',
+          type: 'private',
+          peerId: 'caller-alice',
+          title: 'Алиса',
+          avatarUrl: null,
+        },
+      ]);
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValue({
+        success: true,
+        room: {
+          id: 'room-test',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-alice',
+          title: '',
+          hostId: 'caller-alice',
+          participants: [{ userId: 'caller-alice' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      for (let i = 0; i < 60; i++) {
+        useCallStore.getState().handleCancelled({
+          type: 'call_cancelled',
+          roomId: `cancelled-room-${i}`,
+        });
+      }
+
+      // Room 59 всё ещё в списке отменённых — вызов должен отсекаться
+      await useCallStore.getState().handleIncoming({
+        roomId: 'cancelled-room-59',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+
+      // Room 0 была вытеснена из-за лимита 50 — вызов не отсекается по отмене
+      await useCallStore.getState().handleIncoming({
+        roomId: 'cancelled-room-0',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+      expect(useCallStore.getState().fsm.state).toBe('incoming');
+    });
+
+    it('первый звонок новому собеседнику звенит, когда чата нет в закешированном списке, но сервер возвращает его по chatQuery', async () => {
+      queryClient.setQueryData(chatKeys.list(), []);
+      queryClient.setQueryData(chatKeys.archived(), []);
+
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-new-direct',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-new-direct',
+          title: '',
+          hostId: 'new-peer-1',
+          participants: [{ userId: 'new-peer-1' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      vi.spyOn(services.chatService, 'getChat').mockResolvedValueOnce({
+        id: 'chat-new-direct',
+        type: 'private',
+        peerId: 'new-peer-1',
+        title: 'Новый контакт',
+        avatarUrl: null,
+        unreadCount: 0,
+      } as IChatDto);
+
+      await useCallStore.getState().handleIncoming({
+        roomId: 'room-new-direct',
+        from: 'new-peer-1',
+        kind: 'audio',
+      });
+
+      expect(useCallStore.getState().fsm.state).toBe('incoming');
+      expect(useCallStore.getState().fsm.roomId).toBe('room-new-direct');
+    });
+
+    it('комната ссылается на другой чат — личный чат со звонящим из списка её не подменяет', async () => {
+      queryClient.setQueryData(chatKeys.list(), [
+        { id: 'chat-bob', type: 'private', peerId: 'peer-bob', title: 'Боб', avatarUrl: null },
+      ]);
+      queryClient.setQueryData(chatKeys.archived(), []);
+
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-group-x',
+          type: 'group',
+          callKind: 'audio',
+          chatId: 'chat-group-x',
+          title: '',
+          hostId: 'peer-bob',
+          participants: [{ userId: 'peer-bob' }],
+        },
+        iceServers: [],
+        maxParticipants: 8,
+      } as never);
+      vi.spyOn(services.chatService, 'getChat').mockResolvedValueOnce({
+        id: 'chat-group-x',
+        type: 'group',
+        title: 'Чужая группа',
+        avatarUrl: null,
+        unreadCount: 0,
+      } as IChatDto);
+
+      await useCallStore
+        .getState()
+        .handleIncoming({ roomId: 'room-group-x', from: 'peer-bob', kind: 'audio' });
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+    });
+
+    it('отмена вызова во время запроса профиля отменяет звонок и не переводит в incoming', async () => {
+      queryClient.setQueryData(chatKeys.list(), [
+        {
+          id: 'chat-bob',
+          type: 'private',
+          peerId: 'peer-bob',
+          title: 'Боб',
+          avatarUrl: null,
+        },
+      ]);
+
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValueOnce({
+        success: true,
+        room: {
+          id: 'room-bob',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-bob',
+          title: '',
+          hostId: 'peer-bob',
+          participants: [{ userId: 'peer-bob' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      queryClient.setQueryData(blockedUsersQuery().queryKey, []);
+      queryClient.removeQueries({ queryKey: userKeys.profile('peer-bob') });
+
+      let getProfileCalled = false;
+      let resolveProfilePromise: (value: unknown) => void = () => {};
+      const profileDeferred = new Promise((resolve) => {
+        resolveProfilePromise = resolve;
+      });
+
+      vi.spyOn(services.userService, 'getProfile').mockImplementationOnce(() => {
+        getProfileCalled = true;
+        return profileDeferred as any;
+      });
+
+      const incomingPromise = useCallStore.getState().handleIncoming({
+        roomId: 'room-bob',
+        from: 'peer-bob',
+        kind: 'audio',
+      });
+
+      // Ждем, пока вызов реально дойдет до getProfile
+      while (!getProfileCalled) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      // Во время запроса профиля прилетает отмена
+      useCallStore.getState().handleCancelled({
+        type: 'call_cancelled',
+        roomId: 'room-bob',
+      });
+
+      resolveProfilePromise({
+        id: 'peer-bob',
+        firstName: 'Боб',
+        lastName: 'Смит',
+        username: 'bob',
+      });
+
+      await incomingPromise;
+
+      expect(useCallStore.getState().fsm.state).toBe('idle');
+    });
+
+    it('повторный call_incoming для той же комнаты после ожидания не отправляет busy, если первый уже звенит', async () => {
+      const mockSend = vi.fn();
+      const fakeSocket = {
+        isConnected: true,
+        send: mockSend,
+      } as unknown as WebSocketClient;
+      useCallStore.getState().attachSocket(fakeSocket);
+
+      queryClient.setQueryData(chatKeys.list(), [
+        {
+          id: 'chat-alice',
+          type: 'private',
+          peerId: 'caller-alice',
+          title: 'Алиса',
+          avatarUrl: null,
+        },
+      ]);
+
+      vi.spyOn(services.callService, 'getRoom').mockResolvedValue({
+        success: true,
+        room: {
+          id: 'room-duplicate',
+          type: 'p2p',
+          callKind: 'audio',
+          chatId: 'chat-alice',
+          title: '',
+          hostId: 'caller-alice',
+          participants: [{ userId: 'caller-alice' }],
+        },
+        iceServers: [],
+        maxParticipants: 2,
+      });
+
+      // Запускаем два параллельных incoming для одной и той же комнаты
+      const firstIncoming = useCallStore.getState().handleIncoming({
+        roomId: 'room-duplicate',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+      const secondIncoming = useCallStore.getState().handleIncoming({
+        roomId: 'room-duplicate',
+        from: 'caller-alice',
+        kind: 'audio',
+      });
+
+      await Promise.all([firstIncoming, secondIncoming]);
+
+      expect(useCallStore.getState().fsm.state).toBe('incoming');
+      // Сокет не должен отправлять busy для той же комнаты
+      expect(mockSend).not.toHaveBeenCalled();
     });
   });
 });

@@ -216,7 +216,18 @@ func (h *Handler) prepareOutgoing(w http.ResponseWriter, r *http.Request, userID
 	}
 
 	var metadata map[string]any
-	if item.MediaURL != "" {
+	if item.Type == "sticker" || item.Type == "gif" {
+		err := h.service.ValidateCatalogMedia(r.Context(), item.Type, item.MediaURL, item.MediaEncrypted)
+		if errors.Is(err, ErrInvalidInput) {
+			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must reference an available catalog item")
+			return OutgoingMessage{}, false
+		}
+		if err != nil {
+			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to validate catalog media")
+			return OutgoingMessage{}, false
+		}
+		metadata = map[string]any{"mediaUrl": item.MediaURL, "mediaType": item.Type, "isEncrypted": item.IsEncrypted}
+	} else if item.MediaURL != "" {
 		attachment, err := h.service.ValidateMediaMetadata(r.Context(), userID, item.MediaURL, item.FileName, item.SizeBytes, item.MediaEncrypted)
 		if errors.Is(err, ErrInvalidInput) {
 			itemErrorJSON(w, r, index, http.StatusBadRequest, "invalid_media_metadata", "media must be the sender's own upload matching fileName and sizeBytes")
