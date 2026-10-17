@@ -39,9 +39,41 @@ describe('useJumpToMessage', () => {
     expect(onScrollToMessage).toHaveBeenCalledWith('target-msg-1');
     expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
 
-    // Подсветка исчезает через 1.8с
+    // Подсветка исчезает через 1с
     act(() => {
-      vi.advanceTimersByTime(1800);
+      vi.advanceTimersByTime(1000);
+    });
+    expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
+  });
+
+  it('сбрасывает и перезапускает подсветку при повторном переходе к тому же сообщению', async () => {
+    const onScrollToMessage = vi.fn().mockReturnValue(true);
+    const { result } = renderHook(() => useJumpToMessage({ onScrollToMessage }), { wrapper });
+
+    await act(async () => {
+      await result.current.jumpToMessage('target-msg-1');
+    });
+    expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
+
+    // Прошло 500мс
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
+
+    // Повторный клик по тому же сообщению
+    await act(async () => {
+      await result.current.jumpToMessage('target-msg-1');
+    });
+
+    // Таймер перезапустился: через 500мс всё ещё подсвечено, через 1000мс гаснет
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(useChatUiStore.getState().highlightedMessageId).toBe('target-msg-1');
+
+    act(() => {
+      vi.advanceTimersByTime(500);
     });
     expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });
@@ -133,7 +165,7 @@ describe('useJumpToMessage', () => {
       let success = false;
       await act(async () => {
         const promise = result.current.jumpToMessage('old-msg');
-        await vi.advanceTimersByTimeAsync(2000);
+        await vi.advanceTimersByTimeAsync(600);
         success = await promise;
       });
       return success;

@@ -375,9 +375,15 @@ export const MessageBubble = memo(
               isActionTarget && 'is-action-target z-20 max-md:z-[1201]',
               isSelected && 'is-selected',
               /* Переход к сообщению — вспышкой, как в макете. */
-              isHighlighted && 'animate-[msg-flash_1200ms_ease-out] motion-reduce:animate-none'
+              isHighlighted && 'msg-flash motion-reduce:animate-none'
             )}
           >
+            {isHighlighted && (
+              <span
+                aria-hidden="true"
+                className="msg-overlay pointer-events-none absolute inset-0 z-10 rounded-[inherit] bg-brand/20 motion-reduce:animate-none"
+              />
+            )}
             {showAuthor && (
               <div className="mb-0.5 flex items-center gap-1.5">
                 {onOpenProfile ? (
