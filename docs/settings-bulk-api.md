@@ -86,11 +86,11 @@ Canonical SQL updates, которые уже меняют только пере�
 - Новые обязательные revision/If-Match и конфликт 409 для bulk не вводятся. Optimistic concurrency можно добавить отдельным контрактом, если понадобится редактирование snapshot.
 - Ответ success отправляется после commit. При использовании settings events (#1041) failed/no-op mutation не должна выдавать ложное событие; правило публикации после commit согласуется с транспортом #1041.
 
-Текущий код читает snapshot без блокировки и перезаписывает все разделы, а UpdatePreference делает собственный read-modify-write. Эта гарантия **ещё не реализована**; её проверяет отдельная backend implementation-задача. Даже атомарный SQL UPDATE нескольких колонок сам по себе не защищает от stale snapshot.
+После #495 bulk переписывает только явно изменённые разделы; omitted/null/empty sections сохраняются в БД, включая старые повреждённые данные. Snapshot всё ещё читается без блокировки, а UpdatePreference делает собственный read-modify-write. Гарантия от потери параллельных изменений **ещё не реализована**; её проверяет #1047. Даже атомарный SQL UPDATE нескольких колонок сам по себе не защищает от stale snapshot одного раздела.
 
 ## Ошибки и проверяемый round-trip
 
-Общие cookie/Origin/auth/errors правила — #498. Неверный JSON даёт 400 invalid_json; domain validation — 400 validation_failed. Сегодня часть shape/type ошибок также попадает в invalid_json из decoder, unknown keys/root null не отвергаются; error matrix/validation выравниваются в #453/#495. Неверный passcode input не изменяет passcode; тип проверяется несмотря на read-only семантику. Не вводим новый reset endpoint, PATCH или другой URL.
+Общие cookie/Origin/auth/errors правила — #498. После #495 неверный JSON даёт 400 invalid_json, а shape/type/null/unknown-key/domain errors — 400 validation_failed до любого SQL. Все sections, включая проигравшие по будущему приоритету aliases, проверяются до записи. Неверный passcode input не изменяет passcode; тип проверяется несмотря на read-only семантику. Не вводим новый reset endpoint, PATCH или другой URL.
 
 Round-trip для compatibility-клиента:
 

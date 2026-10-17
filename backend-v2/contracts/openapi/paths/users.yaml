@@ -337,9 +337,9 @@
       (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for
       legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot.
       Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the
-      current service can still lose parallel updates. Strict root/section validation requires #495. After
-      #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without
-      writes.
+      current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL
+      (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases
+      fail without writes.
     tags:
       - Users
     summary: Partially update legacy settings sections
@@ -370,7 +370,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
 /users/settings:
   get:
@@ -410,10 +409,10 @@
       Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"},
       not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge
       Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT
-      /users/privacy. Typed keys are fixed in #453; null/unknown-key validation and legacy normalization
-      require #495/#451; the current generic settings handler does not enforce that validation yet.
-      Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound
-      aliases and read normalization require #1042; consumers apply effective policy in #725.
+      /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is
+      normalized on reads; unified defaults and migration remain #451/#1040/#1042. Notification preferences
+      are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read
+      normalization require #1042; consumers apply effective policy in #725.
     requestBody:
       required: true
       description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
@@ -438,7 +437,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
 /users/privacy:
   put:
@@ -616,7 +614,8 @@
       Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of
       /users/settings. New MVP consumers use /users/settings. Global preferences are
       settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior.
+      until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are
+      validated before SQL (#495).
     tags:
       - Users
     summary: Update notification settings
@@ -647,7 +646,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
 /users/sounds:
   get:
@@ -684,7 +682,8 @@
       Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of
       /users/settings. New MVP consumers use /users/settings. Global preferences are
       settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior.
+      until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are
+      validated before SQL (#495).
     tags:
       - Users
     summary: Update sound settings
@@ -715,7 +714,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
 /users/advanced-settings:
   get:
@@ -748,7 +746,8 @@
     deprecated: true
     description: >-
       Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or
-      replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+      replacement for these fields is defined; do not copy arbitrary keys into /users/settings. Closed keys,
+      types, ranges and null leaves are validated before SQL (#495).
     tags:
       - Users
     summary: Update advanced settings
@@ -779,7 +778,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
 /users/folders:
   get:
@@ -879,7 +877,7 @@
     description: >-
       Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are
       outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical
-      account preferences.
+      account preferences. Closed keys, types, ranges and null leaves are validated before SQL (#495).
     tags:
       - Users
     summary: Update storage settings
@@ -910,7 +908,6 @@
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
     x-contract-gaps:
-      - '#495'
       - '#451'
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/cache:
