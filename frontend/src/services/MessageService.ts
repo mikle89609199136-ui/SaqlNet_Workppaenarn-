@@ -8,6 +8,7 @@ import type {
   IEmojisResponse,
   IEncryptedMedia,
   ILastMessageDto,
+  IMediaDisplayPatch,
   IMediaItem,
   IMessageDto,
   IUploadResponse,
@@ -55,6 +56,35 @@ function forwardRefusal(message: IMessageDto): string | null {
     return UNAVAILABLE_MEDIA_REFUSAL;
   }
   return null;
+}
+
+/**
+ * Файл вложения не скачался — сеть, ответ сервера или битый ответ.
+ *
+ * Отдельный класс, чтобы отличить этот шаг от расшифровки: раньше любой
+ * сбой показывался как «ошибка расшифровки», хотя чаще всего достаточно
+ * было скачать файл ещё раз (#1062).
+ */
+class MediaDownloadError extends Error {
+  readonly status?: number;
+
+  constructor(cause: unknown) {
+    super('Encrypted media download failed', { cause });
+    this.name = 'MediaDownloadError';
+    const status = (cause as { status?: unknown } | null)?.status;
+    if (typeof status === 'number') this.status = status;
+  }
+}
+
+/** Код причины для подписи под вложением: подпись выбирает интерфейс. */
+function mediaFailureReason(
+  error: unknown
+): NonNullable<IMediaDisplayPatch['mediaUnavailableReason']> {
+  if (!(error instanceof MediaDownloadError)) return 'decryptFailed';
+  // Файла нет и не будет, доступа нет — повтор не поможет.
+  if (error.status === 404 || error.status === 410) return 'notFound';
+  if (error.status === 403) return 'forbidden';
+  return 'downloadFailed';
 }
 
 /** Одно сообщение отправки: что уходит на сервер и как показать ответ у нас. */
@@ -594,7 +624,11 @@ export class MessageService {
       const objectUrl =
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
-              const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
+              const response = await this.apiClient
+                .get<IEncryptedMedia>(mediaUrl)
+                .catch((error: unknown) => {
+                  throw new MediaDownloadError(error);
+                });
               const blob = await this.cryptoService.decryptMedia(chatId, response.data);
               // Голосовое, которое браузер сам не проиграет, — перекодируется (#843).
               return item.type === 'voice' ? toPlayableVoiceBlob(blob) : blob;
@@ -609,14 +643,22 @@ export class MessageService {
         mediaUnavailable: false,
       };
     } catch (error) {
-      console.warn('Encrypted media decrypt failed:', error);
+      // Неудача в реестре не запоминается: следующий вызов — «Повторить»
+      // или перезапрос ленты — скачает файл заново.
+      const reason = mediaFailureReason(error);
+      console.warn(
+        reason === 'decryptFailed'
+          ? 'Encrypted media decrypt failed:'
+          : 'Encrypted media download failed:',
+        error
+      );
       return {
         mediaUrl: null,
         mediaOriginalUrl: mediaUrl,
         mediaEncrypted: true,
         mediaEncryption: metadata.mediaEncryption ?? null,
         mediaUnavailable: true,
-        mediaUnavailableReason: 'decryptFailed',
+        mediaUnavailableReason: reason,
       };
     }
   }

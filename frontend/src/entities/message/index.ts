@@ -3,6 +3,7 @@ export * from './model/threadCache';
 export * from './model/threadCacheActions';
 export * from './model/threadQueries';
 export * from './model/outboxSender';
+export * from './model/retryMediaDownload';
 export * from './model/pendingReactions';
 export * from './model/useThreadMessagesData';
 export * from './model/outboxStore';

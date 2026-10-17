@@ -129,7 +129,16 @@ export interface IMediaPayload {
  * Почему вложение не показать. Код, а не фраза: сервис языка не знает,
  * подпись подставляет интерфейс (MessageMedia).
  */
-export type TMediaUnavailableReason = 'unencrypted' | 'foreign' | 'decryptFailed';
+export type TMediaUnavailableReason =
+  | 'unencrypted'
+  | 'foreign'
+  | 'decryptFailed'
+  /** Не скачался: сеть, 5xx, 429 — можно повторить (#1062). */
+  | 'downloadFailed'
+  /** Файла нет на сервере (404, 410). */
+  | 'notFound'
+  /** Нет доступа к файлу (403). */
+  | 'forbidden';
 
 export interface IMediaItem extends IMessageDto {
   mediaUrl?: string | null;

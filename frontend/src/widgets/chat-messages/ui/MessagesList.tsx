@@ -37,6 +37,8 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
   /** Профиль автора пересланного сообщения (#785). */
   onOpenProfile?: (userId: string) => void;
   /**
@@ -78,6 +80,7 @@ export const MessagesList = memo(
     onRetryMessage,
     onOpenProfile,
     onCancelMessage,
+    onRetryMedia,
     showDeliveryStatus = false,
     isGroupChat = false,
     trackUnread = true,
@@ -229,6 +232,7 @@ export const MessagesList = memo(
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}
                         onCancelMessage={onCancelMessage}
+                        onRetryMedia={onRetryMedia}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         showDeliveryStatus={showDeliveryStatus}

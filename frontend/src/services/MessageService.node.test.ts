@@ -736,6 +736,87 @@ describe('MessageService: пересылка стикеров, GIF и непер
   });
 });
 
+/* Сбой скачивания и сбой расшифровки — разные причины (#1062): первое
+   лечится повтором, второе нет. Раньше оба показывались «ошибкой
+   расшифровки». */
+describe('MessageService: ошибки скачивания вложения (#1062)', () => {
+  const id = '00000000-0000-4000-8000-0000000003a0';
+  const photo = () =>
+    ({
+      ...message('m-photo', TARGET_CHAT, ''),
+      type: 'image',
+      metadata: { mediaUrl: `/api/v2/media/${id}`, mediaEncrypted: true },
+    }) as unknown as IMessageDto;
+
+  afterEach(() => {
+    clearMediaObjectUrls();
+    vi.restoreAllMocks();
+  });
+
+  function serviceWith(decryptMedia = vi.fn(async () => new Blob(['png']))) {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    return new MessageService(createApiClient(), { ...passthroughCrypto, decryptMedia } as never);
+  }
+
+  it.each([
+    ['сеть', 'downloadFailed', () => HttpResponse.error()],
+    ['500', 'downloadFailed', () => HttpResponse.json({}, { status: 500 })],
+    ['502', 'downloadFailed', () => HttpResponse.json({}, { status: 502 })],
+    ['429', 'downloadFailed', () => HttpResponse.json({}, { status: 429 })],
+    ['404', 'notFound', () => HttpResponse.json({}, { status: 404 })],
+    ['410', 'notFound', () => HttpResponse.json({}, { status: 410 })],
+    ['403', 'forbidden', () => HttpResponse.json({}, { status: 403 })],
+    [
+      'битый JSON',
+      'downloadFailed',
+      () => new HttpResponse('{', { headers: { 'content-type': 'application/json' } }),
+    ],
+  ] as const)('скачивание: %s → %s', async (_name, reason, respond) => {
+    server.use(http.get(api(`/media/${id}`), respond));
+
+    const patch = await serviceWith().resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(patch).toMatchObject({
+      mediaUrl: null,
+      mediaUnavailable: true,
+      mediaUnavailableReason: reason,
+    });
+  });
+
+  it('файл скачался, но не расшифровался → decryptFailed', async () => {
+    server.use(http.get(api(`/media/${id}`), () => HttpResponse.json({ encrypted: true })));
+    const decryptMedia = vi.fn(async () => {
+      throw new Error('tag mismatch');
+    });
+
+    const patch = await serviceWith(decryptMedia).resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(patch).toMatchObject({
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'decryptFailed',
+    });
+  });
+
+  it('после сбоя повторный вызов скачивает файл заново', async () => {
+    let attempts = 0;
+    server.use(
+      http.get(api(`/media/${id}`), () => {
+        attempts += 1;
+        return attempts === 1 ? HttpResponse.error() : HttpResponse.json({ encrypted: true });
+      })
+    );
+    const service = serviceWith();
+
+    const failed = await service.resolveMediaForDisplay(TARGET_CHAT, photo());
+    const retried = await service.resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(failed).toMatchObject({ mediaUnavailableReason: 'downloadFailed' });
+    expect(retried).toMatchObject({ mediaUnavailable: false });
+    expect(String(retried.mediaUrl)).toMatch(/^blob:/);
+    expect(attempts).toBe(2);
+  });
+});
+
 describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
   const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
   const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';

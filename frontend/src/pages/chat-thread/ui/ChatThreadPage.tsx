@@ -92,6 +92,7 @@ export function ChatThreadPage() {
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
+    handleRetryMedia,
     handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
@@ -157,6 +158,7 @@ export function ChatThreadPage() {
             onMessagesSeen={markMessagesAsRead}
             onOpenProfile={openProfile}
             onReact={handleReact}
+            onRetryMedia={handleRetryMedia}
             onRetryMessage={handleRetryMessage}
             readMark={readMark}
             setOpenedImage={modals.setOpenedImage}

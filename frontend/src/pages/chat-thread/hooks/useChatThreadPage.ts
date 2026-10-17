@@ -7,7 +7,12 @@ import { useMessageActions, useMessageSelection } from '@/features/message-actio
 import { useProfilePanel } from '@/features/user-profile';
 import { useEscapeKey } from '@/shared/lib';
 import { chatQuery, useChatReadMark, useChatUiStore } from '@/entities/chat';
-import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
+import {
+  cancelOutboxMessage,
+  pinsQuery,
+  retryMediaDownload,
+  retryOutboxMessage,
+} from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -131,6 +136,13 @@ export function useChatThreadPage({
     [queryClient, setError, t]
   );
 
+  // Стабильная ссылка: пузырь обёрнут в memo, новая функция на каждый
+  // рендер перерисовывала бы всю ленту (#1062).
+  const handleRetryMedia = useCallback(
+    (message: IMessageDto) => retryMediaDownload(queryClient, message),
+    [queryClient]
+  );
+
   const handleCancelMessage = useCallback(
     (message: IMessageDto) => {
       const id = message.tempId || message.id;
@@ -209,6 +221,7 @@ export function useChatThreadPage({
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
+    handleRetryMedia,
     handleCancelMessage,
   };
 }

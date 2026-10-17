@@ -50,6 +50,8 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
   /**
    * Показывать ли «прочитано» у своих сообщений.
    *
@@ -166,6 +168,7 @@ export const MessageBubble = memo(
     onOpenProfile,
     onRetryMessage,
     onCancelMessage,
+    onRetryMedia,
     showDeliveryStatus = false,
     isGroupChat = false,
     isFirstInGroup = true,
@@ -454,6 +457,7 @@ export const MessageBubble = memo(
             <MessageMedia
               message={message}
               onOpenImage={onOpenImage}
+              onRetryMedia={onRetryMedia}
               trailing={isVoice ? meta : undefined}
             />
 

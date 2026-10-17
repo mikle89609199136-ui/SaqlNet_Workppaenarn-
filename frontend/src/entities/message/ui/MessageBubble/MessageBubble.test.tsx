@@ -693,3 +693,77 @@ describe('ширина пузыря с аудио', () => {
     expect(bubbleOf('audio')).toHaveClass('w-full');
   });
 });
+
+/* Вложение не скачалось (#1062): подпись по причине и «Повторить» только
+   там, где повтор может помочь. */
+describe('вложение, которое не открылось', () => {
+  const unavailable = (reason: string) =>
+    ({
+      ...makeMessage({ id: `m-${reason}`, content: '' }),
+      type: 'image',
+      mediaUrl: null,
+      mediaUnavailable: true,
+      mediaUnavailableReason: reason,
+    }) as never;
+
+  const renderUnavailable = (reason: string, onRetryMedia?: () => Promise<void>) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={unavailable(reason)}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onRetryMedia={onRetryMedia}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('не скачалось — своя подпись и «Повторить», пока повтор идёт, кнопка выключена', async () => {
+    let finish!: () => void;
+    const onRetryMedia = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    renderUnavailable('downloadFailed', onRetryMedia);
+
+    expect(screen.getByText('Не удалось загрузить медиа')).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: 'Загрузить медиа ещё раз' });
+    await user.click(retry);
+
+    expect(onRetryMedia).toHaveBeenCalledTimes(1);
+    expect(onRetryMedia).toHaveBeenCalledWith(expect.objectContaining({ id: 'm-downloadFailed' }));
+    expect(retry).toBeDisabled();
+    // Нажатие по кнопке не открывает меню сообщения.
+    expect(useChatUiStore.getState().actionMenu).toBeNull();
+
+    finish();
+    await vi.waitFor(() => expect(retry).toBeEnabled());
+  });
+
+  it.each([
+    ['notFound', 'Медиа недоступно: файла нет на сервере'],
+    ['forbidden', 'Медиа недоступно: нет доступа к файлу'],
+    ['decryptFailed', 'Медиа недоступно: ошибка расшифровки'],
+    ['foreign', 'Медиа недоступно: файл не из этого приложения'],
+    ['unencrypted', 'Медиа недоступно: файл не зашифрован'],
+  ])('%s — своя подпись и без «Повторить»', (reason, text) => {
+    renderUnavailable(
+      reason,
+      vi.fn(async () => {})
+    );
+
+    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить медиа ещё раз' })).toBeNull();
+  });
+
+  it('без обработчика повтора кнопки нет', () => {
+    renderUnavailable('downloadFailed');
+
+    expect(screen.getByText('Не удалось загрузить медиа')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить медиа ещё раз' })).toBeNull();
+  });
+});
