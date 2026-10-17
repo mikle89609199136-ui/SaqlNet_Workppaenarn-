@@ -24,6 +24,13 @@ const LIVENESS_TIMEOUT_MS = 60_000;
  */
 const PROBE_TIMEOUT_MS = 10_000;
 
+/**
+ * На какой неудаче подряд спрашивать сервер, жива ли сессия (#1070).
+ * Первая проверка — примерно через 3 с после обрыва (паузы 1 + 2 с):
+ * короткое моргание сети её не вызывает. Дальше — каждые три попытки.
+ */
+const SESSION_CHECK_EVERY = 3;
+
 /** Что можно переопределить при создании клиента. */
 export interface IWebSocketClientOptions {
   /**
@@ -31,6 +38,11 @@ export interface IWebSocketClientOptions {
    * отправит её при подключении сам, в адресе токена нет.
    */
   hasSession?: () => boolean;
+  /**
+   * Жива ли сессия на сервере: `false` — её нет, `true` — есть или
+   * проверить не удалось. Транспорт о HTTP не знает, проверку дают ему.
+   */
+  checkSession?: () => Promise<boolean>;
   reconnectDelay?: number;
   maxReconnectDelay?: number;
   /** Тишина, после которой соединение считается мёртвым. */
@@ -42,6 +54,8 @@ export interface IWebSocketClientOptions {
 export class WebSocketClient {
   private url: string;
   private hasSession: () => boolean;
+  private checkSession?: () => Promise<boolean>;
+  private checkingSession: boolean;
   private reconnectDelay: number;
   private maxReconnectDelay: number;
   private livenessTimeout: number;
@@ -58,6 +72,8 @@ export class WebSocketClient {
   constructor(url: string, options: IWebSocketClientOptions = {}) {
     this.url = url;
     this.hasSession = options.hasSession ?? (() => false);
+    this.checkSession = options.checkSession;
+    this.checkingSession = false;
     this.reconnectDelay = options.reconnectDelay ?? 1000;
     this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY_MS;
     this.livenessTimeout = options.livenessTimeout ?? LIVENESS_TIMEOUT_MS;
@@ -297,6 +313,33 @@ export class WebSocketClient {
       this.reconnectTimer = null;
       this.connect();
     }, this.nextReconnectDelay());
+
+    if (this.reconnectAttempts % SESSION_CHECK_EVERY === 0) this.verifySession();
+  }
+
+  /**
+   * Сессию отозвали — переподключаться бессмысленно (#1070).
+   *
+   * Завершённые с другого устройства сеансы сервер закрывает и на новое
+   * рукопожатие отвечает 401, но браузер код не показывает: вкладка без
+   * действий человека бесконечно висела на «Подключаемся…». Проверка
+   * идёт по HTTP: на 401 клиент API сам уведёт на вход, здесь лишь
+   * перестаём пробовать.
+   */
+  verifySession() {
+    if (!this.checkSession || this.checkingSession) return;
+
+    this.checkingSession = true;
+    this.checkSession()
+      .then((alive) => {
+        if (!alive) this.disconnect();
+      })
+      .catch(() => {
+        // Проверка не удалась — пробуем дальше, как раньше.
+      })
+      .finally(() => {
+        this.checkingSession = false;
+      });
   }
 
   nextReconnectDelay() {
