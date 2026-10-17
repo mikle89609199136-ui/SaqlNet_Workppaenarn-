@@ -5,7 +5,8 @@ LegacySettingsBulkPatch:
   description: >-
     Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data.
     Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495);
-    common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat
+    bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields
+    are ignored. Canonical flags beat
     valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495).
   properties:
     settings:

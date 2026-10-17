@@ -25,7 +25,7 @@
 - **Ответ:** обычный PUT возвращает соответствующий итоговый раздел. Frontend сохраняет канонический GET payload в query cache и после изменения перечитывает его. Bulk ответ `{ "success": true }` не является ответом канонического PUT. [Решение #454](settings-bulk-api.md) сохраняет этот acknowledgement и задаёт отдельный legacy envelope.
 - **Validation — реализована в #495:** известные ключи, типы, enums/ranges; неизвестный ключ, неверный тип и `null` вместо значения дают `400 validation_failed` до любого SQL. `null` не используется как команда удаления/сброса. Поля определены в #453/#496; те же проверки действуют для соответствующих bulk/section writes. Legacy general section дополнительно принимает только известные aliases accentColor/fontSize по #453.
 - **Defaults — реализованы в #451:** [единый источник](settings-defaults.md) для регистрации, восстановления и всех способов чтения. Недостающие поля дополняются в ответах, сохранённые значения не сбрасываются. Проекция defaults не попадает в partial patch; миграции Appearance/aliases остаются #1040/#1042.
-- **Конкурентность:** patch разных полей не должен терять соседние изменения. Текущий SQL merge общих settings сохраняет omitted keys; read-modify-write bulk/preferences имеет риск потери параллельной записи. Семантика bulk определена в [#454](settings-bulk-api.md), runtime-защита конкурентной записи — #1047; стратегия синхронизации устройств/вкладок — #1041. Атомарности нескольких разных HTTP-запросов не обещаем.
+- **Конкурентность:** patch разных полей не должен терять соседние изменения. Canonical SQL merge и общий locked mutation path bulk/preferences сохраняют параллельные изменения разных keys (#1047). Семантика и PostgreSQL regression tests описаны в [bulk contract](settings-bulk-api.md); стратегия синхронизации устройств/вкладок остаётся #1041. Атомарности нескольких разных HTTP-запросов не обещаем.
 
 Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. В #495 остальные sections проходят typed DTO validation в service до SQL; handlers возвращают 400 validation_failed для неверных root/leaf/keys/types/ranges. [Полный контракт #453](user-api-contract.md) описывает также безопасную нормализацию повреждённых legacy reads. Единые defaults реализованы в [#451](settings-defaults.md); миграция и применение Appearance остаются #1040/#1042/#728.
 
@@ -73,7 +73,7 @@ Privacy validation уже действует при `PUT /users/privacy` и за
 | Задача             | Что решает после #498                                                                                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------------ |
 | #496               | Решение принято: [канонические поля, приоритеты и mapping](notification-settings.md); внедрение — #1042/#725 |
-| #454               | [Bulk contract принят](settings-bulk-api.md); safe mutation path — #1047, validation — #495                  |
+| #454               | [Bulk contract принят](settings-bulk-api.md); safe mutation path реализован в #1047, validation — #495                  |
 | #453               | Типизированные keys/enums/ranges и полная status matrix User API, включая выбранные envelopes                |
 | #451 / #497        | Единые defaults, avatarShape=letter и callSounds=true реализованы в #451; validation — #495                               |
 | #1040 / #1042      | Backend Appearance и notification migration по согласованной схеме                                           |

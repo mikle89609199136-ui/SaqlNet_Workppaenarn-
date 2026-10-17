@@ -587,7 +587,7 @@ export interface paths {
         /**
          * Partially update legacy settings sections
          * @deprecated
-         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -3229,7 +3229,7 @@ export interface components {
         LegacyStorageSettingsBulkSection: components["schemas"]["LegacyStorageSettings"] | components["schemas"]["LegacyNullSection"];
         /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings; invalid leaves and unknown keys reject the complete command (#495). */
         LegacyAdvancedSettingsBulkSection: components["schemas"]["LegacyAdvancedSettings"] | components["schemas"]["LegacyNullSection"];
-        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
+        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
         LegacySettingsBulkPatch: {
             settings?: components["schemas"]["LegacyGeneralSettingsBulkSection"];
             privacySettings?: components["schemas"]["PrivacySettingsPatchBulkSection"];

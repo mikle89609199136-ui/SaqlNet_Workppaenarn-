@@ -579,49 +579,10 @@ func (s *Service) readSettings(ctx context.Context, userID, section string) (map
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
-	return s.readAllSettings(ctx, userID, true)
-}
-
-func (s *Service) readAllSettings(ctx context.Context, userID string, includeDefaults bool) (AllSettings, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return AllSettings{}, err
 	}
-	var out AllSettings
-	var folders jsonArray
-	var rawPrivacy []byte
-	var rawSettings, rawNotifications, rawSounds, rawStorage, rawAdvanced []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT settings, privacy_settings, notification_settings, sound_settings,
-		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
-		FROM users.settings WHERE user_id = $1
-	`, userID).Scan(
-		&rawSettings,
-		&rawPrivacy,
-		&rawNotifications,
-		&rawSounds,
-		&rawStorage,
-		&rawAdvanced,
-		&folders,
-		&out.PasscodeEnabled,
-		&out.PasscodeTimeout,
-	)
-	out.Folders = []any(folders)
-	if err == nil {
-		normalize := normalizeSettingsPatchBase
-		if includeDefaults {
-			normalize = normalizeStoredSettings
-		}
-		out.Settings = normalize("legacy_settings", rawSettings)
-		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
-		out.NotificationSettings = normalize("notification_settings", rawNotifications)
-		out.SoundSettings = normalize("sound_settings", rawSounds)
-		out.StorageSettings = normalize("storage_settings", rawStorage)
-		out.AdvancedSettings = normalize("advanced_settings", rawAdvanced)
-		if out.Folders == nil {
-			out.Folders = []any{}
-		}
-	}
-	return out, err
+	return scanAllSettings(s.db.QueryRowContext(ctx, selectAllSettings, userID))
 }
 
 func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input AllSettings) error {
@@ -655,36 +616,7 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 		len(input.SoundSettings)+len(input.StorageSettings)+len(input.AdvancedSettings) == 0 && input.Folders == nil {
 		return nil
 	}
-	if err := s.ensureSettings(ctx, userID); err != nil {
-		return err
-	}
-	current, err := s.readAllSettings(ctx, userID, false)
-	if err != nil {
-		return err
-	}
-	var folders any
-	if input.Folders != nil {
-		folders = jsonArray(input.Folders)
-	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE users.settings SET
-			settings = COALESCE($2::jsonb, settings),
-			privacy_settings = COALESCE($3::jsonb, privacy_settings),
-			notification_settings = COALESCE($4::jsonb, notification_settings),
-			sound_settings = COALESCE($5::jsonb, sound_settings),
-			storage_settings = COALESCE($6::jsonb, storage_settings),
-			advanced_settings = COALESCE($7::jsonb, advanced_settings),
-			folders = COALESCE($8::jsonb, folders),
-			updated_at = NOW()
-		WHERE user_id = $1
-	`, userID,
-		mergedSettingsSection(current.Settings, input.Settings),
-		mergedSettingsSection(current.PrivacySettings, input.PrivacySettings),
-		mergedSettingsSection(current.NotificationSettings, input.NotificationSettings),
-		mergedSettingsSection(current.SoundSettings, input.SoundSettings),
-		mergedSettingsSection(current.StorageSettings, input.StorageSettings),
-		mergedSettingsSection(current.AdvancedSettings, input.AdvancedSettings), folders,
-	)
+	_, err := s.mutateSettings(ctx, userID, input)
 	return err
 }
 
@@ -747,20 +679,30 @@ func (s *Service) UpdatePreference(ctx context.Context, userID, column string, p
 	if err := validateSettingsPatch(column, patch); err != nil {
 		return nil, err
 	}
-	if err := s.ensureSettings(ctx, userID); err != nil {
-		return nil, err
+	if len(patch) == 0 {
+		return s.Preference(ctx, userID, column)
 	}
-	current, err := s.readJSONColumn(ctx, userID, column, false)
+	input := AllSettings{}
+	var result func(AllSettings) map[string]any
+	switch column {
+	case "notification_settings":
+		input.NotificationSettings = patch
+		result = func(state AllSettings) map[string]any { return state.NotificationSettings }
+	case "sound_settings":
+		input.SoundSettings = patch
+		result = func(state AllSettings) map[string]any { return state.SoundSettings }
+	case "storage_settings":
+		input.StorageSettings = patch
+		result = func(state AllSettings) map[string]any { return state.StorageSettings }
+	case "advanced_settings":
+		input.AdvancedSettings = patch
+		result = func(state AllSettings) map[string]any { return state.AdvancedSettings }
+	}
+	current, err := s.mutateSettings(ctx, userID, input)
 	if err != nil {
 		return nil, err
 	}
-	if len(patch) == 0 {
-		return withSettingsDefaults(column, current), nil
-	}
-	for key, value := range patch {
-		current[key] = value
-	}
-	return withSettingsDefaults(column, current), s.updateJsonColumn(ctx, userID, column, current)
+	return withSettingsDefaults(column, result(current)), nil
 }
 
 func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
@@ -1013,10 +955,6 @@ func (s *Service) ensureSettings(ctx context.Context, userID string) error {
 }
 
 func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[string]any, error) {
-	return s.readJSONColumn(ctx, userID, column, true)
-}
-
-func (s *Service) readJSONColumn(ctx context.Context, userID, column string, includeDefaults bool) (map[string]any, error) {
 	var raw []byte
 	var q string
 	switch column {
@@ -1034,28 +972,7 @@ func (s *Service) readJSONColumn(ctx context.Context, userID, column string, inc
 	if err := s.db.QueryRowContext(ctx, q, userID).Scan(&raw); err != nil {
 		return nil, err
 	}
-	if includeDefaults {
-		return normalizeStoredSettings(column, raw), nil
-	}
-	return normalizeSettingsPatchBase(column, raw), nil
-}
-
-func (s *Service) updateJsonColumn(ctx context.Context, userID, column string, value map[string]any) error {
-	var q string
-	switch column {
-	case "notification_settings":
-		q = `UPDATE users.settings SET notification_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "sound_settings":
-		q = `UPDATE users.settings SET sound_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "advanced_settings":
-		q = `UPDATE users.settings SET advanced_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "storage_settings":
-		q = `UPDATE users.settings SET storage_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	default:
-		return ErrInvalidInput
-	}
-	_, err := s.db.ExecContext(ctx, q, userID, jsonMap(value))
-	return err
+	return normalizeStoredSettings(column, raw), nil
 }
 
 type Session struct {
