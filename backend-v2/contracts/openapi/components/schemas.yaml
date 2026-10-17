@@ -405,6 +405,13 @@ Chat:
     role: { type: string }
     isPinned: { type: boolean }
     isArchived: { type: boolean }
+    isMuted:
+      type: boolean
+      description: Personal message notifications are muted for the authenticated member (#559). False by default and after expiry; independent of moderator member mute, unread counts and call alerts.
+    mutedUntil:
+      type: string
+      format: date-time
+      description: Future UTC expiry of the authenticated member's personal mute. Omitted when unmuted, expired or muted indefinitely; isMuted distinguishes those states.
     hideNotificationPreview: { type: boolean, default: false, description: "Hide message text in notifications for the authenticated user in this chat." }
     memberCount: { type: integer }
     createdAt: { type: string }
@@ -437,6 +444,16 @@ Chat:
       description: >-
         Private chats only. Present instead of peerLastSeen and peerIsOnline
         when the exact time is hidden from the viewer.
+PersonalChatMuteRequest:
+  type: object
+  additionalProperties: false
+  description: Personal message alerts only. An empty object or null/omitted mutedUntil mutes indefinitely; a timestamp must be RFC3339 in the future. No other member's state can be changed.
+  properties:
+    mutedUntil:
+      type: string
+      format: date-time
+      nullable: true
+      description: Future expiry, or null for indefinite mute. Past/equal-to-now values are rejected by runtime validation.
 ChatMember:
   allOf:
     - { $ref: '#/User' }

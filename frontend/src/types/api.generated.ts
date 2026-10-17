@@ -1741,6 +1741,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chats/{chatId}/mute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mute personal message notifications for a chat
+         * @description Persists only the authenticated member's personal mute (#559), independently of moderator member mute. A future mutedUntil sets an expiry; {} or null/omitted mutedUntil mutes indefinitely. Read effective isMuted and optional mutedUntil in chat details and lists, including archived chats. Repeating the request is safe. Expiry is evaluated at read/delivery time, without a scheduled cleanup job. Message Web Push is suppressed on every subscribed device; call and missed-call notifications are independent. History, unread counts, other members and other personal preferences are preserved. Frontend actions and browser fallback/sound gating are implemented separately in #725.
+         */
+        post: operations["muteChat"];
+        /**
+         * Unmute personal message notifications for a chat
+         * @description Clears only the authenticated member's personal mute. Repeating is safe; global notifications, pin/archive/preview, unread counts and moderator restrictions are unchanged. Global notifications=false can still suppress push after this operation. No request body is required or read.
+         */
+        delete: operations["unmuteChat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chats/{chatId}/notification-settings": {
         parameters: {
             query?: never;
@@ -3751,6 +3775,13 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /** @description Personal message notifications are muted for the authenticated member (#559). False by default and after expiry; independent of moderator member mute, unread counts and call alerts. */
+            isMuted?: boolean;
+            /**
+             * Format: date-time
+             * @description Future UTC expiry of the authenticated member's personal mute. Omitted when unmuted, expired or muted indefinitely; isMuted distinguishes those states.
+             */
+            mutedUntil?: string;
             /**
              * @description Hide message text in notifications for the authenticated user in this chat.
              * @default false
@@ -3775,6 +3806,14 @@ export interface components {
             isPeerBlocked?: boolean;
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
+        };
+        /** @description Personal message alerts only. An empty object or null/omitted mutedUntil mutes indefinitely; a timestamp must be RFC3339 in the future. No other member's state can be changed. */
+        PersonalChatMuteRequest: {
+            /**
+             * Format: date-time
+             * @description Future expiry, or null for indefinite mute. Past/equal-to-now values are rejected by runtime validation.
+             */
+            mutedUntil?: string | null;
         };
         DeleteMessagesRequest: {
             messageIds: string[];
@@ -7456,6 +7495,124 @@ export interface operations {
         responses: {
             /** @description Unpinned */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    muteChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalChatMuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Personal mute saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
+            };
+            /** @description Invalid JSON (invalid_json) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member or chat does not exist (access_denied) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (method_not_allowed) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unmuteChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Personal mute cleared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
+            };
+            /** @description Invalid UUID (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member or chat does not exist (access_denied) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (method_not_allowed) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
