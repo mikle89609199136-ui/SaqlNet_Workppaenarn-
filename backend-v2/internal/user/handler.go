@@ -353,7 +353,7 @@ func (h *Handler) Preference(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		settings, err := h.service.Preference(r.Context(), current.ID, spec.column, spec.fallback)
+		settings, err := h.service.Preference(r.Context(), current.ID, spec.column)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "preference fetch failed")
 			return
@@ -745,46 +745,21 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 }
 
 type preferenceRouteSpec struct {
-	column   string
-	key      string
-	fallback map[string]any
+	column string
+	key    string
 }
 
 func preferenceSpec(path string) (preferenceRouteSpec, bool) {
+	var column string
 	switch path {
 	case "/api/v2/users/notifications":
-		return preferenceRouteSpec{
-			column: "notification_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"privateChats": true, "groups": true, "channels": true, "calls": true,
-				"videoCalls": true, "inAppNotifications": true, "messagePreview": true,
-				"readReceipts": false, "reactions": true, "newContacts": true,
-			},
-		}, true
+		column = "notification_settings"
 	case "/api/v2/users/sounds":
-		return preferenceRouteSpec{
-			column: "sound_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"notificationsVolume": 80, "mediaVolume": 100, "notificationsSound": true,
-				"messagesSound": true, "sendSound": true, "callsSound": true,
-				"vibrateOnCall": true, "notificationSound": "default", "messageSound": "default",
-				"ringtone": "default",
-			},
-		}, true
+		column = "sound_settings"
 	case "/api/v2/users/advanced-settings":
-		return preferenceRouteSpec{
-			column: "advanced_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"autoReconnect": true, "fastConnection": true, "connectionType": "auto",
-				"dataCompression": true, "saveDrafts": true, "analytics": false,
-				"developerMode": false, "debugLog": false, "hardwareAcceleration": true,
-				"autoplayGifs": true,
-			},
-		}, true
+		column = "advanced_settings"
 	default:
 		return preferenceRouteSpec{}, false
 	}
+	return preferenceRouteSpec{column: column, key: "settings"}, true
 }

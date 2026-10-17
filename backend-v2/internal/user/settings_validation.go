@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/platform/settingsdefaults"
 )
 
 var ErrInvalidSettings = errors.New("invalid settings")
@@ -145,10 +146,23 @@ func validateSettingsPatch(section string, patch map[string]any) error {
 	return nil
 }
 
-// Нормализация только чтения: defaults не добавляются (#451). Неизвестные
-// ключи скрываются, повреждённые enums/строки опускаются, boolean закрывается
-// в false, громкость — в 0. При повреждении всего объекта alerts выключены.
+// Defaults — проекция для ответа. Mutation base остаётся sparse: иначе
+// unrelated patch закрепит отсутствующие sound flags до миграции #1042.
 func normalizeStoredSettings(section string, data []byte) map[string]any {
+	return withSettingsDefaults(section, normalizeSettingsPatchBase(section, data))
+}
+
+func withSettingsDefaults(section string, stored map[string]any) map[string]any {
+	out := settingsdefaults.Object(section)
+	for key, value := range stored {
+		out[key] = value
+	}
+	return out
+}
+
+// Повреждённые boolean/volume закрываются в false/0, неизвестные keys и
+// неверные enums/строки опускаются. Валидные значения не меняются.
+func normalizeSettingsPatchBase(section string, data []byte) map[string]any {
 	var stored map[string]any
 	if json.Unmarshal(data, &stored) != nil || stored == nil {
 		return closedSettings(section)

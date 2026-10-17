@@ -90,6 +90,29 @@ const profile = {
 } satisfies components['schemas']['UserProfile'];
 
 describe('Исполнимый контракт User API (#453)', () => {
+  it('единый источник defaults #451 соответствует схемам разделов', () => {
+    const defaults = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../backend-v2/internal/platform/settingsdefaults/defaults.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as Record<string, unknown>;
+    for (const [key, schema] of Object.entries({
+      settings: 'MvpSettings',
+      privacy_settings: 'PrivacySettings',
+      notification_settings: 'LegacyNotificationSettings',
+      sound_settings: 'LegacySoundSettings',
+      storage_settings: 'LegacyStorageSettings',
+      advanced_settings: 'LegacyAdvancedSettings',
+      folders: 'LegacyFolders',
+    })) {
+      expect(accepts(schema, defaults[key]), key).toBe(true);
+    }
+  });
+
   it('покрывает все 46 операций, опубликованных корневым контрактом', () => {
     expect(operations).toHaveLength(46);
     expect(new Set(operations.map((op) => op.operationId)).size).toBe(operations.length);
