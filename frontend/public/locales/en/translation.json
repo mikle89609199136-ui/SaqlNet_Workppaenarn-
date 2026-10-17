@@ -921,6 +921,7 @@
   "toast.keysDeleteFailed": "Could not delete the keys",
   "toast.keysDeleted": "Keys deleted from this device",
   "toast.leaveChatFailed": "Failed to leave chat",
+  "toast.logoutUnconfirmed": "The server didn't respond — you were signed out on this device only",
   "toast.passwordChangeFailed": "Could not change the password",
   "toast.passwordChanged": "Password changed",
   "toast.privacyFailed": "Could not save the privacy settings",

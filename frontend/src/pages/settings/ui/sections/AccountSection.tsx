@@ -1,12 +1,16 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar, Banner, ConfirmDialog } from '@/shared/ui';
-import { ROUTES, isAccountSubsection, type TAccountSubsection } from '@/shared/config/routes';
-import { disconnectRealtimeSocket } from '@/shared/api';
+import {
+  REACT_ROUTES,
+  ROUTES,
+  isAccountSubsection,
+  type TAccountSubsection,
+} from '@/shared/config/routes';
 import { meQuery, sessionsQuery } from '@/entities/user';
-import { services } from '@/services/serviceContainer';
+import { clearAuthSession, signOut } from '@/features/auth';
 import { ProfileEditForm } from '@/features/user-profile-edit';
 import { ChangePasswordForm } from '@/features/change-password';
 import { SessionsManager } from '@/features/session-management';
@@ -25,7 +29,6 @@ import { ListGroup, ListIntro, ListNavItem, ListStaticItem } from '@/shared/ui';
 export function AccountSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const params = useParams<{ subsection: string }>();
   const { data: user = {}, isPending } = useQuery(meQuery());
 
@@ -45,15 +48,10 @@ export function AccountSection() {
   async function handleLogout() {
     setLeaving(true);
     try {
-      await services.authService.logout().catch(() => {});
-      disconnectRealtimeSocket();
-
-      /* Запрет из docs/frontend-data-architecture.md: без этого после
-         входа другим пользователем в той же вкладке в памяти остаются
-         чужие сообщения — расшифрованные. */
-      queryClient.clear();
-
-      navigate('/login');
+      // Сервер, затем очистка всей вкладки — даже если сервер не ответил:
+      // запрет из docs/frontend-data-architecture.md выполняет signOut (#1072).
+      await signOut();
+      navigate(REACT_ROUTES.LOGIN, { replace: true });
     } finally {
       setLeaving(false);
       setAsked(false);
@@ -83,7 +81,7 @@ export function AccountSection() {
     }
 
     if (view === 'sessions') {
-      return <SessionsManager />;
+      return <SessionsManager onSignedOut={clearAuthSession} />;
     }
 
     if (view === 'encryption') {

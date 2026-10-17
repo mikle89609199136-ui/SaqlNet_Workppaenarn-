@@ -62,11 +62,10 @@ export class AuthService {
     // Push этому устройству больше не нужен (#882): сервер забывает
     // подписку, пока токен ещё действует, браузер — отписывается.
     await this.forgetPushOnDevice(true);
-    try {
-      await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT);
-    } finally {
-      this.authStorage.clearProfile();
-    }
+    // Профиль здесь не стирается (#1072): иначе clearAuthSession видела бы
+    // «уже вышел» и не чистила вкладку. Всю очистку делает она, а ошибка
+    // сервера уходит вызывающему.
+    await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT);
   }
 
   /** При выходе со всех устройств сервер удаляет подписки сам — тогда только браузер. */
@@ -92,7 +91,6 @@ export class AuthService {
   async logoutAll() {
     await this.apiClient.post(API_ENDPOINTS.AUTH_LOGOUT_ALL);
     await this.forgetPushOnDevice(false);
-    this.authStorage.clearProfile();
   }
 
   /**

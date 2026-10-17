@@ -921,6 +921,7 @@
   "toast.keysDeleteFailed": "Не удалось удалить ключи",
   "toast.keysDeleted": "Ключи удалены с этого устройства",
   "toast.leaveChatFailed": "Не удалось покинуть чат",
+  "toast.logoutUnconfirmed": "Сервер не ответил — выход выполнен только на этом устройстве",
   "toast.passwordChangeFailed": "Не удалось изменить пароль",
   "toast.passwordChanged": "Пароль изменён",
   "toast.privacyFailed": "Не удалось сохранить настройки приватности",
