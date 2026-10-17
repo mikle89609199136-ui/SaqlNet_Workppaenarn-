@@ -8,6 +8,7 @@ import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  dropMissingFromHead,
   forgetReplyPreviews,
   patchMessage,
   removeMessage,
@@ -117,9 +118,12 @@ export function putThreadMessages(
   {
     replaceExisting = false,
     replay,
+    dropMissing = false,
   }: {
     replaceExisting?: boolean;
     replay?: TThreadMutation;
+    /** Убрать подтверждённые, которых нет в этой свежей странице (#1068). */
+    dropMissing?: boolean;
   } = {}
 ): void {
   if (messages.length === 0) return;
@@ -149,9 +153,11 @@ export function putThreadMessages(
   if (replaceExisting) {
     // Snapshot уже включает старые операции. В журнал попадают только
     // изменения из realtime/действий пользователя, а не другой snapshot.
+    // Удаление — до слияния и до журнала: сообщение или удаление, пришедшие
+    // событием во время запроса, ложатся поверх, как и прежде.
     queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (thread) => {
       if (!thread) return thread;
-      const merged = merge(thread);
+      const merged = merge(dropMissing ? dropMissingFromHead(thread, messages) : thread);
       return replay ? replay(merged) : merged;
     });
   } else {

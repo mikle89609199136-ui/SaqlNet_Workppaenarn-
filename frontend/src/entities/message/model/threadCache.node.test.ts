@@ -5,6 +5,7 @@ import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  dropMissingFromHead,
   flattenThread,
   forgetReplyPreviews,
   patchMessage,
@@ -291,5 +292,46 @@ describe('галочки по событию receipts (#657)', () => {
         at,
       })
     ).toBe(data);
+  });
+});
+
+/* Пропущенные за время обрыва удаления — по свежей странице (#1068). */
+describe('пропавшие из свежей страницы', () => {
+  const at = (minute: number) => new Date(Date.UTC(2026, 9, 17, 12, minute)).toISOString();
+  const msg = (id: string, minute: number, extra = {}) =>
+    makeMessage({ id, createdAt: at(minute), ...extra } as never);
+
+  it('новее самого старого в странице и пропало — удаляется', () => {
+    const data = pages([msg('a', 1), msg('b', 2), msg('c', 3)]);
+
+    const next = dropMissingFromHead(data, [msg('a', 1), msg('c', 3)]);
+
+    expect(flattenThread(next).map((m) => m.id)).toEqual(['a', 'c']);
+  });
+
+  it('старше страницы — прокрученная история, не трогается', () => {
+    const data = pages([msg('new-1', 10), msg('new-2', 11)], [msg('old', 1)]);
+
+    const next = dropMissingFromHead(data, [msg('new-1', 10), msg('new-2', 11)]);
+
+    expect(next).toBe(data);
+  });
+
+  it('с тем же временем, что самое старое в странице, — не трогается', () => {
+    const data = pages([msg('twin', 5), msg('a', 5), msg('b', 6)]);
+
+    expect(dropMissingFromHead(data, [msg('a', 5), msg('b', 6)])).toBe(data);
+  });
+
+  it('неотправленное не трогается', () => {
+    const data = pages([msg('a', 1), msg('temp-x', 2, { tempId: 'temp-x', status: 'failed' })]);
+
+    expect(dropMissingFromHead(data, [msg('a', 1)])).toBe(data);
+  });
+
+  it('пустая страница ничего не удаляет', () => {
+    const data = pages([msg('a', 1)]);
+
+    expect(dropMissingFromHead(data, [])).toBe(data);
   });
 });

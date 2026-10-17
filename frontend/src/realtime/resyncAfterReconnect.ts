@@ -18,26 +18,49 @@ import { services } from '@/services/serviceContainer';
  * его не покажут.
  *
  * Поэтому после восстановления связи открытый чат дотягивает свежую
- * страницу.
+ * страницу и убирает то, что за время обрыва удалили (#1068). Историю
+ * закрытых чатов кеш забывает: при открытии она загрузится заново, иначе
+ * чат показал бы себя без пропущенного, а счётчик в списке — с ним, и
+ * «залип» бы. Закреплённые и данные чатов перечитываются.
  */
 
-/** Открытые чаты — те, чью историю сейчас кто-то показывает. */
-function openChatIds(queryClient: QueryClient): string[] {
+/** Чаты, чья история лежит в кеше: открытые сейчас и закрытые недавно. */
+function cachedThreads(queryClient: QueryClient, type: 'active' | 'inactive'): string[] {
   return queryClient
     .getQueryCache()
-    .findAll({ queryKey: chatKeys.all, type: 'active' })
+    .findAll({ queryKey: chatKeys.all, type })
     .map((query) => query.queryKey)
     .filter((key): key is readonly [string, string, string] => key.at(-1) === 'messages')
     .map((key) => String(key[1]));
 }
 
 export async function resyncAfterReconnect(queryClient: QueryClient): Promise<void> {
-  // Список чатов перезапрашивается целиком: за время обрыва могли
-  // измениться превью, порядок и счётчики непрочитанных в любом из них.
+  // Списки перезапрашиваются целиком: за время обрыва могли измениться
+  // превью, порядок и счётчики непрочитанных в любом чате, в том числе
+  // в архиве.
   void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+  void queryClient.invalidateQueries({ queryKey: chatKeys.archived() });
+
+  const openChats = cachedThreads(queryClient, 'active');
+  const closedChats = cachedThreads(queryClient, 'inactive');
+
+  // Удалить, а не пометить устаревшей: устаревшая лента при открытии
+  // показалась бы из кеша, а догрузка старых страниц, которую чат
+  // запускает сразу, отменила бы фоновый перезапрос — и пропущенное снова
+  // не появилось бы.
+  for (const chatId of closedChats) {
+    queryClient.removeQueries({ queryKey: chatKeys.messages(chatId), exact: true });
+  }
+
+  // Закрепления и данные чата события тоже могли пропустить. `exact` у
+  // данных чата обязателен: его ключ — префикс ключа истории.
+  for (const chatId of [...openChats, ...closedChats]) {
+    void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
+    void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId), exact: true });
+  }
 
   await Promise.all(
-    openChatIds(queryClient).map(async (chatId) => {
+    openChats.map(async (chatId) => {
       const changes = captureThreadChanges(queryClient, chatId);
       try {
         // Только свежая страница. Прокрученную вверх историю не трогаем:
@@ -52,6 +75,7 @@ export async function resyncAfterReconnect(queryClient: QueryClient): Promise<vo
         putThreadMessages(queryClient, chatId, page, {
           replaceExisting: true,
           replay: changes.replay,
+          dropMissing: true,
         });
       } catch (error) {
         // Связь только вернулась и могла отвалиться снова. Следующее

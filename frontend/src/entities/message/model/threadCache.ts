@@ -1,6 +1,7 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMediaMessageType, TMessagesList } from './types';
 import { getOutboxItem } from './outboxStore';
+import { isUnsent } from './messageUtils';
 import {
   isCoveredBy,
   receiptPatch,
@@ -151,6 +152,42 @@ export function removeMessage(data: IThreadPages, messageId: string): IThreadPag
     ...data,
     pages: data.pages.map((page) => page.filter((message) => message.id !== messageId)),
   };
+}
+
+/**
+ * Пропущенные удаления после обрыва связи (#1068).
+ *
+ * Удаление приходит только событием, и пропущенное за время обрыва
+ * оставалось в ленте. Сервер в истории удалённых и скрытых не отдаёт,
+ * поэтому подтверждённое сообщение, которого нет в свежей странице, хотя
+ * по времени оно внутри неё, удалили или скрыли.
+ *
+ * Граница — строго новее самого старого сообщения страницы: у сервера нет
+ * второго ключа сортировки, и сообщение с тем же временем могло просто
+ * не поместиться. Старше границы ничего не трогаем — это прокрученная
+ * история. Неотправленные сервер ещё не знает. Пустая страница ничего не
+ * удаляет: её не отличить от неполного ответа.
+ */
+export function dropMissingFromHead(data: IThreadPages, page: IMessageDto[]): IThreadPages {
+  if (page.length === 0) return data;
+
+  const fresh = new Set(page.map((message) => message.id));
+  const oldest = Math.min(...page.map((message) => new Date(message.createdAt).getTime()));
+  if (!Number.isFinite(oldest)) return data;
+
+  let changed = false;
+  const pages = data.pages.map((items) =>
+    items.filter((message) => {
+      const missing =
+        !fresh.has(message.id) &&
+        !isUnsent(message) &&
+        new Date(message.createdAt).getTime() > oldest;
+      if (missing) changed = true;
+      return !missing;
+    })
+  );
+
+  return changed ? { ...data, pages } : data;
 }
 
 /**
