@@ -68,4 +68,51 @@ describe('цитата на сообщение вне ленты', () => {
     const quote = screen.getByRole('button', { name: 'Перейти к сообщению' });
     expect(within(quote).getByText('Сообщение')).toBeInTheDocument();
   });
+
+  it('не догружает историю ради цитаты: превью уже пришло, чат открывается внизу', async () => {
+    // Прежде чат при открытии сам тянул до двух старых страниц, чтобы найти
+    // исходник цитаты. Страницы вставали над лентой, и длинный чат
+    // открывался посередине, а не на последних сообщениях.
+    const { chat } = makeChatScenario({ messages: 0 });
+    const start = Date.parse('2026-10-01T10:00:00Z');
+    // Полная страница: значит, есть и более старые. Цитата — в самом
+    // старом сообщении страницы, исходник — ещё старше.
+    const page = Array.from({ length: 50 }, (_, index) =>
+      makeMessage({
+        id: `m-${index}`,
+        chatId: chat.id,
+        senderId: 'user-2',
+        content: sealed(`сообщение ${index}`),
+        createdAt: new Date(start + index * 60_000),
+        ...(index === 0 && {
+          replyTo: 'm-old',
+          replyPreview: {
+            id: 'm-old',
+            content: sealed('самое первое сообщение'),
+            type: 'text',
+            senderId: 'user-1',
+            senderName: 'Я',
+            reactions: [],
+          },
+        }),
+      })
+    );
+    const offsets: Array<string | null> = [];
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset');
+        offsets.push(offset);
+        return HttpResponse.json({ messages: offset === '0' ? page : [] });
+      }),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.post(api('/messages/read'), () => HttpResponse.json({ success: true }))
+    );
+
+    renderChatThread({ chat });
+
+    expect(await screen.findByText('самое первое сообщение')).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(offsets).toEqual(['0']);
+  });
 });
