@@ -1,10 +1,10 @@
-import i18n from 'i18next';
 import { chatQuery } from '@/entities/chat';
 import { messagesQuery } from '@/entities/message';
 import { queryClient } from '@/shared/api';
 import { meQuery, settingsQuery, useProfileStore } from '@/entities/user';
-import { createBrowserRouter, redirect, type Params } from 'react-router-dom';
+import { createBrowserRouter, redirect, type Params, type RouteObject } from 'react-router-dom';
 import { AuthGuard } from './AuthGuard';
+import { ChatRouteError, RootRouteError } from './RouteError';
 import { AppLayout, RootLayout } from '@/app/layouts';
 import { RouteLoadingFallback } from '@/shared/ui';
 import { DEFAULT_SETTINGS_SECTION, REACT_ROUTES, ROUTES } from '@/shared/config/routes';
@@ -41,13 +41,10 @@ async function requireSession({ request }: { request: Request }) {
       throw redirect(`${REACT_ROUTES.LOGIN}?from=${encodeURIComponent(from)}`);
     }
 
-    // сеть / 500 / таймаут — токен тут ни при чём, сессию не трогаем
-    throw new Response(
-      error?.message || i18n.t('errors.profileLoad', 'Не удалось загрузить профиль'),
-      {
-        status: error?.status ?? 500,
-      }
-    );
+    // сеть / 500 / таймаут — токен тут ни при чём, сессию не трогаем.
+    // Ошибка уходит как есть: экрану ошибки нужны статус и код, а не
+    // «500» с английским текстом сервера (#1071).
+    throw error;
   }
 
   return null;
@@ -72,22 +69,19 @@ function redirectHome() {
  *
  * Закреплённые сюда не входят: панель закреплённых не нужна, чтобы показать
  * чат, а ожидание её ответа задерживало весь экран (#225).
+ *
+ * Ошибка уходит к экрану чата как есть: прежде любая заворачивалась в
+ * «500», и 404 или адрес не-UUID показывались той же поломкой (#1071).
  */
 const chatLoader = async ({ params }: { params: Params }) => {
   const { chatId = '' } = params;
-  try {
-    // Историю запрашиваем сразу, но не ждём: пока она идёт, на её месте
-    // рисуется скелет, а шапка и поле ввода уже на экране. Ожидание обоих
-    // ответов означало белый экран на всё время самого медленного.
-    void queryClient.prefetchInfiniteQuery(messagesQuery(chatId));
+  // Историю запрашиваем сразу, но не ждём: пока она идёт, на её месте
+  // рисуется скелет, а шапка и поле ввода уже на экране. Ожидание обоих
+  // ответов означало белый экран на всё время самого медленного.
+  void queryClient.prefetchInfiniteQuery(messagesQuery(chatId));
 
-    await queryClient.ensureQueryData(chatQuery(chatId));
-    return null;
-  } catch (error: any) {
-    throw new Response(error.message || i18n.t('errors.chatLoad', 'Не удалось загрузить чат'), {
-      status: 500,
-    });
-  }
+  await queryClient.ensureQueryData(chatQuery(chatId));
+  return null;
 };
 
 /**
@@ -98,9 +92,12 @@ const chatLoader = async ({ params }: { params: Params }) => {
  * хуже тихого перенаправления. Настройки открывают из меню, а не по внешним
  * ссылкам, поэтому терять тут нечего.
  */
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     Component: RootLayout,
+    // Границы ошибок — в самом маршруте, а не в lazy: если кусок сборки не
+    // загрузился, граница из lazy тоже не появилась бы (#1071).
+    ErrorBoundary: RootRouteError,
     children: [
       {
         index: true,
@@ -166,6 +163,8 @@ export const router = createBrowserRouter([
                   {
                     path: REACT_ROUTES.CHAT_BY_ID,
                     loader: chatLoader,
+                    // Ошибка в чате не уносит список чатов рядом.
+                    ErrorBoundary: ChatRouteError,
                     shouldRevalidate: ({ currentParams, nextParams }) =>
                       currentParams.chatId !== nextParams.chatId,
                     lazy: () =>
@@ -219,4 +218,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);
