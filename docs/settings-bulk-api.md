@@ -72,6 +72,10 @@ Bulk никогда не включает/отключает passcode, не ус
 
 До rollout #1042 bulk пока сохраняет независимые JSONB objects. #454 не объявляет runtime alias mapping реализованным.
 
+## Appearance aliases (#1040)
+
+Переданный textSize приоритетен над переданным fontSize; иначе явный fontSize задаёт textSize независимо от предыдущего canonical/default значения. Все aliases валидируются до разрешения приоритетов. Bulk/export fontSize проецируется из разрешённого textSize. Arbitrary accentColor сохраняется без преобразования в preset. Полная policy и отсутствие глобального backfill — [Appearance compatibility](appearance-settings.md).
+
 ## Атомарность и конкурентные запросы
 
 Одна bulk-операция либо сохраняет все допустимые writable-изменения, либо не сохраняет ни одного. Validation должна закончиться до записи. Недопустим partial success с частью обновлённых разделов или HTTP 200 после ошибки БД.
@@ -107,6 +111,6 @@ Round-trip для compatibility-клиента:
 
 - [#1047](https://github.com/mikle89609199136-ui/CraneApp/issues/1047) (USER-B023): реализованы общий locked mutation path и PostgreSQL regression tests для bulk/section writers.
 - #495 — typed validation всех сохраняемых sections, root unknown keys и null/shape policy; #453 — точные leaf schemas, errors и DTO; #451 — единые defaults/normalization чтения.
-- #1042 — notification/sound resolver и миграция; #1040 — Appearance; #1041 — доставка изменений. Эти задачи используют решение #454, не заменяют его конкурентные regression cases.
+- #1042 — notification/sound resolver и миграция; #1040 — [реализованная Appearance compatibility](appearance-settings.md); #1041 — доставка изменений. Эти задачи используют решение #454, не заменяют его конкурентные regression cases.
 
 Приёмка backend-реализации: barriers/две DB connections для воспроизводимой гонки bulk против canonical settings/privacy/preference; сохранение disjoint keys; два folders replacement в определённом порядке; rollback на invalid mixed patch/ошибке БД; no-op/omitted/null/empty semantics; неизменность passcode; alias priority/error cases из #496 и совместимые responses. Проверять на настоящем PostgreSQL, а не только SQL mock. Production data в #454 не изменяются.

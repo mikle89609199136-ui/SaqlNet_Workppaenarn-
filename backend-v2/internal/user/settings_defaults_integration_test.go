@@ -62,7 +62,10 @@ func TestSparseSettingsDefaultsAgreeAcrossHTTPViews(t *testing.T) {
 	canonical := api.request(t, http.MethodGet, "settings", "", http.StatusOK)
 	require.Equal(t, settingsdefaults.Object("settings"), canonical["settings"])
 	require.Equal(t, settingsdefaults.Object("privacy_settings"), canonical["privacy"])
-	require.Equal(t, canonical["settings"], all["settings"])
+	legacy := all["settings"].(map[string]any)
+	require.Equal(t, "medium", legacy["fontSize"])
+	delete(legacy, "fontSize")
+	require.Equal(t, canonical["settings"], legacy)
 	require.Equal(t, canonical["privacy"], all["privacySettings"])
 	for path, key := range map[string]string{"notifications": "notificationSettings", "sounds": "soundSettings", "advanced-settings": "advancedSettings", "storage": "storageSettings"} {
 		section := api.request(t, http.MethodGet, path, "", http.StatusOK)["settings"]

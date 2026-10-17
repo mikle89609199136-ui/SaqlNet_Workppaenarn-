@@ -39,6 +39,12 @@
 > Проверены PostgreSQL lock barriers, оба порядка writers, folders и rollback/cancel.
 > Resolver #1042 и доставка изменений #1041 остаются отдельными задачами.
 
+> **Продолжение 17 октября в #1040:** проверен полный Appearance round-trip через
+> canonical/bulk API. [Совместимость старых записей](../appearance-settings.md) разрешает
+> fontSize → textSize без глобального backfill; явный canonical patch приоритетен,
+> произвольный HEX сохраняется как compatibility data без подбора пресета.
+> UI/localStorage migration остаётся #728, синхронизация — #1041.
+
 ## Основание и границы проверки
 
 > **Продолжение 17 октября в #495:** typed validation всех общих и detailed sections

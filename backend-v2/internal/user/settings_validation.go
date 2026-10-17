@@ -149,6 +149,9 @@ func validateSettingsPatch(section string, patch map[string]any) error {
 // Defaults — проекция для ответа. Mutation base остаётся sparse: иначе
 // unrelated patch закрепит отсутствующие sound flags до миграции #1042.
 func normalizeStoredSettings(section string, data []byte) map[string]any {
+	if section == "settings" || section == "legacy_settings" {
+		return storedAppearance(section, data)
+	}
 	return withSettingsDefaults(section, normalizeSettingsPatchBase(section, data))
 }
 
