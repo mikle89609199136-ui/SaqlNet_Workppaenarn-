@@ -13,8 +13,8 @@ export interface IPrivacyRuleView {
 }
 
 /**
- * Правила на экране «Конфиденциальность» — те, что сервер применяет.
- * «Звонки» добавятся вместе с #714. Порядок — как в меню.
+ * Правила на экране «Конфиденциальность» — те, что сервер применяет
+ * (#786, #714, #1043). Порядок — как в меню.
  */
 export const PRIVACY_RULES: Record<TPrivacyRuleSubsection, IPrivacyRuleView> = {
   'last-seen': {
@@ -43,6 +43,16 @@ export const PRIVACY_RULES: Record<TPrivacyRuleSubsection, IPrivacyRuleView> = {
       t(
         'settings.privacy.forwardsHint',
         'При «Никто» в ваших сообщениях, которые перешлют другие, останется только ваше имя — без перехода в ваш профиль. Уже пересланные сообщения не изменятся.'
+      ),
+  },
+  calls: {
+    rule: 'calls',
+    title: (t) => t('settings.privacy.calls', 'Кто может звонить'),
+    question: (t) => t('settings.privacy.callsQuestion', 'Кто может мне звонить'),
+    hint: (t) =>
+      t(
+        'settings.privacy.callsHint',
+        'При «Никто» входящие звонки будут отклоняться, кроме пользователей из списка «Всегда разрешать». Пользователи из чёрного списка не смогут звонить вам в любом случае.'
       ),
   },
 };

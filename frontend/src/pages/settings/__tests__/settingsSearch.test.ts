@@ -73,6 +73,22 @@ describe('поиск по настройкам', () => {
     expect(searchSettings('конфиденциальность').length).toBeGreaterThan(0);
   });
 
+  it('находит настройку «Кто может звонить» по русским и английским словам (#1043)', () => {
+    const byRu = searchSettings('звонки');
+    expect(byRu.map((e) => e.title)).toContain('Кто может звонить');
+    expect(byRu.find((e) => e.title === 'Кто может звонить')).toMatchObject({
+      section: 'Конфиденциальность',
+      path: '/settings/privacy/calls',
+    });
+
+    const byEn = searchIn('who can call', en);
+    expect(byEn.map((e) => e.title)).toContain('Who can call me');
+    expect(byEn.find((e) => e.title === 'Who can call me')).toMatchObject({
+      section: 'Privacy',
+      path: '/settings/privacy/calls',
+    });
+  });
+
   it('на пустой запрос не показывает ничего', () => {
     // Пустая строка — это не «показать всё»: список висел бы поверх экрана
     // всё время.
