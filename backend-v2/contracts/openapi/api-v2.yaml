@@ -126,6 +126,7 @@ paths:
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
+  /messages/{messageId}/location: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1location' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
 
   /mls/keypackages: { $ref: './paths/mls.yaml#/~1mls~1keypackages' }

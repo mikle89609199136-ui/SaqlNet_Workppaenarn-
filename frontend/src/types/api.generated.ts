@@ -2028,6 +2028,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/messages/{messageId}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Chat of a message
+         * @description Which chat a message is in (#1076): a message forwarded to Saved Messages keeps the original message id, but not its chat. Only for a current member of that chat; deleted and hidden-for-me messages are not found. Every refusal is the same 404 message_not_found, so the answer reveals nothing about messages of other chats.
+         */
+        get: operations["getMessageLocation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/messages/{messageId}/favorite": {
         parameters: {
             query?: never;
@@ -8204,6 +8226,34 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    getMessageLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chat of the message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        chatId: string;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
             404: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };

@@ -67,3 +67,16 @@ export function appendUniqueMessage(items: TMessagesList, nextMessage: IMessageD
   if (items.some((message) => message.id === nextMessage.id)) return items;
   return [...items, nextMessage];
 }
+
+/**
+ * Исходное сообщение пересланного (#1076) — если автор разрешил ссылку на
+ * себя: иначе вместо неё сервер кладёт `forwardedHidden` (#785).
+ */
+export function forwardedOriginId(message: Pick<IMessageDto, 'metadata'>): string | undefined {
+  const metadata = message.metadata as
+    { forwardedFrom?: unknown; forwardedHidden?: boolean } | undefined;
+  if (!metadata || metadata.forwardedHidden) return undefined;
+  return typeof metadata.forwardedFrom === 'string' && metadata.forwardedFrom
+    ? metadata.forwardedFrom
+    : undefined;
+}

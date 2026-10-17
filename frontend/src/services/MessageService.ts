@@ -177,6 +177,14 @@ export class MessageService {
     return response.data.position;
   }
 
+  /** В каком чате сообщение — для перехода из «Избранного» к оригиналу (#1076). */
+  async getMessageLocation(messageId: string): Promise<string> {
+    const response = await this.apiClient.get<{ chatId: string }>(
+      API_ENDPOINTS.MESSAGE_LOCATION(messageId)
+    );
+    return response.data.chatId;
+  }
+
   /**
    * Отправка — всегда пачкой (#808): одно сообщение — пачка из одного.
    * Сервер пишет пачку одной транзакцией, в её порядке, и отвечает

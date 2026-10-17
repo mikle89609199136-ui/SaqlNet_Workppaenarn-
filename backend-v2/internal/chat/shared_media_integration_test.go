@@ -154,4 +154,27 @@ func TestSharedMediaOnRealSchema(t *testing.T) {
 		}
 	})
 
+	// Переход из «Избранного» к оригиналу (#1076): чат по id сообщения.
+	t.Run("место сообщения — только участнику, без удалённых и скрытых у себя", func(t *testing.T) {
+		location, err := chats.MessageLocation(ctx, me, photos[0])
+		require.NoError(t, err)
+		require.Equal(t, chatID, location)
+
+		peerHidden, err := chats.MessageLocation(ctx, peer, hidden)
+		require.NoError(t, err)
+		require.Equal(t, chatID, peerHidden, "скрытое у меня собеседнику видно")
+
+		peerForeign, err := chats.MessageLocation(ctx, peer, foreign)
+		require.NoError(t, err)
+		require.Equal(t, otherChat, peerForeign)
+
+		// Один ответ на все «нельзя»: по нему не узнать о чужих сообщениях.
+		for _, id := range []string{deleted, hidden, foreign, missing} {
+			_, err := chats.MessageLocation(ctx, me, id)
+			require.ErrorIs(t, err, ErrMessageNotFound, id)
+		}
+		_, err = chats.MessageLocation(ctx, stranger, photos[0])
+		require.ErrorIs(t, err, ErrMessageNotFound)
+	})
+
 }

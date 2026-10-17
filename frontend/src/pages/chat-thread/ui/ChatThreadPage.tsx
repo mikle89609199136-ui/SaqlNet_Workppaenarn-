@@ -9,6 +9,7 @@ import { GroupInfoModal } from '@/widgets/group-info';
 import { useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
+import { useOpenOriginalMessage } from '@/features/jump-to-message';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { SavedMessagesModal, UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/features/photo-editor';
@@ -97,6 +98,9 @@ export function ChatThreadPage() {
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
   const currentUserId = useProfileStore((state) => state.user?.id);
+  // «Переслано от …» ведёт к оригиналу только в «Избранном» (#1076): в
+  // остальных чатах эта строка открывает профиль автора (#785).
+  const openOriginal = useOpenOriginalMessage();
 
   // Автор пересланного сообщения (#785). Стабильная ссылка: пузыри
   // мемоизированы и не должны перерисовываться всей лентой.
@@ -158,6 +162,7 @@ export function ChatThreadPage() {
             onMessagesSeen={markMessagesAsRead}
             onOpenProfile={openProfile}
             onReact={handleReact}
+            onOpenOriginal={chat?.type === 'self' ? openOriginal : undefined}
             onRetryMedia={handleRetryMedia}
             onRetryMessage={handleRetryMessage}
             readMark={readMark}

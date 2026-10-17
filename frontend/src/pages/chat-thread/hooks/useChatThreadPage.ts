@@ -155,8 +155,10 @@ export function useChatThreadPage({
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
   // при переходе в соседний они не должны переезжать вместе с окном.
+  // Переход к сообщению этого чата, поставленный до перехода в него, —
+  // например, к оригиналу из «Избранного», — не сбрасывается (#1076).
   useEffect(() => {
-    resetChatState();
+    resetChatState(chatId);
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
 

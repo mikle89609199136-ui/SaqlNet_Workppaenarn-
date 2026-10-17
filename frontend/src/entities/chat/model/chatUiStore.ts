@@ -61,7 +61,7 @@ interface IChatActions {
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
   setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
-  resetChatState: () => void;
+  resetChatState: (keepJumpForChatId?: string) => void;
 }
 
 const initialChatState: IChatState = {
@@ -107,6 +107,15 @@ export const useChatUiStore = create<InitialState>((set) => {
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),
     setProfileRequest: (profileRequest) => set({ profileRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
-    resetChatState: () => set(initialChatState),
+    // Запрос перехода, адресованный новому чату, переживает смену чата: его
+    // ставят перед переходом, а выполняет лента нового чата (#1076).
+    resetChatState: (keepJumpForChatId) =>
+      set((state) => ({
+        ...initialChatState,
+        jumpRequest:
+          keepJumpForChatId && state.jumpRequest?.chatId === keepJumpForChatId
+            ? state.jumpRequest
+            : null,
+      })),
   };
 });

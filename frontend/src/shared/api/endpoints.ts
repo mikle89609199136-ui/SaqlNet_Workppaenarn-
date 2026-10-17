@@ -79,6 +79,7 @@ export const API_ENDPOINTS = {
   CHAT_SHARED: (chatId: string) => `/chats/${chatId}/shared`,
   MESSAGE_POSITION: (chatId: string, messageId: string) =>
     `/chats/${chatId}/messages/${messageId}/position`,
+  MESSAGE_LOCATION: (messageId: string) => `/messages/${messageId}/location`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
   ENCRYPTION_KEYS: '/encryption/keys',
