@@ -336,8 +336,9 @@
       omitted, null or empty object sections do not reset values. A provided folders array replaces the list
       (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for
       legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot.
-      Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the
-      current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL
+      Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint
+      concurrent patches. Row creation and all section changes roll back on update or commit failure.
+      Strict root/section/leaf validation runs before SQL
       (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases
       fail without writes.
     tags:

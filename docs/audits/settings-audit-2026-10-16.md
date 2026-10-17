@@ -32,6 +32,13 @@
 > patches, сохранённые false/0/theme/language приоритетны. AvatarShape=letter и callSounds=true
 > включены в общий набор; применение Appearance и alias migration остаются отдельными задачами.
 
+> **Продолжение 17 октября в #1047:** bulk и legacy section writers используют
+> общий транзакционный mutation path с SELECT FOR UPDATE; создание строки откатывается
+> при ошибке UPDATE/COMMIT. Параллельные изменения разных keys сохраняются,
+> passcode не берётся из snapshot, defaults остаются read projection.
+> Проверены PostgreSQL lock barriers, оба порядка writers, folders и rollback/cancel.
+> Resolver #1042 и доставка изменений #1041 остаются отдельными задачами.
+
 ## Основание и границы проверки
 
 > **Продолжение 17 октября в #495:** typed validation всех общих и detailed sections

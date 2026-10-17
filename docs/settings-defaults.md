@@ -12,7 +12,7 @@ Defaults включают полный Appearance contract (#453), `avatarShape=
 
 Partial PUT не получает default keys. Для bulk и legacy section read-modify-write используется отдельное sparse состояние; default projection добавляется только к ответу. Иначе unrelated изменение темы могло бы записать отсутствующие sounds/callSounds=true и поменять приоритет будущей миграции #1042. Регрессия проверяет физическое отсутствие этих keys в БД после bulk patch, а также отсутствие отсутствовавшего notificationsSound после изменения ringtone.
 
-Canonical SQL merge сохраняет omitted keys, bulk сохраняет omitted/null/empty sections. Глобального backfill нет; alias/Appearance migration остаются #1042/#1040, same-section concurrency — #1047.
+Canonical SQL merge сохраняет omitted keys, bulk сохраняет omitted/null/empty sections. Глобального backfill нет; alias/Appearance migration остаются #1042/#1040, same-section concurrency защищена общим locked mutation path #1047.
 
 ## Как менять defaults
 

@@ -112,7 +112,7 @@ Typed DTO: SettingsPatch, LegacySettingsPatch, NotificationSettingsPatch, SoundS
 
 GET не переписывает существующую строку. Canonical GET отдаёт только MvpSettings; bulk/export дополнительно сохраняют известные legacy accentColor/fontSize. При записи очищается затронутый legacy/bulk object; omitted/null/empty bulk sections сохраняются в БД без изменений, даже если их данные повреждены. Canonical SQL patch сохраняет соседние stored keys; не-object root ремонтируется в закрытый notifications state перед merge. Пустой bulk (включая только read-only поля) не вызывает SQL. Единые defaults добавлены в #451 как read projection; глобального backfill нет. Sparse mutation base сохраняет отсутствие flags до #1042.
 
-Все writable bulk sections записываются одним UPDATE после полной валидации: invalid mixed patch не создаёт строку и ничего не меняет, ошибка UPDATE не сохраняет часть разделов. Snapshot для bulk/legacy section read-modify-write пока читается без блокировки; same-section lost updates остаются #1047. Alias priority/conflict resolution и проекции notifications/sounds остаются #1042. Privacy использует существующий Normalize/Parse (#439), dedicated folders и passcode timeout сохраняют свои отдельные задачи.
+Все writable bulk sections записываются одним UPDATE после полной валидации: invalid mixed patch не создаёт строку и ничего не меняет, ошибка UPDATE не сохраняет часть разделов. В #1047 bulk/legacy section read-modify-write используют общую транзакцию: создание строки и чтение актуального snapshot под FOR UPDATE, sparse merge и commit. Ошибка UPDATE/COMMIT откатывает все изменения, включая создание строки. Canonical SQL writers сериализуются той же блокировкой; passcode не записывается из snapshot. Alias priority/conflict resolution и проекции notifications/sounds остаются #1042. Privacy использует существующий Normalize/Parse (#439), dedicated folders и passcode timeout сохраняют свои отдельные задачи.
 
 ## Отдельные операции и их границы
 
@@ -191,7 +191,7 @@ GET не переписывает существующую строку. Canonic
 | #451 / #497 / #1040 | Defaults/new/recovered/read и avatarShape=letter готовы в #451; Appearance storage/migration остаются #1040   |
 | #728 / #1041        | Применение Appearance, точные CSS metrics/visual tests, system media query, sync между устройствами/вкладками |
 | #1042 / #725        | Канонические sound aliases, one-time migration/resolver и применение effective notification policy по #496    |
-| #1047               | Общий locked mutation path для bulk/section writers, отсутствие потерянных конкурентных обновлений            |
+| #1047               | Реализованы общий locked mutation path bulk/section и PostgreSQL concurrency/rollback regression tests            |
 | #435 / #441         | Empty list вместо legacy null; обязательный dedicated folders input без непреднамеренной очистки              |
 | #442 / #449 / #450  | Timeout=0/invalid input, неправильные методы, один JSON root                                                  |
 | #445 / #446         | Настоящий storage accounting и cache clear                                                                    |
